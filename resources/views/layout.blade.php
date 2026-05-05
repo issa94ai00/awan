@@ -44,13 +44,13 @@
                 </div>
             </div>
 
-            <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
-                <i class="fas fa-moon"></i>
-            </button>
-
             <div class="menu-toggle" id="menuToggle">
                 <i class="fas fa-bars"></i>
             </div>
+
+            <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
+                <i class="fas fa-moon"></i>
+            </button>
 
             <ul class="nav-menu" id="navMenu">
                 <li><a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">الرئيسية</a></li>

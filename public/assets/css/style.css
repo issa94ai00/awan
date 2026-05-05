@@ -3514,7 +3514,8 @@ mark {
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 1.1rem;
-    margin-right: 10px;
+    margin-left: 10px;
+    order: -1;
 }
 
 .dark-mode-toggle:hover {
