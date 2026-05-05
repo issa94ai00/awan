@@ -139,7 +139,7 @@ class TrackVisitors
     protected function getCountryFromIP(string $ip): ?string
     {
         // For localhost or private IPs, return null
-        if ($ip === '127.0.0.1' || $ip === '::1' || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_PRIVATE)) {
+        if ($ip === '127.0.0.1' || $ip === '::1' || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE)) {
             return 'SY'; // Default to Syria for local testing
         }
 
