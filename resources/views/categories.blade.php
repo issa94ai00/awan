@@ -1,7 +1,18 @@
 @extends('layout')
 
 @section('content')
-<section class="categories fade-up" style="padding-top: 2rem;">
+<section class="page-header" style="padding-top: 120px; background: linear-gradient(135deg, var(--primary-dark), var(--accent-blue));">
+    <div class="container">
+        <h1>الفئات</h1>
+        <div class="breadcrumb">
+            <a href="{{ route('home') }}">الرئيسية</a>
+            <span>/</span>
+            <span>الفئات</span>
+        </div>
+    </div>
+</section>
+
+<section class="categories fade-up">
     <div class="container">
         <div class="section-header">
             <h2>جميع الفئات</h2>

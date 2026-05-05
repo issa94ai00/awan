@@ -3,7 +3,18 @@
 @section('title', 'الهوية والرؤية')
 
 @section('content')
-<section class="features fade-up" style="padding-top: 120px;" id="vision">
+<section class="page-header" style="padding-top: 120px; background: linear-gradient(135deg, var(--primary-dark), var(--accent-blue));">
+    <div class="container">
+        <h1>الهوية والرؤية</h1>
+        <div class="breadcrumb">
+            <a href="{{ route('home') }}">الرئيسية</a>
+            <span>/</span>
+            <span>الهوية والرؤية</span>
+        </div>
+    </div>
+</section>
+
+<section class="features fade-up" id="vision">
     <div class="container">
         <div class="section-header">
             <h2>الهوية والرؤية</h2>
