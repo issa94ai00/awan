@@ -59,18 +59,7 @@
         </div>
     </nav>
 
-    <section class="hero" id="home">
-        <div class="hero-content">
-            <h1>نبني معاً غد سورية الأجمل</h1>
-            <p>مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.</p>
-        </div>
-        <div class="floating-icons">
-            <i class="fas fa-trowel"></i>
-            <i class="fas fa-wrench"></i>
-            <i class="fas fa-paint-roller"></i>
-            <i class="fas fa-hard-hat"></i>
-        </div>
-    </section>
+
 
     @yield('content')
 

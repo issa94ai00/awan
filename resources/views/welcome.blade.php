@@ -16,6 +16,19 @@
     </div>
 </div>
 
+<section class="hero" id="home">
+    <div class="hero-content">
+        <h1>نبني معاً غد سورية الأجمل</h1>
+        <p>مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.</p>
+    </div>
+    <div class="floating-icons">
+        <i class="fas fa-trowel"></i>
+        <i class="fas fa-wrench"></i>
+        <i class="fas fa-paint-roller"></i>
+        <i class="fas fa-hard-hat"></i>
+    </div>
+</section>
+
 @if(isset($featured_products) && $featured_products->count())
 
 <section class="categories fade-up" id="categories">
