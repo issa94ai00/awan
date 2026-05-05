@@ -44,6 +44,10 @@
                 </div>
             </div>
 
+            <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
+                <i class="fas fa-moon"></i>
+            </button>
+
             <div class="menu-toggle" id="menuToggle">
                 <i class="fas fa-bars"></i>
             </div>
