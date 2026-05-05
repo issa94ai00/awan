@@ -68,7 +68,7 @@ Route::middleware('auth')->group(function () {
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(function () {
     // Dashboard
     Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
-    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+    Route::redirect('/dashboard', '/admin');
 
     // Categories
     Route::get('/categories', [AdminController::class, 'categoriesIndex'])->name('categories.index');
