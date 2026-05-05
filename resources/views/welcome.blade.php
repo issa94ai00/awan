@@ -208,20 +208,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const preloader = document.getElementById('preloader');
     const mainContent = document.querySelector('.categories, .cta-section');
     
-    // Hide preloader after page loads
+    // Hide preloader immediately
+    preloader.classList.add('fade-out');
+
+    // Show main content
+    if (mainContent) {
+        mainContent.style.opacity = '1';
+    }
+
+    // Remove preloader from DOM after transition
     setTimeout(function() {
-        preloader.classList.add('fade-out');
-        
-        // Show main content
-        if (mainContent) {
-            mainContent.style.opacity = '1';
-        }
-        
-        // Remove preloader from DOM after transition
-        setTimeout(function() {
-            preloader.style.display = 'none';
-        }, 500);
-    }, 4000); // 4 seconds preload time
+        preloader.style.display = 'none';
+    }, 500);
 });
 </script>
 @endpush
