@@ -35,7 +35,7 @@
             </a>
                 <?php if(get_setting('show_site_name', false)): ?>
                     <span class="logo-text"><?php echo get_setting('site_name') ?? 'أوان التقدم'; ?></span>
-                <?php endif; ?>s
+                <?php endif; ?>
             <div class="nav-search">
                 <div class="search-container">
                     <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">

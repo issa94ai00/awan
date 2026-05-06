@@ -78,4 +78,14 @@ class Inquiry extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function getStatusText(): string
+    {
+        return self::getStatusOptions()[$this->status] ?? $this->status;
+    }
 }
