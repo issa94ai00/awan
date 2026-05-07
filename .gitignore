@@ -1,42 +1,54 @@
-/vendor/*
-/node_modules/*
-npm-debug.log
+/node_modules
+/npm-debug.log
 yarn-error.log
-public/downloads/lms-android.apk
-# Laravel 4 specific
-bootstrap/compiled.php
-app/storage/
-# استثناء مجلد الـ course-files بالكامل
-storage/app/private/course-files/
 
-# استثناء مجلد الـ receipts بالكامل
-storage/app/private/receipts/
-# Laravel 5 & Lumen specific
-public/storage
-public/hot
-#استثناء بعض الملفات
-.npmrc
-config/view.php
+# Laravel
+/vendor
 .env
-public/images/site-bg.svg
-
-# Laravel 5 & Lumen specific with changed public path
-public_html/storage
-public_html/hot
-
-storage/*.key
-storage/framework/views/
-storage/framework/cache/
-storage/framework/sessions/
-.env
+.env.backup
+.env.production
 Homestead.yaml
 Homestead.json
 .vagrant
 .phpunit.result.cache
 
-public/build
+# Storage
+storage/*.key
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
 storage/pail
-.env.backup
-.env.production
-.phpactor.json
+storage/logs/*
+
+# Public
+public/storage
+public/hot
+public/build
+
+# App-specific exclusions
+public/downloads/lms-android.apk
+public/images/site-bg.svg
+.npmrc
+config/view.php
 auth.json
+.phpactor.json
+
+# استثناء مجلد الـ course-files بالكامل
+storage/app/private/course-files/
+
+# استثناء مجلد الـ receipts بالكامل
+storage/app/private/receipts/
+
+# Shared hosting (changed public path)
+public_html/storage
+public_html/hot
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
