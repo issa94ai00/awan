@@ -24,40 +24,40 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     
     // Home & Featured Content
-    Route::get('/home', [HomeController::class, 'index']);
-    Route::get('/featured-products', [HomeController::class, 'featuredProducts']);
+    Route::get('/home', [HomeController::class, 'index'])->name('api.home');
+    Route::get('/featured-products', [HomeController::class, 'featuredProducts'])->name('api.featured-products');
     
     // Categories
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::get('/categories/{category}', [CategoryController::class, 'show']);
-    Route::get('/categories/{category}/products', [CategoryController::class, 'products']);
+    Route::get('/categories', [CategoryController::class, 'index'])->name('api.categories.index');
+    Route::get('/categories/{category}', [CategoryController::class, 'show'])->name('api.categories.show');
+    Route::get('/categories/{category}/products', [CategoryController::class, 'products'])->name('api.categories.products');
     
     // Products
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::get('/products/{product}', [ProductController::class, 'show']);
-    Route::get('/products/{product}/related', [ProductController::class, 'related']);
+    Route::get('/products', [ProductController::class, 'index'])->name('api.products.index');
+    Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.products.show');
+    Route::get('/products/{product}/related', [ProductController::class, 'related'])->name('api.products.related');
     
     // Search
-    Route::get('/search', [SearchController::class, 'search']);
-    Route::get('/search/suggestions', [SearchController::class, 'suggestions']);
+    Route::get('/search', [SearchController::class, 'search'])->name('api.search');
+    Route::get('/search/suggestions', [SearchController::class, 'suggestions'])->name('api.search.suggestions');
     
     // Inquiries
-    Route::post('/inquiries', [InquiryController::class, 'store']);
+    Route::post('/inquiries', [InquiryController::class, 'store'])->name('api.inquiries.store');
     
     // Authentication
-    Route::post('/auth/register', [AuthController::class, 'register']);
-    Route::post('/auth/login', [AuthController::class, 'login']);
-    Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-    Route::get('/auth/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
-    Route::put('/auth/profile', [AuthController::class, 'updateProfile'])->middleware('auth:sanctum');
-    Route::post('/auth/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum');
+    Route::post('/auth/register', [AuthController::class, 'register'])->name('api.auth.register');
+    Route::post('/auth/login', [AuthController::class, 'login'])->name('api.auth.login');
+    Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum')->name('api.auth.logout');
+    Route::get('/auth/user', [AuthController::class, 'user'])->middleware('auth:sanctum')->name('api.auth.user');
+    Route::put('/auth/profile', [AuthController::class, 'updateProfile'])->middleware('auth:sanctum')->name('api.auth.profile');
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum')->name('api.auth.change-password');
     
     // Protected Routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {
         
         // User Inquiries
-        Route::get('/user/inquiries', [InquiryController::class, 'index']);
-        Route::get('/user/inquiries/{inquiry}', [InquiryController::class, 'show']);
+        Route::get('/user/inquiries', [InquiryController::class, 'index'])->name('api.user.inquiries.index');
+        Route::get('/user/inquiries/{inquiry}', [InquiryController::class, 'show'])->name('api.user.inquiries.show');
         
         // User Favorites (if implemented)
         // Route::get('/user/favorites', [FavoriteController::class, 'index']);

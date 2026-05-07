@@ -3,7 +3,6 @@
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
-use App\Http\Controllers\SearchController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
@@ -45,13 +44,6 @@ Route::get('/category/{category}', [CategoryController::class, 'show'])
 
 Route::get('/product/{product}', [ProductController::class, 'show'])
     ->name('product.show');
-
-// Search API routes
-Route::get('/api/search', [SearchController::class, 'search'])
-    ->name('api.search');
-
-Route::get('/api/suggestions', [SearchController::class, 'suggestions'])
-    ->name('api.suggestions');
 
 // Auth Routes (from Breeze)
 Route::middleware('auth')->group(function () {
