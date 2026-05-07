@@ -17,7 +17,7 @@ public/hot
 #استثناء بعض الملفات
 .npmrc
 config/view.php
-env.zip
+.env
 public/images/site-bg.svg
 
 # Laravel 5 & Lumen specific with changed public path
