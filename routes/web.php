@@ -45,6 +45,44 @@ Route::get('/category/{category}', [CategoryController::class, 'show'])
 Route::get('/product/{product}', [ProductController::class, 'show'])
     ->name('product.show');
 
+// Admin Routes
+Route::prefix('admin')->middleware(['auth', 'admin'])->group(function () {
+    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
+
+    // Categories
+    Route::get('/categories', [AdminController::class, 'categoriesIndex'])->name('admin.categories.index');
+    Route::get('/categories/create', [AdminController::class, 'categoriesCreate'])->name('admin.categories.create');
+    Route::post('/categories', [AdminController::class, 'categoriesStore'])->name('admin.categories.store');
+    Route::get('/categories/{category}/edit', [AdminController::class, 'categoriesEdit'])->name('admin.categories.edit');
+    Route::put('/categories/{category}', [AdminController::class, 'categoriesUpdate'])->name('admin.categories.update');
+    Route::delete('/categories/{category}', [AdminController::class, 'categoriesDestroy'])->name('admin.categories.destroy');
+
+    // Products
+    Route::get('/products', [AdminController::class, 'productsIndex'])->name('admin.products.index');
+    Route::get('/products/create', [AdminController::class, 'productsCreate'])->name('admin.products.create');
+    Route::post('/products', [AdminController::class, 'productsStore'])->name('admin.products.store');
+    Route::get('/products/{product}/edit', [AdminController::class, 'productsEdit'])->name('admin.products.edit');
+    Route::put('/products/{product}', [AdminController::class, 'productsUpdate'])->name('admin.products.update');
+    Route::delete('/products/{product}', [AdminController::class, 'productsDestroy'])->name('admin.products.destroy');
+
+    // Inquiries
+    Route::get('/inquiries', [AdminController::class, 'inquiriesIndex'])->name('admin.inquiries.index');
+    Route::get('/inquiries/{inquiry}', [AdminController::class, 'inquiriesShow'])->name('admin.inquiries.show');
+    Route::put('/inquiries/{inquiry}', [AdminController::class, 'inquiriesUpdate'])->name('admin.inquiries.update');
+    Route::delete('/inquiries/{inquiry}', [AdminController::class, 'inquiriesDestroy'])->name('admin.inquiries.destroy');
+
+    // Settings
+    Route::get('/settings', [AdminController::class, 'settingsIndex'])->name('admin.settings.index');
+    Route::put('/settings', [AdminController::class, 'settingsUpdate'])->name('admin.settings.update');
+
+    // Visitors
+    Route::get('/visitors', [AdminController::class, 'visitorsIndex'])->name('admin.visitors.index');
+
+    // Profile
+    Route::get('/profile', [AdminController::class, 'profileEdit'])->name('admin.profile.edit');
+    Route::put('/profile', [AdminController::class, 'profileUpdate'])->name('admin.profile.update');
+});
+
 // Auth Routes (from Breeze)
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
