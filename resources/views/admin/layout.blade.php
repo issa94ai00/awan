@@ -105,6 +105,12 @@
                             <span>الاستفسارات</span>
                         </a>
                     </li>
+                    <li class="{{ request()->routeIs('admin.pos') ? 'active' : '' }}">
+                        <a href="{{ route('admin.pos') }}">
+                            <i class="fas fa-cash-register"></i>
+                            <span>نقطة البيع</span>
+                        </a>
+                    </li>
                     <li class="{{ request()->routeIs('admin.visitors.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.visitors.index') }}">
                             <i class="fas fa-chart-line"></i>

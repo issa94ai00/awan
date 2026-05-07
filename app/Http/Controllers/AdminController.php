@@ -490,6 +490,22 @@ class AdminController extends Controller
         ));
     }
 
+    // POS
+    public function posIndex()
+    {
+        $categories = Category::where('is_active', 1)
+            ->withCount(['products as product_count' => function ($query) {
+                $query->where('is_active', 1);
+            }])
+            ->with(['products' => function ($query) {
+                $query->where('is_active', 1)->select('id', 'category_id', 'name_ar', 'name_en', 'slug', 'image_main', 'price', 'show_price', 'in_stock');
+            }])
+            ->orderBy('sort_order')
+            ->get();
+
+        return view('admin.pos.index', compact('categories'));
+    }
+
     // Profile
     public function profileEdit()
     {

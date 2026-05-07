@@ -81,6 +81,9 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
     // Visitors
     Route::get('/visitors', [AdminController::class, 'visitorsIndex'])->name('admin.visitors.index');
 
+    // POS
+    Route::get('/pos', [AdminController::class, 'posIndex'])->name('admin.pos');
+
     // Profile
     Route::get('/profile', [AdminController::class, 'profileEdit'])->name('admin.profile.edit');
     Route::put('/profile', [AdminController::class, 'profileUpdate'])->name('admin.profile.update');
