@@ -15,7 +15,7 @@ class IsAdmin
         }
 
         if (!auth()->user()->is_admin) {
-            abort(403, 'Unauthorized access.');
+            return redirect('/')->with('error', 'Unauthorized access.');
         }
 
         return $next($request);
