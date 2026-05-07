@@ -1,5 +1,5 @@
-vendor/
-node_modules/
+/vendor/*
+/node_modules/*
 npm-debug.log
 yarn-error.log
 public/downloads/lms-android.apk
@@ -40,4 +40,3 @@ storage/pail
 .env.production
 .phpactor.json
 auth.json
-node_modules
