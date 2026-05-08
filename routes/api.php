@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\InquiryController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\HomeController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -62,7 +63,15 @@ Route::prefix('v1')->group(function () {
         // User Favorites (if implemented)
         // Route::get('/user/favorites', [FavoriteController::class, 'index']);
         // Route::post('/user/favorites/{product}', [FavoriteController::class, 'toggle']);
-        
+
+        // POS Invoices
+        Route::get('/invoices', [InvoiceController::class, 'index'])->name('api.invoices.index');
+        Route::post('/invoices', [InvoiceController::class, 'store'])->name('api.invoices.store');
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('api.invoices.show');
+        Route::put('/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('api.invoices.update-status');
+        Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('api.invoices.destroy');
+        Route::get('/invoices/summary/stats', [InvoiceController::class, 'summary'])->name('api.invoices.summary');
+
     });
 });
 
