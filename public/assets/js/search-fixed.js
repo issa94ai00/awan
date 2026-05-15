@@ -109,12 +109,31 @@ document.addEventListener('DOMContentLoaded', function () {
         setLoadingState(true);
         setIconTypingState(true);
 
-        try {
-            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-            if (!response.ok) throw new Error('Search failed');
+        const endpoints = [`/api/v1/search?q=${encodeURIComponent(query)}`, `/api/search?q=${encodeURIComponent(query)}`];
+        let lastError = null;
 
-            const data = await response.json();
-            show(renderResults(data, query));
+        try {
+            for (const url of endpoints) {
+                try {
+                    const response = await fetch(url);
+                    if (response.status === 404) {
+                        // try next endpoint
+                        continue;
+                    }
+                    if (!response.ok) throw new Error('Search failed');
+
+                    const data = await response.json();
+                    const payload = data && data.data ? data.data : data;
+                    show(renderResults(payload, query));
+                    return;
+                } catch (err) {
+                    lastError = err;
+                    // try next endpoint
+                }
+            }
+
+            // if we reach here, all endpoints failed
+            throw lastError || new Error('Search failed');
         } catch (error) {
             console.error('Search error:', error);
             show('<div class="search-result-empty">حدث خطأ في البحث</div>');
