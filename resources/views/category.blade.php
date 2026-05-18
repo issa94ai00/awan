@@ -24,9 +24,12 @@
         <div class="products-grid">
             @foreach ($products as $product)
             <div class="blk_item">
+                @php
+                    $showPrice = (get_setting('show_product_price', '1') == '1') && (($product->show_price ?? false) === true) && (floatval($product->price ?? 0) > 0);
+                @endphp
                 <div style="display:none" class="pinfo_{{ $product->id }}">
                     {"title":"{{ addslashes($product->name_ar) }}","imgUrl":"{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}","attrs":{
-                        "Price":"{{ get_setting('show_product_price','1') == '1' && $product->show_price ? ( ($product->sale_price && $product->sale_price < $product->price) ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2)) : 'Contact' }}",
+                        "Price":"{{ $showPrice ? ( ($product->sale_price && $product->sale_price < $product->price) ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2)) : 'To be discussed' }}",
                         "Brand Name":"{{ $product->brand ?? '—' }}",
                         "Model Number":"{{ $product->model ?? $product->sku ?? '—' }}",
                         "Minimum Order Quantity":"{{ $product->min_order ?? 1 }}",
@@ -47,7 +50,11 @@
                         <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">{{ $product->name_ar }}</a>
                     </h2>
                     <div class="blk_tables">
-                        <span>Price:<b title="{{ $product->price ? '$'.number_format($product->price,2) : 'To be discussed' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : ($product->price ? '$'.number_format($product->price,2) : 'To be discussed') }}</b></span>
+                        @if($showPrice)
+                            <span>Price:<b title="{{ $product->price ? '$'.number_format($product->price,2) : '' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2) }}</b></span>
+                        @else
+                            <span>Price:<b title="To be discussed"> To be discussed</b></span>
+                        @endif
                         <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'"> Get Latest Price</b></span>
                     </div>
                     <ul class="blk_ul">
