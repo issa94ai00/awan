@@ -38,8 +38,8 @@
             </div>
         @endif
 
-        <div class="contact-wrapper" style="grid-template-columns: 1fr 2fr;">
-            <div class="contact-info">
+        <div class="contact-wrapper">
+                <div class="contact-info">
                 <h3>لماذا تتواصل معنا؟</h3>
                 
                 <div class="inquiry-reasons">
@@ -87,11 +87,11 @@
                 </div>
             </div>
 
-            <div class="contact-form-wrapper">
+                <div class="contact-form-wrapper">
                 <h3>نموذج الاستفسار</h3>
                 <form class="contact-form" action="{{ route('inquiry.store') }}" method="POST">
                     @csrf
-                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-row two-cols">
                         <div class="form-group">
                             <label for="name">الاسم الكامل <span style="color: #dc3545;">*</span></label>
                             <input type="text" id="name" name="name" required placeholder="أدخل اسمك الكامل" value="{{ old('name') }}">

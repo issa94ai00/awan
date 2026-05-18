@@ -41,7 +41,7 @@
 
                 <div class="img_box">
                     <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">
-                        <img class="lazy" src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" style="display: inline; padding: 0px;">
+                        <img class="lazy thumb" src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" style="display: inline; padding: 0px;">
                     </a>
                 </div>
 
