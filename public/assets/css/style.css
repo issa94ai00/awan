@@ -2160,6 +2160,18 @@ mark {
 }
 
 @media (max-width: 768px) {
+    .nav-container {
+        padding: 0.75rem 1.25rem;
+    }
+
+    .nav-menu {
+        padding: 1.25rem;
+    }
+
+    .menu-toggle {
+        font-size: 1.5rem;
+    }
+
     .categories-grid,
     .products-grid,
     .features-grid {
@@ -2175,6 +2187,41 @@ mark {
         width: 50px;
         height: 50px;
         font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-container {
+        padding: 0.65rem 1rem;
+    }
+
+    .nav-menu {
+        padding: 1rem;
+        gap: 1rem;
+    }
+
+    .menu-toggle {
+        font-size: 1.4rem;
+    }
+
+    .logo-img {
+        height: 40px;
+        max-width: 120px;
+    }
+}
+
+@media (max-width: 380px) {
+    .nav-container {
+        padding: 0.6rem 0.85rem;
+    }
+
+    .logo-img {
+        height: 35px;
+        max-width: 110px;
+    }
+
+    .menu-toggle {
+        font-size: 1.3rem;
     }
 }
 
