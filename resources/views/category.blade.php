@@ -74,26 +74,15 @@
                     </ul>
                 </div>
 
-                <div class="xplist_box">
-                    <p class="xplist_tit">
-                        <a href="{{ route('home') }}" title="المورد">
-                            <span class="iconfont x-iconconstuction"></span>{{ $product->supplier_name ?? get_setting('site_name') ?? 'مورد محلي' }}
-                        </a>
-                    </p>
-                    <p class="xplist_txt">{{ $product->supplier_location ?? get_setting('site_city') ?? 'غير معروف' }}, {{ $product->supplier_region ?? get_setting('site_region') ?? '' }}</p>
-                    <ul>
-                        <li><em><i class="icons-hg"></i></em><span>{{ $product->supplier_years ?? 'سنة واحدة' }}</span></li>
-                        <li><em><i class="icons-verified"></i></em><span>مورد معتمد</span></li>
-                    </ul>
-                    <div class="xplist_btn">
-                        <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}">
-                            <span class="xplist_btn_tit">
-                                <b class="xplist_top">تواصل معنا</b>
-                                <b class="xplist_bot">اطلب عرضًا</b>
-                            </span>
-                            <i class="iconfont x-iconwebsite"></i>
-                        </a>
-                    </div>
+                <div class="blk_actions">
+                    <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}" class="action-btn inquiry-btn" title="اطلب عرضًا">
+                        <i class="fas fa-envelope"></i>
+                        <span>عرض</span>
+                    </a>
+                    <a href="https://wa.me/?text=أهتم بـ: {{ urlencode($product->name_ar) }} - {{ route('product.show', $product) }}" class="action-btn whatsapp-btn" title="تواصل عبر واتس" target="_blank" rel="noopener">
+                        <i class="fab fa-whatsapp"></i>
+                        <span>واتس</span>
+                    </a>
                 </div>
             </div>
             @endforeach
