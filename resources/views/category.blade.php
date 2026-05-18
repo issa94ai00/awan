@@ -51,6 +51,16 @@
                     <!-- Row 2: Details -->
                     <div class="product-details-row">
                         <div class="product-category">{{ $product->category->name_ar ?? 'منتجات بناء' }}</div>
+                        @if($product->brand || $product->model)
+                        <div class="product-meta-info">
+                            @if($product->brand)
+                            <span>{{ $product->brand }}</span>
+                            @endif
+                            @if($product->model)
+                            <span>{{ $product->model }}</span>
+                            @endif
+                        </div>
+                        @endif
                         @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
                         <div class="product-price">
                             @if(!empty($product->sale_price) && $product->sale_price < $product->price)

@@ -294,6 +294,16 @@
                     <!-- Row 2: Details -->
                     <div class="product-details-row">
                         <div class="product-category">{{ $related->category->name_ar ?? 'منتجات بناء' }}</div>
+                        @if($related->brand || $related->model)
+                        <div class="product-meta-info">
+                            @if($related->brand)
+                            <span>{{ $related->brand }}</span>
+                            @endif
+                            @if($related->model)
+                            <span>{{ $related->model }}</span>
+                            @endif
+                        </div>
+                        @endif
                         @if (get_setting('show_product_price', '1') == '1' && $related->show_price && ($related->price ?? 0) > 0)
                         <div class="product-price">
                             @if(!empty($related->sale_price) && $related->sale_price < $related->price)

@@ -665,7 +665,7 @@ mark {
 
 .products-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
 }
 
@@ -679,7 +679,7 @@ mark {
     position: relative;
     border: 1px solid rgba(0, 0, 0, 0.06);
     display: grid;
-    grid-template-columns: 140px 1fr;
+    grid-template-columns: 160px 1fr;
     gap: 0;
 }
 
@@ -773,11 +773,11 @@ mark {
 
 /* Product Info - 3 Rows Layout */
 .product-info {
-    padding: 1rem;
+    padding: 1.15rem;
     background: white;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.85rem;
     border-radius: 0 16px 16px 0;
 }
 
@@ -785,15 +785,15 @@ mark {
 .product-title-row {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.3rem;
 }
 
 .product-info h3 {
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--primary-dark);
     margin: 0;
-    line-height: 1.35;
+    line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -802,7 +802,7 @@ mark {
 }
 
 .product-subtitle {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     color: #777;
     font-weight: 400;
     margin: 0;
@@ -812,16 +812,17 @@ mark {
 .product-details-row {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.6rem;
 }
 
 .product-category {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     color: var(--accent-blue);
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 0.35rem;
+    line-height: 1.4;
 }
 
 .product-category::before {
@@ -834,14 +835,39 @@ mark {
 }
 
 .product-price {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 800;
     color: var(--primary-dark);
     background: linear-gradient(135deg, rgba(201, 169, 89, 0.12) 0%, rgba(201, 169, 89, 0.04) 100%);
-    padding: 0.35rem 0.75rem;
+    padding: 0.4rem 0.85rem;
     border-radius: 50px;
     display: inline-block;
     align-self: flex-start;
+}
+
+/* Additional details */
+.product-meta-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.product-meta-info span {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.product-meta-info span::before {
+    content: '•';
+    color: var(--accent-blue);
+    font-weight: 700;
+}
+
+.product-meta-info span:first-child::before {
+    content: none;
 }
 
 /* Row 3: Action Buttons */
@@ -1140,34 +1166,34 @@ mark {
 /* Responsive Grid Adjustments */
 @media (min-width: 1400px) {
     .products-grid {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 1.75rem;
     }
 
     .product-card {
-        grid-template-columns: 150px 1fr;
+        grid-template-columns: 170px 1fr;
     }
 }
 
 @media (max-width: 1200px) {
     .products-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 1.5rem;
     }
 
     .product-card {
-        grid-template-columns: 140px 1fr;
+        grid-template-columns: 160px 1fr;
     }
 }
 
 @media (max-width: 992px) {
     .products-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 1.25rem;
     }
 
     .product-card {
-        grid-template-columns: 130px 1fr;
+        grid-template-columns: 150px 1fr;
     }
 
     .product-card:hover {
@@ -1175,12 +1201,20 @@ mark {
     }
 
     .product-info h3 {
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+    }
+
+    .product-category {
+        font-size: 0.8rem;
+    }
+
+    .product-meta-info {
+        font-size: 0.75rem;
     }
 
     .product-price {
-        font-size: 0.95rem;
-        padding: 0.3rem 0.7rem;
+        font-size: 1rem;
+        padding: 0.35rem 0.75rem;
     }
 
     .product-card .btn-whatsapp,
@@ -1201,29 +1235,33 @@ mark {
     }
 
     .product-card {
-        grid-template-columns: 120px 1fr;
+        grid-template-columns: 140px 1fr;
     }
 
     .product-info {
-        padding: 0.85rem;
-        gap: 0.6rem;
+        padding: 1rem;
+        gap: 0.7rem;
     }
 
     .product-info h3 {
-        font-size: 0.85rem;
+        font-size: 0.9rem;
     }
 
     .product-subtitle {
-        font-size: 0.75rem;
+        font-size: 0.8rem;
     }
 
     .product-category {
+        font-size: 0.8rem;
+    }
+
+    .product-meta-info {
         font-size: 0.75rem;
     }
 
     .product-price {
-        font-size: 0.9rem;
-        padding: 0.3rem 0.65rem;
+        font-size: 1rem;
+        padding: 0.35rem 0.7rem;
     }
 
     .product-overlay a {
@@ -1238,9 +1276,9 @@ mark {
 
     .product-card .btn-whatsapp,
     .product-card .btn-inquiry {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.72rem;
-        gap: 0.3rem;
+        padding: 0.45rem 0.65rem;
+        font-size: 0.75rem;
+        gap: 0.35rem;
     }
 
     .product-card .btn-whatsapp span,
@@ -1257,7 +1295,7 @@ mark {
 
     .product-card {
         max-width: 100%;
-        grid-template-columns: 110px 1fr;
+        grid-template-columns: 130px 1fr;
     }
 
     .product-card:hover {
@@ -1269,26 +1307,30 @@ mark {
     }
 
     .product-info {
-        padding: 0.8rem;
-        gap: 0.5rem;
+        padding: 0.95rem;
+        gap: 0.65rem;
     }
 
     .product-info h3 {
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         line-height: 1.35;
     }
 
     .product-subtitle {
-        font-size: 0.78rem;
+        font-size: 0.8rem;
     }
 
     .product-category {
+        font-size: 0.78rem;
+    }
+
+    .product-meta-info {
         font-size: 0.73rem;
     }
 
     .product-price {
-        font-size: 0.95rem;
-        padding: 0.35rem 0.7rem;
+        font-size: 1.05rem;
+        padding: 0.4rem 0.75rem;
     }
 
     .product-overlay a {
@@ -1305,37 +1347,45 @@ mark {
 
     .product-card .btn-whatsapp,
     .product-card .btn-inquiry {
-        padding: 0.45rem 0.65rem;
-        font-size: 0.75rem;
+        padding: 0.5rem 0.7rem;
+        font-size: 0.8rem;
     }
 }
 
 @media (max-width: 380px) {
     .products-grid {
-        gap: 0.85rem;
+        gap: 0.9rem;
     }
 
     .product-card {
-        grid-template-columns: 100px 1fr;
+        grid-template-columns: 120px 1fr;
     }
 
     .product-info {
-        padding: 0.7rem;
-        gap: 0.45rem;
+        padding: 0.85rem;
+        gap: 0.6rem;
     }
 
     .product-info h3 {
-        font-size: 0.85rem;
+        font-size: 0.9rem;
+    }
+
+    .product-category {
+        font-size: 0.75rem;
+    }
+
+    .product-meta-info {
+        font-size: 0.7rem;
     }
 
     .product-price {
-        font-size: 0.9rem;
+        font-size: 1rem;
     }
 
     .product-card .btn-whatsapp,
     .product-card .btn-inquiry {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.7rem;
+        padding: 0.45rem 0.65rem;
+        font-size: 0.75rem;
     }
 }
 
