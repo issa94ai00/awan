@@ -2106,17 +2106,25 @@ mark {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 992px) {
+    .nav-container {
+        padding: 0.85rem 1.5rem;
+    }
+
     .nav-menu {
         display: none;
         position: absolute;
         top: 100%;
         left: 0;
         right: 0;
-        background: var(--primary-dark);
+        background: rgba(26, 38, 52, 0.98);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         flex-direction: column;
-        padding: 2rem;
+        padding: 1.5rem;
         text-align: center;
         border-top: 1px solid var(--glass-border);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        z-index: 1999;
     }
 
     .nav-menu.active {
@@ -2125,6 +2133,13 @@ mark {
 
     .menu-toggle {
         display: block;
+        font-size: 1.6rem;
+        padding: 0.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .menu-toggle:hover {
+        transform: scale(1.1);
     }
 
     .nav-search {
