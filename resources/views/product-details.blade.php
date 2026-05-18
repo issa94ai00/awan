@@ -284,18 +284,37 @@
                     </div>
                 </div>
                 <div class="product-info">
-                    <h3 class="product-title product-title-truncate">{{ $related->name_ar }}</h3>
-                    <div class="product-meta-row">
+                    <!-- Row 1: Title -->
+                    <div class="product-title-row">
+                        <h3 class="product-title">{{ $related->name_ar }}</h3>
+                        @if($related->name_en)
+                        <span class="product-subtitle">{{ $related->name_en }}</span>
+                        @endif
+                    </div>
+                    <!-- Row 2: Details -->
+                    <div class="product-details-row">
+                        <div class="product-category">{{ $related->category->name_ar ?? 'منتجات بناء' }}</div>
                         @if (get_setting('show_product_price', '1') == '1' && $related->show_price && ($related->price ?? 0) > 0)
-                        <div class="price-block">
+                        <div class="product-price">
                             @if(!empty($related->sale_price) && $related->sale_price < $related->price)
-                                <span class="price-old">${{ number_format($related->price, 2) }}</span>
-                                <span class="price-current">${{ number_format($related->sale_price, 2) }}</span>
+                                <span style="text-decoration: line-through; color: #888; font-size: 0.85rem; margin-left: 0.3rem;">${{ number_format($related->price, 2) }}</span>
+                                <span>${{ number_format($related->sale_price, 2) }}</span>
                             @else
-                                <span class="price-current">${{ number_format($related->price, 2) }}</span>
+                                <span>${{ number_format($related->price, 2) }}</span>
                             @endif
                         </div>
                         @endif
+                    </div>
+                    <!-- Row 3: Action Buttons -->
+                    <div class="product-actions-row">
+                        <a href="https://wa.me/{{ get_setting('contact_whatsapp') ?? '963900000000' }}?text=مرحباً، أنا مهتم بمنتج: {{ $related->name_ar }}" class="btn-whatsapp" target="_blank">
+                            <i class="fab fa-whatsapp"></i>
+                            <span>واتساب</span>
+                        </a>
+                        <a href="{{ route('inquiry.create', ['product_id' => $related->id, 'product_name' => $related->name_ar]) }}" class="btn-inquiry">
+                            <i class="fas fa-question-circle"></i>
+                            <span>استفسار</span>
+                        </a>
                     </div>
                 </div>
             </div>

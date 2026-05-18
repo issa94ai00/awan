@@ -27,20 +27,34 @@
                         <img src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" loading="lazy" onerror="this.src='{{ asset('assets/images/products/default-product.jpg') }}'">
                         <div class="product-overlay">
                             <a href="{{ route('product.show', $product) }}" class="view-btn"><i class="fas fa-eye"></i></a>
-                            <a href="#" class="cart-btn"><i class="fas fa-shopping-cart"></i></a>
                         </div>
                     </div>
                     <div class="product-info">
-                        <div class="product-name-container">
+                        <!-- Row 1: Title -->
+                        <div class="product-title-row">
                             <h3 class="product-title">{{ $product->name_ar }}</h3>
                             @if($product->name_en)
                             <span class="product-subtitle">{{ $product->name_en }}</span>
                             @endif
                         </div>
-                        <div class="product-category">{{ $product->category->name_ar ?? 'منتجات بناء' }}</div>
-                        @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
-                        <div class="product-price">${{ number_format($product->price, 2) }}</div>
-                        @endif
+                        <!-- Row 2: Details -->
+                        <div class="product-details-row">
+                            <div class="product-category">{{ $product->category->name_ar ?? 'منتجات بناء' }}</div>
+                            @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
+                            <div class="product-price">${{ number_format($product->price, 2) }}</div>
+                            @endif
+                        </div>
+                        <!-- Row 3: Action Buttons -->
+                        <div class="product-actions-row">
+                            <a href="https://wa.me/{{ get_setting('contact_whatsapp') ?? '963900000000' }}?text=مرحباً، أنا مهتم بمنتج: {{ $product->name_ar }}" class="btn-whatsapp" target="_blank">
+                                <i class="fab fa-whatsapp"></i>
+                                <span>واتساب</span>
+                            </a>
+                            <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}" class="btn-inquiry">
+                                <i class="fas fa-question-circle"></i>
+                                <span>استفسار</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
                 @endforeach
