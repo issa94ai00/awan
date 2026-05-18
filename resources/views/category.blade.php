@@ -23,66 +23,56 @@
         @if($products && $products->count())
         <div class="products-grid">
             @foreach ($products as $product)
-            <div class="blk_item">
-                @php
-                    $showPrice = (get_setting('show_product_price', '1') == '1') && (($product->show_price ?? false) === true) && (floatval($product->price ?? 0) > 0);
-                @endphp
-                <div style="display:none" class="pinfo_{{ $product->id }}">
-                    {"title":"{{ addslashes($product->name_ar) }}","imgUrl":"{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}","attrs":{
-                        "Price":"{{ $showPrice ? ( ($product->sale_price && $product->sale_price < $product->price) ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2)) : 'To be discussed' }}",
-                        "Brand Name":"{{ $product->brand ?? '—' }}",
-                        "Model Number":"{{ $product->model ?? $product->sku ?? '—' }}",
-                        "Minimum Order Quantity":"{{ $product->min_order ?? 1 }}",
-                        "Delivery Time":"{{ $product->delivery_time ?? 'TBD' }}",
-                        "Place of Origin":"{{ $product->origin ?? get_setting('site_country') ?? 'Local' }}",
-                        "Description":"{{ addslashes(strip_tags($product->short_description_ar ?? $product->description_ar ?? '')) }}"
-                    }}
-                </div>
-
-                <div class="img_box">
-                    <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">
-                        <img class="lazy thumb" src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" style="display: inline; padding: 0px;">
-                    </a>
-                </div>
-
-                <div class="txtlist_box">
-                    <h2 class="blk_title">
-                        <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">
-                            {{ Str::limit($product->name_ar, 50, '...') }}
-                        </a>
-                    </h2>
-                    <div class="blk_tables">
-                        @if($showPrice)
-                            <span>السعر:<b title="{{ $product->price ? '$'.number_format($product->price,2) : '' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2) }}</b></span>
+            <div class="product-card">
+                <div class="product-image">
+                    <div class="badges-container">
+                        @if(!empty($product->sale_price) && $product->sale_price < $product->price)
+                            <span class="badge badge-sale">خصم</span>
+                        @endif
+                        @if(!$product->in_stock)
+                            <span class="badge badge-out">غير متوفر</span>
                         @else
-                            <span>السعر:<b title="يتم التناقش حول السعر"> قابل للنقاش</b></span>
+                            <span class="badge badge-in">متوفر</span>
                         @endif
-                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'">اطلب عرضًا</b></span>
                     </div>
-                    <ul class="blk_ul">
-                        @if($product->brand)
-                            <li><span class="key">العلامة:</span>{{ $product->brand }}</li>
-                        @endif
-                        @if($product->model || $product->sku)
-                            <li><span class="key">الموديل:</span>{{ $product->model ?? $product->sku }}</li>
-                        @endif
-                        <li><span class="key">الحد الأدنى:</span>{{ $product->min_order ?? 1 }}</li>
-                        <li><span class="key">التسليم:</span>{{ $product->delivery_time ?? 'قريباً' }}</li>
-                        <li>
-                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="عرض التفاصيل">التفاصيل الكاملة</a>
-                        </li>
-                    </ul>
+                    <img src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" loading="lazy" onerror="this.src='{{ asset('assets/images/products/default-product.jpg') }}'">
+                    <div class="product-overlay">
+                        <a href="{{ route('product.show', $product) }}" class="view-btn"><i class="fas fa-eye"></i></a>
+                    </div>
                 </div>
-
-                <div class="blk_actions">
-                    <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}" class="action-btn inquiry-btn" title="اطلب عرضًا">
-                        <i class="fas fa-envelope"></i>
-                        <span>عرض</span>
-                    </a>
-                    <a href="https://wa.me/?text=أهتم بـ: {{ urlencode($product->name_ar) }} - {{ route('product.show', $product) }}" class="action-btn whatsapp-btn" title="تواصل عبر واتس" target="_blank" rel="noopener">
-                        <i class="fab fa-whatsapp"></i>
-                        <span>واتس</span>
-                    </a>
+                <div class="product-info">
+                    <!-- Row 1: Title -->
+                    <div class="product-title-row">
+                        <h3 class="product-title">{{ $product->name_ar }}</h3>
+                        @if($product->name_en)
+                        <span class="product-subtitle">{{ $product->name_en }}</span>
+                        @endif
+                    </div>
+                    <!-- Row 2: Details -->
+                    <div class="product-details-row">
+                        <div class="product-category">{{ $product->category->name_ar ?? 'منتجات بناء' }}</div>
+                        @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
+                        <div class="product-price">
+                            @if(!empty($product->sale_price) && $product->sale_price < $product->price)
+                                <span style="text-decoration: line-through; color: #888; font-size: 0.85rem; margin-left: 0.3rem;">${{ number_format($product->price, 2) }}</span>
+                                <span>${{ number_format($product->sale_price, 2) }}</span>
+                            @else
+                                <span>${{ number_format($product->price, 2) }}</span>
+                            @endif
+                        </div>
+                        @endif
+                    </div>
+                    <!-- Row 3: Action Buttons -->
+                    <div class="product-actions-row">
+                        <a href="https://wa.me/{{ get_setting('contact_whatsapp') ?? '963900000000' }}?text=مرحباً، أنا مهتم بمنتج: {{ $product->name_ar }}" class="btn-whatsapp" target="_blank">
+                            <i class="fab fa-whatsapp"></i>
+                            <span>واتساب</span>
+                        </a>
+                        <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}" class="btn-inquiry">
+                            <i class="fas fa-question-circle"></i>
+                            <span>استفسار</span>
+                        </a>
+                    </div>
                 </div>
             </div>
             @endforeach
