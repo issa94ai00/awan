@@ -53,43 +53,43 @@
                     </h2>
                     <div class="blk_tables">
                         @if($showPrice)
-                            <span>Price:<b title="{{ $product->price ? '$'.number_format($product->price,2) : '' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2) }}</b></span>
+                            <span>السعر:<b title="{{ $product->price ? '$'.number_format($product->price,2) : '' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2) }}</b></span>
                         @else
-                            <span>Price:<b title="To be discussed"> To be discussed</b></span>
+                            <span>السعر:<b title="يتم التناقش حول السعر"> قابل للنقاش</b></span>
                         @endif
-                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'">Get Quote</b></span>
+                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'">اطلب عرضًا</b></span>
                     </div>
                     <ul class="blk_ul">
                         @if($product->brand)
-                            <li><span class="key">Brand:</span>{{ $product->brand }}</li>
+                            <li><span class="key">العلامة:</span>{{ $product->brand }}</li>
                         @endif
                         @if($product->model || $product->sku)
-                            <li><span class="key">Model:</span>{{ $product->model ?? $product->sku }}</li>
+                            <li><span class="key">الموديل:</span>{{ $product->model ?? $product->sku }}</li>
                         @endif
-                        <li><span class="key">MOQ:</span>{{ $product->min_order ?? 1 }}</li>
-                        <li><span class="key">Lead Time:</span>{{ $product->delivery_time ?? 'TBD' }}</li>
+                        <li><span class="key">الحد الأدنى:</span>{{ $product->min_order ?? 1 }}</li>
+                        <li><span class="key">التسليم:</span>{{ $product->delivery_time ?? 'قريباً' }}</li>
                         <li>
-                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="view more details">View Details</a>
+                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="عرض التفاصيل">التفاصيل الكاملة</a>
                         </li>
                     </ul>
                 </div>
 
                 <div class="xplist_box">
                     <p class="xplist_tit">
-                        <a href="{{ route('home') }}" title="Supplier">
-                            <span class="iconfont x-iconconstuction"></span>{{ $product->supplier_name ?? get_setting('site_name') ?? 'Local Supplier' }}
+                        <a href="{{ route('home') }}" title="المورد">
+                            <span class="iconfont x-iconconstuction"></span>{{ $product->supplier_name ?? get_setting('site_name') ?? 'مورد محلي' }}
                         </a>
                     </p>
-                    <p class="xplist_txt">{{ $product->supplier_location ?? get_setting('site_city') ?? 'Unknown' }}, {{ $product->supplier_region ?? get_setting('site_region') ?? '' }}</p>
+                    <p class="xplist_txt">{{ $product->supplier_location ?? get_setting('site_city') ?? 'غير معروف' }}, {{ $product->supplier_region ?? get_setting('site_region') ?? '' }}</p>
                     <ul>
-                        <li><em><i class="icons-hg"></i></em><span>{{ $product->supplier_years ?? '1YRS' }}</span></li>
-                        <li><em><i class="icons-verified"></i></em><span>Verified Supplier</span></li>
+                        <li><em><i class="icons-hg"></i></em><span>{{ $product->supplier_years ?? 'سنة واحدة' }}</span></li>
+                        <li><em><i class="icons-verified"></i></em><span>مورد معتمد</span></li>
                     </ul>
                     <div class="xplist_btn">
                         <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}">
                             <span class="xplist_btn_tit">
-                                <b class="xplist_top">Contact supplier</b>
-                                <b class="xplist_bot">Request a quote</b>
+                                <b class="xplist_top">تواصل معنا</b>
+                                <b class="xplist_bot">اطلب عرضًا</b>
                             </span>
                             <i class="iconfont x-iconwebsite"></i>
                         </a>
