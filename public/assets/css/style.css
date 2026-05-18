@@ -848,6 +848,52 @@ mark {
 .product-card { border-radius: 12px; }
 .product-image { border-bottom-left-radius: 12px; border-bottom-right-radius: 0; }
 
+/* Chinax-like list item */
+.blk_item {
+    display: grid;
+    grid-template-columns: 200px 1fr 260px;
+    gap: 1rem;
+    padding: 12px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background: #fff;
+    align-items: start;
+}
+
+.blk_item .img_box {
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.blk_item .img_box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+.blk_item .txtlist_box { padding: 6px 8px; }
+.blk_title { font-size: 1rem; margin-bottom: 6px; }
+.blk_title a { color: var(--primary-dark); font-weight: 800; text-decoration: none; }
+.blk_tables { display:flex; gap: 1rem; align-items: center; margin-bottom: 8px; }
+.blk_tables span { color: #333; font-size: 0.95rem; }
+.blk_tables b.green { color: #1ea34a; font-weight: 800; }
+.blk_ul { list-style: none; padding-left: 0; margin: 0; display:block; }
+.blk_ul li { font-size: 0.9rem; color: #555; padding: 4px 0; }
+.blk_ul .key { color: #666; font-weight: 700; margin-right: 6px; }
+.viewmore { color: var(--accent-blue); text-decoration: none; }
+
+.xplist_box { background: #fafafa; border-left: 1px solid #f0f0f0; padding: 10px; border-radius: 6px; text-align: right; }
+.xplist_tit a { color: var(--primary-dark); font-weight: 800; text-decoration: none; }
+.xplist_txt { color: #666; font-size: 0.95rem; margin: 6px 0; }
+.xplist_box ul { display:flex; gap:8px; list-style:none; padding:0; margin:8px 0; }
+.xplist_box ul li { font-size: 0.85rem; color:#444; display:flex; align-items:center; gap:6px; }
+.xplist_btn a { display:inline-flex; align-items:center; justify-content:center; gap:8px; background: linear-gradient(90deg,#0077be,#005a9c); color:white; padding:8px 10px; border-radius:6px; text-decoration:none; }
+
+@media (max-width: 992px) {
+    .blk_item { grid-template-columns: 140px 1fr; }
+    .xplist_box { display:none; }
+}
+
 
 /* Responsive Grid Adjustments */
 @media (min-width: 1400px) {

@@ -23,40 +23,67 @@
         @if($products && $products->count())
         <div class="products-grid">
             @foreach ($products as $product)
-            <div class="product-card">
-                <div class="product-image">
-                    {{-- Badges: Sale / Stock --}}
-                    <div class="badges-container">
-                        @if(!empty($product->sale_price) && $product->sale_price < $product->price)
-                            <span class="badge badge-sale">خصم</span>
-                        @endif
-                        @if(!$product->in_stock)
-                            <span class="badge badge-out">غير متوفر</span>
-                        @else
-                            <span class="badge badge-in">متوفر</span>
-                        @endif
-                    </div>
-
-                    <img src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" loading="lazy" onerror="this.src='{{ asset('assets/images/products/default-product.jpg') }}'">
-                    <div class="product-overlay">
-                        <a href="{{ route('product.show', $product) }}" class="view-btn" title="عرض"><i class="fas fa-eye"></i></a>
-                        <a href="#" class="cart-btn" title="أضف للسلة"><i class="fas fa-shopping-cart"></i></a>
-                    </div>
+            <div class="blk_item">
+                <div style="display:none" class="pinfo_{{ $product->id }}">
+                    {"title":"{{ addslashes($product->name_ar) }}","imgUrl":"{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}","attrs":{
+                        "Price":"{{ get_setting('show_product_price','1') == '1' && $product->show_price ? ( ($product->sale_price && $product->sale_price < $product->price) ? '$'.number_format($product->sale_price,2) : '$'.number_format($product->price,2)) : 'Contact' }}",
+                        "Brand Name":"{{ $product->brand ?? '—' }}",
+                        "Model Number":"{{ $product->model ?? $product->sku ?? '—' }}",
+                        "Minimum Order Quantity":"{{ $product->min_order ?? 1 }}",
+                        "Delivery Time":"{{ $product->delivery_time ?? 'TBD' }}",
+                        "Place of Origin":"{{ $product->origin ?? get_setting('site_country') ?? 'Local' }}",
+                        "Description":"{{ addslashes(strip_tags($product->short_description_ar ?? $product->description_ar ?? '')) }}"
+                    }}
                 </div>
-                <div class="product-info">
-                    <h3 class="product-title product-title-truncate">{{ $product->name_ar }}</h3>
-                    <div class="product-meta-row">
-                        <span class="product-category">{{ optional($product->category)->name_ar ?? 'عام' }}</span>
-                        @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
-                        <div class="price-block">
-                            @if(!empty($product->sale_price) && $product->sale_price < $product->price)
-                                <span class="price-old">${{ number_format($product->price, 2) }}</span>
-                                <span class="price-current">${{ number_format($product->sale_price, 2) }}</span>
-                            @else
-                                <span class="price-current">${{ number_format($product->price, 2) }}</span>
-                            @endif
-                        </div>
+
+                <div class="img_box">
+                    <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">
+                        <img class="lazy" src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" style="display: inline; padding: 0px;">
+                    </a>
+                </div>
+
+                <div class="txtlist_box">
+                    <h2 class="blk_title b_bold">
+                        <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">{{ $product->name_ar }}</a>
+                    </h2>
+                    <div class="blk_tables">
+                        <span>Price:<b title="{{ $product->price ? '$'.number_format($product->price,2) : 'To be discussed' }}"> {{ $product->sale_price && $product->sale_price < $product->price ? '$'.number_format($product->sale_price,2) : ($product->price ? '$'.number_format($product->price,2) : 'To be discussed') }}</b></span>
+                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'"> Get Latest Price</b></span>
+                    </div>
+                    <ul class="blk_ul">
+                        @if($product->brand)
+                            <li><span class="key">Brand Name: </span>{{ $product->brand }}</li>
                         @endif
+                        @if($product->model || $product->sku)
+                            <li><span class="key">Model Number: </span>{{ $product->model ?? $product->sku }}</li>
+                        @endif
+                        <li><span class="key">Minimum Order Quantity: </span>{{ $product->min_order ?? 1 }}</li>
+                        <li><span class="key">Delivery Time: </span>{{ $product->delivery_time ?? 'TBD' }}</li>
+                        <li>
+                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="view more">view more</a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="xplist_box">
+                    <p class="xplist_tit">
+                        <a href="{{ route('home') }}" title="Supplier">
+                            <span class="iconfont x-iconconstuction"></span>{{ $product->supplier_name ?? get_setting('site_name') ?? 'Local Supplier' }}
+                        </a>
+                    </p>
+                    <p class="xplist_txt">{{ $product->supplier_location ?? get_setting('site_city') ?? 'Unknown' }}, {{ $product->supplier_region ?? get_setting('site_region') ?? '' }}</p>
+                    <ul>
+                        <li><em><i class="icons-hg"></i></em><span>{{ $product->supplier_years ?? '1YRS' }}</span></li>
+                        <li><em><i class="icons-verified"></i></em><span>Verified Supplier</span></li>
+                    </ul>
+                    <div class="xplist_btn">
+                        <a href="{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}">
+                            <span class="xplist_btn_tit">
+                                <b class="xplist_top">Contact supplier</b>
+                                <b class="xplist_bot">Request a quote</b>
+                            </span>
+                            <i class="iconfont x-iconwebsite"></i>
+                        </a>
                     </div>
                 </div>
             </div>
