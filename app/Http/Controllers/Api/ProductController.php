@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -19,9 +20,36 @@ class ProductController extends Controller
             ->where('is_active', 1)
             ->with('category');
 
-        // Filter by category
-        if ($request->has('category_id')) {
+        // Per-page with max cap
+        $perPage = (int) $request->get('per_page', 12);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 12;
+
+        // Filter by category_id or category_slug
+        if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
+        } elseif ($request->filled('category_slug')) {
+            $cat = Category::where('slug', $request->category_slug)->first();
+            if ($cat) {
+                $query->where('category_id', $cat->id);
+            } else {
+                // No such category -> empty result
+                $products = collect([]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Products retrieved successfully',
+                    'data' => [
+                        'products' => [],
+                        'pagination' => [
+                            'current_page' => 1,
+                            'last_page' => 0,
+                            'per_page' => $perPage,
+                            'total' => 0,
+                            'has_more_pages' => false,
+                        ],
+                        'filters' => $request->only(['category_id','category_slug','featured','in_stock','search','min_price','max_price','sort_by','sort_order','per_page'])
+                    ]
+                ]);
+            }
         }
 
         // Filter by featured
@@ -34,8 +62,16 @@ class ProductController extends Controller
             $query->where('in_stock', 1);
         }
 
+        // Price range
+        if ($request->filled('min_price')) {
+            $query->where('price', '>=', (float) $request->min_price);
+        }
+        if ($request->filled('max_price')) {
+            $query->where('price', '<=', (float) $request->max_price);
+        }
+
         // Search by name, brand, or model
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name_ar', 'like', $searchTerm)
@@ -45,15 +81,15 @@ class ProductController extends Controller
             });
         }
 
-        // Sort options
+        // Sort options — sanitize inputs
+        $allowedSorts = ['name_ar', 'name_en', 'price', 'created_at'];
         $sortBy = $request->get('sort_by', 'created_at');
-        $sortOrder = $request->get('sort_order', 'desc');
-        
-        if (in_array($sortBy, ['name_ar', 'name_en', 'price', 'created_at'])) {
+        $sortOrder = strtolower($request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if (in_array($sortBy, $allowedSorts, true)) {
             $query->orderBy($sortBy, $sortOrder);
         }
 
-        $products = $query->paginate(12);
+        $products = $query->paginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -67,14 +103,7 @@ class ProductController extends Controller
                     'total' => $products->total(),
                     'has_more_pages' => $products->hasMorePages(),
                 ],
-                'filters' => [
-                    'category_id' => $request->get('category_id'),
-                    'featured' => $request->boolean('featured'),
-                    'in_stock' => $request->boolean('in_stock'),
-                    'search' => $request->get('search'),
-                    'sort_by' => $sortBy,
-                    'sort_order' => $sortOrder,
-                ]
+                'filters' => array_merge($request->only(['category_id','category_slug','featured','in_stock','search','min_price','max_price','sort_by','sort_order']), ['per_page' => $perPage])
             ]
         ]);
     }
