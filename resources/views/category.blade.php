@@ -46,8 +46,10 @@
                 </div>
 
                 <div class="txtlist_box">
-                    <h2 class="blk_title b_bold">
-                        <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">{{ $product->name_ar }}</a>
+                    <h2 class="blk_title">
+                        <a href="{{ route('product.show', $product) }}" title="{{ $product->name_ar }}">
+                            {{ Str::limit($product->name_ar, 50, '...') }}
+                        </a>
                     </h2>
                     <div class="blk_tables">
                         @if($showPrice)
@@ -55,19 +57,19 @@
                         @else
                             <span>Price:<b title="To be discussed"> To be discussed</b></span>
                         @endif
-                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'"> Get Latest Price</b></span>
+                        <span><b class="green" style="cursor:pointer;" onclick="window.location='{{ route('inquiry.create', ['product_id' => $product->id, 'product_name' => $product->name_ar]) }}'">Get Quote</b></span>
                     </div>
                     <ul class="blk_ul">
                         @if($product->brand)
-                            <li><span class="key">Brand Name: </span>{{ $product->brand }}</li>
+                            <li><span class="key">Brand:</span>{{ $product->brand }}</li>
                         @endif
                         @if($product->model || $product->sku)
-                            <li><span class="key">Model Number: </span>{{ $product->model ?? $product->sku }}</li>
+                            <li><span class="key">Model:</span>{{ $product->model ?? $product->sku }}</li>
                         @endif
-                        <li><span class="key">Minimum Order Quantity: </span>{{ $product->min_order ?? 1 }}</li>
-                        <li><span class="key">Delivery Time: </span>{{ $product->delivery_time ?? 'TBD' }}</li>
+                        <li><span class="key">MOQ:</span>{{ $product->min_order ?? 1 }}</li>
+                        <li><span class="key">Lead Time:</span>{{ $product->delivery_time ?? 'TBD' }}</li>
                         <li>
-                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="view more">view more</a>
+                            <a class="viewmore" href="{{ route('product.show', $product) }}" title="view more details">View Details</a>
                         </li>
                     </ul>
                 </div>
