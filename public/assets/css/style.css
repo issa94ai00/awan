@@ -51,7 +51,7 @@ img {
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1000;
+    z-index: 2000;
     background: rgba(26, 38, 52, 0.85);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
