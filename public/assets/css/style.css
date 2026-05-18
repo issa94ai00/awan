@@ -810,6 +810,45 @@ mark {
     display: inline-block;
 }
 
+/* Additional product card refinements to resemble chinax-style listing */
+.badges-container {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 12;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: white;
+    text-align: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
+.badge-sale { background: linear-gradient(90deg,#ff6b6b,#ff3b3b); }
+.badge-in { background: linear-gradient(90deg,#28a745,#1ea34a); }
+.badge-out { background: linear-gradient(90deg,#6c757d,#495057); }
+
+.price-block { display: flex; gap: 0.6rem; align-items: baseline; justify-content: flex-end; }
+.price-old { color: #888; text-decoration: line-through; font-weight: 700; font-size: 0.95rem; }
+.price-current { color: var(--accent-blue); font-weight: 900; font-size: 1.15rem; }
+
+.product-title-truncate { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; }
+.product-meta-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 0.6rem; }
+
+/* Slightly denser cards like chinax */
+.products-grid { gap: 1.25rem; }
+.product-card { border-radius: 12px; }
+.product-image { border-bottom-left-radius: 12px; border-bottom-right-radius: 0; }
+
+
 /* Responsive Grid Adjustments */
 @media (min-width: 1400px) {
     .products-grid {

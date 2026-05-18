@@ -25,23 +25,39 @@
             @foreach ($products as $product)
             <div class="product-card">
                 <div class="product-image">
+                    {{-- Badges: Sale / Stock --}}
+                    <div class="badges-container">
+                        @if(!empty($product->sale_price) && $product->sale_price < $product->price)
+                            <span class="badge badge-sale">خصم</span>
+                        @endif
+                        @if(!$product->in_stock)
+                            <span class="badge badge-out">غير متوفر</span>
+                        @else
+                            <span class="badge badge-in">متوفر</span>
+                        @endif
+                    </div>
+
                     <img src="{{ $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $product->name_ar }}" loading="lazy" onerror="this.src='{{ asset('assets/images/products/default-product.jpg') }}'">
                     <div class="product-overlay">
-                        <a href="{{ route('product.show', $product) }}" class="view-btn"><i class="fas fa-eye"></i></a>
-                        <a href="#" class="cart-btn"><i class="fas fa-shopping-cart"></i></a>
+                        <a href="{{ route('product.show', $product) }}" class="view-btn" title="عرض"><i class="fas fa-eye"></i></a>
+                        <a href="#" class="cart-btn" title="أضف للسلة"><i class="fas fa-shopping-cart"></i></a>
                     </div>
                 </div>
                 <div class="product-info">
-                    <div class="product-name-container">
-                        <h3 class="product-title">{{ $product->name_ar }}</h3>
-                        @if($product->name_en)
-                        <span class="product-subtitle">{{ $product->name_en }}</span>
+                    <h3 class="product-title product-title-truncate">{{ $product->name_ar }}</h3>
+                    <div class="product-meta-row">
+                        <span class="product-category">{{ optional($product->category)->name_ar ?? 'عام' }}</span>
+                        @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
+                        <div class="price-block">
+                            @if(!empty($product->sale_price) && $product->sale_price < $product->price)
+                                <span class="price-old">${{ number_format($product->price, 2) }}</span>
+                                <span class="price-current">${{ number_format($product->sale_price, 2) }}</span>
+                            @else
+                                <span class="price-current">${{ number_format($product->price, 2) }}</span>
+                            @endif
+                        </div>
                         @endif
                     </div>
-                    <div class="product-category">{{ optional($product->category)->name_ar ?? 'منتجات بناء' }}</div>
-                    @if (get_setting('show_product_price', '1') == '1' && $product->show_price && ($product->price ?? 0) > 0)
-                    <div class="product-price">${{ number_format($product->price, 2) }}</div>
-                    @endif
                 </div>
             </div>
             @endforeach

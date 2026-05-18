@@ -268,16 +268,35 @@
             @foreach($related_products as $related)
             <div class="product-card">
                 <div class="product-image">
+                    <div class="badges-container">
+                        @if(!empty($related->sale_price) && $related->sale_price < $related->price)
+                            <span class="badge badge-sale">خصم</span>
+                        @endif
+                        @if(!$related->in_stock)
+                            <span class="badge badge-out">غير متوفر</span>
+                        @else
+                            <span class="badge badge-in">متوفر</span>
+                        @endif
+                    </div>
                     <img src="{{ $related->image_main ? asset('storage/' . $related->image_main) : asset('assets/images/products/default-product.jpg') }}" alt="{{ $related->name_ar }}" loading="lazy" onerror="this.src='{{ asset('assets/images/products/default-product.jpg') }}'">
                     <div class="product-overlay">
                         <a href="{{ route('product.show', $related) }}" class="view-btn"><i class="fas fa-eye"></i></a>
                     </div>
                 </div>
                 <div class="product-info">
-                    <h3>{{ $related->name_ar }}</h3>
-                    @if (get_setting('show_product_price', '1') == '1' && $related->show_price && ($related->price ?? 0) > 0)
-                    <div class="product-price">${{ number_format($related->price, 2) }}</div>
-                    @endif
+                    <h3 class="product-title product-title-truncate">{{ $related->name_ar }}</h3>
+                    <div class="product-meta-row">
+                        @if (get_setting('show_product_price', '1') == '1' && $related->show_price && ($related->price ?? 0) > 0)
+                        <div class="price-block">
+                            @if(!empty($related->sale_price) && $related->sale_price < $related->price)
+                                <span class="price-old">${{ number_format($related->price, 2) }}</span>
+                                <span class="price-current">${{ number_format($related->sale_price, 2) }}</span>
+                            @else
+                                <span class="price-current">${{ number_format($related->price, 2) }}</span>
+                            @endif
+                        </div>
+                        @endif
+                    </div>
                 </div>
             </div>
             @endforeach
