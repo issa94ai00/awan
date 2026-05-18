@@ -1645,6 +1645,16 @@ mark {
 }
 
 /* Responsive for product details */
+@media (max-width: 1200px) {
+    .product-details-grid {
+        gap: 2rem;
+    }
+
+    .product-title {
+        font-size: 1.5rem;
+    }
+}
+
 @media (max-width: 992px) {
     .product-details-grid {
         grid-template-columns: 1fr;
@@ -1653,10 +1663,17 @@ mark {
 
     .product-images {
         position: static;
+        max-width: 600px;
+        margin: 0 auto;
     }
 
     .product-title {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
+    }
+
+    .product-details-info {
+        max-width: 600px;
+        margin: 0 auto;
     }
 }
 
@@ -1669,12 +1686,20 @@ mark {
         gap: 1.5rem;
     }
 
+    .product-images {
+        max-width: 100%;
+    }
+
+    .product-details-info {
+        max-width: 100%;
+    }
+
     .product-title {
-        font-size: 1.3rem;
+        font-size: 1.25rem;
     }
 
     .product-subtitle {
-        font-size: 1rem;
+        font-size: 0.95rem;
     }
 
     .product-category-badge {
@@ -1687,15 +1712,15 @@ mark {
     }
 
     .price-value {
-        font-size: 1.3rem;
+        font-size: 1.25rem;
     }
 
     .product-description h3 {
-        font-size: 1rem;
+        font-size: 0.95rem;
     }
 
     .product-description p {
-        font-size: 0.95rem;
+        font-size: 0.9rem;
     }
 
     .product-meta {
@@ -1703,7 +1728,7 @@ mark {
     }
 
     .meta-item {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 
     .product-actions {
@@ -1716,8 +1741,8 @@ mark {
     .btn-inquiry {
         width: 100%;
         justify-content: center;
-        padding: 0.9rem 1.2rem;
-        font-size: 0.95rem;
+        padding: 0.85rem 1.15rem;
+        font-size: 0.9rem;
     }
 }
 
@@ -1726,12 +1751,16 @@ mark {
         padding: 1.5rem 0;
     }
 
+    .product-details-grid {
+        gap: 1.25rem;
+    }
+
     .product-title {
         font-size: 1.15rem;
     }
 
     .product-subtitle {
-        font-size: 0.9rem;
+        font-size: 0.88rem;
     }
 
     .product-details-price {
@@ -1746,34 +1775,55 @@ mark {
 
     .product-meta {
         gap: 0.5rem;
+        padding: 0.7rem 0.85rem;
     }
 
-    .carousel-slide img {
-        height: 250px;
+    .meta-item {
+        font-size: 0.82rem;
     }
 
-    .carousel-nav {
-        width: 35px;
-        height: 35px;
-        font-size: 14px;
+    .product-actions {
+        gap: 0.65rem;
     }
 
-    .carousel-prev {
-        right: 10px;
+    .btn-whatsapp,
+    .btn-phone,
+    .btn-inquiry {
+        padding: 0.8rem 1rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 380px) {
+    .product-details-section {
+        padding: 1.25rem 0;
     }
 
-    .carousel-next {
-        left: 10px;
+    .product-title {
+        font-size: 1.05rem;
     }
 
-    .thumbnail-btn {
-        width: 45px;
-        height: 45px;
+    .product-subtitle {
+        font-size: 0.82rem;
     }
 
-    .carousel-counter {
-        font-size: 12px;
-        padding: 6px 10px;
+    .product-details-price {
+        padding: 0.65rem 0.8rem;
+    }
+
+    .price-value {
+        font-size: 1.1rem;
+    }
+
+    .product-description p {
+        font-size: 0.85rem;
+    }
+
+    .btn-whatsapp,
+    .btn-phone,
+    .btn-inquiry {
+        padding: 0.75rem 0.9rem;
+        font-size: 0.8rem;
     }
 }
 
