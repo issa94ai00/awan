@@ -837,7 +837,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .carousel-thumbnails {
-        padding: 5px 24px;
+        padding: 5px 25px;
+    }
+
+    .thumbnails-container {
+        grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+        max-height: 100px;
     }
 
     .thumbnails-nav {
@@ -872,7 +877,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .carousel-thumbnails {
-        padding: 4px 20px;
+        padding: 4px 22px;
+    }
+
+    .thumbnails-container {
+        grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
+        max-height: 90px;
     }
 
     .thumbnails-nav {

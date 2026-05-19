@@ -30,27 +30,11 @@
     <nav class="navbar" id="navbar">
         <div class="nav-container">
             <a href="{{ url('/') }}" class="logo">
-
                                 <img src="<?php echo get_setting('site_logo') ? asset(get_setting('site_logo')) : asset('assets/images/logo.png'); ?>" alt="<?php echo get_setting('site_name') ?? 'أوان التقدم'; ?>" class="logo-img">
             </a>
                 <?php if(get_setting('show_site_name', false)): ?>
                     <span class="logo-text"><?php echo get_setting('site_name') ?? 'أوان التقدم'; ?></span>
                 <?php endif; ?>
-            <div class="nav-search">
-                <div class="search-container">
-                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
-                    <i class="fas fa-search search-icon"></i>
-                    <div class="search-results" id="searchResults"></div>
-                </div>
-            </div>
-
-            <div class="menu-toggle" id="menuToggle">
-                <i class="fas fa-bars"></i>
-            </div>
-
-            <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
-                <i class="fas fa-moon"></i>
-            </button>
 
             <ul class="nav-menu" id="navMenu">
                 <li><a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">الرئيسية</a></li>
@@ -60,6 +44,22 @@
                 <li><a href="{{ route('about') }}" class="nav-link {{ request()->routeIs('about') ? 'active' : '' }}">من نحن</a></li>
                 <li><a href="{{ route('contact') }}" class="nav-link {{ request()->routeIs('contact') ? 'active' : '' }}">إتصل بنا</a></li>
             </ul>
+
+            <div class="nav-search">
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
+                    <i class="fas fa-search search-icon"></i>
+                    <div class="search-results" id="searchResults"></div>
+                </div>
+            </div>
+
+            <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
+                <i class="fas fa-moon"></i>
+            </button>
+
+            <div class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </div>
         </div>
     </nav>
 
