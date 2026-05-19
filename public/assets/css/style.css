@@ -1201,6 +1201,10 @@ mark {
 }
 
 @media (max-width: 768px) {
+    .product-image {
+        height: 170px;
+        border-radius: 20px 20px 0 0;
+    }
     .blk_item {
         grid-template-columns: 100px 1fr;
         gap: 12px;
