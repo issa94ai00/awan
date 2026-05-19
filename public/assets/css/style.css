@@ -708,10 +708,9 @@ mark {
     overflow: hidden;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 0;
-    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
 }
 
 .product-card::after {
@@ -759,9 +758,9 @@ mark {
     position: relative;
     overflow: hidden;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-radius: 20px 0 0 20px;
-    width: 160px;
-    height: 100%;
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    height: 200px;
     flex-shrink: 0;
 }
 
