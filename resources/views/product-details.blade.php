@@ -728,9 +728,20 @@ document.addEventListener('DOMContentLoaded', function() {
     .carousel-slide img {
         height: 350px;
     }
-    
+
     .carousel-thumbnails {
-        padding: 10px 35px;
+        padding: 7px 30px;
+    }
+
+    .thumbnail-btn {
+        width: 45px;
+        height: 45px;
+    }
+
+    .thumbnails-nav {
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
     }
 }
 
@@ -738,45 +749,45 @@ document.addEventListener('DOMContentLoaded', function() {
     .product-image-carousel {
         gap: 15px;
     }
-    
+
     .carousel-slide img {
         height: 300px;
     }
-    
+
     .carousel-nav {
         width: 40px;
         height: 40px;
         font-size: 16px;
     }
-    
+
     .carousel-prev {
         right: 12px;
     }
-    
+
     .carousel-next {
         left: 12px;
     }
-    
+
     .carousel-counter {
         bottom: 12px;
         left: 12px;
         padding: 6px 10px;
         font-size: 13px;
     }
-    
+
     .thumbnail-btn {
-        width: 50px;
-        height: 50px;
+        width: 42px;
+        height: 42px;
     }
-    
+
     .carousel-thumbnails {
-        padding: 8px 30px;
+        padding: 6px 28px;
     }
-    
+
     .thumbnails-nav {
-        width: 26px;
-        height: 26px;
-        font-size: 11px;
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
     }
 }
 
@@ -784,53 +795,53 @@ document.addEventListener('DOMContentLoaded', function() {
     .product-image-carousel {
         gap: 12px;
     }
-    
+
     .carousel-slide img {
         height: 250px;
     }
-    
+
     .carousel-nav {
         width: 35px;
         height: 35px;
         font-size: 14px;
     }
-    
+
     .carousel-prev {
         right: 10px;
     }
-    
+
     .carousel-next {
         left: 10px;
     }
-    
+
     .carousel-counter {
         bottom: 10px;
         left: 10px;
         padding: 5px 9px;
         font-size: 12px;
     }
-    
+
     .thumbnail-btn {
-        width: 45px;
-        height: 45px;
+        width: 38px;
+        height: 38px;
     }
-    
+
     .carousel-thumbnails {
-        padding: 6px 25px;
+        padding: 5px 24px;
     }
-    
+
     .thumbnails-nav {
-        width: 24px;
-        height: 24px;
-        font-size: 10px;
+        width: 20px;
+        height: 20px;
+        font-size: 9px;
     }
-    
+
     .thumbnails-prev {
-        right: 4px;
+        right: 3px;
     }
-    
+
     .thumbnails-next {
-        left: 4px;
+        left: 3px;
     }
 }
 
@@ -838,20 +849,26 @@ document.addEventListener('DOMContentLoaded', function() {
     .carousel-slide img {
         height: 220px;
     }
-    
+
     .carousel-nav {
         width: 32px;
         height: 32px;
         font-size: 13px;
     }
-    
+
     .thumbnail-btn {
-        width: 40px;
-        height: 40px;
+        width: 35px;
+        height: 35px;
     }
-    
+
     .carousel-thumbnails {
-        padding: 5px 22px;
+        padding: 4px 20px;
+    }
+
+    .thumbnails-nav {
+        width: 18px;
+        height: 18px;
+        font-size: 8px;
     }
 }
 
