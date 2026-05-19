@@ -31,7 +31,7 @@
                             <div class="category-icon"><i class="fas {{ $category->icon ?? 'fa-cube' }}"></i></div>
                         @endif
                         <h3>{{ $category->name_ar }}</h3>
-                        <p>{{ $category->description ?? 'حلول ومواد بناء عالية الجودة' }}</p>
+                        <p>{{ Str::words($category->description ?? 'حلول ومواد بناء عالية الجودة', 10, '...') }}</p>
                         <span class="category-count">{{ $category->product_count ?? 0 }} منتج</span>
                     </div>
                 @endforeach
