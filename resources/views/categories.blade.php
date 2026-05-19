@@ -23,7 +23,13 @@
             @if(isset($categories) && count($categories))
                 @foreach ($categories as $category)
                     <div class="category-card" onclick="window.location.href='{{ route('category.show', $category) }}'">
-                        <div class="category-icon"><i class="fas {{ $category->icon ?? 'fa-cube' }}"></i></div>
+                        @if($category->image)
+                            <div class="category-image">
+                                <img src="{{ asset('storage/' . $category->image) }}" alt="{{ $category->name_ar }}" onerror="this.parentElement.innerHTML='<div class=\'category-icon\'><i class=\'fas {{ $category->icon ?? 'fa-cube' }}\'></i></div>'">
+                            </div>
+                        @else
+                            <div class="category-icon"><i class="fas {{ $category->icon ?? 'fa-cube' }}"></i></div>
+                        @endif
                         <h3>{{ $category->name_ar }}</h3>
                         <p>{{ $category->description ?? 'حلول ومواد بناء عالية الجودة' }}</p>
                         <span class="category-count">{{ $category->product_count ?? 0 }} منتج</span>
