@@ -1295,18 +1295,13 @@ mark {
         min-height: 340px;
     }
 
-    .product-card {
-        grid-template-columns: 140px 1fr;
-    }
-
     .product-card:hover {
         transform: translateY(-4px);
     }
 
     .product-image {
-        width: 140px;
-        height: 100%;
-        border-radius: 20px 0 0 20px;
+        height: 180px;
+        border-radius: 20px 20px 0 0;
     }
 
     .product-info {
