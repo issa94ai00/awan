@@ -621,19 +621,19 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .thumbnails-container {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
     gap: 8px;
-    overflow-y: hidden;
-    overflow-x: auto;
-    max-height: 65px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 130px;
     scroll-behavior: smooth;
-    scroll-snap-type: x mandatory;
     scrollbar-width: thin;
     scrollbar-color: #dee2e6 transparent;
 }
 
 .thumbnails-container::-webkit-scrollbar {
-    height: 3px;
+    width: 4px;
 }
 
 .thumbnails-container::-webkit-scrollbar-track {
@@ -733,6 +733,11 @@ document.addEventListener('DOMContentLoaded', function() {
         padding: 7px 30px;
     }
 
+    .thumbnails-container {
+        grid-template-columns: repeat(auto-fill, minmax(45px, 1fr));
+        max-height: 120px;
+    }
+
     .thumbnail-btn {
         width: 45px;
         height: 45px;
@@ -782,6 +787,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     .carousel-thumbnails {
         padding: 6px 28px;
+    }
+
+    .thumbnails-container {
+        grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+        max-height: 110px;
     }
 
     .thumbnails-nav {
