@@ -617,15 +617,15 @@ document.addEventListener('DOMContentLoaded', function() {
     position: relative;
     background: #f8f9fa;
     border-radius: 12px;
-    padding: 10px 40px;
+    padding: 8px 35px;
 }
 
 .thumbnails-container {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     overflow-y: hidden;
     overflow-x: auto;
-    max-height: 80px;
+    max-height: 65px;
     scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
     scrollbar-width: thin;
@@ -633,7 +633,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .thumbnails-container::-webkit-scrollbar {
-    height: 4px;
+    height: 3px;
 }
 
 .thumbnails-container::-webkit-scrollbar-track {
@@ -647,10 +647,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .thumbnail-btn {
     flex: 0 0 auto;
-    width: 60px;
-    height: 60px;
+    width: 50px;
+    height: 50px;
     border: 2px solid transparent;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     position: relative;
     overflow: hidden;
