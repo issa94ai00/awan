@@ -1355,14 +1355,9 @@ mark {
         gap: 0.9rem;
     }
 
-    .product-card {
-        grid-template-columns: 120px 1fr;
-    }
-
     .product-image {
-        width: 120px;
-        height: 100%;
-        border-radius: 20px 0 0 20px;
+        height: 160px;
+        border-radius: 20px 20px 0 0;
     }
 
     .product-info {
