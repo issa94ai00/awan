@@ -693,15 +693,15 @@ document.addEventListener('DOMContentLoaded', function() {
     background: rgba(0, 0, 0, 0.5);
     color: white;
     border: none;
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    font-size: 12px;
+    font-size: 11px;
     z-index: 10;
 }
 
@@ -710,11 +710,11 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .thumbnails-prev {
-    right: 5px;
+    right: 4px;
 }
 
 .thumbnails-next {
-    left: 5px;
+    left: 4px;
 }
 
 /* Responsive Design */
