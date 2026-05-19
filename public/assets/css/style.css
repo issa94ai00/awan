@@ -742,6 +742,9 @@ mark {
     overflow: hidden;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-radius: 16px 0 0 16px;
+    width: 160px;
+    height: 160px;
+    flex-shrink: 0;
 }
 
 .product-image img {
@@ -749,7 +752,6 @@ mark {
     height: 100%;
     object-fit: cover;
     transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-    aspect-ratio: 1;
 }
 
 .product-card:hover .product-image img {
@@ -1233,6 +1235,8 @@ mark {
     }
 
     .product-image {
+        width: 140px;
+        height: 140px;
         border-radius: 16px 0 0 16px;
     }
 
@@ -1288,7 +1292,13 @@ mark {
     }
 
     .product-card {
-        grid-template-columns: 120px 1fr;
+        grid-template-columns: 140px 1fr;
+    }
+
+    .product-image {
+        width: 140px;
+        height: 140px;
+        border-radius: 16px 0 0 16px;
     }
 
     .product-info {
