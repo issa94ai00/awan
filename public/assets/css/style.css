@@ -851,13 +851,13 @@ mark {
 }
 
 .product-category {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--accent-blue);
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    line-height: 1.4;
+    line-height: 1.3;
 }
 
 .product-category::before {
@@ -870,11 +870,11 @@ mark {
 }
 
 .product-price {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 800;
     color: var(--primary-dark);
     background: linear-gradient(135deg, rgba(201, 169, 89, 0.12) 0%, rgba(201, 169, 89, 0.04) 100%);
-    padding: 0.4rem 0.85rem;
+    padding: 0.3rem 0.7rem;
     border-radius: 50px;
     display: inline-block;
     align-self: flex-start;
@@ -884,15 +884,15 @@ mark {
 .product-meta-info {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    font-size: 0.8rem;
+    gap: 0.5rem;
+    font-size: 0.75rem;
     color: #666;
 }
 
 .product-meta-info span {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.25rem;
 }
 
 .product-meta-info span::before {
@@ -908,7 +908,7 @@ mark {
 /* Row 3: Action Buttons */
 .product-actions-row {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.4rem;
     margin-top: auto;
 }
 
@@ -916,13 +916,13 @@ mark {
 .product-card .btn-phone,
 .product-card .btn-inquiry {
     flex: 1;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
     border-radius: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4rem;
+    gap: 0.3rem;
     text-decoration: none;
     font-weight: 700;
     transition: all 0.3s ease;
