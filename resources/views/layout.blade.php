@@ -36,6 +36,14 @@
                     <span class="logo-text"><?php echo get_setting('site_name') ?? 'أوان التقدم'; ?></span>
                 <?php endif; ?>
 
+            <div class="nav-search">
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
+                    <i class="fas fa-search search-icon"></i>
+                    <div class="search-results" id="searchResults"></div>
+                </div>
+            </div>
+
             <ul class="nav-menu" id="navMenu">
                 <li><a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">الرئيسية</a></li>
                 <li><a href="{{ route('categories.index') }}" class="nav-link {{ request()->routeIs('categories.*') ? 'active' : '' }}">الفئات</a></li>
@@ -44,14 +52,6 @@
                 <li><a href="{{ route('about') }}" class="nav-link {{ request()->routeIs('about') ? 'active' : '' }}">من نحن</a></li>
                 <li><a href="{{ route('contact') }}" class="nav-link {{ request()->routeIs('contact') ? 'active' : '' }}">إتصل بنا</a></li>
             </ul>
-
-            <div class="nav-search">
-                <div class="search-container">
-                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
-                    <i class="fas fa-search search-icon"></i>
-                    <div class="search-results" id="searchResults"></div>
-                </div>
-            </div>
 
             <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
                 <i class="fas fa-moon"></i>
