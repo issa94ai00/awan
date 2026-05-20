@@ -14,6 +14,8 @@
 
     {!! seo($seoData) !!}
 
+    @include('partials.schema')
+
     <meta name="keywords" content="<?php echo get_setting('meta_keywords') ?? 'مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية, أدوات, مشابك, علاقات معدنية, أنظمة تثبيت ورفع'; ?>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
