@@ -5,7 +5,7 @@ use App\Models\Setting;
 if (! function_exists('get_setting')) {
     function get_setting(string $key, mixed $default = null): mixed
     {
-        $settings = session('setting');
+        $settings = app()->bound('session') ? session('setting') : null;
 
         if ($settings instanceof \Illuminate\Support\Collection) {
             $row = $settings->firstWhere('key', $key);
