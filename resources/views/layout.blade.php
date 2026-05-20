@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title ?? (get_setting('site_name') ?? 'أوان التقدم') . ' - ' . (get_setting('site_tagline') ?? 'نبني معاً غد سورية الأجمل'); ?></title>
-    <meta name="description" content="<?php echo $page_description ?? (get_setting('meta_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.'); ?>">
-    <meta name="keywords" content="<?php echo get_setting('meta_keywords') ?? 'مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية, أدوات, مشابك, علاقات معدنية, أنظمة تثبيت ورفع'; ?>">
 
-    <meta property="og:title" content="<?php echo $page_title ?? 'أوان التقدم - نبني معاً غد سورية الأجمل'; ?>">
-    <meta property="og:description" content="<?php echo $page_description ?? (get_setting('og_description') ?? 'مستلزمات البناء بأعلى جودة وتصاميم عصرية لمشاريعكم في سورية'); ?>">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="<?php echo get_setting('site_name') ?? 'أوان التقدم'; ?>">
-    <meta property="og:image" content="<?php echo $page_image ?? asset('assets/images/hero-bg.jpg'); ?>">
-    <meta property="og:url" content="<?php echo url()->current(); ?>">
+    @seo([
+        'title' => $page_title ?? (get_setting('site_name') ?? 'أوان التقدم') . ' - ' . (get_setting('site_tagline') ?? 'نبني معاً غد سورية الأجمل'),
+        'description' => $page_description ?? (get_setting('meta_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.'),
+        'image' => $page_image ?? asset('assets/images/hero-bg.jpg'),
+    ])
+
+    <meta name="keywords" content="<?php echo get_setting('meta_keywords') ?? 'مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية, أدوات, مشابك, علاقات معدنية, أنظمة تثبيت ورفع'; ?>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,6 +34,14 @@
                     <span class="logo-text"><?php echo get_setting('site_name') ?? 'أوان التقدم'; ?></span>
                 <?php endif; ?>
 
+            <div class="nav-search">
+                <div class="search-container">
+                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
+                    <i class="fas fa-search search-icon"></i>
+                    <div class="search-results" id="searchResults"></div>
+                </div>
+            </div>
+
             <ul class="nav-menu" id="navMenu">
                 <li><a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">الرئيسية</a></li>
                 <li><a href="{{ route('categories.index') }}" class="nav-link {{ request()->routeIs('categories.*') ? 'active' : '' }}">الفئات</a></li>
@@ -44,14 +50,6 @@
                 <li><a href="{{ route('about') }}" class="nav-link {{ request()->routeIs('about') ? 'active' : '' }}">من نحن</a></li>
                 <li><a href="{{ route('contact') }}" class="nav-link {{ request()->routeIs('contact') ? 'active' : '' }}">إتصل بنا</a></li>
             </ul>
-
-            <div class="nav-search">
-                <div class="search-container">
-                    <input type="text" class="search-input" id="searchInput" placeholder="ابحث عن منتج...">
-                    <i class="fas fa-search search-icon"></i>
-                    <div class="search-results" id="searchResults"></div>
-                </div>
-            </div>
 
             <button class="dark-mode-toggle" id="darkModeToggle" title="الوضع الداكن">
                 <i class="fas fa-moon"></i>
