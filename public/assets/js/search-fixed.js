@@ -63,9 +63,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (categories.length > 0) {
             html += '<div style="padding: 0.5rem 1rem; background: #f8f9fa; font-weight: 600; font-size: 0.85rem; color: #666;">الفئات</div>';
             html += categories.map((cat) => {
+                const url = cat.url || `/category/${encodeURIComponent(cat.slug)}`;
                 const highlighted = highlightMatch(cat.name_ar, query);
                 return (
-                    `<a href="${escapeHTML(cat.url)}" class="search-result-item">` +
+                    `<a href="${escapeHTML(url)}" class="search-result-item">` +
                     `<span class="search-result-icon"><i class="fas fa-folder"></i></span>` +
                     `<span class="search-result-text">${highlighted} <small style="color: #999;">(${cat.product_count} منتج)</small></span>` +
                     `</a>`
@@ -76,10 +77,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (products.length > 0) {
             html += '<div style="padding: 0.5rem 1rem; background: #f8f9fa; font-weight: 600; font-size: 0.85rem; color: #666; border-top: 1px solid #eee;">المنتجات</div>';
             html += products.map((prod) => {
+                const url = prod.url || `/product/${encodeURIComponent(prod.slug)}`;
                 const highlighted = highlightMatch(prod.name_ar, query);
                 const priceText = prod.price ? `<small style="color: var(--accent-blue);">$${prod.price}</small>` : '';
                 return (
-                    `<a href="${escapeHTML(prod.url)}" class="search-result-item">` +
+                    `<a href="${escapeHTML(url)}" class="search-result-item">` +
                     `<span class="search-result-icon"><i class="fas fa-box"></i></span>` +
                     `<span class="search-result-text">${highlighted} ${priceText}</span>` +
                     `</a>`

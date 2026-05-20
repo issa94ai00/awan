@@ -63,6 +63,7 @@ class ProductResource extends JsonResource
             'discount_percentage' => $this->sale_price && $this->sale_price < $this->price 
                 ? round((($this->price - $this->sale_price) / $this->price) * 100, 2) 
                 : 0,
+            'url' => route('product.show', $this),
         ];
     }
 }

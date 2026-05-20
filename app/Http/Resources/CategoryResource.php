@@ -27,6 +27,7 @@ class CategoryResource extends JsonResource
             'product_count' => $this->when(isset($this->product_count), $this->product_count),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'url' => route('category.show', $this),
         ];
     }
 }
