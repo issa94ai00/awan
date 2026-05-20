@@ -718,6 +718,178 @@ Get specific inquiry details.
 }
 ```
 
+### 7. Invoices
+
+#### 7.1 List Invoices
+**GET** `/invoices` *(Requires Authentication)*
+
+Get all invoices for the authenticated user.
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoices retrieved successfully",
+  "data": {
+    "invoices": [
+      {
+        "id": 1,
+        "invoice_number": "INV-1001",
+        "status": "pending",
+        "total": 1250.00,
+        "paid_amount": 0.00,
+        "due_amount": 1250.00,
+        "created_at": "2024-01-01T10:00:00.000000Z"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "last_page": 3,
+      "per_page": 10,
+      "total": 25,
+      "has_more_pages": true
+    }
+  }
+}
+```
+
+#### 7.2 Create Invoice
+**POST** `/invoices` *(Requires Authentication)*
+
+Create a new invoice.
+
+**Request Body:**
+```json
+{
+  "customer_name": "John Doe",
+  "customer_phone": "+1234567890",
+  "customer_address": "123 Main St",
+  "items": [
+    {
+      "product_id": 1,
+      "quantity": 2,
+      "unit_price": 500.00
+    }
+  ],
+  "tax": 50.00,
+  "discount": 0.00,
+  "notes": "تسليم خلال يومين"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully",
+  "data": {
+    "id": 1,
+    "invoice_number": "INV-1002",
+    "status": "pending",
+    "total": 1050.00,
+    "created_at": "2024-01-01T10:00:00.000000Z"
+  }
+}
+```
+
+#### 7.3 Get Invoice Details
+**GET** `/invoices/{invoice}` *(Requires Authentication)*
+
+Get details for a single invoice.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice retrieved successfully",
+  "data": {
+    "id": 1,
+    "invoice_number": "INV-1002",
+    "status": "pending",
+    "customer_name": "John Doe",
+    "customer_phone": "+1234567890",
+    "customer_address": "123 Main St",
+    "items": [
+      {
+        "product_id": 1,
+        "product_name": "Dell Laptop",
+        "quantity": 2,
+        "unit_price": 500.00,
+        "total_price": 1000.00
+      }
+    ],
+    "tax": 50.00,
+    "discount": 0.00,
+    "total": 1050.00,
+    "paid_amount": 0.00,
+    "due_amount": 1050.00,
+    "created_at": "2024-01-01T10:00:00.000000Z"
+  }
+}
+```
+
+#### 7.4 Update Invoice Status
+**PUT** `/invoices/{invoice}/status` *(Requires Authentication)*
+
+Update an invoice status.
+
+**Request Body:**
+```json
+{
+  "status": "paid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice status updated successfully",
+  "data": {
+    "id": 1,
+    "status": "paid",
+    "paid_amount": 1250.00,
+    "due_amount": 0.00
+  }
+}
+```
+
+#### 7.5 Delete Invoice
+**DELETE** `/invoices/{invoice}` *(Requires Authentication)*
+
+Delete an invoice.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice deleted successfully",
+  "data": null
+}
+```
+
+#### 7.6 Invoice Summary Stats
+**GET** `/invoices/summary/stats` *(Requires Authentication)*
+
+Get invoice statistics summary.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Invoice summary retrieved successfully",
+  "data": {
+    "total_invoices": 25,
+    "total_paid": 15300.00,
+    "total_due": 2400.00,
+    "total_pending": 5
+  }
+}
+```
+
 ## Error Codes
 
 | Status Code | Description |

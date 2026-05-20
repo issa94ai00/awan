@@ -11,6 +11,7 @@
         "laravel/sanctum": "*",
         "laravel/tinker": "^2.10.1",
         "livewire/livewire": "^4.3",
+        "ralphjsmit/laravel-seo": "^1.8",
         "spatie/laravel-sitemap": "*"
     },
     "require-dev": {

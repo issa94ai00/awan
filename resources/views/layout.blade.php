@@ -4,11 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    @seo([
-        'title' => $page_title ?? (get_setting('site_name') ?? 'أوان التقدم') . ' - ' . (get_setting('site_tagline') ?? 'نبني معاً غد سورية الأجمل'),
-        'description' => $page_description ?? (get_setting('meta_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.'),
-        'image' => $page_image ?? asset('assets/images/hero-bg.jpg'),
-    ])
+    @php
+        $seoData = new \RalphJSmit\Laravel\SEO\Support\SEOData(
+            title: $page_title ?? (get_setting('site_name') ?? 'أوان التقدم') . ' - ' . (get_setting('site_tagline') ?? 'نبني معاً غد سورية الأجمل'),
+            description: $page_description ?? (get_setting('meta_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.'),
+            image: $page_image ?? 'assets/images/hero-bg.jpg',
+        );
+    @endphp
+
+    {!! seo($seoData) !!}
 
     <meta name="keywords" content="<?php echo get_setting('meta_keywords') ?? 'مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية, أدوات, مشابك, علاقات معدنية, أنظمة تثبيت ورفع'; ?>">
 
