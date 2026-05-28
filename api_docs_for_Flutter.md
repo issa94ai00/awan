@@ -45,6 +45,31 @@ Error responses:
 }
 ```
 
+## Visitor API (بدون تحقق)
+
+الواجهات التالية متاحة للزوار دون الحاجة إلى تسجيل دخول أو إرسال توكن مصادقة:
+
+- `GET /home`
+- `GET /featured-products`
+- `GET /categories`
+- `GET /categories/{category}`
+- `GET /categories/{category}/products`
+- `GET /products`
+- `GET /products/{product}`
+- `GET /products/{product}/related`
+- `GET /search`
+- `GET /search/suggestions`
+- `POST /inquiries`
+
+> جميع الاستجابات ترجع بصيغة JSON موحدة تحتوي على حقول `success`, `message`, و `data`.
+
+### قواعد عامة
+
+- عنوان الأساس: `https://your-domain.com/api/v1`
+- أسماء التصنيفات والمنتجات تستخدم القيمة `slug` في المسار.
+- جميع الموارد المعروضة هي موارد `is_active = 1` فقط.
+- يمكن استخدام معاملات الاستعلام مثل `page`, `per_page`, `search`, و `sort_by` في نقاط نهاية المنتجات والتصنيفات.
+
 ## API Endpoints
 
 ### 1. Authentication

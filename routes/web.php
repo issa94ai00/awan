@@ -84,6 +84,49 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
     // POS
     Route::get('/pos', [AdminController::class, 'posIndex'])->name('admin.pos');
 
+    // Business Modules
+    Route::prefix('accounting')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\AccountingController::class, 'index'])->name('admin.accounting.index');
+        Route::get('/journal', [\App\Http\Controllers\Admin\AccountingController::class, 'journal'])->name('admin.accounting.journal');
+        Route::get('/ledger', [\App\Http\Controllers\Admin\AccountingController::class, 'ledger'])->name('admin.accounting.ledger');
+        Route::get('/trial-balance', [\App\Http\Controllers\Admin\AccountingController::class, 'trialBalance'])->name('admin.accounting.trial-balance');
+    });
+
+    Route::prefix('inventory')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\InventoryController::class, 'index'])->name('admin.inventory.index');
+        Route::get('/movements', [\App\Http\Controllers\Admin\InventoryController::class, 'movements'])->name('admin.inventory.movements');
+    });
+
+    Route::prefix('sales')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\SalesController::class, 'index'])->name('admin.sales.index');
+        Route::get('/invoices', [\App\Http\Controllers\Admin\SalesController::class, 'invoices'])->name('admin.sales.invoices');
+        Route::get('/customers', [\App\Http\Controllers\Admin\SalesController::class, 'customers'])->name('admin.sales.customers');
+    });
+
+    Route::prefix('purchases')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\PurchaseController::class, 'index'])->name('admin.purchases.index');
+        Route::get('/suppliers', [\App\Http\Controllers\Admin\PurchaseController::class, 'suppliers'])->name('admin.purchases.suppliers');
+        Route::get('/orders', [\App\Http\Controllers\Admin\PurchaseController::class, 'orders'])->name('admin.purchases.orders');
+    });
+
+    Route::prefix('hr')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\HrController::class, 'index'])->name('admin.hr.index');
+        Route::get('/employees', [\App\Http\Controllers\Admin\HrController::class, 'employees'])->name('admin.hr.employees');
+        Route::get('/attendance', [\App\Http\Controllers\Admin\HrController::class, 'attendance'])->name('admin.hr.attendance');
+        Route::get('/leaves', [\App\Http\Controllers\Admin\HrController::class, 'leaveRequests'])->name('admin.hr.leaves');
+    });
+
+    Route::prefix('crm')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\CrmController::class, 'index'])->name('admin.crm.index');
+        Route::get('/customers', [\App\Http\Controllers\Admin\CrmController::class, 'customers'])->name('admin.crm.customers');
+        Route::get('/tickets', [\App\Http\Controllers\Admin\CrmController::class, 'tickets'])->name('admin.crm.tickets');
+    });
+
+    Route::prefix('reports')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\ReportsController::class, 'index'])->name('admin.reports.index');
+        Route::get('/export', [\App\Http\Controllers\Admin\ReportsController::class, 'export'])->name('admin.reports.export');
+    });
+
     // Profile
     Route::get('/profile', [AdminController::class, 'profileEdit'])->name('admin.profile.edit');
     Route::put('/profile', [AdminController::class, 'profileUpdate'])->name('admin.profile.update');

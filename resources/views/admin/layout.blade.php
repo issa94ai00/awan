@@ -117,6 +117,48 @@
                             <span>إحصائيات الزوار</span>
                         </a>
                     </li>
+                    <li class="{{ request()->routeIs('admin.accounting.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.accounting.index') }}">
+                            <i class="fas fa-calculator"></i>
+                            <span>المحاسبة</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.inventory.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.inventory.index') }}">
+                            <i class="fas fa-warehouse"></i>
+                            <span>المخزون</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.sales.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.sales.index') }}">
+                            <i class="fas fa-shopping-cart"></i>
+                            <span>المبيعات</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.purchases.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.purchases.index') }}">
+                            <i class="fas fa-truck-loading"></i>
+                            <span>المشتريات</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.hr.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.hr.index') }}">
+                            <i class="fas fa-users"></i>
+                            <span>الموارد البشرية</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.crm.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.crm.index') }}">
+                            <i class="fas fa-user-friends"></i>
+                            <span>إدارة العملاء</span>
+                        </a>
+                    </li>
+                    <li class="{{ request()->routeIs('admin.reports.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.reports.index') }}">
+                            <i class="fas fa-chart-pie"></i>
+                            <span>التقارير</span>
+                        </a>
+                    </li>
                     <li class="{{ request()->routeIs('admin.settings.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.settings.index') }}">
                             <i class="fas fa-cog"></i>
