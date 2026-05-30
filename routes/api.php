@@ -2,11 +2,13 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\HomeController;
+use App\Http\Controllers\Api\PosController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -72,6 +74,15 @@ Route::prefix('v1')->group(function () {
         Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('api.invoices.destroy');
         Route::get('/invoices/summary/stats', [InvoiceController::class, 'summary'])->name('api.invoices.summary');
 
+        // POS / Flutter POS System
+        Route::get('/pos/options', [PosController::class, 'options'])->name('api.pos.options');
+        Route::get('/pos/products/lookup', [PosController::class, 'productLookup'])->name('api.pos.products.lookup');
+        Route::get('/pos/customers', [PosController::class, 'customers'])->name('api.pos.customers.index');
+        Route::post('/pos/customers', [PosController::class, 'customerStore'])->name('api.pos.customers.store');
+        Route::get('/pos/customers/{customer}', [PosController::class, 'customerShow'])->name('api.pos.customers.show');
+
+        // Companies
+        Route::post('/companies', [CompanyController::class, 'store'])->name('api.companies.store');
     });
 });
 

@@ -55,13 +55,15 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفواتير بنجاح',
-                'data' => InvoiceResource::collection($invoices->items()),
-                'pagination' => [
-                    'current_page' => $invoices->currentPage(),
-                    'last_page' => $invoices->lastPage(),
-                    'per_page' => $invoices->perPage(),
-                    'total' => $invoices->total(),
-                    'has_more_pages' => $invoices->hasMorePages(),
+                'data' => [
+                    'invoices' => InvoiceResource::collection($invoices->items()),
+                    'pagination' => [
+                        'current_page' => $invoices->currentPage(),
+                        'last_page' => $invoices->lastPage(),
+                        'per_page' => $invoices->perPage(),
+                        'total' => $invoices->total(),
+                        'has_more_pages' => $invoices->hasMorePages(),
+                    ],
                 ],
             ]);
 
@@ -184,6 +186,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطأ في التحقق من البيانات',
+                'data' => null,
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {

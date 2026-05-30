@@ -915,6 +915,174 @@ Get invoice statistics summary.
 }
 ```
 
+### 8. Flutter POS System
+
+#### 8.1 POS Options
+**GET** `/pos/options` *(Requires Authentication)*
+
+Get payment and invoice status options for Flutter POS.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "POS options retrieved successfully",
+  "data": {
+    "payment_methods": {
+      "cash": "نقدي",
+      "card": "بطاقة",
+      "transfer": "تحويل"
+    },
+    "invoice_statuses": {
+      "pending": "معلق",
+      "paid": "مدفوع",
+      "cancelled": "ملغى"
+    },
+    "customer_statuses": {
+      "active": "نشط",
+      "inactive": "غير نشط"
+    }
+  }
+}
+```
+
+#### 8.2 POS Product Lookup
+**GET** `/pos/products/lookup` *(Requires Authentication)*
+
+Search products by SKU, barcode, or name for quick POS scanning.
+
+**Query Parameters:**
+- `sku` (optional): Exact SKU value.
+- `q` (optional): Search term for product name, brand, model, or SKU.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "POS product lookup completed successfully",
+  "data": [
+    {
+      "id": 1,
+      "name_ar": "لابتوب ديل",
+      "name_en": "Dell Laptop",
+      "slug": "dell-laptop",
+      "sku": "DELL-XPS15-001",
+      "price": 2500.00,
+      "sale_price": 2200.00,
+      "show_price": true,
+      "in_stock": true,
+      "stock_quantity": 10,
+      "category": {
+        "id": 1,
+        "name_ar": "إلكترونيات",
+        "name_en": "Electronics",
+        "slug": "electronics"
+      }
+    }
+  ]
+}
+```
+
+#### 8.3 List POS Customers
+**GET** `/pos/customers` *(Requires Authentication)*
+
+List saved customers, with optional search by name, phone, email, or company.
+
+**Query Parameters:**
+- `search` (optional): Text search across customer fields.
+- `page` (optional): Page number.
+- `per_page` (optional): Results per page.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "POS customers retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "email": "john@example.com",
+      "phone": "+1234567890",
+      "company": "ABC Co.",
+      "address": "123 Main St",
+      "status": "active",
+      "notes": null,
+      "created_at": "2024-01-01T10:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "last_page": 2,
+    "per_page": 20,
+    "total": 45,
+    "has_more_pages": true
+  }
+}
+```
+
+#### 8.4 Create or Update POS Customer
+**POST** `/pos/customers` *(Requires Authentication)*
+
+Create or update a customer profile from Flutter POS.
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "phone": "+1234567890",
+  "company": "ABC Co.",
+  "address": "123 Main St",
+  "source": "POS",
+  "status": "active",
+  "notes": "Customer prefers evening delivery"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Customer saved successfully",
+  "data": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+1234567890",
+    "company": "ABC Co.",
+    "address": "123 Main St",
+    "status": "active",
+    "notes": "Customer prefers evening delivery",
+    "created_at": "2024-01-01T10:00:00.000000Z"
+  }
+}
+```
+
+#### 8.5 Get POS Customer Details
+**GET** `/pos/customers/{customer}` *(Requires Authentication)*
+
+Get detailed customer information for a selected POS transaction.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Customer retrieved successfully",
+  "data": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+1234567890",
+    "company": "ABC Co.",
+    "address": "123 Main St",
+    "status": "active",
+    "notes": "Customer prefers evening delivery",
+    "created_at": "2024-01-01T10:00:00.000000Z"
+  }
+}
+```
+
 ## Error Codes
 
 | Status Code | Description |

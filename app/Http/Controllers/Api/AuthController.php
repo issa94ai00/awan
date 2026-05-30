@@ -38,6 +38,7 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'خطأ في التحقق من البيانات',
+                    'data' => null,
                     'errors' => $validator->errors()
                 ], 422);
             }
@@ -89,6 +90,7 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'خطأ في التحقق من البيانات',
+                    'data' => null,
                     'errors' => $validator->errors()
                 ], 422);
             }
@@ -187,6 +189,7 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'خطأ في التحقق من البيانات',
+                    'data' => null,
                     'errors' => $validator->errors()
                 ], 422);
             }
@@ -230,6 +233,7 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'خطأ في التحقق من البيانات',
+                    'data' => null,
                     'errors' => $validator->errors()
                 ], 422);
             }

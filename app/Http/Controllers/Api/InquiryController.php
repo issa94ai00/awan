@@ -55,6 +55,7 @@ class InquiryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'خطأ في التحقق من البيانات',
+                'data' => null,
                 'errors' => $e->errors()
             ], 422);
         }
