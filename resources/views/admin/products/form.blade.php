@@ -113,11 +113,9 @@
                 </div>
 
                 <div class="form-group col-md-4">
-                    <label class="d-block">المخزون</label>
-                    <div class="custom-control custom-switch">
-                        <input type="checkbox" id="in_stock" name="in_stock" value="1" {{ old('in_stock', $product->in_stock ?? true) ? 'checked' : '' }} class="custom-control-input">
-                        <label class="custom-control-label" for="in_stock">متوفر</label>
-                    </div>
+                    <label for="stock_quantity">الكمية في المخزون</label>
+                    <input type="number" id="stock_quantity" name="stock_quantity" value="{{ old('stock_quantity', $product->stock_quantity ?? 0) }}" class="form-control" min="0" step="1">
+                    <small class="form-text">عدد الوحدات المتاحة في المخزون</small>
                 </div>
 
                 <div class="form-group col-md-4">

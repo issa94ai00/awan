@@ -9,6 +9,12 @@ use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\PosController;
+use App\Http\Controllers\Api\ProductionController;
+use App\Http\Controllers\Api\QuoteController;
+use App\Http\Controllers\Api\SalesOrderController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PurchaseReceiptController;
+use App\Http\Controllers\Api\PayrollController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -83,6 +89,53 @@ Route::prefix('v1')->group(function () {
 
         // Companies
         Route::post('/companies', [CompanyController::class, 'store'])->name('api.companies.store');
+
+        // Production / Manufacturing
+        Route::get('/production', [ProductionController::class, 'index'])->name('api.production.index');
+        Route::post('/production', [ProductionController::class, 'store'])->name('api.production.store');
+        Route::get('/production/{productionOrder}', [ProductionController::class, 'show'])->name('api.production.show');
+        Route::put('/production/{productionOrder}', [ProductionController::class, 'update'])->name('api.production.update');
+        Route::delete('/production/{productionOrder}', [ProductionController::class, 'destroy'])->name('api.production.destroy');
+        Route::put('/production/{productionOrder}/status', [ProductionController::class, 'updateStatus'])->name('api.production.update-status');
+        Route::get('/production/stats', [ProductionController::class, 'stats'])->name('api.production.stats');
+
+        // Quotes (عروض أسعار)
+        Route::get('/quotes', [QuoteController::class, 'index'])->name('api.quotes.index');
+        Route::post('/quotes', [QuoteController::class, 'store'])->name('api.quotes.store');
+        Route::get('/quotes/{quote}', [QuoteController::class, 'show'])->name('api.quotes.show');
+        Route::put('/quotes/{quote}', [QuoteController::class, 'update'])->name('api.quotes.update');
+        Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])->name('api.quotes.destroy');
+        Route::post('/quotes/{quote}/convert-to-sales-order', [QuoteController::class, 'convertToSalesOrder'])->name('api.quotes.convert-to-sales-order');
+
+        // Sales Orders (طلبات بيع)
+        Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('api.sales-orders.index');
+        Route::post('/sales-orders', [SalesOrderController::class, 'store'])->name('api.sales-orders.store');
+        Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->name('api.sales-orders.show');
+        Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->name('api.sales-orders.update');
+        Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->name('api.sales-orders.destroy');
+        Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->name('api.sales-orders.convert-to-invoice');
+
+        // Payments (مدفوعات)
+        Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');
+        Route::post('/payments', [PaymentController::class, 'store'])->name('api.payments.store');
+        Route::get('/payments/{payment}', [PaymentController::class, 'show'])->name('api.payments.show');
+        Route::put('/payments/{payment}', [PaymentController::class, 'update'])->name('api.payments.update');
+        Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])->name('api.payments.destroy');
+
+        // Purchase Receipts (إيصالات استلام)
+        Route::get('/purchase-receipts', [PurchaseReceiptController::class, 'index'])->name('api.purchase-receipts.index');
+        Route::post('/purchase-receipts', [PurchaseReceiptController::class, 'store'])->name('api.purchase-receipts.store');
+        Route::get('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'show'])->name('api.purchase-receipts.show');
+        Route::put('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'update'])->name('api.purchase-receipts.update');
+        Route::delete('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'destroy'])->name('api.purchase-receipts.destroy');
+
+        // Payrolls (رواتب)
+        Route::get('/payrolls', [PayrollController::class, 'index'])->name('api.payrolls.index');
+        Route::post('/payrolls', [PayrollController::class, 'store'])->name('api.payrolls.store');
+        Route::get('/payrolls/{payroll}', [PayrollController::class, 'show'])->name('api.payrolls.show');
+        Route::put('/payrolls/{payroll}', [PayrollController::class, 'update'])->name('api.payrolls.update');
+        Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroy'])->name('api.payrolls.destroy');
+        Route::post('/payrolls/auto-generate', [PayrollController::class, 'autoGenerate'])->name('api.payrolls.auto-generate');
     });
 });
 

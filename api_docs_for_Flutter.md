@@ -1083,6 +1083,287 @@ Get detailed customer information for a selected POS transaction.
 }
 ```
 
+### 9. Production / Manufacturing
+
+#### 9.1 List Production Orders
+**GET** `/production` *(Requires Authentication)*
+
+Get all production orders with optional filters.
+
+**Query Parameters:**
+- `status` (optional): Filter by status (pending, in_progress, completed, cancelled)
+- `product_id` (optional): Filter by product ID
+- `page` (optional): Page number (default: 1)
+
+**Example:** `/production?status=in_progress`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Production orders retrieved successfully",
+  "data": {
+    "production_orders": [
+      {
+        "id": 1,
+        "order_number": "PROD-000001",
+        "product_id": 5,
+        "quantity": 100,
+        "status": "in_progress",
+        "start_date": "2024-01-15",
+        "end_date": "2024-01-20",
+        "cost": 5000.00,
+        "notes": "Priority order",
+        "created_by": 1,
+        "created_at": "2024-01-10T10:00:00.000000Z",
+        "updated_at": "2024-01-10T10:00:00.000000Z",
+        "product": {
+          "id": 5,
+          "name_ar": "منتج نهائي",
+          "name_en": "Final Product",
+          "slug": "final-product"
+        },
+        "creator": {
+          "id": 1,
+          "name": "Admin User"
+        }
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "last_page": 3,
+      "per_page": 20,
+      "total": 45,
+      "has_more_pages": true
+    }
+  }
+}
+```
+
+#### 9.2 Create Production Order
+**POST** `/production` *(Requires Authentication)*
+
+Create a new production order for final product export.
+
+**Request Body:**
+```json
+{
+  "product_id": 5,
+  "quantity": 100,
+  "start_date": "2024-01-15",
+  "end_date": "2024-01-20",
+  "cost": 5000.00,
+  "notes": "Priority order for client"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "تم إنشاء أمر الإنتاج بنجاح",
+  "data": {
+    "id": 1,
+    "order_number": "PROD-000001",
+    "product_id": 5,
+    "quantity": 100,
+    "status": "pending",
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-20",
+    "cost": 5000.00,
+    "notes": "Priority order for client",
+    "created_by": 1,
+    "created_at": "2024-01-10T10:00:00.000000Z",
+    "updated_at": "2024-01-10T10:00:00.000000Z",
+    "product": {
+      "id": 5,
+      "name_ar": "منتج نهائي",
+      "name_en": "Final Product",
+      "slug": "final-product"
+    },
+    "creator": {
+      "id": 1,
+      "name": "Admin User"
+    }
+  }
+}
+```
+
+#### 9.3 Get Production Order Details
+**GET** `/production/{productionOrder}` *(Requires Authentication)*
+
+Get details for a specific production order.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Production order retrieved successfully",
+  "data": {
+    "id": 1,
+    "order_number": "PROD-000001",
+    "product_id": 5,
+    "quantity": 100,
+    "status": "completed",
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-20",
+    "cost": 5000.00,
+    "notes": "Priority order for client",
+    "created_by": 1,
+    "created_at": "2024-01-10T10:00:00.000000Z",
+    "updated_at": "2024-01-20T15:30:00.000000Z",
+    "product": {
+      "id": 5,
+      "name_ar": "منتج نهائي",
+      "name_en": "Final Product",
+      "slug": "final-product",
+      "price": 50.00,
+      "stock_quantity": 150
+    },
+    "creator": {
+      "id": 1,
+      "name": "Admin User",
+      "email": "admin@example.com"
+    }
+  }
+}
+```
+
+#### 9.4 Update Production Order
+**PUT** `/production/{productionOrder}` *(Requires Authentication)*
+
+Update an existing production order.
+
+**Request Body:**
+```json
+{
+  "product_id": 5,
+  "quantity": 150,
+  "status": "in_progress",
+  "start_date": "2024-01-15",
+  "end_date": "2024-01-25",
+  "cost": 7500.00,
+  "notes": "Updated quantity and timeline"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "تم تحديث أمر الإنتاج بنجاح",
+  "data": {
+    "id": 1,
+    "order_number": "PROD-000001",
+    "product_id": 5,
+    "quantity": 150,
+    "status": "in_progress",
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-25",
+    "cost": 7500.00,
+    "notes": "Updated quantity and timeline",
+    "created_by": 1,
+    "created_at": "2024-01-10T10:00:00.000000Z",
+    "updated_at": "2024-01-12T10:00:00.000000Z",
+    "product": {
+      "id": 5,
+      "name_ar": "منتج نهائي",
+      "name_en": "Final Product",
+      "slug": "final-product"
+    },
+    "creator": {
+      "id": 1,
+      "name": "Admin User"
+    }
+  }
+}
+```
+
+#### 9.5 Update Production Order Status
+**PUT** `/production/{productionOrder}/status` *(Requires Authentication)*
+
+Update the status of a production order. When status is set to "completed", the quantity is automatically added to the product's stock.
+
+**Request Body:**
+```json
+{
+  "status": "completed"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "تم تحديث حالة أمر الإنتاج بنجاح",
+  "data": {
+    "id": 1,
+    "order_number": "PROD-000001",
+    "product_id": 5,
+    "quantity": 100,
+    "status": "completed",
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-20",
+    "cost": 5000.00,
+    "notes": "Priority order for client",
+    "created_by": 1,
+    "created_at": "2024-01-10T10:00:00.000000Z",
+    "updated_at": "2024-01-20T15:30:00.000000Z",
+    "product": {
+      "id": 5,
+      "name_ar": "منتج نهائي",
+      "name_en": "Final Product",
+      "slug": "final-product",
+      "stock_quantity": 150
+    },
+    "creator": {
+      "id": 1,
+      "name": "Admin User"
+    }
+  }
+}
+```
+
+**Status Values:**
+- `pending`: معلق (Pending)
+- `in_progress`: قيد التنفيذ (In Progress)
+- `completed`: مكتمل (Completed) - automatically adds quantity to product stock
+- `cancelled`: ملغي (Cancelled)
+
+#### 9.6 Delete Production Order
+**DELETE** `/production/{productionOrder}` *(Requires Authentication)*
+
+Delete a production order.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "تم حذف أمر الإنتاج بنجاح",
+  "data": null
+}
+```
+
+#### 9.7 Production Statistics
+**GET** `/production/stats` *(Requires Authentication)*
+
+Get production order statistics summary.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Production statistics retrieved successfully",
+  "data": {
+    "total_orders": 45,
+    "pending_orders": 10,
+    "in_progress_orders": 15,
+    "completed_orders": 18,
+    "cancelled_orders": 2
+  }
+}
+```
+
 ## Error Codes
 
 | Status Code | Description |
