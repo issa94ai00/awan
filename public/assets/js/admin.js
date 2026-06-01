@@ -27,6 +27,62 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Nav Group Toggle with smooth animation
+    document.querySelectorAll('.nav-group-header').forEach(header => {
+        header.addEventListener('click', function(e) {
+            e.preventDefault();
+            const navGroup = this.closest('.nav-group');
+            const items = navGroup.querySelector('.nav-group-items');
+            
+            // Close other open groups (optional - remove if you want multiple groups open)
+            document.querySelectorAll('.nav-group.open').forEach(group => {
+                if (group !== navGroup) {
+                    group.classList.remove('open');
+                }
+            });
+            
+            navGroup.classList.toggle('open');
+            
+            // Add ripple effect
+            const ripple = document.createElement('span');
+            ripple.style.cssText = `
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                top: 0;
+                left: 0;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: inherit;
+                pointer-events: none;
+                animation: rippleEffect 0.4s ease;
+            `;
+            this.style.position = 'relative';
+            this.style.overflow = 'hidden';
+            this.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 400);
+        });
+    });
+
+    // User Dropdown Toggle
+    const userDropdown = document.querySelector('.user-dropdown');
+    const userBtn = userDropdown?.querySelector('.user-btn');
+    const dropdownMenu = userDropdown?.querySelector('.dropdown-menu');
+
+    if (userBtn && dropdownMenu) {
+        userBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            dropdownMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!userDropdown.contains(e.target)) {
+                dropdownMenu.classList.remove('show');
+            }
+        });
+    }
+
     // Auto-hide alerts after 5 seconds
     const alerts = document.querySelectorAll('.alert');
     alerts.forEach(alert => {
@@ -237,8 +293,21 @@ window.toggleSidebar = function() {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
         sidebar.classList.toggle('collapsed');
+        localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
     }
 };
+
+// Add ripple animation CSS dynamically
+const rippleStyle = document.createElement('style');
+rippleStyle.textContent = `
+    @keyframes rippleEffect {
+        to {
+            transform: scale(2);
+            opacity: 0;
+        }
+    }
+`;
+document.head.appendChild(rippleStyle);
 
 // AJAX helper
 window.ajaxRequest = function(url, options = {}) {

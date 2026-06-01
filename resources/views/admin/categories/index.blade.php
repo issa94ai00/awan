@@ -4,10 +4,8 @@
 
 @section('content')
 <div class="page-header">
-    <div class="header-content">
-        <h1><i class="fas fa-folder-open"></i> إدارة الفئات</h1>
-        <p>إدارة فئات المنتجات والخدمات</p>
-    </div>
+    <h1><i class="fas fa-folder-open"></i> إدارة الفئات</h1>
+    <p>إدارة فئات المنتجات والخدمات</p>
     <div class="header-actions">
         <a href="{{ route('admin.categories.create') }}" class="btn btn-primary">
             <i class="fas fa-plus"></i> فئة جديدة
@@ -52,8 +50,8 @@
                     <tr>
                         <td>{{ $category->id }}</td>
                         <td>
-                            <div class="category-icon-small" style="background: rgba(0, 90, 156, 0.1); border-radius: 8px; padding: 8px; text-align: center;">
-                                <i class="fas {{ $category->icon ?? 'fa-folder' }}" style="color: var(--accent-blue); font-size: 1.2rem;"></i>
+                            <div class="category-icon-small">
+                                <i class="fas {{ $category->icon ?? 'fa-folder' }}"></i>
                             </div>
                         </td>
                         <td>
@@ -161,7 +159,7 @@
             @endif
         @else
             <div class="empty-state">
-                <i class="fas fa-folder-open" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
+                <i class="fas fa-folder-open" style="font-size: 3rem; color: var(--text-light); margin-bottom: 1rem;"></i>
                 <p>لا توجد فئات حالياً</p>
                 <a href="{{ route('admin.categories.create') }}" class="btn btn-primary">إضافة فئة جديدة</a>
             </div>

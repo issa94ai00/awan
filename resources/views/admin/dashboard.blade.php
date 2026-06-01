@@ -11,7 +11,7 @@
 <!-- ERP KPIs -->
 <div class="stats-grid">
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="stat-icon stat-icon-purple">
             <i class="fas fa-file-invoice"></i>
         </div>
         <div class="stat-info">
@@ -22,7 +22,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+        <div class="stat-icon stat-icon-pink">
             <i class="fas fa-shopping-cart"></i>
         </div>
         <div class="stat-info">
@@ -33,7 +33,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+        <div class="stat-icon stat-icon-blue">
             <i class="fas fa-receipt"></i>
         </div>
         <div class="stat-info">
@@ -44,7 +44,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+        <div class="stat-icon stat-icon-green">
             <i class="fas fa-money-bill-wave"></i>
         </div>
         <div class="stat-info">
@@ -55,7 +55,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+        <div class="stat-icon stat-icon-orange">
             <i class="fas fa-users"></i>
         </div>
         <div class="stat-info">
@@ -66,7 +66,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);">
+        <div class="stat-icon stat-icon-teal">
             <i class="fas fa-truck"></i>
         </div>
         <div class="stat-info">
@@ -77,7 +77,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
+        <div class="stat-icon stat-icon-red">
             <i class="fas fa-boxes"></i>
         </div>
         <div class="stat-info">
@@ -88,7 +88,7 @@
     </div>
 
     <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="stat-icon stat-icon-purple">
             <i class="fas fa-wallet"></i>
         </div>
         <div class="stat-info">
@@ -101,16 +101,16 @@
 
 <!-- Stock Alerts -->
 @if($lowStockProducts > 0)
-<div class="alert alert-warning" style="margin-bottom: 20px;">
+<div class="alert alert-warning">
     <i class="fas fa-exclamation-triangle"></i>
-    <strong>تنبيه:</strong> هناك {{ $lowStockProducts }} منتجات بمخزون منخفض. 
+    <strong>تنبيه:</strong> هناك {{ $lowStockProducts }} منتجات بمخزون منخفض.
     <a href="{{ route('admin.stock-alerts') }}" class="btn btn-sm btn-warning">عرض التفاصيل</a>
 </div>
 @endif
 
 <div class="dashboard-grid">
     <!-- Monthly Sales Chart -->
-    <div class="dashboard-card">
+    <div class="card">
         <div class="card-header">
             <h3><i class="fas fa-chart-line"></i> المبيعات الشهرية</h3>
         </div>
@@ -120,7 +120,7 @@
     </div>
 
     <!-- Sales by Status -->
-    <div class="dashboard-card">
+    <div class="card">
         <div class="card-header">
             <h3><i class="fas fa-chart-pie"></i> حالة الطلبات</h3>
         </div>
@@ -132,7 +132,7 @@
 
 <div class="dashboard-grid">
     <!-- Latest Quotes -->
-    <div class="dashboard-card">
+    <div class="card">
         <div class="card-header">
             <h3><i class="fas fa-file-invoice"></i> آخر عروض الأسعار</h3>
             <a href="{{ route('admin.quotes.index') }}" class="btn btn-sm">عرض الكل</a>
@@ -170,7 +170,7 @@
     </div>
 
     <!-- Latest Sales Orders -->
-    <div class="dashboard-card">
+    <div class="card">
         <div class="card-header">
             <h3><i class="fas fa-shopping-cart"></i> آخر طلبات البيع</h3>
             <a href="{{ route('admin.sales-orders.index') }}" class="btn btn-sm">عرض الكل</a>
@@ -208,7 +208,7 @@
     </div>
 
     <!-- Latest Payments -->
-    <div class="dashboard-card">
+    <div class="card">
         <div class="card-header">
             <h3><i class="fas fa-money-bill-wave"></i> آخر المدفوعات</h3>
             <a href="{{ route('admin.payments.index') }}" class="btn btn-sm">عرض الكل</a>

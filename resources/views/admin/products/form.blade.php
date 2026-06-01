@@ -4,10 +4,8 @@
 
 @section('content')
 <div class="page-header">
-    <div class="header-content">
-        <h1><i class="fas fa-box"></i> {{ isset($product) ? 'تعديل المنتج' : 'منتج جديد' }}</h1>
-        <p>{{ isset($product) ? 'تحديث بيانات المنتج' : 'إضافة منتج جديد للموقع' }}</p>
-    </div>
+    <h1><i class="fas fa-box"></i> {{ isset($product) ? 'تعديل المنتج' : 'منتج جديد' }}</h1>
+    <p>{{ isset($product) ? 'تحديث بيانات المنتج' : 'إضافة منتج جديد للموقع' }}</p>
     <div class="header-actions">
         <a href="{{ route('admin.products.index') }}" class="btn btn-secondary">
             <i class="fas fa-arrow-right"></i> عودة للقائمة
@@ -15,7 +13,7 @@
     </div>
 </div>
 
-<div class="form-card">
+<div class="form-card card-hover animate-scale-in">
     <form action="{{ isset($product) ? route('admin.products.update', $product) : route('admin.products.store') }}" method="POST" enctype="multipart/form-data">
         @csrf
         @if(isset($product))
@@ -23,10 +21,18 @@
         @endif
 
         <div class="form-tabs">
-            <button type="button" class="tab-btn active" data-tab="basic">البيانات الأساسية</button>
-            <button type="button" class="tab-btn" data-tab="details">التفاصيل</button>
-            <button type="button" class="tab-btn" data-tab="images">الصور</button>
-            <button type="button" class="tab-btn" data-tab="seo">SEO</button>
+            <button type="button" class="tab-btn active" data-tab="basic">
+                <i class="fas fa-info-circle"></i> البيانات الأساسية
+            </button>
+            <button type="button" class="tab-btn" data-tab="details">
+                <i class="fas fa-align-left"></i> التفاصيل
+            </button>
+            <button type="button" class="tab-btn" data-tab="images">
+                <i class="fas fa-images"></i> الصور
+            </button>
+            <button type="button" class="tab-btn" data-tab="seo">
+                <i class="fas fa-search"></i> SEO
+            </button>
         </div>
 
         <div class="tab-content active" id="basic">
@@ -186,7 +192,7 @@
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary btn-glow">
                 <i class="fas fa-save"></i> {{ isset($product) ? 'تحديث' : 'حفظ' }}
             </button>
             <a href="{{ route('admin.products.index') }}" class="btn btn-secondary">إلغاء</a>
@@ -197,30 +203,39 @@
 
 @push('scripts')
 <script>
-// Tab switching
+// Tab switching with animation
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const tabId = this.dataset.tab;
 
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => {
+            c.classList.remove('active');
+            c.style.opacity = '0';
+        });
 
         this.classList.add('active');
-        document.getElementById(tabId).classList.add('active');
+        const content = document.getElementById(tabId);
+        if (content) {
+            content.classList.add('active');
+            setTimeout(() => content.style.opacity = '1', 10);
+        }
     });
 });
 
-// Auto-generate slug
+// Auto-generate slug with animation
 document.getElementById('name_en')?.addEventListener('input', function() {
     const slugInput = document.getElementById('slug');
     if (!slugInput.value) {
         slugInput.value = this.value.toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-|-$/g, '');
+        slugInput.parentElement.classList.add('animate-pulse');
+        setTimeout(() => slugInput.parentElement.classList.remove('animate-pulse'), 500);
     }
 });
 
-// Gallery image removal
+// Gallery image removal with animation
 document.querySelectorAll('.remove-gallery-image').forEach(button => {
     button.addEventListener('click', function() {
         const galleryItem = this.closest('.gallery-item');
@@ -230,16 +245,48 @@ document.querySelectorAll('.remove-gallery-image').forEach(button => {
             // Restore the image
             this.classList.remove('removed');
             this.innerHTML = '<i class="fas fa-times"></i>';
-            this.style.backgroundColor = '#dc3545';
+            this.style.backgroundColor = 'var(--danger)';
             hiddenInput.style.display = 'none';
             galleryItem.style.opacity = '1';
+            galleryItem.classList.add('animate-scale-in');
         } else {
             // Mark for removal
             this.classList.add('removed');
             this.innerHTML = '<i class="fas fa-undo"></i>';
-            this.style.backgroundColor = '#28a745';
+            this.style.backgroundColor = 'var(--success)';
             hiddenInput.style.display = 'block';
             galleryItem.style.opacity = '0.5';
+            galleryItem.classList.add('animate-fade-in');
+        }
+    });
+});
+
+// Image preview with animation
+document.querySelectorAll('input[type="file"]').forEach(input => {
+    input.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewContainer = input.parentElement.querySelector('.image-preview');
+                if (previewContainer) {
+                    const img = previewContainer.querySelector('img');
+                    if (img) {
+                        img.src = e.target.result;
+                        img.classList.add('animate-scale-in');
+                    } else {
+                        const newImg = document.createElement('img');
+                        newImg.src = e.target.result;
+                        newImg.style.maxWidth = '200px';
+                        newImg.style.borderRadius = '8px';
+                        newImg.style.marginTop = '1rem';
+                        newImg.classList.add('animate-scale-in');
+                        previewContainer.appendChild(newImg);
+                    }
+                    previewContainer.style.display = 'block';
+                }
+            };
+            reader.readAsDataURL(file);
         }
     });
 });
@@ -252,36 +299,62 @@ document.querySelectorAll('.remove-gallery-image').forEach(button => {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 2rem;
-    border-bottom: 2px solid #eee;
+    border-bottom: 2px solid var(--border-color);
     padding-bottom: 0.5rem;
+    overflow-x: auto;
 }
 
 .tab-btn {
     padding: 0.75rem 1.5rem;
     border: none;
     background: none;
-    color: #666;
+    color: var(--text-muted);
     font-weight: 600;
+    font-size: 0.875rem;
     cursor: pointer;
-    border-radius: 8px;
-    transition: all 0.3s ease;
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
 }
 
 .tab-btn:hover {
-    background: #f5f5f5;
+    background: var(--bg-hover);
+    color: var(--text-medium);
 }
 
 .tab-btn.active {
     background: var(--accent-blue);
     color: white;
+    box-shadow: var(--shadow-sm);
 }
 
 .tab-content {
     display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .tab-content.active {
     display: block;
+}
+
+.gallery-item {
+    transition: var(--transition);
+}
+
+.gallery-item:hover {
+    transform: scale(1.05);
+}
+
+.remove-gallery-image {
+    transition: var(--transition);
+}
+
+.remove-gallery-image:hover {
+    transform: scale(1.1);
 }
 </style>
 @endpush

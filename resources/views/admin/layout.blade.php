@@ -12,143 +12,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <link rel="stylesheet" href="{{ asset('assets/css/admin.css') }}">
-
-    <style>
-        /* User Dropdown Styles */
-        .user-dropdown {
-            position: relative;
-        }
-
-        .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            margin-top: 0.5rem;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-            min-width: 180px;
-            padding: 0.5rem 0;
-            display: none;
-            z-index: 1000;
-        }
-
-        .dropdown-menu.show {
-            display: block;
-        }
-
-        .dropdown-menu a {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            color: #4a5568;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-
-        .dropdown-menu a:hover {
-            background: #f7fafc;
-            color: #2d3748;
-        }
-
-        .dropdown-menu form button {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .dropdown-menu form button:hover {
-            background: #fff5f5;
-        }
-
-        /* Navigation Group Styles */
-        .nav-group {
-            margin-bottom: 0.25rem;
-        }
-
-        .nav-group-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.2s;
-            color: #4a5568;
-        }
-
-        .nav-group-header:hover {
-            background: #f7fafc;
-            color: #2d3748;
-        }
-
-        .nav-group-header i:first-child {
-            width: 20px;
-            text-align: center;
-        }
-
-        .nav-group-header span {
-            flex: 1;
-            font-weight: 500;
-        }
-
-        .toggle-icon {
-            font-size: 0.75rem;
-            transition: transform 0.3s ease;
-        }
-
-        .nav-group.open .toggle-icon {
-            transform: rotate(180deg);
-        }
-
-        .nav-group-items {
-            display: none;
-            padding-right: 1.5rem;
-            margin-top: 0.25rem;
-        }
-
-        .nav-group.open .nav-group-items {
-            display: block;
-        }
-
-        .nav-group-items li {
-            margin-bottom: 0.25rem;
-        }
-
-        .nav-group-items li a {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            color: #718096;
-            text-decoration: none;
-            transition: all 0.2s;
-            font-size: 0.9rem;
-        }
-
-        .nav-group-items li a:hover {
-            background: #f7fafc;
-            color: #2d3748;
-        }
-
-        .nav-group-items li a i {
-            width: 20px;
-            text-align: center;
-            font-size: 0.85rem;
-        }
-
-        .nav-group.active .nav-group-header {
-            background: var(--accent-blue);
-            color: white;
-        }
-
-        .nav-group.active .nav-group-items li a:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-    </style>
+    <script src="{{ asset('assets/js/admin.js') }}"></script>
+    <script src="{{ asset('assets/js/admin-dynamic.js') }}"></script>
 
     @stack('styles')
 </head>
@@ -177,7 +42,7 @@
                     
                     <!-- إدارة المحتوى -->
                     <li class="nav-group">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-cubes"></i>
                             <span>إدارة المحتوى</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -200,7 +65,7 @@
                     
                     <!-- المبيعات -->
                     <li class="nav-group {{ request()->routeIs('admin.sales.*', 'admin.quotes.*', 'admin.sales-orders.*', 'admin.payments.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-shopping-cart"></i>
                             <span>المبيعات</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -241,7 +106,7 @@
                     
                     <!-- المشتريات -->
                     <li class="nav-group {{ request()->routeIs('admin.purchases.*', 'admin.purchase-receipts.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-truck-loading"></i>
                             <span>المشتريات</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -276,7 +141,7 @@
                     
                     <!-- المخزون -->
                     <li class="nav-group {{ request()->routeIs('admin.inventory.*', 'admin.stock-alerts') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-warehouse"></i>
                             <span>المخزون</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -305,7 +170,7 @@
                     
                     <!-- الموارد البشرية -->
                     <li class="nav-group {{ request()->routeIs('admin.hr.*', 'admin.payrolls.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-users"></i>
                             <span>الموارد البشرية</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -346,7 +211,7 @@
                     
                     <!-- المحاسبة -->
                     <li class="nav-group {{ request()->routeIs('admin.accounting.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-calculator"></i>
                             <span>المحاسبة</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -381,7 +246,7 @@
                     
                     <!-- الإنتاج -->
                     <li class="nav-group {{ request()->routeIs('admin.production.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-industry"></i>
                             <span>الإنتاج</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -398,7 +263,7 @@
                     
                     <!-- إدارة العملاء -->
                     <li class="nav-group {{ request()->routeIs('admin.crm.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-user-friends"></i>
                             <span>إدارة العملاء</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -427,7 +292,7 @@
                     
                     <!-- التقارير -->
                     <li class="nav-group {{ request()->routeIs('admin.reports.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-chart-pie"></i>
                             <span>التقارير</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -468,7 +333,7 @@
                     
                     <!-- الأدوار والصلاحيات -->
                     <li class="nav-group {{ request()->routeIs('admin.roles.*', 'admin.permissions.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-shield-alt"></i>
                             <span>الأدوار والصلاحيات</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -491,7 +356,7 @@
                     
                     <!-- أدوات أخرى -->
                     <li class="nav-group {{ request()->routeIs('admin.pos', 'admin.inquiries.*', 'admin.visitors.*') ? 'open active' : '' }}">
-                        <div class="nav-group-header" onclick="this.parentElement.classList.toggle('open')">
+                        <div class="nav-group-header">
                             <i class="fas fa-tools"></i>
                             <span>أدوات أخرى</span>
                             <i class="fas fa-chevron-down toggle-icon"></i>
@@ -562,26 +427,26 @@
                             $unreadInquiries = \App\Models\Inquiry::where('status', 'new')->count();
                         @endphp
                         @if($unreadInquiries > 0)
-                            <span class="badge">{{ $unreadInquiries }}</span>
+                            <span class="badge badge-danger">{{ $unreadInquiries }}</span>
                         @endif
                     </a>
                     <div class="user-dropdown">
-                        <button class="user-btn" onclick="document.querySelector('.dropdown-menu').classList.toggle('show')">
+                        <button class="user-btn" type="button">
                             <i class="fas fa-user-circle"></i>
                             <span>{{ Auth::check() ? Auth::user()->name : 'المستخدم' }}</span>
                             <i class="fas fa-chevron-down"></i>
                         </button>
-                        <div class="dropdown-menu">
+                        <div class="dropdown-menu" style="display: none;">
                             <a href="{{ route('admin.profile.edit') }}">
                                 <i class="fas fa-user"></i> الملف الشخصي
                             </a>
                             <a href="{{ route('admin.settings.index') }}">
                                 <i class="fas fa-cog"></i> الإعدادات
                             </a>
-                            <div style="border-top: 1px solid #e2e8f0; margin: 0.5rem 0;"></div>
-                            <form method="POST" action="{{ route('logout') }}" style="margin: 0;">
+                            <div class="divider"></div>
+                            <form method="POST" action="{{ route('logout') }}" class="logout-form">
                                 @csrf
-                                <button type="submit" style="background: none; border: none; width: 100%; text-align: right; padding: 0.5rem 1rem; cursor: pointer; color: #e53e3e;">
+                                <button type="submit">
                                     <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
                                 </button>
                             </form>
@@ -596,6 +461,9 @@
                     <div class="alert alert-success">
                         <i class="fas fa-check-circle"></i>
                         {{ session('success') }}
+                        <button type="button" class="alert-close" onclick="this.parentElement.remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
                 @endif
 
@@ -603,6 +471,9 @@
                     <div class="alert alert-error">
                         <i class="fas fa-exclamation-circle"></i>
                         {{ session('error') }}
+                        <button type="button" class="alert-close" onclick="this.parentElement.remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
                 @endif
 
