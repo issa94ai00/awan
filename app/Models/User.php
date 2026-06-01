@@ -24,6 +24,7 @@ class User extends Authenticatable
         'password',
         'phone',
         'is_admin',
+        'role_id',
     ];
 
     /**
@@ -50,9 +51,42 @@ class User extends Authenticatable
         ];
     }
 
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class, 'role_user');
+    }
+
+    public function permissions()
+    {
+        return $this->role ? $this->role->permissions : collect();
+    }
+
+    public function hasPermission(string $permissionName): bool
+    {
+        if ($this->is_admin) {
+            return true;
+        }
+
+        return $this->role && $this->role->hasPermission($permissionName);
+    }
+
+    public function hasRole(string $roleName): bool
+    {
+        if ($this->is_admin) {
+            return true;
+        }
+
+        return $this->role && $this->role->name === $roleName;
+    }
+
     public function isAdmin(): bool
     {
-        return $this->is_admin;
+        return $this->is_admin || ($this->role && $this->role->name === 'admin');
     }
 
     public function inquiries(): \Illuminate\Database\Eloquent\Relations\HasMany

@@ -11,6 +11,8 @@ use App\Http\Controllers\Admin\SalesOrderController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PurchaseReceiptController;
 use App\Http\Controllers\Admin\PayrollController;
+use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\PermissionController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
@@ -203,6 +205,26 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
 
     // Stock Alerts
     Route::get('/stock-alerts', [AdminController::class, 'stockAlerts'])->name('admin.stock-alerts');
+
+    // Roles & Permissions
+    Route::prefix('roles')->middleware(['permission:roles.view'])->group(function () {
+        Route::get('/', [RoleController::class, 'index'])->name('admin.roles.index');
+        Route::get('/create', [RoleController::class, 'create'])->name('admin.roles.create')->middleware('permission:roles.create');
+        Route::post('/', [RoleController::class, 'store'])->name('admin.roles.store')->middleware('permission:roles.create');
+        Route::get('/{role}', [RoleController::class, 'show'])->name('admin.roles.show');
+        Route::get('/{role}/edit', [RoleController::class, 'edit'])->name('admin.roles.edit')->middleware('permission:roles.edit');
+        Route::put('/{role}', [RoleController::class, 'update'])->name('admin.roles.update')->middleware('permission:roles.edit');
+        Route::delete('/{role}', [RoleController::class, 'destroy'])->name('admin.roles.destroy')->middleware('permission:roles.delete');
+    });
+
+    Route::prefix('permissions')->middleware(['permission:permissions.view'])->group(function () {
+        Route::get('/', [PermissionController::class, 'index'])->name('admin.permissions.index');
+        Route::get('/create', [PermissionController::class, 'create'])->name('admin.permissions.create')->middleware('permission:permissions.assign');
+        Route::post('/', [PermissionController::class, 'store'])->name('admin.permissions.store')->middleware('permission:permissions.assign');
+        Route::get('/{permission}/edit', [PermissionController::class, 'edit'])->name('admin.permissions.edit')->middleware('permission:permissions.assign');
+        Route::put('/{permission}', [PermissionController::class, 'update'])->name('admin.permissions.update')->middleware('permission:permissions.assign');
+        Route::delete('/{permission}', [PermissionController::class, 'destroy'])->name('admin.permissions.destroy')->middleware('permission:permissions.assign');
+    });
 });
 
 // Auth Routes (from Breeze)
