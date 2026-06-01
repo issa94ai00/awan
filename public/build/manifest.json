@@ -1,6 +1,25 @@
 {
+  "__plugin-vue_export-helper-DlAUqK2U.js": {
+    "file": "assets/_plugin-vue_export-helper-DlAUqK2U.js",
+    "name": "_plugin-vue_export-helper"
+  },
+  "_index-G3X2EtPn.js": {
+    "file": "assets/index-G3X2EtPn.js",
+    "name": "index",
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "_products-QGr6vohO.js": {
+    "file": "assets/products-QGr6vohO.js",
+    "name": "products",
+    "imports": [
+      "resources/js/app.js",
+      "_index-G3X2EtPn.js"
+    ]
+  },
   "resources/css/app.css": {
-    "file": "assets/app-sRNZhHRn.css",
+    "file": "assets/app-DlGe8JB-.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -9,9 +28,119 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-BjMeHjpC.js",
+    "file": "assets/app-BZ2TO0nd.js",
     "name": "app",
     "src": "resources/js/app.js",
-    "isEntry": true
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/layouts/AdminLayout.vue",
+      "resources/js/views/admin/Dashboard.vue",
+      "resources/js/views/admin/products/Index.vue",
+      "resources/js/views/admin/products/Form.vue",
+      "resources/js/views/admin/products/Form.vue",
+      "resources/js/views/admin/categories/Index.vue",
+      "resources/js/views/admin/categories/Form.vue",
+      "resources/js/views/admin/categories/Form.vue",
+      "resources/js/views/admin/Settings.vue"
+    ],
+    "css": [
+      "assets/app-kSfKEJkG.css"
+    ]
+  },
+  "resources/js/layouts/AdminLayout.vue": {
+    "file": "assets/AdminLayout-2AoOpadK.js",
+    "name": "AdminLayout",
+    "src": "resources/js/layouts/AdminLayout.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js",
+      "_index-G3X2EtPn.js"
+    ],
+    "css": [
+      "assets/AdminLayout-CLgSmtxI.css"
+    ]
+  },
+  "resources/js/views/admin/Dashboard.vue": {
+    "file": "assets/Dashboard-CS703ZRF.js",
+    "name": "Dashboard",
+    "src": "resources/js/views/admin/Dashboard.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js"
+    ],
+    "css": [
+      "assets/Dashboard-Nv6b9b4G.css"
+    ]
+  },
+  "resources/js/views/admin/Settings.vue": {
+    "file": "assets/Settings-C7uw2sg2.js",
+    "name": "Settings",
+    "src": "resources/js/views/admin/Settings.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js"
+    ],
+    "css": [
+      "assets/Settings-DdPqS5dg.css"
+    ]
+  },
+  "resources/js/views/admin/categories/Form.vue": {
+    "file": "assets/Form-9_78GD0M.js",
+    "name": "Form",
+    "src": "resources/js/views/admin/categories/Form.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js"
+    ],
+    "css": [
+      "assets/Form-Bd0e0KeH.css"
+    ]
+  },
+  "resources/js/views/admin/categories/Index.vue": {
+    "file": "assets/Index-BnDgMiGY.js",
+    "name": "Index",
+    "src": "resources/js/views/admin/categories/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js"
+    ],
+    "css": [
+      "assets/Index-BaqpTaDh.css"
+    ]
+  },
+  "resources/js/views/admin/products/Form.vue": {
+    "file": "assets/Form-BEbNCkTV.js",
+    "name": "Form",
+    "src": "resources/js/views/admin/products/Form.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_products-QGr6vohO.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js",
+      "_index-G3X2EtPn.js"
+    ],
+    "css": [
+      "assets/Form-BsbVHCPC.css"
+    ]
+  },
+  "resources/js/views/admin/products/Index.vue": {
+    "file": "assets/Index-DRxRWjh1.js",
+    "name": "Index",
+    "src": "resources/js/views/admin/products/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_products-QGr6vohO.js",
+      "__plugin-vue_export-helper-DlAUqK2U.js",
+      "_index-G3X2EtPn.js"
+    ],
+    "css": [
+      "assets/Index-DnYfOd_t.css"
+    ]
   }
 }

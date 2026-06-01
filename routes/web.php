@@ -56,9 +56,18 @@ Route::get('/product/{product}', [ProductController::class, 'show'])
 // Admin Routes
 Route::prefix('admin')->middleware(['admin'])->group(function () {
     Route::get('/', function () {
-        return redirect()->route('admin.dashboard');
+        return redirect()->route('admin.vue');
     });
-    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('admin.dashboard');
+    
+    // Vue SPA Route - Main admin entry point
+    Route::get('/vue', function () {
+        return view('vue');
+    })->name('admin.vue');
+    
+    // Redirect dashboard to Vue
+    Route::get('/dashboard', function () {
+        return redirect()->route('admin.vue');
+    })->name('admin.dashboard');
 
     // Categories
     Route::get('/categories', [AdminController::class, 'categoriesIndex'])->name('admin.categories.index');

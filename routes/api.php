@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\UploadController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -63,6 +64,19 @@ Route::prefix('v1')->group(function () {
     
     // Protected Routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {
+        
+        // File Upload
+        Route::post('/upload', [UploadController::class, 'upload'])->name('api.upload');
+        Route::delete('/upload', [UploadController::class, 'delete'])->name('api.upload.delete');
+        
+        // Admin Products API
+        Route::prefix('admin')->group(function () {
+            Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
+            Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.admin.products.show');
+            Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
+            Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
+            Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+        });
         
         // User Inquiries
         Route::get('/user/inquiries', [InquiryController::class, 'index'])->name('api.user.inquiries.index');

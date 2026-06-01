@@ -146,4 +146,90 @@ class ProductController extends Controller
             'data' => ProductResource::collection($related_products)
         ]);
     }
+
+    /**
+     * Store a new product (Admin)
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name_ar' => 'required|string|max:255',
+            'name_en' => 'required|string|max:255',
+            'slug' => 'required|string|max:255|unique:products,slug',
+            'category_id' => 'required|exists:categories,id',
+            'price' => 'required|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'required|string|max:3',
+            'stock_quantity' => 'required|integer|min:0',
+            'min_stock' => 'nullable|integer|min:0',
+            'weight' => 'nullable|numeric|min:0',
+            'description_ar' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'is_active' => 'boolean',
+            'is_featured' => 'boolean',
+            'image_main' => 'nullable|string',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string',
+            'seo_keywords' => 'nullable|string'
+        ]);
+
+        $product = Product::create($validated);
+        $product->load('category');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product created successfully',
+            'data' => new ProductResource($product)
+        ], 201);
+    }
+
+    /**
+     * Update a product (Admin)
+     */
+    public function update(Request $request, Product $product): JsonResponse
+    {
+        $validated = $request->validate([
+            'name_ar' => 'sometimes|required|string|max:255',
+            'name_en' => 'sometimes|required|string|max:255',
+            'slug' => 'sometimes|required|string|max:255|unique:products,slug,' . $product->id,
+            'category_id' => 'sometimes|required|exists:categories,id',
+            'price' => 'sometimes|required|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'sometimes|required|string|max:3',
+            'stock_quantity' => 'sometimes|required|integer|min:0',
+            'min_stock' => 'nullable|integer|min:0',
+            'weight' => 'nullable|numeric|min:0',
+            'description_ar' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'is_active' => 'boolean',
+            'is_featured' => 'boolean',
+            'image_main' => 'nullable|string',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string',
+            'seo_keywords' => 'nullable|string'
+        ]);
+
+        $product->update($validated);
+        $product->load('category');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product updated successfully',
+            'data' => new ProductResource($product)
+        ]);
+    }
+
+    /**
+     * Delete a product (Admin)
+     */
+    public function destroy(Product $product): JsonResponse
+    {
+        $product->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product deleted successfully',
+            'data' => null
+        ]);
+    }
 }
