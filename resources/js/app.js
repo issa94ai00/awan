@@ -6,6 +6,7 @@ import 'element-plus/dist/index.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 import router from './router';
 import App from './App.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -19,4 +20,8 @@ app.use(pinia);
 app.use(router);
 app.use(ElementPlus);
 
-app.mount('#app');
+// Initialize authentication (fetch user if token exists) before mounting
+const auth = useAuthStore();
+auth.init().finally(() => {
+    app.mount('#app');
+});

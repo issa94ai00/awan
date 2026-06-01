@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia';
 import { productsApi } from '@/api/products';
+import api from '@/api/index';
+import { useAuthStore } from '@/stores/auth';
+import router from '@/router';
 
 export const useProductsStore = defineStore('products', {
     state: () => ({
@@ -26,13 +29,33 @@ export const useProductsStore = defineStore('products', {
             this.loading = true;
             this.error = null;
             try {
-                const response = await productsApi.getAll(params);
-                this.products = response.data.data;
-                this.pagination = {
-                    current_page: response.data.current_page,
-                    per_page: response.data.per_page,
-                    total: response.data.total
-                };
+                const auth = useAuthStore();
+                const token = localStorage.getItem('token') || (auth.user ? '1' : null);
+                let response;
+
+                if (token) {
+                    response = await productsApi.getAll(params);
+                } else {
+                    // Fallback to public products endpoint to avoid 401
+                    response = await productsApi.getPublicAll(params);
+                }
+
+                this.products = response.data.data || response.data;
+
+                // Populate pagination only if present in response
+                if (response.data && response.data.current_page !== undefined) {
+                    this.pagination = {
+                        current_page: response.data.current_page,
+                        per_page: response.data.per_page,
+                        total: response.data.total
+                    };
+                } else {
+                    this.pagination = {
+                        current_page: 1,
+                        per_page: params.per_page || this.pagination.per_page,
+                        total: Array.isArray(this.products) ? this.products.length : 0
+                    };
+                }
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to fetch products';
                 console.error('Fetch products error:', error);
@@ -46,8 +69,17 @@ export const useProductsStore = defineStore('products', {
             this.loading = true;
             this.error = null;
             try {
-                const response = await productsApi.getById(id);
-                this.currentProduct = response.data.data;
+                const auth = useAuthStore();
+                const token = localStorage.getItem('token') || (auth.user ? '1' : null);
+                let response;
+
+                if (token) {
+                    response = await productsApi.getById(id);
+                } else {
+                    response = await productsApi.getPublicById(id);
+                }
+
+                this.currentProduct = response.data.data || response.data;
                 return response.data.data;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to fetch product';

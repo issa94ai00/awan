@@ -9,5 +9,8 @@
 </head>
 <body>
     <div id="app"></div>
+    <script>
+        console.log('Vue template loaded');
+    </script>
 </body>
 </html>

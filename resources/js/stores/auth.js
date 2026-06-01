@@ -1,86 +1,77 @@
 import { defineStore } from 'pinia';
-import api from '@/api';
+import { computed, ref } from 'vue';
+import * as authApi from '@/api/auth';
 
-export const useAuthStore = defineStore('auth', {
-    state: () => ({
-        user: null,
-        token: localStorage.getItem('token') || null,
-        loading: false,
-        error: null
-    }),
-    
-    getters: {
-        isAuthenticated: (state) => !!state.token,
-        userName: (state) => state.user?.name || 'المستخدم',
-        userEmail: (state) => state.user?.email || ''
-    },
-    
-    actions: {
-        async login(credentials) {
-            this.loading = true;
-            this.error = null;
-            try {
-                const response = await api.post('/auth/login', credentials);
-                this.token = response.data.data.token;
-                this.user = response.data.data.user;
-                localStorage.setItem('token', response.data.data.token);
-                return response.data;
-            } catch (error) {
-                this.error = error.response?.data?.message || 'Login failed';
-                throw error;
-            } finally {
-                this.loading = false;
-            }
-        },
-        
-        async logout() {
-            this.loading = true;
-            try {
-                await api.post('/auth/logout');
-            } catch (error) {
-                console.error('Logout error:', error);
-            } finally {
-                this.token = null;
-                this.user = null;
+export const useAuthStore = defineStore('auth', () => {
+    const user = ref(null);
+    const token = ref(localStorage.getItem('token'));
+    const loading = ref(false);
+    const error = ref(null);
+
+    const isAuthenticated = computed(() => !!token.value && !!user.value);
+
+    async function init() {
+        if (!token.value) return;
+        await fetchUser();
+    }
+
+    async function fetchUser() {
+        if (!token.value) {
+            user.value = null;
+            return null;
+        }
+
+        loading.value = true;
+        error.value = null;
+        try {
+            const res = await authApi.fetchUser();
+            user.value = res.data?.data?.user || res.data?.user || null;
+            if (!user.value) {
+                token.value = null;
                 localStorage.removeItem('token');
-                this.loading = false;
-                window.location.href = '/login';
             }
-        },
-        
-        async fetchUser() {
-            if (!this.token) return;
-            
-            this.loading = true;
-            try {
-                const response = await api.get('/auth/user');
-                this.user = response.data.data;
-            } catch (error) {
-                console.error('Fetch user error:', error);
-                // If unauthorized, clear token
-                if (error.response?.status === 401) {
-                    this.token = null;
-                    this.user = null;
-                    localStorage.removeItem('token');
-                }
-            } finally {
-                this.loading = false;
-            }
-        },
-        
-        async updateProfile(data) {
-            this.loading = true;
-            this.error = null;
-            try {
-                const response = await api.put('/auth/profile', data);
-                this.user = response.data.data;
-                return response.data;
-            } catch (error) {
-                this.error = error.response?.data?.message || 'Update failed';
-                throw error;
-            } finally {
-                this.loading = false;
-            }
+            return user.value;
+        } catch (err) {
+            token.value = null;
+            localStorage.removeItem('token');
+            user.value = null;
+            throw err;
+        } finally {
+            loading.value = false;
         }
     }
+
+    async function login(credentials) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const res = await authApi.login(credentials);
+            const receivedToken = res.data?.data?.token || res.data?.token || res.data?.access_token;
+            if (!receivedToken) throw new Error('No token received');
+            token.value = receivedToken;
+            localStorage.setItem('token', receivedToken);
+            await fetchUser();
+            return user.value;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    async function logout() {
+        loading.value = true;
+        try {
+            await authApi.logout();
+        } catch (e) {
+            console.error('Logout failed:', e);
+        } finally {
+            token.value = null;
+            localStorage.removeItem('token');
+            user.value = null;
+            loading.value = false;
+        }
+    }
+
+    return { user, token, loading, error, isAuthenticated, init, fetchUser, login, logout };
 });
+
+export default useAuthStore;

@@ -27,9 +27,8 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Handle unauthorized - clear token and redirect
+            // Handle unauthorized - clear token. Do not force a full-page redirect; let the app handle navigation.
             localStorage.removeItem('token');
-            window.location.href = '/login';
         }
         return Promise.reject(error);
     }

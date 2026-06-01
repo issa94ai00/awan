@@ -46,8 +46,14 @@ class CategoryController extends Controller
     /**
      * Get category details by slug
      */
-    public function show(Request $request, Category $category): JsonResponse
+    public function show(Request $request, $category): JsonResponse
     {
+        if (! $category instanceof Category) {
+            $category = Category::where('id', $category)
+                ->orWhere('slug', $category)
+                ->firstOrFail();
+        }
+
         abort_unless((int) ($category->is_active ?? 0) === 1, 404);
 
         $category->loadCount(['products as product_count' => function ($query) {
@@ -64,8 +70,14 @@ class CategoryController extends Controller
     /**
      * Get products for a specific category
      */
-    public function products(Request $request, Category $category): JsonResponse
+    public function products(Request $request, $category): JsonResponse
     {
+        if (! $category instanceof Category) {
+            $category = Category::where('id', $category)
+                ->orWhere('slug', $category)
+                ->firstOrFail();
+        }
+
         abort_unless((int) ($category->is_active ?? 0) === 1, 404);
 
         $perPage = (int) $request->get('per_page', 12);
@@ -134,8 +146,14 @@ class CategoryController extends Controller
     /**
      * Update a category (Admin)
      */
-    public function update(Request $request, Category $category): JsonResponse
+    public function update(Request $request, $category): JsonResponse
     {
+        if (! $category instanceof Category) {
+            $category = Category::where('id', $category)
+                ->orWhere('slug', $category)
+                ->firstOrFail();
+        }
+
         $validated = $request->validate([
             'name_ar' => 'sometimes|required|string|max:255',
             'name_en' => 'sometimes|required|string|max:255',
@@ -159,8 +177,14 @@ class CategoryController extends Controller
     /**
      * Delete a category (Admin)
      */
-    public function destroy(Category $category): JsonResponse
+    public function destroy($category): JsonResponse
     {
+        if (! $category instanceof Category) {
+            $category = Category::where('id', $category)
+                ->orWhere('slug', $category)
+                ->firstOrFail();
+        }
+
         $category->delete();
 
         return response()->json([

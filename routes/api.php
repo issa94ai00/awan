@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ProductionController;
@@ -16,6 +17,11 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\StockMovementController;
+use App\Http\Controllers\Api\LedgerAccountController;
+use App\Http\Controllers\Api\JournalEntryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -83,6 +89,34 @@ Route::prefix('v1')->group(function () {
             Route::post('/categories', [CategoryController::class, 'store'])->name('api.admin.categories.store');
             Route::put('/categories/{category}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
             Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
+
+            // Admin Suppliers and Purchase Orders
+            Route::get('/suppliers', [SupplierController::class, 'index'])->name('api.admin.suppliers.index');
+            Route::post('/suppliers', [SupplierController::class, 'store'])->name('api.admin.suppliers.store');
+            Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->name('api.admin.suppliers.show');
+            Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
+            Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
+
+            Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
+            Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
+            Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
+            Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->name('api.admin.purchase-orders.update');
+            Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->name('api.admin.purchase-orders.destroy');
+
+            // Admin Inventory Movements
+            Route::get('/inventory/movements', [StockMovementController::class, 'index'])->name('api.admin.inventory.movements.index');
+            Route::post('/inventory/movements', [StockMovementController::class, 'store'])->name('api.admin.inventory.movements.store');
+
+            // Admin Accounting
+            Route::get('/accounting/ledger-accounts', [LedgerAccountController::class, 'index'])->name('api.admin.accounting.ledger-accounts.index');
+            Route::post('/accounting/ledger-accounts', [LedgerAccountController::class, 'store'])->name('api.admin.accounting.ledger-accounts.store');
+            Route::get('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'show'])->name('api.admin.accounting.ledger-accounts.show');
+            Route::put('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'update'])->name('api.admin.accounting.ledger-accounts.update');
+            Route::delete('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'destroy'])->name('api.admin.accounting.ledger-accounts.destroy');
+
+            Route::get('/accounting/journal-entries', [JournalEntryController::class, 'index'])->name('api.admin.accounting.journal-entries.index');
+            Route::post('/accounting/journal-entries', [JournalEntryController::class, 'store'])->name('api.admin.accounting.journal-entries.store');
+            Route::get('/accounting/trial-balance', [JournalEntryController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
         });
         
         // User Inquiries
@@ -100,6 +134,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('api.invoices.update-status');
         Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('api.invoices.destroy');
         Route::get('/invoices/summary/stats', [InvoiceController::class, 'summary'])->name('api.invoices.summary');
+        Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->name('api.dashboard.stats');
 
         // POS / Flutter POS System
         Route::get('/pos/options', [PosController::class, 'options'])->name('api.pos.options');

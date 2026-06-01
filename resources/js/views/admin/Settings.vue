@@ -141,7 +141,7 @@ import { Plus } from '@element-plus/icons-vue';
 
 const activeTab = ref('general');
 const saving = ref(false);
-const uploadUrl = '/api/upload';
+const uploadUrl = '/api/v1/upload';
 
 const generalSettings = ref({
     site_name: 'أوان التكادوم',

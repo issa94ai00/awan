@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia';
 import { categoriesApi } from '@/api/categories';
+import api from '@/api';
+import { useAuthStore } from '@/stores/auth';
+import router from '@/router';
 
 export const useCategoriesStore = defineStore('categories', {
     state: () => ({
@@ -20,8 +23,18 @@ export const useCategoriesStore = defineStore('categories', {
             this.loading = true;
             this.error = null;
             try {
-                const response = await categoriesApi.getAll(params);
-                this.categories = response.data.data;
+                const auth = useAuthStore();
+                const token = localStorage.getItem('token') || (auth.user ? '1' : null);
+                let response;
+
+                // If user is authenticated use admin endpoint, otherwise use public categories
+                if (token) {
+                    response = await categoriesApi.getAll(params);
+                } else {
+                    response = await api.get('/categories', { params });
+                }
+
+                this.categories = response.data.data || response.data;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to fetch categories';
                 console.error('Fetch categories error:', error);

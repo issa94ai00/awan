@@ -37,17 +37,12 @@ class ProductController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'Products retrieved successfully',
-                    'data' => [
-                        'products' => [],
-                        'pagination' => [
-                            'current_page' => 1,
-                            'last_page' => 0,
-                            'per_page' => $perPage,
-                            'total' => 0,
-                            'has_more_pages' => false,
-                        ],
-                        'filters' => $request->only(['category_id','category_slug','featured','in_stock','search','min_price','max_price','sort_by','sort_order','per_page'])
-                    ]
+                    'data' => [],
+                    'current_page' => 1,
+                    'last_page' => 0,
+                    'per_page' => $perPage,
+                    'total' => 0,
+                    'has_more_pages' => false
                 ]);
             }
         }
@@ -94,25 +89,26 @@ class ProductController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Products retrieved successfully',
-            'data' => [
-                'products' => ProductResource::collection($products->items()),
-                'pagination' => [
-                    'current_page' => $products->currentPage(),
-                    'last_page' => $products->lastPage(),
-                    'per_page' => $products->perPage(),
-                    'total' => $products->total(),
-                    'has_more_pages' => $products->hasMorePages(),
-                ],
-                'filters' => array_merge($request->only(['category_id','category_slug','featured','in_stock','search','min_price','max_price','sort_by','sort_order']), ['per_page' => $perPage])
-            ]
+            'data' => ProductResource::collection($products->items()),
+            'current_page' => $products->currentPage(),
+            'last_page' => $products->lastPage(),
+            'per_page' => $products->perPage(),
+            'total' => $products->total(),
+            'has_more_pages' => $products->hasMorePages()
         ]);
     }
 
     /**
      * Get product details by slug
      */
-    public function show(Request $request, Product $product): JsonResponse
+    public function show(Request $request, $product): JsonResponse
     {
+        if (! $product instanceof Product) {
+            $product = Product::where('id', $product)
+                ->orWhere('slug', $product)
+                ->firstOrFail();
+        }
+
         abort_unless((int) ($product->is_active ?? 0) === 1, 404);
 
         $product->load('category');
@@ -127,8 +123,14 @@ class ProductController extends Controller
     /**
      * Get related products for a specific product
      */
-    public function related(Request $request, Product $product): JsonResponse
+    public function related(Request $request, $product): JsonResponse
     {
+        if (! $product instanceof Product) {
+            $product = Product::where('id', $product)
+                ->orWhere('slug', $product)
+                ->firstOrFail();
+        }
+
         abort_unless((int) ($product->is_active ?? 0) === 1, 404);
 
         $related_products = Product::query()
@@ -186,8 +188,14 @@ class ProductController extends Controller
     /**
      * Update a product (Admin)
      */
-    public function update(Request $request, Product $product): JsonResponse
+    public function update(Request $request, $product): JsonResponse
     {
+        if (! $product instanceof Product) {
+            $product = Product::where('id', $product)
+                ->orWhere('slug', $product)
+                ->firstOrFail();
+        }
+
         $validated = $request->validate([
             'name_ar' => 'sometimes|required|string|max:255',
             'name_en' => 'sometimes|required|string|max:255',
@@ -222,8 +230,14 @@ class ProductController extends Controller
     /**
      * Delete a product (Admin)
      */
-    public function destroy(Product $product): JsonResponse
+    public function destroy($product): JsonResponse
     {
+        if (! $product instanceof Product) {
+            $product = Product::where('id', $product)
+                ->orWhere('slug', $product)
+                ->firstOrFail();
+        }
+
         $product->delete();
 
         return response()->json([
