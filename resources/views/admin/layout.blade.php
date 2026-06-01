@@ -141,6 +141,12 @@
                             <span>المشتريات</span>
                         </a>
                     </li>
+                    <li class="{{ request()->routeIs('admin.production.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.production.index') }}">
+                            <i class="fas fa-industry"></i>
+                            <span>الإنتاج</span>
+                        </a>
+                    </li>
                     <li class="{{ request()->routeIs('admin.hr.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.hr.index') }}">
                             <i class="fas fa-users"></i>

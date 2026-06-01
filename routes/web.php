@@ -5,6 +5,12 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\ProductionController;
+use App\Http\Controllers\Admin\QuoteController;
+use App\Http\Controllers\Admin\SalesOrderController;
+use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\PurchaseReceiptController;
+use App\Http\Controllers\Admin\PayrollController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
@@ -101,12 +107,50 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\SalesController::class, 'index'])->name('admin.sales.index');
         Route::get('/invoices', [\App\Http\Controllers\Admin\SalesController::class, 'invoices'])->name('admin.sales.invoices');
         Route::get('/customers', [\App\Http\Controllers\Admin\SalesController::class, 'customers'])->name('admin.sales.customers');
+        
+        // Quotes (عروض أسعار)
+        Route::get('/quotes', [QuoteController::class, 'index'])->name('admin.quotes.index');
+        Route::get('/quotes/create', [QuoteController::class, 'create'])->name('admin.quotes.create');
+        Route::post('/quotes', [QuoteController::class, 'store'])->name('admin.quotes.store');
+        Route::get('/quotes/{quote}', [QuoteController::class, 'show'])->name('admin.quotes.show');
+        Route::get('/quotes/{quote}/edit', [QuoteController::class, 'edit'])->name('admin.quotes.edit');
+        Route::put('/quotes/{quote}', [QuoteController::class, 'update'])->name('admin.quotes.update');
+        Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])->name('admin.quotes.destroy');
+        Route::post('/quotes/{quote}/convert-to-sales-order', [QuoteController::class, 'convertToSalesOrder'])->name('admin.quotes.convert-to-sales-order');
+        
+        // Sales Orders (طلبات بيع)
+        Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('admin.sales-orders.index');
+        Route::get('/sales-orders/create', [SalesOrderController::class, 'create'])->name('admin.sales-orders.create');
+        Route::post('/sales-orders', [SalesOrderController::class, 'store'])->name('admin.sales-orders.store');
+        Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->name('admin.sales-orders.show');
+        Route::get('/sales-orders/{salesOrder}/edit', [SalesOrderController::class, 'edit'])->name('admin.sales-orders.edit');
+        Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->name('admin.sales-orders.update');
+        Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->name('admin.sales-orders.destroy');
+        Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->name('admin.sales-orders.convert-to-invoice');
+        
+        // Payments (مدفوعات)
+        Route::get('/payments', [PaymentController::class, 'index'])->name('admin.payments.index');
+        Route::get('/payments/create', [PaymentController::class, 'create'])->name('admin.payments.create');
+        Route::post('/payments', [PaymentController::class, 'store'])->name('admin.payments.store');
+        Route::get('/payments/{payment}', [PaymentController::class, 'show'])->name('admin.payments.show');
+        Route::get('/payments/{payment}/edit', [PaymentController::class, 'edit'])->name('admin.payments.edit');
+        Route::put('/payments/{payment}', [PaymentController::class, 'update'])->name('admin.payments.update');
+        Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])->name('admin.payments.destroy');
     });
 
     Route::prefix('purchases')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\PurchaseController::class, 'index'])->name('admin.purchases.index');
         Route::get('/suppliers', [\App\Http\Controllers\Admin\PurchaseController::class, 'suppliers'])->name('admin.purchases.suppliers');
         Route::get('/orders', [\App\Http\Controllers\Admin\PurchaseController::class, 'orders'])->name('admin.purchases.orders');
+        
+        // Purchase Receipts (إيصالات استلام)
+        Route::get('/receipts', [PurchaseReceiptController::class, 'index'])->name('admin.purchase-receipts.index');
+        Route::get('/receipts/create', [PurchaseReceiptController::class, 'create'])->name('admin.purchase-receipts.create');
+        Route::post('/receipts', [PurchaseReceiptController::class, 'store'])->name('admin.purchase-receipts.store');
+        Route::get('/receipts/{receipt}', [PurchaseReceiptController::class, 'show'])->name('admin.purchase-receipts.show');
+        Route::get('/receipts/{receipt}/edit', [PurchaseReceiptController::class, 'edit'])->name('admin.purchase-receipts.edit');
+        Route::put('/receipts/{receipt}', [PurchaseReceiptController::class, 'update'])->name('admin.purchase-receipts.update');
+        Route::delete('/receipts/{receipt}', [PurchaseReceiptController::class, 'destroy'])->name('admin.purchase-receipts.destroy');
     });
 
     Route::prefix('hr')->group(function () {
@@ -114,6 +158,16 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
         Route::get('/employees', [\App\Http\Controllers\Admin\HrController::class, 'employees'])->name('admin.hr.employees');
         Route::get('/attendance', [\App\Http\Controllers\Admin\HrController::class, 'attendance'])->name('admin.hr.attendance');
         Route::get('/leaves', [\App\Http\Controllers\Admin\HrController::class, 'leaveRequests'])->name('admin.hr.leaves');
+        
+        // Payrolls (رواتب)
+        Route::get('/payrolls', [PayrollController::class, 'index'])->name('admin.payrolls.index');
+        Route::get('/payrolls/create', [PayrollController::class, 'create'])->name('admin.payrolls.create');
+        Route::post('/payrolls', [PayrollController::class, 'store'])->name('admin.payrolls.store');
+        Route::get('/payrolls/{payroll}', [PayrollController::class, 'show'])->name('admin.payrolls.show');
+        Route::get('/payrolls/{payroll}/edit', [PayrollController::class, 'edit'])->name('admin.payrolls.edit');
+        Route::put('/payrolls/{payroll}', [PayrollController::class, 'update'])->name('admin.payrolls.update');
+        Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroy'])->name('admin.payrolls.destroy');
+        Route::post('/payrolls/auto-generate', [PayrollController::class, 'autoGenerate'])->name('admin.payrolls.auto-generate');
     });
 
     Route::prefix('crm')->group(function () {
@@ -124,12 +178,31 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
 
     Route::prefix('reports')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\ReportsController::class, 'index'])->name('admin.reports.index');
+        Route::get('/sales', [\App\Http\Controllers\Admin\ReportsController::class, 'salesReport'])->name('admin.reports.sales');
+        Route::get('/inventory', [\App\Http\Controllers\Admin\ReportsController::class, 'inventoryReport'])->name('admin.reports.inventory');
+        Route::get('/financial', [\App\Http\Controllers\Admin\ReportsController::class, 'financialReport'])->name('admin.reports.financial');
+        Route::get('/payroll', [\App\Http\Controllers\Admin\ReportsController::class, 'payrollReport'])->name('admin.reports.payroll');
         Route::get('/export', [\App\Http\Controllers\Admin\ReportsController::class, 'export'])->name('admin.reports.export');
+    });
+
+    // Production
+    Route::prefix('production')->group(function () {
+        Route::get('/', [ProductionController::class, 'index'])->name('admin.production.index');
+        Route::get('/create', [ProductionController::class, 'create'])->name('admin.production.create');
+        Route::post('/', [ProductionController::class, 'store'])->name('admin.production.store');
+        Route::get('/{productionOrder}', [ProductionController::class, 'show'])->name('admin.production.show');
+        Route::get('/{productionOrder}/edit', [ProductionController::class, 'edit'])->name('admin.production.edit');
+        Route::put('/{productionOrder}', [ProductionController::class, 'update'])->name('admin.production.update');
+        Route::delete('/{productionOrder}', [ProductionController::class, 'destroy'])->name('admin.production.destroy');
+        Route::put('/{productionOrder}/status', [ProductionController::class, 'updateStatus'])->name('admin.production.update-status');
     });
 
     // Profile
     Route::get('/profile', [AdminController::class, 'profileEdit'])->name('admin.profile.edit');
     Route::put('/profile', [AdminController::class, 'profileUpdate'])->name('admin.profile.update');
+
+    // Stock Alerts
+    Route::get('/stock-alerts', [AdminController::class, 'stockAlerts'])->name('admin.stock-alerts');
 });
 
 // Auth Routes (from Breeze)

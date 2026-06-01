@@ -7,6 +7,15 @@ use App\Models\Product;
 use App\Models\Inquiry;
 use App\Models\Setting;
 use App\Models\SiteVisitor;
+use App\Models\Quote;
+use App\Models\SalesOrder;
+use App\Models\Payment;
+use App\Models\PurchaseReceipt;
+use App\Models\Payroll;
+use App\Models\Customer;
+use App\Models\Supplier;
+use App\Models\Invoice;
+use App\Models\Product as ProductModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -23,17 +32,69 @@ class AdminController extends Controller
     // Dashboard
     public function dashboard()
     {
+        // Basic KPIs
         $categoriesCount = Category::where('is_active', 1)->count();
         $productsCount = Product::where('is_active', 1)->count();
         $inquiriesCount = Inquiry::where('status', 'new')->count();
         $visitorsCount = SiteVisitor::whereDate('visit_date', today())->sum('visit_count');
 
+        // ERP KPIs
+        $quotesCount = Quote::count();
+        $quotesPending = Quote::where('status', Quote::STATUS_DRAFT)->count();
+        $salesOrdersCount = SalesOrder::count();
+        $salesOrdersPending = SalesOrder::where('status', SalesOrder::STATUS_PENDING)->count();
+        $invoicesCount = Invoice::count();
+        $invoicesPending = Invoice::where('status', Invoice::STATUS_PENDING)->count();
+        $paymentsCount = Payment::count();
+        $paymentsTotal = Payment::where('status', Payment::STATUS_COMPLETED)->sum('amount');
+        $customersCount = Customer::count();
+        $suppliersCount = Supplier::count();
+        $payrollsCount = Payroll::count();
+        $payrollsTotal = Payroll::where('status', Payroll::STATUS_PAID)->sum('net_salary');
+        
+        // Stock KPIs
+        $lowStockProducts = ProductModel::where('stock_quantity', '<=', 10)->where('is_active', true)->count();
+        $totalStockValue = ProductModel::where('is_active', true)->sum(\DB::raw('stock_quantity * price'));
+        
+        // Financial KPIs
+        $totalRevenue = Invoice::where('status', Invoice::STATUS_PAID)->sum('total');
+        $totalDue = Invoice::where('status', Invoice::STATUS_PENDING)->sum('due_amount');
+        $customerBalances = Customer::sum('balance');
+        $supplierBalances = Supplier::sum('balance');
+
+        // Recent Activity
         $latestProducts = Product::latest()->limit(5)->get();
         $latestInquiries = Inquiry::latest()->limit(5)->get();
+        $latestQuotes = Quote::latest()->limit(5)->get();
+        $latestSalesOrders = SalesOrder::latest()->limit(5)->get();
+        $latestPayments = Payment::latest()->limit(5)->get();
+
+        // Chart Data
+        $monthlySales = Invoice::selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, SUM(total) as total')
+            ->whereYear('created_at', now()->year)
+            ->groupBy('month')
+            ->orderBy('month')
+            ->get();
+
+        $salesByStatus = SalesOrder::selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->get();
+
+        $stockByCategory = ProductModel::selectRaw('category_id, SUM(stock_quantity) as total')
+            ->where('is_active', true)
+            ->with('category')
+            ->groupBy('category_id')
+            ->get();
 
         return view('admin.dashboard', compact(
             'categoriesCount', 'productsCount', 'inquiriesCount', 'visitorsCount',
-            'latestProducts', 'latestInquiries'
+            'quotesCount', 'quotesPending', 'salesOrdersCount', 'salesOrdersPending',
+            'invoicesCount', 'invoicesPending', 'paymentsCount', 'paymentsTotal',
+            'customersCount', 'suppliersCount', 'payrollsCount', 'payrollsTotal',
+            'lowStockProducts', 'totalStockValue', 'totalRevenue', 'totalDue',
+            'customerBalances', 'supplierBalances',
+            'latestProducts', 'latestInquiries', 'latestQuotes', 'latestSalesOrders', 'latestPayments',
+            'monthlySales', 'salesByStatus', 'stockByCategory'
         ));
     }
 
@@ -193,10 +254,10 @@ class AdminController extends Controller
             'price' => 'nullable|numeric|min:0',
             'brand' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
+            'stock_quantity' => 'nullable|integer|min:0',
             'image_main' => 'nullable|image|max:2048',
             'image_gallery.*' => 'nullable|image|max:2048',
             'is_active' => 'boolean',
-            'in_stock' => 'boolean',
             'is_featured' => 'boolean',
             'show_price' => 'boolean',
             'seo' => 'nullable|array',
@@ -209,7 +270,7 @@ class AdminController extends Controller
         }
 
         $validated['is_active'] = $request->boolean('is_active', true);
-        $validated['in_stock'] = $request->boolean('in_stock', true);
+        $validated['stock_quantity'] = $request->input('stock_quantity', 0);
         $validated['is_featured'] = $request->boolean('is_featured', false);
 
         // Handle SEO data - convert to JSON
@@ -257,10 +318,10 @@ class AdminController extends Controller
             'price' => 'nullable|numeric|min:0',
             'brand' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
+            'stock_quantity' => 'nullable|integer|min:0',
             'image_main' => 'nullable|image|max:2048',
             'image_gallery.*' => 'nullable|image|max:2048',
             'is_active' => 'boolean',
-            'in_stock' => 'boolean',
             'is_featured' => 'boolean',
             'show_price' => 'boolean',
             'seo' => 'nullable|array',
@@ -273,7 +334,7 @@ class AdminController extends Controller
         }
 
         $validated['is_active'] = $request->boolean('is_active', true);
-        $validated['in_stock'] = $request->boolean('in_stock', true);
+        $validated['stock_quantity'] = $request->input('stock_quantity', 0);
         $validated['is_featured'] = $request->boolean('is_featured', false);
 
         // Handle SEO data - convert to JSON
@@ -539,5 +600,33 @@ class AdminController extends Controller
         $user->save();
 
         return redirect()->route('admin.profile.edit')->with('success', 'تم تحديث الملف الشخصي بنجاح');
+    }
+
+    // Stock Alerts
+    public function stockAlerts()
+    {
+        $lowStockProducts = ProductModel::where('stock_quantity', '<=', 10)
+            ->where('is_active', true)
+            ->with('category')
+            ->orderBy('stock_quantity', 'asc')
+            ->get();
+
+        $outOfStockProducts = ProductModel::where('stock_quantity', '<=', 0)
+            ->where('is_active', true)
+            ->with('category')
+            ->get();
+
+        $criticalStockProducts = ProductModel::where('stock_quantity', '>', 0)
+            ->where('stock_quantity', '<=', 5)
+            ->where('is_active', true)
+            ->with('category')
+            ->orderBy('stock_quantity', 'asc')
+            ->get();
+
+        return view('admin.stock-alerts', compact(
+            'lowStockProducts',
+            'outOfStockProducts',
+            'criticalStockProducts'
+        ));
     }
 }

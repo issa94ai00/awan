@@ -13,6 +13,8 @@ class Invoice extends Model
 
     protected $fillable = [
         'invoice_number',
+        'customer_id',
+        'sales_order_id',
         'customer_name',
         'customer_email',
         'customer_phone',
@@ -20,6 +22,8 @@ class Invoice extends Model
         'tax',
         'discount',
         'total',
+        'paid_amount',
+        'due_amount',
         'payment_method',
         'status',
         'notes',
@@ -32,6 +36,8 @@ class Invoice extends Model
         'tax' => 'decimal:2',
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
+        'paid_amount' => 'decimal:2',
+        'due_amount' => 'decimal:2',
         'paid_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -106,6 +112,21 @@ class Invoice extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
     }
 
     public function generateInvoiceNumber(): string
