@@ -90,14 +90,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useCategoriesStore } from '@/stores/categories';
 import { Plus } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const route = useRoute();
+const categoriesStore = useCategoriesStore();
 
 const formRef = ref(null);
 const submitting = ref(false);
-const uploadUrl = '/api/upload';
+const uploadUrl = '/api/v1/upload';
 
 const form = ref({
     name_ar: '',
@@ -117,6 +119,7 @@ const rules = {
 };
 
 const isEdit = computed(() => !!route.params.id);
+const loading = computed(() => categoriesStore.loading);
 
 const generateSlug = () => {
     if (form.value.name_en) {
@@ -143,7 +146,7 @@ const beforeUpload = (file) => {
 };
 
 const handleImageSuccess = (response) => {
-    form.value.image = response.url;
+    form.value.image = response.data.url;
     ElMessage.success('تم رفع الصورة بنجاح');
 };
 
@@ -152,13 +155,17 @@ const submitForm = async () => {
         await formRef.value.validate();
         submitting.value = true;
 
-        // Submit to API
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        ElMessage.success(isEdit.value ? 'تم تحديث الفئة بنجاح' : 'تم إضافة الفئة بنجاح');
+        if (isEdit.value) {
+            await categoriesStore.updateCategory(route.params.id, form.value);
+            ElMessage.success('تم تحديث الفئة بنجاح');
+        } else {
+            await categoriesStore.createCategory(form.value);
+            ElMessage.success('تم إضافة الفئة بنجاح');
+        }
+        
         router.push('/admin/categories');
     } catch (error) {
-        ElMessage.error('يرجى التحقق من البيانات');
+        ElMessage.error(categoriesStore.error || 'يرجى التحقق من البيانات');
     } finally {
         submitting.value = false;
     }
@@ -168,17 +175,16 @@ const goBack = () => {
     router.push('/admin/categories');
 };
 
-onMounted(() => {
+onMounted(async () => {
     if (isEdit.value) {
-        // Fetch category data
-        form.value = {
-            ...form.value,
-            name_ar: 'إلكترونيات',
-            name_en: 'Electronics',
-            slug: 'electronics',
-            description_ar: 'الأجهزة الإلكترونية',
-            description_en: 'Electronic devices'
-        };
+        try {
+            await categoriesStore.fetchCategory(route.params.id);
+            if (categoriesStore.currentCategory) {
+                form.value = { ...form.value, ...categoriesStore.currentCategory };
+            }
+        } catch (error) {
+            ElMessage.error('فشل في جلب بيانات الفئة');
+        }
     }
 });
 </script>

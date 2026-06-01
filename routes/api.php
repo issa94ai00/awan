@@ -76,6 +76,13 @@ Route::prefix('v1')->group(function () {
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
             Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+            
+            // Admin Categories API
+            Route::get('/categories', [CategoryController::class, 'index'])->name('api.admin.categories.index');
+            Route::get('/categories/{category}', [CategoryController::class, 'show'])->name('api.admin.categories.show');
+            Route::post('/categories', [CategoryController::class, 'store'])->name('api.admin.categories.store');
+            Route::put('/categories/{category}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
+            Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
         });
         
         // User Inquiries

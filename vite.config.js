@@ -15,4 +15,16 @@ export default defineConfig({
             '@': '/resources/js',
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'vue-vendor': ['vue', 'vue-router', 'pinia'],
+                    'element-plus': ['element-plus', '@element-plus/icons-vue'],
+                    'axios': ['axios']
+                }
+            }
+        },
+        chunkSizeWarningLimit: 1000
+    }
 });

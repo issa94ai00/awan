@@ -47,25 +47,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useCategoriesStore } from '@/stores/categories';
 import { Plus, Edit, Delete } from '@element-plus/icons-vue';
 
 const router = useRouter();
-const loading = ref(false);
-const categories = ref([
-    { id: 1, name_ar: 'إلكترونيات', name_en: 'Electronics', slug: 'electronics', products_count: 45, is_active: true },
-    { id: 2, name_ar: 'ملابس', name_en: 'Clothing', slug: 'clothing', products_count: 32, is_active: true },
-    { id: 3, name_ar: 'أثاث', name_en: 'Furniture', slug: 'furniture', products_count: 18, is_active: false }
-]);
+const categoriesStore = useCategoriesStore();
+const loading = computed(() => categoriesStore.loading);
+const categories = computed(() => categoriesStore.categories);
 
 const fetchCategories = async () => {
-    loading.value = true;
-    // Fetch from API
-    setTimeout(() => {
-        loading.value = false;
-    }, 500);
+    try {
+        await categoriesStore.fetchCategories();
+    } catch (error) {
+        ElMessage.error('فشل في جلب الفئات');
+    }
 };
 
 const goToCreate = () => {
@@ -88,17 +86,24 @@ const deleteCategory = async (category) => {
             }
         );
         
-        // Delete from API
+        await categoriesStore.deleteCategory(category.id);
         ElMessage.success('تم حذف الفئة بنجاح');
         fetchCategories();
-    } catch {
-        // User cancelled
+    } catch (error) {
+        if (error !== 'cancel') {
+            ElMessage.error('فشل في حذف الفئة');
+        }
     }
 };
 
 const toggleStatus = async (category) => {
-    // Update status via API
-    ElMessage.success('تم تحديث الحالة بنجاح');
+    try {
+        await categoriesStore.updateCategory(category.id, { is_active: category.is_active });
+        ElMessage.success('تم تحديث الحالة بنجاح');
+    } catch (error) {
+        ElMessage.error('فشل في تحديث الحالة');
+        category.is_active = !category.is_active;
+    }
 };
 
 onMounted(() => {

@@ -105,4 +105,68 @@ class CategoryController extends Controller
             ]
         ]);
     }
+
+    /**
+     * Store a new category (Admin)
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name_ar' => 'required|string|max:255',
+            'name_en' => 'required|string|max:255',
+            'slug' => 'required|string|max:255|unique:categories,slug',
+            'description_ar' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'image' => 'nullable|string',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer|min:0'
+        ]);
+
+        $category = Category::create($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category created successfully',
+            'data' => new CategoryResource($category)
+        ], 201);
+    }
+
+    /**
+     * Update a category (Admin)
+     */
+    public function update(Request $request, Category $category): JsonResponse
+    {
+        $validated = $request->validate([
+            'name_ar' => 'sometimes|required|string|max:255',
+            'name_en' => 'sometimes|required|string|max:255',
+            'slug' => 'sometimes|required|string|max:255|unique:categories,slug,' . $category->id,
+            'description_ar' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'image' => 'nullable|string',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer|min:0'
+        ]);
+
+        $category->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category updated successfully',
+            'data' => new CategoryResource($category)
+        ]);
+    }
+
+    /**
+     * Delete a category (Admin)
+     */
+    public function destroy(Category $category): JsonResponse
+    {
+        $category->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category deleted successfully',
+            'data' => null
+        ]);
+    }
 }
