@@ -53,17 +53,17 @@
                 <el-table-column label="صورة" width="85">
                     <template #default="{ row }">
                         <el-image
-                            :src="row.image || '/placeholder.jpg'"
-                            :preview-src-list="[row.image]"
+                            :src="row.image_main || '/placeholder.jpg'"
+                            :preview-src-list="[row.image_main]"
                             fit="cover"
                             style="width: 75px; height: 75px; border-radius: 8px;"
                         />
                     </template>
                 </el-table-column>
-                <el-table-column prop="name" label="المنتج" />
-                <el-table-column prop="category" label="الفئة">
+                <el-table-column prop="name_ar" label="المنتج" />
+                <el-table-column label="الفئة">
                     <template #default="{ row }">
-                        <el-tag type="info">{{ row.category }}</el-tag>
+                        <el-tag type="info">{{ row.category?.name_ar || 'بدون فئة' }}</el-tag>
                     </template>
                 </el-table-column>
                 <el-table-column prop="price" label="السعر" width="100">
@@ -71,23 +71,23 @@
                         <span class="price-tag">{{ row.price }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="stock" label="المخزون" width="80">
+                <el-table-column prop="stock_quantity" label="المخزون" width="100">
                     <template #default="{ row }">
-                        <el-tag :type="getStockType(row.stock)">
-                            {{ row.stock }}
+                        <el-tag :type="getStockType(row.stock_quantity)">
+                            {{ row.stock_quantity }}
                         </el-tag>
                     </template>
                 </el-table-column>
-                <el-table-column prop="status" label="الحالة" width="80">
+                <el-table-column label="الحالة" width="100">
                     <template #default="{ row }">
-                        <el-tag :type="row.status === 'active' ? 'success' : 'danger'">
-                            {{ row.status === 'active' ? 'نشط' : 'غير نشط' }}
+                        <el-tag :type="row.is_active ? 'success' : 'danger'">
+                            {{ row.is_active ? 'نشط' : 'غير نشط' }}
                         </el-tag>
                     </template>
                 </el-table-column>
                 <el-table-column label="مميز" width="80">
                     <template #default="{ row }">
-                        <el-icon v-if="row.featured" color="#f6ad55" :size="20">
+                        <el-icon v-if="row.is_featured" color="#f6ad55" :size="20">
                             <Star />
                         </el-icon>
                     </template>
@@ -146,9 +146,12 @@ const categories = ref([
 
 const filteredProducts = computed(() => {
     return products.value.filter(product => {
-        const matchSearch = product.name.toLowerCase().includes(searchQuery.value.toLowerCase());
-        const matchCategory = !selectedCategory.value || product.category === categories.value.find(c => c.id === selectedCategory.value)?.name;
-        const matchStatus = !selectedStatus.value || product.status === selectedStatus.value;
+        const name = product.name_ar || product.name_en || '';
+        const matchSearch = name.toLowerCase().includes(searchQuery.value.toLowerCase());
+        const categoryName = product.category?.name_ar || product.category?.name_en || '';
+        const matchCategory = !selectedCategory.value || categoryName === categories.value.find(c => c.id === selectedCategory.value)?.name;
+        const statusValue = product.is_active ? 'active' : 'inactive';
+        const matchStatus = !selectedStatus.value || statusValue === selectedStatus.value;
         return matchSearch && matchCategory && matchStatus;
     });
 });
@@ -175,11 +178,11 @@ const goToCreate = () => {
 };
 
 const viewProduct = (product) => {
-    router.push(`/admin/products/${product.id}`);
+    router.push({ name: 'admin.products.show', params: { id: product.id } });
 };
 
 const editProduct = (product) => {
-    router.push(`/admin/products/${product.id}/edit`);
+    router.push({ name: 'admin.products.edit', params: { id: product.id } });
 };
 
 const deleteProduct = async (product) => {

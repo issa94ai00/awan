@@ -309,7 +309,16 @@ onMounted(async () => {
         try {
             await productsStore.fetchProduct(route.params.id);
             if (productsStore.currentProduct) {
-                form.value = { ...form.value, ...productsStore.currentProduct };
+                const productData = productsStore.currentProduct;
+                form.value = {
+                    ...form.value,
+                    ...productData,
+                    category_id: productData.category?.id || productData.category_id,
+                    seo_title: productData.seo?.title || productData.seo_title || '',
+                    seo_description: productData.seo?.description || productData.seo_description || '',
+                    seo_keywords: productData.seo?.keywords || productData.seo_keywords || ''
+                };
+                galleryImages.value = productData.image_gallery || [];
             }
         } catch (error) {
             ElMessage.error('فشل في جلب بيانات المنتج');
