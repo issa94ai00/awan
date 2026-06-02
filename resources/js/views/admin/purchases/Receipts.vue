@@ -1,28 +1,70 @@
 <template>
-    <div class="purchases-receipts">
-        <el-card shadow="hover">
+    <div class="purchases-page purchases-receipts">
+        <div class="page-header">
+            <div class="page-title">
+                <h1>إيصالات الاستلام</h1>
+                <p>عرض إيصالات الاستلام بوضوح مع بحث مباشر ومعلومات حالة سريعة.</p>
+            </div>
+            <el-input v-model="searchQuery" placeholder="ابحث برقم الإيصال أو اسم المورد" clearable class="search-input" />
+        </div>
+
+        <el-row :gutter="16" class="overview-cards">
+            <el-col :xs="24" :sm="12" :md="8">
+                <el-card shadow="hover" class="summary-card">
+                    <p>إجمالي الإيصالات</p>
+                    <h3>{{ store.receipts.length }}</h3>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+                <el-card shadow="hover" class="summary-card">
+                    <p>آخر الإيصالات</p>
+                    <h3>{{ recentCount }}</h3>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-card shadow="hover" class="table-panel">
             <template #header>
-                <span>إيصالات الاستلام</span>
+                <div class="card-header">
+                    <span>قائمة الإيصالات</span>
+                </div>
             </template>
-            <div v-if="store.loading" style="padding:1rem">جاري التحميل...</div>
+
+            <div v-if="store.loading" class="loading-state">جاري التحميل...</div>
             <div v-else>
-                <el-table v-if="store.receipts.length" :data="store.receipts" style="width:100%">
+                <el-table v-if="filteredReceipts.length" :data="filteredReceipts" style="width:100%" stripe highlight-current-row>
                     <el-table-column prop="receipt_number" label="#" width="140" />
                     <el-table-column prop="supplier.name" label="المورد" />
                     <el-table-column prop="receipt_date" label="التاريخ" width="160" />
                     <el-table-column prop="notes" label="ملاحظات" />
                 </el-table>
-                <div v-if="!store.receipts.length" style="padding:1rem">لا توجد إيصالات للاستلام لعرضها.</div>
+                <div v-if="!filteredReceipts.length" class="empty-state">لا توجد إيصالات تطابق البحث.</div>
             </div>
         </el-card>
     </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 
 const store = usePurchaseReceiptsStore();
+const searchQuery = ref('');
+
+const filteredReceipts = computed(() => {
+    if (!searchQuery.value.trim()) return store.receipts;
+    const query = searchQuery.value.toLowerCase();
+    return store.receipts.filter((receipt) => {
+        return [
+            receipt.receipt_number,
+            receipt.supplier?.name,
+            receipt.receipt_date,
+            receipt.notes
+        ].some((field) => String(field || '').toLowerCase().includes(query));
+    });
+});
+
+const recentCount = computed(() => Math.min(store.receipts.length, 5));
 
 onMounted(() => {
     store.fetchReceipts().catch(() => {});
@@ -30,7 +72,74 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.purchases-receipts {
+.purchases-page {
     padding: 0;
+}
+
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.page-title h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1f2d3d;
+}
+
+.page-title p {
+    margin: 0.35rem 0 0;
+    color: #5f6d85;
+}
+
+.search-input {
+    width: min(100%, 320px);
+}
+
+.overview-cards {
+    margin-bottom: 1.5rem;
+}
+
+.summary-card {
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 1rem;
+}
+
+.summary-card p {
+    margin: 0;
+    color: #6b7c98;
+    font-size: 0.95rem;
+}
+
+.summary-card h3 {
+    margin: 0;
+    font-size: 2rem;
+    color: #253358;
+}
+
+.table-panel {
+    border-radius: 1rem;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.loading-state,
+.empty-state {
+    padding: 1.25rem;
+    text-align: center;
+    color: #6b7c98;
 }
 </style>
