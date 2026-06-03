@@ -1,12 +1,22 @@
 <template>
-    <div class="dashboard">
+    <div class="dashboard" v-loading="loading">
+        <el-alert
+            v-if="error"
+            :title="error"
+            type="error"
+            show-icon
+            closable
+            class="dashboard-alert"
+        >
+        </el-alert>
+
         <el-row :gutter="20">
             <el-col :xs="24" :sm="12" :md="6" v-for="stat in stats" :key="stat.title">
                 <el-card class="stat-card" shadow="hover">
                     <div class="stat-content">
                         <div class="stat-icon" :style="{ background: stat.color }">
                             <el-icon :size="28" color="white">
-                                <component :is="stat.icon" />
+                                <component :is="stat.icon"></component>
                             </el-icon>
                         </div>
                         <div class="stat-info">
@@ -28,12 +38,69 @@
                         <div class="stat-content">
                             <div class="stat-icon" :style="{ background: item.color }">
                                 <el-icon :size="24" color="white">
-                                    <component :is="item.icon" />
+                                    <component :is="item.icon"></component>
                                 </el-icon>
                             </div>
                             <div class="stat-info">
                                 <h4>{{ item.value }}</h4>
                                 <p>{{ item.title }}</p>
+                            </div>
+                        </div>
+                    </el-card>
+                </el-col>
+            </el-row>
+        </div>
+
+        <div class="section mt-4 dashboard-overview">
+            <div class="section-header">
+                <h2>حالة المعاملات</h2>
+            </div>
+            <el-row :gutter="20">
+                <el-col :xs="24" :lg="16">
+                    <el-card shadow="hover" class="revenue-card">
+                        <template #header>
+                            <div class="status-header">
+                                <span>نظرة على الإيرادات</span>
+                                <span class="small-text">آخر تحديث تلقائيًا</span>
+                            </div>
+                        </template>
+                        <div class="revenue-summary">
+                            <div class="revenue-value">
+                                <span>الإيرادات الكلية</span>
+                                <strong>{{ stats[3].value }}</strong>
+                            </div>
+                            <div class="revenue-metrics">
+                                <div class="metric-item" v-for="metric in revenueMetrics" :key="metric.label">
+                                    <span>{{ metric.label }}</span>
+                                    <strong>{{ metric.value }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="progress-group">
+                            <div v-for="metric in revenueMetrics" :key="metric.label" class="progress-bar-row">
+                                <div class="progress-label">
+                                    <span>{{ metric.label }}</span>
+                                    <strong>{{ metric.percent }}%</strong>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill" :style="{ width: metric.percent + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </el-card>
+                </el-col>
+
+                <el-col :xs="24" :lg="8">
+                    <el-card class="stats-grid-card" shadow="hover">
+                        <template #header>
+                            <div class="status-header">
+                                <span>ملخص سريع</span>
+                            </div>
+                        </template>
+                        <div class="quick-stats">
+                            <div class="quick-stat" v-for="item in detailStats.slice(0, 4)" :key="item.title">
+                                <span>{{ item.title }}</span>
+                                <strong>{{ item.value }}</strong>
                             </div>
                         </div>
                     </el-card>
@@ -55,7 +122,10 @@
                         </template>
                         <div class="status-list">
                             <div v-for="item in group.items" :key="item.label" class="status-item">
-                                <span>{{ item.label }}</span>
+                                <div>
+                                    <span>{{ item.label }}</span>
+                                    <div class="status-description">{{ item.description }}</div>
+                                </div>
                                 <strong>{{ formatCount(item.value) }}</strong>
                             </div>
                         </div>
@@ -73,9 +143,9 @@
                         </div>
                     </template>
                     <el-table :data="recentSales" style="width: 100%" :stripe="true">
-                        <el-table-column prop="id" label="رقم الفاتورة" width="120" />
-                        <el-table-column prop="customer" label="العميل" />
-                        <el-table-column prop="amount" label="المبلغ" />
+                        <el-table-column prop="id" label="رقم الفاتورة" width="120"></el-table-column>
+                        <el-table-column prop="customer" label="العميل"></el-table-column>
+                        <el-table-column prop="amount" label="المبلغ"></el-table-column>
                         <el-table-column prop="status" label="الحالة">
                             <template #default="{ row }">
                                 <el-tag :type="getStatusType(row.status)">
@@ -94,7 +164,7 @@
                     </template>
                     <div class="top-products">
                         <div v-for="product in topProducts" :key="product.id" class="product-item">
-                            <el-avatar :size="40" :src="product.image" />
+                            <el-avatar :size="40" :src="product.image"></el-avatar>
                             <div class="product-info">
                                 <h4>{{ product.name }}</h4>
                                 <span>{{ product.sales }} وحدة</span>
@@ -124,6 +194,11 @@ const stats = ref([
 
 const detailStats = ref([]);
 const statusGroups = ref([]);
+const revenueMetrics = ref([
+    { label: 'اليوم', value: '0 ر.س', percent: 0 },
+    { label: 'هذا الأسبوع', value: '0 ر.س', percent: 0 },
+    { label: 'هذا الشهر', value: '0 ر.س', percent: 0 }
+]);
 const recentSales = ref([]);
 const topProducts = ref([]);
 const loading = ref(false);
@@ -157,6 +232,13 @@ const formatAmount = (value) => {
     }).format(value);
 };
 
+const getPercent = (value, total) => {
+    if (!total || !value) {
+        return 0;
+    }
+    return Math.min(100, Math.round((Number(value) / Number(total)) * 100));
+};
+
 const formatCount = (value) => {
     return (value ?? 0).toLocaleString('ar-EG');
 };
@@ -185,29 +267,36 @@ const loadDashboard = async () => {
             { title: 'الاستفسارات', value: formatCount(overview.inquiries?.total), icon: Box, color: '#e6a23c' }
         ];
 
+        const totalRevenue = overview.invoices?.revenue?.total || 0;
+        revenueMetrics.value = [
+            { label: 'اليوم', value: formatAmount(overview.invoices?.revenue?.today ?? 0), percent: getPercent(overview.invoices?.revenue?.today, totalRevenue) },
+            { label: 'هذا الأسبوع', value: formatAmount(overview.invoices?.revenue?.week ?? 0), percent: getPercent(overview.invoices?.revenue?.week, totalRevenue) },
+            { label: 'هذا الشهر', value: formatAmount(overview.invoices?.revenue?.month ?? 0), percent: getPercent(overview.invoices?.revenue?.month, totalRevenue) }
+        ];
+
         statusGroups.value = [
             {
                 title: 'حالة الفواتير',
                 items: [
-                    { label: 'مدفوعة', value: overview.invoices?.paid },
-                    { label: 'معلقة', value: overview.invoices?.pending },
-                    { label: 'ملغاة', value: overview.invoices?.cancelled }
+                    { label: 'مدفوعة', value: overview.invoices?.paid, description: 'الفواتير المكتملة بنجاح' },
+                    { label: 'معلقة', value: overview.invoices?.pending, description: 'الفواتير التي تحتاج متابعة' },
+                    { label: 'ملغاة', value: overview.invoices?.cancelled, description: 'الفواتير الملغاة أو المسترجعة' }
                 ]
             },
             {
                 title: 'حالة المدفوعات',
                 items: [
-                    { label: 'مكتملة', value: overview.payments?.completed },
-                    { label: 'معلقة', value: overview.payments?.pending },
-                    { label: 'مستردة', value: overview.payments?.refunded }
+                    { label: 'مكتملة', value: overview.payments?.completed, description: 'الدفع المكتمل من العملاء' },
+                    { label: 'معلقة', value: overview.payments?.pending, description: 'الدفع في انتظار المعالجة' },
+                    { label: 'مستردة', value: overview.payments?.refunded, description: 'المدفوعات المستردة للعملاء' }
                 ]
             },
             {
                 title: 'حالة الإنتاج',
                 items: [
-                    { label: 'معلقة', value: overview.production?.pending },
-                    { label: 'قيد التنفيذ', value: overview.production?.in_progress },
-                    { label: 'مكتملة', value: overview.production?.completed }
+                    { label: 'معلقة', value: overview.production?.pending, description: 'طلبات الإنتاج غير المبدوءة' },
+                    { label: 'قيد التنفيذ', value: overview.production?.in_progress, description: 'طلبات الإنتاج الحالية' },
+                    { label: 'مكتملة', value: overview.production?.completed, description: 'الطلبات الجاهزة للتسليم' }
                 ]
             }
         ];
@@ -362,5 +451,127 @@ onMounted(loadDashboard);
 .product-price {
     font-weight: 600;
     color: #409eff;
+}
+
+.revenue-card,
+.stats-grid-card {
+    border-radius: 16px;
+    background: #ffffff;
+}
+
+.revenue-summary {
+    display: grid;
+    gap: 1.5rem;
+    padding: 1rem 0;
+}
+
+.revenue-value {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.revenue-value span {
+    color: #606f8b;
+    font-size: 0.95rem;
+}
+
+.revenue-value strong {
+    font-size: 2rem;
+    color: #1f2d3d;
+}
+
+.revenue-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.metric-item {
+    padding: 1rem;
+    border-radius: 12px;
+    background: #f5f7fb;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.metric-item strong {
+    color: #2f3b52;
+    font-size: 1rem;
+}
+
+.progress-group {
+    display: grid;
+    gap: 1rem;
+    padding-top: 0.5rem;
+}
+
+.progress-bar-row {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #4b5c7a;
+}
+
+.progress-track {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #ebedf3;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #409eff 0%, #67c23a 100%);
+}
+
+.quick-stats {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem 0;
+}
+
+.quick-stat {
+    padding: 1rem;
+    border-radius: 12px;
+    background: #f8fbff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.quick-stat span {
+    color: #6f7d92;
+}
+
+.quick-stat strong {
+    color: #1f2d3d;
+}
+
+.dashboard-alert {
+    margin-bottom: 1.5rem;
+}
+
+.status-description {
+    display: block;
+    font-size: 0.78rem;
+    color: #8b96a7;
+    margin-top: 0.2rem;
+}
+
+@media (max-width: 768px) {
+    .revenue-metrics {
+        grid-template-columns: 1fr;
+    }
 }
 </style>

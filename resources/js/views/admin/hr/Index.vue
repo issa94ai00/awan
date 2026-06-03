@@ -32,15 +32,15 @@
                     <div class="insight-list">
                         <div class="insight-item">
                             <span>الموظفين</span>
-                            <strong>قريباً</strong>
+                            <strong>{{ employeesStore.employees.length }}</strong>
                         </div>
                         <div class="insight-item">
                             <span>الحضور</span>
-                            <strong>قريباً</strong>
+                            <strong>{{ attendanceStore.records.length }}</strong>
                         </div>
                         <div class="insight-item">
                             <span>الإجازات</span>
-                            <strong>قريباً</strong>
+                            <strong>{{ leaveStore.requests.length }}</strong>
                         </div>
                         <div class="insight-item">
                             <span>الرواتب</span>
@@ -68,21 +68,32 @@
 <script setup>
 import { onMounted, computed } from 'vue';
 import { usePayrollsStore } from '@/stores/payrolls';
+import { useEmployeesStore } from '@/stores/employees';
+import { useAttendanceStore } from '@/stores/attendance';
+import { useLeaveRequestsStore } from '@/stores/leaveRequests';
 
 const payrollsStore = usePayrollsStore();
+const employeesStore = useEmployeesStore();
+const attendanceStore = useAttendanceStore();
+const leaveStore = useLeaveRequestsStore();
 
 const stats = computed(() => [
     { title: 'مسيرات الرواتب', value: payrollsStore.payrolls.length, subtitle: 'عرض سريع للمسيرات' },
-    { title: 'الموظفين', value: 'قريباً', subtitle: 'نظام الموظفين قيد التطوير' },
-    { title: 'الحضور', value: 'قريباً', subtitle: 'سجل الحضور قيد الإعداد' },
-    { title: 'الإجازات', value: 'قريباً', subtitle: 'إدارة الإجازات ستتوفر قريباً' }
+    { title: 'الموظفين', value: employeesStore.employees.length, subtitle: 'عدد الموظفين المسجلين' },
+    { title: 'الحضور', value: attendanceStore.records.length, subtitle: 'سجلات الحضور المسجلة' },
+    { title: 'الإجازات', value: leaveStore.requests.length, subtitle: 'طلبات الإجازة الموجودة' }
 ]);
 
-const refreshPayrolls = async () => {
-    await payrollsStore.fetchPayrolls().catch(() => {});
+const refreshData = async () => {
+    await Promise.all([
+        payrollsStore.fetchPayrolls().catch(() => {}),
+        employeesStore.fetchEmployees().catch(() => {}),
+        attendanceStore.fetchAttendance().catch(() => {}),
+        leaveStore.fetchLeaveRequests().catch(() => {})
+    ]);
 };
 
-onMounted(refreshPayrolls);
+onMounted(refreshData);
 </script>
 
 <style scoped>

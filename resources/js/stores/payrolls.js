@@ -22,7 +22,7 @@ export const usePayrollsStore = defineStore('payrolls', {
             this.error = null;
             try {
                 const auth = useAuthStore();
-                const token = localStorage.getItem('token') || (auth.user ? '1' : null);
+                const token = auth.token;
                 if (!token) {
                     router.push({ path: '/login', query: { redirect: '/admin/hr/payrolls' } });
                     return;

@@ -11,5 +11,13 @@ export const customersApi = {
 
     store(data) {
         return posApi.customerStore(data);
+    },
+
+    update(id, data) {
+        return posApi.customerUpdate(id, data);
+    },
+
+    delete(id) {
+        return posApi.customerDelete(id);
     }
 };

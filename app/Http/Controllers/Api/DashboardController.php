@@ -30,6 +30,7 @@ class DashboardController extends Controller
                 'today' => (float) Invoice::whereDate('created_at', $today)->sum('total'),
                 'week' => (float) Invoice::whereDate('created_at', '>=', $weekStart)->sum('total'),
                 'month' => (float) Invoice::whereDate('created_at', '>=', $monthStart)->sum('total'),
+                'total' => (float) Invoice::sum('total'),
             ];
 
             $invoiceCounts = [
@@ -125,7 +126,7 @@ class DashboardController extends Controller
             $topProducts = Product::where('is_active', 1)
                 ->orderByDesc('stock_quantity')
                 ->take(4)
-                ->get(['id', 'name_ar', 'name_en', 'price', 'stock_quantity', 'image'])
+                ->get(['id', 'name_ar', 'name_en', 'price', 'stock_quantity', 'image_main'])
                 ->map(function ($product) {
                     return [
                         'id' => $product->id,
@@ -133,7 +134,7 @@ class DashboardController extends Controller
                         'name_en' => $product->name_en,
                         'price' => (float) $product->price,
                         'stock_quantity' => $product->stock_quantity,
-                        'image' => $product->image,
+                        'image' => $product->image_main ? asset('storage/' . $product->image_main) : null,
                     ];
                 });
 

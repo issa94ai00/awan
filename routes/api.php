@@ -16,7 +16,9 @@ use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
 use App\Http\Controllers\Api\PayrollController;
-use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\LeaveRequestController;use App\Http\Controllers\Api\TicketController;use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockMovementController;
@@ -97,6 +99,27 @@ Route::prefix('v1')->group(function () {
             Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
             Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
 
+            // Admin Employees API
+            Route::get('/employees', [EmployeeController::class, 'index'])->name('api.admin.employees.index');
+            Route::post('/employees', [EmployeeController::class, 'store'])->name('api.admin.employees.store');
+            Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
+            Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
+            Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
+
+            // Admin Attendance API
+            Route::get('/attendance', [AttendanceController::class, 'index'])->name('api.admin.attendance.index');
+            Route::post('/attendance', [AttendanceController::class, 'store'])->name('api.admin.attendance.store');
+            Route::get('/attendance/{attendance}', [AttendanceController::class, 'show'])->name('api.admin.attendance.show');
+            Route::put('/attendance/{attendance}', [AttendanceController::class, 'update'])->name('api.admin.attendance.update');
+            Route::delete('/attendance/{attendance}', [AttendanceController::class, 'destroy'])->name('api.admin.attendance.destroy');
+
+            // Admin Leave Requests API
+            Route::get('/leave-requests', [LeaveRequestController::class, 'index'])->name('api.admin.leave-requests.index');
+            Route::post('/leave-requests', [LeaveRequestController::class, 'store'])->name('api.admin.leave-requests.store');
+            Route::get('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'show'])->name('api.admin.leave-requests.show');
+            Route::put('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'update'])->name('api.admin.leave-requests.update');
+            Route::delete('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'destroy'])->name('api.admin.leave-requests.destroy');
+
             Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
             Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
             Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
@@ -141,7 +164,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/pos/products/lookup', [PosController::class, 'productLookup'])->name('api.pos.products.lookup');
         Route::get('/pos/customers', [PosController::class, 'customers'])->name('api.pos.customers.index');
         Route::post('/pos/customers', [PosController::class, 'customerStore'])->name('api.pos.customers.store');
+        Route::put('/pos/customers/{customer}', [PosController::class, 'customerUpdate'])->name('api.pos.customers.update');
+        Route::delete('/pos/customers/{customer}', [PosController::class, 'customerDestroy'])->name('api.pos.customers.destroy');
         Route::get('/pos/customers/{customer}', [PosController::class, 'customerShow'])->name('api.pos.customers.show');
+
+        // CRM Tickets
+        Route::get('/tickets', [TicketController::class, 'index'])->name('api.tickets.index');
+        Route::post('/tickets', [TicketController::class, 'store'])->name('api.tickets.store');
+        Route::get('/tickets/{ticket}', [TicketController::class, 'show'])->name('api.tickets.show');
+        Route::put('/tickets/{ticket}', [TicketController::class, 'update'])->name('api.tickets.update');
+        Route::delete('/tickets/{ticket}', [TicketController::class, 'destroy'])->name('api.tickets.destroy');
 
         // Companies
         Route::post('/companies', [CompanyController::class, 'store'])->name('api.companies.store');

@@ -138,13 +138,27 @@ class TrackVisitors
      */
     protected function getCountryFromIP(string $ip): ?string
     {
-        // For localhost or private IPs, return null
-        if ($ip === '127.0.0.1' || $ip === '::1' || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE)) {
+        // For localhost or private IPs, return default test country
+        if ($ip === '127.0.0.1' || $ip === '::1' || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE) === false) {
             return 'SY'; // Default to Syria for local testing
         }
 
-        // In production, integrate with a geolocation service
-        // This is a placeholder that returns null
+        // Try a lightweight public geo IP service (non-blocking, best-effort)
+        try {
+            $url = "http://ip-api.com/json/" . urlencode($ip) . "?fields=status,countryCode";
+            $response = @file_get_contents($url);
+            if ($response === false) {
+                return null;
+            }
+
+            $data = json_decode($response, true);
+            if (!empty($data['status']) && $data['status'] === 'success' && !empty($data['countryCode'])) {
+                return $data['countryCode'];
+            }
+        } catch (\Throwable $e) {
+            // swallow and return null on any failure
+        }
+
         return null;
     }
 }

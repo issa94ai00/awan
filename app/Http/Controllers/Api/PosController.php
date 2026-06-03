@@ -149,6 +149,43 @@ class PosController extends Controller
     /**
      * Show customer details.
      */
+    public function customerUpdate(Request $request, Customer $customer): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'company' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:1000',
+            'source' => 'nullable|string|max:255',
+            'status' => 'nullable|string|in:active,inactive',
+            'notes' => 'nullable|string|max:2000',
+        ], [
+            'name.required' => 'الاسم مطلوب',
+            'email.email' => 'البريد الإلكتروني غير صحيح',
+            'status.in' => 'الحالة غير صالحة',
+        ]);
+
+        $customer->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer updated successfully',
+            'data' => new CustomerResource($customer),
+        ]);
+    }
+
+    public function customerDestroy(Customer $customer): JsonResponse
+    {
+        $customer->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customer deleted successfully',
+            'data' => null,
+        ]);
+    }
+
     public function customerShow(Customer $customer): JsonResponse
     {
         return response()->json([

@@ -64,18 +64,23 @@
 <script setup>
 import { computed, onMounted } from 'vue';
 import { useCustomersStore } from '@/stores/customers';
+import { useTicketsStore } from '@/stores/tickets';
 
 const customersStore = useCustomersStore();
+const ticketsStore = useTicketsStore();
 
 const stats = computed(() => [
-    { title: 'إجمالي العملاء', value: customersStore.customers.length },
-    { title: 'التذاكر', value: 'قريباً' },
-    { title: 'مكالمات', value: 'قريباً' },
+    { title: 'إجمالي العملاء', value: customersStore.pagination.total || customersStore.customers.length },
+    { title: 'التذاكر', value: ticketsStore.pagination.total || ticketsStore.tickets.length },
+    { title: 'التذاكر المفتوحة', value: ticketsStore.tickets.filter((ticket) => ticket.status === 'open').length },
     { title: 'نشاط اليوم', value: 'قريباً' }
 ]);
 
 const refreshData = async () => {
-    await customersStore.fetchCustomers().catch(() => {});
+    await Promise.all([
+        customersStore.fetchCustomers().catch(() => {}),
+        ticketsStore.fetchTickets().catch(() => {})
+    ]);
 };
 
 onMounted(refreshData);

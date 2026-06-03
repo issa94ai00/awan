@@ -5,17 +5,8 @@ export const productsApi = {
         return api.get('/admin/products', { params });
     },
     
-    // Public endpoints (no auth)
-    getPublicAll(params) {
-        return api.get('/products', { params });
-    },
-    
     getById(id) {
         return api.get(`/admin/products/${id}`);
-    },
-    
-    getPublicById(id) {
-        return api.get(`/products/${id}`);
     },
     
     create(data) {
@@ -28,5 +19,14 @@ export const productsApi = {
     
     delete(id) {
         return api.delete(`/admin/products/${id}`);
+    },
+
+    // Public endpoints for frontend
+    getPublicAll(params) {
+        return api.get('/products', { params });
+    },
+    
+    getPublicById(id) {
+        return api.get(`/products/${id}`);
     }
 };

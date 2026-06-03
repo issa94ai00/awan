@@ -161,14 +161,44 @@ const routes = [
                 component: () => import('@/views/admin/hr/Employees.vue')
             },
             {
+                path: 'hr/employees/create',
+                name: 'admin.hr.employees.create',
+                component: () => import('@/views/admin/hr/EmployeeForm.vue')
+            },
+            {
+                path: 'hr/employees/:id/edit',
+                name: 'admin.hr.employees.edit',
+                component: () => import('@/views/admin/hr/EmployeeForm.vue')
+            },
+            {
                 path: 'hr/attendance',
                 name: 'admin.hr.attendance',
                 component: () => import('@/views/admin/hr/Attendance.vue')
             },
             {
+                path: 'hr/attendance/create',
+                name: 'admin.hr.attendance.create',
+                component: () => import('@/views/admin/hr/AttendanceForm.vue')
+            },
+            {
+                path: 'hr/attendance/:id/edit',
+                name: 'admin.hr.attendance.edit',
+                component: () => import('@/views/admin/hr/AttendanceForm.vue')
+            },
+            {
                 path: 'hr/leaves',
                 name: 'admin.hr.leaves',
                 component: () => import('@/views/admin/hr/Leaves.vue')
+            },
+            {
+                path: 'hr/leaves/create',
+                name: 'admin.hr.leaves.create',
+                component: () => import('@/views/admin/hr/LeaveRequestForm.vue')
+            },
+            {
+                path: 'hr/leaves/:id/edit',
+                name: 'admin.hr.leaves.edit',
+                component: () => import('@/views/admin/hr/LeaveRequestForm.vue')
             },
             {
                 path: 'hr/payrolls',
@@ -187,9 +217,29 @@ const routes = [
                 component: () => import('@/views/admin/crm/Customers.vue')
             },
             {
+                path: 'crm/customers/create',
+                name: 'admin.crm.customers.create',
+                component: () => import('@/views/admin/crm/CustomerForm.vue')
+            },
+            {
+                path: 'crm/customers/:id/edit',
+                name: 'admin.crm.customers.edit',
+                component: () => import('@/views/admin/crm/CustomerForm.vue')
+            },
+            {
                 path: 'crm/tickets',
                 name: 'admin.crm.tickets',
                 component: () => import('@/views/admin/crm/Tickets.vue')
+            },
+            {
+                path: 'crm/tickets/create',
+                name: 'admin.crm.tickets.create',
+                component: () => import('@/views/admin/crm/TicketForm.vue')
+            },
+            {
+                path: 'crm/tickets/:id/edit',
+                name: 'admin.crm.tickets.edit',
+                component: () => import('@/views/admin/crm/TicketForm.vue')
             },
             // Reports
             {
