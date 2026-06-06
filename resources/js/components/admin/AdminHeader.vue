@@ -45,10 +45,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/stores/auth';
+import { useInquiriesStore } from '@/stores/inquiries';
 import {
     Menu, Search, Bell, UserFilled, User, Setting,
     SwitchButton, ArrowDown
@@ -56,8 +56,16 @@ import {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const inquiriesStore = useInquiriesStore();
 const searchQuery = ref('');
-const unreadCount = ref(3);
+const unreadCount = computed(() => {
+    const statusCounts = inquiriesStore.statusCounts || {};
+    const rawCount = Number(statusCounts.new || statusCounts['new'] || 0);
+    if (rawCount > 0) {
+        return rawCount;
+    }
+    return inquiriesStore.items.filter((inquiry) => inquiry.status === 'new').length;
+});
 const userName = ref(authStore.userName);
 
 const toggleMobileSidebar = () => {
@@ -66,7 +74,7 @@ const toggleMobileSidebar = () => {
 };
 
 const showNotifications = () => {
-    ElMessage.info('الاستفسارات الجديدة');
+    router.push('/admin/inquiries');
 };
 
 const handleDropdownCommand = (command) => {
@@ -84,8 +92,11 @@ const handleDropdownCommand = (command) => {
 };
 
 onMounted(() => {
-    // Fetch user data
+    // Fetch user data and notification counts
     authStore.fetchUser();
+    if (Object.keys(inquiriesStore.statusCounts).length === 0 && inquiriesStore.items.length === 0) {
+        inquiriesStore.fetch({ per_page: 1 }).catch(() => {});
+    }
 });
 </script>
 

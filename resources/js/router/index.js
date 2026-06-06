@@ -285,6 +285,11 @@ const routes = [
                 name: 'admin.inquiries.index',
                 component: () => import('@/views/admin/Inquiries.vue')
             },
+            {
+                path: 'inquiries/:id',
+                name: 'admin.inquiries.show',
+                component: () => import('@/views/admin/inquiries/Show.vue')
+            },
             // Visitors
             {
                 path: 'visitors',

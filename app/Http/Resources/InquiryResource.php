@@ -20,11 +20,16 @@ class InquiryResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             'subject' => $this->subject,
+            'subject_label' => $this->getSubjectLabelAttribute(),
             'message' => $this->message,
             'status' => $this->status,
             'status_text' => $this->getStatusText(),
+            'status_label' => $this->getStatusText(),
+            'priority' => $this->priority,
+            'priority_label' => $this->getPriorityLabelAttribute(),
             'ip_address' => $this->ip_address,
             'user_agent' => $this->user_agent,
+            'closed_at_formatted' => $this->getClosedAtFormattedAttribute(),
             
             // Relationships
             'product' => $this->when($this->relationLoaded('product'), function () {
@@ -35,6 +40,25 @@ class InquiryResource extends JsonResource
                     'slug' => $this->product->slug,
                     'image_main' => $this->product->image_main ? asset('storage/' . $this->product->image_main) : null,
                 ] : null;
+            }),
+            
+            'assigned_to' => $this->when($this->relationLoaded('assignedTo'), function () {
+                return $this->assignedTo ? [
+                    'id' => $this->assignedTo->id,
+                    'name' => $this->assignedTo->name,
+                    'email' => $this->assignedTo->email,
+                ] : null;
+            }),
+
+            'replies' => $this->when($this->relationLoaded('replies'), function () {
+                return $this->replies->map(function ($reply) {
+                    return [
+                        'id' => $reply->id,
+                        'message' => $reply->message,
+                        'created_at_human' => $reply->created_at->diffForHumans(),
+                        'admin_name' => $reply->admin ? $reply->admin->name : 'مشرف',
+                    ];
+                })->all();
             }),
             
             'user' => $this->when($this->relationLoaded('user'), function () {

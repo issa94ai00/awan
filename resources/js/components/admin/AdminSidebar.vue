@@ -3,7 +3,7 @@
         <div class="sidebar-header">
             <div class="logo">
                 <el-icon :size="28"><Box /></el-icon>
-                <span v-if="!collapsed">أوان التكادوم</span>
+                <span v-if="!collapsed">{{ siteName }}</span>
             </div>
             <el-button
                 v-if="!collapsed"
@@ -367,8 +367,9 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useSettingsStore } from '@/stores/settings';
 import {
     Box, Fold, Expand, Odometer, Folder, ShoppingCart,
     TrendCharts, Document, ArrowDown, Setting, ShoppingBag,
@@ -376,6 +377,9 @@ import {
     DataAnalysis, Monitor, ChatLineRound, View, Lock, Key,
     Clock, Calendar, Ticket, Refresh
 } from '@element-plus/icons-vue';
+
+const settingsStore = useSettingsStore();
+const siteName = computed(() => settingsStore.data?.site_name || 'أوان التقدم');
 
 const props = defineProps({
     collapsed: {

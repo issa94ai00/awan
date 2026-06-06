@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\InquiryController;
+use App\Http\Controllers\Api\InquiryAdminController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\HomeController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
+use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -84,6 +86,18 @@ Route::prefix('v1')->group(function () {
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
             Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+
+            // Admin Inquiries API
+            Route::get('/inquiries', [InquiryAdminController::class, 'index'])->name('api.admin.inquiries.index');
+            Route::get('/inquiries/{inquiry}', [InquiryAdminController::class, 'show'])->name('api.admin.inquiries.show');
+            Route::post('/inquiries/{inquiry}/replies', [InquiryAdminController::class, 'storeReply'])->name('api.admin.inquiries.replies.store');
+            Route::put('/inquiries/{inquiry}', [InquiryAdminController::class, 'update'])->name('api.admin.inquiries.update');
+            Route::delete('/inquiries/{inquiry}', [InquiryAdminController::class, 'destroy'])->name('api.admin.inquiries.destroy');
+            Route::post('/inquiries/{inquiry}/close', [InquiryAdminController::class, 'close'])->name('api.admin.inquiries.close');
+            Route::post('/inquiries/{inquiry}/reopen', [InquiryAdminController::class, 'reopen'])->name('api.admin.inquiries.reopen');
+            Route::post('/inquiries/{inquiry}/assign', [InquiryAdminController::class, 'assign'])->name('api.admin.inquiries.assign');
+            Route::post('/inquiries/bulk-update', [InquiryAdminController::class, 'bulkUpdate'])->name('api.admin.inquiries.bulk-update');
+            Route::post('/inquiries/bulk-delete', [InquiryAdminController::class, 'bulkDelete'])->name('api.admin.inquiries.bulk-delete');
             
             // Admin Categories API
             Route::get('/categories', [CategoryController::class, 'index'])->name('api.admin.categories.index');
@@ -141,6 +155,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/accounting/journal-entries', [JournalEntryController::class, 'store'])->name('api.admin.accounting.journal-entries.store');
             Route::get('/accounting/trial-balance', [JournalEntryController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
         });
+
+        // Settings
+        Route::get('/settings', [SettingsController::class, 'index'])->name('api.settings.index');
+        Route::post('/settings', [SettingsController::class, 'update'])->name('api.settings.update');
         
         // User Inquiries
         Route::get('/user/inquiries', [InquiryController::class, 'index'])->name('api.user.inquiries.index');

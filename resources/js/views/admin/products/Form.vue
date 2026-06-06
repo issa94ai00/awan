@@ -66,6 +66,7 @@
                                     <el-select v-model="form.currency" style="width: 100%">
                                         <el-option label="ريال سعودي" value="SAR" />
                                         <el-option label="دولار أمريكي" value="USD" />
+                                        <el-option label="ليرة سورية" value="SYP" />
                                     </el-select>
                                 </el-form-item>
                             </el-col>

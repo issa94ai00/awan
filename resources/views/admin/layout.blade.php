@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'لوحة التحكم') - أوان التقدم</title>
+    <title>@yield('title', 'لوحة التحكم') - {{ get_setting('site_name') ?? 'أوان التقدم' }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,7 +24,7 @@
             <div class="sidebar-header">
                 <a href="{{ route('home') }}" class="logo">
                     <i class="fas fa-building"></i>
-                    <span>أوان التقدم</span>
+                    <span>{{ get_setting('site_name') ?? 'أوان التقدم' }}</span>
                 </a>
                 <button class="sidebar-toggle" id="sidebarToggle">
                     <i class="fas fa-bars"></i>

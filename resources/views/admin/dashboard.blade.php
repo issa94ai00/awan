@@ -4,8 +4,8 @@
 
 @section('content')
 <div class="page-header">
-    <h1><i class="fas fa-tachometer-alt"></i> لوحة التحكم</h1>
-    <p>نظرة عامة على أداء النظام والإحصائيات</p>
+    <h1><i class="fas fa-tachometer-alt"></i> لوحة التحكم - {{ get_setting('site_name') ?? 'أوان التقدم' }}</h1>
+    <p>{{ get_setting('site_tagline') ?? 'نظرة عامة على أداء النظام والإحصائيات' }}</p>
 </div>
 
 <!-- ERP KPIs -->

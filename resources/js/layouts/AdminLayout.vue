@@ -14,13 +14,19 @@
 import { ref, onMounted } from 'vue';
 import AdminSidebar from '@/components/admin/AdminSidebar.vue';
 import AdminHeader from '@/components/admin/AdminHeader.vue';
+import { useSettingsStore } from '@/stores/settings';
 
 const sidebarCollapsed = ref(false);
+const settingsStore = useSettingsStore();
 
-onMounted(() => {
+onMounted(async () => {
     const savedState = localStorage.getItem('sidebarCollapsed');
     if (savedState) {
         sidebarCollapsed.value = JSON.parse(savedState);
+    }
+
+    if (Object.keys(settingsStore.data).length === 0) {
+        await settingsStore.fetch();
     }
 });
 </script>

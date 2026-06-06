@@ -60,10 +60,14 @@ Route::prefix('admin')->group(function () {
     Route::get('/vue', function () {
         return view('vue');
     })->name('admin.vue');
-    
-    // Redirect all admin GET routes to Vue SPA
+
+    // Preserve legacy route names for admin inquiries while serving the SPA.
+    Route::view('/inquiries', 'vue')->name('admin.inquiries.index');
+    Route::view('/inquiries/{id}', 'vue')->name('admin.inquiries.show');
+
+    // Serve the SPA on all admin GET routes so the front-end router preserves the requested path.
     Route::get('/{path?}', function () {
-        return redirect()->route('admin.vue');
+        return view('vue');
     })->where('path', '.*');
 });
 

@@ -1,19 +1,411 @@
-<template>
-    <div class="inquiries-index">
-        <el-card shadow="hover">
+﻿<template>
+    <div class="inquiries-page">
+        <div class="page-header">
+            <div class="page-title">
+                <h1>الاستفسارات</h1>
+                <p>لوحة إدارة الاستفسارات تمنحك رؤية سريعة، تصفية دقيقة، وعرض واضح لجميع حالات التواصل.</p>
+            </div>
+
+            <div class="page-actions">
+                <el-input
+                    v-model="searchQuery"
+                    @input="onSearchInput"
+                    placeholder="ابحث بالاسم أو الموضوع أو البريد أو الرسالة"
+                    clearable
+                    class="search-input"
+                />
+                <el-select
+                    v-model="selectedStatus"
+                    placeholder="حالة الاستفسار"
+                    class="search-input"
+                    clearable
+                    @change="onFilterChange"
+                >
+                    <el-option
+                        v-for="status in statusOptions"
+                        :key="status.value"
+                        :label="status.label"
+                        :value="status.value"
+                    />
+                </el-select>
+                <el-select
+                    v-model="selectedPriority"
+                    placeholder="أولوية"
+                    class="search-input"
+                    clearable
+                    @change="onFilterChange"
+                >
+                    <el-option
+                        v-for="priority in priorityOptions"
+                        :key="priority.value"
+                        :label="priority.label"
+                        :value="priority.value"
+                    />
+                </el-select>
+            </div>
+        </div>
+
+        <el-row :gutter="20" class="overview-cards">
+            <el-col :xs="24" :sm="12" :md="6">
+                <el-card shadow="hover" class="summary-card">
+                    <p>إجمالي الاستفسارات</p>
+                    <h3>{{ pagination.total || inquiriesStore.items.length }}</h3>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="6">
+                <el-card shadow="hover" class="summary-card">
+                    <p>جديدة</p>
+                    <h3>{{ statusSummary.new }}</h3>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="6">
+                <el-card shadow="hover" class="summary-card">
+                    <p>مقروءة</p>
+                    <h3>{{ statusSummary.read }}</h3>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="6">
+                <el-card shadow="hover" class="summary-card">
+                    <p>تم الرد</p>
+                    <h3>{{ statusSummary.replied }}</h3>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-card shadow="hover" class="table-panel">
             <template #header>
-                <span>الاستفسارات</span>
+                <div class="card-header">
+                    <div>
+                        <h2>قائمة الاستفسارات</h2>
+                        <p class="header-note">عرض سريع للطلبات الحالية مع حالة المعالجة والتعيين.</p>
+                    </div>
+                    <div class="header-meta">
+                        {{ pagination.from || 0 }} - {{ pagination.to || inquiriesStore.items.length }} من {{ pagination.total || inquiriesStore.items.length }} استفسار
+                    </div>
+                </div>
             </template>
-            <el-empty description="صفحة الاستفسارات قيد التطوير" />
+
+            <el-table
+                :data="inquiriesStore.items"
+                v-loading="inquiriesStore.loading"
+                style="width: 100%"
+                stripe
+                border
+                size="small"
+                :row-class-name="getRowClass"
+            >
+                <el-table-column prop="id" label="#" width="70" />
+
+                <el-table-column label="المرسل" min-width="220">
+                    <template #default="{ row }">
+                        <div class="sender-cell">
+                            <strong>{{ row.name || 'غير معروف' }}</strong>
+                            <div class="sender-meta">
+                                <span>{{ row.email || 'بدون بريد' }}</span>
+                                <span v-if="row.phone">• {{ row.phone }}</span>
+                            </div>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="subject_label" label="الموضوع" min-width="180" />
+
+                <el-table-column prop="priority_label" label="الأولوية" width="120">
+                    <template #default="{ row }">
+                        <el-tag type="warning" effect="plain">{{ row.priority_label || 'غير محددة' }}</el-tag>
+                    </template>
+                </el-table-column>
+
+                <el-table-column label="التعيين" min-width="140">
+                    <template #default="{ row }">
+                        {{ row.assigned_to?.name || 'غير مخصص' }}
+                    </template>
+                </el-table-column>
+
+                <el-table-column label="الحالة" width="140">
+                    <template #default="{ row }">
+                        <el-tag :type="statusTagType(row.status)">{{ row.status_label || row.status_text || translateStatus(row.status) }}</el-tag>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="created_at_human" label="منذ" width="130" />
+                <el-table-column prop="created_at_formatted" label="التاريخ" width="160" />
+
+                <el-table-column label="الإجراءات" width="170">
+                    <template #default="{ row }">
+                        <div class="action-buttons">
+                            <el-button type="primary" size="mini" @click="viewInquiry(row.id)">عرض</el-button>
+                            <el-button type="danger" size="mini" @click="deleteInquiry(row.id)">حذف</el-button>
+                        </div>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <div v-if="!inquiriesStore.loading && !inquiriesStore.items.length" class="empty-state">
+                لا توجد استفسارات حالياً.
+            </div>
         </el-card>
+
+        <div class="pagination-wrapper" v-if="pagination.last_page > 1">
+            <el-pagination
+                background
+                layout="prev, pager, next, jumper, ->, total"
+                :page-size="pagination.per_page"
+                :current-page="currentPage"
+                :total="pagination.total"
+                @current-change="handlePageChange"
+            />
+        </div>
     </div>
 </template>
 
 <script setup>
+import { computed, ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
+import { useInquiriesStore } from '@/stores/inquiries';
+
+const router = useRouter();
+const inquiriesStore = useInquiriesStore();
+const searchQuery = ref('');
+const selectedStatus = ref('');
+const selectedPriority = ref('');
+const currentPage = ref(1);
+const searchTimeout = ref(null);
+
+const statusOptions = [
+    { value: '', label: 'جميع الحالات' },
+    { value: 'new', label: 'جديدة' },
+    { value: 'read', label: 'مقروء' },
+    { value: 'replied', label: 'تم الرد' }
+];
+
+const priorityOptions = [
+    { value: '', label: 'كل الأولويات' },
+    { value: 'low', label: 'منخفض' },
+    { value: 'medium', label: 'متوسط' },
+    { value: 'high', label: 'عالي' },
+    { value: 'urgent', label: 'عاجل' }
+];
+
+const pagination = computed(() => inquiriesStore.pagination || {});
+
+const statusSummary = computed(() => {
+    const counts = inquiriesStore.statusCounts || {};
+    return {
+        new: counts.new || 0,
+        read: counts.read || 0,
+        replied: counts.replied || 0,
+    };
+});
+
+const loadInquiries = async () => {
+    await inquiriesStore.fetch({
+        per_page: 15,
+        page: currentPage.value,
+        search: searchQuery.value.trim() || undefined,
+        status: selectedStatus.value || undefined,
+        priority: selectedPriority.value || undefined,
+    }).catch(() => {
+        // silent fail: keep current data
+    });
+};
+
+const onSearchInput = () => {
+    if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
+    }
+    searchTimeout.value = setTimeout(() => {
+        currentPage.value = 1;
+        loadInquiries();
+    }, 450);
+};
+
+const onFilterChange = () => {
+    currentPage.value = 1;
+    loadInquiries();
+};
+
+const handlePageChange = (page) => {
+    currentPage.value = page;
+    loadInquiries();
+};
+
+const viewInquiry = (id) => {
+    router.push({ name: 'admin.inquiries.show', params: { id } });
+};
+
+const deleteInquiry = async (id) => {
+    const confirmed = window.confirm('هل أنت متأكد من حذف هذا الاستفسار؟');
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await inquiriesStore.remove(id);
+        ElMessage.success('تم حذف الاستفسار بنجاح');
+        loadInquiries();
+    } catch (error) {
+        ElMessage.error('فشل حذف الاستفسار');
+    }
+};
+
+const getRowClass = (row) => {
+    return row.status === 'new' ? 'table-row-new' : '';
+};
+
+const previewMessage = (message) => {
+    if (!message) return 'لا توجد رسالة';
+    return message.length > 80 ? message.substring(0, 80) + '...' : message;
+};
+
+const translateStatus = (status) => {
+    return {
+        new: 'جديدة',
+        read: 'مقروء',
+        replied: 'تم الرد'
+    }[status] || status || 'غير محددة';
+};
+
+const statusTagType = (status) => {
+    if (status === 'new') return 'danger';
+    if (status === 'read') return 'warning';
+    if (status === 'replied') return 'success';
+    return 'info';
+};
+
+onMounted(loadInquiries);
 </script>
 
 <style scoped>
-.inquiries-index {
+.inquiries-page {
     padding: 0;
+}
+
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.page-title h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1f2d3d;
+}
+
+.page-title p {
+    margin: 0.35rem 0 0;
+    color: #5f6d85;
+}
+
+.page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+}
+
+.search-input {
+    min-width: 260px;
+    max-width: 320px;
+}
+
+.overview-cards {
+    margin-bottom: 1.5rem;
+}
+
+.summary-card {
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 1rem;
+}
+
+.summary-card p {
+    margin: 0;
+    color: #6b7c98;
+    font-size: 0.95rem;
+}
+
+.summary-card h3 {
+    margin: 0;
+    font-size: 2rem;
+    color: #253358;
+}
+
+.table-panel {
+    border-radius: 1rem;
+}
+
+.table-panel ::v-deep .el-table__header th {
+    background: #fafbff;
+    color: #344154;
+    border-bottom: 1px solid #e5e9f2;
+    font-weight: 700;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.header-note {
+    margin: 0.35rem 0 0;
+    color: #6b7c98;
+    font-size: 0.95rem;
+}
+
+.header-meta {
+    color: #6b7c98;
+    font-size: 0.95rem;
+}
+
+.sender-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sender-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    color: #6b7c98;
+    font-size: 0.95rem;
+}
+
+.table-row-new {
+    background: #fff7f0 !important;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.el-table .el-button {
+    height: 32px;
+}
+
+.empty-state {
+    padding: 1.25rem;
+    text-align: center;
+    color: #6b7c98;
+}
+
+.pagination-wrapper {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: flex-end;
 }
 </style>

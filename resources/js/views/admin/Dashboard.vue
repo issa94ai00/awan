@@ -1,5 +1,10 @@
 <template>
     <div class="dashboard" v-loading="loading">
+        <div class="page-header">
+            <h1><i class="fas fa-tachometer-alt"></i> لوحة التحكم - {{ siteName }}</h1>
+            <p>{{ tagline }}</p>
+        </div>
+
         <el-alert
             v-if="error"
             :title="error"
@@ -179,11 +184,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import {
     Box, ShoppingCart, User, TrendCharts
 } from '@element-plus/icons-vue';
 import { dashboardApi } from '@/api/dashboard';
+import { useSettingsStore } from '@/stores/settings';
+
+const settingsStore = useSettingsStore();
+const siteName = computed(() => settingsStore.data?.site_name || 'أوان التقدم');
+const tagline = computed(() => settingsStore.data?.site_tagline || 'نظرة عامة على أداء النظام والإحصائيات');
+
+watch(siteName, (value) => {
+    document.title = `لوحة التحكم - ${value}`;
+}, { immediate: true });
 
 const stats = ref([
     { title: 'إجمالي المنتجات', value: '...', icon: Box, color: '#409eff' },
@@ -323,12 +337,36 @@ const loadDashboard = async () => {
     }
 };
 
-onMounted(loadDashboard);
+onMounted(async () => {
+    await loadDashboard();
+    if (Object.keys(settingsStore.data).length === 0) {
+        settingsStore.fetch().catch(() => {});
+    }
+});
 </script>
 
 <style scoped>
 .dashboard {
     padding: 0;
+}
+
+.page-header {
+    padding: 1.5rem 2rem;
+    background: #fff;
+    border-bottom: 1px solid #ebedf2;
+    margin-bottom: 1.5rem;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1f2d3d;
+}
+
+.page-header p {
+    margin: 0.5rem 0 0;
+    color: #6b7280;
 }
 
 .section {
