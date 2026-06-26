@@ -131,15 +131,22 @@
 
                 <el-tab-pane :label="$t('communication')" name="contact">
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
+                        <div class="lang-switch-bar">
+                            <el-radio-group v-model="contactLang" size="small">
+                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="en">English</el-radio-button>
+                            </el-radio-group>
+                        </div>
+
                         <el-row :gutter="20">
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('phone')">
-                                    <el-input v-model="form.contact_phone" placeholder="+201234567890" />
+                                    <el-input v-model="form.contact_phone" placeholder="00963962889577" />
                                 </el-form-item>
                             </el-col>
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('whatsapp_number')">
-                                    <el-input v-model="form.contact_whatsapp" placeholder="+201234567890" />
+                                    <el-input v-model="form.contact_whatsapp" placeholder="00963962889577" />
                                 </el-form-item>
                             </el-col>
                         </el-row>
@@ -147,19 +154,33 @@
                         <el-row :gutter="20">
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('email')">
-                                    <el-input v-model="form.contact_email" type="email" placeholder="info@example.com" />
+                                    <el-input v-model="form.contact_email" type="email" placeholder="awaanaltakadom@gmail.com" />
                                 </el-form-item>
                             </el-col>
                             <el-col :xs="24" :md="12">
-                                <el-form-item :label="$t('working_hours')">
-                                    <el-input v-model="form.working_hours" :placeholder="$t('sunday_thursday_9_00_17_00')" />
-                                </el-form-item>
+                                <template v-if="contactLang === 'ar'">
+                                    <el-form-item :label="$t('working_hours')">
+                                        <el-input v-model="form.working_hours" placeholder="السبت الى الخميس 08:00-22:00" />
+                                    </el-form-item>
+                                </template>
+                                <template v-else>
+                                    <el-form-item label="Working Hours">
+                                        <el-input v-model="form.working_hours_en" placeholder="Saturday - Thursday 08:00-22:00" />
+                                    </el-form-item>
+                                </template>
                             </el-col>
                         </el-row>
 
-                        <el-form-item :label="$t('address')">
-                            <el-input type="textarea" :rows="3" v-model="form.address" :placeholder="$t('the_full_address_of_the')" />
-                        </el-form-item>
+                        <template v-if="contactLang === 'ar'">
+                            <el-form-item :label="$t('address')">
+                                <el-input type="textarea" :rows="3" v-model="form.address" placeholder="المملكة العربية السعوديه - الرياض&#13;&#10;الفرع2: سوريا - دمشق" />
+                            </el-form-item>
+                        </template>
+                        <template v-else>
+                            <el-form-item label="Address">
+                                <el-input type="textarea" :rows="3" v-model="form.address_en" placeholder="Kingdom of Saudi Arabia - Riyadh&#13;&#10;Syria - Damascus" />
+                            </el-form-item>
+                        </template>
                     </el-form>
                 </el-tab-pane>
 
@@ -168,12 +189,12 @@
                         <el-row :gutter="20">
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('facebook')">
-                                    <el-input v-model="form.facebook" placeholder="https://facebook.com/..." />
+                                    <el-input v-model="form.facebook" placeholder="https://www.facebook.com/share/18AcYpks2o/" />
                                 </el-form-item>
                             </el-col>
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('instagram')">
-                                    <el-input v-model="form.instagram" placeholder="https://instagram.com/..." />
+                                    <el-input v-model="form.instagram" placeholder="https://www.instagram.com/awaan_altakadm.co" />
                                 </el-form-item>
                             </el-col>
                         </el-row>
@@ -181,40 +202,68 @@
                         <el-row :gutter="20">
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('twitter_x')">
-                                    <el-input v-model="form.twitter" placeholder="https://twitter.com/..." />
+                                    <el-input v-model="form.twitter" placeholder="https://x.com/awaan" />
                                 </el-form-item>
                             </el-col>
                             <el-col :xs="24" :md="12">
                                 <el-form-item :label="$t('youtube')">
-                                    <el-input v-model="form.youtube" placeholder="https://youtube.com/..." />
+                                    <el-input v-model="form.youtube" placeholder="https://youtube.com/@awaan" />
                                 </el-form-item>
                             </el-col>
                         </el-row>
 
                         <el-form-item :label="$t('linkedin')">
-                            <el-input v-model="form.linkedin" placeholder="https://linkedin.com/..." />
+                            <el-input v-model="form.linkedin" placeholder="https://linkedin.com/awaan" />
                         </el-form-item>
                     </el-form>
                 </el-tab-pane>
 
                 <el-tab-pane label="SEO" name="seo">
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
-                        <el-row :gutter="20">
-                            <el-col :xs="24" :md="12">
-                                <el-form-item :label="$t('site_title_meta_title')">
-                                    <el-input v-model="form.meta_title" :placeholder="$t('website_address_for_search_engines')" />
-                                </el-form-item>
-                            </el-col>
-                            <el-col :xs="24" :md="12">
-                                <el-form-item :label="$t('meta_keywords')">
-                                    <el-input v-model="form.meta_keywords" placeholder="erp, pos, erp system" />
-                                </el-form-item>
-                            </el-col>
-                        </el-row>
+                        <div class="lang-switch-bar">
+                            <el-radio-group v-model="seoLang" size="small">
+                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="en">English</el-radio-button>
+                            </el-radio-group>
+                        </div>
 
-                        <el-form-item :label="$t('site_description_meta_description')">
-                            <el-input type="textarea" :rows="3" v-model="form.meta_description" :placeholder="$t('a_short_description_appears_in')" />
-                        </el-form-item>
+                        <template v-if="seoLang === 'ar'">
+                            <el-row :gutter="20">
+                                <el-col :xs="24" :md="12">
+                                    <el-form-item label="عنوان الموقع (Meta Title)">
+                                        <el-input v-model="form.meta_title" placeholder="أوان التقدم - مستلزمات البناء والمواد الإنشائية" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="12">
+                                    <el-form-item label="الكلمات المفتاحية">
+                                        <el-input v-model="form.meta_keywords" placeholder="مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية" />
+                                    </el-form-item>
+                                </el-col>
+                            </el-row>
+
+                            <el-form-item label="وصف الموقع (Meta Description)">
+                                <el-input type="textarea" :rows="3" v-model="form.meta_description" placeholder="وصف مختصر للموقع لمحركات البحث..." />
+                            </el-form-item>
+                        </template>
+
+                        <template v-else>
+                            <el-row :gutter="20">
+                                <el-col :xs="24" :md="12">
+                                    <el-form-item label="Meta Title">
+                                        <el-input v-model="form.meta_title_en" placeholder="Awaan Al-Takadom - Building Materials" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="12">
+                                    <el-form-item label="Meta Keywords">
+                                        <el-input v-model="form.meta_keywords_en" placeholder="building materials, water pumps, bathroom mixers, sanitary accessories, cladding, gypsum partitions" />
+                                    </el-form-item>
+                                </el-col>
+                            </el-row>
+
+                            <el-form-item label="Meta Description">
+                                <el-input type="textarea" :rows="3" v-model="form.meta_description_en" placeholder="Brief site description for search engines..." />
+                            </el-form-item>
+                        </template>
 
                         <el-form-item label="Google Analytics ID">
                             <el-input v-model="form.google_analytics" placeholder="G-XXXXXXXXXX" />
@@ -287,7 +336,7 @@
                                     type="textarea"
                                     :rows="5"
                                     v-model="form.about_story"
-                                    placeholder="قصة الشركة وتاريخها..."
+                                    placeholder="في عالم متسارع يتطلب البناء فيه الجمع بين القوة والجمال، ولدت أوان التقدم. لم نكن نريد مجرد توريد مواد بناء، بل أردنا تغيير الطريقة التي تُبنى بها المشاريع."
                                 />
                             </el-form-item>
 
@@ -311,7 +360,7 @@
                                     type="textarea"
                                     :rows="4"
                                     v-model="form.about_services"
-                                    placeholder="الخدمات والمنتجات..."
+                                    placeholder="أدوات صحية وعصرية: تشكيلة راقية من أطقم الحمامات والخلاطات...&#13;&#10;أنظمة إضاءة ذكية: حلول إنارة داخلية وخارجية متطورة...&#13;&#10;سيراميك وبورسلان فاخر: أرضيات وجدران بألوان ونقشات عصرية..."
                                 />
                             </el-form-item>
                         </template>
@@ -335,7 +384,7 @@
                                     type="textarea"
                                     :rows="5"
                                     v-model="form.about_story_en"
-                                    placeholder="Company story and history..."
+                                    placeholder="In a fast-paced world where construction requires a combination of strength and beauty, Awan Progress was born. We didn't just want to supply building materials, we wanted to change the way projects are built."
                                 />
                             </el-form-item>
 
@@ -359,7 +408,7 @@
                                     type="textarea"
                                     :rows="4"
                                     v-model="form.about_services_en"
-                                    placeholder="Services and products we provide..."
+                                    placeholder="Modern Sanitary Ware: A refined selection of bathroom fixtures...&#13;&#10;Smart Lighting Systems: Advanced indoor and outdoor lighting...&#13;&#10;Premium Ceramics & Porcelain: Floors and walls with modern patterns..."
                                 />
                             </el-form-item>
                         </template>
@@ -408,7 +457,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_description"
-                                    placeholder="نبذة مختصرة عن هوية الشركة..."
+                                    placeholder="نسعى لأن نكون الخيار الأول في سوق مستلزمات البناء في سورية والمنطقة، من خلال تقديم منتجات عالمية بمعايير جودة عالية وخدمة لا مثيل لها."
                                 />
                             </el-form-item>
 
@@ -421,7 +470,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_1_description"
-                                    placeholder="وصف الميزة الأولى..."
+                                    placeholder="نعمل مع أكبر الموردين العالميين لتقديم مستلزمات بناء تلبي أعلى معايير الجودة الدولية. كل منتج نقدمه يخضع لعمليات فحص ورقابة صارمة لضمان التميز."
                                 />
                             </el-form-item>
 
@@ -434,7 +483,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_2_description"
-                                    placeholder="وصف الميزة الثانية..."
+                                    placeholder="نواكب أحدث صرحات التصميم المعماري والديكور الداخلي لنقدم لكم منتجات تجمع بين الجمال والوظيفية. نؤمن بأن التصميم الجيد يبدأ باختيار المواد المناسبة."
                                 />
                             </el-form-item>
 
@@ -447,7 +496,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_3_description"
-                                    placeholder="وصف الميزة الثالثة..."
+                                    placeholder="نبني مع شركائنا علاقات استراتيجية طويلة الأمد ترتكز على الثقة والشفافية والمنفعة المشتركة. نرى أنفسنا شريكاً حقيقياً في نجاح مشاريعكم الإنشائية."
                                 />
                             </el-form-item>
                         </template>
@@ -462,7 +511,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_description_en"
-                                    placeholder="A brief description of the company's identity..."
+                                    placeholder="We aspire to be the first choice in the building materials market in Syria and the region, by providing global products with high quality standards and unparalleled service."
                                 />
                             </el-form-item>
 
@@ -475,7 +524,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_1_description_en"
-                                    placeholder="Description of the first feature..."
+                                    placeholder="We work with the world's largest suppliers to provide building materials that meet the highest international quality standards. Every product we offer undergoes strict inspection and quality control processes."
                                 />
                             </el-form-item>
 
@@ -488,7 +537,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_2_description_en"
-                                    placeholder="Description of the second feature..."
+                                    placeholder="We keep pace with the latest architectural and interior design trends to offer you products that combine beauty and functionality. We believe that good design starts with choosing the right materials."
                                 />
                             </el-form-item>
 
@@ -501,7 +550,7 @@
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.vision_feature_3_description_en"
-                                    placeholder="Description of the third feature..."
+                                    placeholder="We build long-term strategic relationships with our partners based on trust, transparency, and mutual benefit. We see ourselves as a true partner in the success of your construction projects."
                                 />
                             </el-form-item>
                         </template>
@@ -583,7 +632,7 @@
                                             <span class="color-label">{{ $t('primary_color') }}</span>
                                             <div class="color-control-wrapper">
                                                 <el-color-picker v-model="form.theme_primary_color" />
-                                                <el-input v-model="form.theme_primary_color" placeholder="var(--mobile-primary)" />
+                                                <el-input v-model="form.theme_primary_color" placeholder="#1e3a8a" />
                                             </div>
                                             <div class="swatches-wrapper">
                                                 <span v-for="c in primaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_primary_color = c"></span>
@@ -596,7 +645,7 @@
                                                     <span class="color-label">{{ $t('primary_light') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_primary_light_color" />
-                                                        <el-input v-model="form.theme_primary_light_color" placeholder="var(--mobile-primary-light, var(--mobile-primary))" />
+                                                        <el-input v-model="form.theme_primary_light_color" placeholder="#3b82f6" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryLightPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_primary_light_color = c"></span>
@@ -608,7 +657,7 @@
                                                     <span class="color-label">{{ $t('primary_dark') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_primary_dark_color" />
-                                                        <el-input v-model="form.theme_primary_dark_color" placeholder="var(--mobile-primary-dark)" />
+                                                        <el-input v-model="form.theme_primary_dark_color" placeholder="#1e1b4b" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryDarkPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_primary_dark_color = c"></span>
@@ -623,7 +672,7 @@
                                                     <span class="color-label">{{ $t('secondary_color') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_secondary_color" />
-                                                        <el-input v-model="form.theme_secondary_color" placeholder="#10b981" />
+                                                        <el-input v-model="form.theme_secondary_color" placeholder="#06b6d4" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in secondaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_secondary_color = c"></span>
@@ -635,7 +684,7 @@
                                                     <span class="color-label">{{ $t('secondary_light') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_secondary_light_color" />
-                                                        <el-input v-model="form.theme_secondary_light_color" placeholder="#34d399" />
+                                                        <el-input v-model="form.theme_secondary_light_color" placeholder="#67e8f9" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in secondaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_secondary_light_color = c"></span>
@@ -680,7 +729,7 @@
                                                     <span class="color-label">{{ $t('navigation_bar_background_navbar_bg') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_navbar_bg_color" />
-                                                        <el-input v-model="form.theme_navbar_bg_color" placeholder="var(--mobile-primary-dark)" />
+                                                        <el-input v-model="form.theme_navbar_bg_color" placeholder="#1e3a8a" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_navbar_bg_color = c"></span>
@@ -707,7 +756,7 @@
                                                     <span class="color-label">{{ $t('scrolled_navbar_bg') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_navbar_scrolled_bg_color" />
-                                                        <el-input v-model="form.theme_navbar_scrolled_bg_color" placeholder="var(--mobile-primary-dark)" />
+                                                        <el-input v-model="form.theme_navbar_scrolled_bg_color" placeholder="#1e3a8a" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_navbar_scrolled_bg_color = c"></span>
@@ -756,7 +805,7 @@
                                                     <span class="color-label">{{ $t('page_header_bg_background') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_page_header_bg_color" />
-                                                        <el-input v-model="form.theme_page_header_bg_color" placeholder="linear-gradient(135deg, var(--mobile-primary-dark), #5a6b7a)" />
+                                                        <el-input v-model="form.theme_page_header_bg_color" placeholder="linear-gradient(135deg, #1e3a8a, #3b82f6)" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in gradientPresets" :key="c" class="swatch-circle" :style="{ background: c }" @click="form.theme_page_header_bg_color = c"></span>
@@ -786,7 +835,7 @@
                                                     <span class="color-label">{{ $t('website_footer_background_footer_bg') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_footer_bg_color" />
-                                                        <el-input v-model="form.theme_footer_bg_color" placeholder="var(--mobile-primary-dark)" />
+                                                        <el-input v-model="form.theme_footer_bg_color" placeholder="#1e1b4b" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryDarkPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_footer_bg_color = c"></span>
@@ -818,7 +867,7 @@
                                                     <span class="color-label">{{ $t('home_button_background_hero_primary_bg') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_hero_btn_bg_color" />
-                                                        <el-input v-model="form.theme_hero_btn_bg_color" placeholder="linear-gradient(135deg, var(--mobile-primary), var(--mobile-primary-light, var(--mobile-primary)))" />
+                                                        <el-input v-model="form.theme_hero_btn_bg_color" placeholder="linear-gradient(135deg, #1e3a8a, #3b82f6)" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in gradientPresets" :key="c" class="swatch-circle" :style="{ background: c }" @click="form.theme_hero_btn_bg_color = c"></span>
@@ -857,7 +906,7 @@
                                                     <span class="color-label">{{ $t('hero_secondary_text') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_hero_btn_secondary_text_color" />
-                                                        <el-input v-model="form.theme_hero_btn_secondary_text_color" placeholder="var(--mobile-primary)" />
+                                                        <el-input v-model="form.theme_hero_btn_secondary_text_color" placeholder="#1e3a8a" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_hero_btn_secondary_text_color = c"></span>
@@ -874,7 +923,7 @@
                                                     <span class="color-label">{{ $t('cart_bg_button_background') }}</span>
                                                     <div class="color-control-wrapper">
                                                         <el-color-picker v-model="form.theme_cart_btn_bg_color" />
-                                                        <el-input v-model="form.theme_cart_btn_bg_color" placeholder="var(--mobile-primary)" />
+                                                        <el-input v-model="form.theme_cart_btn_bg_color" placeholder="#1e3a8a" />
                                                     </div>
                                                     <div class="swatches-wrapper">
                                                         <span v-for="c in primaryPresets" :key="c" class="swatch-circle" :style="{ backgroundColor: c }" @click="form.theme_cart_btn_bg_color = c"></span>
@@ -911,7 +960,7 @@
                                     
                                     <!-- Navbar Mockup -->
                                     <div class="mockup-sub-title">{{ $t('navigation_bar_default') }}</div>
-                                    <div class="mock-nav" :style="{ backgroundColor: form.theme_navbar_bg_color || 'var(--mobile-primary-dark)', color: form.theme_navbar_text_color || '#ffffff' }">
+                                    <div class="mock-nav" :style="{ backgroundColor: form.theme_navbar_bg_color || '#1e3a8a', color: form.theme_navbar_text_color || '#ffffff' }">
                                         <span class="mock-logo-text" :style="{ color: form.theme_navbar_text_color || '#ffffff' }">{{ $t('it_s_time_for_takadum') }}</span>
                                         <div class="mock-nav-links">
                                             <span class="mock-nav-link active" :style="{ color: form.theme_navbar_text_color || '#ffffff' }">{{ $t('home') }}</span>
@@ -920,7 +969,7 @@
                                     </div>
 
                                     <div class="mockup-sub-title mt-2">{{ $t('navigation_bar_on_scroll') }}</div>
-                                    <div class="mock-nav mock-nav-scrolled" :style="{ backgroundColor: form.theme_navbar_scrolled_bg_color || form.theme_navbar_bg_color || 'var(--mobile-primary-dark)', color: form.theme_navbar_scrolled_text_color || form.theme_navbar_text_color || '#ffffff' }">
+                                    <div class="mock-nav mock-nav-scrolled" :style="{ backgroundColor: form.theme_navbar_scrolled_bg_color || form.theme_navbar_bg_color || '#1e3a8a', color: form.theme_navbar_scrolled_text_color || form.theme_navbar_text_color || '#ffffff' }">
                                         <span class="mock-logo-text" :style="{ color: form.theme_navbar_scrolled_text_color || form.theme_navbar_text_color || '#ffffff' }">{{ $t('it_s_time_for_takadum') }}</span>
                                         <div class="mock-nav-links">
                                             <span class="mock-nav-link active" :style="{ color: form.theme_navbar_scrolled_text_color || form.theme_navbar_text_color || '#ffffff' }">{{ $t('home') }}</span>
@@ -933,7 +982,7 @@
                                     <div class="mock-hero" :style="{ background: 'linear-gradient(135deg, rgba(13,27,42,0.85), rgba(22,42,69,0.9))', padding: '12px 14px', borderRadius: '4px', textAlign: 'center' }">
                                         <div class="mock-hero-title" style="font-size: 0.75rem; color: #fff; font-weight: 700; margin-bottom: 6px;">{{ $t('original_spare_parts_with_real_warranty') }}</div>
                                         <div class="mock-hero-buttons" style="display: flex; gap: 6px; justify-content: center;">
-                                            <button class="mock-btn mock-hero-btn-primary" :style="{ background: form.theme_hero_btn_bg_color || form.theme_primary_color || 'var(--mobile-primary)', color: form.theme_hero_btn_text_color || '#ffffff', border: 'none', padding: '4px 10px', fontSize: '0.65rem', borderRadius: form.theme_border_radius, fontWeight: 'bold' }">
+                                            <button class="mock-btn mock-hero-btn-primary" :style="{ background: form.theme_hero_btn_bg_color || form.theme_primary_color || '#1e3a8a', color: form.theme_hero_btn_text_color || '#ffffff', border: 'none', padding: '4px 10px', fontSize: '0.65rem', borderRadius: form.theme_border_radius, fontWeight: 'bold' }">
                                                 {{ $t('browse_products') }}
                                             </button>
                                             <button class="mock-btn mock-hero-btn-secondary" :style="{ background: form.theme_hero_btn_secondary_bg_color || 'rgba(255, 255, 255, 0.1)', color: form.theme_hero_btn_secondary_text_color || '#ffffff', border: '1px solid ' + (form.theme_hero_btn_secondary_text_color || 'rgba(255,255,255,0.4)'), padding: '4px 10px', fontSize: '0.65rem', borderRadius: form.theme_border_radius, fontWeight: 'bold' }">
@@ -943,7 +992,7 @@
                                     </div>
 
                                     <!-- Page Header Mockup -->
-                                    <div class="mock-page-header" :style="{ background: form.theme_page_header_bg_color || 'linear-gradient(135deg, var(--mobile-primary-dark), #5a6b7a)', color: form.theme_page_header_text_color || '#ffffff' }">
+                                    <div class="mock-page-header" :style="{ background: form.theme_page_header_bg_color || 'linear-gradient(135deg, #1e3a8a, #3b82f6)', color: form.theme_page_header_text_color || '#ffffff' }">
                                         <div class="mock-page-title" :style="{ color: form.theme_page_header_text_color || '#ffffff' }">{{ $t('spare_parts_department') }}</div>
                                         <div class="mock-breadcrumb" :style="{ color: form.theme_page_header_text_color || '#ffffff', opacity: 0.8 }">{{ $t('home_product_classification') }}</div>
                                     </div>
@@ -956,8 +1005,8 @@
                                             </div>
                                             <div class="mock-product-details">
                                                 <div class="mock-product-name">{{ $t('front_brake_pads_set') }}</div>
-                                                <div class="mock-product-price" :style="{ color: form.theme_primary_color || 'var(--mobile-primary)' }">{{ $t('240_sar') }}</div>
-                                                <button class="mock-btn" :style="{ backgroundColor: form.theme_cart_btn_bg_color || form.theme_primary_color || 'var(--mobile-primary)', color: form.theme_cart_btn_text_color || '#ffffff', borderRadius: form.theme_border_radius }">
+                                                <div class="mock-product-price" :style="{ color: form.theme_primary_color || '#1e3a8a' }">{{ $t('240_sar') }}</div>
+                                                <button class="mock-btn" :style="{ backgroundColor: form.theme_cart_btn_bg_color || form.theme_primary_color || '#1e3a8a', color: form.theme_cart_btn_text_color || '#ffffff', borderRadius: form.theme_border_radius }">
                                                     {{ $t('add_to_cart') }}
                                                 </button>
                                             </div>
@@ -965,7 +1014,7 @@
                                     </div>
 
                                     <!-- Footer Mockup -->
-                                    <div class="mock-footer" :style="{ backgroundColor: form.theme_footer_bg_color || 'var(--mobile-primary-dark)', color: form.theme_footer_text_color || '#f8f9fa' }">
+                                    <div class="mock-footer" :style="{ backgroundColor: form.theme_footer_bg_color || '#1e1b4b', color: form.theme_footer_text_color || '#e2e8f0' }">
                                         <div class="mock-footer-content" :style="{ color: form.theme_footer_text_color || '#f8f9fa' }">
                                             <span>{{ $t('2026_awan_takadum_all_rights_reserved') }}</span>
                                         </div>
@@ -1069,6 +1118,8 @@ const activeTab = ref('general');
 const generalLang = ref('ar');
 const aboutLang = ref('ar');
 const visionLang = ref('ar');
+const seoLang = ref('ar');
+const contactLang = ref('ar');
 const submitting = ref(false);
 const formRef = ref(null);
 
@@ -1088,15 +1139,20 @@ const form = reactive({
     contact_whatsapp: '',
     contact_email: '',
     address: '',
+    address_en: '',
     working_hours: '',
+    working_hours_en: '',
     facebook: '',
     instagram: '',
     twitter: '',
     youtube: '',
     linkedin: '',
     meta_title: '',
+    meta_title_en: '',
     meta_description: '',
+    meta_description_en: '',
     meta_keywords: '',
+    meta_keywords_en: '',
     google_analytics: '',
     email_notifications: false,
     sms_notifications: false,
@@ -1497,19 +1553,19 @@ const applyPalette = (palette) => {
     form.theme_page_header_text_color = palette.page_header_text;
 };
 
-const primaryPresets = ['var(--mobile-primary)', '#1e3a8a', '#171717', '#7f1d1d', '#4c1d95', '#0f172a', '#0284c7'];
-const primaryLightPresets = ['var(--mobile-primary-light, var(--mobile-primary))', '#3b82f6', '#262626', '#b91c1c', '#6d28d9', '#334155', '#38bdf8'];
-const primaryDarkPresets = ['var(--mobile-primary-dark)', '#1e1b4b', '#0a0a0a', '#450a0a', '#2e1065', '#020617', '#0369a1'];
-const secondaryPresets = ['#10b981', '#06b6d4', '#d4af37', '#ec4899', '#f97316', '#84cc16', '#64748b'];
-const textPresets = ['#ffffff', '#f8f9fa', '#f3e5ab', '#e2e8f0', '#d4af37', '#1e293b', '#0f172a'];
+const primaryPresets = ['#1e3a8a', '#171717', '#7f1d1d', '#4c1d95', '#0f172a', '#0284c7', '#166534'];
+const primaryLightPresets = ['#3b82f6', '#262626', '#b91c1c', '#6d28d9', '#334155', '#38bdf8', '#22c55e'];
+const primaryDarkPresets = ['#1e1b4b', '#0a0a0a', '#450a0a', '#2e1065', '#020617', '#0369a1', '#14532d'];
+const secondaryPresets = ['#06b6d4', '#10b981', '#d4af37', '#ec4899', '#f97316', '#84cc16', '#64748b'];
+const textPresets = ['#ffffff', '#e2e8f0', '#f8f9fa', '#f3e5ab', '#d4af37', '#1e293b', '#0f172a'];
 const gradientPresets = [
-    'linear-gradient(135deg, var(--mobile-primary-dark), #5a6b7a)',
     'linear-gradient(135deg, #1e3a8a, #3b82f6)',
     'linear-gradient(135deg, #171717, #525252)',
     'linear-gradient(135deg, #7f1d1d, #f59e0b)',
     'linear-gradient(135deg, #4c1d95, #ec4899)',
-    'var(--mobile-primary)',
-    '#1e3a8a'
+    'linear-gradient(135deg, #1e1b4b, #1e3a8a)',
+    '#1e3a8a',
+    '#06b6d4'
 ];
 
 const logoFile = ref(null);
@@ -1570,15 +1626,20 @@ const loadSettings = (settings) => {
     form.contact_whatsapp = settings.contact_whatsapp || '';
     form.contact_email = settings.contact_email || '';
     form.address = settings.address || settings.contact_address || '';
+    form.address_en = settings.address_en || '';
     form.working_hours = settings.working_hours || '';
+    form.working_hours_en = settings.working_hours_en || '';
     form.facebook = settings.facebook || settings.contact_facebook || '';
     form.instagram = settings.instagram || settings.contact_instagram || '';
     form.twitter = settings.twitter || settings.contact_twitter || '';
     form.youtube = settings.youtube || settings.contact_youtube || '';
     form.linkedin = settings.linkedin || settings.contact_linkedin || '';
     form.meta_title = settings.meta_title || '';
+    form.meta_title_en = settings.meta_title_en || '';
     form.meta_description = settings.meta_description || '';
+    form.meta_description_en = settings.meta_description_en || '';
     form.meta_keywords = settings.meta_keywords || '';
+    form.meta_keywords_en = settings.meta_keywords_en || '';
     form.google_analytics = settings.google_analytics || '';
     form.email_notifications = normalizeBoolean(settings.email_notifications ?? '0');
     form.sms_notifications = normalizeBoolean(settings.sms_notifications ?? '0');

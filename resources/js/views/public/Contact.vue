@@ -44,7 +44,7 @@
                             <i class="fas fa-map-marker-alt"></i>
                             <div>
                                 <h4>{{ t('location_label') || 'الموقع' }}</h4>
-                                <p>{{ settings.address || 'سورية - دمشق' }}</p>
+                                <p>{{ $p(settings, 'address') || (locale === 'en' ? 'Syria - Damascus' : 'سورية - دمشق') }}</p>
                             </div>
                         </div>
 
@@ -52,7 +52,7 @@
                             <i class="fas fa-clock"></i>
                             <div>
                                 <h4>{{ t('working_hours') || 'ساعات العمل' }}</h4>
-                                <p>{{ settings.working_hours || 'السبت - الخميس: 9:00 ص - 6:00 م' }}</p>
+                                <p>{{ $p(settings, 'working_hours') || (locale === 'en' ? 'Sunday - Thursday: 9:00 AM - 6:00 PM' : 'السبت - الخميس: 9:00 ص - 6:00 م') }}</p>
                             </div>
                         </div>
 
@@ -157,9 +157,9 @@ const { t, locale } = useI18n();
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التكادوم';
-    const contactTitle = locale.value === 'en' ? 'Contact Us' : 'تواصل معنا';
-    const contactDescription = locale.value === 'en' ? 'Get in touch with us for any inquiries or support' : 'تواصل معنا لأي استفسارات أو دعم';
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || t('site_fallback_name') || 'أوان التقدم';
+    const contactTitle = t('nav_contact') || (locale.value === 'en' ? 'Contact Us' : 'تواصل معنا');
+    const contactDescription = t('contact_desc') || (locale.value === 'en' ? 'Get in touch with us for any inquiries or support' : 'تواصل معنا لأي استفسارات أو دعم');
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
     
     // Update document title
@@ -228,10 +228,10 @@ const submitForm = async () => {
         if (res.data?.success) {
             submitted.value = true;
         } else {
-            error.value = res.data?.message || 'حدث خطأ أثناء إرسال الرسالة';
+            error.value = res.data?.message || t('contact_error_sending') || 'حدث خطأ أثناء إرسال الرسالة';
         }
     } catch (err) {
-        error.value = err.response?.data?.message || 'فشل الاتصال بالخادم، يرجى إعادة المحاولة';
+        error.value = err.response?.data?.message || t('contact_error_connection') || 'فشل الاتصال بالخادم، يرجى إعادة المحاولة';
     } finally {
         submitting.value = false;
     }

@@ -53,7 +53,7 @@ const { t, locale } = useI18n();
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التكادوم';
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
     const visionTitle = settings.value[`vision_title_${locale.value}`] || settings.value.vision_title || 'الهوية والرؤية';
     const visionDescription = settings.value[`vision_description_${locale.value}`] || settings.value.vision_description || 'تعرف على رؤيتنا وقيمنا في تقديم أفضل قطع الغيار';
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';

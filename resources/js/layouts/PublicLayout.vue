@@ -232,12 +232,12 @@
                 <div class="preloader-content">
                     <div class="logo-pulse">
                         <img :src="getImageUrl(settings.site_logo || 'assets/images/logo.png')" 
-                             :alt="$p(settings, 'site_name') || 'أوان التكادوم'" 
+                             :alt="$p(settings, 'site_name') || 'أوان التقدم'" 
                              class="preloader-logo">
                         <div class="spinner-ring"></div>
                     </div>
                     <div class="preloader-text">
-                        {{ $p(settings, 'site_name') || 'أوان التكادوم' }}
+                        {{ $p(settings, 'site_name') || 'أوان التقدم' }}
                     </div>
                 </div>
             </div>
@@ -347,7 +347,7 @@
             <div class="drawer-header">
                 <router-link to="/" class="drawer-logo" @click="mobileMenuOpen = false">
                     <img :src="getImageUrl(settings.site_logo || 'assets/images/logo.png')" :alt="$p(settings, 'site_name')" class="drawer-logo-img">
-                    <span class="drawer-logo-text">{{ $p(settings, 'site_name') || 'أوان التكادوم' }}</span>
+                    <span class="drawer-logo-text">{{ $p(settings, 'site_name') || 'أوان التقدم' }}</span>
                 </router-link>
             </div>
             <div class="drawer-search">

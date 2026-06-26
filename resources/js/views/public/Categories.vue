@@ -120,7 +120,7 @@ const searchQuery = computed(() => route.query.q || '');
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value.site_name || 'أوان التكادوم';
+    const siteName = settings.value.site_name || 'أوان التقدم';
     const categoriesTitle = locale.value === 'en' ? 'Categories' : 'فئات المنتجات';
     const categoriesDescription = locale.value === 'en' ? 'Browse our wide range of mobile phone accessories' : 'تصفح مجموعتنا الواسعة من مستلزمات الأجهزة المحمولة';
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';

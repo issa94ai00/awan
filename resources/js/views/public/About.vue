@@ -159,7 +159,7 @@ const updateSEOMetaTags = () => {
 };
 
 const defaultStory = computed(() => {
-    let siteName = 'أوان التكادوم';
+    let siteName = 'أوان التقدم';
     if (settings.value) {
         siteName = settings.value[`site_name_${locale.value || 'ar'}`] || settings.value['site_name'] || siteName;
     }

@@ -3,7 +3,7 @@
         <!-- Hero Section -->
         <section class="hero" id="home" :style="heroBgStyle">
             <div class="hero-content">
-                <h1>{{ $p(settings, 'site_name') || 'أوان التكادوم' }}</h1>
+                <h1>{{ $p(settings, 'site_name') || 'أوان التقدم' }}</h1>
                 <p>{{ $p(settings, 'site_tagline') || 'أفضل قطع الغيار الأصلية بجودة عالية وأسعار منافسة، لجميع موديلات الهواتف الذكية' }}</p>
                 <div class="hero-buttons">
                     <router-link to="/categories" class="btn-hero-primary">
@@ -246,7 +246,7 @@ const settings = computed(() => settingsStore.data);
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التكادوم';
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
     const siteDescription = settings.value[`site_description_${locale.value}`] || settings.value.site_description || 'أفضل قطع الغيار الأصلية بجودة عالية وأسعار منافسة، لجميع موديلات الهواتف الذكية';
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
     

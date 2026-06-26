@@ -355,7 +355,7 @@ const productSlug = computed(() => route.params.slug);
 const updateSEOMetaTags = () => {
     if (!product.value) return;
     
-    const siteName = settings.value.site_name || 'أوان التكادوم';
+    const siteName = settings.value.site_name || 'أوان التقدم';
     const productName = product.value.name_ar || product.value.name || 'منتج';
     const productDescription = product.value.description_ar || product.value.description || 'منتج عالي الجودة';
     const productImage = product.value.image_main ? getImageUrl(product.value.image_main) : '/assets/images/logo.png';
