@@ -843,7 +843,7 @@ const vClickOutside = {
 const customTitle = ref('');
 
 const updatePageTitle = () => {
-    const siteName = settings.value.meta_title || settings.value.site_name || 'أوان التقدم';
+    const siteName = settings.value.meta_title || settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
     const routeTitles = {
         'home': '',
         'about': 'من نحن',
@@ -892,7 +892,7 @@ watch(route, () => {
     updatePageTitle();
 });
 
-watch([() => settings.value.site_name, () => settings.value.meta_title], () => {
+watch([() => settings.value.site_name, () => settings.value.meta_title, locale], () => {
     updatePageTitle();
 });
 

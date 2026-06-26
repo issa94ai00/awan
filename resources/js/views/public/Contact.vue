@@ -157,7 +157,7 @@ const { t, locale } = useI18n();
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value.site_name || 'أوان التكادوم';
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التكادوم';
     const contactTitle = locale.value === 'en' ? 'Contact Us' : 'تواصل معنا';
     const contactDescription = locale.value === 'en' ? 'Get in touch with us for any inquiries or support' : 'تواصل معنا لأي استفسارات أو دعم';
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';

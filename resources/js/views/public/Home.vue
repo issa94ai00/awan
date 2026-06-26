@@ -246,8 +246,8 @@ const settings = computed(() => settingsStore.data);
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
-    const siteName = settings.value.site_name || 'أوان التكادوم';
-    const siteDescription = settings.value.site_description || 'أفضل قطع الغيار الأصلية بجودة عالية وأسعار منافسة، لجميع موديلات الهواتف الذكية';
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التكادوم';
+    const siteDescription = settings.value[`site_description_${locale.value}`] || settings.value.site_description || 'أفضل قطع الغيار الأصلية بجودة عالية وأسعار منافسة، لجميع موديلات الهواتف الذكية';
     const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
     
     // Update document title
