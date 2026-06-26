@@ -1,0 +1,12 @@
+            price: formatAmount(product.price),
+            image: product.image || ''
+        }));
+
+        wmsStats.value = overview.wms || wmsStats.value;
+        rmaStats.value = overview.rma || rmaStats.value;
+        workflowStats.value = overview.workflows || workflowStats.value;
+        notificationStats.value = overview.notifications || notificationStats.value;
+        auditStats.value = overview.audit || auditStats.value;
+        recentAuditLogs.value = overview.recent_audit_logs || [];
+        analyticsStats.value = overview.analytics || analyticsStats.value;
+    } catch (err) {

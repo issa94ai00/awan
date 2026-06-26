@@ -1,0 +1,679 @@
+        <!-- ERP Features Dashboard Tabs -->
+        <el-tabs v-model="activeTab" class="dashboard-tabs mt-4">
+            
+            <!-- 1. GENERAL OVERVIEW TAB -->
+            <el-tab-pane name="overview">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><Odometer /></el-icon>
+                        <span>{{ $t('dashboard') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12" :md="6" v-for="stat in stats" :key="stat.title">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" :style="{ background: stat.color }">
+                                    <el-icon :size="28" color="white">
+                                        <component :is="stat.icon"></component>
+                                    </el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ stat.value }}</h3>
+                                    <p>{{ stat.title }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <div v-if="lowStockProducts.length > 0" class="section mt-4">
+                    <div class="section-header">
+                        <h2><i class="fas fa-exclamation-triangle" style="color: #e6a23c;"></i> {{ $t('low_stock_alerts') }}</h2>
+                    </div>
+                    <el-card shadow="hover" class="low-stock-card">
+                        <el-table :data="lowStockProducts" style="width: 100%" :stripe="true">
+                            <el-table-column prop="name" :label="$t('product')"></el-table-column>
+                            <el-table-column prop="sku" label="SKU" width="120"></el-table-column>
+                            <el-table-column prop="stock_quantity" :label="$t('current_stock')" width="120"></el-table-column>
+                            <el-table-column prop="min_stock" :label="$t('minimum')" width="120"></el-table-column>
+                            <el-table-column :label="$t('status')" width="120">
+                                <template #default>
+                                    <el-tag type="danger">{{ $t('low') }}</el-tag>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-card>
+                </div>
+
+                <div class="section mt-4">
+                    <div class="section-header">
+                        <h2>{{ $t('summary_of_reports') }}</h2>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :sm="12" :md="8" v-for="item in detailStats" :key="item.title">
+                            <el-card class="stat-card" shadow="hover">
+                                <div class="stat-content">
+                                    <div class="stat-icon" :style="{ background: item.color }">
+                                        <el-icon :size="24" color="white">
+                                            <component :is="item.icon"></component>
+                                        </el-icon>
+                                    </div>
+                                    <div class="stat-info">
+                                        <h4>{{ item.value }}</h4>
+                                        <p>{{ item.title }}</p>
+                                    </div>
+                                </div>
+                            </el-card>
+                        </el-col>
+                    </el-row>
+                </div>
+
+                <div class="section mt-4 dashboard-overview">
+                    <div class="section-header">
+                        <h2>{{ $t('transaction_status') }}</h2>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :lg="16">
+                            <el-card shadow="hover" class="revenue-card">
+                                <template #header>
+                                    <div class="status-header">
+                                        <span>{{ $t('look_at_revenue') }}</span>
+                                        <span class="small-text">{{ $t('latest_update_automatically') }}</span>
+                                    </div>
+                                </template>
+                                <div class="revenue-summary">
+                                    <div class="revenue-value">
+                                        <span>{{ $t('total_revenue') }}</span>
+                                        <strong>{{ stats[3].value }}</strong>
+                                    </div>
+                                    <div class="revenue-metrics">
+                                        <div class="metric-item" v-for="metric in revenueMetrics" :key="metric.label">
+                                            <span>{{ metric.label }}</span>
+                                            <strong>{{ metric.value }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="progress-group">
+                                    <div v-for="metric in revenueMetrics" :key="metric.label" class="progress-bar-row">
+                                        <div class="progress-label">
+                                            <span>{{ metric.label }}</span>
+                                            <strong>{{ metric.percent }}%</strong>
+                                        </div>
+                                        <div class="progress-track">
+                                            <div class="progress-fill" :style="{ width: metric.percent + '%' }"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </el-card>
+                        </el-col>
+
+                        <el-col :xs="24" :lg="8">
+                            <el-card class="stats-grid-card" shadow="hover">
+                                <template #header>
+                                    <div class="status-header">
+                                        <span>{{ $t('quick_summary') }}</span>
+                                    </div>
+                                </template>
+                                <div class="quick-stats">
+                                    <div class="quick-stat" v-for="item in detailStats.slice(0, 4)" :key="item.title">
+                                        <span>{{ item.title }}</span>
+                                        <strong>{{ item.value }}</strong>
+                                    </div>
+                                </div>
+                            </el-card>
+                        </el-col>
+                    </el-row>
+                </div>
+
+                <div class="section mt-4">
+                    <div class="section-header">
+                        <h2>{{ $t('transaction_status') }}</h2>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :sm="12" :md="8" v-for="group in statusGroups" :key="group.title">
+                            <el-card shadow="hover" class="status-card">
+                                <template #header>
+                                    <div class="status-header">
+                                        <span>{{ group.title }}</span>
+                                    </div>
+                                </template>
+                                <div class="status-list">
+                                    <div v-for="item in group.items" :key="item.label" class="status-item">
+                                        <div>
+                                            <span>{{ item.label }}</span>
+                                            <div class="status-description">{{ item.description }}</div>
+                                        </div>
+                                        <strong>{{ formatCount(item.value) }}</strong>
+                                    </div>
+                                </div>
+                            </el-card>
+                        </el-col>
+                    </el-row>
+                </div>
+
+                <el-row :gutter="20" class="mt-4">
+                    <el-col :xs="24" :lg="16">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <div class="card-header">
+                                    <span>{{ $t('recent_sales') }}</span>
+                                </div>
+                            </template>
+                            <el-table :data="recentSales" style="width: 100%" :stripe="true">
+                                <el-table-column prop="id" :label="$t('invoice_number')" width="120"></el-table-column>
+                                <el-table-column prop="customer" :label="$t('client')"></el-table-column>
+                                <el-table-column prop="amount" :label="$t('amount')"></el-table-column>
+                                <el-table-column prop="status" :label="$t('status')">
+                                    <template #default="{ row }">
+                                        <el-tag :type="getStatusType(row.status)">
+                                            {{ row.status }}
+                                        </el-tag>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </el-card>
+                    </el-col>
+
+                    <el-col :xs="24" :lg="8">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>{{ $t('top_products') }}</span>
+                            </template>
+                            <div class="top-products">
+                                <div v-for="product in topProducts" :key="product.id" class="product-item">
+                                    <el-avatar :size="40" :src="product.image"></el-avatar>
+                                    <div class="product-info">
+                                        <h4>{{ product.name }}</h4>
+                                        <span>{{ product.sales }} {{ $t('lonliness') }}</span>
+                                    </div>
+                                    <span class="product-price">{{ product.price }}</span>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+            </el-tab-pane>
+
+            <!-- 2. WAREHOUSE MANAGEMENT SYSTEM (WMS) TAB -->
+            <el-tab-pane name="wms">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><Location /></el-icon>
+                        <span>{{ $t('wms') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #409eff;">
+                                    <el-icon :size="28" color="white"><Location /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(wmsStats.warehouses_count) }}</h3>
+                                    <p>{{ $t('warehouses') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #67c23a;">
+                                    <el-icon :size="28" color="white"><List /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(wmsStats.bins_count) }}</h3>
+                                    <p>{{ $t('bins') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #e6a23c;">
+                                    <el-icon :size="28" color="white"><Checked /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(wmsStats.picking_pending + wmsStats.picking_in_progress) }}</h3>
+                                    <p>{{ $t('picking_packing') }} (نشط)</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #909399;">
+                                    <el-icon :size="28" color="white"><Calendar /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(wmsStats.cycle_counts_count) }}</h3>
+                                    <p>{{ $t('cycle_counts') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20" class="mt-4">
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>حالة مهام التجهيز والتعبئة (Picking & Packing)</span>
+                            </template>
+                            <div style="padding: 10px 0;">
+                                <h4>قوائم التجهيز (Picking Lists)</h4>
+                                <div class="progress-bar-row mt-2">
+                                    <div class="progress-label">
+                                        <span>معلقة: {{ wmsStats.picking_pending }} | قيد التنفيذ: {{ wmsStats.picking_in_progress }}</span>
+                                        <strong>مكتملة: {{ wmsStats.picking_completed }}</strong>
+                                    </div>
+                                    <el-progress :percentage="getPercent(wmsStats.picking_completed, wmsStats.picking_pending + wmsStats.picking_in_progress + wmsStats.picking_completed)" status="success"></el-progress>
+                                </div>
+
+                                <h4 class="mt-4">قوائم التعبئة (Packing Lists)</h4>
+                                <div class="progress-bar-row mt-2">
+                                    <div class="progress-label">
+                                        <span>معلقة: {{ wmsStats.packing_pending }} | قيد التنفيذ: {{ wmsStats.packing_in_progress }}</span>
+                                        <strong>مكتملة: {{ wmsStats.packing_completed }}</strong>
+                                    </div>
+                                    <el-progress :percentage="getPercent(wmsStats.packing_completed, wmsStats.packing_pending + wmsStats.packing_in_progress + wmsStats.packing_completed)" status="success"></el-progress>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>دقة الجرد الدوري (Cycle Counts Accuracy)</span>
+                            </template>
+                            <div style="text-align: center; padding: 20px 0;">
+                                <el-progress type="circle" :percentage="getPercent(wmsStats.cycle_counts_completed, wmsStats.cycle_counts_count)" :width="130">
+                                    <template #default="{ percentage }">
+                                        <div style="font-size: 1.5rem; font-weight: bold;">{{ percentage }}%</div>
+                                        <div style="font-size: 0.8rem; color: #909399;">نسبة الإنجاز</div>
+                                    </template>
+                                </el-progress>
+                                <div class="mt-4">
+                                    <p>إجمالي عمليات الجرد: <strong>{{ wmsStats.cycle_counts_count }}</strong></p>
+                                    <p>العمليات المكتملة: <strong>{{ wmsStats.cycle_counts_completed }}</strong></p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <div class="section mt-4">
+                    <el-card shadow="hover">
+                        <template #header>
+                            <span>روابط سريعة لإدارة المستودعات</span>
+                        </template>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <el-button type="primary" @click="$router.push('/admin/wms/warehouses')">المستودعات</el-button>
+                            <el-button type="success" @click="$router.push('/admin/wms/bins')">صناديق التخزين</el-button>
+                            <el-button type="warning" @click="$router.push('/admin/wms/picking')">قوائم التجهيز</el-button>
+                            <el-button type="danger" @click="$router.push('/admin/wms/packing')">قوائم التعبئة</el-button>
+                            <el-button type="info" @click="$router.push('/admin/wms/cycle-counts')">الجرد الدوري</el-button>
+                            <el-button type="primary" plain @click="$router.push('/admin/wms/performance')">تقرير الأداء</el-button>
+                        </div>
+                    </el-card>
+                </div>
+            </el-tab-pane>
+
+            <!-- 3. RETURNS & RMA MANAGEMENT TAB -->
+            <el-tab-pane name="rma">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><Refresh /></el-icon>
+                        <span>{{ $t('rma') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #409eff;">
+                                    <el-icon :size="28" color="white"><Refresh /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(rmaStats.total) }}</h3>
+                                    <p>{{ $t('rma_requests') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #e6a23c;">
+                                    <el-icon :size="28" color="white"><Clock /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(rmaStats.pending) }}</h3>
+                                    <p>{{ $t('pending_rma') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #f56c6c;">
+                                    <el-icon :size="28" color="white"><Wallet /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatAmount(rmaStats.refunded_amount) }}</h3>
+                                    <p>{{ $t('returned_amount') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20" class="mt-4">
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>حالات المرتجعات</span>
+                            </template>
+                            <div style="padding: 10px 0;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                    <span>انتظار الموافقة</span>
+                                    <el-tag type="warning">{{ formatCount(rmaStats.pending) }}</el-tag>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                    <span>موافق عليها</span>
+                                    <el-tag type="primary">{{ formatCount(rmaStats.approved) }}</el-tag>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                    <span>مرفوضة</span>
+                                    <el-tag type="danger">{{ formatCount(rmaStats.rejected) }}</el-tag>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>مكتملة ومستردة</span>
+                                    <el-tag type="success">{{ formatCount(rmaStats.completed) }}</el-tag>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>روابط إدارة المرتجعات</span>
+                            </template>
+                            <div style="padding: 20px 0; text-align: center;">
+                                <el-icon :size="48" color="#409eff"><Refresh /></el-icon>
+                                <p class="mt-2" style="color: #606f8b;">إدارة طلبات الاستبدال والاسترجاع من العملاء مع حساب المبالغ المستردة تلقائياً.</p>
+                                <div class="mt-4">
+                                    <el-button type="primary" @click="$router.push('/admin/rma')">استعراض طلبات RMA</el-button>
+                                    <el-button type="success" plain @click="$router.push('/admin/rma/create')">إنشاء طلب جديد</el-button>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+            </el-tab-pane>
+
+            <!-- 4. WORKFLOWS & AUTOMATION TAB -->
+            <el-tab-pane name="workflows">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><Cpu /></el-icon>
+                        <span>{{ $t('workflows') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #409eff;">
+                                    <el-icon :size="28" color="white"><Cpu /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(workflowStats.total) }}</h3>
+                                    <p>{{ $t('workflows') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #67c23a;">
+                                    <el-icon :size="28" color="white"><Checked /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(workflowStats.active) }}</h3>
+                                    <p>{{ $t('active_workflows') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #8c6dfd;">
+                                    <el-icon :size="28" color="white"><Connection /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(workflowStats.executions_total) }}</h3>
+                                    <p>{{ $t('automation_executions') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12" :md="6">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #67c23a;">
+                                    <el-icon :size="28" color="white"><TrendCharts /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ workflowStats.executions_total ? Math.round((workflowStats.executions_completed / workflowStats.executions_total) * 100) : 100 }}%</h3>
+                                    <p>نسبة نجاح الأتمتة</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20" class="mt-4">
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>سجل عمليات التشغيل</span>
+                            </template>
+                            <div style="padding: 10px 0;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                    <span>عمليات مكتملة بنجاح</span>
+                                    <el-tag type="success">{{ formatCount(workflowStats.executions_completed) }}</el-tag>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>عمليات فشل تشغيلها</span>
+                                    <el-tag type="danger">{{ formatCount(workflowStats.executions_failed) }}</el-tag>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+
+                    <el-col :xs="24" :md="12">
+                        <el-card shadow="hover">
+                            <template #header>
+                                <span>أتمتة سير العمل (Workflows)</span>
+                            </template>
+                            <div style="padding: 20px 0; text-align: center;">
+                                <el-icon :size="48" color="#8c6dfd"><Cpu /></el-icon>
+                                <p class="mt-2" style="color: #606f8b;">تصميم مسارات العمل التلقائية وتنفيذ المهام مع استجابة فورية لأحداث النظام.</p>
+                                <div class="mt-4">
+                                    <el-button type="primary" @click="$router.push('/admin/workflows')">سير العمل</el-button>
+                                    <el-button type="success" plain @click="$router.push('/admin/workflows/create')">مسار عمل جديد</el-button>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+            </el-tab-pane>
+
+            <!-- 5. SECURITY & AUDIT FEED TAB -->
+            <el-tab-pane name="audit">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><View /></el-icon>
+                        <span>{{ $t('audit_logs') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #409eff;">
+                                    <el-icon :size="28" color="white"><View /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(auditStats.total) }}</h3>
+                                    <p>إجمالي العمليات المسجلة</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="12">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #e6a23c;">
+                                    <el-icon :size="28" color="white"><Clock /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(auditStats.today) }}</h3>
+                                    <p>عمليات اليوم</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <div class="section mt-4">
+                    <el-card shadow="hover">
+                        <template #header>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>{{ $t('recent_system_activities') }}</span>
+                                <el-button type="primary" size="small" @click="$router.push('/admin/audit')">عرض الكل</el-button>
+                            </div>
+                        </template>
+
+                        <el-table :data="recentAuditLogs" style="width: 100%" :stripe="true">
+                            <el-table-column prop="user_name" :label="$t('client')" width="180"></el-table-column>
+                            <el-table-column prop="action_text" :label="$t('status')" width="140">
+                                <template #default="{ row }">
+                                    <el-tag :type="row.action === 'delete' ? 'danger' : (row.action === 'create' ? 'success' : 'primary')">
+                                        {{ row.action_text }}
+                                    </el-tag>
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="module_text" label="القسم" width="140"></el-table-column>
+                            <el-table-column prop="description" label="تفاصيل العملية"></el-table-column>
+                            <el-table-column prop="created_at" :label="$t('date')" width="180"></el-table-column>
+                        </el-table>
+                    </el-card>
+                </div>
+            </el-tab-pane>
+
+            <!-- 6. BI & BUSINESS INTELLIGENCE TAB -->
+            <el-tab-pane name="analytics">
+                <template #label>
+                    <span class="tab-label">
+                        <el-icon><DataAnalysis /></el-icon>
+                        <span>{{ $t('bi_analytics') }}</span>
+                    </span>
+                </template>
+
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #409eff;">
+                                    <el-icon :size="28" color="white"><DataAnalysis /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(analyticsStats.dashboards) }}</h3>
+                                    <p>{{ $t('analytics_dashboards') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #67c23a;">
+                                    <el-icon :size="28" color="white"><Document /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(analyticsStats.reports) }}</h3>
+                                    <p>{{ $t('analytics_reports') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                    <el-col :xs="24" :sm="8">
+                        <el-card class="stat-card" shadow="hover">
+                            <div class="stat-content">
+                                <div class="stat-icon" style="background: #e6a23c;">
+                                    <el-icon :size="28" color="white"><Odometer /></el-icon>
+                                </div>
+                                <div class="stat-info">
+                                    <h3>{{ formatCount(analyticsStats.metrics) }}</h3>
+                                    <p>{{ $t('analytics_metrics') }}</p>
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <div class="section mt-4">
+                    <div class="section-header">
+                        <h2>بوابات ذكاء الأعمال والتحليلات (BI Gateways)</h2>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :sm="12" :md="6">
+                            <el-card class="gateway-card" shadow="hover" @click="$router.push('/admin/analytics/sales')">
+                                <el-icon :size="32" color="#67c23a"><TrendCharts /></el-icon>
+                                <h3>{{ $t('analytics_sales') }}</h3>
+                                <p>تحليلات مبيعات تفصيلية وتوقعات الطلبات المستقبلية.</p>
+                            </el-card>
+                        </el-col>
+                        <el-col :xs="24" :sm="12" :md="6">
+                            <el-card class="gateway-card" shadow="hover" @click="$router.push('/admin/analytics/inventory')">
+                                <el-icon :size="32" color="#409eff"><Box /></el-icon>
+                                <h3>{{ $t('analytics_inventory') }}</h3>
+                                <p>تقييم صحة وحركة المخزون وتصنيف ABC للمنتجات.</p>
+                            </el-card>
+                        </el-col>
+                        <el-col :xs="24" :sm="12" :md="6">
+                            <el-card class="gateway-card" shadow="hover" @click="$router.push('/admin/analytics/warehouse')">
+                                <el-icon :size="32" color="#8c6dfd"><Location /></el-icon>
+                                <h3>{{ $t('analytics_warehouse') }}</h3>
+                                <p>معدل استغلال المستودعات وصناديق التخزين وأداء المناولة.</p>
+                            </el-card>
+                        </el-col>
+                        <el-col :xs="24" :sm="12" :md="6">
+                            <el-card class="gateway-card" shadow="hover" @click="$router.push('/admin/analytics/financial')">
+                                <el-icon :size="32" color="#e6a23c"><Coin /></el-icon>
+                                <h3>{{ $t('analytics_financial') }}</h3>
+                                <p>تقارير الأرباح والخسائر والتدفقات النقدية والنسب المالية.</p>
+                            </el-card>
+                        </el-col>
+                    </el-row>
+                </div>
+            </el-tab-pane>
+        </el-tabs>
+    </div>
+</template>

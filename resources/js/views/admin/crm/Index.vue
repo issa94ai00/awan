@@ -1,0 +1,99 @@
+<template>
+    <div class="crm-index">
+        <div class="hero-panel">
+            <div class="hero-copy">
+                <p class="eyebrow">CRM</p>
+                <h1>{{ $t('customer_relationship_management') }}</h1>
+                <p>{{ $t('a_modern_control_panel_to') }}</p>
+            </div>
+            <div class="hero-actions">
+                <el-button type="primary" @click="refreshData">{{ $t('data_update') }}</el-button>
+            </div>
+        </div>
+
+        <el-row :gutter="20" class="overview-cards">
+            <el-col :xs="24" :sm="12" :md="6" v-for="item in stats" :key="item.title">
+                <el-card shadow="hover" class="overview-card">
+                    <div class="card-meta">
+                        <span>{{ item.title }}</span>
+                    </div>
+                    <h2>{{ item.value }}</h2>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-row :gutter="20" class="mt-4">
+            <el-col :xs="24" :lg="16">
+                <el-card shadow="hover" class="activity-card">
+                    <template #header>
+                        <div class="card-header">
+                            <span>{{ $t('latest_clients') }}</span>
+                        </div>
+                    </template>
+                    <el-table :data="customersStore.customers.slice(0,6)" style="width: 100%" stripe>
+                        <el-table-column prop="name" :label="$t('name')" />
+                        <el-table-column prop="company" :label="$t('company')" />
+                        <el-table-column prop="email" :label="$t('mail')" />
+                        <el-table-column prop="phone" :label="$t('phone')" />
+                    </el-table>
+                    <div v-if="!customersStore.customers.length" class="empty-state">{{ $t('no_clients_yet') }}</div>
+                </el-card>
+            </el-col>
+
+            <el-col :xs="24" :lg="8">
+                <el-card shadow="hover" class="insight-card">
+                    <template #header>
+                        <span>{{ $t('quick_summary') }}</span>
+                    </template>
+                    <div class="insight-list">
+                        <div class="insight-item">
+                            <span>{{ $t('customers') }}</span>
+                            <strong>{{ customersStore.customers.length }}</strong>
+                        </div>
+                        <div class="insight-item">
+                            <span>{{ $t('tickets') }}</span>
+                            <strong>{{ $t('almost') }}</strong>
+                        </div>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+    </div>
+</template>
+
+<script setup>
+import { computed, onMounted } from 'vue';
+import { useCustomersStore } from '@/stores/customers';
+import { useTicketsStore } from '@/stores/tickets';
+
+const customersStore = useCustomersStore();
+const ticketsStore = useTicketsStore();
+
+const stats = computed(() => [
+    { title: window.t('total_customers'), value: customersStore.pagination.total || customersStore.customers.length },
+    { title: window.t('tickets'), value: ticketsStore.pagination.total || ticketsStore.tickets.length },
+    { title: window.t('open_tickets'), value: ticketsStore.tickets.filter((ticket) => ticket.status === 'open').length },
+    { title: window.t('today_s_activity'), value: window.t('almost')}
+]);
+
+const refreshData = async () => {
+    await Promise.all([
+        customersStore.fetchCustomers().catch(() => {}),
+        ticketsStore.fetchTickets().catch(() => {})
+    ]);
+};
+
+onMounted(refreshData);
+</script>
+
+<style scoped>
+.crm-index { padding: 0; }
+.hero-panel { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:1.5rem; padding:1.5rem; border-radius:12px; background:#f5f8ff; margin-bottom:1.5rem }
+.eyebrow { margin:0 0 0.5rem; color:#409eff; font-weight:700 }
+.hero-copy h1 { margin:0; font-size:1.9rem; color:#1f2d3d }
+.hero-copy p { margin-top:0.5rem; color:#5f6d85 }
+.overview-card { min-height:120px; display:flex; flex-direction:column; justify-content:center; border-radius:12px }
+.insight-item { display:flex; justify-content:space-between; padding:0.8rem; border-radius:8px; background:#f8fbff }
+.mt-4 { margin-top:1.5rem }
+.empty-state { padding:1rem; text-align:center; color:#6b7c98 }
+</style>

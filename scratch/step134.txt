@@ -1,0 +1,100 @@
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import {
+    Box, ShoppingCart, User, TrendCharts, Location, Checked, Calendar, Cpu, Bell, Connection, View, Setting, Memo, Collection, UserFilled, DataAnalysis
+} from '@element-plus/icons-vue';
+import { dashboardApi } from '@/api/dashboard';
+import { useSettingsStore } from '@/stores/settings';
+
+const { locale } = useI18n();
+const settingsStore = useSettingsStore();
+
+const siteName = computed(() => {
+    if (!settingsStore.data) return window.t('site_name');
+    return locale.value === 'en'
+        ? (settingsStore.data.site_name_en || settingsStore.data.site_name)
+        : (settingsStore.data.site_name_ar || settingsStore.data.site_name);
+});
+
+const tagline = computed(() => {
+    if (!settingsStore.data) return window.t('system_performance_overview_and_statistics');
+    return locale.value === 'en'
+        ? (settingsStore.data.site_tagline_en || settingsStore.data.site_tagline || 'System performance overview and statistics')
+        : (settingsStore.data.site_tagline_ar || settingsStore.data.site_tagline || window.t('system_performance_overview_and_statistics'));
+});
+
+watch(siteName, (value) => {
+    document.title = window.t('control_panel_var').replace('{value}', value);
+}, { immediate: true });
+
+const activeTab = ref('overview');
+
+const wmsStats = ref({
+    warehouses_count: 0,
+    bins_count: 0,
+    picking_pending: 0,
+    picking_in_progress: 0,
+    picking_completed: 0,
+    packing_pending: 0,
+    packing_in_progress: 0,
+    packing_completed: 0,
+    cycle_counts_count: 0,
+    cycle_counts_completed: 0
+});
+
+const rmaStats = ref({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    completed: 0,
+    refunded_amount: 0
+});
+
+const workflowStats = ref({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    executions_total: 0,
+    executions_completed: 0,
+    executions_failed: 0
+});
+
+const notificationStats = ref({
+    total: 0,
+    templates: 0
+});
+
+const auditStats = ref({
+    total: 0,
+    today: 0
+});
+
+const recentAuditLogs = ref([]);
+
+const analyticsStats = ref({
+    dashboards: 0,
+    reports: 0,
+    metrics: 0
+});
+
+const stats = ref([
+    { title: window.t('total_products'), value: '...', icon: Box, color: '#409eff' },
+    { title: window.t('invoices'), value: '...', icon: ShoppingCart, color: '#67c23a' },
+    { title: window.t('customers'), value: '...', icon: User, color: '#e6a23c' },
+    { title: window.t('revenue'), value: '...', icon: TrendCharts, color: '#f56c6c' }
+]);
+
+const detailStats = ref([]);
+const statusGroups = ref([]);
+const revenueMetrics = ref([
+    { label: window.t('today'), value: window.t('0_sar'), percent: 0 },
+    { label: window.t('this_week'), value: window.t('0_sar'), percent: 0 },
+    { label: window.t('this_month'), value: window.t('0_sar'), percent: 0 }
+]);
+const recentSales = ref([]);
+const topProducts = ref([]);
+const lowStockProducts = ref([]);
+const loading = ref(false);
+const error = ref(null);

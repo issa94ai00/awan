@@ -1,0 +1,1775 @@
+{
+    "count": 228,
+    "strings": [
+        "هذا الحقل مطلوب",
+        "يمكن رفع صور فقط!",
+        "حجم الصورة يجب أن يكون أقل من 2MB!",
+        "تم تحديث الفئة بنجاح",
+        "تم إضافة الفئة بنجاح",
+        "فشل في جلب بيانات الفئة",
+        "فشل في جلب الفئات",
+        "تم حذف الفئة بنجاح",
+        "فشل في حذف الفئة",
+        "فشل في تحديث الحالة",
+        "أضف أو حرر بيانات عميل لتبسيط إدارة العلاقات.",
+        "اسم العميل",
+        "اسم الشركة",
+        "رقم الهاتف",
+        "عنوان العميل",
+        "اختر الحالة",
+        "غير نشط",
+        "ملاحظات إضافية",
+        "البريد الإلكتروني غير صالح",
+        "تعديل العميل",
+        "لم يتم العثور على العميل",
+        "تم تحديث العميل بنجاح",
+        "حدث خطأ أثناء الحفظ",
+        "قاعدة بيانات العملاء مع بحث سريع وفلاتر أساسية لسهولة الوصول.",
+        "ابحث باسم العميل أو البريد أو الهاتف",
+        "تم حذف العميل بنجاح",
+        "فشل في حذف العميل",
+        "لوحة تحكم حديثة لإدارة العملاء، التذاكر والاتصالات في مكان واحد.",
+        "إجمالي العملاء",
+        "التذاكر المفتوحة",
+        "إنشاء أو تعديل تذكرة دعم مع اختيار العميل والأولوية.",
+        "اختر العميل",
+        "اختر أولوية التذكرة",
+        "عنوان التذكرة",
+        "اختر حالة التذكرة",
+        "قيد الانتظار",
+        "تم حلها",
+        "اكتب وصف التذكرة",
+        "تعليقات داخلية",
+        "الموضوع مطلوب",
+        "الأولوية مطلوبة",
+        "تعديل التذكرة",
+        "لم يتم العثور على التذكرة",
+        "تم تحديث التذكرة بنجاح",
+        "إدارة طلبات الدعم مع تتبع الحالة والأولوية بسهولة.",
+        "ابحث بموضوع التذكرة أو اسم العميل",
+        "غير محدد",
+        "تم حذف التذكرة بنجاح",
+        "فشل في حذف التذكرة",
+        "تنبيات المخزون المنخفض",
+        "المخزون الحالي",
+        "أوان التقدم",
+        "نظرة عامة على أداء النظام والإحصائيات",
+        "إجمالي المنتجات",
+        "0 ر.س",
+        "قيد المعالجة",
+        "المبيعات الشهرية",
+        "الفواتير المعلقة",
+        "عروض الأسعار",
+        "أوامر الإنتاج",
+        "هذا الأسبوع",
+        "حالة الفواتير",
+        "الفواتير المكتملة بنجاح",
+        "الفواتير التي تحتاج متابعة",
+        "الفواتير الملغاة أو المسترجعة",
+        "الدفع المكتمل من العملاء",
+        "الدفع في انتظار المعالجة",
+        "المدفوعات المستردة للعملاء",
+        "طلبات الإنتاج غير المبدوءة",
+        "طلبات الإنتاج الحالية",
+        "الطلبات الجاهزة للتسليم",
+        "فشل في تحميل بيانات لوحة القيادة",
+        "متابعة الحضور اليومي وتسجيل حالات التأخير والغياب بسرعة.",
+        "سجل حضور جديد",
+        "ابحث بالموظف أو الحالة",
+        "سجل حضور الموظف وحرر التوقيت والحالة بسهولة.",
+        "اختر الموظف",
+        "اختر التاريخ",
+        "وقت الدخول",
+        "وقت الخروج",
+        "عن بُعد",
+        "أضف ملاحظات",
+        "التاريخ مطلوب",
+        "تعديل سجل الحضور",
+        "لم يتم العثور على سجل الحضور",
+        "تم تحديث سجل الحضور بنجاح",
+        "تم إنشاء سجل الحضور بنجاح",
+        "أضف أو حرر بيانات موظف مع حفظ تلقائي للمعلومات الأساسية.",
+        "أدخل اسم الموظف",
+        "أدخل القسم",
+        "أدخل الوظيفة",
+        "البريد الإلكتروني",
+        "تاريخ التعيين",
+        "رابط صورة الموظف",
+        "الاسم مطلوب",
+        "الوظيفة مطلوبة",
+        "يجب أن يكون البريد صالحًا",
+        "تاريخ التعيين مطلوب",
+        "إضافة موظف",
+        "لم يتم العثور على بيانات الموظف",
+        "تم تحديث بيانات الموظف بنجاح",
+        "تم إضافة الموظف بنجاح",
+        "إدارة بيانات الموظفين، عرض الحالة، والتحكم في السجل الوظيفي.",
+        "ابحث بالاسم أو القسم أو الوظيفة",
+        "فشل في تحميل بيانات الموظفين",
+        "هل تود حذف الموظف ${employee.name}؟",
+        "تم حذف الموظف بنجاح",
+        "فشل في حذف الموظف",
+        "لوحة إدارة الموارد البشرية الحديثة",
+        "تابع الموظفين، الحضور، الإجازات، والرواتب من واجهة نظيفة وسريعة.",
+        "مسيرات الرواتب",
+        "عدد الموظفين المسجلين",
+        "سجلات الحضور المسجلة",
+        "طلبات الإجازة الموجودة",
+        "إنشاء أو تعديل طلب إجازة مع معلومات الموظف وفترة الإجازة.",
+        "مثال: إجازة سنوية",
+        "اختر تاريخ البداية",
+        "اختر تاريخ النهاية",
+        "موافق عليها",
+        "أدخل سبب الإجازة",
+        "نوع الإجازة مطلوب",
+        "تاريخ البداية مطلوب",
+        "الحالة مطلوبة",
+        "طلب إجازة جديد",
+        "لم يتم العثور على طلب الإجازة",
+        "تم تحديث طلب الإجازة بنجاح",
+        "تم إنشاء طلب الإجازة بنجاح",
+        "إدارة طلبات الإجازة ومراقبة الموافقات في واجهة واضحة وسهلة الاستخدام.",
+        "ابحث باسم الموظف أو الحالة",
+        "عرض شامل للمستحقات، الحالة، وصافي الأجور بتصميم أنيق وسهل القراءة.",
+        "قائمة رواتب الموظفين",
+        "ابحث برقم المسيرة أو اسم الموظف",
+        "فشل في تحميل بيانات الاستفسار",
+        "يرجى كتابة الرد",
+        "فشل في إرسال الرد",
+        "تم تحديث الحالة",
+        "تم إغلاق الاستفسار",
+        "فشل في إغلاق الاستفسار",
+        "فشل في إعادة فتح الاستفسار",
+        "تم تعيين الاستفسار",
+        "لوحة إدارة الاستفسارات تمنحك رؤية سريعة، تصفية دقيقة، وعرض واضح لجميع حالات التواصل.",
+        "عرض سريع للطلبات الحالية مع حالة المعالجة والتعيين.",
+        "ابحث بالاسم أو الموضوع أو البريد أو الرسالة",
+        "جميع الحالات",
+        "تم الرد",
+        "هل أنت متأكد من حذف هذا الاستفسار؟",
+        "تم حذف الاستفسار بنجاح",
+        "لا توجد رسالة",
+        "اسم المنتج بالعربية مطلوب",
+        "Slug يجب أن يحتوي على أحرف إنجليزية وأرقام وشرطات فقط",
+        "السعر مطلوب",
+        "كمية المخزون مطلوبة",
+        "تم رفع الصورة الرئيسية بنجاح",
+        "تم حذف الصورة الرئيسية",
+        "تم رفع الصورة بنجاح",
+        "تم تحديث المنتج بنجاح",
+        "تم إضافة المنتج بنجاح",
+        "فشل في جلب بيانات المنتج",
+        "فشل في جلب المنتجات",
+        "فشل في حذف المنتج",
+        "تم التعطيل",
+        "فشل في تغيير الحالة",
+        "فشل في التفعيل الجماعي",
+        "تم تعطيل ${result.succeeded.length} منتج",
+        "تم حذف ${result.succeeded} منتج",
+        "فشل في الحذف الجماعي",
+        "فشل في جلب تفاصيل المنتج",
+        "إدارة طلبات الشراء الواردة من العملاء",
+        "قائمة طلبات الشراء",
+        "تم التسليم",
+        "ابحث برقم الطلب أو اسم العميل",
+        "تم تحديث الحالة بنجاح",
+        "تفاصيل طلب الشراء",
+        "فشل تحديث الحالة",
+        "نظرة عامة على المشتريات",
+        "عرض طلبات الشراء، الموردين، والإيصالات من واجهة واحدة نظيفة وسريعة.",
+        "أحدث طلبات الشراء",
+        "طلبات الشراء",
+        "طلبات حديثة",
+        "تابع طلبات الشراء الحالية واستخدم بحثًا سريعًا لعرض أي طلب في لحظة.",
+        "ابحث برقم الطلب أو اسم المورد",
+        "عرض إيصالات الاستلام بوضوح مع بحث مباشر ومعلومات حالة سريعة.",
+        "ابحث برقم الإيصال أو اسم المورد",
+        "واجهة الموردين تم تصميمها لتسريع عرض البيانات مع فلترة سهلة.",
+        "ابحث بالاسم أو البريد أو الهاتف",
+        ";\n\nconst loading = ref(true);\nconst summary = ref({ invoices: {}, payments: {} });\n\nconst statusCards = computed(() => ({\n    مدفوعة: summary.value.invoices.paid || 0,\n    معلقة: summary.value.invoices.pending || 0,\n    ملغاة: summary.value.invoices.cancelled || 0,\n    مدفوعة_جزئيًا: summary.value.payments.pending || 0,\n}));\n\nasync function loadSummary() {\n    loading.value = true;\n    try {\n        const res = await dashboardApi.getOverviewStats();\n        summary.value = res.data.data || summary.value;\n    } catch (e) {\n        console.error(",
+        "قاعدة بيانات العملاء بخط واضح وتصنيف سهل للبحث.",
+        "لوحة مبيعات جديدة وأنيقة",
+        "تابع الطلبات، الفواتير، العروض، والمدفوعات من لوحة واحدة أنيقة وسريعة.",
+        "أحدث طلبات البيع",
+        "طلبات البيع",
+        "متابعة الفواتير بسرعة مع بحث فوري وعرض مركّز للحالة والمبلغ.",
+        "ابحث برقم الفاتورة أو اسم العميل",
+        "تتبع المدفوعات الواردة وعرض التفاصيل المالية بوضوح.",
+        "ابحث برقم العملية أو اسم العميل",
+        "إدارة عروض الأسعار بسرعة مع بحث فوري وحالة واضحة لكل عرض.",
+        "قائمة عروض الأسعار",
+        "ابحث برقم العرض أو اسم العميل",
+        "عرض الطلبات الحالية مع تصفية سريعة وحالة فورية لكل طلب.",
+        "الطلبات قيد المعالجة",
+        "قائمة طلبات البيع",
+        "تحكم كامل في إعدادات الموقع، التعريب، العملة، الإشعارات والمحتوى.",
+        "الأخضر الكلاسيكي الفاخر",
+        "الذهبي والأسود الفخم",
+        "البنفسجي والوردي الجريء",
+        "الطبيعة والهدوء (Nature Calm)",
+        "البرتقالي الدافئ (Warm Orange)",
+        "الوردي الناعم (Soft Pink)",
+        "دولار أمريكي - USD",
+        "ريال سعودي - SAR",
+        "درهم إماراتي - AED",
+        "حدث خطأ أثناء جلب إعدادات النظام",
+        "يمكن رفع صور فقط",
+        "حجم الصورة يجب أن يكون أقل من ${maxSizeMB}MB",
+        "فشل حفظ الإعدادات",
+        "إدارة العروض المميزة",
+        "يمكنك من هنا إضافة وتعديل العروض المميزة، نسب الخصومات، والبنرات الدعائية التي تظهر في الصفحة الرئيسية.",
+        "قائمة العروض الحالية",
+        "تعديل فوري لحالة العرض أو الخصم وربطه بالمنتجات.",
+        "الوصف بالعربية مطلوب",
+        "فشل تحميل قائمة العروض المميزة",
+        "حجم الصورة الأقصى هو 3MB",
+        "فشل تغيير حالة تفعيل العرض",
+        "يرجى رفع صورة للبنر الترويجي أولاً",
+        "فشل حفظ العرض المميز",
+        "نعم، حذف",
+        "تم حذف العرض بنجاح",
+        "فشل حذف العرض المميز"
+    ],
+    "details": {
+        "هذا الحقل مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "يمكن رفع صور فقط!": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "حجم الصورة يجب أن يكون أقل من 2MB!": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث الفئة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إضافة الفئة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في جلب بيانات الفئة": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في جلب الفئات": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف الفئة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في حذف الفئة": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في تحديث الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\categories\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "أضف أو حرر بيانات عميل لتبسيط إدارة العلاقات.": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "tag_text"
+            }
+        ],
+        "اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اسم الشركة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "رقم الهاتف": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عنوان العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "غير نشط": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "ملاحظات إضافية": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "البريد الإلكتروني غير صالح": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تعديل العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "لم يتم العثور على العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث العميل بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "حدث خطأ أثناء الحفظ": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\CustomerForm.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "قاعدة بيانات العملاء مع بحث سريع وفلاتر أساسية لسهولة الوصول.": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Customers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث باسم العميل أو البريد أو الهاتف": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Customers.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Customers.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "تم حذف العميل بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Customers.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في حذف العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Customers.vue",
+                "context": "script_string"
+            }
+        ],
+        "لوحة تحكم حديثة لإدارة العملاء، التذاكر والاتصالات في مكان واحد.": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "إجمالي العملاء": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "التذاكر المفتوحة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "إنشاء أو تعديل تذكرة دعم مع اختيار العميل والأولوية.": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "tag_text"
+            }
+        ],
+        "اختر العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر أولوية التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عنوان التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر حالة التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "قيد الانتظار": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حلها": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "script_string"
+            }
+        ],
+        "اكتب وصف التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "تعليقات داخلية": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "الموضوع مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "الأولوية مطلوبة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تعديل التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "لم يتم العثور على التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث التذكرة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\TicketForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "إدارة طلبات الدعم مع تتبع الحالة والأولوية بسهولة.": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث بموضوع التذكرة أو اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "غير محدد": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Attendance.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Attendance.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف التذكرة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في حذف التذكرة": [
+            {
+                "file": "resources\\js\\views\\admin\\crm\\Tickets.vue",
+                "context": "script_string"
+            }
+        ],
+        "تنبيات المخزون المنخفض": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "tag_text"
+            }
+        ],
+        "المخزون الحالي": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "أوان التقدم": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "نظرة عامة على أداء النظام والإحصائيات": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "إجمالي المنتجات": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "0 ر.س": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "قيد المعالجة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Payrolls.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Payrolls.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Orders.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Orders.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Invoices.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Invoices.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Payments.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Quotes.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Quotes.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "script_string"
+            }
+        ],
+        "المبيعات الشهرية": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الفواتير المعلقة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "عروض الأسعار": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "أوامر الإنتاج": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "هذا الأسبوع": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\reports\\Sales.vue",
+                "context": "script_string"
+            }
+        ],
+        "حالة الفواتير": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الفواتير المكتملة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الفواتير التي تحتاج متابعة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الفواتير الملغاة أو المسترجعة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الدفع المكتمل من العملاء": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الدفع في انتظار المعالجة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "المدفوعات المستردة للعملاء": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "طلبات الإنتاج غير المبدوءة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "طلبات الإنتاج الحالية": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "الطلبات الجاهزة للتسليم": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في تحميل بيانات لوحة القيادة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "متابعة الحضور اليومي وتسجيل حالات التأخير والغياب بسرعة.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Attendance.vue",
+                "context": "tag_text"
+            }
+        ],
+        "سجل حضور جديد": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Attendance.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث بالموظف أو الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Attendance.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "سجل حضور الموظف وحرر التوقيت والحالة بسهولة.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "tag_text"
+            }
+        ],
+        "اختر الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر التاريخ": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "وقت الدخول": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "وقت الخروج": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عن بُعد": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "أضف ملاحظات": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "التاريخ مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تعديل سجل الحضور": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "لم يتم العثور على سجل الحضور": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث سجل الحضور بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إنشاء سجل الحضور بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\AttendanceForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "أضف أو حرر بيانات موظف مع حفظ تلقائي للمعلومات الأساسية.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "tag_text"
+            }
+        ],
+        "أدخل اسم الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "أدخل القسم": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "أدخل الوظيفة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "البريد الإلكتروني": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "تاريخ التعيين": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "رابط صورة الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "الاسم مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "الوظيفة مطلوبة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "يجب أن يكون البريد صالحًا": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تاريخ التعيين مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "إضافة موظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "لم يتم العثور على بيانات الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث بيانات الموظف بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إضافة الموظف بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "إدارة بيانات الموظفين، عرض الحالة، والتحكم في السجل الوظيفي.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث بالاسم أو القسم أو الوظيفة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "فشل في تحميل بيانات الموظفين": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "script_string"
+            }
+        ],
+        "هل تود حذف الموظف ${employee.name}؟": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف الموظف بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في حذف الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "script_string"
+            }
+        ],
+        "لوحة إدارة الموارد البشرية الحديثة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "تابع الموظفين، الحضور، الإجازات، والرواتب من واجهة نظيفة وسريعة.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "مسيرات الرواتب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "عدد الموظفين المسجلين": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "سجلات الحضور المسجلة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "طلبات الإجازة الموجودة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "إنشاء أو تعديل طلب إجازة مع معلومات الموظف وفترة الإجازة.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "tag_text"
+            }
+        ],
+        "مثال: إجازة سنوية": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر تاريخ البداية": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "اختر تاريخ النهاية": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "موافق عليها": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:label"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "script_string"
+            }
+        ],
+        "أدخل سبب الإجازة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "نوع الإجازة مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تاريخ البداية مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "الحالة مطلوبة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "طلب إجازة جديد": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "tag_text"
+            }
+        ],
+        "لم يتم العثور على طلب الإجازة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث طلب الإجازة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إنشاء طلب الإجازة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\LeaveRequestForm.vue",
+                "context": "script_string"
+            }
+        ],
+        "إدارة طلبات الإجازة ومراقبة الموافقات في واجهة واضحة وسهلة الاستخدام.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث باسم الموظف أو الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Leaves.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عرض شامل للمستحقات، الحالة، وصافي الأجور بتصميم أنيق وسهل القراءة.": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Payrolls.vue",
+                "context": "tag_text"
+            }
+        ],
+        "قائمة رواتب الموظفين": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Payrolls.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم المسيرة أو اسم الموظف": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Payrolls.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "فشل في تحميل بيانات الاستفسار": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "يرجى كتابة الرد": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في إرسال الرد": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إغلاق الاستفسار": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في إغلاق الاستفسار": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في إعادة فتح الاستفسار": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تعيين الاستفسار": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "لوحة إدارة الاستفسارات تمنحك رؤية سريعة، تصفية دقيقة، وعرض واضح لجميع حالات التواصل.": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "tag_text"
+            }
+        ],
+        "عرض سريع للطلبات الحالية مع حالة المعالجة والتعيين.": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث بالاسم أو الموضوع أو البريد أو الرسالة": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "جميع الحالات": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم الرد": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            }
+        ],
+        "هل أنت متأكد من حذف هذا الاستفسار؟": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف الاستفسار بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            }
+        ],
+        "لا توجد رسالة": [
+            {
+                "file": "resources\\js\\views\\admin\\Inquiries.vue",
+                "context": "script_string"
+            }
+        ],
+        "اسم المنتج بالعربية مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "Slug يجب أن يحتوي على أحرف إنجليزية وأرقام وشرطات فقط": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "السعر مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "كمية المخزون مطلوبة": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم رفع الصورة الرئيسية بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف الصورة الرئيسية": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم رفع الصورة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تحديث المنتج بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم إضافة المنتج بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في جلب بيانات المنتج": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Form.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في جلب المنتجات": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في حذف المنتج": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم التعطيل": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في تغيير الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في التفعيل الجماعي": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تعطيل ${result.succeeded.length} منتج": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف ${result.succeeded} منتج": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في الحذف الجماعي": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل في جلب تفاصيل المنتج": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "إدارة طلبات الشراء الواردة من العملاء": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "قائمة طلبات الشراء": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "tag_text"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Orders.vue",
+                "context": "tag_text"
+            }
+        ],
+        "تم التسليم": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "attribute:label"
+            }
+        ],
+        "ابحث برقم الطلب أو اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "attribute:placeholder"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "تم تحديث الحالة بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Index.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "تفاصيل طلب الشراء": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Show.vue",
+                "context": "tag_text"
+            }
+        ],
+        "فشل تحديث الحالة": [
+            {
+                "file": "resources\\js\\views\\admin\\purchaseRequests\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "نظرة عامة على المشتريات": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "عرض طلبات الشراء، الموردين، والإيصالات من واجهة واحدة نظيفة وسريعة.": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "أحدث طلبات الشراء": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "طلبات الشراء": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "طلبات حديثة": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "تابع طلبات الشراء الحالية واستخدم بحثًا سريعًا لعرض أي طلب في لحظة.": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Orders.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم الطلب أو اسم المورد": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Orders.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عرض إيصالات الاستلام بوضوح مع بحث مباشر ومعلومات حالة سريعة.": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Receipts.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم الإيصال أو اسم المورد": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Receipts.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "واجهة الموردين تم تصميمها لتسريع عرض البيانات مع فلترة سهلة.": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Suppliers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث بالاسم أو البريد أو الهاتف": [
+            {
+                "file": "resources\\js\\views\\admin\\purchases\\Suppliers.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        ";\n\nconst loading = ref(true);\nconst summary = ref({ invoices: {}, payments: {} });\n\nconst statusCards = computed(() => ({\n    مدفوعة: summary.value.invoices.paid || 0,\n    معلقة: summary.value.invoices.pending || 0,\n    ملغاة: summary.value.invoices.cancelled || 0,\n    مدفوعة_جزئيًا: summary.value.payments.pending || 0,\n}));\n\nasync function loadSummary() {\n    loading.value = true;\n    try {\n        const res = await dashboardApi.getOverviewStats();\n        summary.value = res.data.data || summary.value;\n    } catch (e) {\n        console.error(": [
+            {
+                "file": "resources\\js\\views\\admin\\reports\\Financial.vue",
+                "context": "script_string"
+            }
+        ],
+        "قاعدة بيانات العملاء بخط واضح وتصنيف سهل للبحث.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Customers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "لوحة مبيعات جديدة وأنيقة": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "تابع الطلبات، الفواتير، العروض، والمدفوعات من لوحة واحدة أنيقة وسريعة.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "أحدث طلبات البيع": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "tag_text"
+            }
+        ],
+        "طلبات البيع": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "متابعة الفواتير بسرعة مع بحث فوري وعرض مركّز للحالة والمبلغ.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Invoices.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم الفاتورة أو اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Invoices.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "تتبع المدفوعات الواردة وعرض التفاصيل المالية بوضوح.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Payments.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم العملية أو اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Payments.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "إدارة عروض الأسعار بسرعة مع بحث فوري وحالة واضحة لكل عرض.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Quotes.vue",
+                "context": "tag_text"
+            }
+        ],
+        "قائمة عروض الأسعار": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Quotes.vue",
+                "context": "tag_text"
+            }
+        ],
+        "ابحث برقم العرض أو اسم العميل": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\Quotes.vue",
+                "context": "attribute:placeholder"
+            }
+        ],
+        "عرض الطلبات الحالية مع تصفية سريعة وحالة فورية لكل طلب.": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "tag_text"
+            }
+        ],
+        "الطلبات قيد المعالجة": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "tag_text"
+            }
+        ],
+        "قائمة طلبات البيع": [
+            {
+                "file": "resources\\js\\views\\admin\\sales\\SalesOrders.vue",
+                "context": "tag_text"
+            }
+        ],
+        "تحكم كامل في إعدادات الموقع، التعريب، العملة، الإشعارات والمحتوى.": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "tag_text"
+            }
+        ],
+        "الأخضر الكلاسيكي الفاخر": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "الذهبي والأسود الفخم": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "البنفسجي والوردي الجريء": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "الطبيعة والهدوء (Nature Calm)": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "البرتقالي الدافئ (Warm Orange)": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "الوردي الناعم (Soft Pink)": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "دولار أمريكي - USD": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "ريال سعودي - SAR": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "درهم إماراتي - AED": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "حدث خطأ أثناء جلب إعدادات النظام": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "يمكن رفع صور فقط": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "حجم الصورة يجب أن يكون أقل من ${maxSizeMB}MB": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل حفظ الإعدادات": [
+            {
+                "file": "resources\\js\\views\\admin\\Settings.vue",
+                "context": "script_string"
+            }
+        ],
+        "إدارة العروض المميزة": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "يمكنك من هنا إضافة وتعديل العروض المميزة، نسب الخصومات، والبنرات الدعائية التي تظهر في الصفحة الرئيسية.": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "قائمة العروض الحالية": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "تعديل فوري لحالة العرض أو الخصم وربطه بالمنتجات.": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "tag_text"
+            }
+        ],
+        "الوصف بالعربية مطلوب": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل تحميل قائمة العروض المميزة": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "حجم الصورة الأقصى هو 3MB": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل تغيير حالة تفعيل العرض": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "يرجى رفع صورة للبنر الترويجي أولاً": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل حفظ العرض المميز": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "نعم، حذف": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم حذف العرض بنجاح": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ],
+        "فشل حذف العرض المميز": [
+            {
+                "file": "resources\\js\\views\\admin\\SpecialOffers.vue",
+                "context": "script_string"
+            }
+        ]
+    }
+}

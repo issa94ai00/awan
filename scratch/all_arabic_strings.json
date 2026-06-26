@@ -1,0 +1,218 @@
+{
+    "count": 25,
+    "strings": [
+        "مكتمل",
+        "قيد المعالجة",
+        "ملغي",
+        "نشط",
+        "غير نشط",
+        "row.status === 'نشط' ? 'success' : 'info'",
+        "لا توجد ردود بعد",
+        "تأكيد الطلب",
+        "تم تأكيد طلبك {order_number}",
+        "صفحة الصلاحيات قيد التطوير",
+        "صفحة الإنتاج قيد التطوير",
+        "${selectedProducts.length} منتج(ة) محدد(ة)",
+        "لا توجد منتجات",
+        "عرض",
+        "تعديل",
+        "حذف",
+        "كجم",
+        "خصم ${product.discount_percentage}% على هذا المنتج!",
+        "السعر الأصلي: ${formatPrice(product.price)} → سعر العرض: ${formatPrice(product.sale_price)} ${product.currency || 'SAR'}",
+        "صفحة الأدوار قيد التطوير",
+        "صفحة الزوار قيد التطوير",
+        "تنبيه المخزون المنخفض",
+        "إرسال بريد",
+        "تحديث المخزون",
+        "تسجيل النشاط"
+    ],
+    "details": {
+        "مكتمل": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "قيد المعالجة": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "ملغي": [
+            {
+                "file": "resources\\js\\views\\admin\\Dashboard.vue",
+                "context": "script_string"
+            }
+        ],
+        "نشط": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:value"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "attribute:value"
+            }
+        ],
+        "غير نشط": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\EmployeeForm.vue",
+                "context": "attribute:value"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "attribute:value"
+            }
+        ],
+        "row.status === 'نشط' ? 'success' : 'info'": [
+            {
+                "file": "resources\\js\\views\\admin\\hr\\Employees.vue",
+                "context": "attribute::type"
+            }
+        ],
+        "لا توجد ردود بعد": [
+            {
+                "file": "resources\\js\\views\\admin\\inquiries\\Show.vue",
+                "context": "attribute:description"
+            }
+        ],
+        "تأكيد الطلب": [
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\TemplateForm.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\TemplateForm.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\Templates.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\Templates.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Form.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Index.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Show.vue",
+                "context": "script_string"
+            }
+        ],
+        "تم تأكيد طلبك {order_number}": [
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\TemplateForm.vue",
+                "context": "script_string"
+            },
+            {
+                "file": "resources\\js\\views\\admin\\notifications\\Templates.vue",
+                "context": "script_string"
+            }
+        ],
+        "صفحة الصلاحيات قيد التطوير": [
+            {
+                "file": "resources\\js\\views\\admin\\permissions\\Index.vue",
+                "context": "attribute:description"
+            }
+        ],
+        "صفحة الإنتاج قيد التطوير": [
+            {
+                "file": "resources\\js\\views\\admin\\production\\Index.vue",
+                "context": "attribute:description"
+            }
+        ],
+        "${selectedProducts.length} منتج(ة) محدد(ة)": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "attribute::title"
+            }
+        ],
+        "لا توجد منتجات": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "attribute:empty-text"
+            }
+        ],
+        "عرض": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "attribute:content"
+            }
+        ],
+        "تعديل": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "attribute:content"
+            }
+        ],
+        "حذف": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Index.vue",
+                "context": "attribute:content"
+            }
+        ],
+        "كجم": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Show.vue",
+                "context": "template_interpolation_literal"
+            }
+        ],
+        "خصم ${product.discount_percentage}% على هذا المنتج!": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Show.vue",
+                "context": "attribute::title"
+            }
+        ],
+        "السعر الأصلي: ${formatPrice(product.price)} → سعر العرض: ${formatPrice(product.sale_price)} ${product.currency || 'SAR'}": [
+            {
+                "file": "resources\\js\\views\\admin\\products\\Show.vue",
+                "context": "attribute::description"
+            }
+        ],
+        "صفحة الأدوار قيد التطوير": [
+            {
+                "file": "resources\\js\\views\\admin\\roles\\Index.vue",
+                "context": "attribute:description"
+            }
+        ],
+        "صفحة الزوار قيد التطوير": [
+            {
+                "file": "resources\\js\\views\\admin\\Visitors.vue",
+                "context": "attribute:description"
+            }
+        ],
+        "تنبيه المخزون المنخفض": [
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Index.vue",
+                "context": "script_string"
+            }
+        ],
+        "إرسال بريد": [
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Steps.vue",
+                "context": "script_string"
+            }
+        ],
+        "تحديث المخزون": [
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Steps.vue",
+                "context": "script_string"
+            }
+        ],
+        "تسجيل النشاط": [
+            {
+                "file": "resources\\js\\views\\admin\\workflows\\Steps.vue",
+                "context": "script_string"
+            }
+        ]
+    }
+}

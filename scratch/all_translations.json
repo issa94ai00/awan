@@ -1,0 +1,5480 @@
+{
+    "إجمالي قيود اليومية": {
+        "key": "total_journal_entries",
+        "en": "Total journal entries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الذهاب إلى دفتر اليومية": {
+        "key": "go_to_journal",
+        "en": "Go to journal",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الذهاب إلى دفتر الأستاذ": {
+        "key": "go_to_the_ledger",
+        "en": "Go to the ledger",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد قيود دفتر يومية لعرضها.": {
+        "key": "there_are_no_journal_entries_to_view",
+        "en": "There are no journal entries to view.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد حسابات دفتر الأستاذ لعرضها.": {
+        "key": "there_are_no_ledger_accounts_to_display",
+        "en": "There are no ledger accounts to display.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد بيانات ميزان المراجعة لعرضها.": {
+        "key": "there_is_no_trial_balance",
+        "en": "There is no trial balance data to display.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة فئة جديدة": {
+        "key": "add_a_new_category",
+        "en": "Add a new category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الفئة (عربي)": {
+        "key": "category_name_arabic",
+        "en": "Category name (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الفئة بالعربية": {
+        "key": "category_name_in_arabic",
+        "en": "Category name in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الفئة (إنجليزي)": {
+        "key": "category_name_english",
+        "en": "Category name (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الفئة بالعربية": {
+        "key": "category_description_in_arabic",
+        "en": "Category description in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هذا الحقل مطلوب": {
+        "key": "required_field",
+        "en": "This field is required"
+    },
+    "يمكن رفع صور فقط!": {
+        "key": "only_photos_can_be_uploaded",
+        "en": "Only photos can be uploaded!",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حجم الصورة يجب أن يكون أقل من 2MB!": {
+        "key": "image_size_must_be_less_than_2mb",
+        "en": "Image size must be less than 2MB!",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث الفئة بنجاح": {
+        "key": "the_category_has_been_updated",
+        "en": "The category has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إضافة الفئة بنجاح": {
+        "key": "the_category_has_been_added_successfully",
+        "en": "The category has been added successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يرجى التحقق من البيانات": {
+        "key": "please_check_the_data",
+        "en": "Please check the data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في جلب بيانات الفئة": {
+        "key": "failed_to_fetch_category_data",
+        "en": "Failed to fetch category data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في جلب الفئات": {
+        "key": "failed_to_fetch_categories",
+        "en": "Failed to fetch categories",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل أنت متأكد من حذف الفئة \"${category.name_ar}\"؟": {
+        "key": "are_you_sure_to_delete_class_var",
+        "en": "Are you sure to delete class \"${category.name_ar}\"?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف الفئة بنجاح": {
+        "key": "the_category_has_been_successfully",
+        "en": "The category has been successfully deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في حذف الفئة": {
+        "key": "failed_to_delete_category",
+        "en": "Failed to delete category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث الحالة بنجاح": {
+        "key": "status_updated_successfully",
+        "en": "Status updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أضف أو حرر بيانات عميل لتبسيط إدارة العلاقات.": {
+        "key": "add_or_edit_customer_data",
+        "en": "Add or edit customer data to simplify relationship management.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الاسم مطلوب": {
+        "key": "name_required",
+        "en": "Name required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البريد الإلكتروني غير صالح": {
+        "key": "email_is_invalid",
+        "en": "Email is invalid",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحالة مطلوبة": {
+        "key": "status_is_required",
+        "en": "Status is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل العميل": {
+        "key": "client_modification",
+        "en": "Client modification",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على العميل": {
+        "key": "client_not_found",
+        "en": "Client not found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث العميل بنجاح": {
+        "key": "the_client_has_been_updated_successfully",
+        "en": "The client has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إنشاء العميل بنجاح": {
+        "key": "the_client_has_been_created_successfully",
+        "en": "The client has been created successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حدث خطأ أثناء الحفظ": {
+        "key": "an_error_occurred_while_saving",
+        "en": "An error occurred while saving",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قاعدة بيانات العملاء مع بحث سريع وفلاتر أساسية لسهولة الوصول.": {
+        "key": "customer_database_with_quick_search",
+        "en": "Customer database with quick search and basic filters for easy access.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث باسم العميل أو البريد أو الهاتف": {
+        "key": "search_by_customer_name_email_or_phone",
+        "en": "Search by customer name, email or phone",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد عملاء تطابق البحث.": {
+        "key": "there_are_no_clients_matching",
+        "en": "There are no clients matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل أنت متأكد من حذف العميل \"${customer.name}\"؟": {
+        "key": "are_you_sure_you_want",
+        "en": "Are you sure you want to delete client \"${customer.name}\"?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف العميل بنجاح": {
+        "key": "the_client_has_been_deleted_successfully",
+        "en": "The client has been deleted successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في حذف العميل": {
+        "key": "failed_to_delete_client",
+        "en": "Failed to delete client",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة علاقات العملاء": {
+        "key": "customer_relationship_management",
+        "en": "Customer relationship management",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة تحكم حديثة لإدارة العملاء، التذاكر والاتصالات في مكان واحد.": {
+        "key": "a_modern_control_panel_to",
+        "en": "A modern control panel to manage customers, tickets and contacts in one place.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد عملاء بعد.": {
+        "key": "no_clients_yet",
+        "en": "No clients yet.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي العملاء": {
+        "key": "total_customers",
+        "en": "Total customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التذاكر المفتوحة": {
+        "key": "open_tickets",
+        "en": "Open tickets",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نشاط اليوم": {
+        "key": "today_s_activity",
+        "en": "Today's activity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إنشاء أو تعديل تذكرة دعم مع اختيار العميل والأولوية.": {
+        "key": "create_or_edit_a_support",
+        "en": "Create or edit a support ticket with customer choice and priority.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر أولوية التذكرة": {
+        "key": "choose_ticket_priority",
+        "en": "Choose ticket priority",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر حالة التذكرة": {
+        "key": "choose_your_ticket_status",
+        "en": "Choose your ticket status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اكتب وصف التذكرة": {
+        "key": "type_a_description_of_the_ticket",
+        "en": "Type a description of the ticket",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العميل مطلوب": {
+        "key": "client_required",
+        "en": "Client required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموضوع مطلوب": {
+        "key": "subject_is_required",
+        "en": "Subject is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف مطلوب": {
+        "key": "description_required",
+        "en": "Description required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأولوية مطلوبة": {
+        "key": "priority_is_required",
+        "en": "Priority is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل التذكرة": {
+        "key": "edit_ticket",
+        "en": "Edit ticket",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على التذكرة": {
+        "key": "ticket_not_found",
+        "en": "Ticket not found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث التذكرة بنجاح": {
+        "key": "the_ticket_has_been_updated_successfully",
+        "en": "The ticket has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إنشاء التذكرة بنجاح": {
+        "key": "the_ticket_was_created_successfully",
+        "en": "The ticket was created successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة طلبات الدعم مع تتبع الحالة والأولوية بسهولة.": {
+        "key": "manage_support_requests_with_easy",
+        "en": "Manage support requests with easy status and priority tracking.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث بموضوع التذكرة أو اسم العميل": {
+        "key": "search_by_ticket_subject_or",
+        "en": "Search by ticket subject or customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد تذاكر تطابق البحث.": {
+        "key": "there_are_no_tickets_matching",
+        "en": "There are no tickets matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير محدد": {
+        "key": "undefined",
+        "en": "undefined",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قيد الانتظار": {
+        "key": "on_hold",
+        "en": "On hold",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حلها": {
+        "key": "it_has_been_solved",
+        "en": "It has been solved",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل أنت متأكد من حذف التذكرة \"${ticket.subject}\"؟": {
+        "key": "are_you_sure_you_want",
+        "en": "Are you sure you want to delete ticket \"${ticket.subject}\"?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف التذكرة بنجاح": {
+        "key": "the_ticket_has_been_successfully_deleted",
+        "en": "The ticket has been successfully deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في حذف التذكرة": {
+        "key": "failed_to_delete_ticket",
+        "en": "Failed to delete ticket",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تنبيات المخزون المنخفض": {
+        "key": "low_stock_alerts",
+        "en": "Low stock alerts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نظرة على الإيرادات": {
+        "key": "look_at_revenue",
+        "en": "Look at revenue",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "آخر تحديث تلقائيًا": {
+        "key": "latest_update_automatically",
+        "en": "Latest update automatically",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أوان التقدم": {
+        "key": "site_name",
+        "en": "Awan Altakaddom"
+    },
+    "نظرة عامة على أداء النظام والإحصائيات": {
+        "key": "system_performance_overview_and_statistics",
+        "en": "System performance overview and statistics",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي المنتجات": {
+        "key": "total_products",
+        "en": "Total products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "0 ر.س": {
+        "key": "0_sar",
+        "en": "0 SAR",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قيد المعالجة": {
+        "key": "in_process",
+        "en": "In process",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المبيعات الشهرية": {
+        "key": "monthly_sales",
+        "en": "Monthly sales",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير المعلقة": {
+        "key": "pending_invoices",
+        "en": "Pending invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المخزون المنخفض": {
+        "key": "low_inventory",
+        "en": "Low inventory",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عروض الأسعار": {
+        "key": "quotes",
+        "en": "Quotes",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات البيع": {
+        "key": "sales_orders",
+        "en": "Sales orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أوامر الإنتاج": {
+        "key": "production_orders",
+        "en": "Production orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هذا الأسبوع": {
+        "key": "this_week",
+        "en": "this week",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة الفواتير": {
+        "key": "billing_status",
+        "en": "Billing status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير المكتملة بنجاح": {
+        "key": "successfully_completed_invoices",
+        "en": "Successfully completed invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير التي تحتاج متابعة": {
+        "key": "invoices_that_need_follow_up",
+        "en": "Invoices that need follow up",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير الملغاة أو المسترجعة": {
+        "key": "canceled_or_refunded_invoices",
+        "en": "Canceled or refunded invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الدفع المكتمل من العملاء": {
+        "key": "completed_payment_from_customers",
+        "en": "Completed payment from customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الدفع في انتظار المعالجة": {
+        "key": "payment_is_waiting_for_processing",
+        "en": "Payment is waiting for processing",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المدفوعات المستردة للعملاء": {
+        "key": "refunds_payments_to_customers",
+        "en": "Refunds payments to customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات الإنتاج غير المبدوءة": {
+        "key": "uninitiated_production_orders",
+        "en": "Uninitiated production orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات الإنتاج الحالية": {
+        "key": "current_production_orders",
+        "en": "Current production orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطلبات الجاهزة للتسليم": {
+        "key": "orders_ready_for_delivery",
+        "en": "Orders ready for delivery",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تحميل بيانات لوحة القيادة": {
+        "key": "failed_to_load_dashboard_data",
+        "en": "Failed to load dashboard data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متابعة الحضور اليومي وتسجيل حالات التأخير والغياب بسرعة.": {
+        "key": "follow_up_on_daily_attendance",
+        "en": "Follow up on daily attendance and quickly record cases of delay and absence.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث بالموظف أو الحالة": {
+        "key": "search_by_employee_or_case",
+        "en": "Search by employee or case",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سجل حضور جديد": {
+        "key": "new_attendance_record",
+        "en": "New attendance record",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سجل حضور الموظف وحرر التوقيت والحالة بسهولة.": {
+        "key": "record_employee_attendance_and_edit",
+        "en": "Record employee attendance and edit timing and status easily.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموظف مطلوب": {
+        "key": "employee_required",
+        "en": "Employee required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التاريخ مطلوب": {
+        "key": "date_required",
+        "en": "Date required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل سجل الحضور": {
+        "key": "edit_attendance_record",
+        "en": "Edit attendance record",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على سجل الحضور": {
+        "key": "no_attendance_record_found",
+        "en": "No attendance record found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث سجل الحضور بنجاح": {
+        "key": "the_attendance_record_has_been",
+        "en": "The attendance record has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إنشاء سجل الحضور بنجاح": {
+        "key": "the_attendance_record_has_been",
+        "en": "The attendance record has been created successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أضف أو حرر بيانات موظف مع حفظ تلقائي للمعلومات الأساسية.": {
+        "key": "add_or_edit_employee_data",
+        "en": "Add or edit employee data with automatic saving of basic information.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أدخل اسم الموظف": {
+        "key": "enter_the_employee_s_name",
+        "en": "Enter the employee's name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تاريخ التعيين": {
+        "key": "choose_appointment_date",
+        "en": "Choose appointment date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رابط صورة الموظف": {
+        "key": "employee_photo_link",
+        "en": "Employee photo link",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القسم مطلوب": {
+        "key": "section_is_required",
+        "en": "Section is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوظيفة مطلوبة": {
+        "key": "position_required",
+        "en": "Position required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البريد مطلوب": {
+        "key": "postage_is_required",
+        "en": "Postage is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يجب أن يكون البريد صالحًا": {
+        "key": "the_mail_must_be_valid",
+        "en": "The mail must be valid",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الهاتف مطلوب": {
+        "key": "phone_required",
+        "en": "Phone required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ التعيين مطلوب": {
+        "key": "appointment_date_required",
+        "en": "Appointment date required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل موظف": {
+        "key": "modify_an_employee",
+        "en": "Modify an employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على بيانات الموظف": {
+        "key": "no_employee_data_found",
+        "en": "No employee data found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث بيانات الموظف بنجاح": {
+        "key": "employee_data_has_been_updated",
+        "en": "Employee data has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إضافة الموظف بنجاح": {
+        "key": "the_employee_has_been_added_successfully",
+        "en": "The employee has been added successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حدث خطأ أثناء حفظ البيانات": {
+        "key": "an_error_occurred_while_saving_data",
+        "en": "An error occurred while saving data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة بيانات الموظفين، عرض الحالة، والتحكم في السجل الوظيفي.": {
+        "key": "manage_employee_data_view_status",
+        "en": "Manage employee data, view status, and control employment history.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث بالاسم أو القسم أو الوظيفة": {
+        "key": "search_by_name_department_or_position",
+        "en": "Search by name, department or position",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد موظفين تطابق البحث.": {
+        "key": "there_are_no_employees_matching",
+        "en": "There are no employees matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تحميل بيانات الموظفين": {
+        "key": "failed_to_load_employee_data",
+        "en": "Failed to load employee data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل تود حذف الموظف ${employee.name}؟": {
+        "key": "do_you_want_to_delete_employee_var",
+        "en": "Do you want to delete employee ${employee.name}?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف الموظف بنجاح": {
+        "key": "the_employee_has_been_deleted",
+        "en": "The employee has been deleted successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في حذف الموظف": {
+        "key": "failed_to_delete_employee",
+        "en": "Failed to delete employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة إدارة الموارد البشرية الحديثة": {
+        "key": "modern_human_resources_management_dashboard",
+        "en": "Modern human resources management dashboard",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تابع الموظفين، الحضور، الإجازات، والرواتب من واجهة نظيفة وسريعة.": {
+        "key": "track_employees_attendance_vacations_and",
+        "en": "Track employees, attendance, vacations, and salaries from a clean and fast interface.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نقوم بتطوير صفحات الحضور والإجازات والموظفين لتكون جاهزة قريباً بتصميم متكامل.": {
+        "key": "we_are_developing_attendance_leave",
+        "en": "We are developing attendance, leave and employee pages to be ready soon with an integrated design.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اطلع على الرواتب": {
+        "key": "see_salaries",
+        "en": "See salaries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مسيرات الرواتب": {
+        "key": "salary_marches",
+        "en": "Salary marches",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عدد الموظفين المسجلين": {
+        "key": "number_of_registered_employees",
+        "en": "Number of registered employees",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سجلات الحضور المسجلة": {
+        "key": "recorded_attendance_records",
+        "en": "Recorded attendance records",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات الإجازة الموجودة": {
+        "key": "existing_leave_requests",
+        "en": "Existing leave requests",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إنشاء أو تعديل طلب إجازة مع معلومات الموظف وفترة الإجازة.": {
+        "key": "create_or_edit_a_leave",
+        "en": "Create or edit a leave request with employee information and leave period.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مثال: إجازة سنوية": {
+        "key": "example_annual_leave",
+        "en": "Example: annual leave",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تاريخ البداية": {
+        "key": "choose_a_start_date",
+        "en": "Choose a start date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تاريخ النهاية": {
+        "key": "choose_an_end_date",
+        "en": "Choose an end date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أدخل سبب الإجازة": {
+        "key": "enter_the_reason_for_the_leave",
+        "en": "Enter the reason for the leave",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نوع الإجازة مطلوب": {
+        "key": "leave_type_required",
+        "en": "Leave type required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ البداية مطلوب": {
+        "key": "start_date_required",
+        "en": "Start date required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ النهاية مطلوب": {
+        "key": "end_date_required",
+        "en": "End date required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل طلب الإجازة": {
+        "key": "modifying_leave_request",
+        "en": "Modifying leave request",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على طلب الإجازة": {
+        "key": "leave_request_not_found",
+        "en": "Leave request not found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث طلب الإجازة بنجاح": {
+        "key": "your_leave_request_has_been",
+        "en": "Your leave request has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إنشاء طلب الإجازة بنجاح": {
+        "key": "leave_request_has_been_created",
+        "en": "Leave request has been created successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة طلبات الإجازة ومراقبة الموافقات في واجهة واضحة وسهلة الاستخدام.": {
+        "key": "manage_leave_requests_and_monitor",
+        "en": "Manage leave requests and monitor approvals in a clear, easy-to-use interface.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث باسم الموظف أو الحالة": {
+        "key": "search_by_employee_name_or_status",
+        "en": "Search by employee name or status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلب إجازة جديد": {
+        "key": "new_leave_request",
+        "en": "New leave request",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد طلبات إجازة تطابق البحث.": {
+        "key": "there_are_no_vacation_requests",
+        "en": "There are no vacation requests that match your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "موافق عليها": {
+        "key": "agreed",
+        "en": "Agreed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض شامل للمستحقات، الحالة، وصافي الأجور بتصميم أنيق وسهل القراءة.": {
+        "key": "comprehensive_display_of_benefits_status",
+        "en": "Comprehensive display of benefits, status, and net pay in a stylish, easy-to-read design.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم المسيرة أو اسم الموظف": {
+        "key": "search_by_job_number_or_employee_name",
+        "en": "Search by job number or employee name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة رواتب الموظفين": {
+        "key": "employee_payroll_list",
+        "en": "Employee payroll list",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد مسيرات تطابق البحث.": {
+        "key": "there_are_no_paths_matching_your_search",
+        "en": "There are no paths matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد ردود بعد": {
+        "key": "there_are_no_responses_yet",
+        "en": "There are no responses yet",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اكتب ردك هنا...": {
+        "key": "write_your_response_here",
+        "en": "Write your response here...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تحميل بيانات الاستفسار": {
+        "key": "failed_to_load_query_data",
+        "en": "Failed to load query data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يرجى كتابة الرد": {
+        "key": "please_write_a_reply",
+        "en": "Please write a reply",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في إرسال الرد": {
+        "key": "failed_to_send_response",
+        "en": "Failed to send response",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث الحالة": {
+        "key": "status_updated",
+        "en": "Status updated",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إغلاق الاستفسار": {
+        "key": "the_inquiry_has_been_closed",
+        "en": "The inquiry has been closed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في إغلاق الاستفسار": {
+        "key": "failed_to_close_inquiry",
+        "en": "Failed to close inquiry",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في إعادة فتح الاستفسار": {
+        "key": "failed_to_reopen_inquiry",
+        "en": "Failed to reopen inquiry",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تعيين الاستفسار": {
+        "key": "the_inquiry_has_been_set",
+        "en": "The inquiry has been set",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تعيين الاستفسار": {
+        "key": "failed_to_set_query",
+        "en": "Failed to set query",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة إدارة الاستفسارات تمنحك رؤية سريعة، تصفية دقيقة، وعرض واضح لجميع حالات التواصل.": {
+        "key": "the_inquiry_management_panel_gives",
+        "en": "The inquiry management panel gives you quick visibility, precise filtering, and a clear display of all contact statuses.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث بالاسم أو الموضوع أو البريد أو الرسالة": {
+        "key": "search_by_name_subject_mail_or_message",
+        "en": "Search by name, subject, mail or message",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض سريع للطلبات الحالية مع حالة المعالجة والتعيين.": {
+        "key": "quick_view_of_current_orders",
+        "en": "Quick view of current orders with processing status and appointment.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جميع الحالات": {
+        "key": "all_cases",
+        "en": "All cases",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم الرد": {
+        "key": "answered",
+        "en": "Answered",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "كل الأولويات": {
+        "key": "all_priorities",
+        "en": "All priorities",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل أنت متأكد من حذف هذا الاستفسار؟": {
+        "key": "are_you_sure_you_want",
+        "en": "Are you sure you want to delete this inquiry?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف الاستفسار بنجاح": {
+        "key": "the_query_has_been_successfully_deleted",
+        "en": "The query has been successfully deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد رسالة": {
+        "key": "no_message",
+        "en": "No message",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتجات في المخزون": {
+        "key": "products_in_stock",
+        "en": "Products in stock",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد حركات مخزون لعرضها.": {
+        "key": "there_are_no_inventory_transactions",
+        "en": "There are no inventory transactions to display.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صفحة الصلاحيات قيد التطوير": {
+        "key": "the_permissions_page_is_under",
+        "en": "The permissions page is under development",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث عن منتج": {
+        "key": "search_for_a_product",
+        "en": "Search for a product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث لعرض نتائج المنتج.": {
+        "key": "search_to_view_product_results",
+        "en": "Search to view product results.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صفحة الإنتاج قيد التطوير": {
+        "key": "production_page_under_development",
+        "en": "Production page under development",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة منتج جديد": {
+        "key": "add_a_new_product",
+        "en": "Add a new product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم المنتج (عربي)": {
+        "key": "product_name_arabic",
+        "en": "Product Name (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم المنتج بالعربية": {
+        "key": "product_name_in_arabic",
+        "en": "Product name in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم المنتج (إنجليزي)": {
+        "key": "product_name_english",
+        "en": "Product Name (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نقطة إعادة الطلب": {
+        "key": "reorder_point",
+        "en": "Reorder point",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف قصير (عربي)": {
+        "key": "short_description_arabic",
+        "en": "Short description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف مختصر بالعربية": {
+        "key": "brief_description_in_arabic",
+        "en": "Brief description in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف قصير (إنجليزي)": {
+        "key": "short_description_english",
+        "en": "Short description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف المنتج بالعربية": {
+        "key": "product_description_in_arabic",
+        "en": "Product description in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متوفر في المخزون": {
+        "key": "in_stock",
+        "en": "In stock",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رفع الصورة الرئيسية": {
+        "key": "upload_the_main_image",
+        "en": "Upload the main image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تحسين محركات البحث (SEO)": {
+        "key": "search_engine_optimization_seo",
+        "en": "Search Engine Optimization (SEO)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بيانات تحسين محركات البحث تساعد في ظهور المنتج في نتائج البحث": {
+        "key": "seo_data_helps_the_product",
+        "en": "SEO data helps the product appear in search results",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "SEO Title - عنوان جذاب للمنتج": {
+        "key": "seo_title_an_attractive_title",
+        "en": "SEO Title - An attractive title for the product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف مختصر يظهر في نتائج البحث": {
+        "key": "a_short_description_appears_in",
+        "en": "A short description appears in the search results",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "افصل بين الكلمات المفتاحية بفاصلة": {
+        "key": "separate_keywords_with_a_comma",
+        "en": "Separate keywords with a comma",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم المنتج بالعربية مطلوب": {
+        "key": "product_name_in_arabic_is_required",
+        "en": "Product name in Arabic is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Slug يجب أن يحتوي على أحرف إنجليزية وأرقام وشرطات فقط": {
+        "key": "slug_must_contain_only_letters",
+        "en": "Slug must contain only letters, numbers, and dashes",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفئة مطلوبة": {
+        "key": "category_required",
+        "en": "Category required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "السعر مطلوب": {
+        "key": "price_required",
+        "en": "Price required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "كمية المخزون مطلوبة": {
+        "key": "quantity_of_inventory_required",
+        "en": "Quantity of inventory required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم رفع الصورة الرئيسية بنجاح": {
+        "key": "the_main_image_has_been",
+        "en": "The main image has been uploaded successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في رفع الصورة": {
+        "key": "failed_to_upload_image",
+        "en": "Failed to upload image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف الصورة الرئيسية": {
+        "key": "the_main_image_has_been_deleted",
+        "en": "The main image has been deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم رفع الصورة بنجاح": {
+        "key": "the_image_has_been_uploaded_successfully",
+        "en": "The image has been uploaded successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تحديث المنتج بنجاح": {
+        "key": "the_product_has_been_updated",
+        "en": "The product has been updated successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إضافة المنتج بنجاح": {
+        "key": "the_product_has_been_added_successfully",
+        "en": "The product has been added successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في جلب بيانات المنتج": {
+        "key": "failed_to_fetch_product_data",
+        "en": "Failed to fetch product data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بحث عن منتج...": {
+        "key": "search_for_a_product",
+        "en": "Search for a product...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "${selectedProducts.length} منتج(ة) محدد(ة)": {
+        "key": "var_specific_product_s",
+        "en": "${selectedProducts.length} specific product(s)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منتج(ة) محدد(ة)": {
+        "key": "specific_product_s",
+        "en": "Specific product(s)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد منتجات": {
+        "key": "there_are_no_products",
+        "en": "There are no products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في جلب المنتجات": {
+        "key": "failed_to_bring_products",
+        "en": "Failed to bring products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف \"${product.name_ar || product.name_en}\" بنجاح": {
+        "key": "var_has_been_successfully_deleted",
+        "en": "\"${product.name_ar || product.name_en}\" has been successfully deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في حذف المنتج": {
+        "key": "failed_to_delete_product",
+        "en": "Failed to delete product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم التعطيل": {
+        "key": "disabled",
+        "en": "Disabled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تغيير الحالة": {
+        "key": "failed_to_change_status",
+        "en": "Failed to change status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في التفعيل الجماعي": {
+        "key": "mass_activation_failed",
+        "en": "Mass activation failed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تعطيل ${result.succeeded.length} منتج": {
+        "key": "var_product_has_been_disabled",
+        "en": "${result.succeeded.length} product has been disabled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف ${result.succeeded} منتج": {
+        "key": "var_product_deleted",
+        "en": "${result.succeeded} product deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في الحذف الجماعي": {
+        "key": "failed_to_mass_delete",
+        "en": "Failed to mass delete",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد صورة": {
+        "key": "there_is_no_photo",
+        "en": "There is no photo",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد وصف متاح لهذا المنتج.": {
+        "key": "there_is_no_description_available",
+        "en": "There is no description available for this product.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خصم ${product.discount_percentage}% على هذا المنتج!": {
+        "key": "var_discount_on_this_product",
+        "en": "${product.discount_percentage}% discount on this product!",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "السعر الأصلي: ${formatPrice(product.price)} → سعر العرض: ${formatPrice(product.sale_price)} ${product.currency || 'SAR'}": {
+        "key": "original_price_var_offer_price_var_var",
+        "en": "Original price: ${formatPrice(product.price)} → Offer price: ${formatPrice(product.sale_price)} ${product.currency || 'SAR'}",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في جلب تفاصيل المنتج": {
+        "key": "failed_to_fetch_product_details",
+        "en": "Failed to fetch product details",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة طلبات الشراء الواردة من العملاء": {
+        "key": "managing_purchase_orders_received_from",
+        "en": "Managing purchase orders received from customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم الطلب أو اسم العميل": {
+        "key": "search_by_order_number_or_customer_name",
+        "en": "Search by order number or customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة طلبات الشراء": {
+        "key": "purchase_order_list",
+        "en": "Purchase order list",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد طلبات شراء": {
+        "key": "there_are_no_purchase_requests",
+        "en": "There are no purchase requests",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل تحديث الحالة": {
+        "key": "status_update_failed",
+        "en": "Status update failed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تفاصيل طلب الشراء": {
+        "key": "purchase_order_details",
+        "en": "Purchase order details",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لم يتم العثور على طلب الشراء": {
+        "key": "purchase_order_not_found",
+        "en": "Purchase order not found",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نظرة عامة على المشتريات": {
+        "key": "procurement_overview",
+        "en": "Procurement overview",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة مشتريات حديثة وأنيقة": {
+        "key": "modern_and_elegant_shopping_board",
+        "en": "Modern and elegant shopping board",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض طلبات الشراء، الموردين، والإيصالات من واجهة واحدة نظيفة وسريعة.": {
+        "key": "view_purchase_orders_suppliers_and",
+        "en": "View purchase orders, suppliers, and receipts from one clean, fast interface.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أحدث طلبات الشراء": {
+        "key": "latest_purchase_orders",
+        "en": "Latest purchase orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد طلبات شراء بعد.": {
+        "key": "there_are_no_purchase_orders_yet",
+        "en": "There are no purchase orders yet.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات الشراء": {
+        "key": "purchase_orders",
+        "en": "Purchase orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات حديثة": {
+        "key": "recent_requests",
+        "en": "Recent requests",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تابع طلبات الشراء الحالية واستخدم بحثًا سريعًا لعرض أي طلب في لحظة.": {
+        "key": "follow_current_orders_and_use",
+        "en": "Follow current orders and use quick search to view any order in an instant.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم الطلب أو اسم المورد": {
+        "key": "search_by_order_number_or_supplier_name",
+        "en": "Search by order number or supplier name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد طلبات تطابق البحث.": {
+        "key": "there_are_no_requests_matching",
+        "en": "There are no requests matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض إيصالات الاستلام بوضوح مع بحث مباشر ومعلومات حالة سريعة.": {
+        "key": "clearly_view_receipts_with_live",
+        "en": "Clearly view receipts with live search and quick status information.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم الإيصال أو اسم المورد": {
+        "key": "search_by_receipt_number_or",
+        "en": "Search by receipt number or supplier name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد إيصالات تطابق البحث.": {
+        "key": "there_are_no_receipts_matching",
+        "en": "There are no receipts matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "واجهة الموردين تم تصميمها لتسريع عرض البيانات مع فلترة سهلة.": {
+        "key": "the_supplier_interface_is_designed",
+        "en": "The supplier interface is designed to speed up data display with easy filtering.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث بالاسم أو البريد أو الهاتف": {
+        "key": "search_by_name_email_or_phone",
+        "en": "Search by name, email or phone",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد موردين تطابق البحث.": {
+        "key": "there_are_no_suppliers_matching",
+        "en": "There are no suppliers matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة تقارير الأعمال": {
+        "key": "business_reporting_dashboard",
+        "en": "Business reporting dashboard",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تقريرًا للاطلاع على الأرقام الرئيسية واتجاهات الأداء.": {
+        "key": "choose_a_report_to_see",
+        "en": "Choose a report to see key numbers and performance trends.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نظرة عامة سريعة": {
+        "key": "quick_overview",
+        "en": "Quick overview",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "• الصفحات: المبيعات، المخزون، المالية، الرواتب": {
+        "key": "pages_sales_inventory_finance_payroll",
+        "en": "• Pages: Sales, Inventory, Finance, Payroll",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "• تُستخدم بيانات لوحة القيادة الحالية وموجز الفواتير": {
+        "key": "existing_dashboard_and_billing_summary",
+        "en": "• Existing dashboard and billing summary data is used",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "• يمكنك التكامل مع المزيد من نقاط النهاية لاحقًا": {
+        "key": "you_can_integrate_with_more",
+        "en": "• You can integrate with more endpoints later",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتجات في المخزن": {
+        "key": "products_in_stock",
+        "en": "Products in stock",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أعلى المنتجات من حيث الكمية": {
+        "key": "highest_products_in_terms_of_quantity",
+        "en": "Highest products in terms of quantity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صفحة الأدوار قيد التطوير": {
+        "key": "roles_page_is_under_development",
+        "en": "Roles page is under development",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قاعدة بيانات العملاء بخط واضح وتصنيف سهل للبحث.": {
+        "key": "customer_database_with_clear_font",
+        "en": "Customer database with clear font and easy to search classification.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نظرة عامة على المبيعات": {
+        "key": "sales_overview",
+        "en": "Sales overview",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة مبيعات جديدة وأنيقة": {
+        "key": "new_and_stylish_sales_board",
+        "en": "New and stylish sales board",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تابع الطلبات، الفواتير، العروض، والمدفوعات من لوحة واحدة أنيقة وسريعة.": {
+        "key": "track_orders_invoices_offers_and",
+        "en": "Track orders, invoices, offers, and payments from one elegant and quick dashboard.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أحدث طلبات البيع": {
+        "key": "latest_sales_orders",
+        "en": "Latest sales orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد طلبات بيع بعد.": {
+        "key": "there_are_no_sell_orders_yet",
+        "en": "There are no sell orders yet.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متابعة الفواتير بسرعة مع بحث فوري وعرض مركّز للحالة والمبلغ.": {
+        "key": "quickly_track_invoices_with_instant",
+        "en": "Quickly track invoices with instant search and a focused view of status and amount.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم الفاتورة أو اسم العميل": {
+        "key": "search_by_invoice_number_or",
+        "en": "Search by invoice number or customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد فواتير تطابق البحث.": {
+        "key": "there_are_no_invoices_matching",
+        "en": "There are no invoices matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تتبع المدفوعات الواردة وعرض التفاصيل المالية بوضوح.": {
+        "key": "track_incoming_payments_and_clearly",
+        "en": "Track incoming payments and clearly view financial details.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم العملية أو اسم العميل": {
+        "key": "search_by_transaction_number_or",
+        "en": "Search by transaction number or customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد مدفوعات تطابق البحث.": {
+        "key": "there_are_no_payments_matching",
+        "en": "There are no payments matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة عروض الأسعار بسرعة مع بحث فوري وحالة واضحة لكل عرض.": {
+        "key": "manage_quotes_quickly_with_instant",
+        "en": "Manage quotes quickly with instant search and clear status for each quote.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث برقم العرض أو اسم العميل": {
+        "key": "search_by_offer_number_or_customer_name",
+        "en": "Search by offer number or customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة عروض الأسعار": {
+        "key": "list_of_quotations",
+        "en": "List of quotations",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد عروض تطابق البحث.": {
+        "key": "there_are_no_offers_matching_your_search",
+        "en": "There are no offers matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض الطلبات الحالية مع تصفية سريعة وحالة فورية لكل طلب.": {
+        "key": "view_current_orders_with_quick",
+        "en": "View current orders with quick filtering and instant status for each order.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطلبات قيد المعالجة": {
+        "key": "orders_are_being_processed",
+        "en": "Orders are being processed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة طلبات البيع": {
+        "key": "list_of_sales_orders",
+        "en": "List of sales orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تحكم كامل في إعدادات الموقع، التعريب، العملة، الإشعارات والمحتوى.": {
+        "key": "full_control_over_site_settings",
+        "en": "Full control over site settings, localization, currency, notifications and content.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الموقع (عربي)": {
+        "key": "website_name_arabic",
+        "en": "Website name (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شعار الموقع (Tagline) (عربي)": {
+        "key": "website_logo_tagline_arabic",
+        "en": "Website logo (Tagline) (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نحو إدارة أعمال أكثر ذكاءً": {
+        "key": "towards_smarter_business_management",
+        "en": "Towards smarter business management",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الموقع (عربي)": {
+        "key": "site_description_arabic",
+        "en": "Site description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أدخل وصفًا موجزًا للموقع أو الشركة": {
+        "key": "enter_a_brief_description_of",
+        "en": "Enter a brief description of the site or company",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الموقع (إنجليزي)": {
+        "key": "website_name_english",
+        "en": "Website name (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شعار الموقع (Tagline) (إنجليزي)": {
+        "key": "site_logo_tagline_english",
+        "en": "Site logo (Tagline) (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الموقع (إنجليزي)": {
+        "key": "site_description_english",
+        "en": "Site description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض اسم الموقع في الشعار": {
+        "key": "display_the_site_name_in_the_logo",
+        "en": "Display the site name in the logo",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض أسعار المنتجات": {
+        "key": "view_product_prices",
+        "en": "View product prices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر المنطقة الزمنية": {
+        "key": "choose_the_time_zone",
+        "en": "Choose the time zone",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنوان الكامل للمقر أو الشركة": {
+        "key": "the_full_address_of_the",
+        "en": "The full address of the headquarters or company",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الموقع لمحركات البحث": {
+        "key": "website_address_for_search_engines",
+        "en": "Website address for search engines",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف قصير يظهر في نتائج البحث": {
+        "key": "a_short_description_appears_in",
+        "en": "A short description appears in search results",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إشعارات البريد الإلكتروني": {
+        "key": "email_notifications",
+        "en": "Email notifications",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تنبيهات النظام الداخلية": {
+        "key": "internal_system_alerts",
+        "en": "Internal system alerts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الصفحة (عربي)": {
+        "key": "page_title_arabic",
+        "en": "Page title (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الصفحة (عربي)": {
+        "key": "page_description_arabic",
+        "en": "Page description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف مختصر عن الشركة": {
+        "key": "brief_description_of_the_company",
+        "en": "Brief description of the company",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قصة الشركة وتاريخها": {
+        "key": "company_story_and_history",
+        "en": "Company story and history",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 1: العنوان (عربي)": {
+        "key": "value_1_title_arabic",
+        "en": "Value 1: Title (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 1: الوصف (عربي)": {
+        "key": "value_1_description_arabic",
+        "en": "Value 1: Description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نختار منتجاتنا بعناية فائقة...": {
+        "key": "we_choose_our_products_very_carefully",
+        "en": "We choose our products very carefully...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 2: العنوان (عربي)": {
+        "key": "value_2_title_arabic",
+        "en": "Value 2: Title (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 2: الوصف (عربي)": {
+        "key": "value_2_description_arabic",
+        "en": "Value 2: Description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نستمر في البحث عن أحدث التقنيات...": {
+        "key": "we_continue_to_search_for",
+        "en": "We continue to search for the latest technologies...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 3: العنوان (عربي)": {
+        "key": "value_3_title_arabic",
+        "en": "Value 3: Title (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 3: الوصف (عربي)": {
+        "key": "value_3_description_arabic",
+        "en": "Value 3: Description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نبني علاقات طويلة الأمد...": {
+        "key": "we_build_long_term_relationships",
+        "en": "We build long-term relationships...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 4: العنوان (عربي)": {
+        "key": "value_4_title_arabic",
+        "en": "Value 4: Title (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 4: الوصف (عربي)": {
+        "key": "value_4_description_arabic",
+        "en": "Value 4: Description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فريق متخصص جاهز لتقديم...": {
+        "key": "a_specialized_team_is_ready_to_provide",
+        "en": "A specialized team is ready to provide...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ما نقدمه (عربي)": {
+        "key": "what_we_offer_arabic",
+        "en": "What we offer (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الخدمات والمنتجات التي نقدمها": {
+        "key": "the_services_and_products_we_provide",
+        "en": "The services and products we provide",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الصفحة (إنجليزي)": {
+        "key": "page_title_english",
+        "en": "Page title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الصفحة (إنجليزي)": {
+        "key": "page_description_english",
+        "en": "Page description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 1: العنوان (إنجليزي)": {
+        "key": "value_1_title_english",
+        "en": "Value 1: Title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 1: الوصف (إنجليزي)": {
+        "key": "value_1_description_english",
+        "en": "Value 1: Description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 2: العنوان (إنجليزي)": {
+        "key": "value_2_title_english",
+        "en": "Value 2: Title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 2: الوصف (إنجليزي)": {
+        "key": "value_2_description_english",
+        "en": "Value 2: Description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 3: العنوان (إنجليزي)": {
+        "key": "value_3_title_english",
+        "en": "Value 3: Title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 3: الوصف (إنجليزي)": {
+        "key": "value_3_description_english",
+        "en": "Value 3: Description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 4: العنوان (إنجليزي)": {
+        "key": "value_4_title_english",
+        "en": "Value 4: Title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 4: الوصف (إنجليزي)": {
+        "key": "value_4_description_english",
+        "en": "Value 4: Description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ما نقدمه (إنجليزي)": {
+        "key": "what_we_offer_english",
+        "en": "What we offer (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف مختصر عن الهوية والرؤية": {
+        "key": "a_brief_description_of_identity",
+        "en": "A brief description of identity and vision",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الأولى (عربي)": {
+        "key": "first_feature_arabic",
+        "en": "First feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الأولى (عربي)": {
+        "key": "title_of_the_first_feature_arabic",
+        "en": "Title of the first feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الأولى (عربي)": {
+        "key": "description_of_the_first_feature_arabic",
+        "en": "Description of the first feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الأولى": {
+        "key": "description_of_the_first_feature",
+        "en": "Description of the first feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثانية (عربي)": {
+        "key": "the_second_feature_arabic",
+        "en": "The second feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثانية (عربي)": {
+        "key": "title_of_the_second_feature_arabic",
+        "en": "Title of the second feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثانية (عربي)": {
+        "key": "description_of_the_second_feature_arabic",
+        "en": "Description of the second feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثانية": {
+        "key": "description_of_the_second_feature",
+        "en": "Description of the second feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثالثة (عربي)": {
+        "key": "the_third_feature_arabic",
+        "en": "The third feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثالثة (عربي)": {
+        "key": "title_of_the_third_feature_arabic",
+        "en": "Title of the third feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثالثة (عربي)": {
+        "key": "description_of_the_third_feature_arabic",
+        "en": "Description of the third feature (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثالثة": {
+        "key": "description_of_the_third_feature",
+        "en": "Description of the third feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الأولى (إنجليزي)": {
+        "key": "first_feature_english",
+        "en": "First feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الأولى (إنجليزي)": {
+        "key": "first_feature_title_english",
+        "en": "First feature title (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الأولى (إنجليزي)": {
+        "key": "description_of_the_first_feature_english",
+        "en": "Description of the first feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثانية (إنجليزي)": {
+        "key": "the_second_feature_english",
+        "en": "The second feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثانية (إنجليزي)": {
+        "key": "title_of_the_second_feature_english",
+        "en": "Title of the second feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثانية (إنجليزي)": {
+        "key": "description_of_the_second_feature",
+        "en": "Description of the second feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثالثة (إنجليزي)": {
+        "key": "the_third_feature_english",
+        "en": "The third feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثالثة (إنجليزي)": {
+        "key": "title_of_the_third_feature_english",
+        "en": "Title of the third feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الميزة الثالثة (إنجليزي)": {
+        "key": "description_of_the_third_feature_english",
+        "en": "Description of the third feature (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصور الأساسية في الموقع": {
+        "key": "basic_pictures_on_the_site",
+        "en": "Basic pictures on the site",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صورة مشاركة الرابط (Open Graph Image)": {
+        "key": "image_share_link_open_graph_image",
+        "en": "Image Share link (Open Graph Image)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صورة خلفية البانر الرئيسي (Hero Background)": {
+        "key": "main_banner_background_image_hero",
+        "en": "Main banner background image (Hero Background)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحات الألوان المجهزة واختيار الأنماط (Color Customization Tool)": {
+        "key": "customized_color_palettes_and_style",
+        "en": "Customized color palettes and style selection (Color Customization Tool)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحات ألوان احترافية جاهزة (One-Click Palettes)": {
+        "key": "professional_ready_made_palettes_one",
+        "en": "Professional ready-made palettes (One-Click Palettes)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ألوان الهوية والبراند": {
+        "key": "identity_and_brand_colors",
+        "en": "Identity and brand colors",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية شريط التنقل (Navbar BG)": {
+        "key": "navigation_bar_background_navbar_bg",
+        "en": "Navigation bar background (Navbar BG)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نصوص وأزرار شريط التنقل": {
+        "key": "navigation_bar_texts_and_buttons",
+        "en": "Navigation bar texts and buttons",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية القائمة عند التمرير (Scrolled Navbar BG)": {
+        "key": "scrolled_navbar_bg",
+        "en": "Scrolled Navbar BG",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نصوص القائمة عند التمرير (Scrolled Navbar Text)": {
+        "key": "scrolled_navbar_text",
+        "en": "Scrolled Navbar Text",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القيمة 0% تعني نافبار غير شفاف، 100% تعني نافبار شفاف بالكامل": {
+        "key": "a_value_of_0_means",
+        "en": "A value of 0% means opaque NavBar, 100% means fully transparent NavBar",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية ترويسة الصفحة (Page Header BG)": {
+        "key": "page_header_bg_background",
+        "en": "Page Header BG background",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نصوص وعنوان ترويسة الصفحة": {
+        "key": "page_header_text_and_title",
+        "en": "Page header text and title",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية تذييل الموقع (Footer BG)": {
+        "key": "website_footer_background_footer_bg",
+        "en": "Website footer background (Footer BG)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نصوص وروابط تذييل الموقع": {
+        "key": "website_footer_texts_and_links",
+        "en": "Website footer texts and links",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أزرار البانر الرئيسي (Hero Buttons)": {
+        "key": "hero_buttons",
+        "en": "Hero Buttons",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية الزر الرئيسي (Hero Primary BG)": {
+        "key": "home_button_background_hero_primary_bg",
+        "en": "Home button background (Hero Primary BG)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نص الزر الرئيسي (Hero Primary Text)": {
+        "key": "hero_primary_text",
+        "en": "Hero Primary Text",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية الزر الثانوي (Hero Secondary BG)": {
+        "key": "secondary_button_background_hero_secondary",
+        "en": "Secondary button background (Hero Secondary BG)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نص الزر الثانوي (Hero Secondary Text)": {
+        "key": "hero_secondary_text",
+        "en": "Hero Secondary Text",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أزرار السلة والشراء (Cart Buttons)": {
+        "key": "cart_buttons",
+        "en": "Cart Buttons",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خلفية زر السلة (Cart BG)": {
+        "key": "cart_bg_button_background",
+        "en": "Cart BG button background",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نص زر السلة (Cart Text)": {
+        "key": "cart_text",
+        "en": "Cart Text",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معاينة حية للمتجر (Live Storefront Preview)": {
+        "key": "live_storefront_preview",
+        "en": "Live Storefront Preview",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شريط التنقل (الافتراضي):": {
+        "key": "navigation_bar_default",
+        "en": "Navigation bar (default):",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شريط التنقل (عند التمرير / Scrolled):": {
+        "key": "navigation_bar_on_scroll",
+        "en": "Navigation bar (on scroll):",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قطع غيار أصلية بضمان حقيقي": {
+        "key": "original_spare_parts_with_real_warranty",
+        "en": "Original spare parts with real warranty",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قسم قطع الغيار": {
+        "key": "spare_parts_department",
+        "en": "Spare parts department",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرئيسية / تصنيف المنتجات": {
+        "key": "home_product_classification",
+        "en": "Home / Product Classification",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طقم فحمات فرامل أمامية": {
+        "key": "front_brake_pads_set",
+        "en": "Front brake pads set",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "٢٤٠ ر.س": {
+        "key": "240_sar",
+        "en": "240 SAR",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "© ٢٠٢٦ أوان التكادوم. جميع الحقوق محفوظة.": {
+        "key": "2026_awan_takadum_all_rights_reserved",
+        "en": "© 2026 Awan Takadum. All rights reserved.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الخطوط والأنماط الهيكلية": {
+        "key": "lines_and_structural_patterns",
+        "en": "Lines and structural patterns",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خط الموقع الافتراضي (Font Family)": {
+        "key": "default_site_font_font_family",
+        "en": "Default site font (Font Family)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Tajawal (خط متوازن وأنيق)": {
+        "key": "tajawal_balanced_and_elegant_line",
+        "en": "Tajawal (balanced and elegant line)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Cairo (خط عصري ومقروء)": {
+        "key": "cairo_modern_and_legible_font",
+        "en": "Cairo (modern and legible font)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Readex Pro (خط هندسي حديث)": {
+        "key": "readex_pro_modern_geometric_font",
+        "en": "Readex Pro (modern geometric font)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "El Messiri (خط فني ومزخرف)": {
+        "key": "el_messiri_artistic_and_decorative",
+        "en": "El Messiri (artistic and decorative calligraphy)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Almarai (خط ناعم وسلس)": {
+        "key": "almarai_soft_and_smooth_line",
+        "en": "Almarai (soft and smooth line)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Outfit (خط لاتيني حديث للمصطلحات)": {
+        "key": "outfit_modern_latin_terminology",
+        "en": "Outfit (modern Latin terminology)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Inter (خط لاتيني افتراضي نظيف)": {
+        "key": "inter_default_clean_latin_font",
+        "en": "Inter (default clean latin font)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حواف العناصر والأزرار (Border Radius)": {
+        "key": "edges_of_items_and_buttons_border_radius",
+        "en": "Edges of items and buttons (Border Radius)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر شكل الحواف": {
+        "key": "choose_the_shape_of_the_edges",
+        "en": "Choose the shape of the edges",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تخصيص البانر الرئيسي (Hero Section)": {
+        "key": "customize_the_main_banner_hero_section",
+        "en": "Customize the main banner (Hero Section)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "محاذاة نصوص البانر (Text Alignment)": {
+        "key": "banner_text_alignment",
+        "en": "Banner text alignment",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يمين (للغة العربية)": {
+        "key": "right_for_arabic",
+        "en": "Right (for Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يسار (للغة الإنجليزية)": {
+        "key": "left_for_english",
+        "en": "Left (for English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "درجة تعتيم خلفية البانر (Overlay Opacity)": {
+        "key": "overlay_opacity",
+        "en": "Overlay Opacity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تخصيص تذييل الموقع (Footer)": {
+        "key": "customize_site_footer",
+        "en": "Customize site footer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تنسيق تذييل الصفحة (Footer Layout)": {
+        "key": "footer_layout_formatting",
+        "en": "Footer Layout formatting",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أعمدة متعددة (روابط سريعة + تواصل + وصف متكامل)": {
+        "key": "multiple_columns_quick_links_contact",
+        "en": "Multiple columns (quick links + contact + integrated description)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بسيط (وصف مبسط بالوسط وحقوق ملكية فقط)": {
+        "key": "simple_simplified_description_with_medium",
+        "en": "Simple (simplified description with medium and royalties only)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حديث ومبسط (تواصل اجتماعي باليمين وروابط سريعة باليسار)": {
+        "key": "modern_and_simplified_social_media",
+        "en": "Modern and simplified (social media on the right and quick links on the left)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تخصيص التصميم عبر الكود (Custom CSS)": {
+        "key": "customize_design_via_code_custom_css",
+        "en": "Customize design via code (Custom CSS)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "/* أضف أكواد CSS المخصصة هنا لتعديل أي عنصر في الموقع بشكل مباشر */&#10;.main-content-spa { ... }": {
+        "key": "add_custom_css_codes_here",
+        "en": "/* Add custom CSS codes here to directly modify any element on the site */\n.main-content-spa { ... }",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأخضر الكلاسيكي الفاخر": {
+        "key": "luxurious_classic_green",
+        "en": "Luxurious classic green",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأزرق الملكي الحديث": {
+        "key": "modern_royal_blue",
+        "en": "Modern royal blue",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الذهبي والأسود الفخم": {
+        "key": "luxurious_gold_and_black",
+        "en": "Luxurious gold and black",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنابي الأنيق والذهبي": {
+        "key": "elegant_burgundy_and_gold",
+        "en": "Elegant burgundy and gold",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البنفسجي والوردي الجريء": {
+        "key": "bold_purple_and_pink",
+        "en": "Bold purple and pink",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التكنولوجيا الحديثة (Modern Tech)": {
+        "key": "modern_technology",
+        "en": "Modern Technology",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطبيعة والهدوء (Nature Calm)": {
+        "key": "nature_calm",
+        "en": "Nature Calm",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرمادي الأنيق (Elegant Gray)": {
+        "key": "elegant_gray",
+        "en": "Elegant Gray",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البرتقالي الدافئ (Warm Orange)": {
+        "key": "warm_orange",
+        "en": "Warm Orange",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التركواز البارد (Cool Turquoise)": {
+        "key": "cool_turquoise",
+        "en": "Cool Turquoise",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوردي الناعم (Soft Pink)": {
+        "key": "soft_pink",
+        "en": "Soft Pink",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأسود والذهبي (Black & Gold)": {
+        "key": "black_gold",
+        "en": "Black & Gold",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دولار أمريكي - USD": {
+        "key": "us_dollar_usd",
+        "en": "US dollar - USD",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ريال سعودي - SAR": {
+        "key": "saudi_riyal_sar",
+        "en": "Saudi Riyal - SAR",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ليرة سورية - SYP": {
+        "key": "syrian_pound_syp",
+        "en": "Syrian Pound - SYP",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "درهم إماراتي - AED": {
+        "key": "emirati_dirham_aed",
+        "en": "Emirati Dirham - AED",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جنيه مصري - EGP": {
+        "key": "egyptian_pound_egp",
+        "en": "Egyptian Pound - EGP",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حدث خطأ أثناء جلب إعدادات النظام": {
+        "key": "an_error_occurred_while_fetching",
+        "en": "An error occurred while fetching system settings",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يمكن رفع صور فقط": {
+        "key": "only_photos_can_be_uploaded",
+        "en": "Only photos can be uploaded",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حجم الصورة يجب أن يكون أقل من ${maxSizeMB}MB": {
+        "key": "image_size_must_be_less_than_varmb",
+        "en": "Image size must be less than ${maxSizeMB}MB",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حفظ الإعدادات بنجاح": {
+        "key": "settings_have_been_saved_successfully",
+        "en": "Settings have been saved successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل حفظ الإعدادات": {
+        "key": "failed_to_save_settings",
+        "en": "Failed to save settings",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة العروض المميزة": {
+        "key": "manage_special_offers",
+        "en": "Manage special offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يمكنك من هنا إضافة وتعديل العروض المميزة، نسب الخصومات، والبنرات الدعائية التي تظهر في الصفحة الرئيسية.": {
+        "key": "from_here_you_can_add",
+        "en": "From here, you can add and modify special offers, discount rates, and promotional banners that appear on the home page.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة العروض الحالية": {
+        "key": "list_of_current_offers",
+        "en": "List of current offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل فوري لحالة العرض أو الخصم وربطه بالمنتجات.": {
+        "key": "immediately_modify_the_status_of",
+        "en": "Immediately modify the status of the offer or discount and link it to the products.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا يوجد صورة": {
+        "key": "there_is_no_picture",
+        "en": "There is no picture",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عام (غير مرتبط بمنتج)": {
+        "key": "generic_not_associated_with_a_product",
+        "en": "Generic (not associated with a product)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "isEdit ? 'تعديل العرض المميز' : 'إضافة عرض مميز جديد'": {
+        "key": "isedit_modify_the_special_offer",
+        "en": "isEdit ? 'Modify the special offer': 'Add a new special offer'",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مثال: خصم خاص على الشواحن السريعة": {
+        "key": "example_special_discount_on_fast",
+        "en": "Example: Special discount on fast chargers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنوان بالإنجليزية (اختياري)": {
+        "key": "title_in_english_optional",
+        "en": "Title in English (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أدخل وصفاً تفصيلياً وجذاباً للعرض...": {
+        "key": "enter_a_detailed_and_attractive",
+        "en": "Enter a detailed and attractive description of the offer...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف بالإنجليزية (اختياري)": {
+        "key": "description_in_english_optional",
+        "en": "Description in English (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ربط بمنتج محدد (اختياري)": {
+        "key": "link_to_a_specific_product_optional",
+        "en": "Link to a specific product (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ابحث واختر منتجاً": {
+        "key": "search_and_choose_a_product",
+        "en": "Search and choose a product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ البدء (اختياري)": {
+        "key": "start_date_optional",
+        "en": "Start date (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تاريخ بدء العرض": {
+        "key": "choose_the_start_date_of_the_offer",
+        "en": "Choose the start date of the offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الانتهاء (اختياري)": {
+        "key": "end_date_optional",
+        "en": "End date (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر تاريخ انتهاء العرض": {
+        "key": "choose_the_offer_expiry_date",
+        "en": "Choose the offer expiry date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رابط مخصص للتوجيه (اختياري)": {
+        "key": "dedicated_link_for_routing_optional",
+        "en": "Dedicated link for routing (optional)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة العرض فوراً": {
+        "key": "display_status_immediately",
+        "en": "Display status immediately",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بنر/صورة العرض المميز": {
+        "key": "banner_featured_display_image",
+        "en": "Banner/featured display image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحجم الأقصى: 3 ميغابايت. ويفضل أبعاد مستطيلة للبنر.": {
+        "key": "maximum_size_3_mb_rectangular",
+        "en": "Maximum size: 3 MB. Rectangular dimensions are preferred for the banner.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنوان بالعربية مطلوب": {
+        "key": "address_in_arabic_is_required",
+        "en": "Address in Arabic is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف بالعربية مطلوب": {
+        "key": "description_in_arabic_is_required",
+        "en": "Description in Arabic is required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل تحميل قائمة العروض المميزة": {
+        "key": "failed_to_load_list_of_special_offers",
+        "en": "Failed to load list of special offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حجم الصورة الأقصى هو 3MB": {
+        "key": "maximum_image_size_is_3mb",
+        "en": "Maximum image size is 3MB",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل تغيير حالة تفعيل العرض": {
+        "key": "failed_to_change_offer_activation_status",
+        "en": "Failed to change offer activation status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يرجى رفع صورة للبنر الترويجي أولاً": {
+        "key": "please_upload_a_photo_of",
+        "en": "Please upload a photo of the promotional banner first",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حفظ العرض بنجاح": {
+        "key": "the_offer_has_been_saved_successfully",
+        "en": "The offer has been saved successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل حفظ العرض المميز": {
+        "key": "failed_to_save_featured_offer",
+        "en": "Failed to save featured offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هل أنت متأكد من رغبتك في حذف العرض المميز: \"${row.title_ar}\"؟": {
+        "key": "are_you_sure_you_want",
+        "en": "Are you sure you want to delete the highlighted view: \"${row.title_ar}\"?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نعم، حذف": {
+        "key": "yes_delete",
+        "en": "Yes, delete",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم حذف العرض بنجاح": {
+        "key": "the_offer_has_been_successfully_deleted",
+        "en": "The offer has been successfully deleted",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل حذف العرض المميز": {
+        "key": "failed_to_delete_featured_view",
+        "en": "Failed to delete featured view",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صفحة الزوار قيد التطوير": {
+        "key": "visitors_page_is_under_development",
+        "en": "Visitors page is under development",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المحاسبة": {
+        "key": "accounting",
+        "en": "Accounting",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جاري التحميل...": {
+        "key": "loading",
+        "en": "Loading...",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الحسابات": {
+        "key": "total_accounts",
+        "en": "Total accounts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدفوعات مكتملة": {
+        "key": "completed_payments",
+        "en": "Completed payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دفتر اليومية": {
+        "key": "journal",
+        "en": "journal",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التاريخ": {
+        "key": "the_date",
+        "en": "the date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حساب": {
+        "key": "account",
+        "en": "account",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف": {
+        "key": "description",
+        "en": "Description",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدين": {
+        "key": "debtor",
+        "en": "debtor",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دائن": {
+        "key": "creditor",
+        "en": "creditor",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مرجع": {
+        "key": "reference",
+        "en": "reference",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دفتر الأستاذ": {
+        "key": "ledger",
+        "en": "Ledger",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الكود": {
+        "key": "code",
+        "en": "Code",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحساب": {
+        "key": "the_account",
+        "en": "the account",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "النوع": {
+        "key": "type",
+        "en": "Type",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرصيد": {
+        "key": "balance",
+        "en": "Balance",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نشط": {
+        "key": "active",
+        "en": "Active"
+    },
+    "نعم": {
+        "key": "yes",
+        "en": "Yes"
+    },
+    "لا": {
+        "key": "no",
+        "en": "No"
+    },
+    "ميزان المراجعة": {
+        "key": "trial_balance",
+        "en": "Trial balance",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المدين": {
+        "key": "debtor",
+        "en": "Debtor",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الدائن": {
+        "key": "creditor",
+        "en": "Creditor",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي المدين:": {
+        "key": "total_debit",
+        "en": "Total debit:",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الدائن:": {
+        "key": "total_credit",
+        "en": "Total credit:",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل الفئة": {
+        "key": "edit_category",
+        "en": "Edit category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رجوع": {
+        "key": "back",
+        "en": "Back",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف (عربي)": {
+        "key": "description_arabic",
+        "en": "Description (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف (إنجليزي)": {
+        "key": "description_english",
+        "en": "Description (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صورة الفئة": {
+        "key": "category_image",
+        "en": "Category image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحالة": {
+        "key": "status",
+        "en": "Status"
+    },
+    "غير نشط": {
+        "key": "inactive",
+        "en": "Inactive"
+    },
+    "الترتيب": {
+        "key": "ranking",
+        "en": "Ranking",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إلغاء": {
+        "key": "cancel",
+        "en": "Cancel"
+    },
+    "تحديث": {
+        "key": "update",
+        "en": "Update"
+    },
+    "حفظ": {
+        "key": "save",
+        "en": "Save"
+    },
+    "إدارة الفئات": {
+        "key": "category_management",
+        "en": "Category management",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة فئة": {
+        "key": "add_category",
+        "en": "Add category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الاسم (عربي)": {
+        "key": "name_arabic",
+        "en": "Name (Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الاسم (إنجليزي)": {
+        "key": "name_english",
+        "en": "Name (English)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عدد المنتجات": {
+        "key": "number_of_products",
+        "en": "Number of products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإجراءات": {
+        "key": "procedures",
+        "en": "procedures",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تأكيد الحذف": {
+        "key": "confirm_deletion",
+        "en": "Confirm deletion",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في تحديث الحالة": {
+        "key": "failed_to_update_status",
+        "en": "Failed to update status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الاسم": {
+        "key": "name",
+        "en": "Name"
+    },
+    "اسم العميل": {
+        "key": "customer_name",
+        "en": "Customer name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الشركة": {
+        "key": "company",
+        "en": "Company",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الشركة": {
+        "key": "company_name",
+        "en": "Company Name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البريد الإلكتروني": {
+        "key": "email",
+        "en": "Email"
+    },
+    "الهاتف": {
+        "key": "phone",
+        "en": "Phone",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رقم الهاتف": {
+        "key": "phone",
+        "en": "Phone"
+    },
+    "العنوان": {
+        "key": "address",
+        "en": "Address"
+    },
+    "عنوان العميل": {
+        "key": "customer_address",
+        "en": "Customer address",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر الحالة": {
+        "key": "choose_the_status",
+        "en": "Choose the status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الملاحظات": {
+        "key": "notes",
+        "en": "Notes",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملاحظات إضافية": {
+        "key": "additional_notes",
+        "en": "Additional notes",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عميل جديد": {
+        "key": "new_client",
+        "en": "New client",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العملاء": {
+        "key": "customers",
+        "en": "Customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أحدث العملاء": {
+        "key": "latest_clients",
+        "en": "Latest clients",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة العملاء": {
+        "key": "customer_list",
+        "en": "Customer list",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل": {
+        "key": "edit",
+        "en": "Edit"
+    },
+    "حذف": {
+        "key": "delete",
+        "en": "Delete"
+    },
+    "تحديث البيانات": {
+        "key": "data_update",
+        "en": "Data update",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البريد": {
+        "key": "mail",
+        "en": "mail",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملخص سريع": {
+        "key": "quick_summary",
+        "en": "Quick summary",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التذاكر": {
+        "key": "tickets",
+        "en": "Tickets",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قريباً": {
+        "key": "almost",
+        "en": "almost",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العميل": {
+        "key": "client",
+        "en": "Client",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر العميل": {
+        "key": "select_the_client",
+        "en": "Select the client",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أولوية التذكرة": {
+        "key": "ticket_priority",
+        "en": "Ticket priority",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عالية": {
+        "key": "high",
+        "en": "High",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متوسطة": {
+        "key": "medium",
+        "en": "Medium",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منخفضة": {
+        "key": "low",
+        "en": "Low",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموضوع": {
+        "key": "the_topic",
+        "en": "the topic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان التذكرة": {
+        "key": "ticket_address",
+        "en": "Ticket address",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مفتوحة": {
+        "key": "open",
+        "en": "open",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مغلقة": {
+        "key": "closed",
+        "en": "Closed",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرسالة": {
+        "key": "message",
+        "en": "message",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعليقات داخلية": {
+        "key": "internal_comments",
+        "en": "Internal comments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تذكرة جديدة": {
+        "key": "new_ticket",
+        "en": "New ticket",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي التذاكر": {
+        "key": "total_tickets",
+        "en": "Total tickets",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة التذاكر": {
+        "key": "ticket_list",
+        "en": "Ticket list",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأولوية": {
+        "key": "priority",
+        "en": "Priority",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "آخر تحديث": {
+        "key": "latest_update",
+        "en": "Latest update",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة التحكم -": {
+        "key": "control_panel",
+        "en": "control panel -",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتج": {
+        "key": "product",
+        "en": "Product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المخزون الحالي": {
+        "key": "current_stock",
+        "en": "Current stock",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحد الأدنى": {
+        "key": "minimum",
+        "en": "minimum",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منخفض": {
+        "key": "low",
+        "en": "low",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملخص التقارير": {
+        "key": "summary_of_reports",
+        "en": "Summary of reports",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة المعاملات": {
+        "key": "transaction_status",
+        "en": "Transaction status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإيرادات الكلية": {
+        "key": "total_revenue",
+        "en": "Total revenue",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المبيعات الأخيرة": {
+        "key": "recent_sales",
+        "en": "Recent sales",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رقم الفاتورة": {
+        "key": "invoice_number",
+        "en": "Invoice number",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المبلغ": {
+        "key": "amount",
+        "en": "Amount",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتجات الأعلى": {
+        "key": "top_products",
+        "en": "Top products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وحدة": {
+        "key": "lonliness",
+        "en": "lonliness",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لوحة التحكم - ${value}": {
+        "key": "control_panel_var",
+        "en": "Control Panel - ${value}",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير": {
+        "key": "invoices",
+        "en": "Invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإيرادات": {
+        "key": "revenue",
+        "en": "Revenue",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اليوم": {
+        "key": "today",
+        "en": "today",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "هذا الشهر": {
+        "key": "this_month",
+        "en": "This month",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مكتمل": {
+        "key": "complete",
+        "en": "complete",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملغي": {
+        "key": "canceled",
+        "en": "Canceled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المصروفات": {
+        "key": "expenses",
+        "en": "Expenses",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرواتب": {
+        "key": "salaries",
+        "en": "Salaries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منتج": {
+        "key": "project",
+        "en": "project",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدفوعة": {
+        "key": "paid",
+        "en": "Paid",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معلقة": {
+        "key": "suspended",
+        "en": "suspended",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملغاة": {
+        "key": "canceled",
+        "en": "Canceled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة المدفوعات": {
+        "key": "status_of_payments",
+        "en": "Status of payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مكتملة": {
+        "key": "complete",
+        "en": "Complete",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مستردة": {
+        "key": "refundable",
+        "en": "Refundable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة الإنتاج": {
+        "key": "production_status",
+        "en": "Production status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قيد التنفيذ": {
+        "key": "under_implementation",
+        "en": "Under implementation",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عميل": {
+        "key": "client",
+        "en": "client",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحضور والانصراف": {
+        "key": "attendance_and_departure",
+        "en": "Attendance and departure",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحضور اليوم": {
+        "key": "attendance_today",
+        "en": "Attendance today",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المتأخرون": {
+        "key": "latecomers",
+        "en": "Latecomers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الغياب": {
+        "key": "absence",
+        "en": "Absence",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سجل الحضور": {
+        "key": "attendance_record",
+        "en": "Attendance record",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموظف": {
+        "key": "employee",
+        "en": "Employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القسم": {
+        "key": "department",
+        "en": "Department"
+    },
+    "دخول": {
+        "key": "entrance",
+        "en": "entrance",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خروج": {
+        "key": "exit",
+        "en": "exit",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد سجلات تطابق البحث.": {
+        "key": "there_are_no_records_matching",
+        "en": "There are no records matching your search.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حاضر": {
+        "key": "present",
+        "en": "present",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متأخر": {
+        "key": "late",
+        "en": "late",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غائب": {
+        "key": "absent",
+        "en": "absent",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر الموظف": {
+        "key": "select_employee",
+        "en": "Select employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر التاريخ": {
+        "key": "choose_the_date",
+        "en": "Choose the date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وقت الدخول": {
+        "key": "entry_time",
+        "en": "Entry time",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وقت الخروج": {
+        "key": "check_out_time",
+        "en": "Check out time",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عن بُعد": {
+        "key": "remote",
+        "en": "remote",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملاحظات": {
+        "key": "comments",
+        "en": "comments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أضف ملاحظات": {
+        "key": "add_notes",
+        "en": "Add notes",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أدخل القسم": {
+        "key": "enter_the_section",
+        "en": "Enter the section",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوظيفة": {
+        "key": "position",
+        "en": "Position"
+    },
+    "أدخل الوظيفة": {
+        "key": "enter_the_job",
+        "en": "Enter the job",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ التعيين": {
+        "key": "appointment_date",
+        "en": "Appointment date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصورة": {
+        "key": "photo",
+        "en": "Photo",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة موظف": {
+        "key": "add_an_employee",
+        "en": "Add an employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموظفون": {
+        "key": "employees",
+        "en": "Employees",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة الموظفين": {
+        "key": "list_of_employees",
+        "en": "List of employees",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "موظف": {
+        "key": "employee",
+        "en": "employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "row.status === 'نشط' ? 'success' : 'info'": {
+        "key": "row_status_active_success_info",
+        "en": "row.status === 'active' ? 'success': 'info'",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموارد البشرية": {
+        "key": "human_resources",
+        "en": "Human resources",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصول السريع": {
+        "key": "quick_access",
+        "en": "Quick access",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموظفين": {
+        "key": "staff",
+        "en": "Staff",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحضور": {
+        "key": "the_audience",
+        "en": "the audience",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإجازات": {
+        "key": "vacations",
+        "en": "Vacations",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "آخر المستجدات": {
+        "key": "latest_updates",
+        "en": "Latest updates",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض سريع للمسيرات": {
+        "key": "quick_view_of_the_marches",
+        "en": "Quick view of the marches",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نوع الإجازة": {
+        "key": "leave_type",
+        "en": "Leave type",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ البداية": {
+        "key": "start_date",
+        "en": "Start date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ النهاية": {
+        "key": "end_date",
+        "en": "End date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مرفوضة": {
+        "key": "rejected",
+        "en": "Rejected",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "السبب": {
+        "key": "the_reason",
+        "en": "the reason",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطلبات المعلقة": {
+        "key": "pending_orders",
+        "en": "Pending orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموافق عليها": {
+        "key": "approved",
+        "en": "Approved",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المرفوضة": {
+        "key": "rejected",
+        "en": "Rejected",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "طلبات الإجازات": {
+        "key": "leave_requests",
+        "en": "Leave requests",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفترة": {
+        "key": "period",
+        "en": "Period",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رفض": {
+        "key": "to_reject",
+        "en": "to reject",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي المسيرات": {
+        "key": "total_marches",
+        "en": "Total marches",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المسيرات المكتملة": {
+        "key": "completed_marches",
+        "en": "Completed marches",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المسيرات المعلقة": {
+        "key": "hanging_marches",
+        "en": "Hanging marches",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصافي": {
+        "key": "net",
+        "en": "Net",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معلق": {
+        "key": "hanging",
+        "en": "hanging",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ملغى": {
+        "key": "canceled",
+        "en": "Canceled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العودة": {
+        "key": "return",
+        "en": "Return",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تفاصيل الاستفسار #": {
+        "key": "inquiry_details",
+        "en": "Inquiry Details#",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نوع الاستفسار": {
+        "key": "inquiry_type",
+        "en": "Inquiry type",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المسؤول": {
+        "key": "responsible",
+        "en": "responsible",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير معين": {
+        "key": "not_specified",
+        "en": "Not specified",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الإنشاء": {
+        "key": "creation_date",
+        "en": "Creation date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الإغلاق": {
+        "key": "closing_date",
+        "en": "Closing date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الردود": {
+        "key": "replies",
+        "en": "Replies",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مشرف": {
+        "key": "supervisor",
+        "en": "supervisor",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة رد": {
+        "key": "add_a_reply",
+        "en": "Add a reply",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إرسال رد": {
+        "key": "send_reply",
+        "en": "Send reply",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تمييز كمستجاب": {
+        "key": "mark_as_respondent",
+        "en": "Mark as respondent",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إغلاق": {
+        "key": "closing",
+        "en": "closing",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إعادة فتح": {
+        "key": "reopen",
+        "en": "reopen",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعيين لموظف": {
+        "key": "assigned_to_an_employee",
+        "en": "Assigned to an employee",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعيين": {
+        "key": "hiring",
+        "en": "hiring",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المسؤول 1": {
+        "key": "administrator_1",
+        "en": "Administrator 1",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المسؤول 2": {
+        "key": "administrator_2",
+        "en": "Administrator 2",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إرسال الرد بنجاح": {
+        "key": "reply_sent_successfully",
+        "en": "Reply sent successfully",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم إعادة فتح الاستفسار": {
+        "key": "the_inquiry_has_been_reopened",
+        "en": "The inquiry has been reopened",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الاستفسارات": {
+        "key": "inquiries",
+        "en": "Inquiries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة الاستفسار": {
+        "key": "inquiry_status",
+        "en": "Inquiry status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أولوية": {
+        "key": "priority",
+        "en": "priority",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الاستفسارات": {
+        "key": "total_inquiries",
+        "en": "Total inquiries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جديدة": {
+        "key": "new",
+        "en": "New",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مقروءة": {
+        "key": "readable",
+        "en": "Readable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة الاستفسارات": {
+        "key": "list_of_inquiries",
+        "en": "List of inquiries",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "من": {
+        "key": "from",
+        "en": "from",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "استفسار": {
+        "key": "inquiry",
+        "en": "inquiry",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المرسل": {
+        "key": "sender",
+        "en": "Sender",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير معروف": {
+        "key": "unknown",
+        "en": "unknown",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بدون بريد": {
+        "key": "without_mail",
+        "en": "Without mail",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير محددة": {
+        "key": "not_specified",
+        "en": "Not specified",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التعيين": {
+        "key": "appointment",
+        "en": "Appointment",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير مخصص": {
+        "key": "not_assigned",
+        "en": "Not assigned",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منذ": {
+        "key": "since",
+        "en": "since",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض": {
+        "key": "an_offer",
+        "en": "an offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لا توجد استفسارات حالياً.": {
+        "key": "there_are_no_inquiries_currently",
+        "en": "There are no inquiries currently.",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مقروء": {
+        "key": "readable",
+        "en": "readable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متوسط": {
+        "key": "middle",
+        "en": "middle",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عالي": {
+        "key": "high",
+        "en": "High",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عاجل": {
+        "key": "urgent",
+        "en": "urgent",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل حذف الاستفسار": {
+        "key": "failed_to_delete_query",
+        "en": "Failed to delete query",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المخزون": {
+        "key": "inventory",
+        "en": "Inventory",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حركات المخزون": {
+        "key": "inventory_movements",
+        "en": "Inventory movements",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض الحركات": {
+        "key": "show_movements",
+        "en": "Show movements",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الكمية": {
+        "key": "quantity",
+        "en": "Quantity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصلاحيات": {
+        "key": "powers",
+        "en": "Powers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نقطة البيع": {
+        "key": "point_of_sale",
+        "en": "Point of sale",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "السعر": {
+        "key": "the_price",
+        "en": "the price",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإنتاج": {
+        "key": "production",
+        "en": "Production",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعديل المنتج": {
+        "key": "modify_the_product",
+        "en": "Modify the product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البيانات الأساسية": {
+        "key": "basic_data",
+        "en": "Basic data",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رمز المنتج (SKU)": {
+        "key": "product_code_sku",
+        "en": "Product Code (SKU)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفئة": {
+        "key": "category",
+        "en": "Category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر الفئة": {
+        "key": "select_category",
+        "en": "Select category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سعر التكلفة": {
+        "key": "cost_price",
+        "en": "Cost price",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العملة": {
+        "key": "currency",
+        "en": "Currency",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ريال سعودي (SAR)": {
+        "key": "saudi_riyal_sar",
+        "en": "Saudi Riyal (SAR)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دولار أمريكي (USD)": {
+        "key": "us_dollar_usd",
+        "en": "US Dollar (USD)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ليرة سورية (SYP)": {
+        "key": "syrian_pound_syp",
+        "en": "Syrian Pound (SYP)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دينار عراقي (IQD)": {
+        "key": "iraqi_dinar_iqd",
+        "en": "Iraqi Dinar (IQD)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "درهم إماراتي (AED)": {
+        "key": "uae_dirham_aed",
+        "en": "UAE Dirham (AED)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض السعر": {
+        "key": "view_price",
+        "en": "View price",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "السعر المخفض": {
+        "key": "discounted_price",
+        "en": "Discounted price",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نسبة الضريبة (%)": {
+        "key": "tax_rate",
+        "en": "Tax rate (%)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "خاضع للضريبة": {
+        "key": "taxable",
+        "en": "Taxable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وحدة القياس": {
+        "key": "unit_of_measurement",
+        "en": "Unit of measurement",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر الوحدة": {
+        "key": "select_unit",
+        "en": "Select unit",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قطعة (Piece)": {
+        "key": "piece",
+        "en": "Piece",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "كيلوغرام (Kg)": {
+        "key": "kilogram_kg",
+        "en": "Kilogram (Kg)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متر (Meter)": {
+        "key": "meter",
+        "en": "Meter",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "علبة (Box)": {
+        "key": "box",
+        "en": "Box",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دستة (Dozen)": {
+        "key": "dozen",
+        "en": "Dozen",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حزمة (Pack)": {
+        "key": "package",
+        "en": "Package",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لتر (Liter)": {
+        "key": "liter",
+        "en": "Liter",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أسطوانة (Carton)": {
+        "key": "cylinder",
+        "en": "Cylinder",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "كمية المخزون": {
+        "key": "stock_quantity",
+        "en": "Stock quantity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحد الأقصى": {
+        "key": "maximum",
+        "en": "maximum",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الباركود": {
+        "key": "barcode",
+        "en": "Barcode",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اللون": {
+        "key": "the_color",
+        "en": "the color",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المقاس / الحجم": {
+        "key": "size_size",
+        "en": "Size / Size",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوزن (كجم)": {
+        "key": "weight_kg",
+        "en": "Weight (kg)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطول (سم)": {
+        "key": "length_cm",
+        "en": "Length (cm)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العرض (سم)": {
+        "key": "width_cm",
+        "en": "Width (cm)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الارتفاع (سم)": {
+        "key": "height_cm",
+        "en": "Height (cm)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العلامة التجارية": {
+        "key": "brand",
+        "en": "Brand",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموديل": {
+        "key": "model",
+        "en": "Model",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ترتيب الفرز": {
+        "key": "sort_order",
+        "en": "Sort order",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "منتج مميز": {
+        "key": "distinctive_product",
+        "en": "Distinctive product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مميز": {
+        "key": "distinct",
+        "en": "distinct",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "غير مميز": {
+        "key": "indiscriminate",
+        "en": "indiscriminate",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متوفر": {
+        "key": "available",
+        "en": "Available",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نفد": {
+        "key": "run_out",
+        "en": "run out",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصور": {
+        "key": "the_pictures",
+        "en": "the pictures",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الصورة الرئيسية": {
+        "key": "main_image",
+        "en": "Main image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تغيير الصورة": {
+        "key": "change_the_picture",
+        "en": "Change the picture",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حذف الصورة": {
+        "key": "delete_the_image",
+        "en": "Delete the image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معرض الصور": {
+        "key": "photo_gallery",
+        "en": "Photo gallery",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة صورة": {
+        "key": "add_a_photo",
+        "en": "Add a photo",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معاينة الصورة": {
+        "key": "image_preview",
+        "en": "Image preview",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الصفحة (Meta Title)": {
+        "key": "page_title_meta_title",
+        "en": "Page title (Meta Title)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف الميتا (Meta Description)": {
+        "key": "meta_description",
+        "en": "Meta Description",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الكلمات المفتاحية (Meta Keywords)": {
+        "key": "meta_keywords",
+        "en": "Meta Keywords",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تحديث المنتج": {
+        "key": "product_update",
+        "en": "Product update",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حفظ المنتج": {
+        "key": "save_the_product",
+        "en": "Save the product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "Slug مطلوب": {
+        "key": "slug_required",
+        "en": "Slug required",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إدارة المنتجات": {
+        "key": "product_management",
+        "en": "Product management",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة منتج": {
+        "key": "add_a_product",
+        "en": "Add a product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جميع الفئات": {
+        "key": "all_categories",
+        "en": "All categories",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المميز": {
+        "key": "distinguished",
+        "en": "Distinguished",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إعادة تعيين": {
+        "key": "reset",
+        "en": "Reset",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تفعيل": {
+        "key": "activation",
+        "en": "activation",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تعطيل": {
+        "key": "disable",
+        "en": "Disable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إلغاء التحديد": {
+        "key": "deselect",
+        "en": "Deselect",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صورة": {
+        "key": "image",
+        "en": "image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بدون فئة": {
+        "key": "without_category",
+        "en": "Without category",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التكلفة": {
+        "key": "cost",
+        "en": "Cost",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تأكيد الحذف؟": {
+        "key": "confirm_deletion",
+        "en": "Confirm deletion?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم التفعيل": {
+        "key": "activated",
+        "en": "Activated",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم تفعيل ${result.succeeded.length} منتج": {
+        "key": "var_product_has_been_activated",
+        "en": "${result.succeeded.length} product has been activated",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل في التعطيل الجماعي": {
+        "key": "failed_to_mass_disrupt",
+        "en": "Failed to mass disrupt",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تفاصيل المنتج": {
+        "key": "product_details",
+        "en": "Product details",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معلومات سريعة": {
+        "key": "quick_information",
+        "en": "Quick information",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الإضافة": {
+        "key": "date_added",
+        "en": "Date added",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوحدة": {
+        "key": "unity",
+        "en": "Unity",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نسبة الضريبة": {
+        "key": "tax_rate",
+        "en": "Tax rate",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المقاس": {
+        "key": "size",
+        "en": "Size",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوزن": {
+        "key": "the_weight",
+        "en": "the weight",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "كجم": {
+        "key": "kg",
+        "en": "kg",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأبعاد": {
+        "key": "dimensions",
+        "en": "Dimensions",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سم": {
+        "key": "poison",
+        "en": "poison",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف مختصر": {
+        "key": "brief_description",
+        "en": "Brief description",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عرض خاص": {
+        "key": "special_offer",
+        "en": "Special offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مؤكد": {
+        "key": "certain",
+        "en": "certain",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم الشحن": {
+        "key": "shipped",
+        "en": "Shipped",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تم التسليم": {
+        "key": "delivered",
+        "en": "Delivered",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الطلبات": {
+        "key": "total_orders",
+        "en": "Total orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إعادة المحاولة": {
+        "key": "retry",
+        "en": "Retry",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتجات": {
+        "key": "products",
+        "en": "Products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإجمالي": {
+        "key": "total",
+        "en": "Total",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجراءات": {
+        "key": "procedures",
+        "en": "procedures",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تغيير الحالة": {
+        "key": "change_status",
+        "en": "Change status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معلومات العميل": {
+        "key": "customer_information",
+        "en": "Customer information",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معلومات الطلب": {
+        "key": "order_information",
+        "en": "Order information",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رقم الطلب": {
+        "key": "order_number",
+        "en": "order number",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم المنتج": {
+        "key": "product_name",
+        "en": "Product name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سعر الوحدة": {
+        "key": "unit_price",
+        "en": "Unit price",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإجمالي: $": {
+        "key": "total",
+        "en": "Total: $",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير المرتبطة": {
+        "key": "associated_invoices",
+        "en": "Associated invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدفوع": {
+        "key": "paid",
+        "en": "paid",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل تحميل تفاصيل الطلب": {
+        "key": "failed_to_load_order_details",
+        "en": "Failed to load order details",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المورد": {
+        "key": "supplier",
+        "en": "Supplier",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الموردين": {
+        "key": "suppliers",
+        "en": "Suppliers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإيصالات": {
+        "key": "receipts",
+        "en": "Receipts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أحدث الموردين": {
+        "key": "latest_suppliers",
+        "en": "Latest suppliers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الطلبات المكتملة": {
+        "key": "completed_orders",
+        "en": "Completed orders",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الاستحقاق": {
+        "key": "due_date",
+        "en": "due date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إيصالات الاستلام": {
+        "key": "receipts",
+        "en": "Receipts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الإيصالات": {
+        "key": "total_receipts",
+        "en": "Total receipts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "آخر الإيصالات": {
+        "key": "latest_receipts",
+        "en": "Latest receipts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة الإيصالات": {
+        "key": "list_of_receipts",
+        "en": "List of receipts",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الموردين": {
+        "key": "total_suppliers",
+        "en": "Total suppliers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة الموردين": {
+        "key": "suppliers_list",
+        "en": "Suppliers list",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "التقرير المالي": {
+        "key": "financial_report",
+        "en": "Financial report",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي المدفوعات": {
+        "key": "total_payments",
+        "en": "Total payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدفوعات معلقة": {
+        "key": "pending_payments",
+        "en": "Pending payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي الفواتير": {
+        "key": "total_bills",
+        "en": "Total bills",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الحالة الحالية": {
+        "key": "current_status",
+        "en": "Current status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تقرير المبيعات": {
+        "key": "sales_report",
+        "en": "Sales report",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تقرير المخزون": {
+        "key": "inventory_report",
+        "en": "Inventory report",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تقرير الرواتب": {
+        "key": "payroll_report",
+        "en": "Payroll report",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتجات المميزة": {
+        "key": "featured_products",
+        "en": "Featured products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مدفوعات": {
+        "key": "payments",
+        "en": "Payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي": {
+        "key": "total",
+        "en": "total",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأدوار": {
+        "key": "roles",
+        "en": "Roles",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العروض": {
+        "key": "offers",
+        "en": "Offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المدفوعات": {
+        "key": "payments",
+        "en": "Payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سريع": {
+        "key": "fast",
+        "en": "fast",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "محدث": {
+        "key": "updated",
+        "en": "Updated",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جديد": {
+        "key": "new",
+        "en": "new",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "متابعة": {
+        "key": "tracking",
+        "en": "tracking",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفواتير المدفوعة": {
+        "key": "paid_invoices",
+        "en": "Paid invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة الفواتير": {
+        "key": "list_of_invoices",
+        "en": "List of invoices",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المدفوعات المكتملة": {
+        "key": "completed_payments",
+        "en": "Completed payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أحدث المدفوعات": {
+        "key": "latest_payments",
+        "en": "Latest payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قائمة المدفوعات": {
+        "key": "list_of_payments",
+        "en": "List of payments",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الدفع": {
+        "key": "payment_history",
+        "en": "Payment history",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فشل": {
+        "key": "to_fail",
+        "en": "to fail",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إجمالي العروض": {
+        "key": "total_offers",
+        "en": "Total offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العروض المعلقة": {
+        "key": "pending_offers",
+        "en": "Pending offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العروض المقبولة": {
+        "key": "accepted_offers",
+        "en": "Accepted offers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ساري حتى": {
+        "key": "valid_until",
+        "en": "Valid until",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مقبول": {
+        "key": "acceptable",
+        "en": "acceptable",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تاريخ الطلب": {
+        "key": "order_date",
+        "en": "Order date",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إعدادات النظام": {
+        "key": "system_settings",
+        "en": "System settings",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عام": {
+        "key": "general",
+        "en": "general",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اسم الموقع": {
+        "key": "site_name",
+        "en": "Site name",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شعار الموقع (Tagline)": {
+        "key": "site_logo_tagline",
+        "en": "Site logo (Tagline)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الموقع": {
+        "key": "site_description",
+        "en": "Site description",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مفعل": {
+        "key": "activated",
+        "en": "Activated",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "معطل": {
+        "key": "disabled",
+        "en": "Disabled",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العملة واللغة": {
+        "key": "currency_and_language",
+        "en": "Currency and language",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العملة الافتراضية": {
+        "key": "virtual_currency",
+        "en": "Virtual currency",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر العملة": {
+        "key": "select_currency",
+        "en": "Select currency",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اللغة الافتراضية": {
+        "key": "default_language",
+        "en": "Default language",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر اللغة": {
+        "key": "choose_language",
+        "en": "Choose language",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنطقة الزمنية": {
+        "key": "time_zone",
+        "en": "Time zone",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تواصل": {
+        "key": "communication",
+        "en": "communication",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "رقم الواتساب": {
+        "key": "whatsapp_number",
+        "en": "WhatsApp number",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ساعات العمل": {
+        "key": "working_hours",
+        "en": "working hours",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأحد - الخميس 9:00 - 17:00": {
+        "key": "sunday_thursday_9_00_17_00",
+        "en": "Sunday - Thursday 9:00 - 17:00",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وسائل التواصل": {
+        "key": "communication_means",
+        "en": "Communication means",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "فيسبوك": {
+        "key": "facebook",
+        "en": "Facebook",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "انستغرام": {
+        "key": "instagram",
+        "en": "Instagram",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تويتر / X": {
+        "key": "twitter_x",
+        "en": "Twitter/X",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يوتيوب": {
+        "key": "youtube",
+        "en": "YouTube",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "لينكدإن": {
+        "key": "linkedin",
+        "en": "LinkedIn",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الموقع (Meta Title)": {
+        "key": "site_title_meta_title",
+        "en": "Site Title (Meta Title)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الموقع (Meta Description)": {
+        "key": "site_description_meta_description",
+        "en": "Site Description (Meta Description)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "صورة Open Graph": {
+        "key": "open_graph_image",
+        "en": "Open Graph image",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الإشعارات": {
+        "key": "notifications",
+        "en": "Notifications",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إشعارات SMS": {
+        "key": "sms_notifications",
+        "en": "SMS notifications",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إشعارات Push": {
+        "key": "push_notifications",
+        "en": "Push notifications",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "من نحن": {
+        "key": "who_are_we",
+        "en": "Who are we?",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الصفحة": {
+        "key": "page_title",
+        "en": "Page title",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وصف الصفحة": {
+        "key": "page_description",
+        "en": "Page description",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قصتنا": {
+        "key": "our_story",
+        "en": "Our story",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قيمنا": {
+        "key": "our_values",
+        "en": "Our values",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "قيم الشركة ومبادئها": {
+        "key": "company_values_and_principles",
+        "en": "Company values ​​and principles",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "ما نقدمه": {
+        "key": "what_we_offer",
+        "en": "What we offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "سنوات الخبرة": {
+        "key": "years_of_experience",
+        "en": "Years of experience",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المشاريع المنجزة": {
+        "key": "completed_projects",
+        "en": "Completed projects",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العملاء السعداء": {
+        "key": "happy_customers",
+        "en": "Happy customers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الشركاء الموثوقين": {
+        "key": "trusted_partners",
+        "en": "Trusted partners",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الهوية والرؤية": {
+        "key": "identity_and_vision",
+        "en": "Identity and vision",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الأولى": {
+        "key": "the_first_advantage",
+        "en": "The first advantage",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الأولى": {
+        "key": "title_of_the_first_feature",
+        "en": "Title of the first feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "جودة عالمية": {
+        "key": "international_quality",
+        "en": "International quality",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثانية": {
+        "key": "the_second_advantage",
+        "en": "The second advantage",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثانية": {
+        "key": "title_of_the_second_feature",
+        "en": "Title of the second feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تصميم عصري": {
+        "key": "modern_design",
+        "en": "Modern design",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الميزة الثالثة": {
+        "key": "the_third_advantage",
+        "en": "The third advantage",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "عنوان الميزة الثالثة": {
+        "key": "title_of_the_third_feature",
+        "en": "Title of the third feature",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شراكة موثوقة": {
+        "key": "trusted_partnership",
+        "en": "Trusted partnership",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تصميم": {
+        "key": "design",
+        "en": "design",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شعار الموقع": {
+        "key": "site_logo",
+        "en": "Site logo",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أيقونة الموقع (Favicon)": {
+        "key": "website_icon_favicon",
+        "en": "Website icon (Favicon)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأساسي": {
+        "key": "basic",
+        "en": "Basic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الثانوي": {
+        "key": "secondary",
+        "en": "Secondary",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "النافبار": {
+        "key": "navbar",
+        "en": "Navbar",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفوتر": {
+        "key": "the_footer",
+        "en": "The footer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اللون الأساسي (Primary Color)": {
+        "key": "primary_color",
+        "en": "Primary Color",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأساسي الفاتح (Primary Light)": {
+        "key": "primary_light",
+        "en": "Primary Light",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأساسي الداكن (Primary Dark)": {
+        "key": "primary_dark",
+        "en": "Primary Dark",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اللون الثانوي (Secondary Color)": {
+        "key": "secondary_color",
+        "en": "Secondary Color",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الثانوي الفاتح (Secondary Light)": {
+        "key": "secondary_light",
+        "en": "Secondary Light",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اللون المميز (Accent Color)": {
+        "key": "accent_color",
+        "en": "Accent Color",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المميز الفاتح (Accent Light)": {
+        "key": "accent_light",
+        "en": "Accent Light",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "القوائم والترويسات (Header & Nav)": {
+        "key": "menus_headers_header_nav",
+        "en": "Menus & Headers (Header & Nav)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "شفافية النافبار (Navbar Transparency)": {
+        "key": "navbar_transparency",
+        "en": "Navbar Transparency",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تذييل الموقع (Footer)": {
+        "key": "footer",
+        "en": "Footer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الأزرار والسلة (Buttons & Cart)": {
+        "key": "buttons_cart",
+        "en": "Buttons & Cart",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أوان التكادوم": {
+        "key": "it_s_time_for_takadum",
+        "en": "It's time for takadum",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الرئيسية": {
+        "key": "home",
+        "en": "Home",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "البانر الرئيسي (Hero Section):": {
+        "key": "main_banner_hero_section",
+        "en": "Main banner (Hero Section):",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تصفح المنتجات": {
+        "key": "browse_products",
+        "en": "Browse products",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اتصل بنا": {
+        "key": "contact_us",
+        "en": "Contact us",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة للسلة": {
+        "key": "add_to_cart",
+        "en": "Add to cart",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "اختر الخط": {
+        "key": "choose_font",
+        "en": "Choose font",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حادة جداً - Sharp (0px)": {
+        "key": "very_sharp_sharp_0px",
+        "en": "Very sharp - Sharp (0px)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دائرية ناعمة - Rounded (8px)": {
+        "key": "rounded_8px",
+        "en": "Rounded (8px)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "دائرية إضافية - Extra Rounded (14px)": {
+        "key": "extra_rounded_14px",
+        "en": "Extra Rounded (14px)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "بيضاوية بالكامل - Pill (30px)": {
+        "key": "fully_oval_pill_30px",
+        "en": "Fully Oval - Pill (30px)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "وسط (متوازن)": {
+        "key": "medium_balanced",
+        "en": "medium (balanced)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "أكواد CSS مخصصة (Custom Stylesheet)": {
+        "key": "custom_css_codes_custom_stylesheet",
+        "en": "Custom CSS codes (Custom Stylesheet)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حفظ الإعدادات": {
+        "key": "save_settings",
+        "en": "Save settings",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "يورو - EUR": {
+        "key": "euro_eur",
+        "en": "Euro - EUR",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العربية": {
+        "key": "arabic",
+        "en": "Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إضافة عرض جديد": {
+        "key": "add_a_new_offer",
+        "en": "Add a new offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنوان (بالعربية)": {
+        "key": "title_in_arabic",
+        "en": "Title (in Arabic)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الخصم": {
+        "key": "opponent",
+        "en": "opponent",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "المنتج المرتبط": {
+        "key": "associated_product",
+        "en": "Associated product",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الفترة الزمنية": {
+        "key": "time_period",
+        "en": "Time period",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "من:": {
+        "key": "from",
+        "en": "from:",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "إلى:": {
+        "key": "to_me",
+        "en": "to me:",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حالة العرض": {
+        "key": "display_status",
+        "en": "Display status",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "العنوان بالعربية": {
+        "key": "address_in_arabic",
+        "en": "Address in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الوصف بالعربية": {
+        "key": "description_in_arabic",
+        "en": "Description in Arabic",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "نسبة الخصم (%)": {
+        "key": "discount_percentage",
+        "en": "Discount percentage (%)",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مثال: 20": {
+        "key": "example_20",
+        "en": "Example: 20",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مثال: /categories/chargers": {
+        "key": "example_categories_chargers",
+        "en": "Example: /categories/chargers",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "مسودة": {
+        "key": "draft",
+        "en": "draft",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "حفظ العرض": {
+        "key": "save_the_offer",
+        "en": "Save the offer",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "تحذير الحذف": {
+        "key": "deletion_warning",
+        "en": "Deletion warning",
+        "isLiteral": false,
+        "quoteChar": ""
+    },
+    "الزوار": {
+        "key": "visitors",
+        "en": "Visitors",
+        "isLiteral": false,
+        "quoteChar": ""
+    }
+}

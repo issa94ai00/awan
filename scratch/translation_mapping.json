@@ -1,0 +1,914 @@
+{
+    "هذا الحقل مطلوب": {
+        "key": "required_field",
+        "en": "This field is required"
+    },
+    "يمكن رفع صور فقط!": {
+        "key": "image_only",
+        "en": "Only images can be uploaded!"
+    },
+    "حجم الصورة يجب أن يكون أقل من 2MB!": {
+        "key": "image_size_limit_2mb",
+        "en": "Image size must be less than 2MB!"
+    },
+    "تم تحديث الفئة بنجاح": {
+        "key": "category_updated",
+        "en": "Category updated successfully"
+    },
+    "تم إضافة الفئة بنجاح": {
+        "key": "category_added",
+        "en": "Category added successfully"
+    },
+    "فشل في جلب بيانات الفئة": {
+        "key": "failed_fetch_category",
+        "en": "Failed to fetch category data"
+    },
+    "فشل في جلب الفئات": {
+        "key": "failed_fetch_categories",
+        "en": "Failed to fetch categories"
+    },
+    "تم حذف الفئة بنجاح": {
+        "key": "category_deleted",
+        "en": "Category deleted successfully"
+    },
+    "فشل في حذف الفئة": {
+        "key": "failed_delete_category",
+        "en": "Failed to delete category"
+    },
+    "فشل في تحديث الحالة": {
+        "key": "failed_update_status",
+        "en": "Failed to update status"
+    },
+    "أضف أو حرر بيانات عميل لتبسيط إدارة العلاقات.": {
+        "key": "customer_form_subtitle",
+        "en": "Add or edit customer data to simplify relationship management."
+    },
+    "اسم العميل": {
+        "key": "customer_name",
+        "en": "Customer Name"
+    },
+    "اسم الشركة": {
+        "key": "company_name",
+        "en": "Company Name"
+    },
+    "رقم الهاتف": {
+        "key": "phone_number",
+        "en": "Phone Number"
+    },
+    "عنوان العميل": {
+        "key": "customer_address",
+        "en": "Customer Address"
+    },
+    "اختر الحالة": {
+        "key": "select_status",
+        "en": "Select Status"
+    },
+    "غير نشط": {
+        "key": "inactive",
+        "en": "Inactive"
+    },
+    "ملاحظات إضافية": {
+        "key": "additional_notes",
+        "en": "Additional Notes"
+    },
+    "البريد الإلكتروني غير صالح": {
+        "key": "invalid_email",
+        "en": "Invalid email address"
+    },
+    "تعديل العميل": {
+        "key": "edit_customer",
+        "en": "Edit Customer"
+    },
+    "لم يتم العثور على العميل": {
+        "key": "customer_not_found",
+        "en": "Customer not found"
+    },
+    "تم تحديث العميل بنجاح": {
+        "key": "customer_updated",
+        "en": "Customer updated successfully"
+    },
+    "حدث خطأ أثناء الحفظ": {
+        "key": "error_saving",
+        "en": "An error occurred while saving"
+    },
+    "قاعدة بيانات العملاء مع بحث سريع وفلاتر أساسية لسهولة الوصول.": {
+        "key": "customers_list_subtitle",
+        "en": "Customer database with quick search and basic filters for easy access."
+    },
+    "ابحث باسم العميل أو البريد أو الهاتف": {
+        "key": "search_customer_placeholder",
+        "en": "Search by customer name, email, or phone"
+    },
+    "تم حذف العميل بنجاح": {
+        "key": "customer_deleted",
+        "en": "Customer deleted successfully"
+    },
+    "فشل في حذف العميل": {
+        "key": "failed_delete_customer",
+        "en": "Failed to delete customer"
+    },
+    "لوحة تحكم حديثة لإدارة العملاء، التذاكر والاتصالات في مكان واحد.": {
+        "key": "crm_dashboard_subtitle",
+        "en": "Modern dashboard to manage customers, tickets, and communications in one place."
+    },
+    "إجمالي العملاء": {
+        "key": "total_customers",
+        "en": "Total Customers"
+    },
+    "التذاكر المفتوحة": {
+        "key": "open_tickets",
+        "en": "Open Tickets"
+    },
+    "إنشاء أو تعديل تذكرة دعم مع اختيار العميل والأولوية.": {
+        "key": "ticket_form_subtitle",
+        "en": "Create or edit a support ticket with customer selection and priority."
+    },
+    "اختر العميل": {
+        "key": "select_customer",
+        "en": "Select Customer"
+    },
+    "اختر أولوية التذكرة": {
+        "key": "select_ticket_priority",
+        "en": "Select Ticket Priority"
+    },
+    "عنوان التذكرة": {
+        "key": "ticket_title",
+        "en": "Ticket Title"
+    },
+    "اختر حالة التذكرة": {
+        "key": "select_ticket_status",
+        "en": "Select Ticket Status"
+    },
+    "قيد الانتظار": {
+        "key": "pending",
+        "en": "Pending"
+    },
+    "تم حلها": {
+        "key": "resolved",
+        "en": "Resolved"
+    },
+    "اكتب وصف التذكرة": {
+        "key": "type_ticket_description",
+        "en": "Type ticket description"
+    },
+    "تعليقات داخلية": {
+        "key": "internal_comments",
+        "en": "Internal Comments"
+    },
+    "الموضوع مطلوب": {
+        "key": "subject_required",
+        "en": "Subject is required"
+    },
+    "الأولوية مطلوبة": {
+        "key": "priority_required",
+        "en": "Priority is required"
+    },
+    "تعديل التذكرة": {
+        "key": "edit_ticket",
+        "en": "Edit Ticket"
+    },
+    "لم يتم العثور على التذكرة": {
+        "key": "ticket_not_found",
+        "en": "Ticket not found"
+    },
+    "تم تحديث التذكرة بنجاح": {
+        "key": "ticket_updated",
+        "en": "Ticket updated successfully"
+    },
+    "إدارة طلبات الدعم مع تتبع الحالة والأولوية بسهولة.": {
+        "key": "tickets_list_subtitle",
+        "en": "Manage support requests with easy tracking of status and priority."
+    },
+    "ابحث بموضوع التذكرة أو اسم العميل": {
+        "key": "search_ticket_placeholder",
+        "en": "Search by ticket subject or customer name"
+    },
+    "غير محدد": {
+        "key": "not_specified",
+        "en": "Not specified"
+    },
+    "تم حذف التذكرة بنجاح": {
+        "key": "ticket_deleted",
+        "en": "Ticket deleted successfully"
+    },
+    "فشل في حذف التذكرة": {
+        "key": "failed_delete_ticket",
+        "en": "Failed to delete ticket"
+    },
+    "تنبيات المخزون المنخفض": {
+        "key": "low_stock_alerts",
+        "en": "Low Stock Alerts"
+    },
+    "المخزون الحالي": {
+        "key": "current_stock",
+        "en": "Current Stock"
+    },
+    "أوان التقدم": {
+        "key": "site_name",
+        "en": "Awan Altakaddom"
+    },
+    "نظرة عامة على أداء النظام والإحصائيات": {
+        "key": "dashboard_tagline",
+        "en": "System performance overview and statistics"
+    },
+    "إجمالي المنتجات": {
+        "key": "total_products",
+        "en": "Total Products"
+    },
+    "0 ر.س": {
+        "key": "zero_sar",
+        "en": "0 SAR"
+    },
+    "قيد المعالجة": {
+        "key": "processing",
+        "en": "Processing"
+    },
+    "المبيعات الشهرية": {
+        "key": "monthly_sales",
+        "en": "Monthly Sales"
+    },
+    "الفواتير المعلقة": {
+        "key": "pending_invoices",
+        "en": "Pending Invoices"
+    },
+    "عروض الأسعار": {
+        "key": "quotes",
+        "en": "Quotes"
+    },
+    "أوامر الإنتاج": {
+        "key": "production_orders",
+        "en": "Production Orders"
+    },
+    "هذا الأسبوع": {
+        "key": "this_week",
+        "en": "This Week"
+    },
+    "حالة الفواتير": {
+        "key": "invoices_status",
+        "en": "Invoices Status"
+    },
+    "الفواتير المكتملة بنجاح": {
+        "key": "successfully_completed_invoices",
+        "en": "Successfully completed invoices"
+    },
+    "الفواتير التي تحتاج متابعة": {
+        "key": "invoices_need_followup",
+        "en": "Invoices needing follow-up"
+    },
+    "الفواتير الملغاة أو المسترجعة": {
+        "key": "cancelled_refunded_invoices",
+        "en": "Cancelled or refunded invoices"
+    },
+    "الدفع المكتمل من العملاء": {
+        "key": "completed_payment_from_customers",
+        "en": "Completed payment from customers"
+    },
+    "الدفع في انتظار المعالجة": {
+        "key": "payment_pending_processing",
+        "en": "Payment pending processing"
+    },
+    "المدفوعات المستردة للعملاء": {
+        "key": "refunded_payments_to_customers",
+        "en": "Refunded payments to customers"
+    },
+    "طلبات الإنتاج غير المبدوءة": {
+        "key": "unstarted_production_orders",
+        "en": "Unstarted production orders"
+    },
+    "طلبات الإنتاج الحالية": {
+        "key": "current_production_orders",
+        "en": "Current production orders"
+    },
+    "الطلبات الجاهزة للتسليم": {
+        "key": "ready_production_orders",
+        "en": "Orders ready for delivery"
+    },
+    "فشل في تحميل بيانات لوحة القيادة": {
+        "key": "failed_load_dashboard",
+        "en": "Failed to load dashboard data"
+    },
+    "متابعة الحضور اليومي وتسجيل حالات التأخير والغياب بسرعة.": {
+        "key": "attendance_subtitle",
+        "en": "Follow daily attendance and register delay and absence cases quickly."
+    },
+    "سجل حضور جديد": {
+        "key": "new_attendance_record",
+        "en": "New Attendance Record"
+    },
+    "ابحث بالموظف أو الحالة": {
+        "key": "search_attendance_placeholder",
+        "en": "Search by employee or status"
+    },
+    "سجل حضور الموظف وحرر التوقيت والحالة بسهولة.": {
+        "key": "attendance_form_subtitle",
+        "en": "Record employee attendance and edit timing and status easily."
+    },
+    "اختر الموظف": {
+        "key": "select_employee",
+        "en": "Select Employee"
+    },
+    "اختر التاريخ": {
+        "key": "select_date",
+        "en": "Select Date"
+    },
+    "وقت الدخول": {
+        "key": "entry_time",
+        "en": "Entry Time"
+    },
+    "وقت الخروج": {
+        "key": "exit_time",
+        "en": "Exit Time"
+    },
+    "عن بُعد": {
+        "key": "remote",
+        "en": "Remote"
+    },
+    "أضف ملاحظات": {
+        "key": "add_notes",
+        "en": "Add Notes"
+    },
+    "التاريخ مطلوب": {
+        "key": "date_required",
+        "en": "Date is required"
+    },
+    "تعديل سجل الحضور": {
+        "key": "edit_attendance_record",
+        "en": "Edit Attendance Record"
+    },
+    "لم يتم العثور على سجل الحضور": {
+        "key": "attendance_not_found",
+        "en": "Attendance record not found"
+    },
+    "تم تحديث سجل الحضور بنجاح": {
+        "key": "attendance_updated",
+        "en": "Attendance record updated successfully"
+    },
+    "تم إنشاء سجل الحضور بنجاح": {
+        "key": "attendance_created",
+        "en": "Attendance record created successfully"
+    },
+    "أضف أو حرر بيانات موظف مع حفظ تلقائي للمعلومات الأساسية.": {
+        "key": "employee_form_subtitle",
+        "en": "Add or edit employee data with automatic saving of basic information."
+    },
+    "أدخل اسم الموظف": {
+        "key": "enter_employee_name",
+        "en": "Enter employee name"
+    },
+    "أدخل القسم": {
+        "key": "enter_department",
+        "en": "Enter department"
+    },
+    "أدخل الوظيفة": {
+        "key": "enter_position",
+        "en": "Enter position"
+    },
+    "البريد الإلكتروني": {
+        "key": "email",
+        "en": "Email"
+    },
+    "تاريخ التعيين": {
+        "key": "hire_date",
+        "en": "Hire Date"
+    },
+    "رابط صورة الموظف": {
+        "key": "employee_avatar_url",
+        "en": "Employee avatar URL"
+    },
+    "الاسم مطلوب": {
+        "key": "name_required",
+        "en": "Name is required"
+    },
+    "الوظيفة مطلوبة": {
+        "key": "position_required",
+        "en": "Position is required"
+    },
+    "يجب أن يكون البريد صالحًا": {
+        "key": "valid_email_required",
+        "en": "Must be a valid email"
+    },
+    "تاريخ التعيين مطلوب": {
+        "key": "hire_date_required",
+        "en": "Hire date is required"
+    },
+    "إضافة موظف": {
+        "key": "add_employee",
+        "en": "Add Employee"
+    },
+    "لم يتم العثور على بيانات الموظف": {
+        "key": "employee_not_found",
+        "en": "Employee data not found"
+    },
+    "تم تحديث بيانات الموظف بنجاح": {
+        "key": "employee_updated",
+        "en": "Employee data updated successfully"
+    },
+    "تم إضافة الموظف بنجاح": {
+        "key": "employee_added",
+        "en": "Employee added successfully"
+    },
+    "إدارة بيانات الموظفين، عرض الحالة، والتحكم في السجل الوظيفي.": {
+        "key": "employees_list_subtitle",
+        "en": "Manage employee data, view status, and control career record."
+    },
+    "ابحث بالاسم أو القسم أو الوظيفة": {
+        "key": "search_employee_placeholder",
+        "en": "Search by name, department, or position"
+    },
+    "فشل في تحميل بيانات الموظفين": {
+        "key": "failed_load_employees",
+        "en": "Failed to load employees data"
+    },
+    "هل تود حذف الموظف ${employee.name}؟": {
+        "key": "delete_employee_confirm",
+        "en": "Do you want to delete employee ${employee.name}?"
+    },
+    "تم حذف الموظف بنجاح": {
+        "key": "employee_deleted",
+        "en": "Employee deleted successfully"
+    },
+    "فشل في حذف الموظف": {
+        "key": "failed_delete_employee",
+        "en": "Failed to delete employee"
+    },
+    "لوحة إدارة الموارد البشرية الحديثة": {
+        "key": "hr_dashboard_title",
+        "en": "Modern HR Management Dashboard"
+    },
+    "تابع الموظفين، الحضور، الإجازات، والرواتب من واجهة نظيفة وسريعة.": {
+        "key": "hr_dashboard_subtitle",
+        "en": "Track employees, attendance, leaves, and payrolls from a clean and fast interface."
+    },
+    "مسيرات الرواتب": {
+        "key": "payrolls",
+        "en": "Payrolls"
+    },
+    "عدد الموظفين المسجلين": {
+        "key": "registered_employees_count",
+        "en": "Registered Employees"
+    },
+    "سجلات الحضور المسجلة": {
+        "key": "recorded_attendance_records",
+        "en": "Recorded Attendance Records"
+    },
+    "طلبات الإجازة الموجودة": {
+        "key": "existing_leave_requests",
+        "en": "Existing Leave Requests"
+    },
+    "إنشاء أو تعديل طلب إجازة مع معلومات الموظف وفترة الإجازة.": {
+        "key": "leave_form_subtitle",
+        "en": "Create or edit a leave request with employee info and leave period."
+    },
+    "مثال: إجازة سنوية": {
+        "key": "leave_reason_example",
+        "en": "Example: Annual leave"
+    },
+    "اختر تاريخ البداية": {
+        "key": "select_start_date",
+        "en": "Select start date"
+    },
+    "اختر تاريخ النهاية": {
+        "key": "select_end_date",
+        "en": "Select end date"
+    },
+    "موافق عليها": {
+        "key": "approved",
+        "en": "Approved"
+    },
+    "أدخل سبب الإجازة": {
+        "key": "enter_leave_reason",
+        "en": "Enter leave reason"
+    },
+    "نوع الإجازة مطلوب": {
+        "key": "leave_type_required",
+        "en": "Leave type is required"
+    },
+    "تاريخ البداية مطلوب": {
+        "key": "start_date_required",
+        "en": "Start date is required"
+    },
+    "الحالة مطلوبة": {
+        "key": "status_required",
+        "en": "Status is required"
+    },
+    "طلب إجازة جديد": {
+        "key": "new_leave_request",
+        "en": "New Leave Request"
+    },
+    "لم يتم العثور على طلب الإجازة": {
+        "key": "leave_request_not_found",
+        "en": "Leave request not found"
+    },
+    "تم تحديث طلب الإجازة بنجاح": {
+        "key": "leave_request_updated",
+        "en": "Leave request updated successfully"
+    },
+    "تم إنشاء طلب الإجازة بنجاح": {
+        "key": "leave_request_created",
+        "en": "Leave request created successfully"
+    },
+    "إدارة طلبات الإجازة ومراقبة الموافقات في واجهة واضحة وسهلة الاستخدام.": {
+        "key": "leaves_list_subtitle",
+        "en": "Manage leave requests and monitor approvals in a clear and user-friendly interface."
+    },
+    "ابحث باسم الموظف أو الحالة": {
+        "key": "search_leave_placeholder",
+        "en": "Search by employee name or status"
+    },
+    "عرض شامل للمستحقات، الحالة، وصافي الأجور بتصميم أنيق وسهل القراءة.": {
+        "key": "payroll_subtitle",
+        "en": "Comprehensive display of entitlements, status, and net wages in an elegant and easy-to-read design."
+    },
+    "قائمة رواتب الموظفين": {
+        "key": "employees_payroll_list",
+        "en": "Employees Payroll List"
+    },
+    "ابحث برقم المسيرة أو اسم الموظف": {
+        "key": "search_payroll_placeholder",
+        "en": "Search by payroll number or employee name"
+    },
+    "فشل في تحميل بيانات الاستفسار": {
+        "key": "failed_load_inquiry",
+        "en": "Failed to load inquiry data"
+    },
+    "يرجى كتابة الرد": {
+        "key": "please_type_reply",
+        "en": "Please write a reply"
+    },
+    "فشل في إرسال الرد": {
+        "key": "failed_send_reply",
+        "en": "Failed to send reply"
+    },
+    "تم تحديث الحالة": {
+        "key": "status_updated",
+        "en": "Status updated"
+    },
+    "تم إغلاق الاستفسار": {
+        "key": "inquiry_closed",
+        "en": "Inquiry closed"
+    },
+    "فشل في إغلاق الاستفسار": {
+        "key": "failed_close_inquiry",
+        "en": "Failed to close inquiry"
+    },
+    "فشل في إعادة فتح الاستفسار": {
+        "key": "failed_reopen_inquiry",
+        "en": "Failed to reopen inquiry"
+    },
+    "تم تعيين الاستفسار": {
+        "key": "inquiry_assigned",
+        "en": "Inquiry assigned"
+    },
+    "لوحة إدارة الاستفسارات تمنحك رؤية سريعة، تصفية دقيقة، وعرض واضح لجميع حالات التواصل.": {
+        "key": "inquiries_dashboard_subtitle",
+        "en": "Inquiry management board gives you quick visibility, precise filtering, and clear display of all communication states."
+    },
+    "عرض سريع للطلبات الحالية مع حالة المعالجة والتعيين.": {
+        "key": "inquiries_list_subtitle",
+        "en": "Quick display of current requests with processing status and assignment."
+    },
+    "ابحث بالاسم أو الموضوع أو البريد أو الرسالة": {
+        "key": "search_inquiry_placeholder",
+        "en": "Search by name, subject, email, or message"
+    },
+    "جميع الحالات": {
+        "key": "all_statuses",
+        "en": "All Statuses"
+    },
+    "تم الرد": {
+        "key": "replied",
+        "en": "Replied"
+    },
+    "هل أنت متأكد من حذف هذا الاستفسار؟": {
+        "key": "delete_inquiry_confirm",
+        "en": "Are you sure you want to delete this inquiry?"
+    },
+    "تم حذف الاستفسار بنجاح": {
+        "key": "inquiry_deleted",
+        "en": "Inquiry deleted successfully"
+    },
+    "لا توجد رسالة": {
+        "key": "no_message",
+        "en": "No message"
+    },
+    "اسم المنتج بالعربية مطلوب": {
+        "key": "product_name_ar_required",
+        "en": "Product name in Arabic is required"
+    },
+    "Slug يجب أن يحتوي على أحرف إنجليزية وأرقام وشرطات فقط": {
+        "key": "slug_format_error",
+        "en": "Slug must contain English letters, numbers, and dashes only"
+    },
+    "السعر مطلوب": {
+        "key": "price_required",
+        "en": "Price is required"
+    },
+    "كمية المخزون مطلوبة": {
+        "key": "stock_quantity_required",
+        "en": "Stock quantity is required"
+    },
+    "تم رفع الصورة الرئيسية بنجاح": {
+        "key": "main_image_uploaded",
+        "en": "Main image uploaded successfully"
+    },
+    "تم حذف الصورة الرئيسية": {
+        "key": "main_image_deleted",
+        "en": "Main image deleted"
+    },
+    "تم رفع الصورة بنجاح": {
+        "key": "image_uploaded",
+        "en": "Image uploaded successfully"
+    },
+    "تم تحديث المنتج بنجاح": {
+        "key": "product_updated",
+        "en": "Product updated successfully"
+    },
+    "تم إضافة المنتج بنجاح": {
+        "key": "product_added",
+        "en": "Product added successfully"
+    },
+    "فشل في جلب بيانات المنتج": {
+        "key": "failed_fetch_product",
+        "en": "Failed to fetch product data"
+    },
+    "فشل في جلب المنتجات": {
+        "key": "failed_fetch_products",
+        "en": "Failed to fetch products"
+    },
+    "فشل في حذف المنتج": {
+        "key": "failed_delete_product",
+        "en": "Failed to delete product"
+    },
+    "تم التعطيل": {
+        "key": "disabled",
+        "en": "Disabled"
+    },
+    "فشل في تغيير الحالة": {
+        "key": "failed_change_status",
+        "en": "Failed to change status"
+    },
+    "فشل في التفعيل الجماعي": {
+        "key": "failed_bulk_activation",
+        "en": "Failed bulk activation"
+    },
+    "تم تعطيل ${result.succeeded.length} منتج": {
+        "key": "bulk_disabled_products",
+        "en": "Disabled ${result.succeeded.length} products"
+    },
+    "تم حذف ${result.succeeded} منتج": {
+        "key": "bulk_deleted_products",
+        "en": "Deleted ${result.succeeded} products"
+    },
+    "فشل في الحذف الجماعي": {
+        "key": "failed_bulk_deletion",
+        "en": "Failed bulk deletion"
+    },
+    "فشل في جلب تفاصيل المنتج": {
+        "key": "failed_fetch_product_details",
+        "en": "Failed to fetch product details"
+    },
+    "إدارة طلبات الشراء الواردة من العملاء": {
+        "key": "purchase_requests_subtitle",
+        "en": "Manage incoming purchase requests from customers"
+    },
+    "قائمة طلبات الشراء": {
+        "key": "purchase_requests_list",
+        "en": "Purchase Requests List"
+    },
+    "تم التسليم": {
+        "key": "delivered",
+        "en": "Delivered"
+    },
+    "ابحث برقم الطلب أو اسم العميل": {
+        "key": "search_order_placeholder",
+        "en": "Search by order number or customer name"
+    },
+    "تم تحديث الحالة بنجاح": {
+        "key": "status_updated_successfully",
+        "en": "Status updated successfully"
+    },
+    "تفاصيل طلب الشراء": {
+        "key": "purchase_request_details",
+        "en": "Purchase Request Details"
+    },
+    "فشل تحديث الحالة": {
+        "key": "failed_status_update",
+        "en": "Failed to update status"
+    },
+    "نظرة عامة على المشتريات": {
+        "key": "purchases_overview",
+        "en": "Purchases Overview"
+    },
+    "عرض طلبات الشراء، الموردين، والإيصالات من واجهة واحدة نظيفة وسريعة.": {
+        "key": "purchases_dashboard_subtitle",
+        "en": "Display purchase requests, suppliers, and receipts from one clean and fast interface."
+    },
+    "أحدث طلبات الشراء": {
+        "key": "latest_purchase_orders",
+        "en": "Latest Purchase Orders"
+    },
+    "طلبات الشراء": {
+        "key": "purchase_orders",
+        "en": "Purchase Orders"
+    },
+    "طلبات حديثة": {
+        "key": "recent_orders",
+        "en": "Recent Orders"
+    },
+    "تابع طلبات الشراء الحالية واستخدم بحثًا سريعًا لعرض أي طلب في لحظة.": {
+        "key": "purchase_orders_subtitle",
+        "en": "Follow current purchase orders and use quick search to view any order in an instant."
+    },
+    "ابحث برقم الطلب أو اسم المورد": {
+        "key": "search_purchase_order_placeholder",
+        "en": "Search by order number or supplier name"
+    },
+    "عرض إيصالات الاستلام بوضوح مع بحث مباشر ومعلومات حالة سريعة.": {
+        "key": "receipts_subtitle",
+        "en": "Display receipts clearly with live search and quick status information."
+    },
+    "ابحث برقم الإيصال أو اسم المورد": {
+        "key": "search_receipt_placeholder",
+        "en": "Search by receipt number or supplier name"
+    },
+    "واجهة الموردين تم تصميمها لتسريع عرض البيانات مع فلترة سهلة.": {
+        "key": "suppliers_subtitle",
+        "en": "Suppliers interface is designed to speed up data display with easy filtering."
+    },
+    "ابحث بالاسم أو البريد أو الهاتف": {
+        "key": "search_supplier_placeholder",
+        "en": "Search by name, email, or phone"
+    },
+    ";\n\nconst loading = ref(true);\nconst summary = ref({ invoices: {}, payments: {} });\n\nconst statusCards = computed(() => ({\n    مدفوعة: summary.value.invoices.paid || 0,\n    معلقة: summary.value.invoices.pending || 0,\n    ملغاة: summary.value.invoices.cancelled || 0,\n    مدفوعة_جزئيًا: summary.value.payments.pending || 0,\n}));\n\nasync function loadSummary() {\n    loading.value = true;\n    try {\n        const res = await dashboardApi.getOverviewStats();\n        summary.value = res.data.data || summary.value;\n    } catch (e) {\n        console.error(": {
+        "key": "const_loading_ref_true_const_summary_ref_invoices_payments_const_statuscards_computed_summary_value_invoices_paid_0_summary_value_invoices_pending_0_summary_value_invoices_cancelled_0_summary_value_payments_pending_0_async_function_loadsummary_loading_value_true_try_const_res_await_dashboardapi_getoverviewstats_summary_value_res_data_data_summary_value_catch_e_console_error",
+        "en": ";\n\nconst loading = ref(true);\nconst summary = ref({ invoices: {}, payments: {} });\n\nconst statusCards = computed(() => ({\n    مدفوعة: summary.value.invoices.paid || 0,\n    معلقة: summary.value.invoices.pending || 0,\n    ملغاة: summary.value.invoices.cancelled || 0,\n    مدفوعة_جزئيًا: summary.value.payments.pending || 0,\n}));\n\nasync function loadSummary() {\n    loading.value = true;\n    try {\n        const res = await dashboardApi.getOverviewStats();\n        summary.value = res.data.data || summary.value;\n    } catch (e) {\n        console.error("
+    },
+    "قاعدة بيانات العملاء بخط واضح وتصنيف سهل للبحث.": {
+        "key": "customers_database_subtitle",
+        "en": "Customer database with clear font and easy classification for search."
+    },
+    "لوحة مبيعات جديدة وأنيقة": {
+        "key": "sales_dashboard_title",
+        "en": "New and Sleek Sales Dashboard"
+    },
+    "تابع الطلبات، الفواتير، العروض، والمدفوعات من لوحة واحدة أنيقة وسريعة.": {
+        "key": "sales_dashboard_subtitle",
+        "en": "Track orders, invoices, quotes, and payments from one elegant and fast dashboard."
+    },
+    "أحدث طلبات البيع": {
+        "key": "latest_sales_orders",
+        "en": "Latest Sales Orders"
+    },
+    "طلبات البيع": {
+        "key": "sales_orders",
+        "en": "Sales Orders"
+    },
+    "متابعة الفواتير بسرعة مع بحث فوري وعرض مركّز للحالة والمبلغ.": {
+        "key": "invoices_subtitle",
+        "en": "Follow up invoices quickly with instant search and focused display of status and amount."
+    },
+    "ابحث برقم الفاتورة أو اسم العميل": {
+        "key": "search_invoice_placeholder",
+        "en": "Search by invoice number or customer name"
+    },
+    "تتبع المدفوعات الواردة وعرض التفاصيل المالية بوضوح.": {
+        "key": "payments_subtitle",
+        "en": "Track incoming payments and display financial details clearly."
+    },
+    "ابحث برقم العملية أو اسم العميل": {
+        "key": "search_payment_placeholder",
+        "en": "Search by transaction number or customer name"
+    },
+    "إدارة عروض الأسعار بسرعة مع بحث فوري وحالة واضحة لكل عرض.": {
+        "key": "quotes_subtitle",
+        "en": "Manage quotes quickly with instant search and clear status for each quote."
+    },
+    "قائمة عروض الأسعار": {
+        "key": "quotes_list",
+        "en": "Quotes List"
+    },
+    "ابحث برقم العرض أو اسم العميل": {
+        "key": "search_quote_placeholder",
+        "en": "Search by quote number or customer name"
+    },
+    "عرض الطلبات الحالية مع تصفية سريعة وحالة فورية لكل طلب.": {
+        "key": "sales_orders_subtitle",
+        "en": "Display current orders with quick filtering and instant status for each order."
+    },
+    "الطلبات قيد المعالجة": {
+        "key": "orders_processing",
+        "en": "Orders Processing"
+    },
+    "قائمة طلبات البيع": {
+        "key": "sales_orders_list",
+        "en": "Sales Orders List"
+    },
+    "تحكم كامل في إعدادات الموقع، التعريب، العملة، الإشعارات والمحتوى.": {
+        "key": "settings_subtitle",
+        "en": "Full control over website settings, localization, currency, notifications, and content."
+    },
+    "الأخضر الكلاسيكي الفاخر": {
+        "key": "classic_luxury_green",
+        "en": "Classic Luxury Green"
+    },
+    "الذهبي والأسود الفخم": {
+        "key": "royal_gold_black",
+        "en": "Royal Gold & Black"
+    },
+    "البنفسجي والوردي الجريء": {
+        "key": "bold_purple_pink",
+        "en": "Bold Purple & Pink"
+    },
+    "الطبيعة والهدوء (Nature Calm)": {
+        "key": "nature_calm",
+        "en": "Nature Calm"
+    },
+    "البرتقالي الدافئ (Warm Orange)": {
+        "key": "warm_orange",
+        "en": "Warm Orange"
+    },
+    "الوردي الناعم (Soft Pink)": {
+        "key": "soft_pink",
+        "en": "Soft Pink"
+    },
+    "دولار أمريكي - USD": {
+        "key": "usd_currency",
+        "en": "US Dollar - USD"
+    },
+    "ريال سعودي - SAR": {
+        "key": "sar_currency",
+        "en": "Saudi Riyal - SAR"
+    },
+    "درهم إماراتي - AED": {
+        "key": "aed_currency",
+        "en": "UAE Dirham - AED"
+    },
+    "حدث خطأ أثناء جلب إعدادات النظام": {
+        "key": "failed_fetch_settings",
+        "en": "An error occurred while fetching system settings"
+    },
+    "يمكن رفع صور فقط": {
+        "key": "upload_images_only",
+        "en": "Only images can be uploaded"
+    },
+    "حجم الصورة يجب أن يكون أقل من ${maxSizeMB}MB": {
+        "key": "image_size_limit",
+        "en": "Image size must be less than ${maxSizeMB}MB"
+    },
+    "فشل حفظ الإعدادات": {
+        "key": "failed_save_settings",
+        "en": "Failed to save settings"
+    },
+    "إدارة العروض المميزة": {
+        "key": "special_offers_management",
+        "en": "Special Offers Management"
+    },
+    "يمكنك من هنا إضافة وتعديل العروض المميزة، نسب الخصومات، والبنرات الدعائية التي تظهر في الصفحة الرئيسية.": {
+        "key": "special_offers_subtitle",
+        "en": "From here, you can add and edit special offers, discount percentages, and promotional banners appearing on the homepage."
+    },
+    "قائمة العروض الحالية": {
+        "key": "current_offers_list",
+        "en": "Current Offers List"
+    },
+    "تعديل فوري لحالة العرض أو الخصم وربطه بالمنتجات.": {
+        "key": "edit_offer_status_subtitle",
+        "en": "Instant editing of offer or discount status and linking it to products."
+    },
+    "الوصف بالعربية مطلوب": {
+        "key": "description_ar_required",
+        "en": "Description in Arabic is required"
+    },
+    "فشل تحميل قائمة العروض المميزة": {
+        "key": "failed_load_special_offers",
+        "en": "Failed to load special offers list"
+    },
+    "حجم الصورة الأقصى هو 3MB": {
+        "key": "image_max_size_3mb",
+        "en": "Maximum image size is 3MB"
+    },
+    "فشل تغيير حالة تفعيل العرض": {
+        "key": "failed_toggle_offer",
+        "en": "Failed to change offer activation status"
+    },
+    "يرجى رفع صورة للبنر الترويجي أولاً": {
+        "key": "please_upload_banner_first",
+        "en": "Please upload promotional banner image first"
+    },
+    "فشل حفظ العرض المميز": {
+        "key": "failed_save_special_offer",
+        "en": "Failed to save special offer"
+    },
+    "نعم، حذف": {
+        "key": "yes_delete",
+        "en": "Yes, delete"
+    },
+    "تم حذف العرض بنجاح": {
+        "key": "special_offer_deleted",
+        "en": "Offer deleted successfully"
+    },
+    "فشل حذف العرض المميز": {
+        "key": "failed_delete_special_offer",
+        "en": "Failed to delete special offer"
+    }
+}
