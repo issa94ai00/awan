@@ -158,3 +158,8 @@ Route::get('/dashboard', function () {
     return redirect()->route('admin.vue');
 })->name('dashboard');
 
+// Catch-all for Vue SPA public routes - any unmatched GET falls through to Vue Router
+Route::get('/{path?}', function () {
+    return view('vue');
+})->where('path', '.*');
+

@@ -571,6 +571,11 @@ const routes = [
                 component: () => import('@/views/admin/rma/Form.vue')
             }
         ]
+    },
+    {
+        path: '/:pathMatch(.*)*',
+        name: 'not-found',
+        component: () => import('@/views/public/NotFound.vue')
     }
 ];
 

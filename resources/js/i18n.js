@@ -70,6 +70,9 @@ const messages = {
         nav_vision: 'Vision',
         nav_about: 'About',
         nav_contact: 'Contact',
+        page_not_found: 'Page Not Found',
+        page_not_found_desc: 'Sorry, the page you are looking for does not exist.',
+        back_to_home: 'Back to Home',
         search: 'Search...',
         quick_search: 'Quick Search...',
         
@@ -2031,6 +2034,9 @@ const messages = {
         nav_vision: 'الهوية والرؤية',
         nav_about: 'من نحن',
         nav_contact: 'اتصل بنا',
+        page_not_found: 'الصفحة غير موجودة',
+        page_not_found_desc: 'عذراً، الصفحة التي تبحث عنها غير موجودة.',
+        back_to_home: 'العودة إلى الرئيسية',
         search: 'بحث...',
         quick_search: 'بحث سريع...',
         
