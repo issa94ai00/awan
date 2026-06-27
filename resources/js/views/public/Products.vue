@@ -855,6 +855,12 @@ onUnmounted(() => {
     font-size: 0.95rem;
 }
 
+@media (max-width: 1024px) {
+    .filter-group {
+        min-width: 180px;
+    }
+}
+
 @media (max-width: 768px) {
     .products-title {
         font-size: 2rem;
@@ -862,6 +868,11 @@ onUnmounted(() => {
     
     .products-subtitle {
         font-size: 1rem;
+    }
+    
+    .products-filters {
+        padding: 15px 0;
+        top: 60px;
     }
     
     .filters-row {
@@ -873,12 +884,25 @@ onUnmounted(() => {
     }
     
     .price-range {
-        flex-direction: column;
-        gap: 10px;
+        flex-direction: row;
+        gap: 8px;
+    }
+    
+    .price-range .filter-input {
+        min-width: 0;
     }
     
     .price-separator {
         display: none;
+    }
+    
+    .view-toggle {
+        flex: 1;
+    }
+    
+    .view-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
     }
     
     .products-grid.grid {
@@ -897,6 +921,95 @@ onUnmounted(() => {
     
     .product-actions {
         flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .products-filters {
+        padding: 12px 0;
+        top: 55px;
+    }
+
+    .filters-row {
+        gap: 10px;
+    }
+
+    .filter-group {
+        min-width: 100%;
+    }
+
+    .filter-label {
+        margin-bottom: 4px;
+        font-size: 0.85rem;
+    }
+
+    .filter-input,
+    .filter-select {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    .price-range {
+        gap: 6px;
+    }
+
+    .price-range .filter-input {
+        padding: 8px 10px;
+        font-size: 0.9rem;
+    }
+
+    .view-btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+
+    .products-grid.grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+    }
+
+    .product-image {
+        height: 160px;
+    }
+
+    .product-info {
+        padding: 12px;
+    }
+
+    .product-name {
+        font-size: 0.95rem;
+    }
+
+    .product-current-price {
+        font-size: 1rem;
+    }
+
+    .btn-view-details,
+    .btn-add-cart {
+        padding: 8px 10px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .products-filters {
+        padding: 10px 0;
+    }
+
+    .filter-input,
+    .filter-select {
+        padding: 7px 10px;
+        font-size: 0.85rem;
+    }
+
+    .price-range {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .products-grid.grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
     }
 }
 </style>

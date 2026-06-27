@@ -8,7 +8,7 @@
     <!-- Dynamic Meta Tags -->
     <title>{{ $seo_title ?? get_setting('meta_title') ?? (get_setting('site_name') ?? 'أوان التقدم') }}</title>
     <meta name="description" content="{{ $seo_description ?? get_setting('meta_description') ?? (get_setting('site_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.') }}">
-    <meta name="keywords" content="{{ $seo_keywords ?? get_setting('meta_keywords') ?? 'مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية, أدوات, مشابك, علاقات معدنية, أنظمة تثبيت ورفع' }}">
+    <meta name="keywords" content="{{ $seo_keywords ?? (get_setting('meta_keywords') ? get_setting('meta_keywords') . ', ' : '') . 'أفضل تاجر مواد بناء, أوان التقدم, Awaan altakadom, سوريا' }}">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
