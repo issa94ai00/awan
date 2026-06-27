@@ -43,28 +43,53 @@ class HomeController extends Controller
     }
 
     /**
-     * Get featured products with pagination
+     * Get featured / new arrivals / best sellers products with pagination
      */
     public function featuredProducts(Request $request): JsonResponse
     {
-        $featured_products = \App\Models\Product::where('is_featured', 1)
-            ->where('is_active', 1)
+        $type = $request->get('type', 'featured');
+        $query = \App\Models\Product::where('is_active', 1)
             ->where('in_stock', 1)
-            ->with('category')
-            ->orderByDesc('created_at')
-            ->paginate(12);
+            ->with('category');
+
+        switch ($type) {
+            case 'new':
+                $query->where('created_at', '>=', now()->subDays(30));
+                break;
+            case 'best':
+                $query->orderByDesc('views_count');
+                break;
+            case 'featured':
+            default:
+                $query->where('is_featured', 1);
+                $query->orderByDesc('created_at');
+                break;
+        }
+
+        if ($type !== 'best') {
+            $query->orderByDesc('created_at');
+        }
+
+        $products = $query->paginate(12);
+
+        $message = match ($type) {
+            'new' => 'New arrivals retrieved successfully',
+            'best' => 'Best sellers retrieved successfully',
+            default => 'Featured products retrieved successfully',
+        };
 
         return response()->json([
             'success' => true,
-            'message' => 'Featured products retrieved successfully',
+            'message' => $message,
             'data' => [
-                'products' => ProductResource::collection($featured_products->items()),
+                'type' => $type,
+                'products' => ProductResource::collection($products->items()),
                 'pagination' => [
-                    'current_page' => $featured_products->currentPage(),
-                    'last_page' => $featured_products->lastPage(),
-                    'per_page' => $featured_products->perPage(),
-                    'total' => $featured_products->total(),
-                    'has_more_pages' => $featured_products->hasMorePages(),
+                    'current_page' => $products->currentPage(),
+                    'last_page' => $products->lastPage(),
+                    'per_page' => $products->perPage(),
+                    'total' => $products->total(),
+                    'has_more_pages' => $products->hasMorePages(),
                 ]
             ]
         ]);

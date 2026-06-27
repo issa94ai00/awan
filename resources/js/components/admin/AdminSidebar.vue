@@ -62,6 +62,12 @@
                                 <span v-if="!collapsed">{{ t('special_offers') }}</span>
                             </router-link>
                         </li>
+                        <li>
+                            <router-link to="/admin/secondary-navbar" class="nav-link" :class="{ active: isActive('/admin/secondary-navbar') }">
+                                <el-icon><List /></el-icon>
+                                <span v-if="!collapsed">{{ t('secondary_navbar') }}</span>
+                            </router-link>
+                        </li>
                     </ul>
                 </li>
 

@@ -1,68 +1,56 @@
 <template>
     <div class="featured-products-page">
-        <!-- Page Header -->
         <section class="page-header">
             <div class="container">
-                <h1>المنتجات المميزة</h1>
+                <h1>{{ pageTitle }}</h1>
                 <div class="breadcrumb">
-                    <router-link to="/">الرئيسية</router-link>
+                    <router-link to="/">{{ t('nav_home') || 'الرئيسية' }}</router-link>
                     <span class="sep">›</span>
-                    <span>المنتجات المميزة</span>
+                    <span>{{ pageTitle }}</span>
                 </div>
             </div>
         </section>
 
-        <!-- Featured Products Section -->
-        <section class="featured-products-section fade-up">
+        <section v-if="loading" class="products-loading">
+            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+        </section>
+
+        <section v-else class="featured-products-section fade-up">
             <div class="container">
                 <div class="section-header">
-                    <h2>منتجاتنا المميزة</h2>
-                    <p>اختر من مجموعتنا المتميزة من منتجات البناء عالية الجودة</p>
+                    <div class="type-tabs">
+                        <button
+                            v-for="tab in tabs"
+                            :key="tab.key"
+                            :class="['tab-btn', { active: currentType === tab.key }]"
+                            @click="switchType(tab.key)"
+                        >
+                            <i :class="tab.icon"></i>
+                            <span>{{ tab.label }}</span>
+                        </button>
+                    </div>
+                    <h2>{{ sectionTitle }}</h2>
+                    <p>{{ sectionSubtitle }}</p>
                 </div>
 
                 <div v-if="products.length > 0">
                     <div class="products-grid">
-                        <div 
-                            v-for="product in products" 
-                            :key="product.id" 
-                            class="product-card"
-                        >
+                        <div v-for="product in products" :key="product.id" class="product-card">
                             <div class="product-image" @click="openLightbox(product)" style="cursor: zoom-in;">
-                                <img 
-                                    :src="product.image_main || '/assets/images/products/default-product.jpg'" 
-                                    :alt="product.name_ar"
-                                    loading="lazy"
-                                    class="main-img"
-                                >
-                                <!-- Badges -->
+                                <img :src="product.image_main || defaultImage" :alt="product.name_ar" loading="lazy" class="main-img">
                                 <div class="card-badges">
-                                    <span v-if="product.sale_price" class="card-badge badge-discount">
-                                        <i class="fas fa-tag"></i> خصم
-                                    </span>
-                                    <span v-if="product.is_featured" class="card-badge badge-featured">
-                                        <i class="fas fa-star"></i> مميز
-                                    </span>
-                                    <span v-if="product.stock_quantity <= 0" class="card-badge badge-out">
-                                        <i class="fas fa-times"></i> نفد
-                                    </span>
+                                    <span v-if="product.sale_price" class="card-badge badge-discount"><i class="fas fa-tag"></i> {{ t('discount') || 'خصم' }}</span>
+                                    <span v-if="product.is_featured" class="card-badge badge-featured"><i class="fas fa-star"></i> {{ t('featured') || 'مميز' }}</span>
+                                    <span v-if="product.stock_quantity <= 0" class="card-badge badge-out"><i class="fas fa-times"></i> {{ t('out_of_stock') || 'نفد' }}</span>
                                 </div>
-                                <!-- Gallery thumbnails -->
                                 <div v-if="getGalleryImages(product).length > 1" class="gallery-strip">
-                                    <img 
-                                        v-for="(img, idx) in getGalleryImages(product).slice(0, 4)" 
-                                        :key="idx"
-                                        :src="img" 
-                                        class="gallery-thumb"
-                                        loading="lazy"
-                                    >
-                                    <span v-if="getGalleryImages(product).length > 4" class="gallery-more">
-                                        +{{ getGalleryImages(product).length - 4 }}
-                                    </span>
+                                    <img v-for="(img, idx) in getGalleryImages(product).slice(0, 4)" :key="idx" :src="img" class="gallery-thumb" loading="lazy">
+                                    <span v-if="getGalleryImages(product).length > 4" class="gallery-more">+{{ getGalleryImages(product).length - 4 }}</span>
                                 </div>
-                                <router-link :to="{ name: 'product.show', params: { slug: product.slug } }" class="product-overlay">
+                                <router-link :to="{ name: 'product.detail', params: { slug: product.slug } }" class="product-overlay">
                                     <div class="overlay-content">
                                         <span class="view-icon"><i class="fas fa-eye"></i></span>
-                                        <span class="view-text">عرض التفاصيل</span>
+                                        <span class="view-text">{{ t('view_details') || 'عرض التفاصيل' }}</span>
                                     </div>
                                 </router-link>
                             </div>
@@ -72,7 +60,7 @@
                                     <span v-if="product.name_en" class="product-subtitle">{{ product.name_en }}</span>
                                 </div>
                                 <div class="product-details-row">
-                                    <div class="product-category">{{ product.category?.name_ar || 'منتجات بناء' }}</div>
+                                    <div class="product-category">{{ product.category?.name_ar || t('construction_materials') || 'منتجات بناء' }}</div>
                                     <div v-if="product.brand || product.model" class="product-meta-info">
                                         <span v-if="product.brand">{{ product.brand }}</span>
                                         <span v-if="product.model">{{ product.model }}</span>
@@ -84,119 +72,59 @@
                                     <span v-if="product.sale_price && product.discount_percentage" class="discount-badge">-{{ product.discount_percentage }}%</span>
                                 </div>
                                 <div class="product-actions-row">
-                                    <a :href="`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('مرحباً، أنا مهتم بمنتج: ' + product.name_ar)}`" class="btn-whatsapp" target="_blank">
-                                        <i class="fab fa-whatsapp"></i>
-                                        <span>واتساب</span>
+                                    <a :href="`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMsg + ' ' + product.name_ar)}`" class="btn-whatsapp" target="_blank">
+                                        <i class="fab fa-whatsapp"></i> <span>{{ t('whatsapp') || 'واتساب' }}</span>
                                     </a>
-                                    <router-link :to="{ name: 'inquiry.form', query: { product_id: product.id, product_name: product.name_ar } }" class="btn-inquiry">
-                                        <i class="fas fa-question-circle"></i>
-                                        <span>استفسار</span>
+                                    <router-link :to="{ name: 'inquiry', query: { product_id: product.id, product_name: product.name_ar } }" class="btn-inquiry">
+                                        <i class="fas fa-question-circle"></i> <span>{{ t('inquiry') || 'استفسار' }}</span>
                                     </router-link>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Pagination -->
                     <div v-if="pagination.total > pagination.per_page" class="pagination-tailwind">
-                        <!-- Mobile view -->
                         <div class="mobile-pagination">
-                            <span v-if="pagination.current_page === 1" class="btn-prev disabled">
-                                <i class="fas fa-chevron-right"></i>
-                                السابق
-                            </span>
-                            <a v-else @click="pageChanged(pagination.current_page - 1)" class="btn-prev">
-                                <i class="fas fa-chevron-right"></i>
-                                السابق
-                            </a>
-
-                            <span v-if="pagination.current_page >= pagination.last_page" class="btn-next disabled">
-                                التالي
-                                <i class="fas fa-chevron-left"></i>
-                            </span>
-                            <a v-else @click="pageChanged(pagination.current_page + 1)" class="btn-next">
-                                التالي
-                                <i class="fas fa-chevron-left"></i>
-                            </a>
+                            <span v-if="pagination.current_page === 1" class="btn-prev disabled"><i class="fas fa-chevron-right"></i> {{ t('previous') || 'السابق' }}</span>
+                            <a v-else @click="pageChanged(pagination.current_page - 1)" class="btn-prev"><i class="fas fa-chevron-right"></i> {{ t('previous') || 'السابق' }}</a>
+                            <span v-if="pagination.current_page >= pagination.last_page" class="btn-next disabled">{{ t('next') || 'التالي' }} <i class="fas fa-chevron-left"></i></span>
+                            <a v-else @click="pageChanged(pagination.current_page + 1)" class="btn-next">{{ t('next') || 'التالي' }} <i class="fas fa-chevron-left"></i></a>
                         </div>
-
-                        <!-- Desktop view -->
                         <div class="desktop-pagination">
-                            <p class="pagination-info">
-                                عرض <span>{{ pagination.from || 0 }}</span> إلى <span>{{ pagination.to || 0 }}</span> من <span>{{ pagination.total }}</span> منتج
-                            </p>
-
+                            <p class="pagination-info">{{ t('showing') || 'عرض' }} <span>{{ pagination.from || 0 }}</span> {{ t('to') || 'إلى' }} <span>{{ pagination.to || 0 }}</span> {{ t('of') || 'من' }} <span>{{ pagination.total }}</span> {{ t('products') || 'منتج' }}</p>
                             <div class="pagination-buttons">
-                                <!-- Previous -->
-                                <span v-if="pagination.current_page === 1" class="page-btn prev disabled">
-                                    <i class="fas fa-chevron-right"></i>
-                                </span>
-                                <a v-else @click="pageChanged(pagination.current_page - 1)" class="page-btn prev">
-                                    <i class="fas fa-chevron-right"></i>
-                                </a>
-
-                                <!-- Page Numbers -->
-                                <span 
-                                    v-for="page in totalPages" 
-                                    :key="page"
-                                    :class="['page-btn', { active: page === pagination.current_page }]"
-                                    @click="pageChanged(page)"
-                                >
-                                    {{ page }}
-                                </span>
-
-                                <!-- Next -->
-                                <span v-if="pagination.current_page >= pagination.last_page" class="page-btn next disabled">
-                                    <i class="fas fa-chevron-left"></i>
-                                </span>
-                                <a v-else @click="pageChanged(pagination.current_page + 1)" class="page-btn next">
-                                    <i class="fas fa-chevron-left"></i>
-                                </a>
+                                <span v-if="pagination.current_page === 1" class="page-btn prev disabled"><i class="fas fa-chevron-right"></i></span>
+                                <a v-else @click="pageChanged(pagination.current_page - 1)" class="page-btn prev"><i class="fas fa-chevron-right"></i></a>
+                                <span v-for="page in totalPages" :key="page" :class="['page-btn', { active: page === pagination.current_page }]" @click="pageChanged(page)">{{ page }}</span>
+                                <span v-if="pagination.current_page >= pagination.last_page" class="page-btn next disabled"><i class="fas fa-chevron-left"></i></span>
+                                <a v-else @click="pageChanged(pagination.current_page + 1)" class="page-btn next"><i class="fas fa-chevron-left"></i></a>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div v-else class="no-products">
-                    <i class="fas fa-box-open"></i>
-                    <h3>لا توجد منتجات مميزة حالياً</h3>
-                    <p>يمكنك تصفح جميع منتجاتنا من خلال صفحة الفئات</p>
-                    <router-link to="/categories" class="btn">
-                        <i class="fas fa-th-large"></i>
-                        تصفح الفئات
-                    </router-link>
+                    <i :class="emptyIcon"></i>
+                    <h3>{{ emptyTitle }}</h3>
+                    <p>{{ t('browse_categories_instead') || 'يمكنك تصفح جميع منتجاتنا من خلال صفحة الفئات' }}</p>
+                    <router-link to="/categories" class="btn"><i class="fas fa-th-large"></i> {{ t('browse_categories') || 'تصفح الفئات' }}</router-link>
                 </div>
             </div>
         </section>
 
-        <!-- Image Lightbox -->
         <Teleport to="body">
             <Transition name="lightbox-fade">
                 <div v-if="lightbox.open" class="lightbox-overlay" @click.self="closeLightbox">
-                    <button class="lightbox-close" @click="closeLightbox">
-                        <i class="fas fa-times"></i>
-                    </button>
-                    <button v-if="lightbox.images.length > 1" class="lightbox-nav lightbox-prev" @click="prevImage">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+                    <button class="lightbox-close" @click="closeLightbox"><i class="fas fa-times"></i></button>
+                    <button v-if="lightbox.images.length > 1" class="lightbox-nav lightbox-prev" @click="prevImage"><i class="fas fa-chevron-right"></i></button>
                     <div class="lightbox-content">
                         <img :src="lightbox.images[lightbox.index]" :alt="lightbox.title" class="lightbox-img">
                         <div class="lightbox-caption">{{ lightbox.title }}</div>
-                        <div v-if="lightbox.images.length > 1" class="lightbox-counter">
-                            {{ lightbox.index + 1 }} / {{ lightbox.images.length }}
-                        </div>
+                        <div v-if="lightbox.images.length > 1" class="lightbox-counter">{{ lightbox.index + 1 }} / {{ lightbox.images.length }}</div>
                     </div>
-                    <button v-if="lightbox.images.length > 1" class="lightbox-nav lightbox-next" @click="nextImage">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
+                    <button v-if="lightbox.images.length > 1" class="lightbox-nav lightbox-next" @click="nextImage"><i class="fas fa-chevron-left"></i></button>
                     <div v-if="lightbox.images.length > 1" class="lightbox-thumbs">
-                        <img 
-                            v-for="(img, idx) in lightbox.images" 
-                            :key="idx"
-                            :src="img" 
-                            :class="['lightbox-thumb', { active: idx === lightbox.index }]"
-                            @click="lightbox.index = idx"
-                        >
+                        <img v-for="(img, idx) in lightbox.images" :key="idx" :src="img" :class="['lightbox-thumb', { active: idx === lightbox.index }]" @click="lightbox.index = idx">
                     </div>
                 </div>
             </Transition>
@@ -205,26 +133,92 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useProductsStore } from '@/stores/products';
+import { useSettingsStore } from '@/stores/settings';
+import { useI18n } from 'vue-i18n';
 
+import axios from 'axios';
+
+const route = useRoute();
+const router = useRouter();
 const productsStore = useProductsStore();
+const settingsStore = useSettingsStore();
+const { t, locale } = useI18n();
 
 const loading = ref(false);
 const products = ref([]);
 const pagination = ref({});
-const whatsappNumber = ref('963900000000');
+
+const settings = computed(() => settingsStore.data);
+const defaultImage = '/assets/images/products/default-product.jpg';
+const whatsappNumber = computed(() => settings.value.contact_whatsapp || settings.value.contact_phone || '00963962889577');
+const whatsappMsg = computed(() => {
+    if (locale.value === 'en') return 'Hello, I am interested in the product:';
+    return 'مرحباً، أنا مهتم بمنتج:';
+});
+
+const currentType = computed(() => {
+    const q = route.query;
+    if (q.new !== undefined) return 'new';
+    if (q.best !== undefined) return 'best';
+    return 'featured';
+});
+
+const tabs = [
+    { key: 'featured', label: t('featured_tab') || 'مميزة', icon: 'fas fa-star' },
+    { key: 'new', label: t('new_arrivals_tab') || 'وصل حديثاً', icon: 'fas fa-sparkles' },
+    { key: 'best', label: t('best_sellers_tab') || 'الأكثر مبيعاً', icon: 'fas fa-trophy' },
+];
+
+const pageTitle = computed(() => {
+    switch (currentType.value) {
+        case 'new': return t('new_arrivals_title') || 'وصل حديثاً';
+        case 'best': return t('best_sellers_title') || 'الأكثر مبيعاً';
+        default: return t('featured_products') || 'المنتجات المميزة';
+    }
+});
+
+const sectionTitle = computed(() => {
+    switch (currentType.value) {
+        case 'new': return t('new_arrivals_title') || 'وصل حديثاً';
+        case 'best': return t('best_sellers_title') || 'الأكثر مبيعاً';
+        default: return t('our_featured_products') || 'منتجاتنا المميزة';
+    }
+});
+
+const sectionSubtitle = computed(() => {
+    switch (currentType.value) {
+        case 'new': return t('new_arrivals_subtitle') || 'اكتشف أحدث منتجاتنا وإضافاتنا الجديدة';
+        case 'best': return t('best_sellers_subtitle') || 'منتجاتنا الأكثر شهرة ومبيعاً';
+        default: return t('featured_products_subtitle') || 'اختر من مجموعتنا المتميزة من منتجات البناء عالية الجودة';
+    }
+});
+
+const emptyTitle = computed(() => {
+    switch (currentType.value) {
+        case 'new': return t('no_new_arrivals') || 'لا توجد منتجات وصلت حديثاً حالياً';
+        case 'best': return t('no_best_sellers') || 'لا توجد منتجات الأكثر مبيعاً حالياً';
+        default: return t('no_featured_products') || 'لا توجد منتجات مميزة حالياً';
+    }
+});
+
+const emptyIcon = computed(() => {
+    switch (currentType.value) {
+        case 'new': return 'fas fa-clock';
+        case 'best': return 'fas fa-crown';
+        default: return 'fas fa-box-open';
+    }
+});
 
 const lightbox = reactive({
-    open: false,
-    images: [],
-    index: 0,
-    title: ''
+    open: false, images: [], index: 0, title: ''
 });
 
 function openLightbox(product) {
     const images = getGalleryImages(product);
-    if (images.length === 0) return;
+    if (!images.length) return;
     lightbox.images = images;
     lightbox.index = 0;
     lightbox.title = product.name_ar;
@@ -237,17 +231,12 @@ function closeLightbox() {
     document.body.style.overflow = '';
 }
 
-function nextImage() {
-    lightbox.index = (lightbox.index + 1) % lightbox.images.length;
-}
-
-function prevImage() {
-    lightbox.index = (lightbox.index - 1 + lightbox.images.length) % lightbox.images.length;
-}
+function nextImage() { lightbox.index = (lightbox.index + 1) % lightbox.images.length; }
+function prevImage() { lightbox.index = (lightbox.index - 1 + lightbox.images.length) % lightbox.images.length; }
 
 function formatPrice(price) {
     if (!price) return '0';
-    return Number(price).toLocaleString('ar-SA');
+    return Number(price).toLocaleString(locale.value === 'en' ? 'en-US' : 'ar-SA');
 }
 
 function getGalleryImages(product) {
@@ -255,33 +244,40 @@ function getGalleryImages(product) {
     if (product.image_main) images.push(product.image_main);
     if (product.image_gallery) {
         try {
-            const gallery = typeof product.image_gallery === 'string' 
-                ? JSON.parse(product.image_gallery) 
-                : product.image_gallery;
+            const gallery = typeof product.image_gallery === 'string' ? JSON.parse(product.image_gallery) : product.image_gallery;
             if (Array.isArray(gallery)) images.push(...gallery);
         } catch {}
     }
     return images;
 }
 
+function switchType(type) {
+    const query = { ...route.query };
+    delete query.new;
+    delete query.best;
+    if (type === 'new') query.new = '';
+    else if (type === 'best') query.best = '';
+    router.push({ query });
+}
+
 const totalPages = computed(() => {
     if (!pagination.value.last_page) return [];
-    const pages = [];
-    for (let i = 1; i <= pagination.value.last_page; i++) {
-        pages.push(i);
-    }
-    return pages;
+    return Array.from({ length: pagination.value.last_page }, (_, i) => i + 1);
 });
 
 async function loadProducts(page = 1) {
     loading.value = true;
     try {
-        const params = { featured: true, page };
-        await productsStore.fetch(params);
-        products.value = productsStore.items;
-        pagination.value = productsStore.pagination;
+        const params = { page };
+        const type = currentType.value;
+        if (type !== 'featured') params.type = type;
+        const res = await axios.get('/api/v1/featured-products', { params });
+        products.value = res.data.data.products || [];
+        pagination.value = res.data.data.pagination || {};
     } catch (error) {
         console.error('Failed to load products:', error);
+        products.value = [];
+        pagination.value = {};
     } finally {
         loading.value = false;
     }
@@ -299,8 +295,25 @@ function handleKeydown(e) {
     if (e.key === 'ArrowRight') prevImage();
 }
 
+function updateSEOMetaTags() {
+    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
+    const title = `${pageTitle.value} - ${siteName}`;
+    document.title = title;
+    const desc = document.querySelector('meta[name="description"]');
+    if (desc) desc.setAttribute('content', sectionSubtitle.value);
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute('content', title);
+}
+
+watch(currentType, () => {
+    loadProducts();
+    updateSEOMetaTags();
+});
+
 onMounted(() => {
     loadProducts();
+    settingsStore.fetch().catch(() => {});
+    updateSEOMetaTags();
     document.addEventListener('keydown', handleKeydown);
 });
 
@@ -374,6 +387,47 @@ onUnmounted(() => {
 .section-header {
     text-align: center;
     margin-bottom: 3rem;
+}
+
+.type-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.5rem;
+    border-radius: 50px;
+    border: 2px solid #e5e7eb;
+    background: white;
+    color: #6b7280;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn:hover {
+    border-color: #c9a959;
+    color: #c9a959;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(201, 169, 89, 0.15);
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, #c9a959, #d4af37);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 16px rgba(201, 169, 89, 0.35);
+}
+
+.tab-btn i {
+    font-size: 0.85rem;
 }
 
 .section-header h2 {
@@ -1038,6 +1092,15 @@ onUnmounted(() => {
 
     .product-actions-row {
         flex-direction: column;
+    }
+
+    .type-tabs {
+        gap: 0.5rem;
+    }
+
+    .tab-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
     }
 }
 

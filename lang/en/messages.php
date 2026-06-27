@@ -189,4 +189,19 @@ return [
     // Quick Search
     'quick_search' => 'Quick search...',
     'new_inquiries' => 'New Inquiries',
+
+    // Secondary Navbar
+    'all_products' => 'All Products',
+    'electronics' => 'Electronics',
+    'clothing' => 'Clothing',
+    'home_garden' => 'Home & Garden',
+    'view_all_featured' => 'View All Featured',
+    'new_arrivals' => 'New Arrivals',
+    'best_sellers' => 'Best Sellers',
+    'special_offers' => 'Special Offers',
+    'current_offers' => 'Current Offers',
+    'flash_sales' => 'Flash Sales',
+    'clearance' => 'Clearance',
+    'bundle_deals' => 'Bundle Deals',
+    'contact_us' => 'Contact Us',
 ];

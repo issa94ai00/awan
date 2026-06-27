@@ -19,6 +19,8 @@ const routes = [
             { path: 'product/:slug', name: 'product.detail', component: () => import('@/views/public/ProductDetail.vue') },
             { path: 'cart', name: 'cart', component: () => import('@/views/public/Cart.vue') },
             { path: 'customer-orders', name: 'customer.orders', component: () => import('@/views/public/CustomerOrders.vue') },
+            { path: 'featured-products', name: 'featured.products', component: () => import('@/views/FeaturedProducts.vue') },
+            { path: 'special-offers', name: 'special.offers', component: () => import('@/views/public/SpecialOffers.vue') },
         ]
     },
     {
@@ -90,6 +92,11 @@ const routes = [
                 path: 'special-offers',
                 name: 'admin.special-offers',
                 component: () => import('@/views/admin/SpecialOffers.vue')
+            },
+            {
+                path: 'secondary-navbar',
+                name: 'admin.secondary-navbar',
+                component: () => import('@/views/admin/SecondaryNavbar.vue')
             },
             // Accounting
             {

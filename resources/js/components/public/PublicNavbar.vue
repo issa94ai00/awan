@@ -12,7 +12,50 @@
                 <div class="navbar-nav desktop-nav">
                     <router-link to="/" class="nav-link">{{ $t('nav_home') }}</router-link>
                     <router-link to="/categories" class="nav-link">{{ $t('nav_categories') }}</router-link>
-                    <router-link to="/featured-products" class="nav-link">{{ $t('nav_products') }}</router-link>
+                    <div class="nav-dropdown" @mouseenter="isProductsDropdownOpen = true" @mouseleave="isProductsDropdownOpen = false">
+                        <button class="nav-link dropdown-trigger" @click="toggleProductsDropdown">
+                            {{ $t('nav_products') }}
+                            <i class="fas fa-chevron-down dropdown-arrow" :class="{ 'rotated': isProductsDropdownOpen }"></i>
+                        </button>
+                        <div class="dropdown-menu" :class="{ 'show': isProductsDropdownOpen }">
+                            <router-link to="/products" class="dropdown-item">
+                                <i class="fas fa-th-list"></i> {{ $t('all_products') || 'All Products' }}
+                            </router-link>
+                            <router-link to="/featured-products" class="dropdown-item">
+                                <i class="fas fa-star"></i> {{ $t('featured_products') || 'Featured Products' }}
+                            </router-link>
+                            <div class="dropdown-divider"></div>
+                            <router-link to="/products?category=electronics" class="dropdown-item">
+                                <i class="fas fa-laptop"></i> {{ $t('electronics') || 'Electronics' }}
+                            </router-link>
+                            <router-link to="/products?category=clothing" class="dropdown-item">
+                                <i class="fas fa-tshirt"></i> {{ $t('clothing') || 'Clothing' }}
+                            </router-link>
+                            <router-link to="/products?category=home" class="dropdown-item">
+                                <i class="fas fa-home"></i> {{ $t('home_garden') || 'Home & Garden' }}
+                            </router-link>
+                        </div>
+                    </div>
+                    <div class="nav-dropdown" @mouseenter="isOffersDropdownOpen = true" @mouseleave="isOffersDropdownOpen = false">
+                        <button class="nav-link dropdown-trigger" @click="toggleOffersDropdown">
+                            {{ $t('special_offers') || 'Special Offers' }}
+                            <i class="fas fa-tag dropdown-arrow" :class="{ 'rotated': isOffersDropdownOpen }"></i>
+                        </button>
+                        <div class="dropdown-menu" :class="{ 'show': isOffersDropdownOpen }">
+                            <router-link to="/special-offers" class="dropdown-item">
+                                <i class="fas fa-fire"></i> {{ $t('current_offers') || 'Current Offers' }}
+                            </router-link>
+                            <router-link to="/special-offers?flash" class="dropdown-item">
+                                <i class="fas fa-bolt"></i> {{ $t('flash_sales') || 'Flash Sales' }}
+                            </router-link>
+                            <router-link to="/special-offers?clearance" class="dropdown-item">
+                                <i class="fas fa-percent"></i> {{ $t('clearance') || 'Clearance' }}
+                            </router-link>
+                            <router-link to="/special-offers?bundle" class="dropdown-item">
+                                <i class="fas fa-boxes"></i> {{ $t('bundle_deals') || 'Bundle Deals' }}
+                            </router-link>
+                        </div>
+                    </div>
                     <router-link to="/vision" class="nav-link">{{ $t('nav_vision') }}</router-link>
                     <router-link to="/about" class="nav-link">{{ $t('nav_about') }}</router-link>
                     <router-link to="/contact" class="nav-link">{{ $t('nav_contact') }}</router-link>
@@ -140,7 +183,39 @@
                     <div class="mobile-divider"></div>
                     <router-link to="/" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_home') }}</router-link>
                     <router-link to="/categories" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_categories') }}</router-link>
-                    <router-link to="/featured-products" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_products') }}</router-link>
+                    <div class="mobile-nav-section-label">{{ $t('nav_products') }}</div>
+                    <router-link to="/products" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-th-list"></i> {{ $t('all_products') || 'All Products' }}
+                    </router-link>
+                    <router-link to="/featured-products" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-star"></i> {{ $t('featured_products') || 'Featured Products' }}
+                    </router-link>
+                    <router-link to="/products?category=electronics" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-laptop"></i> {{ $t('electronics') || 'Electronics' }}
+                    </router-link>
+                    <router-link to="/products?category=clothing" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-tshirt"></i> {{ $t('clothing') || 'Clothing' }}
+                    </router-link>
+                    <router-link to="/products?category=home" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-home"></i> {{ $t('home_garden') || 'Home & Garden' }}
+                    </router-link>
+                    
+                    <div class="mobile-divider"></div>
+                    <div class="mobile-nav-section-label">{{ $t('special_offers') || 'Special Offers' }}</div>
+                    <router-link to="/special-offers" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-fire"></i> {{ $t('current_offers') || 'Current Offers' }}
+                    </router-link>
+                    <router-link to="/special-offers?flash" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-bolt"></i> {{ $t('flash_sales') || 'Flash Sales' }}
+                    </router-link>
+                    <router-link to="/special-offers?clearance" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-percent"></i> {{ $t('clearance') || 'Clearance' }}
+                    </router-link>
+                    <router-link to="/special-offers?bundle" class="mobile-nav-link mobile-nav-sublink" @click="isMenuOpen = false">
+                        <i class="fas fa-boxes"></i> {{ $t('bundle_deals') || 'Bundle Deals' }}
+                    </router-link>
+                    
+                    <div class="mobile-divider"></div>
                     <router-link to="/vision" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_vision') }}</router-link>
                     <router-link to="/about" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_about') }}</router-link>
                     <router-link to="/contact" class="mobile-nav-link" @click="isMenuOpen = false">{{ $t('nav_contact') }}</router-link>
@@ -183,6 +258,8 @@ const isDarkMode = ref(false);
 const isMenuOpen = ref(false);
 const isScrolled = ref(false);
 const isProfileMenuOpen = ref(false);
+const isProductsDropdownOpen = ref(false);
+const isOffersDropdownOpen = ref(false);
 
 const currentLocale = computed(() => locale.value);
 
@@ -223,6 +300,14 @@ function toggleDarkMode() {
 
 function toggleMenu() {
     isMenuOpen.value = !isMenuOpen.value;
+}
+
+function toggleProductsDropdown() {
+    isProductsDropdownOpen.value = !isProductsDropdownOpen.value;
+}
+
+function toggleOffersDropdown() {
+    isOffersDropdownOpen.value = !isOffersDropdownOpen.value;
 }
 
 async function handleLogout() {
@@ -438,6 +523,179 @@ onMounted(() => {
     color: var(--mobile-accent, var(--accent-gold, #c9a959));
     transform: translateY(-3px);
     text-shadow: 0 0 20px color-mix(in srgb, var(--mobile-accent) 30%, transparent);
+}
+
+.nav-link-featured {
+    position: relative;
+    padding-left: 1.6rem !important;
+}
+
+.nav-link-featured::before {
+    content: '\f005';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    color: var(--mobile-accent, var(--accent-gold, #c9a959));
+}
+
+/* Products Dropdown */
+.nav-dropdown {
+    position: relative;
+}
+
+.dropdown-trigger {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: inherit;
+    padding: 0.5rem 0;
+}
+
+.dropdown-arrow {
+    font-size: 0.65rem;
+    transition: transform 0.3s ease;
+}
+
+.dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.nav-dropdown:hover .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 50%;
+    transform: translateX(50%) translateY(-8px) scale(0.96);
+    min-width: 240px;
+    background: rgba(15, 23, 42, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    z-index: 10000;
+    padding: 0.5rem;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dropdown-menu.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(50%) translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.nav-dropdown:hover .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(50%) translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.dropdown-menu::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 12px;
+    height: 12px;
+    background: rgba(15, 23, 42, 0.97);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 3px 0 0 0;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 1rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+    border-radius: 10px;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    position: relative;
+    border-left: 3px solid transparent;
+}
+
+.dropdown-item i {
+    color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    width: 20px;
+    font-size: 0.9rem;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    color: white;
+    border-left-color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    padding-left: 1.2rem;
+}
+
+.dropdown-item:hover i {
+    transform: scale(1.15);
+    color: white;
+}
+
+.dropdown-item + .dropdown-item {
+    margin-top: 2px;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0.5rem 0;
+}
+
+/* Mobile nav section label */
+.mobile-nav-section-label {
+    padding: 0.75rem 1.1rem 0.25rem;
+    color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    opacity: 0.85;
+}
+
+.mobile-nav-sublink {
+    padding-right: 2.2rem !important;
+    font-size: 0.93rem !important;
+    margin: 0 0.5rem !important;
+    border-radius: 10px !important;
+    border-left: 3px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+}
+
+.mobile-nav-sublink i {
+    font-size: 0.85rem !important;
+}
+
+.mobile-nav-sublink.router-link-active {
+    border-left-color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.mobile-nav-sublink:hover {
+    border-left-color: var(--mobile-accent, var(--accent-gold, #c9a959));
 }
 
 .navbar-actions {

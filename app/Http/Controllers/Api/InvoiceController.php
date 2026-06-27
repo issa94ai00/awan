@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\Expense;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -98,6 +99,10 @@ class InvoiceController extends Controller
                 'payment_method' => 'nullable|string|in:cash,card,transfer',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
+                'expenses' => 'nullable|array',
+                'expenses.*.description' => 'required_with:expenses|string|max:255',
+                'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+                'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -168,7 +173,14 @@ class InvoiceController extends Controller
             // Calculate totals
             $tax = (float) ($validated['tax'] ?? 0);
             $discount = (float) ($validated['discount'] ?? 0);
-            $total = $subtotal + $tax - $discount;
+            
+            // Calculate expenses total
+            $expensesTotal = 0;
+            if (isset($validated['expenses']) && is_array($validated['expenses'])) {
+                $expensesTotal = collect($validated['expenses'])->sum('amount');
+            }
+            
+            $total = $subtotal + $tax - $discount + $expensesTotal;
             if ($total < 0) $total = 0;
 
             // Generate invoice number
@@ -194,6 +206,27 @@ class InvoiceController extends Controller
             foreach ($itemsData as $itemData) {
                 $itemData['invoice_id'] = $invoice->id;
                 InvoiceItem::create($itemData);
+            }
+
+            // Create expenses if provided
+            if (isset($validated['expenses']) && is_array($validated['expenses'])) {
+                foreach ($validated['expenses'] as $expense) {
+                    if (!empty($expense['description']) && $expense['amount'] > 0) {
+                        Expense::create([
+                            'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                            'invoice_id' => $invoice->id,
+                            'customer_id' => $invoice->customer_id,
+                            'description' => $expense['description'],
+                            'amount' => $expense['amount'],
+                            'category' => $expense['category'] ?? 'other',
+                            'expense_date' => now(),
+                            'status' => 'pending',
+                            'created_by' => auth()->check() ? auth()->id() : null,
+                            'currency' => 'SAR',
+                            'exchange_rate' => 1.0000,
+                        ]);
+                    }
+                }
             }
 
             return response()->json([
@@ -258,6 +291,10 @@ class InvoiceController extends Controller
                 'payment_method' => 'nullable|string|in:cash,card,transfer',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
+                'expenses' => 'nullable|array',
+                'expenses.*.description' => 'required_with:expenses|string|max:255',
+                'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+                'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -328,7 +365,14 @@ class InvoiceController extends Controller
                 // Calculate totals
                 $tax = (float) ($validated['tax'] ?? 0);
                 $discount = (float) ($validated['discount'] ?? 0);
-                $total = $subtotal + $tax - $discount;
+                
+                // Calculate expenses total
+                $expensesTotal = 0;
+                if (isset($validated['expenses']) && is_array($validated['expenses'])) {
+                    $expensesTotal = collect($validated['expenses'])->sum('amount');
+                }
+                
+                $total = $subtotal + $tax - $discount + $expensesTotal;
                 if ($total < 0) $total = 0;
 
                 // Update invoice with items
@@ -348,6 +392,28 @@ class InvoiceController extends Controller
                 foreach ($itemsData as $itemData) {
                     $itemData['invoice_id'] = $invoice->id;
                     InvoiceItem::create($itemData);
+                }
+
+                // Delete old expenses and create new ones
+                $invoice->expenses()->delete();
+                if (isset($validated['expenses']) && is_array($validated['expenses'])) {
+                    foreach ($validated['expenses'] as $expense) {
+                        if (!empty($expense['description']) && $expense['amount'] > 0) {
+                            Expense::create([
+                                'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                                'invoice_id' => $invoice->id,
+                                'customer_id' => $invoice->customer_id,
+                                'description' => $expense['description'],
+                                'amount' => $expense['amount'],
+                                'category' => $expense['category'] ?? 'other',
+                                'expense_date' => now(),
+                                'status' => 'pending',
+                                'created_by' => auth()->check() ? auth()->id() : null,
+                                'currency' => 'SAR',
+                                'exchange_rate' => 1.0000,
+                            ]);
+                        }
+                    }
                 }
             } else {
                 // Update invoice without items (status only update)

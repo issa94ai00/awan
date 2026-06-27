@@ -189,4 +189,19 @@ return [
     // Quick Search
     'quick_search' => 'بحث سريع...',
     'new_inquiries' => 'الاستفسارات الجديدة',
+
+    // Secondary Navbar
+    'all_products' => 'جميع المنتجات',
+    'electronics' => 'الإلكترونيات',
+    'clothing' => 'الملابس',
+    'home_garden' => 'المنزل والحديقة',
+    'view_all_featured' => 'عرض جميع المميزة',
+    'new_arrivals' => 'وصل حديثاً',
+    'best_sellers' => 'الأكثر مبيعاً',
+    'special_offers' => 'العروض الخاصة',
+    'current_offers' => 'العروض الحالية',
+    'flash_sales' => 'المبيعات السريعة',
+    'clearance' => 'التخفيضات',
+    'bundle_deals' => 'العروض المجمعة',
+    'contact_us' => 'تواصل معنا',
 ];

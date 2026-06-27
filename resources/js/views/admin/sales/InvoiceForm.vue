@@ -331,6 +331,50 @@
 
                         <el-divider />
 
+                        <!-- Additional Expenses Section -->
+                        <div class="expenses-section">
+                            <div class="expenses-header">
+                                <span>{{ t('additional_expenses') }}</span>
+                                <el-button type="primary" size="small" @click="addExpense">
+                                    <el-icon><Plus /></el-icon>
+                                    {{ t('add_expense') }}
+                                </el-button>
+                            </div>
+                            <div v-if="form.expenses.length > 0" class="expenses-list">
+                                <div v-for="(expense, index) in form.expenses" :key="index" class="expense-item">
+                                    <el-input
+                                        v-model="expense.description"
+                                        :placeholder="t('description')"
+                                        size="small"
+                                        class="expense-description"
+                                    />
+                                    <el-select v-model="expense.category" size="small" class="expense-category">
+                                        <el-option value="shipping" :label="t('shipping')" />
+                                        <el-option value="packaging" :label="t('packaging')" />
+                                        <el-option value="handling" :label="t('handling')" />
+                                        <el-option value="other" :label="t('other')" />
+                                    </el-select>
+                                    <el-input-number
+                                        v-model="expense.amount"
+                                        :min="0"
+                                        :precision="2"
+                                        size="small"
+                                        @change="updateTotals"
+                                        class="expense-amount"
+                                    />
+                                    <el-button
+                                        type="danger"
+                                        :icon="Delete"
+                                        size="small"
+                                        circle
+                                        @click="removeExpense(index)"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <el-divider />
+
                         <div class="summary-row discount">
                             <span class="label">{{ t('discount') }}</span>
                             <span class="value negative">-{{ formatCurrency(form.discount) }}</span>
@@ -338,6 +382,10 @@
                         <div class="summary-row tax">
                             <span class="label">{{ t('tax') }}</span>
                             <span class="value positive">+{{ formatCurrency(form.tax) }}</span>
+                        </div>
+                        <div class="summary-row expenses" v-if="totalExpenses > 0">
+                            <span class="label">{{ t('additional_expenses') }}</span>
+                            <span class="value positive">+{{ formatCurrency(totalExpenses) }}</span>
                         </div>
 
                         <el-divider />
@@ -414,7 +462,8 @@ const form = reactive({
     tax: 0,
     notes: '',
     status: 'pending',
-    items: []
+    items: [],
+    expenses: []
 });
 
 // Status transitions configuration
@@ -466,7 +515,7 @@ const subtotal = computed(() => {
 });
 
 const total = computed(() => {
-    return Math.max(0, subtotal.value - (form.discount || 0) + (form.tax || 0));
+    return Math.max(0, subtotal.value - (form.discount || 0) + (form.tax || 0) + totalExpenses.value);
 });
 
 // Available status transitions based on current status
@@ -649,6 +698,24 @@ const focusBarcodeInput = () => {
     searchInputRef.value?.focus();
 };
 
+// Expense management
+const addExpense = () => {
+    form.expenses.push({
+        description: '',
+        category: 'other',
+        amount: 0
+    });
+};
+
+const removeExpense = (index) => {
+    form.expenses.splice(index, 1);
+    updateTotals();
+};
+
+const totalExpenses = computed(() => {
+    return form.expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+});
+
 // Keyboard shortcuts
 const handleKeyboardShortcuts = (e) => {
     // Ctrl/Cmd + B: Focus search
@@ -704,7 +771,8 @@ const submitInvoice = async () => {
                 quantity: item.quantity,
                 unit_price: item.price,
                 product_unit_id: item.selectedUnit?.id || null
-            }))
+            })),
+            expenses: form.expenses.filter(exp => exp.description && exp.amount > 0)
         };
 
         if (isEdit.value) {
@@ -1606,6 +1674,49 @@ onUnmounted(() => {
     }
 }
 
+/* Expenses Section Styling */
+.expenses-section {
+    margin-top: 1rem;
+}
+
+.expenses-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: #253358;
+}
+
+.expenses-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.expense-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.expense-description {
+    flex: 2;
+}
+
+.expense-category {
+    flex: 1;
+}
+
+.expense-amount {
+    flex: 1;
+}
+
+.summary-row.expenses {
+    font-size: 0.9rem;
+    color: #5f6d85;
+}
+
 /* Touch-friendly improvements */
 @media (hover: none) and (pointer: coarse) {
     .search-result-item,
@@ -1624,6 +1735,16 @@ onUnmounted(() => {
 
     .el-select {
         min-height: 44px;
+    }
+
+    .expense-item {
+        flex-wrap: wrap;
+    }
+
+    .expense-description,
+    .expense-category,
+    .expense-amount {
+        flex: 1 1 100%;
     }
 }
 

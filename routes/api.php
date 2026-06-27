@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\ExpenseController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -286,6 +287,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/payments/{payment}', [PaymentController::class, 'show'])->name('api.payments.show');
         Route::put('/payments/{payment}', [PaymentController::class, 'update'])->name('api.payments.update');
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])->name('api.payments.destroy');
+
+        // Expenses (مصاريف)
+        Route::get('/expenses', [ExpenseController::class, 'index'])->name('api.expenses.index');
+        Route::post('/expenses', [ExpenseController::class, 'store'])->name('api.expenses.store');
+        Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])->name('api.expenses.show');
+        Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('api.expenses.update');
+        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('api.expenses.destroy');
 
         // Purchase Receipts (إيصالات استلام)
         Route::get('/purchase-receipts', [PurchaseReceiptController::class, 'index'])->name('api.purchase-receipts.index');

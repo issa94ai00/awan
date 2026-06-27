@@ -24,6 +24,32 @@
             </div>
         </section>
 
+        <!-- Secondary Navigation Bar -->
+        <section class="secondary-navbar" id="secondary-nav">
+            <div class="container">
+                <div class="secondary-nav-content">
+                    <template v-for="secItem in secondaryNavItems" :key="secItem.id">
+                        <div v-if="secItem.active && secItem.type === 'dropdown'" class="nav-item dropdown" @mouseenter="openSecDropdown(secItem.id)" @mouseleave="closeSecDropdown(secItem.id)">
+                            <button class="nav-trigger" @click="toggleSecDropdown(secItem.id)">
+                                <i :class="secItem.icon"></i>
+                                {{ getLabel(secItem) }}
+                                <i class="fas fa-chevron-down dropdown-arrow" :class="{ 'rotated': openDropdowns[secItem.id] }"></i>
+                            </button>
+                            <div class="dropdown-menu" :class="{ 'show': openDropdowns[secItem.id] }">
+                                <router-link v-for="child in getActiveChildren(secItem)" :key="child.id" :to="child.route" class="dropdown-item">
+                                    <i :class="child.icon"></i> {{ getLabel(child) }}
+                                </router-link>
+                            </div>
+                        </div>
+                        <router-link v-else-if="secItem.active && secItem.type === 'link'" :to="secItem.route" class="nav-item">
+                            <i :class="secItem.icon"></i>
+                            {{ getLabel(secItem) }}
+                        </router-link>
+                    </template>
+                </div>
+            </div>
+        </section>
+
         <!-- Special Offers Carousel Section -->
         <section v-if="specialOffers.length" class="special-offers fade-up" id="special-offers">
             <div class="container">
@@ -228,6 +254,9 @@ const featuredProducts = ref([]);
 const specialOffers = ref([]);
 const loading = ref(true);
 
+// Secondary Navbar
+const openDropdowns = ref({});
+
 // Slider Buttons Opacity
 const prevBtnOpacity = ref('0.5');
 const nextBtnOpacity = ref('1');
@@ -243,6 +272,18 @@ const toast = reactive({ show: false, message: '' });
 
 // Settings getter
 const settings = computed(() => settingsStore.data);
+
+const secondaryNavItems = computed(() => {
+    const raw = settings.value.secondary_navbar_items;
+    if (raw) {
+        try {
+            return JSON.parse(raw);
+        } catch (e) {
+            return getDefaultNavItems();
+        }
+    }
+    return getDefaultNavItems();
+});
 
 // SEO Meta Tags
 const updateSEOMetaTags = () => {
@@ -341,6 +382,32 @@ const showToast = (msg) => {
         toast.show = false;
     }, 3000);
 };
+
+// Secondary Navbar Helpers
+const openSecDropdown = (id) => { openDropdowns.value[id] = true; };
+const closeSecDropdown = (id) => { openDropdowns.value[id] = false; };
+const toggleSecDropdown = (id) => { openDropdowns.value[id] = !openDropdowns.value[id]; };
+const getLabel = (item) => {
+    if (locale.value === 'en' && item.label_en) return item.label_en;
+    return item.label_ar || item.label_en || '';
+};
+const getActiveChildren = (item) => {
+    return (item.children || []).filter(c => c.active);
+};
+
+const getDefaultNavItems = () => [
+    { id: 'products', type: 'dropdown', active: true, label_ar: 'المنتجات', label_en: 'Products', icon: 'fas fa-th-list', children: [
+        { id: 'all_products', active: true, label_ar: 'جميع المنتجات', label_en: 'All Products', icon: 'fas fa-th-large', route: '/products' },
+    ]},
+    { id: 'featured', type: 'dropdown', active: true, label_ar: 'منتجات مميزة', label_en: 'Featured Products', icon: 'fas fa-star', children: [
+        { id: 'view_all_featured', active: true, label_ar: 'عرض جميع المنتجات المميزة', label_en: 'View All Featured', icon: 'fas fa-fire', route: '/featured-products' },
+    ]},
+    { id: 'offers', type: 'dropdown', active: true, label_ar: 'العروض المميزة', label_en: 'Special Offers', icon: 'fas fa-tag', children: [
+        { id: 'current_offers', active: true, label_ar: 'العروض الحالية', label_en: 'Current Offers', icon: 'fas fa-fire', route: '/special-offers' },
+    ]},
+    { id: 'categories', type: 'link', active: true, label_ar: 'الفئات', label_en: 'Categories', icon: 'fas fa-folder', route: '/categories' },
+    { id: 'contact', type: 'link', active: true, label_ar: 'تواصل معنا', label_en: 'Contact Us', icon: 'fas fa-headset', route: '/contact' },
+];
 
 // Slider Scrolling
 const scrollSlider = (dir) => {
@@ -955,6 +1022,198 @@ onMounted(async () => {
 
 /* Redesign Overrides for Home Page */
 /* Dynamic hero button styling is now applied via PublicLayout.vue; removed static override */
+
+/* ===== SECONDARY NAVBAR ===== */
+.secondary-navbar {
+    background: linear-gradient(135deg, 
+        color-mix(in srgb, var(--mobile-primary) 96%, rgba(20, 32, 48, 0.92)), 
+        color-mix(in srgb, var(--mobile-primary-dark) 98%, rgba(13, 27, 42, 0.95))
+    );
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 80px;
+    z-index: 999;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.secondary-nav-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    padding: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+}
+
+.nav-item:hover,
+.nav-item.router-link-active {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.nav-item i {
+    font-size: 1rem;
+    transition: transform 0.3s ease;
+}
+
+.nav-item:hover i {
+    transform: scale(1.15);
+}
+
+.nav-trigger {
+    background: none;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+}
+
+.dropdown {
+    position: relative;
+}
+.dropdown::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 28px;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+.dropdown-arrow {
+    font-size: 0.65rem;
+    transition: transform 0.3s ease;
+}
+
+.dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.dropdown:hover .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 50%;
+    transform: translateX(50%) translateY(-8px) scale(0.96);
+    min-width: 220px;
+    background: rgba(15, 23, 42, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    z-index: 1000;
+    padding: 0.5rem;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dropdown-menu.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(50%) translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.dropdown:hover .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(50%) translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.dropdown-menu::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 12px;
+    height: 12px;
+    background: rgba(15, 23, 42, 0.97);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 3px 0 0 0;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 1rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+    border-radius: 10px;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    position: relative;
+    border-left: 3px solid transparent;
+}
+
+.dropdown-item i {
+    color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    width: 20px;
+    font-size: 0.9rem;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    color: white;
+    border-left-color: var(--mobile-accent, var(--accent-gold, #c9a959));
+    padding-left: 1.2rem;
+}
+
+.dropdown-item:hover i {
+    transform: scale(1.15);
+    color: white;
+}
+
+.dropdown-item + .dropdown-item {
+    margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+    .secondary-navbar {
+        display: none;
+    }
+}
 
 .category-card, .product-card {
     background: rgba(255, 255, 255, 0.7) !important;

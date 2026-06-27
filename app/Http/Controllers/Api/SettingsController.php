@@ -135,6 +135,7 @@ class SettingsController extends Controller
             'settings.theme_footer_text_color' => 'nullable|string|max:50',
             'settings.theme_page_header_bg_color' => 'nullable|string|max:200',
             'settings.theme_page_header_text_color' => 'nullable|string|max:50',
+            'settings.secondary_navbar_items' => 'nullable|string',
         ]);
 
         $data = $request->input('settings', []);
