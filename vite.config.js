@@ -23,6 +23,9 @@ export default defineConfig({
                 warn(warning);
             },
             output: {
+                entryFileNames: 'assets/[name].js',
+                chunkFileNames: 'assets/[name].js',
+                assetFileNames: 'assets/[name].[ext]',
                 manualChunks: {
                     'vue-vendor': ['vue', 'vue-router', 'pinia'],
                     'element-plus': ['element-plus', '@element-plus/icons-vue'],

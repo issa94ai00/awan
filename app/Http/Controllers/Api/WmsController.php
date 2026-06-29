@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\WarehouseBin;
+use App\Models\Warehouse;
 use App\Models\PickingList;
 use App\Models\PickingListItem;
 use App\Models\PackingList;
@@ -577,6 +578,102 @@ class WmsController extends Controller
         $count->cancel();
 
         return response()->json(['message' => 'Cycle count cancelled']);
+    }
+
+    // ==================== Warehouses CRUD ====================
+
+    public function indexWarehouses(Request $request)
+    {
+        $query = Warehouse::query();
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%')
+                  ->orWhere('code', 'like', '%' . $request->search . '%');
+        }
+
+        if ($request->filled('is_active')) {
+            $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        $warehouses = $query->latest()->paginate($request->input('per_page', 20));
+        return response()->json($warehouses);
+    }
+
+    public function showWarehouse($id)
+    {
+        $warehouse = Warehouse::findOrFail($id);
+        return response()->json($warehouse);
+    }
+
+    public function storeWarehouse(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:50|unique:warehouses,code',
+            'address' => 'nullable|string|max:1000',
+            'city' => 'nullable|string|max:255',
+            'country' => 'nullable|string|max:255',
+            'manager_name' => 'nullable|string|max:255',
+            'manager_phone' => 'nullable|string|max:255',
+            'location_type' => 'required|in:warehouse,branch,distribution_center,3pl',
+            'capacity' => 'nullable|numeric',
+            'is_active' => 'sometimes|boolean',
+            'is_primary' => 'sometimes|boolean',
+        ]);
+
+        $warehouse = Warehouse::create(array_merge($validated, [
+            'is_active' => $validated['is_active'] ?? true,
+            'is_primary' => $validated['is_primary'] ?? false,
+        ]));
+
+        return response()->json($warehouse, 201);
+    }
+
+    public function updateWarehouse(Request $request, $id)
+    {
+        $warehouse = Warehouse::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => 'string|max:255',
+            'code' => 'string|max:50|unique:warehouses,code,' . $id,
+            'address' => 'nullable|string|max:1000',
+            'city' => 'nullable|string|max:255',
+            'country' => 'nullable|string|max:255',
+            'manager_name' => 'nullable|string|max:255',
+            'manager_phone' => 'nullable|string|max:255',
+            'location_type' => 'in:warehouse,branch,distribution_center,3pl',
+            'capacity' => 'nullable|numeric',
+            'is_active' => 'boolean',
+            'is_primary' => 'boolean',
+        ]);
+
+        $warehouse->update($validated);
+
+        return response()->json($warehouse);
+    }
+
+    public function destroyWarehouse($id)
+    {
+        $warehouse = Warehouse::findOrFail($id);
+        $warehouse->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Warehouse deleted successfully',
+        ]);
+    }
+
+    public function getWmsStats()
+    {
+        return response()->json([
+            'warehouses' => Warehouse::count(),
+            'bins' => WarehouseBin::count(),
+            'pickingLists' => PickingList::count(),
+            'packingLists' => PackingList::count(),
+            'pickingPending' => PickingList::where('status', 'pending')->count(),
+            'packingPending' => PackingList::where('status', 'pending')->count(),
+            'cycleCounts' => CycleCount::count(),
+        ]);
     }
 }
 

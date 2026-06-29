@@ -113,11 +113,16 @@ import { ref, onMounted } from 'vue'
 import { List, Plus, Search, View, VideoPlay, Check, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { wmsService } from '@/services/wms'
+import { salesOrdersApi } from '@/api/salesOrders'
 
 const { t } = useI18n()
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const showCreateDialog = ref(false)
+
 const pickingLists = ref([])
 const warehouses = ref([])
 const orders = ref([])
@@ -158,10 +163,9 @@ const getPriorityType = (priority) => {
 
 const loadWarehouses = async () => {
   try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
+    const response = await wmsService.getWarehouses()
+    const data = response.data
+    warehouses.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load warehouses:', error)
   }
@@ -169,11 +173,9 @@ const loadWarehouses = async () => {
 
 const loadOrders = async () => {
   try {
-    // await api.get('/api/v1/sales-orders?status=confirmed')
-    orders.value = [
-      { id: 1, order_number: 'SO-000001' },
-      { id: 2, order_number: 'SO-000002' }
-    ]
+    const response = await salesOrdersApi.getAll({ per_page: 100 })
+    const data = response.data
+    orders.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load orders:', error)
   }
@@ -182,13 +184,17 @@ const loadOrders = async () => {
 const loadPickingLists = async () => {
   loading.value = true
   try {
-    // const response = await api.get('/api/v1/wms/picking-lists', { params: { ...filters.value, ...pagination.value } })
-    pickingLists.value = [
-      { id: 1, list_number: 'PL-000001', order_number: 'SO-000001', warehouse: 'Main Warehouse', priority: 'normal', status: 'pending', created_at: '2026-06-23' }
-    ]
-    pagination.value.total = 5
+    const response = await wmsService.getPickingLists({
+      status: filters.value.status,
+      warehouse_id: filters.value.warehouse_id,
+      page: pagination.value.page,
+      per_page: pagination.value.per_page
+    })
+    const data = response.data
+    pickingLists.value = data.data || data || []
+    pagination.value.total = data.total || pickingLists.value.length
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('خطأ في تحميل قوائم الانتقاء')
   } finally {
     loading.value = false
   }
@@ -197,12 +203,18 @@ const loadPickingLists = async () => {
 const createPickingList = async () => {
   saving.value = true
   try {
-    // await api.post('/api/v1/wms/picking-lists', form.value)
-    ElMessage.success(t('common.create_success'))
+    // API expects sales_order_id, warehouse_id, priority
+    const payload = {
+      sales_order_id: form.value.order_id,
+      warehouse_id: form.value.warehouse_id,
+      priority: form.value.priority
+    }
+    await wmsService.createPickingList(payload)
+    ElMessage.success('تم إنشاء قائمة الانتقاء بنجاح')
     showCreateDialog.value = false
     await loadPickingLists()
   } catch (error) {
-    ElMessage.error(t('common.save_error'))
+    ElMessage.error('خطأ أثناء حفظ قائمة الانتقاء')
   } finally {
     saving.value = false
   }
@@ -210,37 +222,36 @@ const createPickingList = async () => {
 
 const startPicking = async (pickingList) => {
   try {
-    // await api.post(`/api/v1/wms/picking-lists/${pickingList.id}/start`)
-    ElMessage.success(t('wms.picking_started'))
+    await wmsService.startPicking(pickingList.id)
+    ElMessage.success('تم بدء عملية الانتقاء')
     await loadPickingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء بدء الانتقاء')
   }
 }
 
 const completePicking = async (pickingList) => {
   try {
-    // await api.post(`/api/v1/wms/picking-lists/${pickingList.id}/complete`)
-    ElMessage.success(t('wms.picking_completed'))
+    await wmsService.completePicking(pickingList.id)
+    ElMessage.success('تم إنهاء عملية الانتقاء بنجاح')
     await loadPickingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إنهاء عملية الانتقاء')
   }
 }
 
 const cancelPicking = async (pickingList) => {
   try {
-    // await api.post(`/api/v1/wms/picking-lists/${pickingList.id}/cancel`)
-    ElMessage.success(t('wms.picking_cancelled'))
+    await wmsService.cancelPicking(pickingList.id)
+    ElMessage.success('تم إلغاء عملية الانتقاء')
     await loadPickingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إلغاء عملية الانتقاء')
   }
 }
 
 const viewPickingList = (pickingList) => {
-  // Navigate to detail view
-  $router.push(`/admin/wms/picking/${pickingList.id}`)
+  router.push(`/admin/wms/picking/${pickingList.id}`)
 }
 
 onMounted(() => {

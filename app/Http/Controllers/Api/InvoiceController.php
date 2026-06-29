@@ -29,6 +29,11 @@ class InvoiceController extends Controller
                 $query->where('status', $request->status);
             }
 
+            // Filter by customer_id
+            if ($request->filled('customer_id')) {
+                $query->where('customer_id', $request->customer_id);
+            }
+
             // Filter by payment method
             if ($request->filled('payment_method')) {
                 $query->where('payment_method', $request->payment_method);

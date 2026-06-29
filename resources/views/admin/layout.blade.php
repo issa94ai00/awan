@@ -49,13 +49,13 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.categories.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.categories.index') }}">
+                                <a href="/admin/categories">
                                     <i class="fas fa-folder-open"></i>
                                     <span>{{ __('messages.categories') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.products.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.products.index') }}">
+                                <a href="/admin/products">
                                     <i class="fas fa-boxes"></i>
                                     <span>{{ __('messages.products') }}</span>
                                 </a>
@@ -72,7 +72,7 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.sales.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.sales.index') }}">
+                                <a href="/admin/sales">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.sales_overview') }}</span>
                                 </a>
@@ -84,25 +84,25 @@
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.quotes.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.quotes.index') }}">
+                                <a href="/admin/quotes">
                                     <i class="fas fa-file-invoice"></i>
                                     <span>{{ __('messages.quotes') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.sales-orders.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.sales-orders.index') }}">
+                                <a href="/admin/sales-orders">
                                     <i class="fas fa-shopping-bag"></i>
                                     <span>{{ __('messages.sales_orders') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.payments.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.payments.index') }}">
+                                <a href="/admin/payments">
                                     <i class="fas fa-money-bill-wave"></i>
                                     <span>{{ __('messages.payments') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.sales.customers') ? 'active' : '' }}">
-                                <a href="{{ route('admin.sales.customers') }}">
+                                <a href="/admin/sales/customers">
                                     <i class="fas fa-users"></i>
                                     <span>{{ __('messages.customers') }}</span>
                                 </a>
@@ -119,25 +119,25 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.purchases.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.purchases.index') }}">
+                                <a href="/admin/purchases">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.purchases_overview') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.purchases.suppliers') ? 'active' : '' }}">
-                                <a href="{{ route('admin.purchases.suppliers') }}">
+                                <a href="/admin/purchases/suppliers">
                                     <i class="fas fa-truck"></i>
                                     <span>{{ __('messages.suppliers') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.purchases.orders') ? 'active' : '' }}">
-                                <a href="{{ route('admin.purchases.orders') }}">
+                                <a href="/admin/purchases/orders">
                                     <i class="fas fa-file-alt"></i>
                                     <span>{{ __('messages.purchase_orders') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.purchase-receipts.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.purchase-receipts.index') }}">
+                                <a href="/admin/purchase-receipts">
                                     <i class="fas fa-receipt"></i>
                                     <span>{{ __('messages.receipts') }}</span>
                                 </a>
@@ -154,19 +154,19 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.inventory.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.inventory.index') }}">
+                                <a href="/admin/inventory">
                                     <i class="fas fa-boxes"></i>
                                     <span>{{ __('messages.general_inventory') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.inventory.movements') ? 'active' : '' }}">
-                                <a href="{{ route('admin.inventory.movements') }}">
+                                <a href="/admin/inventory/movements">
                                     <i class="fas fa-exchange-alt"></i>
                                     <span>{{ __('messages.stock_movements') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.stock-alerts') ? 'active' : '' }}">
-                                <a href="{{ route('admin.stock-alerts') }}">
+                                <a href="/admin/stock-alerts">
                                     <i class="fas fa-exclamation-triangle"></i>
                                     <span>{{ __('messages.stock_alerts') }}</span>
                                 </a>
@@ -183,31 +183,31 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.hr.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.hr.index') }}">
+                                <a href="/admin/hr">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.hr_overview') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.hr.employees') ? 'active' : '' }}">
-                                <a href="{{ route('admin.hr.employees') }}">
+                                <a href="/admin/hr/employees">
                                     <i class="fas fa-user-tie"></i>
                                     <span>{{ __('messages.employees') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.hr.attendance') ? 'active' : '' }}">
-                                <a href="{{ route('admin.hr.attendance') }}">
+                                <a href="/admin/hr/attendance">
                                     <i class="fas fa-clock"></i>
                                     <span>{{ __('messages.attendance') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.hr.leaves') ? 'active' : '' }}">
-                                <a href="{{ route('admin.hr.leaves') }}">
+                                <a href="/admin/hr/leaves">
                                     <i class="fas fa-calendar-minus"></i>
                                     <span>{{ __('messages.leave_requests') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.payrolls.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.payrolls.index') }}">
+                                <a href="/admin/payrolls">
                                     <i class="fas fa-money-check-alt"></i>
                                     <span>{{ __('messages.payrolls') }}</span>
                                 </a>
@@ -224,25 +224,25 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.accounting.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.accounting.index') }}">
+                                <a href="/admin/accounting">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.accounting_overview') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.accounting.journal') ? 'active' : '' }}">
-                                <a href="{{ route('admin.accounting.journal') }}">
+                                <a href="/admin/accounting/journal">
                                     <i class="fas fa-book"></i>
                                     <span>{{ __('messages.journal') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.accounting.ledger') ? 'active' : '' }}">
-                                <a href="{{ route('admin.accounting.ledger') }}">
+                                <a href="/admin/accounting/ledger">
                                     <i class="fas fa-file-invoice-dollar"></i>
                                     <span>{{ __('messages.ledger') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.accounting.trial-balance') ? 'active' : '' }}">
-                                <a href="{{ route('admin.accounting.trial-balance') }}">
+                                <a href="/admin/accounting/trial-balance">
                                     <i class="fas fa-balance-scale"></i>
                                     <span>{{ __('messages.trial_balance') }}</span>
                                 </a>
@@ -259,7 +259,7 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.production.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.production.index') }}">
+                                <a href="/admin/production">
                                     <i class="fas fa-list"></i>
                                     <span>{{ __('messages.production_orders') }}</span>
                                 </a>
@@ -276,19 +276,19 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.crm.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.crm.index') }}">
+                                <a href="/admin/crm">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.crm_overview') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.crm.customers') ? 'active' : '' }}">
-                                <a href="{{ route('admin.crm.customers') }}">
+                                <a href="/admin/crm/customers">
                                     <i class="fas fa-users"></i>
                                     <span>{{ __('messages.customers') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.crm.tickets') ? 'active' : '' }}">
-                                <a href="{{ route('admin.crm.tickets') }}">
+                                <a href="/admin/crm/tickets">
                                     <i class="fas fa-ticket-alt"></i>
                                     <span>{{ __('messages.tickets') }}</span>
                                 </a>
@@ -305,31 +305,31 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.reports.index') ? 'active' : '' }}">
-                                <a href="{{ route('admin.reports.index') }}">
+                                <a href="/admin/reports">
                                     <i class="fas fa-chart-bar"></i>
                                     <span>{{ __('messages.reports_overview') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.reports.sales') ? 'active' : '' }}">
-                                <a href="{{ route('admin.reports.sales') }}">
+                                <a href="/admin/reports/sales">
                                     <i class="fas fa-shopping-cart"></i>
                                     <span>{{ __('messages.sales_report') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.reports.inventory') ? 'active' : '' }}">
-                                <a href="{{ route('admin.reports.inventory') }}">
+                                <a href="/admin/reports/inventory">
                                     <i class="fas fa-warehouse"></i>
                                     <span>{{ __('messages.inventory_report') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.reports.financial') ? 'active' : '' }}">
-                                <a href="{{ route('admin.reports.financial') }}">
+                                <a href="/admin/reports/financial">
                                     <i class="fas fa-dollar-sign"></i>
                                     <span>{{ __('messages.financial_report') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.reports.payroll') ? 'active' : '' }}">
-                                <a href="{{ route('admin.reports.payroll') }}">
+                                <a href="/admin/reports/payroll">
                                     <i class="fas fa-money-check-alt"></i>
                                     <span>{{ __('messages.payroll_report') }}</span>
                                 </a>
@@ -346,13 +346,13 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.roles.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.roles.index') }}">
+                                <a href="/admin/roles">
                                     <i class="fas fa-user-shield"></i>
                                     <span>{{ __('messages.roles') }}</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.permissions.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.permissions.index') }}">
+                                <a href="/admin/permissions">
                                     <i class="fas fa-key"></i>
                                     <span>{{ __('messages.permissions') }}</span>
                                 </a>
@@ -573,7 +573,7 @@
                         </div>
                         <ul class="nav-group-items">
                             <li class="{{ request()->routeIs('admin.pos') ? 'active' : '' }}">
-                                <a href="{{ route('admin.pos') }}">
+                                <a href="/admin/pos">
                                     <i class="fas fa-cash-register"></i>
                                     <span>{{ __('messages.pos') }}</span>
                                 </a>
@@ -585,7 +585,7 @@
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.visitors.*') ? 'active' : '' }}">
-                                <a href="{{ route('admin.visitors.index') }}">
+                                <a href="/admin/visitors">
                                     <i class="fas fa-chart-line"></i>
                                     <span>{{ __('messages.visitor_stats') }}</span>
                                 </a>
@@ -594,7 +594,7 @@
                     </li>
                     
                     <li class="{{ request()->routeIs('admin.settings.*') ? 'active' : '' }}">
-                        <a href="{{ route('admin.settings.index') }}">
+                        <a href="/admin/settings">
                             <i class="fas fa-cog"></i>
                             <span>{{ __('messages.nav_settings') }}</span>
                         </a>
@@ -657,10 +657,10 @@
                             <i class="fas fa-chevron-down"></i>
                         </button>
                         <div class="dropdown-menu" style="display: none;">
-                            <a href="{{ route('admin.profile.edit') }}">
+                            <a href="/admin/profile">
                                 <i class="fas fa-user"></i> {{ __('messages.profile') }}
                             </a>
-                            <a href="{{ route('admin.settings.index') }}">
+                            <a href="/admin/settings">
                                 <i class="fas fa-cog"></i> {{ __('messages.settings') }}
                             </a>
                             <div class="divider"></div>

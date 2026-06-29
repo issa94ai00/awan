@@ -96,6 +96,7 @@ import { ref, onMounted } from 'vue'
 import { Box, Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -124,10 +125,9 @@ const form = ref({
 
 const loadWarehouses = async () => {
   try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
+    const response = await wmsService.getWarehouses()
+    const data = response.data
+    warehouses.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load warehouses:', error)
   }
@@ -136,16 +136,17 @@ const loadWarehouses = async () => {
 const loadBins = async () => {
   loading.value = true
   try {
-    // const response = await api.get('/api/v1/wms/bins', { params: { ...filters.value, ...pagination.value } })
-    // bins.value = response.data.data
-    // pagination.value.total = response.data.total
-    bins.value = [
-      { id: 1, bin_code: 'A-R1-S1', warehouse: 'Main Warehouse', zone: 'A', rack: 'R1', shelf: 'S1', max_weight: 500 },
-      { id: 2, bin_code: 'A-R1-S2', warehouse: 'Main Warehouse', zone: 'A', rack: 'R1', shelf: 'S2', max_weight: 500 }
-    ]
-    pagination.value.total = 200
+    const response = await wmsService.getBins({
+      warehouse_id: filters.value.warehouse_id,
+      zone: filters.value.zone,
+      page: pagination.value.page,
+      per_page: pagination.value.per_page
+    })
+    const data = response.data
+    bins.value = data.data || data || []
+    pagination.value.total = data.total || bins.value.length
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('خطأ في تحميل مواقع التخزين')
   } finally {
     loading.value = false
   }
@@ -160,18 +161,32 @@ const editBin = (bin) => {
 const saveBin = async () => {
   saving.value = true
   try {
+    // Backend API expects bin data mapping.
+    // Let's make sure form data keys match schema: code, name, warehouse_id, zone, aisle, shelf, level, type, capacity_type, capacity_value
+    const payload = {
+      warehouse_id: form.value.warehouse_id,
+      code: form.value.bin_code || form.value.code,
+      name: form.value.bin_code || form.value.code,
+      zone: form.value.zone,
+      aisle: form.value.rack || form.value.aisle,
+      shelf: form.value.shelf,
+      type: 'storage',
+      capacity_type: 'weight',
+      capacity_value: form.value.max_weight || form.value.capacity_value
+    }
+    
     if (editingBin.value) {
-      // await api.put(`/api/v1/wms/bins/${editingBin.value.id}`, form.value)
-      ElMessage.success(t('common.update_success'))
+      await wmsService.updateBin(editingBin.value.id, payload)
+      ElMessage.success('تم تحديث موقع التخزين بنجاح')
     } else {
-      // await api.post('/api/v1/wms/bins', form.value)
-      ElMessage.success(t('common.create_success'))
+      await wmsService.createBin(payload)
+      ElMessage.success('تم إنشاء موقع التخزين بنجاح')
     }
     showCreateDialog.value = false
     editingBin.value = null
     await loadBins()
   } catch (error) {
-    ElMessage.error(t('common.save_error'))
+    ElMessage.error('خطأ أثناء حفظ موقع التخزين')
   } finally {
     saving.value = false
   }
@@ -179,15 +194,15 @@ const saveBin = async () => {
 
 const deleteBin = async (bin) => {
   try {
-    await ElMessageBox.confirm(t('common.delete_confirm'), t('common.warning'), {
+    await ElMessageBox.confirm('هل أنت متأكد من حذف موقع التخزين هذا؟', 'تنبيه', {
       type: 'warning'
     })
-    // await api.delete(`/api/v1/wms/bins/${bin.id}`)
-    ElMessage.success(t('common.delete_success'))
+    await wmsService.deleteBin(bin.id)
+    ElMessage.success('تم الحذف بنجاح')
     await loadBins()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(t('common.delete_error'))
+      ElMessage.error('خطأ في حذف موقع التخزين')
     }
   }
 }

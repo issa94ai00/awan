@@ -35,6 +35,10 @@ class TicketController extends Controller
             $query->where('priority', $request->priority);
         }
 
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
         $perPage = min(max((int) $request->get('per_page', 20), 1), 100);
         $tickets = $query->latest()->paginate($perPage);
 

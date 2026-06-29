@@ -167,6 +167,16 @@ const routes = [
                 component: () => import('@/views/admin/sales/SalesOrders.vue')
             },
             {
+                path: 'sales/sales-orders/create',
+                name: 'admin.sales-orders.create',
+                component: () => import('@/views/admin/sales/SalesOrderForm.vue')
+            },
+            {
+                path: 'sales/sales-orders/:id/edit',
+                name: 'admin.sales-orders.edit',
+                component: () => import('@/views/admin/sales/SalesOrderForm.vue')
+            },
+            {
                 path: 'sales/payments',
                 name: 'admin.payments.index',
                 component: () => import('@/views/admin/sales/Payments.vue')
@@ -263,6 +273,11 @@ const routes = [
                 path: 'crm/customers/create',
                 name: 'admin.crm.customers.create',
                 component: () => import('@/views/admin/crm/CustomerForm.vue')
+            },
+            {
+                path: 'crm/customers/:id',
+                name: 'admin.crm.customers.show',
+                component: () => import('@/views/admin/crm/CustomerShow.vue')
             },
             {
                 path: 'crm/customers/:id/edit',

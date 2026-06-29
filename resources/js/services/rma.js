@@ -1,101 +1,101 @@
-import axios from 'axios';
+import api from '@/api';
 
-const API_BASE_URL = '/api/admin/rma';
+const API_BASE_URL = '/admin/rma';
 
 export const rmaService = {
     // RMA Requests
     getRmaRequests(params = {}) {
-        return axios.get(`${API_BASE_URL}`, { params });
+        return api.get(`${API_BASE_URL}`, { params });
     },
 
     getRmaRequest(id) {
-        return axios.get(`${API_BASE_URL}/${id}`);
+        return api.get(`${API_BASE_URL}/${id}`);
     },
 
     createRmaRequest(data) {
-        return axios.post(`${API_BASE_URL}`, data);
+        return api.post(`${API_BASE_URL}`, data);
     },
 
     updateRmaRequest(id, data) {
-        return axios.put(`${API_BASE_URL}/${id}`, data);
+        return api.put(`${API_BASE_URL}/${id}`, data);
     },
 
     deleteRmaRequest(id) {
-        return axios.delete(`${API_BASE_URL}/${id}`);
+        return api.delete(`${API_BASE_URL}/${id}`);
     },
 
     // RMA Actions
     approveRma(id, data = {}) {
-        return axios.post(`${API_BASE_URL}/${id}/approve`, data);
+        return api.post(`${API_BASE_URL}/${id}/approve`, data);
     },
 
     rejectRma(id, data = {}) {
-        return axios.post(`${API_BASE_URL}/${id}/reject`, data);
+        return api.post(`${API_BASE_URL}/${id}/reject`, data);
     },
 
     processRma(id, data = {}) {
-        return axios.post(`${API_BASE_URL}/${id}/process`, data);
+        return api.post(`${API_BASE_URL}/${id}/process`, data);
     },
 
     completeRma(id, data = {}) {
-        return axios.post(`${API_BASE_URL}/${id}/complete`, data);
+        return api.post(`${API_BASE_URL}/${id}/complete`, data);
     },
 
     cancelRma(id, data = {}) {
-        return axios.post(`${API_BASE_URL}/${id}/cancel`, data);
+        return api.post(`${API_BASE_URL}/${id}/cancel`, data);
     },
 
     // RMA Items
     getRmaItems(rmaId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${rmaId}/items`, { params });
+        return api.get(`${API_BASE_URL}/${rmaId}/items`, { params });
     },
 
     addRmaItem(rmaId, data) {
-        return axios.post(`${API_BASE_URL}/${rmaId}/items`, data);
+        return api.post(`${API_BASE_URL}/${rmaId}/items`, data);
     },
 
     updateRmaItem(rmaId, itemId, data) {
-        return axios.put(`${API_BASE_URL}/${rmaId}/items/${itemId}`, data);
+        return api.put(`${API_BASE_URL}/${rmaId}/items/${itemId}`, data);
     },
 
     removeRmaItem(rmaId, itemId) {
-        return axios.delete(`${API_BASE_URL}/${rmaId}/items/${itemId}`);
+        return api.delete(`${API_BASE_URL}/${rmaId}/items/${itemId}`);
     },
 
     // RMA Resolution
     getResolution(rmaId) {
-        return axios.get(`${API_BASE_URL}/${rmaId}/resolution`);
+        return api.get(`${API_BASE_URL}/${rmaId}/resolution`);
     },
 
     updateResolution(rmaId, data) {
-        return axios.put(`${API_BASE_URL}/${rmaId}/resolution`, data);
+        return api.put(`${API_BASE_URL}/${rmaId}/resolution`, data);
     },
 
     // RMA Activity
     getActivity(rmaId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${rmaId}/activity`, { params });
+        return api.get(`${API_BASE_URL}/${rmaId}/activity`, { params });
     },
 
     addNote(rmaId, data) {
-        return axios.post(`${API_BASE_URL}/${rmaId}/notes`, data);
+        return api.post(`${API_BASE_URL}/${rmaId}/notes`, data);
     },
 
     // RMA Statistics
     getStatistics(params = {}) {
-        return axios.get(`${API_BASE_URL}/statistics`, { params });
+        return api.get(`${API_BASE_URL}/statistics`, { params });
     },
 
     getRmaTrends(params = {}) {
-        return axios.get(`${API_BASE_URL}/trends`, { params });
+        return api.get(`${API_BASE_URL}/trends`, { params });
     },
 
     getReturnReasons(params = {}) {
-        return axios.get(`${API_BASE_URL}/return-reasons`, { params });
+        return api.get(`${API_BASE_URL}/return-reasons`, { params });
     },
 
     // Export
     exportRmaRequests(params = {}, format = 'csv') {
-        return axios.get(`${API_BASE_URL}/export`, {
+        return api.get(`${API_BASE_URL}/export`, {
             params: { ...params, format },
             responseType: 'blob'
         });
@@ -103,17 +103,17 @@ export const rmaService = {
 
     // RMA Labels/Shipping
     generateReturnLabel(rmaId) {
-        return axios.post(`${API_BASE_URL}/${rmaId}/return-label`);
+        return api.post(`${API_BASE_URL}/${rmaId}/return-label`);
     },
 
     downloadReturnLabel(rmaId) {
-        return axios.get(`${API_BASE_URL}/${rmaId}/return-label/download`, {
+        return api.get(`${API_BASE_URL}/${rmaId}/return-label/download`, {
             responseType: 'blob'
         });
     },
 
     trackReturn(rmaId) {
-        return axios.get(`${API_BASE_URL}/${rmaId}/tracking`);
+        return api.get(`${API_BASE_URL}/${rmaId}/tracking`);
     }
 };
 

@@ -100,8 +100,11 @@ import { ref, onMounted } from 'vue'
 import { Open, Plus, Search, View, VideoPlay, Check, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const showCreateDialog = ref(false)
@@ -134,10 +137,9 @@ const getStatusType = (status) => {
 
 const loadWarehouses = async () => {
   try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
+    const response = await wmsService.getWarehouses()
+    const data = response.data
+    warehouses.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load warehouses:', error)
   }
@@ -145,10 +147,9 @@ const loadWarehouses = async () => {
 
 const loadCompletedPickingLists = async () => {
   try {
-    // await api.get('/api/v1/wms/picking-lists?status=completed')
-    completedPickingLists.value = [
-      { id: 1, list_number: 'PL-000001' }
-    ]
+    const response = await wmsService.getPickingLists({ status: 'completed' })
+    const data = response.data
+    completedPickingLists.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load picking lists:', error)
   }
@@ -157,13 +158,17 @@ const loadCompletedPickingLists = async () => {
 const loadPackingLists = async () => {
   loading.value = true
   try {
-    // const response = await api.get('/api/v1/wms/packing-lists', { params: { ...filters.value, ...pagination.value } })
-    packingLists.value = [
-      { id: 1, list_number: 'PK-000001', picking_list_number: 'PL-000001', warehouse: 'Main Warehouse', status: 'pending', created_at: '2026-06-23' }
-    ]
-    pagination.value.total = 3
+    const response = await wmsService.getPackingLists({
+      status: filters.value.status,
+      warehouse_id: filters.value.warehouse_id,
+      page: pagination.value.page,
+      per_page: pagination.value.per_page
+    })
+    const data = response.data
+    packingLists.value = data.data || data || []
+    pagination.value.total = data.total || packingLists.value.length
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('خطأ في تحميل قوائم التعبئة')
   } finally {
     loading.value = false
   }
@@ -172,12 +177,17 @@ const loadPackingLists = async () => {
 const createPackingList = async () => {
   saving.value = true
   try {
-    // await api.post('/api/v1/wms/packing-lists', form.value)
-    ElMessage.success(t('common.create_success'))
+    // API expects picking_list_id, warehouse_id
+    const payload = {
+      picking_list_id: form.value.picking_list_id,
+      warehouse_id: form.value.warehouse_id
+    }
+    await wmsService.createPackingList(payload)
+    ElMessage.success('تم إنشاء قائمة التعبئة بنجاح')
     showCreateDialog.value = false
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error(t('common.save_error'))
+    ElMessage.error('خطأ أثناء حفظ قائمة التعبئة')
   } finally {
     saving.value = false
   }
@@ -185,36 +195,36 @@ const createPackingList = async () => {
 
 const startPacking = async (packingList) => {
   try {
-    // await api.post(`/api/v1/wms/packing-lists/${packingList.id}/start`)
-    ElMessage.success(t('wms.packing_started'))
+    await wmsService.startPacking(packingList.id)
+    ElMessage.success('تم بدء التعبئة')
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء بدء التعبئة')
   }
 }
 
 const completePacking = async (packingList) => {
   try {
-    // await api.post(`/api/v1/wms/packing-lists/${packingList.id}/complete`)
-    ElMessage.success(t('wms.packing_completed'))
+    await wmsService.completePacking(packingList.id)
+    ElMessage.success('تم إنهاء التعبئة بنجاح')
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إنهاء التعبئة')
   }
 }
 
 const cancelPacking = async (packingList) => {
   try {
-    // await api.post(`/api/v1/wms/packing-lists/${packingList.id}/cancel`)
-    ElMessage.success(t('wms.packing_cancelled'))
+    await wmsService.cancelPacking(packingList.id)
+    ElMessage.success('تم إلغاء التعبئة')
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إلغاء التعبئة')
   }
 }
 
 const viewPackingList = (packingList) => {
-  $router.push(`/admin/wms/packing/${packingList.id}`)
+  router.push(`/admin/wms/packing/${packingList.id}`)
 }
 
 onMounted(() => {

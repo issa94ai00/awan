@@ -1,4 +1,4 @@
-# Awan Attakaddum — System Documentation
+﻿# Awan Attakaddum — System Documentation
 
 > **Version:** 1.0.0  
 > **Last Updated:** June 2026  
@@ -1098,3 +1098,4 @@ pos.js                 → Point of Sale
 inquiries.js           → Admin inquiries
 i18n.js                → Locale management
 ```
+

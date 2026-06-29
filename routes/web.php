@@ -7,10 +7,8 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\ProductionController;
 use App\Http\Controllers\Admin\QuoteController;
-use App\Http\Controllers\Admin\SalesOrderController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\PaymentController;
-use App\Http\Controllers\Admin\PurchaseReceiptController;
 use App\Http\Controllers\Admin\PayrollController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\PermissionController;
@@ -73,65 +71,9 @@ Route::prefix('admin')->group(function () {
     Route::view('/inquiries', 'vue')->name('admin.inquiries.index');
     Route::view('/inquiries/{id}', 'vue')->name('admin.inquiries.show');
 
-    // Invoice Routes - Blade views for invoice creation
-    Route::get('/invoices', [InvoiceController::class, 'index'])->name('admin.sales.invoices');
-    Route::get('/invoices/create', [InvoiceController::class, 'create'])->name('admin.invoices.create');
-    Route::post('/invoices', [InvoiceController::class, 'store'])->name('admin.invoices.store');
-    Route::get('/invoices/search-products', [InvoiceController::class, 'searchProducts'])->name('admin.invoices.search-products');
-
-    // WMS Routes - Serve Blade views for Vue component mounting
-    Route::view('/wms', 'admin.wms.index')->name('admin.wms.index');
-    Route::view('/wms/warehouses', 'admin.wms.warehouses')->name('admin.wms.warehouses.index');
-    Route::view('/wms/warehouses/create', 'admin.wms.warehouse-form')->name('admin.wms.warehouses.create');
-    Route::view('/wms/warehouses/{id}/edit', 'admin.wms.warehouse-form')->name('admin.wms.warehouses.edit');
-    Route::view('/wms/bins', 'admin.wms.bins')->name('admin.wms.bins.index');
-    Route::view('/wms/bins/create', 'admin.wms.bin-form')->name('admin.wms.bins.create');
-    Route::view('/wms/bins/{id}/edit', 'admin.wms.bin-form')->name('admin.wms.bins.edit');
-    Route::view('/wms/picking', 'admin.wms.picking')->name('admin.wms.picking.index');
-    Route::view('/wms/picking/create', 'admin.wms.picking-form')->name('admin.wms.picking.create');
-    Route::view('/wms/packing', 'admin.wms.packing')->name('admin.wms.packing.index');
-    Route::view('/wms/packing/create', 'admin.wms.packing-form')->name('admin.wms.packing.create');
-    Route::view('/wms/cycle-counts', 'admin.wms.cycle-counts')->name('admin.wms.cycle-counts.index');
-    Route::view('/wms/cycle-counts/create', 'admin.wms.cycle-count-form')->name('admin.wms.cycle-counts.create');
-    Route::view('/wms/performance', 'admin.wms.performance')->name('admin.wms.performance');
-
-    // Analytics Routes - Serve Blade views for Vue component mounting
-    Route::view('/analytics', 'admin.analytics.index')->name('admin.analytics.index');
-    Route::view('/analytics/sales', 'admin.analytics.sales')->name('admin.analytics.sales');
-    Route::view('/analytics/inventory', 'admin.analytics.inventory')->name('admin.analytics.inventory');
-    Route::view('/analytics/warehouse', 'admin.analytics.warehouse')->name('admin.analytics.warehouse');
-    Route::view('/analytics/financial', 'admin.analytics.financial')->name('admin.analytics.financial');
-    Route::view('/analytics/metrics', 'admin.analytics.metrics')->name('admin.analytics.metrics');
-    Route::view('/analytics/reports', 'admin.analytics.reports')->name('admin.analytics.reports');
-    Route::view('/analytics/dashboards', 'admin.analytics.dashboards')->name('admin.analytics.dashboards');
-
-    // Notifications Routes - Serve Blade views for Vue component mounting
-    Route::view('/notifications', 'admin.notifications.index')->name('admin.notifications.index');
-    Route::view('/notifications/templates', 'admin.notifications.templates')->name('admin.notifications.templates');
-    Route::view('/notifications/templates/create', 'admin.notifications.template-form')->name('admin.notifications.templates.create');
-    Route::view('/notifications/templates/{id}/edit', 'admin.notifications.template-form')->name('admin.notifications.templates.edit');
-    Route::view('/notifications/preferences', 'admin.notifications.preferences')->name('admin.notifications.preferences');
-
-    // Workflows Routes - Serve Blade views for Vue component mounting
-    Route::view('/workflows', 'admin.workflows.index')->name('admin.workflows.index');
-    Route::view('/workflows/create', 'admin.workflows.form')->name('admin.workflows.create');
-    Route::view('/workflows/{id}', 'admin.workflows.show')->name('admin.workflows.show');
-    Route::view('/workflows/{id}/edit', 'admin.workflows.form')->name('admin.workflows.edit');
-    Route::view('/workflows/{id}/steps', 'admin.workflows.steps')->name('admin.workflows.steps');
-    Route::view('/workflows/{id}/executions', 'admin.workflows.executions')->name('admin.workflows.executions');
-
-    // Audit Routes - Serve Blade views for Vue component mounting
-    Route::view('/audit', 'admin.audit.index')->name('admin.audit.index');
-    Route::view('/audit/entity-logs', 'admin.audit.entity-logs')->name('admin.audit.entity-logs');
-    Route::view('/audit/user-activity/{id}', 'admin.audit.user-activity')->name('admin.audit.user-activity');
-    Route::view('/audit/module-logs/{module}', 'admin.audit.module-logs')->name('admin.audit.module-logs');
-    Route::view('/audit/statistics', 'admin.audit.statistics')->name('admin.audit.statistics');
-
-    // RMA Routes - Serve Blade views for Vue component mounting
-    Route::view('/rma', 'admin.rma.index')->name('admin.rma.index');
-    Route::view('/rma/create', 'admin.rma.form')->name('admin.rma.create');
-    Route::view('/rma/{id}', 'admin.rma.show')->name('admin.rma.show');
-    Route::view('/rma/{id}/edit', 'admin.rma.form')->name('admin.rma.edit');
+    // Preserve legacy route names for admin inquiries while serving the SPA.
+    Route::view('/inquiries', 'vue')->name('admin.inquiries.index');
+    Route::view('/inquiries/{id}', 'vue')->name('admin.inquiries.show');
 
     // Serve the SPA on all other admin GET routes so the front-end router preserves the requested path.
     Route::get('/{path?}', function () {

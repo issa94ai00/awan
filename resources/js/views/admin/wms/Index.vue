@@ -146,6 +146,7 @@
 import { ref, onMounted } from 'vue'
 import { Management, Box, List, Open, Document, OfficeBuilding } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
+import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -171,15 +172,15 @@ const getStatusType = (status) => {
 onMounted(async () => {
   loading.value = true
   try {
-    // Fetch stats from API
-    // const response = await api.get('/api/v1/wms/stats')
-    // stats.value = response.data
-    stats.value = {
-      warehouses: 1,
-      bins: 200,
-      pickingLists: 5,
-      packingLists: 3
-    }
+    const [statsRes, pickingRes, packingRes] = await Promise.all([
+      wmsService.getWmsStats(),
+      wmsService.getPickingLists({ per_page: 5 }),
+      wmsService.getPackingLists({ per_page: 5 })
+    ])
+    
+    stats.value = statsRes.data
+    recentPicking.value = (pickingRes.data.data || pickingRes.data || []).slice(0, 5)
+    recentPacking.value = (packingRes.data.data || packingRes.data || []).slice(0, 5)
   } catch (error) {
     console.error('Failed to load WMS stats:', error)
   } finally {

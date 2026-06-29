@@ -84,6 +84,7 @@ import { ref, onMounted } from 'vue'
 import { Management, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -105,14 +106,11 @@ const form = ref({
 const loadWarehouses = async () => {
   loading.value = true
   try {
-    // API call to fetch warehouses
-    // const response = await api.get('/api/v1/wms/warehouses')
-    // warehouses.value = response.data
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse', code: 'WH-001', location_type: 'warehouse', city: 'Riyadh', capacity: 10000, is_active: true }
-    ]
+    const response = await wmsService.getWarehouses()
+    const data = response.data
+    warehouses.value = data.data || data || []
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('خطأ في تحميل المستودعات')
   } finally {
     loading.value = false
   }
@@ -128,20 +126,18 @@ const saveWarehouse = async () => {
   saving.value = true
   try {
     if (editingWarehouse.value) {
-      // Update
-      // await api.put(`/api/v1/wms/warehouses/${editingWarehouse.value.id}`, form.value)
-      ElMessage.success(t('common.update_success'))
+      await wmsService.updateWarehouse(editingWarehouse.value.id, form.value)
+      ElMessage.success('تم تحديث المستودع بنجاح')
     } else {
-      // Create
-      // await api.post('/api/v1/wms/warehouses', form.value)
-      ElMessage.success(t('common.create_success'))
+      await wmsService.createWarehouse(form.value)
+      ElMessage.success('تم إنشاء المستودع بنجاح')
     }
     showCreateDialog.value = false
     editingWarehouse.value = null
     resetForm()
     await loadWarehouses()
   } catch (error) {
-    ElMessage.error(t('common.save_error'))
+    ElMessage.error('خطأ أثناء حفظ المستودع')
   } finally {
     saving.value = false
   }
@@ -149,15 +145,15 @@ const saveWarehouse = async () => {
 
 const deleteWarehouse = async (warehouse) => {
   try {
-    await ElMessageBox.confirm(t('common.delete_confirm'), t('common.warning'), {
+    await ElMessageBox.confirm('هل أنت متأكد من حذف هذا المستودع بالكامل؟', 'تنبيه', {
       type: 'warning'
     })
-    // await api.delete(`/api/v1/wms/warehouses/${warehouse.id}`)
-    ElMessage.success(t('common.delete_success'))
+    await wmsService.deleteWarehouse(warehouse.id)
+    ElMessage.success('تم حذف المستودع بنجاح')
     await loadWarehouses()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(t('common.delete_error'))
+      ElMessage.error('خطأ في حذف المستودع')
     }
   }
 }

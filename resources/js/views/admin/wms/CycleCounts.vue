@@ -109,8 +109,11 @@ import { ref, onMounted } from 'vue'
 import { Document, Plus, Search, View, VideoPlay, Check, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
+const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const showCreateDialog = ref(false)
@@ -144,10 +147,9 @@ const getStatusType = (status) => {
 
 const loadWarehouses = async () => {
   try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
+    const response = await wmsService.getWarehouses()
+    const data = response.data
+    warehouses.value = data.data || data || []
   } catch (error) {
     console.error('Failed to load warehouses:', error)
   }
@@ -156,13 +158,17 @@ const loadWarehouses = async () => {
 const loadCycleCounts = async () => {
   loading.value = true
   try {
-    // const response = await api.get('/api/v1/wms/cycle-counts', { params: { ...filters.value, ...pagination.value } })
-    cycleCounts.value = [
-      { id: 1, count_number: 'CC-000001', warehouse: 'Main Warehouse', zone: 'A', count_date: '2026-06-23', status: 'pending', accuracy: null }
-    ]
-    pagination.value.total = 2
+    const response = await wmsService.getCycleCounts({
+      status: filters.value.status,
+      warehouse_id: filters.value.warehouse_id,
+      page: pagination.value.page,
+      per_page: pagination.value.per_page
+    })
+    const data = response.data
+    cycleCounts.value = data.data || data || []
+    pagination.value.total = data.total || cycleCounts.value.length
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('خطأ في تحميل مهام الجرد')
   } finally {
     loading.value = false
   }
@@ -171,12 +177,19 @@ const loadCycleCounts = async () => {
 const createCycleCount = async () => {
   saving.value = true
   try {
-    // await api.post('/api/v1/wms/cycle-counts', form.value)
-    ElMessage.success(t('common.create_success'))
+    // API expects warehouse_id, zone, count_date, notes
+    const payload = {
+      warehouse_id: form.value.warehouse_id,
+      zone: form.value.zone,
+      count_date: form.value.count_date ? form.value.count_date.toISOString().split('T')[0] : null,
+      notes: form.value.notes
+    }
+    await wmsService.createCycleCount(payload)
+    ElMessage.success('تم إنشاء مهمة الجرد بنجاح')
     showCreateDialog.value = false
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error(t('common.save_error'))
+    ElMessage.error('خطأ أثناء حفظ مهمة الجرد')
   } finally {
     saving.value = false
   }
@@ -184,36 +197,36 @@ const createCycleCount = async () => {
 
 const startCount = async (cycleCount) => {
   try {
-    // await api.post(`/api/v1/wms/cycle-counts/${cycleCount.id}/start`)
-    ElMessage.success(t('wms.count_started'))
+    await wmsService.startCycleCount(cycleCount.id)
+    ElMessage.success('تم بدء مهمة الجرد')
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء بدء مهمة الجرد')
   }
 }
 
 const completeCount = async (cycleCount) => {
   try {
-    // await api.post(`/api/v1/wms/cycle-counts/${cycleCount.id}/complete`)
-    ElMessage.success(t('wms.count_completed'))
+    await wmsService.completeCycleCount(cycleCount.id)
+    ElMessage.success('تم إنهاء مهمة الجرد بنجاح')
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إنهاء مهمة الجرد')
   }
 }
 
 const cancelCount = async (cycleCount) => {
   try {
-    // await api.post(`/api/v1/wms/cycle-counts/${cycleCount.id}/cancel`)
-    ElMessage.success(t('wms.count_cancelled'))
+    await wmsService.cancelCycleCount(cycleCount.id)
+    ElMessage.success('تم إلغاء مهمة الجرد')
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error(t('common.action_error'))
+    ElMessage.error('خطأ أثناء إلغاء مهمة الجرد')
   }
 }
 
 const viewCycleCount = (cycleCount) => {
-  $router.push(`/admin/wms/cycle-counts/${cycleCount.id}`)
+  router.push(`/admin/wms/cycle-counts/${cycleCount.id}`)
 }
 
 onMounted(() => {

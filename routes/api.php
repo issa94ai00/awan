@@ -353,6 +353,8 @@ Route::prefix('v1')->group(function () {
         // RMA - Return Merchandise Authorization (إرجاع البضائع)
         Route::prefix('admin')->group(function () {
             Route::get('/rma', [RmaController::class, 'index'])->name('api.admin.rma.index');
+            Route::get('/rma/statistics', [RmaController::class, 'getStatistics'])->name('api.admin.rma.statistics');
+            Route::get('/rma/customers-with-orders', [RmaController::class, 'getCustomersWithOrders'])->name('api.admin.rma.customers-with-orders');
             Route::post('/rma', [RmaController::class, 'store'])->name('api.admin.rma.store');
             Route::get('/rma/{id}', [RmaController::class, 'show'])->name('api.admin.rma.show');
             Route::put('/rma/{id}', [RmaController::class, 'update'])->name('api.admin.rma.update');
@@ -364,11 +366,21 @@ Route::prefix('v1')->group(function () {
             Route::post('/rma/{id}/cancel', [RmaController::class, 'cancel'])->name('api.admin.rma.cancel');
             Route::get('/rma/{id}/items', [RmaController::class, 'getItems'])->name('api.admin.rma.items');
             Route::put('/rma/items/{id}', [RmaController::class, 'updateItem'])->name('api.admin.rma.items.update');
-            Route::get('/rma/statistics', [RmaController::class, 'getStatistics'])->name('api.admin.rma.statistics');
+            Route::get('/rma/{id}/activity', [RmaController::class, 'getActivity'])->name('api.admin.rma.activity');
         });
 
         // WMS - Warehouse Management System (نظام إدارة المستودعات)
         Route::prefix('wms')->group(function () {
+            // Stats (إحصائيات)
+            Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.wms.stats');
+
+            // Warehouses (المستودعات)
+            Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.wms.warehouses.index');
+            Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.wms.warehouses.show');
+            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.wms.warehouses.store');
+            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.wms.warehouses.update');
+            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.wms.warehouses.destroy');
+
             // Warehouse Bins (أماكن التخزين)
             Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.wms.bins.index');
             Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.wms.bins.show');

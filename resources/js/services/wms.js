@@ -3,6 +3,11 @@ import axios from 'axios';
 const API_BASE_URL = '/api/admin/wms';
 
 export const wmsService = {
+    // Stats
+    getWmsStats() {
+        return axios.get(`${API_BASE_URL}/stats`);
+    },
+
     // Warehouses
     getWarehouses(params = {}) {
         return axios.get(`${API_BASE_URL}/warehouses`, { params });

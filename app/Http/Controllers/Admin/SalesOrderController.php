@@ -198,7 +198,7 @@ class SalesOrderController extends Controller
         // Update customer balance
         $salesOrder->customer->updateBalance($salesOrder->total);
 
-        return redirect()->route('admin.invoices.show', $invoice)
+        return redirect()->route('admin.sales.invoices')
             ->with('success', 'تم تحويل طلب البيع إلى فاتورة بنجاح');
     }
 }

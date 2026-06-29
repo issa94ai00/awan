@@ -17,32 +17,46 @@ class RmaController extends Controller
     {
         $query = RmaRequest::with(['customer', 'salesOrder', 'items.product', 'items.variant', 'approver', 'completer']);
 
-        if ($request->has('customer_id')) {
+        if ($request->filled('customer_id')) {
             $query->byCustomer($request->customer_id);
         }
 
-        if ($request->has('status')) {
+        if ($request->filled('status')) {
             $query->byStatus($request->status);
         }
 
-        if ($request->has('sales_order_id')) {
+        if ($request->filled('sales_order_id')) {
             $query->where('sales_order_id', $request->sales_order_id);
         }
 
-        if ($request->has('reason')) {
+        if ($request->filled('reason')) {
             $query->where('reason', $request->reason);
         }
 
-        if ($request->has('type')) {
+        if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
-        if ($request->has('from_date')) {
+        if ($request->filled('from_date')) {
             $query->where('requested_at', '>=', $request->from_date);
         }
 
-        if ($request->has('to_date')) {
+        if ($request->filled('to_date')) {
             $query->where('requested_at', '<=', $request->to_date);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('rma_number', 'like', "%{$search}%")
+                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                      $customerQuery->where('name', 'like', "%{$search}%")
+                                   ->orWhere('phone', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('salesOrder', function ($orderQuery) use ($search) {
+                      $orderQuery->where('order_number', 'like', "%{$search}%");
+                  });
+            });
         }
 
         $rmaRequests = $query->orderBy('requested_at', 'desc')->paginate($request->per_page ?? 15);
@@ -121,16 +135,21 @@ class RmaController extends Controller
                 throw new \Exception('لا يمكن إنشاء طلب إرجاع لطلب لم يتم تسليمه');
             }
 
-            // Check for existing RMA for the same order items
+            // Check that the returned quantities do not exceed original purchased quantities
             foreach ($request->items as $item) {
-                $existingRmaItem = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
+                $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
+
+                // Sum previously requested quantities for this order item in active requests
+                $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
                     ->whereHas('rmaRequest', function($query) {
                         $query->whereNotIn('status', ['rejected', 'cancelled']);
                     })
-                    ->first();
-                
-                if ($existingRmaItem) {
-                    throw new \Exception('يوجد طلب إرجاع نشط لهذا المنتج');
+                    ->sum('quantity_requested');
+
+                $totalRequested = $previouslyRequested + $item['quantity_requested'];
+                if ($totalRequested > $orderItem->quantity) {
+                    $availableToReturn = $orderItem->quantity - $previouslyRequested;
+                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: " . ($orderItem->product ? $orderItem->product->name : ''));
                 }
             }
 
@@ -157,16 +176,6 @@ class RmaController extends Controller
             foreach ($request->items as $item) {
                 $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
 
-                // Validate quantity doesn't exceed original order
-                if ($item['quantity_requested'] > $orderItem->quantity) {
-                    throw new \Exception('الكمية المطلوبة تتجاوز الكمية الأصلية في الطلب');
-                }
-
-                // Validate exchange product if resolution is exchange
-                if ($item['resolution'] === 'exchange' && empty($item['exchange_product_id'])) {
-                    throw new \Exception('يجب تحديد المنتج البديل عند اختيار التبديل');
-                }
-
                 $rmaItem = $rmaRequest->items()->create([
                     'sales_order_item_id' => $item['sales_order_item_id'],
                     'product_id' => $orderItem->product_id,
@@ -191,6 +200,18 @@ class RmaController extends Controller
             // Update total refund amount on RMA request
             $rmaRequest->refund_amount = $totalRefundAmount;
             $rmaRequest->save();
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'create_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم إنشاء طلب إرجاع جديد بالرقم {$rmaRequest->rma_number}",
+                null,
+                $rmaRequest->toArray(),
+                'rma'
+            );
 
             DB::commit();
 
@@ -247,6 +268,18 @@ class RmaController extends Controller
                 $rmaRequest->save();
             }
 
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'approve_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تمت الموافقة على طلب الإرجاع {$rmaRequest->rma_number}",
+                null,
+                ['admin_notes' => $request->admin_notes],
+                'rma'
+            );
+
             DB::commit();
 
             Log::info('RMA Request Approved', ['rma_id' => $rmaRequest->id, 'approved_by' => auth()->id()]);
@@ -291,6 +324,19 @@ class RmaController extends Controller
         try {
             DB::beginTransaction();
             $rmaRequest->reject(auth()->id(), $request->reason);
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'reject_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم رفض طلب الإرجاع {$rmaRequest->rma_number} بسبب: {$request->reason}",
+                null,
+                ['reject_reason' => $request->reason],
+                'rma'
+            );
+
             DB::commit();
 
             Log::info('RMA Request Rejected', ['rma_id' => $rmaRequest->id, 'rejected_by' => auth()->id(), 'reason' => $request->reason]);
@@ -314,12 +360,12 @@ class RmaController extends Controller
 
     public function receiveItems(Request $request, $id)
     {
-        $rmaRequest = RmaRequest::with('items')->findOrFail($id);
+        $rmaRequest = RmaRequest::with(['items', 'salesOrder'])->findOrFail($id);
 
         if ($rmaRequest->status !== RmaRequest::STATUS_APPROVED) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن استلام المنتجات لهذا الطلب',
+                'message' => 'لا يمكن استلام المنتجات لهذا الطلب. يجب أن يكون الطلب موافق عليه أولاً.',
                 'data' => null,
             ], 422);
         }
@@ -328,10 +374,19 @@ class RmaController extends Controller
             'items' => 'required|array',
             'items.*.rma_item_id' => 'required|exists:rma_items,id',
             'items.*.quantity_received' => 'required|integer|min:0',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'bin_id' => 'nullable|exists:warehouse_bins,id',
         ]);
 
         try {
             DB::beginTransaction();
+
+            $warehouseId = $request->warehouse_id ?? $rmaRequest->salesOrder->fulfillment_warehouse_id ?? (\App\Models\Warehouse::first()?->id);
+            if (!$warehouseId) {
+                throw new \Exception('يجب تحديد مستودع لاستلام المنتجات المرتجعة');
+            }
+
+            $binId = $request->bin_id ?? (\App\Models\WarehouseBin::where('warehouse_id', $warehouseId)->where('status', 'active')->first()?->id ?? \App\Models\WarehouseBin::where('warehouse_id', $warehouseId)->first()?->id);
 
             foreach ($request->items as $item) {
                 $rmaItem = RmaItem::findOrFail($item['rma_item_id']);
@@ -341,13 +396,88 @@ class RmaController extends Controller
                 }
 
                 $rmaItem->markAsReceived($item['quantity_received']);
+
+                if ($item['quantity_received'] > 0) {
+                    // Find or create Warehouse Inventory record
+                    $inventory = \App\Models\WarehouseInventory::firstOrCreate([
+                        'warehouse_id' => $warehouseId,
+                        'product_id' => $rmaItem->product_id,
+                        'product_variant_id' => $rmaItem->product_variant_id,
+                        'bin_id' => $binId,
+                    ], [
+                        'quantity' => 0,
+                        'available_quantity' => 0,
+                        'damaged_quantity' => 0,
+                        'quarantined_quantity' => 0,
+                        'cost_basis' => 'FIFO',
+                    ]);
+
+                    // Adjust quantities depending on condition
+                    $condition = $rmaItem->condition;
+                    if ($condition === RmaItem::CONDITION_NEW) {
+                        $inventory->increment('quantity', $item['quantity_received']);
+                        $inventory->increment('available_quantity', $item['quantity_received']);
+
+                        // Create Stock Movement (boots will auto-increment product->stock_quantity)
+                        \App\Models\StockMovement::create([
+                            'product_id' => $rmaItem->product_id,
+                            'movement_type' => \App\Models\StockMovement::TYPE_IN,
+                            'quantity' => $item['quantity_received'],
+                            'reference' => $rmaRequest->rma_number,
+                            'source' => 'rma',
+                            'notes' => 'مرتجع سليم من العميل لطلب ' . ($rmaRequest->salesOrder?->order_number ?? ''),
+                            'warehouse_id' => $warehouseId,
+                            'created_by' => auth()->id(),
+                        ]);
+                    } elseif ($condition === RmaItem::CONDITION_DAMAGED) {
+                        $inventory->increment('quantity', $item['quantity_received']);
+                        $inventory->increment('damaged_quantity', $item['quantity_received']);
+
+                        \App\Models\StockMovement::create([
+                            'product_id' => $rmaItem->product_id,
+                            'movement_type' => \App\Models\StockMovement::TYPE_ADJUSTMENT,
+                            'quantity' => $item['quantity_received'],
+                            'reference' => $rmaRequest->rma_number,
+                            'source' => 'rma',
+                            'notes' => 'مرتجع تالف من العميل لطلب ' . ($rmaRequest->salesOrder?->order_number ?? ''),
+                            'warehouse_id' => $warehouseId,
+                            'created_by' => auth()->id(),
+                        ]);
+                    } else { // used
+                        $inventory->increment('quantity', $item['quantity_received']);
+                        $inventory->increment('quarantined_quantity', $item['quantity_received']);
+
+                        \App\Models\StockMovement::create([
+                            'product_id' => $rmaItem->product_id,
+                            'movement_type' => \App\Models\StockMovement::TYPE_ADJUSTMENT,
+                            'quantity' => $item['quantity_received'],
+                            'reference' => $rmaRequest->rma_number,
+                            'source' => 'rma',
+                            'notes' => 'مرتجع مستعمل (قيد المعاينة) من العميل لطلب ' . ($rmaRequest->salesOrder?->order_number ?? ''),
+                            'warehouse_id' => $warehouseId,
+                            'created_by' => auth()->id(),
+                        ]);
+                    }
+                }
             }
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'receive_items',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم استلام المنتجات المرتجعة لطلب الإرجاع {$rmaRequest->rma_number}",
+                null,
+                ['received_items' => $request->items],
+                'rma'
+            );
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم استلام المنتجات بنجاح',
+                'message' => 'تم استلام المنتجات وتحديث المخزون بنجاح',
                 'data' => $rmaRequest->load('items'),
             ]);
 
@@ -363,7 +493,7 @@ class RmaController extends Controller
 
     public function complete(Request $request, $id)
     {
-        $rmaRequest = RmaRequest::with('items')->findOrFail($id);
+        $rmaRequest = RmaRequest::with(['items', 'customer', 'salesOrder'])->findOrFail($id);
 
         if (!$rmaRequest->canComplete()) {
             return response()->json([
@@ -384,12 +514,11 @@ class RmaController extends Controller
 
             $totalRefund = $rmaRequest->getTotalRefundAmountAttribute();
             $refundAmount = $request->refund_amount ?? $totalRefund;
+            $refundMethod = $request->refund_method ?? $rmaRequest->refund_method ?? 'store_credit';
 
             $rmaRequest->complete(auth()->id(), $refundAmount);
 
-            if ($request->refund_method) {
-                $rmaRequest->refund_method = $request->refund_method;
-            }
+            $rmaRequest->refund_method = $refundMethod;
 
             if ($request->admin_notes) {
                 $rmaRequest->admin_notes = $request->admin_notes;
@@ -397,11 +526,60 @@ class RmaController extends Controller
 
             $rmaRequest->save();
 
+            // Financial Adjustment: Store Credit decreases customer balance (debt)
+            if ($refundMethod === 'store_credit' && $rmaRequest->customer) {
+                $rmaRequest->customer->updateBalance(-$refundAmount);
+            }
+
+            // Generate replacement SalesOrder if any items are exchange resolution
+            $exchangeItems = $rmaRequest->items()->where('resolution', 'exchange')->get();
+            if ($exchangeItems->isNotEmpty()) {
+                $rplOrderNumber = 'SO-RPL-' . str_pad(\App\Models\SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+                $replacementOrder = \App\Models\SalesOrder::create([
+                    'order_number' => $rplOrderNumber,
+                    'customer_id' => $rmaRequest->customer_id,
+                    'status' => \App\Models\SalesOrder::STATUS_PENDING,
+                    'order_date' => now(),
+                    'subtotal' => 0.00,
+                    'tax' => 0.00,
+                    'discount' => 0.00,
+                    'total' => 0.00,
+                    'created_by' => auth()->id(),
+                    'notes' => 'طلب بديل تلقائي لطلب الإرجاع: ' . $rmaRequest->rma_number,
+                    'fulfillment_warehouse_id' => $rmaRequest->salesOrder?->fulfillment_warehouse_id ?? \App\Models\Warehouse::first()?->id,
+                    'shipping_address' => $rmaRequest->salesOrder?->shipping_address,
+                    'billing_address' => $rmaRequest->salesOrder?->billing_address,
+                ]);
+
+                foreach ($exchangeItems as $item) {
+                    $replacementOrder->items()->create([
+                        'product_id' => $item->exchange_product_id,
+                        'product_variant_id' => $item->exchange_variant_id,
+                        'quantity' => $item->quantity_requested,
+                        'unit_price' => 0.00,
+                        'discount' => 0.00,
+                        'tax' => 0.00,
+                    ]);
+                }
+            }
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'complete_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم إكمال طلب الإرجاع {$rmaRequest->rma_number} بطريقة استرداد {$refundMethod} وقيمة {$refundAmount}",
+                null,
+                ['refund_amount' => $refundAmount, 'refund_method' => $refundMethod],
+                'rma'
+            );
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم إكمال طلب الإرجاع بنجاح',
+                'message' => 'تم إكمال طلب الإرجاع بنجاح وتحديث الحسابات والمخازن',
                 'data' => $rmaRequest->load('items'),
             ]);
 
@@ -427,13 +605,38 @@ class RmaController extends Controller
             ], 422);
         }
 
-        $rmaRequest->cancel();
+        try {
+            DB::beginTransaction();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم إلغاء طلب الإرجاع بنجاح',
-            'data' => $rmaRequest,
-        ]);
+            $rmaRequest->cancel();
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'cancel_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم إلغاء طلب الإرجاع {$rmaRequest->rma_number}",
+                null,
+                null,
+                'rma'
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إلغاء طلب الإرجاع بنجاح',
+                'data' => $rmaRequest,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
     }
 
     public function getStatistics(Request $request)
@@ -460,6 +663,44 @@ class RmaController extends Controller
         return response()->json([
             'success' => true,
             'data' => $stats,
+        ]);
+    }
+
+    public function getCustomersWithOrders(Request $request)
+    {
+        // Debug: Log all customers with their orders
+        $allCustomers = \App\Models\Customer::with('salesOrders')->get();
+        \Log::info('All customers count: ' . $allCustomers->count());
+        foreach ($allCustomers as $customer) {
+            \Log::info("Customer: {$customer->name}, Orders count: {$customer->salesOrders->count()}");
+            foreach ($customer->salesOrders as $order) {
+                \Log::info("  Order #{$order->order_number}, Status: {$order->status}");
+            }
+        }
+
+        $query = \App\Models\Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
+            $query->where('status', 'delivered');
+        }])->whereHas('salesOrders', function ($query) {
+            $query->where('status', 'delivered');
+        });
+
+        if ($request->has('search') && !empty($request->search)) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $customers = $query->orderBy('name', 'asc')
+            ->paginate($request->per_page ?? 50);
+
+        \Log::info('Filtered customers with delivered orders count: ' . $customers->count());
+
+        return response()->json([
+            'success' => true,
+            'data' => $customers,
         ]);
     }
 
@@ -553,8 +794,18 @@ class RmaController extends Controller
                 foreach ($request->items as $item) {
                     $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
 
-                    if ($item['quantity_requested'] > $orderItem->quantity) {
-                        throw new \Exception('الكمية المطلوبة تتجاوز الكمية الأصلية في الطلب');
+                    // Sum previously requested quantities for this order item in other active requests
+                    $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
+                        ->whereHas('rmaRequest', function($query) use ($id) {
+                            $query->whereNotIn('status', ['rejected', 'cancelled'])
+                                ->where('id', '!=', $id);
+                        })
+                        ->sum('quantity_requested');
+
+                    $totalRequested = $previouslyRequested + $item['quantity_requested'];
+                    if ($totalRequested > $orderItem->quantity) {
+                        $availableToReturn = $orderItem->quantity - $previouslyRequested;
+                        throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: " . ($orderItem->product ? $orderItem->product->name : ''));
                     }
 
                     $rmaItem = $rmaRequest->items()->create([
@@ -580,6 +831,18 @@ class RmaController extends Controller
                 $rmaRequest->refund_amount = $totalRefundAmount;
                 $rmaRequest->save();
             }
+
+            // Log action in AuditLog
+            $auditService = app(\App\Services\AuditService::class);
+            $auditService->log(
+                'update_rma',
+                get_class($rmaRequest),
+                $rmaRequest->id,
+                "تم تحديث طلب الإرجاع {$rmaRequest->rma_number}",
+                null,
+                $rmaRequest->toArray(),
+                'rma'
+            );
 
             DB::commit();
 
@@ -628,6 +891,29 @@ class RmaController extends Controller
             'success' => true,
             'message' => 'تم حذف طلب الإرجاع بنجاح',
             'data' => null,
+        ]);
+    }
+
+    public function getActivity($id)
+    {
+        $activities = \App\Models\AuditLog::with('user')
+            ->where('entity_type', \App\Models\RmaRequest::class)
+            ->where('entity_id', $id)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'id' => $log->id,
+                    'action' => $log->action_text,
+                    'description' => $log->description,
+                    'created_at' => $log->created_at->toDateTimeString(),
+                    'user' => $log->user ? $log->user->name : 'النظام',
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $activities,
         ]);
     }
 }
