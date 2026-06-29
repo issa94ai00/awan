@@ -58,27 +58,27 @@
     @else
     <script type="application/ld+json">
     {
-        "@context": "https://schema.org",
-        "@type": "Organization",
+        "@@context": "https://schema.org",
+        "@@type": "Organization",
         "name": "{{ $defaultSiteName }}",
         "description": "{{ $defaultDesc }}",
         "url": "{{ url('/') }}",
         "logo": "{{ get_setting('site_logo') ? asset('storage/' . get_setting('site_logo')) : asset('assets/images/logo.png') }}",
         "contactPoint": {
-            "@type": "ContactPoint",
+            "@@type": "ContactPoint",
             "telephone": "{{ get_setting('contact_phone') ?? '00963962889577' }}",
             "email": "{{ get_setting('contact_email') ?? 'awaanaltakadom@gmail.com' }}",
             "address": {
-                "@type": "PostalAddress",
+                "@@type": "PostalAddress",
                 "addressLocality": "{{ $locale === 'en' ? 'Damascus' : 'دمشق' }}",
                 "addressCountry": "{{ $locale === 'en' ? 'Syria' : 'سورية' }}"
             }
         },
-        "sameAs": array_values(array_filter([
-            "{{ get_setting('facebook') ?? '' }}",
-            "{{ get_setting('instagram') ?? '' }}",
-            "{{ get_setting('twitter') ?? '' }}"
-        ]))
+        "sameAs": [
+            "{{ get_setting('facebook') ?? '#' }}",
+            "{{ get_setting('instagram') ?? '#' }}",
+            "{{ get_setting('twitter') ?? '#' }}"
+        ]
     }
     </script>
     @endif
