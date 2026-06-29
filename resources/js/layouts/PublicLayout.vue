@@ -839,45 +839,137 @@ const vClickOutside = {
     }
 };
 
-// Dynamic page title management
+// Dynamic page title & SEO meta tags management
 const customTitle = ref('');
+const customDescription = ref('');
+const customKeywords = ref('');
+const customImage = ref('');
 
-const updatePageTitle = () => {
-    const siteName = settings.value.meta_title || settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
+const updateSEOMetaTags = () => {
+    const localeVal = locale.value;
+    const localeSuffix = localeVal === 'en' ? '_en' : '';
+    
+    // Resolve localized site settings
+    const siteName = settings.value[`meta_title${localeSuffix}`] 
+        || settings.value[`site_name_${localeVal}`] 
+        || settings.value.site_name 
+        || (localeVal === 'en' ? 'Awaan Altakadom' : 'أوان التقدم');
+        
+    const siteDescription = settings.value[`meta_description${localeSuffix}`] 
+        || settings.value[`site_description_${localeVal}`] 
+        || settings.value.site_description 
+        || (localeVal === 'en' ? 'At Awan Al Taqaddam, we offer building supplies that combine global quality with modern design.' : 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم.');
+        
+    const siteKeywords = settings.value[`meta_keywords${localeSuffix}`] 
+        || settings.value.meta_keywords 
+        || (localeVal === 'en' ? 'building materials, Syria, Damascus' : 'مواد بناء, سوريا, دمشق');
+        
+    const defaultOgImage = settings.value.og_image 
+        ? (settings.value.og_image.startsWith('http') ? settings.value.og_image : `/storage/${settings.value.og_image}`)
+        : '/assets/images/logo.png';
+
+    // Route titles translations
     const routeTitles = {
         'home': '',
-        'about': 'من نحن',
-        'vision': 'الهوية والرؤية',
-        'contact': 'اتصل بنا',
-        'inquiry': 'إرسال استفسار',
-        'purchase-request': 'طلب شراء',
-        'categories': 'الفئات',
-        'products': 'المنتجات',
-        'cart': 'سلة التسوق',
-        'customer.orders': 'الطلبات والفواتير',
+        'about': localeVal === 'en' ? 'About Us' : 'من نحن',
+        'vision': localeVal === 'en' ? 'Identity & Vision' : 'الهوية والرؤية',
+        'contact': localeVal === 'en' ? 'Contact Us' : 'اتصل بنا',
+        'inquiry': localeVal === 'en' ? 'Send Inquiry' : 'إرسال استفسار',
+        'purchase-request': localeVal === 'en' ? 'Purchase Request' : 'طلب شراء',
+        'categories': localeVal === 'en' ? 'Categories' : 'الفئات',
+        'products': localeVal === 'en' ? 'Products' : 'المنتجات',
+        'cart': localeVal === 'en' ? 'Shopping Cart' : 'سلة التسوق',
+        'customer.orders': localeVal === 'en' ? 'Orders & Invoices' : 'الطلبات والفواتير',
+        'featured.products': localeVal === 'en' ? 'Featured Products' : 'المنتجات المميزة',
+        'special.offers': localeVal === 'en' ? 'Special Offers' : 'العروض الخاصة',
     };
 
     let pageTitle = customTitle.value;
     if (!pageTitle) {
         if (route.name === 'product.detail') {
-            pageTitle = 'تفاصيل المنتج';
+            pageTitle = localeVal === 'en' ? 'Product Details' : 'تفاصيل المنتج';
         } else if (route.name === 'category.detail') {
-            pageTitle = 'تفاصيل الفئة';
+            pageTitle = localeVal === 'en' ? 'Category Details' : 'تفاصيل الفئة';
         } else {
             pageTitle = routeTitles[route.name] || '';
         }
     }
 
-    if (pageTitle) {
-        document.title = `${pageTitle} - ${siteName}`;
-    } else {
-        document.title = siteName;
+    // Set Document Title
+    const finalTitle = pageTitle ? `${pageTitle} - ${siteName}` : siteName;
+    document.title = finalTitle;
+
+    // Resolve description, keywords, image content
+    let finalDesc = customDescription.value || siteDescription;
+    if (finalDesc) {
+        finalDesc = finalDesc.replace(/<[^>]*>/g, '').trim();
+        if (finalDesc.length > 160) {
+            finalDesc = finalDesc.substring(0, 157) + '...';
+        }
+    }
+    
+    const finalKeywords = customKeywords.value ? `${customKeywords.value}, ${siteKeywords}` : siteKeywords;
+    
+    let finalImage = defaultOgImage;
+    if (customImage.value) {
+        finalImage = customImage.value.startsWith('http') || customImage.value.startsWith('/')
+            ? customImage.value 
+            : `/storage/${customImage.value}`;
+    }
+
+    // Helper to dynamically select meta tags
+    const setMeta = (query, attr, value) => {
+        if (!value) return;
+        const el = document.querySelector(query);
+        if (el) {
+            el.setAttribute(attr, value);
+        } else {
+            const meta = document.createElement('meta');
+            if (query.includes('property=')) {
+                meta.setAttribute('property', query.split('"')[1]);
+            } else {
+                meta.setAttribute('name', query.split('"')[1]);
+            }
+            meta.setAttribute(attr, value);
+            document.head.appendChild(meta);
+        }
+    };
+
+    // Update standard meta tags
+    setMeta('meta[name="description"]', 'content', finalDesc);
+    setMeta('meta[name="keywords"]', 'content', finalKeywords);
+
+    // Update Open Graph (Facebook / WhatsApp)
+    setMeta('meta[property="og:title"]', 'content', finalTitle);
+    setMeta('meta[property="og:description"]', 'content', finalDesc);
+    setMeta('meta[property="og:image"]', 'content', finalImage);
+    setMeta('meta[property="og:url"]', 'content', window.location.href);
+
+    // Update Twitter
+    setMeta('meta[property="twitter:title"]', 'content', finalTitle);
+    setMeta('meta[property="twitter:description"]', 'content', finalDesc);
+    setMeta('meta[property="twitter:image"]', 'content', finalImage);
+    setMeta('meta[property="twitter:url"]', 'content', window.location.href);
+
+    // Update Canonical URL
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+        canonical.setAttribute('href', window.location.href);
     }
 };
 
 const handleDynamicTitle = (e) => {
     customTitle.value = e.detail || '';
-    updatePageTitle();
+    updateSEOMetaTags();
+};
+
+const handleDynamicSeo = (e) => {
+    const data = e.detail || {};
+    customTitle.value = data.title || '';
+    customDescription.value = data.description || '';
+    customKeywords.value = data.keywords || '';
+    customImage.value = data.image || '';
+    updateSEOMetaTags();
 };
 
 // Watchers for navigation cleanup and modals
@@ -885,15 +977,20 @@ watch(route, () => {
     mobileMenuOpen.value = false;
     dropdownOpen.value = false;
     scrolledDropdownOpen.value = false;
-    // Reset custom title on route change
+    
+    // Reset custom SEO elements on route change
     customTitle.value = '';
+    customDescription.value = '';
+    customKeywords.value = '';
+    customImage.value = '';
+    
     // Scroll to top smoothly on page transitions
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    updatePageTitle();
+    updateSEOMetaTags();
 });
 
 watch([() => settings.value.site_name, () => settings.value.meta_title, locale], () => {
-    updatePageTitle();
+    updateSEOMetaTags();
 });
 
 watch(activeModal, (newVal) => {
@@ -945,7 +1042,8 @@ onMounted(() => {
     window.addEventListener('scroll', handleScroll);
     window.addEventListener('trigger-customer-login-modal', handleLoginTrigger);
     window.addEventListener('set-dynamic-title', handleDynamicTitle);
-    updatePageTitle();
+    window.addEventListener('set-dynamic-seo', handleDynamicSeo);
+    updateSEOMetaTags();
     
     // Fetch Settings, Cart, and Customer profile in the background - wrapped to prevent blocking layout render
     try {
@@ -970,6 +1068,7 @@ onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll);
     window.removeEventListener('trigger-customer-login-modal', handleLoginTrigger);
     window.removeEventListener('set-dynamic-title', handleDynamicTitle);
+    window.removeEventListener('set-dynamic-seo', handleDynamicSeo);
     document.getElementById('public-style')?.remove();
     document.getElementById('public-rtl')?.remove();
 });

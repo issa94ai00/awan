@@ -352,60 +352,29 @@ const settings = computed(() => settingsStore.data);
 const productSlug = computed(() => route.params.slug);
 
 // SEO Meta Tags
-const updateSEOMetaTags = () => {
+const dispatchSeoEvent = () => {
     if (!product.value) return;
+    const currentLocale = locale.value;
+    const productName = currentLocale === 'en' ? (product.value.name_en || product.value.name_ar || product.value.name) : (product.value.name_ar || product.value.name);
+    const productDesc = currentLocale === 'en' ? (product.value.short_description_en || product.value.description_en) : (product.value.short_description_ar || product.value.description_ar || product.value.description);
+    const seoTitleVal = product.value.seo?.meta_title || productName;
+    const seoDescVal = product.value.seo?.meta_description || productDesc;
     
-    const siteName = settings.value.site_name || 'أوان التقدم';
-    const productName = product.value.name_ar || product.value.name || 'منتج';
-    const productDescription = product.value.description_ar || product.value.description || 'منتج عالي الجودة';
-    const productImage = product.value.image_main ? getImageUrl(product.value.image_main) : '/assets/images/logo.png';
-    const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : productImage;
-    
-    // Update document title
-    document.title = `${productName} - ${siteName}`;
-    
-    // Update meta description
-    const metaDescription = document.querySelector('meta[name="description"]');
-    if (metaDescription) {
-        metaDescription.setAttribute('content', productDescription);
-    }
-    
-    // Update og:title
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) {
-        ogTitle.setAttribute('content', `${productName} - ${siteName}`);
-    }
-    
-    // Update og:description
-    const ogDescription = document.querySelector('meta[property="og:description"]');
-    if (ogDescription) {
-        ogDescription.setAttribute('content', productDescription);
-    }
-    
-    // Update og:image
-    const ogImageMeta = document.querySelector('meta[property="og:image"]');
-    if (ogImageMeta) {
-        ogImageMeta.setAttribute('content', ogImage);
-    }
-    
-    // Update twitter:title
-    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
-    if (twitterTitle) {
-        twitterTitle.setAttribute('content', `${productName} - ${siteName}`);
-    }
-    
-    // Update twitter:description
-    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
-    if (twitterDescription) {
-        twitterDescription.setAttribute('content', productDescription);
-    }
-    
-    // Update twitter:image
-    const twitterImage = document.querySelector('meta[property="twitter:image"]');
-    if (twitterImage) {
-        twitterImage.setAttribute('content', ogImage);
-    }
+    window.dispatchEvent(new CustomEvent('set-dynamic-seo', {
+        detail: {
+            title: seoTitleVal,
+            description: seoDescVal,
+            keywords: product.value.brand || '',
+            image: product.value.image_main || ''
+        }
+    }));
 };
+
+watch(locale, () => {
+    if (product.value) {
+        dispatchSeoEvent();
+    }
+});
 
 const allImages = computed(() => {
     const list = [];
@@ -500,9 +469,7 @@ const loadProductDetails = async () => {
         const res = await axios.get(`/api/v1/products/${productSlug.value}`);
         if (res.data?.success) {
             product.value = res.data.data;
-            if (product.value?.name_ar) {
-                window.dispatchEvent(new CustomEvent('set-dynamic-title', { detail: product.value.name_ar }));
-            }
+            dispatchSeoEvent();
             
             // Prefill product name and ID in inquiry modal
             inquiryState.subject = 'product_details';

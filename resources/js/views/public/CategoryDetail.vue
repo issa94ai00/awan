@@ -156,7 +156,7 @@ import axios from 'axios';
 // Stores
 const settingsStore = useSettingsStore();
 const cartStore = useCartStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 // Router
 const route = useRoute();
@@ -171,6 +171,31 @@ const toast = reactive({ show: false, message: '' });
 // Computed
 const settings = computed(() => settingsStore.data);
 const categorySlug = computed(() => route.params.slug);
+
+// SEO Meta Tags
+const dispatchSeoEvent = () => {
+    if (!category.value) return;
+    const currentLocale = locale.value;
+    const categoryName = currentLocale === 'en' ? (category.value.name_en || category.value.name_ar) : category.value.name_ar;
+    const categoryDesc = currentLocale === 'en' ? (category.value.description_en || category.value.description_ar || category.value.description) : (category.value.description_ar || category.value.description);
+    const seoTitleVal = category.value.meta_title || categoryName;
+    const seoDescVal = category.value.meta_description || categoryDesc;
+
+    window.dispatchEvent(new CustomEvent('set-dynamic-seo', {
+        detail: {
+            title: seoTitleVal,
+            description: seoDescVal,
+            keywords: '',
+            image: category.value.image || ''
+        }
+    }));
+};
+
+watch(locale, () => {
+    if (category.value) {
+        dispatchSeoEvent();
+    }
+});
 
 // Helpers
 
@@ -198,9 +223,7 @@ const fetchCategoryProducts = async (page = 1) => {
         const res = await axios.get(`/api/v1/categories/${categorySlug.value}/products?page=${page}`);
         if (res.data?.success) {
             category.value = res.data.data.category;
-            if (category.value?.name_ar) {
-                window.dispatchEvent(new CustomEvent('set-dynamic-title', { detail: category.value.name_ar }));
-            }
+            dispatchSeoEvent();
             products.value = res.data.data.products || [];
             pagination.value = res.data.data.pagination || {};
         }

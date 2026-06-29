@@ -135,6 +135,8 @@ class AdminController extends Controller
             'sort_order' => 'nullable|integer',
             'image' => 'nullable|image|max:2048',
             'is_active' => 'boolean',
+            'meta_title' => 'nullable|string|max:255',
+            'meta_description' => 'nullable|string|max:500',
         ]);
 
         if (empty($validated['slug'])) {
@@ -175,6 +177,8 @@ class AdminController extends Controller
             'sort_order' => 'nullable|integer',
             'image' => 'nullable|image|max:2048',
             'is_active' => 'boolean',
+            'meta_title' => 'nullable|string|max:255',
+            'meta_description' => 'nullable|string|max:500',
         ]);
 
         \Log::info('Validation passed', ['validated' => $validated]);

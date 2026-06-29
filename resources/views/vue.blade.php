@@ -5,24 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
+    @php
+        $locale = app()->getLocale();
+        $defaultSiteName = $locale === 'en' ? (get_setting('site_name_en') ?: 'Awaan Altakadom') : (get_setting('site_name') ?: 'أوان التقدم');
+        $defaultTagline = $locale === 'en' ? (get_setting('site_tagline_en') ?: 'Building a Better Tomorrow') : (get_setting('site_tagline') ?: 'نبني معاً غد سورية الأجمل');
+        $defaultDesc = $locale === 'en' 
+            ? (get_setting('meta_description_en') ?: (get_setting('site_description_en') ?: 'At Awan Al Taqaddam, we offer building supplies that combine global quality with modern design.')) 
+            : (get_setting('meta_description') ?: (get_setting('site_description') ?: 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم.'));
+        $defaultKeywords = $locale === 'en' 
+            ? (get_setting('meta_keywords_en') ?: 'building materials, Syria, Damascus') 
+            : (get_setting('meta_keywords') ?: 'أفضل تاجر مواد بناء, أوان التقدم, سوريا, دمشق');
+        $defaultTitle = $locale === 'en' ? (get_setting('meta_title_en') ?: ($defaultSiteName . ' - ' . $defaultTagline)) : (get_setting('meta_title') ?: ($defaultSiteName . ' - ' . $defaultTagline));
+    @endphp
+
     <!-- Dynamic Meta Tags -->
-    <title>{{ $seo_title ?? get_setting('meta_title') ?? (get_setting('site_name') ?? 'أوان التقدم') }}</title>
-    <meta name="description" content="{{ $seo_description ?? get_setting('meta_description') ?? (get_setting('site_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.') }}">
-    <meta name="keywords" content="{{ $seo_keywords ?? (get_setting('meta_keywords') ? get_setting('meta_keywords') . ', ' : '') . 'أفضل تاجر مواد بناء, أوان التقدم, Awaan altakadom, سوريا' }}">
+    <title>{{ $seo_title ?? $defaultTitle }}</title>
+    <meta name="description" content="{{ $seo_description ?? $defaultDesc }}">
+    <meta name="keywords" content="{{ $seo_keywords ?? $defaultKeywords }}">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ request()->url() }}">
-    <meta property="og:title" content="{{ $seo_title ?? get_setting('meta_title') ?? (get_setting('site_name') ?? 'أوان التقدم') }}">
-    <meta property="og:description" content="{{ $seo_description ?? get_setting('meta_description') ?? (get_setting('site_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.') }}">
+    <meta property="og:title" content="{{ $seo_title ?? $defaultTitle }}">
+    <meta property="og:description" content="{{ $seo_description ?? $defaultDesc }}">
     <meta property="og:image" content="{{ $seo_image ?? (get_setting('og_image') ? asset('storage/' . get_setting('og_image')) : asset('assets/images/logo.png')) }}">
     <meta property="og:locale" content="{{ app()->getLocale() === 'en' ? 'en_US' : 'ar_SY' }}">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="{{ request()->url() }}">
-    <meta property="twitter:title" content="{{ $seo_title ?? get_setting('meta_title') ?? (get_setting('site_name') ?? 'أوان التقدم') }}">
-    <meta property="twitter:description" content="{{ $seo_description ?? get_setting('meta_description') ?? (get_setting('site_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.') }}">
+    <meta property="twitter:title" content="{{ $seo_title ?? $defaultTitle }}">
+    <meta property="twitter:description" content="{{ $seo_description ?? $defaultDesc }}">
     <meta property="twitter:image" content="{{ $seo_image ?? (get_setting('og_image') ? asset('storage/' . get_setting('og_image')) : asset('assets/images/logo.png')) }}">
     
     <!-- Canonical URL -->
@@ -45,27 +58,27 @@
     @else
     <script type="application/ld+json">
     {
-        "@@context": "https://schema.org",
-        "@@type": "Organization",
-        "name": "{{ get_setting('site_name') ?? 'أوان التقدم' }}",
-        "description": "{{ get_setting('site_description') ?? 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.' }}",
-        "url": "{{ request()->url() }}",
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "{{ $defaultSiteName }}",
+        "description": "{{ $defaultDesc }}",
+        "url": "{{ url('/') }}",
         "logo": "{{ get_setting('site_logo') ? asset('storage/' . get_setting('site_logo')) : asset('assets/images/logo.png') }}",
         "contactPoint": {
-            "@@type": "ContactPoint",
+            "@type": "ContactPoint",
             "telephone": "{{ get_setting('contact_phone') ?? '00963962889577' }}",
             "email": "{{ get_setting('contact_email') ?? 'awaanaltakadom@gmail.com' }}",
             "address": {
-                "@@type": "PostalAddress",
-                "addressLocality": "دمشق",
-                "addressCountry": "سورية"
+                "@type": "PostalAddress",
+                "addressLocality": "{{ $locale === 'en' ? 'Damascus' : 'دمشق' }}",
+                "addressCountry": "{{ $locale === 'en' ? 'Syria' : 'سورية' }}"
             }
         },
-        "sameAs": [
-            "{{ get_setting('facebook') ?? '#' }}",
-            "{{ get_setting('instagram') ?? '#' }}",
-            "{{ get_setting('twitter') ?? '#' }}"
-        ]
+        "sameAs": array_values(array_filter([
+            "{{ get_setting('facebook') ?? '' }}",
+            "{{ get_setting('instagram') ?? '' }}",
+            "{{ get_setting('twitter') ?? '' }}"
+        ]))
     }
     </script>
     @endif

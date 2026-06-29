@@ -102,6 +102,27 @@
             </div>
         </div>
 
+        <!-- SEO Settings Section -->
+        <hr class="my-4">
+        <h4 class="mb-3 text-primary"><i class="fas fa-search-plus"></i> إعدادات تهيئة محركات البحث (SEO)</h4>
+        <div class="form-row">
+            <div class="form-group col-md-12">
+                <label for="meta_title">عنوان السيو (Meta Title)</label>
+                <input type="text" id="meta_title" name="meta_title" value="{{ old('meta_title', $category->meta_title ?? '') }}" class="form-control @error('meta_title') is-invalid @enderror" placeholder="عنوان الصفحة المخصص لمحركات البحث">
+                <small class="form-text">في حال تركه فارغاً، سيتم استخدام اسم الفئة كعنوان تلقائي.</small>
+                @error('meta_title')
+                    <span class="invalid-feedback">{{ $message }}</span>
+                @enderror
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="meta_description">وصف السيو (Meta Description)</label>
+            <textarea id="meta_description" name="meta_description" rows="3" class="form-control @error('meta_description') is-invalid @enderror" placeholder="وصف مختصر للفئة يظهر في نتائج البحث (يفضل ألا يتجاوز 160 حرفاً)">{{ old('meta_description', $category->meta_description ?? '') }}</textarea>
+            @error('meta_description')
+                <span class="invalid-feedback">{{ $message }}</span>
+            @enderror
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-save"></i> {{ isset($category) ? 'تحديث' : 'حفظ' }}
