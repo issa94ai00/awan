@@ -349,6 +349,20 @@ export const useProductsStore = defineStore('products', {
             }
         },
 
+        async exportExcel(params = {}) {
+            return productsApi.exportExcel({
+                search: params.search || undefined,
+                category_id: params.category_id || undefined,
+                featured: params.featured !== undefined ? params.featured : undefined,
+                in_stock: params.stock !== undefined ? params.stock : undefined,
+                is_active: params.is_active !== undefined ? params.is_active : undefined
+            });
+        },
+
+        async importExcel(formData) {
+            return productsApi.importExcel(formData);
+        },
+
         setPage(page) {
             this.pagination.current_page = page;
         },

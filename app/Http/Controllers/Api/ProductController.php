@@ -6,15 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\Category;
+use App\Services\ProductExcelService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProductController extends Controller
 {
     /**
-     * Get all products with optional filters
+     * Build the shared filtered product query.
      */
-    public function index(Request $request): JsonResponse
+    private function baseQuery(Request $request): Builder
     {
         $query = Product::query()
             ->with('category');
@@ -31,10 +34,6 @@ class ProductController extends Controller
             $query->where('is_active', 1);
         }
 
-        // Per-page with max cap
-        $perPage = (int) $request->get('per_page', 12);
-        $perPage = $perPage > 0 ? min($perPage, 100) : 12;
-
         // Filter by category_id or category_slug
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
@@ -44,17 +43,7 @@ class ProductController extends Controller
                 $query->where('category_id', $cat->id);
             } else {
                 // No such category -> empty result
-                $products = collect([]);
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Products retrieved successfully',
-                    'data' => [],
-                    'current_page' => 1,
-                    'last_page' => 0,
-                    'per_page' => $perPage,
-                    'total' => 0,
-                    'has_more_pages' => false
-                ]);
+                return $query->whereRaw('1 = 0');
             }
         }
 
@@ -88,6 +77,20 @@ class ProductController extends Controller
                   ->orWhere('model', 'like', $searchTerm);
             });
         }
+
+        return $query;
+    }
+
+    /**
+     * Get all products with optional filters
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $query = $this->baseQuery($request);
+
+        // Per-page with max cap
+        $perPage = (int) $request->get('per_page', 12);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 12;
 
         // Sort options — sanitize inputs
         $sortBy = 'created_at';
@@ -353,6 +356,53 @@ class ProductController extends Controller
             'success' => true,
             'message' => 'Product deleted successfully',
             'data' => null
+        ]);
+    }
+
+    /**
+     * Export filtered products to an xlsx file (Admin)
+     */
+    public function export(Request $request, ProductExcelService $excel): Response
+    {
+        $products = $this->baseQuery($request)
+            ->limit(50000)
+            ->get();
+
+        $binary = $excel->exportProducts($products);
+
+        $filename = 'products-' . now()->format('Y-m-d') . '.xlsx';
+
+        return response($binary, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Import products from an uploaded xlsx file (Admin)
+     */
+    public function import(Request $request, ProductExcelService $excel): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|max:10240',
+        ]);
+
+        $file = $request->file('file');
+        if (strtolower($file->getClientOriginalExtension()) !== 'xlsx') {
+            return response()->json([
+                'success' => false,
+                'message' => 'The file must be an xlsx file.',
+                'data' => null,
+            ], 422);
+        }
+
+        $result = $excel->importFile($file);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Products imported successfully',
+            'data' => $result,
         ]);
     }
 }

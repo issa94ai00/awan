@@ -9,9 +9,24 @@
                             {{ total }} {{ $t('project') }}
                         </el-tag>
                     </div>
-                    <el-button type="primary" :icon="Plus" size="large" @click="goToCreate">
-                        {{ $t('add_a_product') }}
-                    </el-button>
+                    <div class="header-actions">
+                        <el-button :icon="Download" :loading="exporting" size="large" @click="exportProducts">
+                            {{ $t('export_to_excel') }}
+                        </el-button>
+                        <el-button :icon="Upload" :loading="importing" size="large" @click="triggerImport">
+                            {{ $t('import_from_excel') }}
+                        </el-button>
+                        <el-button type="primary" :icon="Plus" size="large" @click="goToCreate">
+                            {{ $t('add_a_product') }}
+                        </el-button>
+                    </div>
+                    <input
+                        ref="fileInput"
+                        type="file"
+                        accept=".xlsx"
+                        style="display:none"
+                        @change="onFileSelected"
+                    />
                 </div>
             </template>
 
@@ -264,7 +279,8 @@ import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import {
     Plus, Search, Refresh, View, Edit, Delete,
-    Star, StarFilled, Check, Close, Picture, Box, WarningFilled
+    Star, StarFilled, Check, Close, Picture, Box, WarningFilled,
+    Download, Upload
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -278,6 +294,9 @@ const filterStock = ref(null);
 const currentPage = ref(1);
 const pageSize = ref(10);
 const togglingId = ref(null);
+const exporting = ref(false);
+const importing = ref(false);
+const fileInput = ref(null);
 
 const products = computed(() => store.products);
 const categories = computed(() => store.categories);
@@ -367,6 +386,72 @@ const onPageChange = () => {
 
 const goToCreate = () => {
     router.push('/admin/products/create');
+};
+
+const exportProducts = async () => {
+    exporting.value = true;
+    try {
+        const res = await store.exportExcel({
+            search: searchQuery.value || undefined,
+            category_id: filterCategory.value || undefined,
+            featured: filterFeatured.value !== null ? filterFeatured.value : undefined,
+            stock: filterStock.value !== null ? filterStock.value : undefined,
+            is_active: filterStatus.value !== null ? filterStatus.value : undefined
+        });
+        const blob = new Blob([res.data], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `products-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        ElMessage.success(window.t('var_exported_successfully'));
+    } catch {
+        ElMessage.error(window.t('failed_to_export_products'));
+    } finally {
+        exporting.value = false;
+    }
+};
+
+const triggerImport = () => {
+    fileInput.value?.click();
+};
+
+const onFileSelected = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!/\.xlsx$/i.test(file.name)) {
+        ElMessage.error(window.t('please_choose_xlsx_file'));
+        return;
+    }
+
+    importing.value = true;
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await store.importExcel(formData);
+        const data = res.data?.data || {};
+        const summary = [
+            window.t('imported_new_products', { count: data.created }),
+            window.t('imported_updated_products', { count: data.updated }),
+            window.t('imported_skipped_products', { count: data.skipped })
+        ];
+        ElMessage.success(summary.join('، '));
+        if (data.errors?.length) {
+            ElMessage.warning(window.t('import_failed_rows', { count: data.errors.length }));
+        }
+        fetchProducts();
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || window.t('failed_to_import_products'));
+    } finally {
+        importing.value = false;
+    }
 };
 
 const viewProduct = (product) => {
@@ -462,6 +547,13 @@ onMounted(init);
     display: flex;
     align-items: center;
     gap: 0.75rem;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .page-title {

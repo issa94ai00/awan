@@ -130,6 +130,8 @@ Route::prefix('v1')->group(function () {
         // Admin Products API
         Route::prefix('admin')->group(function () {
             Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
+            Route::get('/products/export', [ProductController::class, 'export'])->name('api.admin.products.export');
+            Route::post('/products/import', [ProductController::class, 'import'])->name('api.admin.products.import');
             Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.admin.products.show');
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');

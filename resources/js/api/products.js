@@ -21,6 +21,16 @@ export const productsApi = {
         return api.delete(`/admin/products/${id}`);
     },
 
+    exportExcel(params) {
+        return api.get('/admin/products/export', { params, responseType: 'blob' });
+    },
+
+    importExcel(formData) {
+        return api.post('/admin/products/import', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+    },
+
     // Public endpoints for frontend
     getPublicAll(params) {
         return api.get('/products', { params });
