@@ -337,8 +337,18 @@ const timeAgo = (dateStr) => {
 
 onMounted(() => {
     authStore.fetchUser();
-    notificationsStore.startPolling();
+    if (authStore.token) {
+        notificationsStore.startPolling();
+    }
     document.addEventListener('click', closeSearchOnOutsideClick);
+});
+
+watch(() => authStore.isAuthenticated, (authenticated) => {
+    if (authenticated) {
+        notificationsStore.startPolling();
+    } else {
+        notificationsStore.stopPolling();
+    }
 });
 
 onUnmounted(() => {

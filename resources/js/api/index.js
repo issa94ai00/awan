@@ -29,6 +29,7 @@ api.interceptors.response.use(
         if (error.response?.status === 401) {
             // Handle unauthorized - clear token. Do not force a full-page redirect; let the app handle navigation.
             localStorage.removeItem('token');
+            window.dispatchEvent(new Event('auth:unauthorized'));
         }
         return Promise.reject(error);
     }

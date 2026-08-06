@@ -28,6 +28,10 @@ export const useNotificationsStore = defineStore('notifications', {
         },
 
         async fetchUnreadCount() {
+            if (!localStorage.getItem('token')) {
+                this.unreadCount = 0;
+                return;
+            }
             try {
                 const res = await notificationsService.getUnreadCount();
                 this.unreadCount = res.data?.count ?? 0;

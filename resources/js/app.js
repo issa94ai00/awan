@@ -69,6 +69,18 @@ const updateDirection = (locale) => {
 // Set initial direction
 updateDirection(i18n.global.locale.value);
 
+// Any 401 response invalidates the session: clear state and send
+// unauthenticated users to the login page (unless they are already there).
+window.addEventListener('auth:unauthorized', () => {
+    const auth = useAuthStore();
+    auth.user = null;
+    auth.token = null;
+    const current = router.currentRoute.value;
+    if (current.name !== 'login' && current.path !== '/login') {
+        router.replace({ path: '/login', query: { redirect: current.fullPath } });
+    }
+});
+
 // Initialize authentication (fetch user if token exists) before mounting
 const auth = useAuthStore();
 auth.init()
