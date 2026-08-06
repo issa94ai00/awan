@@ -394,6 +394,47 @@
                             <span class="label">{{ t('total') }}</span>
                             <span class="value total-value">{{ formatCurrency(total) }}</span>
                         </div>
+
+                        <el-divider />
+
+                        <!-- Settlement: what the customer pays now, and what is
+                             left on their account afterwards. -->
+                        <div class="settlement-block">
+                            <div class="summary-input-row">
+                                <label>{{ t('paid_amount') || 'المبلغ المدفوع' }}</label>
+                                <el-input-number
+                                    v-model="form.paid_amount"
+                                    :min="0"
+                                    :precision="2"
+                                    :step="100"
+                                    size="small"
+                                    controls-position="right"
+                                />
+                            </div>
+
+                            <div class="quick-pay">
+                                <el-button size="small" text @click="form.paid_amount = total">
+                                    {{ t('pay_full') || 'سداد كامل' }}
+                                </el-button>
+                                <el-button size="small" text @click="form.paid_amount = 0">
+                                    {{ t('pay_none') || 'آجل بالكامل' }}
+                                </el-button>
+                            </div>
+
+                            <div class="summary-row remaining" :class="remainingTone">
+                                <span class="label">
+                                    {{ remaining >= 0
+                                        ? (t('remaining_amount') || 'المتبقي على العميل')
+                                        : (t('customer_credit') || 'رصيد للعميل') }}
+                                </span>
+                                <span class="value">{{ formatCurrency(Math.abs(remaining)) }}</span>
+                            </div>
+
+                            <p v-if="!form.customer_id && form.paid_amount !== total" class="settlement-hint">
+                                {{ t('select_customer_to_track_debt')
+                                    || 'اختر عميلاً لتسجيل المتبقي على حسابه — بدون عميل لا يمكن تتبّع المديونية.' }}
+                            </p>
+                        </div>
                     </div>
 
                     <div class="submit-section">
@@ -460,6 +501,9 @@ const form = reactive({
     payment_method: 'cash',
     discount: 0,
     tax: 0,
+    // Collected at the moment the invoice is raised; the rest becomes the
+    // customer's outstanding balance.
+    paid_amount: 0,
     notes: '',
     status: 'pending',
     items: [],
@@ -517,6 +561,17 @@ const subtotal = computed(() => {
 const total = computed(() => {
     return Math.max(0, subtotal.value - (form.discount || 0) + (form.tax || 0) + totalExpenses.value);
 });
+
+// Positive: the customer still owes this. Negative: they overpaid and the
+// difference becomes credit on their account.
+const remaining = computed(() => round2(total.value - (form.paid_amount || 0)));
+
+const remainingTone = computed(() => {
+    if (Math.abs(remaining.value) < 0.005) return 'settled';
+    return remaining.value > 0 ? 'owing' : 'credit';
+});
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 // Available status transitions based on current status
 const availableStatuses = computed(() => {
@@ -764,6 +819,7 @@ const submitInvoice = async () => {
             payment_method: form.payment_method,
             discount: form.discount || 0,
             tax: form.tax || 0,
+            paid_amount: form.paid_amount || 0,
             notes: form.notes,
             status: form.status,
             items: items.value.map(item => ({
@@ -779,8 +835,20 @@ const submitInvoice = async () => {
             await invoicesStore.updateInvoice(route.params.id, payload);
             ElMessage.success(t('invoice_updated_successfully'));
         } else {
-            await invoicesStore.createInvoice(payload);
-            ElMessage.success(t('invoice_created_successfully'));
+            const created = await invoicesStore.createInvoice(payload);
+            // Report what actually happened to the customer's account, rather
+            // than a generic "saved".
+            const s = created?.settlement;
+            const parts = [t('invoice_created_successfully')];
+            if (s?.payment_number) {
+                parts.push(`${t('payment') || 'دفعة'} ${s.payment_number}`);
+            }
+            if (s && Math.abs(s.remaining) >= 0.005) {
+                parts.push(s.remaining > 0
+                    ? `${t('remaining_on_customer') || 'متبقٍ على العميل'} ${formatCurrency(s.remaining)}`
+                    : `${t('customer_credit') || 'رصيد للعميل'} ${formatCurrency(Math.abs(s.remaining))}`);
+            }
+            ElMessage.success({ message: parts.join(' • '), duration: 5000 });
         }
 
         router.push('/admin/sales/invoices');
@@ -1364,6 +1432,60 @@ onUnmounted(() => {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+}
+
+/* ---------- Settlement block ---------- */
+
+.settlement-block {
+    display: grid;
+    gap: 10px;
+}
+
+.summary-input-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.summary-input-row label {
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+.quick-pay {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+    margin-top: -6px;
+}
+
+.summary-row.remaining {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.summary-row.remaining.owing {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.summary-row.remaining.credit {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.summary-row.remaining.settled {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.settlement-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: #b45309;
 }
 
 .summary-row.total .label {

@@ -19,6 +19,12 @@ class JournalEntryHeader extends Model
         'entry_date',
         'reference_type',
         'reference_id',
+        // Without these three here, mass assignment silently drops them —
+        // posting_key in particular, which is what stops a document from being
+        // posted to the ledger twice.
+        'posting_key',
+        'source_module',
+        'reversal_of_id',
         'description',
         'total_debit',
         'total_credit',
@@ -46,5 +52,21 @@ class JournalEntryHeader extends Model
     public function reference(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** The entry this one cancels, when this is a reversing entry. */
+    public function reversalOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reversal_of_id');
+    }
+
+    public function reversal(): HasMany
+    {
+        return $this->hasMany(self::class, 'reversal_of_id');
+    }
+
+    public function scopePosted($query)
+    {
+        return $query->where('status', 'posted');
     }
 }

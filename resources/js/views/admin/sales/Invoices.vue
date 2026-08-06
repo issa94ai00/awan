@@ -190,7 +190,7 @@
             </template>
         </el-card>
 
-        <RecordPaymentDialog
+        <QuickPaymentDialog
             v-model="paymentDialogVisible"
             :invoice="paymentTarget"
             @saved="onPaymentSaved"
@@ -204,7 +204,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Refresh, ArrowDown } from '@element-plus/icons-vue';
 import { useInvoicesStore } from '@/stores/invoices';
-import RecordPaymentDialog from '@/components/admin/sales/RecordPaymentDialog.vue';
+import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import {
     ORDER_STATUSES,
     ORDER_TRANSITIONS,

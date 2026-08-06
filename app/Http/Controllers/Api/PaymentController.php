@@ -70,12 +70,22 @@ class PaymentController extends Controller
 
         $payment->customer->updateBalance(-$payment->amount);
 
+        // Post the cash movement to the ledger (Dr cash/bank, Cr receivables).
+        $postingError = null;
+        try {
+            app(\App\Services\Accounting\LedgerPostingService::class)->postPayment($payment);
+        } catch (\Throwable $e) {
+            $postingError = $e->getMessage();
+            report($e);
+        }
+
         $payment->load(['invoice', 'customer', 'creator']);
 
         return response()->json([
             'success' => true,
             'message' => 'تم إنشاء الدفعة بنجاح',
-            'data' => $payment
+            'data' => $payment,
+            'accounting_warning' => $postingError,
         ], 201);
     }
 
@@ -134,6 +144,14 @@ class PaymentController extends Controller
         }
 
         $payment->customer->updateBalance($payment->amount);
+
+        // The books keep both sides: the original posting stays and a mirror
+        // entry cancels it, rather than deleting history.
+        try {
+            app(\App\Services\Accounting\LedgerPostingService::class)->reverseFor('payment:' . $payment->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         $payment->delete();
 

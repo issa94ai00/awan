@@ -155,6 +155,18 @@ class RmaSettlementService
         $creditNote->save();
         $creditNote->syncStatus();
 
+        // Post both documents to the ledger: the credit note reduces revenue
+        // through the returns account, and any cash refund is its own entry.
+        $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+        try {
+            $ledger->postCreditNote($creditNote);
+            if ($payment) {
+                $ledger->postPayment($payment);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return [
             'credit_note' => $creditNote->fresh('items'),
             'payment' => $payment,

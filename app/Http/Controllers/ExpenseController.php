@@ -47,7 +47,16 @@ class ExpenseController extends Controller
             'exchange_rate' => 1.0000,
         ]);
 
-        return response()->json(['data' => $expense], 201);
+        // Dr the matching expense account, Cr cash.
+        $postingError = null;
+        try {
+            app(\App\Services\Accounting\LedgerPostingService::class)->postExpense($expense);
+        } catch (\Throwable $e) {
+            $postingError = $e->getMessage();
+            report($e);
+        }
+
+        return response()->json(['data' => $expense, 'accounting_warning' => $postingError], 201);
     }
 
     /**

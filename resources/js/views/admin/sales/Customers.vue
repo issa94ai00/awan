@@ -119,7 +119,7 @@
             </template>
         </el-card>
 
-        <RecordPaymentDialog
+        <QuickPaymentDialog
             v-model="paymentDialogVisible"
             :customer-id="paymentCustomerId"
             @saved="reload"
@@ -132,7 +132,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
-import RecordPaymentDialog from '@/components/admin/sales/RecordPaymentDialog.vue';
+import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import { formatCurrency, sumBy } from '@/utils/sales';
 
 const router = useRouter();

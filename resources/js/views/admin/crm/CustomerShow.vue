@@ -338,7 +338,7 @@
       </el-col>
     </el-row>
 
-    <RecordPaymentDialog
+    <QuickPaymentDialog
       v-model="paymentDialogVisible"
       :customer-id="customer.id"
       @saved="loadOverview"
@@ -352,7 +352,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { User, Back, Edit, Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElTag } from 'element-plus';
 import api from '@/api';
-import RecordPaymentDialog from '@/components/admin/sales/RecordPaymentDialog.vue';
+import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import {
   formatCurrency,
   formatDate,

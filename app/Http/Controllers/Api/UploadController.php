@@ -26,9 +26,9 @@ class UploadController extends Controller
         }
 
         $request->validate([
-            'file' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'main_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'gallery_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            'file' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp,avif,bmp|max:5120',
+            'main_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp,avif,bmp|max:5120',
+            'gallery_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp,avif,bmp|max:5120'
         ]);
 
         $extension = $file->getClientOriginalExtension();

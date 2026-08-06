@@ -179,7 +179,7 @@
             </template>
         </el-card>
 
-        <RecordPaymentDialog v-model="paymentDialogVisible" @saved="onPaymentSaved" />
+        <QuickPaymentDialog v-model="paymentDialogVisible" @saved="onPaymentSaved" />
 
         <!-- Expense dialog -->
         <el-dialog v-model="showExpenseDialog" :title="$t('add_expense') || 'إضافة مصروف'" width="500px">
@@ -229,7 +229,7 @@ import axios from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { usePaymentsStore } from '@/stores/payments';
-import RecordPaymentDialog from '@/components/admin/sales/RecordPaymentDialog.vue';
+import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import {
     normalizeStatus,
     statusTagType,

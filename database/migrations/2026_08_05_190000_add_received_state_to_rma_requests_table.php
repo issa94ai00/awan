@@ -21,12 +21,15 @@ return new class extends Migration
     public function up(): void
     {
         // MySQL enums cannot be extended through the Blueprint API, and the
-        // column is an enum in the create migration.
-        DB::statement(
-            "ALTER TABLE `rma_requests` MODIFY `status`
-             ENUM('pending','approved','received','rejected','completed','cancelled')
-             NOT NULL DEFAULT 'pending'"
-        );
+        // column is an enum in the create migration. SQLite does not enforce
+        // enums, so the new value needs no DDL there.
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement(
+                "ALTER TABLE `rma_requests` MODIFY `status`
+                 ENUM('pending','approved','received','rejected','completed','cancelled')
+                 NOT NULL DEFAULT 'pending'"
+            );
+        }
 
         Schema::table('rma_requests', function (Blueprint $table) {
             if (!Schema::hasColumn('rma_requests', 'received_at')) {
@@ -54,10 +57,12 @@ return new class extends Migration
         // narrowed enum stays valid.
         DB::table('rma_requests')->where('status', 'received')->update(['status' => 'approved']);
 
-        DB::statement(
-            "ALTER TABLE `rma_requests` MODIFY `status`
-             ENUM('pending','approved','rejected','completed','cancelled')
-             NOT NULL DEFAULT 'pending'"
-        );
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement(
+                "ALTER TABLE `rma_requests` MODIFY `status`
+                 ENUM('pending','approved','rejected','completed','cancelled')
+                 NOT NULL DEFAULT 'pending'"
+            );
+        }
     }
 };

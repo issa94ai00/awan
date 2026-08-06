@@ -99,6 +99,12 @@ export const useInvoicesStore = defineStore('invoices', {
                 // prepend created invoice
                 const created = response.data.data || response.data;
                 if (created) this.invoices.unshift(created);
+                // The API also reports how the customer's account was settled
+                // (payment taken, amount still owed). Returning only `data`
+                // would drop it before the form could show the result.
+                if (created && response.data.settlement) {
+                    created.settlement = response.data.settlement;
+                }
                 return created;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to create invoice';

@@ -4,10 +4,27 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
+    private function createLoginAccount(array $data): int
+    {
+        $role = Role::where('name', 'employee')->first();
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => $data['password'],
+            'is_admin' => false,
+            'role_id' => $role?->id,
+        ]);
+
+        return $user->id;
+    }
     public function index(Request $request)
     {
         $query = Employee::query();
@@ -47,7 +64,7 @@ class EmployeeController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:employees,email',
+            'email' => ['required', 'email', 'unique:employees,email', 'unique:users,email'],
             'phone' => 'required|string|max:50',
             'position' => 'required|string|max:255',
             'department' => 'required|string|max:255',
@@ -55,10 +72,16 @@ class EmployeeController extends Controller
             'salary' => 'nullable|numeric|min:0',
             'status' => 'required|in:نشط,غير نشط',
             'notes' => 'nullable|string|max:1000',
-            'avatar' => 'nullable|url'
+            'avatar' => 'nullable|url',
+            'password' => 'nullable|string|min:8'
         ]);
 
-        $employee = Employee::create($validated);
+        $userId = null;
+        if (!empty($validated['password'])) {
+            $userId = $this->createLoginAccount($validated);
+        }
+
+        $employee = Employee::create(array_merge($validated, ['user_id' => $userId]));
 
         return response()->json([
             'success' => true,
@@ -78,9 +101,15 @@ class EmployeeController extends Controller
 
     public function update(Request $request, Employee $employee)
     {
+        $userId = $employee->user_id;
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:employees,email,' . $employee->id,
+            'email' => [
+                'required', 'email',
+                'unique:employees,email,' . $employee->id,
+                Rule::unique('users', 'email')->ignore($userId),
+            ],
             'phone' => 'required|string|max:50',
             'position' => 'required|string|max:255',
             'department' => 'required|string|max:255',
@@ -88,8 +117,26 @@ class EmployeeController extends Controller
             'salary' => 'nullable|numeric|min:0',
             'status' => 'required|in:نشط,غير نشط',
             'notes' => 'nullable|string|max:1000',
-            'avatar' => 'nullable|url'
+            'avatar' => 'nullable|url',
+            'password' => 'nullable|string|min:8'
         ]);
+
+        if (!empty($validated['password'])) {
+            if ($employee->user) {
+                $employee->user->update([
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'password' => $validated['password'],
+                ]);
+            } else {
+                $validated['user_id'] = $this->createLoginAccount($validated);
+            }
+        } elseif ($employee->user) {
+            $employee->user->update([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+            ]);
+        }
 
         $employee->update($validated);
 
@@ -102,7 +149,13 @@ class EmployeeController extends Controller
 
     public function destroy(Employee $employee)
     {
+        $user = $employee->user;
+
         $employee->delete();
+
+        if ($user && !$user->is_admin) {
+            $user->delete();
+        }
 
         return response()->json([
             'success' => true,

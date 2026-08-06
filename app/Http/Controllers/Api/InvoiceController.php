@@ -9,6 +9,8 @@ use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Expense;
+use App\Models\Customer;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -88,6 +90,62 @@ class InvoiceController extends Controller
     /**
      * Create a new invoice with items
      */
+    /**
+     * Moves the customer's account after an invoice is raised.
+     *
+     * The invoice itself creates the receivable; a payment taken at the same
+     * time immediately clears part (or all) of it. Both are recorded, because
+     * they are two different facts: what was sold, and what was collected.
+     *
+     * Invoices converted from a sales order are skipped for the receivable
+     * side — SalesOrderController already added the order total to the balance
+     * when the order was placed, and charging it again would double the debt.
+     *
+     * @return array{payment: ?Payment, customer_balance: ?float}
+     */
+    private function settleCustomerAccount(Invoice $invoice, float $paidAmount, ?string $method): array
+    {
+        $customer = $invoice->customer_id ? Customer::find($invoice->customer_id) : null;
+
+        if (!$customer) {
+            return ['payment' => null, 'customer_balance' => null];
+        }
+
+        if (!$invoice->sales_order_id) {
+            $customer->updateBalance((float) $invoice->total);
+        }
+
+        $payment = null;
+
+        if ($paidAmount > 0) {
+            $payment = Payment::create([
+                'payment_number' => 'PAY-' . str_pad((string) (Payment::max('id') + 1), 6, '0', STR_PAD_LEFT),
+                'invoice_id' => $invoice->id,
+                'customer_id' => $customer->id,
+                // The invoice's payment method describes how this money arrived;
+                // `transfer` is what the invoice calls a bank transfer.
+                'payment_method' => match ($method) {
+                    'card' => Payment::METHOD_CARD,
+                    'transfer' => Payment::METHOD_BANK_TRANSFER,
+                    default => Payment::METHOD_CASH,
+                },
+                'status' => Payment::STATUS_COMPLETED,
+                'amount' => $paidAmount,
+                'payment_date' => now()->toDateString(),
+                'reference' => $invoice->invoice_number,
+                'notes' => 'دفعة عند إنشاء الفاتورة ' . $invoice->invoice_number,
+                'created_by' => auth()->id(),
+            ]);
+
+            $customer->updateBalance(-$paidAmount);
+        }
+
+        return [
+            'payment' => $payment,
+            'customer_balance' => round((float) $customer->fresh()->balance, 2),
+        ];
+    }
+
     public function store(Request $request): JsonResponse
     {
         try {
@@ -101,6 +159,10 @@ class InvoiceController extends Controller
                 'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
+                // What the customer handed over. Anything short of the total
+                // stays on their account as a receivable; anything over leaves
+                // them in credit.
+                'paid_amount' => 'nullable|numeric|min:0',
                 'payment_method' => 'nullable|string|in:cash,card,transfer',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
@@ -188,6 +250,14 @@ class InvoiceController extends Controller
             $total = $subtotal + $tax - $discount + $expensesTotal;
             if ($total < 0) $total = 0;
 
+            // Persist the charges that were folded into the total. Leaving this
+            // unrecorded is what made subtotal + tax - discount fall short of
+            // total, and it left the ledger crediting less revenue than it
+            // debited receivables.
+            $additionalCharges = round($expensesTotal, 2);
+
+            $paidAmount = round((float) ($validated['paid_amount'] ?? 0), 2);
+
             // Generate invoice number
             $invoice = new Invoice();
             $invoiceNumber = $invoice->generateInvoiceNumber();
@@ -199,7 +269,10 @@ class InvoiceController extends Controller
                 'subtotal' => $subtotal,
                 'tax' => $tax,
                 'discount' => $discount,
+                'additional_charges' => $additionalCharges,
                 'total' => $total,
+                'paid_amount' => $paidAmount,
+                'due_amount' => max(0, round($total - $paidAmount, 2)),
                 'payment_method' => $validated['payment_method'] ?? Invoice::PAYMENT_CASH,
                 'status' => $validated['status'] ?? Invoice::STATUS_PENDING,
                 'notes' => $validated['notes'] ?? null,
@@ -213,11 +286,18 @@ class InvoiceController extends Controller
                 InvoiceItem::create($itemData);
             }
 
-            // Create expenses if provided
+            // Create expenses if provided.
+            //
+            // These are two separate economic events and both belong in the
+            // books: the customer is billed for delivery (revenue, already in
+            // the invoice entry) and the carrier has to be paid (a cost). Only
+            // ExpenseController used to post these, so charges added through
+            // the invoice form never reached the ledger at all.
+            $createdExpenses = [];
             if (isset($validated['expenses']) && is_array($validated['expenses'])) {
                 foreach ($validated['expenses'] as $expense) {
                     if (!empty($expense['description']) && $expense['amount'] > 0) {
-                        Expense::create([
+                        $createdExpenses[] = Expense::create([
                             'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
                             'invoice_id' => $invoice->id,
                             'customer_id' => $invoice->customer_id,
@@ -234,10 +314,46 @@ class InvoiceController extends Controller
                 }
             }
 
+            // Settle the customer's account.
+            //
+            // The sale puts the whole total on their receivable, then whatever
+            // they actually paid comes straight back off it. Netting the two
+            // instead of recording both would lose the payment entirely — there
+            // would be no cash movement anywhere in the books.
+            $settlement = $this->settleCustomerAccount($invoice, $paidAmount, $validated['payment_method'] ?? null);
+
+            // Feed the general ledger. Posting is idempotent and balanced or it
+            // throws, so a ledger problem must not silently swallow a saved
+            // invoice — it is reported alongside the successful creation.
+            $postingError = null;
+            $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+            try {
+                $ledger->postInvoice($invoice);
+                if ($settlement['payment']) {
+                    $ledger->postPayment($settlement['payment']);
+                }
+                foreach ($createdExpenses as $createdExpense) {
+                    $ledger->postExpense($createdExpense);
+                }
+            } catch (\Throwable $e) {
+                $postingError = $e->getMessage();
+                report($e);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنشاء الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->fresh()->load('items.product')),
+                'settlement' => [
+                    'total' => round($total, 2),
+                    'paid' => $paidAmount,
+                    // Positive: still owed by the customer. Negative: overpaid,
+                    // so they now hold credit with us.
+                    'remaining' => round($total - $paidAmount, 2),
+                    'payment_number' => $settlement['payment']?->payment_number,
+                    'customer_balance' => $settlement['customer_balance'],
+                ],
+                'accounting_warning' => $postingError,
             ], 201);
 
         } catch (ValidationException $e) {

@@ -71,6 +71,20 @@
                     </el-col>
                 </el-row>
 
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12">
+                        <el-form-item :label="$t('password')" prop="password" :error="serverErrors.password && serverErrors.password[0]">
+                            <el-input v-model="form.password" type="password" show-password :placeholder="$t('password_optional')" autocomplete="new-password" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :xs="24" :sm="12">
+                        <el-form-item :label="$t('confirm_password')" prop="confirm_password">
+                            <el-input v-model="form.confirm_password" type="password" show-password :placeholder="$t('confirm_password')" autocomplete="new-password" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <p v-if="isEdit" class="password-hint">{{ $t('leave_blank_to_keep') }}</p>
+
                 <div class="form-actions">
                     <el-button type="primary" @click="submitForm" :loading="store.loading">
                         {{ submitLabel }}
@@ -101,7 +115,9 @@ const form = ref({
     email: '',
     phone: '',
     hire_date: '',
-    avatar: '/placeholder.jpg'
+    avatar: '/placeholder.jpg',
+    password: '',
+    confirm_password: ''
 });
 
 const rules = {
@@ -113,7 +129,31 @@ const rules = {
         { type: 'email', message: window.t('the_mail_must_be_valid'), trigger: ['blur', 'change'] }
     ],
     phone: [{ required: true, message: window.t('phone_required'), trigger: 'blur' }],
-    hire_date: [{ required: true, message: window.t('appointment_date_required'), trigger: 'change' }]
+    hire_date: [{ required: true, message: window.t('appointment_date_required'), trigger: 'change' }],
+    password: [
+        {
+            validator: (rule, value, callback) => {
+                if (value && value.length < 8) {
+                    callback(new Error(window.t('password_min')));
+                } else {
+                    callback();
+                }
+            },
+            trigger: 'blur'
+        }
+    ],
+    confirm_password: [
+        {
+            validator: (rule, value, callback) => {
+                if (value !== form.value.password) {
+                    callback(new Error(window.t('password_mismatch')));
+                } else {
+                    callback();
+                }
+            },
+            trigger: ['blur', 'change']
+        }
+    ]
 };
 
 const isEdit = computed(() => !!route.params.id);
@@ -136,19 +176,29 @@ const loadEmployee = async () => {
         email: employee.email || '',
         phone: employee.phone || '',
         hire_date: employee.hire_date || '',
-        avatar: employee.avatar || '/placeholder.jpg'
+        avatar: employee.avatar || '/placeholder.jpg',
+        password: '',
+        confirm_password: ''
     };
+};
+
+const buildPayload = () => {
+    const payload = { ...form.value };
+    delete payload.confirm_password;
+    if (!payload.password) delete payload.password;
+    return payload;
 };
 
 const submitForm = () => {
     employeeForm.value.validate(async (valid) => {
         if (!valid) return;
         try {
+            const payload = buildPayload();
             if (isEdit.value) {
-                await store.updateEmployee(route.params.id, form.value);
+                await store.updateEmployee(route.params.id, payload);
                 ElMessage.success(window.t('employee_data_has_been_updated'));
             } else {
-                await store.createEmployee(form.value);
+                await store.createEmployee(payload);
                 ElMessage.success(window.t('the_employee_has_been_added_successfully'));
             }
             router.push({ name: 'admin.hr.employees' });
@@ -202,5 +252,11 @@ onMounted(loadEmployee);
     display: flex;
     gap: 1rem;
     margin-top: 1rem;
+}
+
+.password-hint {
+    margin: -0.25rem 0 0.75rem;
+    font-size: 0.85rem;
+    color: #8a94a6;
 }
 </style>

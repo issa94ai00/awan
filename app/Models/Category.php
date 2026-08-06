@@ -19,6 +19,7 @@ class Category extends Model implements Sitemapable
         'name_en',
         'slug',
         'image',
+        'icon',
         'status',
         'parent_id',
         'description',
@@ -27,6 +28,8 @@ class Category extends Model implements Sitemapable
         'meta_title',
         'meta_description',
         'is_featured',
+        'is_active',
+        'sort_order',
     ];
 
     public function products(): \Illuminate\Database\Eloquent\Relations\HasMany

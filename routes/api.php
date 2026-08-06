@@ -165,10 +165,10 @@ Route::prefix('v1')->group(function () {
             
             // Admin Categories API
             Route::get('/categories', [CategoryController::class, 'index'])->name('api.admin.categories.index');
-            Route::get('/categories/{category}', [CategoryController::class, 'show'])->name('api.admin.categories.show');
+            Route::get('/categories/{category:id}', [CategoryController::class, 'show'])->name('api.admin.categories.show');
             Route::post('/categories', [CategoryController::class, 'store'])->name('api.admin.categories.store');
-            Route::put('/categories/{category}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
-            Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
+            Route::put('/categories/{category:id}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
+            Route::delete('/categories/{category:id}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
 
             // Admin Suppliers and Purchase Orders
             Route::get('/suppliers', [SupplierController::class, 'index'])->name('api.admin.suppliers.index');

@@ -24,6 +24,9 @@ class InvoiceResource extends JsonResource
             'subtotal' => (float) $this->subtotal,
             'tax' => (float) $this->tax,
             'discount' => (float) $this->discount,
+            // Charges billed on top of the goods (delivery, packaging, …).
+            // Without this the client cannot reconcile subtotal against total.
+            'additional_charges' => (float) $this->additional_charges,
             'total' => (float) $this->total,
 
             // Collection state. The payments endpoint maintains these columns,

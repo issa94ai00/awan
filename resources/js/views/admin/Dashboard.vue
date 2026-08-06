@@ -6,7 +6,15 @@
                 <h1>{{ $t('control_panel_var', { value: siteName }) }}</h1>
                 <p>{{ tagline }}</p>
             </div>
+            <div class="page-header-actions">
+                <el-button type="success" size="default" @click="paymentDialogVisible = true">
+                    <el-icon class="mr-1"><Checked /></el-icon>
+                    {{ $t('quick_payment') || 'استلام دفعة' }}
+                </el-button>
+            </div>
         </div>
+
+        <QuickPaymentDialog v-model="paymentDialogVisible" @saved="loadDashboard" />
 
         <el-alert
             v-if="error"
@@ -708,9 +716,12 @@ import {
 import { dashboardApi } from '@/api/dashboard';
 import { useSettingsStore } from '@/stores/settings';
 import DashboardSkeleton from '@/components/admin/DashboardSkeleton.vue';
+import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 
 const { locale } = useI18n();
 const settingsStore = useSettingsStore();
+
+const paymentDialogVisible = ref(false);
 
 const siteName = computed(() => {
     if (!settingsStore.data) return window.t('site_name');
@@ -1219,6 +1230,12 @@ onUnmounted(() => {
 
 .page-header-text {
     min-width: 0;
+}
+
+.page-header-actions {
+    margin-inline-start: auto;
+    display: flex;
+    align-items: center;
 }
 
 .page-header h1 {

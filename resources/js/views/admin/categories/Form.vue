@@ -54,8 +54,10 @@
                     <el-upload
                         class="image-uploader"
                         :action="uploadUrl"
+                        :headers="uploadHeaders"
                         :show-file-list="false"
                         :on-success="handleImageSuccess"
+                        :on-error="handleImageError"
                         :before-upload="beforeUpload"
                     >
                         <img v-if="form.image" :src="form.image" class="uploaded-image" />
@@ -100,6 +102,11 @@ const categoriesStore = useCategoriesStore();
 const formRef = ref(null);
 const submitting = ref(false);
 const uploadUrl = '/api/v1/upload';
+
+const uploadHeaders = computed(() => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+});
 
 const form = ref({
     name_ar: '',
@@ -146,8 +153,17 @@ const beforeUpload = (file) => {
 };
 
 const handleImageSuccess = (response) => {
-    form.value.image = response.data.url;
+    const url = response?.data?.url || response?.url || '';
+    if (!url) {
+        ElMessage.error(window.t('failed_to_upload_image'));
+        return;
+    }
+    form.value.image = url;
     ElMessage.success(window.t('the_image_has_been_uploaded_successfully'));
+};
+
+const handleImageError = () => {
+    ElMessage.error(window.t('failed_to_upload_image'));
 };
 
 const submitForm = async () => {

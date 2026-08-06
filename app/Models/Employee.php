@@ -10,6 +10,7 @@ class Employee extends Model
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
         'name',
         'first_name',
         'last_name',
@@ -56,6 +57,11 @@ class Employee extends Model
         $parts = array_filter(explode(' ', trim($value)), fn ($part) => $part !== '');
         $this->attributes['first_name'] = array_shift($parts) ?: '';
         $this->attributes['last_name'] = implode(' ', $parts);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function attendance()
