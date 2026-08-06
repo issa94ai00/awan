@@ -62,7 +62,6 @@ return new class extends Migration
     private function backfillShippingFromLinkedExpenses(): void
     {
         $candidates = DB::table('invoices as i')
-            ->whereNull('i.deleted_at')
             ->where('i.shipping_amount', 0)
             ->selectRaw('i.id,
                          ROUND(i.total - (i.subtotal + i.tax - i.discount), 2) as unexplained,

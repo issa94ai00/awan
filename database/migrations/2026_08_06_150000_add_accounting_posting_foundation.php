@@ -52,6 +52,14 @@ return new class extends Migration
             if (!Schema::hasColumn('ledger_accounts', 'posting_role')) {
                 $table->string('posting_role', 60)->nullable()->unique()->after('account_type');
             }
+
+            // The original create migration never shipped the parent column, and
+            // some databases only have it because it was added by hand. Without
+            // it the tree inserts below fail, so make the migration own it.
+            if (!Schema::hasColumn('ledger_accounts', 'parent_id')) {
+                $table->foreignId('parent_id')->nullable()->after('name')
+                    ->constrained('ledger_accounts')->nullOnDelete();
+            }
         });
 
         Schema::table('journal_entry_headers', function (Blueprint $table) {
@@ -154,6 +162,9 @@ return new class extends Migration
             if (Schema::hasColumn('ledger_accounts', 'posting_role')) {
                 $table->dropUnique(['posting_role']);
                 $table->dropColumn('posting_role');
+            }
+            if (Schema::hasColumn('ledger_accounts', 'parent_id')) {
+                $table->dropConstrainedForeignId('parent_id');
             }
         });
     }
