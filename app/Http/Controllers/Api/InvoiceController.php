@@ -314,6 +314,38 @@ class InvoiceController extends Controller
                 }
             }
 
+            // Take the goods off the shelf.
+            //
+            // No sales path used to touch inventory at all — invoices, sales
+            // orders and the POS alike — so stock only ever went up. Issuing is
+            // keyed per invoice line, which makes a retry a no-op instead of a
+            // second withdrawal.
+            $stockWarnings = [];
+            $inventory = app(\App\Services\Inventory\InventoryService::class);
+
+            foreach ($invoice->items()->get() as $line) {
+                try {
+                    $inventory->issue(
+                        $line->product_id,
+                        (int) $line->quantity,
+                        null,
+                        [
+                            'key' => 'invoice:' . $invoice->id . ':item:' . $line->id,
+                            'source' => 'sales',
+                            'reference' => $invoice->invoice_number,
+                            'reason' => 'بيع - فاتورة ' . $invoice->invoice_number,
+                            'unit_cost' => (float) $line->unit_price,
+                            // A shortfall must not block an invoice that is
+                            // already saved; it is surfaced to the user instead.
+                            'allow_negative' => true,
+                        ]
+                    );
+                } catch (\Throwable $e) {
+                    $stockWarnings[] = $e->getMessage();
+                    report($e);
+                }
+            }
+
             // Settle the customer's account.
             //
             // The sale puts the whole total on their receivable, then whatever
@@ -354,6 +386,7 @@ class InvoiceController extends Controller
                     'customer_balance' => $settlement['customer_balance'],
                 ],
                 'accounting_warning' => $postingError,
+                'inventory_warnings' => $stockWarnings ?: null,
             ], 201);
 
         } catch (ValidationException $e) {

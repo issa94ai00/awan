@@ -15,6 +15,7 @@ class StockMovement extends Model
         'quantity',
         'reference',
         'source',
+        'movement_key',
         'notes',
         'created_by',
         'warehouse_id',

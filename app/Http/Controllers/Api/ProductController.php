@@ -329,7 +329,35 @@ class ProductController extends Controller
             $validated['image_gallery'] = json_encode($validated['image_gallery']);
         }
 
+        // Editing the stock figure on the product form is a stock count, not a
+        // field edit: writing stock_quantity straight through would leave the
+        // warehouse rows the WMS reads untouched and no record of who changed
+        // what. The difference is booked as an adjustment instead, and the
+        // service keeps the product total in step.
+        $countedQuantity = $validated['stock_quantity'] ?? null;
+        unset($validated['stock_quantity']);
+
         $product->update($validated);
+
+        if ($countedQuantity !== null) {
+            $difference = (int) $countedQuantity - (int) $product->stock_quantity;
+
+            if ($difference !== 0) {
+                app(\App\Services\Inventory\InventoryService::class)->adjust(
+                    $product->id,
+                    $difference,
+                    null,
+                    [
+                        'source' => 'stock_count',
+                        'reason' => 'تعديل الرصيد من بطاقة المنتج',
+                        'reference' => $product->sku ?? ('#' . $product->id),
+                    ]
+                );
+
+                $product->refresh();
+            }
+        }
+
         $product->load('category');
 
         return response()->json([

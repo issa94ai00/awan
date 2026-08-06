@@ -107,8 +107,24 @@ class FlutterOrderController extends Controller
                     'color' => $cartItem->color,
                 ]);
 
-                $cartItem->product->stock_quantity -= $cartItem->quantity;
-                $cartItem->product->save();
+                // Goes through the inventory service rather than writing
+                // stock_quantity directly: a bare model write leaves no movement
+                // record and never reaches warehouse_inventory, so the WMS and
+                // the product total drift apart on every mobile order.
+                app(\App\Services\Inventory\InventoryService::class)->issue(
+                    $cartItem->product_id,
+                    (int) $cartItem->quantity,
+                    null,
+                    [
+                        'key' => 'order:' . $order->id . ':product:' . $cartItem->product_id,
+                        'source' => 'mobile_order',
+                        'reference' => (string) $order->id,
+                        'reason' => 'طلب تطبيق #' . $order->id,
+                        // The order is already committed; a shortfall is recorded
+                        // rather than allowed to fail the checkout.
+                        'allow_negative' => true,
+                    ]
+                );
             }
 
             CartItem::where('user_id', $user->id)->delete();
@@ -154,12 +170,26 @@ class FlutterOrderController extends Controller
         $order->status = 'canceled';
         $order->save();
 
+        // Put the goods back the same way they left — through the service, so
+        // the return is an auditable movement instead of a silent edit.
+        $inventory = app(\App\Services\Inventory\InventoryService::class);
+
         foreach ($order->items as $item) {
-            $product = $item->product;
-            if ($product) {
-                $product->stock_quantity += $item->quantity;
-                $product->save();
+            if (!$item->product_id) {
+                continue;
             }
+
+            $inventory->receive(
+                $item->product_id,
+                (int) $item->quantity,
+                null,
+                [
+                    'key' => 'order:' . $order->id . ':cancel:product:' . $item->product_id,
+                    'source' => 'mobile_order',
+                    'reference' => (string) $order->id,
+                    'reason' => 'إلغاء طلب تطبيق #' . $order->id,
+                ]
+            );
         }
 
         return response()->json([
