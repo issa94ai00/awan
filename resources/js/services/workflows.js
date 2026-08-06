@@ -1,112 +1,111 @@
-import axios from 'axios';
-
-const API_BASE_URL = '/api/admin/workflows';
+import api from '@/api';
+const API_BASE_URL = '/workflows';
 
 export const workflowsService = {
     // Workflows
     getWorkflows(params = {}) {
-        return axios.get(`${API_BASE_URL}`, { params });
+        return api.get(`${API_BASE_URL}`, { params });
     },
 
     getWorkflow(id) {
-        return axios.get(`${API_BASE_URL}/${id}`);
+        return api.get(`${API_BASE_URL}/${id}`);
     },
 
     createWorkflow(data) {
-        return axios.post(`${API_BASE_URL}`, data);
+        return api.post(`${API_BASE_URL}`, data);
     },
 
     updateWorkflow(id, data) {
-        return axios.put(`${API_BASE_URL}/${id}`, data);
+        return api.put(`${API_BASE_URL}/${id}`, data);
     },
 
     deleteWorkflow(id) {
-        return axios.delete(`${API_BASE_URL}/${id}`);
+        return api.delete(`${API_BASE_URL}/${id}`);
     },
 
     activateWorkflow(id) {
-        return axios.post(`${API_BASE_URL}/${id}/activate`);
+        return api.post(`${API_BASE_URL}/${id}/activate`);
     },
 
     deactivateWorkflow(id) {
-        return axios.post(`${API_BASE_URL}/${id}/deactivate`);
+        return api.post(`${API_BASE_URL}/${id}/deactivate`);
     },
 
     duplicateWorkflow(id) {
-        return axios.post(`${API_BASE_URL}/${id}/duplicate`);
+        return api.post(`${API_BASE_URL}/${id}/duplicate`);
     },
 
     // Workflow Steps
     getSteps(workflowId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/steps`, { params });
+        return api.get(`${API_BASE_URL}/${workflowId}/steps`, { params });
     },
 
     getStep(workflowId, stepId) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/steps/${stepId}`);
+        return api.get(`${API_BASE_URL}/${workflowId}/steps/${stepId}`);
     },
 
     createStep(workflowId, data) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/steps`, data);
+        return api.post(`${API_BASE_URL}/${workflowId}/steps`, data);
     },
 
     updateStep(workflowId, stepId, data) {
-        return axios.put(`${API_BASE_URL}/${workflowId}/steps/${stepId}`, data);
+        return api.put(`${API_BASE_URL}/${workflowId}/steps/${stepId}`, data);
     },
 
     deleteStep(workflowId, stepId) {
-        return axios.delete(`${API_BASE_URL}/${workflowId}/steps/${stepId}`);
+        return api.delete(`${API_BASE_URL}/${workflowId}/steps/${stepId}`);
     },
 
     reorderSteps(workflowId, data) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/steps/reorder`, data);
+        return api.post(`${API_BASE_URL}/${workflowId}/steps/reorder`, data);
     },
 
     // Workflow Executions
     getExecutions(workflowId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/executions`, { params });
+        return api.get(`${API_BASE_URL}/${workflowId}/executions`, { params });
     },
 
     getExecution(workflowId, executionId) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/executions/${executionId}`);
+        return api.get(`${API_BASE_URL}/${workflowId}/executions/${executionId}`);
     },
 
     executeWorkflow(workflowId, data = {}) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/execute`, data);
+        return api.post(`${API_BASE_URL}/${workflowId}/execute`, data);
     },
 
     retryExecution(workflowId, executionId) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/executions/${executionId}/retry`);
+        return api.post(`${API_BASE_URL}/${workflowId}/executions/${executionId}/retry`);
     },
 
     cancelExecution(workflowId, executionId) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/executions/${executionId}/cancel`);
+        return api.post(`${API_BASE_URL}/${workflowId}/executions/${executionId}/cancel`);
     },
 
     getExecutionLogs(workflowId, executionId) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/executions/${executionId}/logs`);
+        return api.get(`${API_BASE_URL}/${workflowId}/executions/${executionId}/logs`);
     },
 
     // Workflow Triggers
     getTriggers(workflowId) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/triggers`);
+        return api.get(`${API_BASE_URL}/${workflowId}/triggers`);
     },
 
     testTrigger(workflowId, data) {
-        return axios.post(`${API_BASE_URL}/${workflowId}/triggers/test`, data);
+        return api.post(`${API_BASE_URL}/${workflowId}/triggers/test`, data);
     },
 
     // Workflow Conditions
     getConditions(workflowId) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/conditions`);
+        return api.get(`${API_BASE_URL}/${workflowId}/conditions`);
     },
 
     // Workflow Statistics
     getWorkflowStats(workflowId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/stats`, { params });
+        return api.get(`${API_BASE_URL}/${workflowId}/stats`, { params });
     },
 
     getExecutionHistory(workflowId, params = {}) {
-        return axios.get(`${API_BASE_URL}/${workflowId}/history`, { params });
+        return api.get(`${API_BASE_URL}/${workflowId}/history`, { params });
     }
 };
 
