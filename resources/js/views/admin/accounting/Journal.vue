@@ -1,0 +1,500 @@
+<template>
+    <div class="accounting-page accounting-journal">
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-title">
+                <h1><i class="fas fa-book text-primary"></i> {{ $t('journal') || 'دفتر اليومية العامة' }}</h1>
+                <p>تسجيل ومتابعة القيود المحاسبية المزدوجة (Double-Entry) وضمان توازن كل قيد.</p>
+            </div>
+            <div class="header-actions">
+                <el-button type="primary" class="create-btn" @click="openCreateDrawer">
+                    <i class="fas fa-plus"></i> تسجيل قيد يدوي
+                </el-button>
+            </div>
+        </div>
+
+        <!-- Filters Bar Panel -->
+        <el-card shadow="hover" class="filters-panel mb-4">
+            <div class="filters-row">
+                <div class="filter-item">
+                    <label>حساب دفتر الأستاذ</label>
+                    <el-select v-model="filters.ledger_account_id" placeholder="الكل" clearable style="width: 220px;" filterable @change="applyFilters">
+                        <el-option
+                            v-for="acc in ledgerStore.accounts"
+                            :key="acc.id"
+                            :label="acc.code + ' - ' + acc.name"
+                            :value="acc.id"
+                        />
+                    </el-select>
+                </div>
+                <div class="filter-item">
+                    <label>الفترة من</label>
+                    <el-date-picker v-model="filters.date_from" type="date" placeholder="من تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                </div>
+                <div class="filter-item">
+                    <label>إلى</label>
+                    <el-date-picker v-model="filters.date_to" type="date" placeholder="إلى تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                </div>
+                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.25rem;">إعادة تعيين</el-button>
+            </div>
+        </el-card>
+
+        <!-- Main Card & Entries Table -->
+        <el-card shadow="hover" class="table-panel">
+            <template #header>
+                <div class="card-header">
+                    <span><i class="fas fa-list-alt text-muted"></i> قيود دفتر اليومية</span>
+                </div>
+            </template>
+
+            <div v-if="store.loading" class="loading-state">
+                <el-skeleton :rows="6" animated />
+            </div>
+            <div v-else>
+                <el-table
+                    v-if="store.entries.length"
+                    :data="store.entries"
+                    style="width: 100%"
+                    stripe
+                    highlight-current-row
+                    class="custom-table"
+                >
+                    <el-table-column prop="entry_number" label="رقم القيد" width="120" align="center">
+                        <template #default="{ row }">
+                            <span class="code-badge">{{ row.entry_number }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="entry_date" :label="$t('the_date') || 'التاريخ'" width="120" align="center">
+                        <template #default="{ row }">{{ formatDate(row.entry_date) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="description" :label="$t('description') || 'البيان/الوصف'" min-width="220" show-overflow-tooltip />
+                    <el-table-column label="عدد السطور" width="110" align="center">
+                        <template #default="{ row }">{{ row.lines?.length || 0 }}</template>
+                    </el-table-column>
+                    <el-table-column prop="total_debit" :label="$t('debtor') || 'إجمالي المدين'" width="150" align="right">
+                        <template #default="{ row }">
+                            <strong class="text-success">${{ parseFloat(row.total_debit).toFixed(2) }}</strong>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="total_credit" :label="$t('creditor') || 'إجمالي الدائن'" width="150" align="right">
+                        <template #default="{ row }">
+                            <strong class="text-warning">${{ parseFloat(row.total_credit).toFixed(2) }}</strong>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="التوازن" width="100" align="center">
+                        <template #default="{ row }">
+                            <el-tag :type="isRowBalanced(row) ? 'success' : 'danger'" effect="light">
+                                {{ isRowBalanced(row) ? '✓ متوازن' : '✗ غير متوازن' }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="الحالة" width="100" align="center">
+                        <template #default="{ row }">
+                            <el-tag :type="row.status === 'posted' ? 'success' : 'info'" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="الإجراءات" width="150" align="center" fixed="left">
+                        <template #default="{ row }">
+                            <el-button-group>
+                                <el-button size="small" @click="openEditDrawer(row)"><i class="fas fa-edit"></i></el-button>
+                                <el-button size="small" type="danger" @click="confirmDelete(row)"><i class="fas fa-trash"></i></el-button>
+                            </el-button-group>
+                        </template>
+                    </el-table-column>
+                </el-table>
+
+                <!-- Empty State -->
+                <div v-if="!store.entries.length" class="empty-state-box">
+                    <i class="fas fa-book empty-icon"></i>
+                    <p>لا توجد قيود يومية مطابقة للبحث حالياً.</p>
+                    <el-button type="primary" size="medium" @click="openCreateDrawer">
+                        <i class="fas fa-plus"></i> تسجيل قيد يدوي
+                    </el-button>
+                </div>
+            </div>
+        </el-card>
+
+        <!-- Create/Edit Journal Entry Drawer -->
+        <el-drawer
+            v-model="drawerVisible"
+            :title="editingId ? 'تعديل قيد محاسبي' : 'تسجيل قيد محاسبي يدوي جديد'"
+            size="55%"
+            direction="rtl"
+            destroy-on-close
+            class="form-drawer"
+        >
+            <el-form :model="form" label-position="top">
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="تاريخ القيد" required>
+                            <el-date-picker v-model="form.entry_date" type="date" placeholder="اختر التاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="مرجع المعاملة (اختياري)">
+                            <el-input v-model="form.reference" placeholder="مثال: INV-2026-009" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-form-item label="البيان / الوصف التفصيلي" required>
+                    <el-input v-model="form.description" type="textarea" :rows="2" placeholder="اكتب بياناً واضحاً ومفصلاً للقيد المالي..." />
+                </el-form-item>
+
+                <div class="lines-section">
+                    <div class="lines-header">
+                        <span>سطور القيد (مدين/دائن)</span>
+                        <el-button size="small" type="primary" plain @click="addLine"><i class="fas fa-plus"></i> إضافة سطر</el-button>
+                    </div>
+
+                    <div v-for="(line, index) in form.lines" :key="index" class="line-row">
+                        <el-select v-model="line.ledger_account_id" placeholder="الحساب" filterable style="flex: 2;">
+                            <el-option
+                                v-for="acc in ledgerStore.accounts"
+                                :key="acc.id"
+                                :label="acc.code + ' - ' + acc.name"
+                                :value="acc.id"
+                            />
+                        </el-select>
+                        <el-input v-model="line.debit" type="number" placeholder="مدين" style="flex: 1;" @input="line.credit = 0">
+                            <template #prefix>مدين</template>
+                        </el-input>
+                        <el-input v-model="line.credit" type="number" placeholder="دائن" style="flex: 1;" @input="line.debit = 0">
+                            <template #prefix>دائن</template>
+                        </el-input>
+                        <el-button
+                            size="small"
+                            type="danger"
+                            circle
+                            :disabled="form.lines.length <= 2"
+                            @click="removeLine(index)"
+                        >
+                            <i class="fas fa-times"></i>
+                        </el-button>
+                    </div>
+
+                    <div class="totals-row" :class="isFormBalanced ? 'balanced' : 'unbalanced'">
+                        <span>إجمالي المدين: <strong>${{ formTotalDebit.toFixed(2) }}</strong></span>
+                        <span>إجمالي الدائن: <strong>${{ formTotalCredit.toFixed(2) }}</strong></span>
+                        <span>{{ isFormBalanced ? '✓ متوازن' : '✗ غير متوازن' }}</span>
+                    </div>
+                </div>
+
+                <div style="border-top: 1px solid var(--border-color); margin-top: 1.5rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                    <el-button @click="drawerVisible = false">إلغاء</el-button>
+                    <el-button type="primary" :loading="submittingForm" :disabled="!canSubmit" @click="saveEntry">
+                        {{ editingId ? 'حفظ التعديلات' : 'تسجيل وإثبات القيد' }}
+                    </el-button>
+                </div>
+            </el-form>
+        </el-drawer>
+    </div>
+</template>
+
+<script setup>
+import { ref, onMounted, reactive, computed } from 'vue';
+import { useJournalEntriesStore } from '@/stores/journalEntries';
+import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
+import { ElMessage, ElMessageBox } from 'element-plus';
+
+const store = useJournalEntriesStore();
+const ledgerStore = useLedgerAccountsStore();
+
+// Filters state
+const filters = reactive({
+    ledger_account_id: '',
+    date_from: '',
+    date_to: ''
+});
+
+// Form state
+const drawerVisible = ref(false);
+const submittingForm = ref(false);
+const editingId = ref(null);
+const form = reactive({
+    entry_date: '',
+    reference: '',
+    description: '',
+    lines: [],
+});
+
+const emptyLine = () => ({ ledger_account_id: '', debit: 0, credit: 0 });
+
+const resetForm = () => {
+    form.entry_date = new Date().toISOString().split('T')[0];
+    form.reference = '';
+    form.description = '';
+    form.lines = [emptyLine(), emptyLine()];
+};
+
+const addLine = () => form.lines.push(emptyLine());
+const removeLine = (index) => {
+    if (form.lines.length > 2) form.lines.splice(index, 1);
+};
+
+const formTotalDebit = computed(() => form.lines.reduce((sum, l) => sum + (parseFloat(l.debit) || 0), 0));
+const formTotalCredit = computed(() => form.lines.reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0));
+const isFormBalanced = computed(() => form.lines.length > 0 && formTotalDebit.value.toFixed(2) === formTotalCredit.value.toFixed(2) && formTotalDebit.value > 0);
+const canSubmit = computed(() => isFormBalanced.value && form.lines.every((l) => l.ledger_account_id));
+
+const isRowBalanced = (row) => parseFloat(row.total_debit).toFixed(2) === parseFloat(row.total_credit).toFixed(2);
+
+const statusLabel = (status) => (status === 'posted' ? 'مرحّل' : status);
+
+const formatDate = (date) => (date ? String(date).slice(0, 10) : '');
+
+const applyFilters = () => {
+    const params = {};
+    if (filters.ledger_account_id) params.ledger_account_id = filters.ledger_account_id;
+    if (filters.date_from) params.date_from = filters.date_from;
+    if (filters.date_to) params.date_to = filters.date_to;
+    store.fetchEntries(params).catch(() => {});
+};
+
+const resetFilters = () => {
+    filters.ledger_account_id = '';
+    filters.date_from = '';
+    filters.date_to = '';
+    store.fetchEntries().catch(() => {});
+};
+
+const openCreateDrawer = () => {
+    editingId.value = null;
+    resetForm();
+    drawerVisible.value = true;
+};
+
+const openEditDrawer = async (row) => {
+    editingId.value = row.id;
+    const entry = await store.fetchEntry(row.id);
+    form.entry_date = entry.entry_date ? String(entry.entry_date).slice(0, 10) : '';
+    form.reference = entry.reference || '';
+    form.description = entry.description || '';
+    form.lines = (entry.lines || []).map((l) => ({
+        ledger_account_id: l.account_id,
+        debit: parseFloat(l.debit) || 0,
+        credit: parseFloat(l.credit) || 0,
+    }));
+    drawerVisible.value = true;
+};
+
+const saveEntry = async () => {
+    if (!form.description.trim()) {
+        ElMessage.warning('يرجى كتابة بيان ووصف القيد.');
+        return;
+    }
+    if (!canSubmit.value) {
+        ElMessage.warning('يجب اختيار حساب لكل سطر، وأن يكون إجمالي المدين مساوياً لإجمالي الدائن.');
+        return;
+    }
+
+    const payload = {
+        entry_date: form.entry_date,
+        reference: form.reference || null,
+        description: form.description,
+        lines: form.lines.map((l) => ({
+            ledger_account_id: l.ledger_account_id,
+            debit: parseFloat(l.debit) || 0,
+            credit: parseFloat(l.credit) || 0,
+        })),
+    };
+
+    submittingForm.value = true;
+    try {
+        if (editingId.value) {
+            await store.updateEntry(editingId.value, payload);
+            ElMessage.success('تم تعديل القيد بنجاح.');
+        } else {
+            await store.createEntry(payload);
+            ElMessage.success('تم تسجيل وإثبات القيد بنجاح.');
+        }
+        drawerVisible.value = false;
+        await store.fetchEntries();
+        await ledgerStore.fetchAccounts({ per_page: 100 });
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'خطأ أثناء حفظ القيد المحاسبي.');
+    } finally {
+        submittingForm.value = false;
+    }
+};
+
+const confirmDelete = (row) => {
+    ElMessageBox.confirm(
+        `هل أنت متأكد من حذف القيد رقم ${row.entry_number}؟ سيتم عكس تأثيره على أرصدة الحسابات.`,
+        'تأكيد الحذف',
+        { confirmButtonText: 'حذف', cancelButtonText: 'إلغاء', type: 'warning' }
+    ).then(async () => {
+        try {
+            await store.deleteEntry(row.id);
+            ElMessage.success('تم حذف القيد بنجاح.');
+            await store.fetchEntries();
+            await ledgerStore.fetchAccounts({ per_page: 100 });
+        } catch (e) {
+            ElMessage.error('خطأ أثناء حذف القيد.');
+        }
+    }).catch(() => {});
+};
+
+onMounted(() => {
+    store.fetchEntries().catch(() => {});
+    ledgerStore.fetchAccounts({ per_page: 100 }).catch(() => {});
+});
+</script>
+
+<style scoped>
+.accounting-page {
+    font-family: 'Cairo', sans-serif;
+}
+
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.page-title h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.page-title p {
+    margin: 0.5rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.create-btn {
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    padding: 0.625rem 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filters-panel {
+    border-radius: var(--radius-md);
+}
+
+.filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: flex-end;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-item label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.table-panel {
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.code-badge {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+.loading-state {
+    padding: 2rem;
+}
+
+.empty-state-box {
+    padding: 4rem 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty-icon {
+    font-size: 3.5rem;
+    color: var(--text-light);
+    margin-bottom: 1.25rem;
+    opacity: 0.5;
+}
+
+.empty-state-box p {
+    font-weight: 500;
+    font-size: 1.05rem;
+    margin-bottom: 1.5rem;
+}
+
+.lines-section {
+    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    background: var(--bg-light);
+}
+
+.lines-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-weight: 700;
+}
+
+.line-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    margin-top: 0.75rem;
+    font-weight: 600;
+}
+
+.totals-row.balanced {
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+.totals-row.unbalanced {
+    background: #fef2f2;
+    color: #991b1b;
+}
+</style>

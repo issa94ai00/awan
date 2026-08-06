@@ -1,0 +1,6 @@
+@import './vue-custom.css';
+@import './sales-shared.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

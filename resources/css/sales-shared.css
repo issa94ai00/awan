@@ -1,0 +1,275 @@
+/**
+ * Shared chrome for the sales module (quotes, orders, invoices, payments,
+ * customers).
+ *
+ * Every sales view previously carried its own near-identical copy of these
+ * rules with slightly different paddings, radii and hard-coded hex colours, so
+ * the screens drifted apart visually and none of them followed the admin theme.
+ * They are namespaced under `.sales-page` and use Element Plus theme variables
+ * so light/dark and the configured primary colour are respected.
+ */
+
+.sales-page {
+    padding: 0;
+}
+
+/* ---------- Header ---------- */
+
+.sales-page .page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5);
+}
+
+.sales-page .page-title h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--el-text-color-primary, #1f2d3d);
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.sales-page .page-title h1 i {
+    color: var(--el-color-primary, #409eff);
+    font-size: 1.35rem;
+}
+
+.sales-page .page-title p {
+    margin: 0.4rem 0 0;
+    color: var(--el-text-color-secondary, #5f6d85);
+    font-size: 0.9rem;
+}
+
+.sales-page .header-actions {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.sales-page .search-input {
+    width: min(100%, 300px);
+}
+
+.sales-page .status-filter {
+    width: 160px;
+}
+
+/* ---------- Stat cards ---------- */
+
+.sales-page .overview-cards {
+    margin-bottom: 1.5rem;
+}
+
+.sales-page .stat-card {
+    border-radius: 0.9rem;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    border: 1px solid transparent;
+    margin-bottom: 0.75rem;
+}
+
+.sales-page .stat-card:hover {
+    transform: translateY(-3px);
+}
+
+.sales-page .stat-card.is-active {
+    border-color: var(--el-color-primary, #409eff);
+    box-shadow: 0 0 0 1px var(--el-color-primary-light-7, #c6e2ff);
+}
+
+.sales-page .stat-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.sales-page .stat-icon {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    border-radius: 0.75rem;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.sales-page .stat-icon.blue { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.sales-page .stat-icon.orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.sales-page .stat-icon.green { background: linear-gradient(135deg, #10b981, #059669); }
+.sales-page .stat-icon.red { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+.sales-page .stat-icon.purple { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+.sales-page .stat-icon.teal { background: linear-gradient(135deg, #06b6d4, #0e7490); }
+
+.sales-page .stat-details h3 {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--el-text-color-primary, #24314f);
+}
+
+.sales-page .stat-details p {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    color: var(--el-text-color-secondary, #6b7c98);
+}
+
+/* ---------- Table panel ---------- */
+
+.sales-page .table-panel {
+    border-radius: 0.9rem;
+}
+
+.sales-page .table-panel + .table-panel {
+    margin-top: 1.5rem;
+}
+
+.sales-page .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    color: var(--el-text-color-primary, #1f2d3d);
+}
+
+.sales-page .card-header i {
+    color: var(--el-text-color-secondary, #909399);
+    margin-inline-end: 0.4rem;
+}
+
+.sales-page .result-count {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--el-text-color-secondary, #909399);
+}
+
+/* Record numbers act as links into the detail drawer. Rendered as <button>
+   so they stay keyboard reachable. */
+.sales-page .record-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--el-color-primary, #409eff);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.sales-page .record-link:hover,
+.sales-page .record-link:focus-visible {
+    text-decoration: underline;
+}
+
+.sales-page .customer-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sales-page .customer-cell i {
+    color: var(--el-text-color-placeholder, #c0c4cc);
+}
+
+.sales-page .amount {
+    font-variant-numeric: tabular-nums;
+    color: var(--el-text-color-primary, #24314f);
+}
+
+.sales-page .amount.due {
+    color: var(--el-color-danger, #f56c6c);
+}
+
+.sales-page .amount.paid {
+    color: var(--el-color-success, #67c23a);
+}
+
+.sales-page .status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.sales-page .status-tag.clickable {
+    cursor: pointer;
+}
+
+.sales-page .is-expired {
+    color: var(--el-color-danger, #f56c6c);
+    font-weight: 600;
+}
+
+.sales-page .pagination-bar {
+    display: flex;
+    justify-content: center;
+    padding-top: 1.1rem;
+}
+
+/* ---------- Detail drawer ---------- */
+
+.sales-page .detail-body,
+.sales-drawer .detail-body {
+    display: grid;
+    gap: 1.1rem;
+}
+
+.detail-status {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.detail-heading {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--el-text-color-primary, #1f2d3d);
+}
+
+.totals-box {
+    border-radius: 0.75rem;
+    background: var(--el-fill-color-light, #f5f7fa);
+    padding: 0.9rem 1rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.totals-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    color: var(--el-text-color-regular, #5f6d85);
+}
+
+.totals-row.grand {
+    border-top: 1px dashed var(--el-border-color, #dcdfe6);
+    padding-top: 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--el-text-color-primary, #1f2d3d);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 768px) {
+    .sales-page .page-header {
+        align-items: stretch;
+    }
+
+    .sales-page .header-actions {
+        width: 100%;
+    }
+
+    .sales-page .search-input,
+    .sales-page .status-filter {
+        width: 100%;
+    }
+}

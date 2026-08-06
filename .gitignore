@@ -1,30 +1,58 @@
-/vendor/
-node_modules/
-npm-debug.log
+/node_modules
+/npm-debug.log
 yarn-error.log
 
-# Laravel 4 specific
-bootstrap/compiled.php
-app/storage/
+# Laravel
+/vendor
+/.env
+.env.backup
+.env.production
+Homestead.yaml
+Homestead.json
+.vagrant
+.phpunit.result.cache
 
-# Laravel 5 & Lumen specific
+# Storage
+storage/*.key
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/pail
+storage/logs/*
+
+# Public
 public/storage
 public/hot
+public/build
 
-# Laravel 5 & Lumen specific with changed public path
+# App-specific exclusions
+public/downloads/lms-android.apk
+public/images/site-bg.svg
+.npmrc
+config/view.php
+auth.json
+.phpactor.json
+
+# استثناء مجلد الـ course-files بالكامل
+storage/app/private/course-files/
+
+# استثناء مجلد الـ receipts بالكامل
+storage/app/private/receipts/
+
+# Shared hosting (changed public path)
 public_html/storage
 public_html/hot
 
-storage/*.key
-.env
-Homestead.yaml
-Homestead.json
-/.vagrant
-.phpunit.result.cache
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
 
-/public/build
-/storage/pail
-.env.backup
-.env.production
-.phpactor.json
-auth.json
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter mobile app (separate project, not tracked here)
+/mobile_app
+>>>>>>> 26e3cf6 (First Commit)

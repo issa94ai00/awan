@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "awan-laravel",
+      "url": "http://localhost:8095"
+    },
+    {
+      "name": "awan-laravel-serve",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "serve", "--port=8095"],
+      "port": 8095
+    }
+  ]
+}
