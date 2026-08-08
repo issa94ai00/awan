@@ -43,9 +43,15 @@ class DatabaseSeeder extends Seeder
                 RoleSeeder::class,
                 UserSeeder::class,
                 CategorySeeder::class,
-                ProductSeeder::class,
+                // The main warehouse must exist before any product stock is
+                // attached to it.
+                WarehouseSeeder::class,
+                // Rebuilds categories and products from the goods-received
+                // sheet and books their opening stock into the warehouse.
+                // Replaces the older sanitary catalogue seeders, which seeded a
+                // different product set that this one would wipe anyway.
+                CatalogSeeder::class,
                 WarehouseBinSeeder::class,
-                SanitaryCategorySeeder::class,
                 CustomerSeeder::class,
                 NotificationTemplateSeeder::class,
                 WorkflowSeeder::class,
@@ -92,8 +98,8 @@ class DatabaseSeeder extends Seeder
             $this->call([
                 SettingSeeder::class,
                 RmaSeeder::class,
-                SanitaryCategorySeeder::class,
-                ProductSeeder::class,
+                WarehouseSeeder::class,
+                CatalogSeeder::class,
             ]);
         } else {
             // Fallback if backup file is missing
@@ -114,8 +120,14 @@ class DatabaseSeeder extends Seeder
                 RoleSeeder::class,
                 UserSeeder::class,
                 CategorySeeder::class,
-                SanitaryCategorySeeder::class,
-                ProductSeeder::class,
+                // The main warehouse must exist before any product stock is
+                // attached to it.
+                WarehouseSeeder::class,
+                // Rebuilds categories and products from the goods-received
+                // sheet and books their opening stock into the warehouse.
+                // Replaces the older sanitary catalogue seeders, which seeded a
+                // different product set that this one would wipe anyway.
+                CatalogSeeder::class,
                 WarehouseBinSeeder::class,
                 CustomerSeeder::class,
                 NotificationTemplateSeeder::class,

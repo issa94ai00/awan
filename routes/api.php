@@ -85,7 +85,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
     });
     
     // Admin WMS API (using web middleware for session auth)
-    Route::prefix('admin/wms')->middleware('auth')->group(function () {
+    // The admin SPA authenticates with a Sanctum bearer token, so this group has
+    // to use the sanctum guard. Plain `auth` resolves to the default `web`
+    // (session) guard, which no token request can satisfy — every WMS call came
+    // back 401, and the client's 401 handler reacted by clearing the token and
+    // bouncing the user to the login page the moment they opened the module.
+    Route::prefix('wms')->middleware('auth:sanctum')->group(function () {
         // Dashboard (لوحة التحكم)
         Route::get('/dashboard', [WmsController::class, 'dashboard'])->name('api.admin.wms.dashboard');
 
@@ -133,8 +138,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
     });
     
-    // Admin Products API (using web middleware for session auth)
-    Route::prefix('admin')->middleware('auth')->group(function () {
+    // Admin Products API. Same as the WMS group above: the SPA sends a Sanctum
+    // bearer token, so a bare `auth` (session guard) rejects every request and
+    // the client's 401 handler logs the user out.
+    Route::prefix('admin')->middleware('auth:sanctum')->group(function () {
         Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
     });
     

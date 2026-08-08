@@ -10,21 +10,12 @@ class WarehouseBinSeeder extends Seeder
 {
     public function run(): void
     {
-        // Use existing warehouse or create one with existing schema
-        $warehouse = \App\Models\Warehouse::firstOrCreate(
-            ['name' => 'Main Warehouse'],
-            [
-                'code' => 'WH-001',
-                'address' => 'Industrial Zone',
-                'city' => 'Riyadh',
-                'country' => 'Saudi Arabia',
-                'location_type' => 'warehouse',
-                'capacity' => 10000,
-                'manager_id' => 1,
-                'is_active' => true,
-                'is_primary' => true,
-            ]
-        );
+        // The main warehouse belongs to WarehouseSeeder. Matching on the English
+        // name here used to create a second warehouse the moment anything
+        // renamed the first one, so the bins ended up attached to an empty
+        // duplicate while all the stock sat in the original.
+        $this->call(WarehouseSeeder::class);
+        $warehouse = \App\Models\Warehouse::findOrFail(WarehouseSeeder::mainWarehouseId());
 
         // Create zones and bins
         $zones = ['A', 'B', 'C', 'D'];
@@ -49,6 +40,6 @@ class WarehouseBinSeeder extends Seeder
             }
         }
 
-        $this->command->info('Created warehouse bins for Main Warehouse');
+        $this->command->info("Created warehouse bins for {$warehouse->name}");
     }
 }
