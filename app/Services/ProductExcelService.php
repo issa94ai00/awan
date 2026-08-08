@@ -44,6 +44,7 @@ class ProductExcelService
         'الاسم' => 'string',
         'الاسم بالإنجليزية' => 'string',
         'الباركود' => 'string',
+        'السعر' => 'number',
         'الكمية' => 'number',
         'الكمية المتاحة' => 'number',
         'المحجوز' => 'number',
@@ -117,6 +118,9 @@ class ProductExcelService
                 'الاسم' => $item->product->name_ar ?? '',
                 'الاسم بالإنجليزية' => $nameEn,
                 'الباركود' => $item->product->barcode ?? '',
+                // Exported so the sheet can be edited and re-imported as a
+                // price list as well as a stock count.
+                'السعر' => (float) ($item->product->price ?? 0),
                 'الكمية' => $item->quantity ?? 0,
                 'الكمية المتاحة' => $item->available_quantity ?? 0,
                 'المحجوز' => $item->reserved_quantity ?? 0,
@@ -136,7 +140,10 @@ class ProductExcelService
         $result = [
             'products_created' => 0,
             'products_matched' => 0,
+            'prices_updated' => 0,
             'inventory_rows' => 0,
+            'inventory_created' => 0,
+            'inventory_updated' => 0,
             'errors' => [],
         ];
 
@@ -155,14 +162,31 @@ class ProductExcelService
                     $result['products_created']++;
                 } else {
                     $result['products_matched']++;
+
+                    // Pricing columns only reached brand-new products before, so
+                    // re-importing an edited export silently discarded every
+                    // price change on products that already existed.
+                    if ($this->applyPricing($product, $data)) {
+                        $result['prices_updated']++;
+                    }
                 }
 
                 $quantity = $data['stock_quantity'] ?? 0;
                 $reorderPoint = max(0, $data['reorder_point'] ?? 0);
                 $warehouse = $this->resolveWarehouse($data['warehouse']);
+
+                // Keyed on warehouse + product, so the same product listed under
+                // a second warehouse gets its own stock row rather than moving
+                // the existing one.
+                $existed = WarehouseInventory::where('warehouse_id', $warehouse->id)
+                    ->where('product_id', $product->id)
+                    ->whereNull('product_variant_id')
+                    ->exists();
+
                 $this->setWarehouseStock($warehouse, $product, $quantity, $reorderPoint);
 
                 $result['inventory_rows']++;
+                $existed ? $result['inventory_updated']++ : $result['inventory_created']++;
             } catch (\Throwable $e) {
                 $result['errors'][] = [
                     'row' => $rowNumber,
@@ -340,6 +364,38 @@ class ProductExcelService
     /**
      * Resolve a warehouse by its name, creating it if missing.
      */
+    /**
+     * Copies the pricing columns onto an existing product.
+     *
+     * @return bool whether anything actually changed
+     */
+    private function applyPricing(Product $product, array $data): bool
+    {
+        $changed = false;
+
+        foreach (['price', 'cost_price'] as $field) {
+            if ($data[$field] === null) {
+                continue;
+            }
+
+            if ((float) $product->{$field} !== (float) $data[$field]) {
+                $product->{$field} = $data[$field];
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            // A product with a real price should show it; the importer is the
+            // only place that price arrives for most of the catalogue.
+            if ((float) $product->price > 0) {
+                $product->show_price = true;
+            }
+            $product->save();
+        }
+
+        return $changed;
+    }
+
     private function resolveWarehouse(string $sheetName): Warehouse
     {
         $sheetName = trim($sheetName);
@@ -351,13 +407,32 @@ class ProductExcelService
             }
         }
 
-        return Warehouse::firstOrCreate(
-            ['name' => $sheetName],
-            [
-                'is_active' => true,
-                'location_type' => Warehouse::TYPE_WAREHOUSE,
-            ]
-        );
+        $warehouse = Warehouse::where('name', $sheetName)->first();
+        if ($warehouse) {
+            return $warehouse;
+        }
+
+        // `code` is NOT NULL with no default, so creating a warehouse without
+        // one threw a database error and the whole row failed — which is what
+        // happened whenever a sheet named a warehouse that did not exist yet.
+        return Warehouse::create([
+            'name' => $sheetName,
+            'code' => $this->uniqueWarehouseCode(),
+            'is_active' => true,
+            'location_type' => Warehouse::TYPE_WAREHOUSE,
+        ]);
+    }
+
+    private function uniqueWarehouseCode(): string
+    {
+        $next = (int) (Warehouse::max('id') ?? 0) + 1;
+
+        do {
+            $code = 'WH-' . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+            $next++;
+        } while (Warehouse::where('code', $code)->exists());
+
+        return $code;
     }
 
     /**
