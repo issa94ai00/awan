@@ -9,6 +9,7 @@ use App\Models\ProductSerialNumber;
 use App\Models\ReorderAlert;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
 use App\Services\InventoryAllocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -186,23 +187,22 @@ class EnhancedInventoryController extends Controller
                 'status' => ProductBatch::STATUS_AVAILABLE,
             ]);
 
-            // Update or create warehouse inventory
-            $inventory = WarehouseInventory::firstOrCreate(
+            // Book the units in through InventoryService (keyed per batch, so a
+            // resubmit of the same batch cannot add them twice) — this keeps the
+            // warehouse row and the product total consistent with the movement.
+            app(InventoryService::class)->receive(
+                $request->product_id,
+                $request->quantity,
+                $request->warehouse_id,
                 [
-                    'product_id' => $request->product_id,
-                    'warehouse_id' => $request->warehouse_id,
-                    'product_variant_id' => $request->product_variant_id,
-                ],
-                [
-                    'quantity' => 0,
-                    'reserved_quantity' => 0,
-                    'reorder_point' => 10,
-                    'safety_stock' => 5,
-                    'cost_basis' => WarehouseInventory::COST_BASIS_FIFO,
+                    'key' => 'batch:' . $batch->batch_number,
+                    'reference' => $batch->batch_number,
+                    'source' => 'batch',
+                    'reason' => 'إنشاء دفعة ' . $batch->batch_number,
+                    'unit_cost' => $request->unit_cost,
+                    'created_by' => auth()->id(),
                 ]
             );
-
-            $inventory->increment('quantity', $request->quantity);
 
             DB::commit();
 
@@ -277,22 +277,23 @@ class EnhancedInventoryController extends Controller
                 $created[] = $serial;
             }
 
-            // Update warehouse inventory count
-            $inventory = WarehouseInventory::firstOrCreate(
+            // Book the units in through InventoryService. Keyed on the first
+            // serial, so re-posting the same list is a no-op — the serial-number
+            // unique constraint already makes a retry fail loudly, this keeps
+            // the totals honest in the process.
+            app(InventoryService::class)->receive(
+                $request->product_id,
+                count($request->serial_numbers),
+                $request->warehouse_id,
                 [
-                    'product_id' => $request->product_id,
-                    'warehouse_id' => $request->warehouse_id,
-                    'product_variant_id' => $request->product_variant_id,
-                ],
-                [
-                    'quantity' => 0,
-                    'reserved_quantity' => 0,
-                    'reorder_point' => 10,
-                    'safety_stock' => 5,
+                    'key' => 'serial:' . $request->serial_numbers[0],
+                    'reference' => $request->serial_numbers[0],
+                    'source' => 'serial_numbers',
+                    'reason' => 'إضافة أرقام تسلسلية',
+                    'unit_cost' => 0,
+                    'created_by' => auth()->id(),
                 ]
             );
-
-            $inventory->increment('quantity', count($request->serial_numbers));
 
             DB::commit();
 

@@ -81,6 +81,7 @@ class EnhancedSalesOrderController extends Controller
             'channel_id' => 'nullable|exists:order_channels,id',
             'contract_id' => 'nullable|exists:sales_contracts,id',
             'fulfillment_type' => 'required|in:ship,pickup,delivery',
+            'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'shipping_address' => 'nullable|array',
             'billing_address' => 'nullable|array',
@@ -105,10 +106,7 @@ class EnhancedSalesOrderController extends Controller
                 'customer_id' => $request->customer_id,
                 'channel_id' => $request->channel_id,
                 'contract_id' => $request->contract_id,
-                'fulfillment_type' => $request->fulfillment_type,
-                'fulfillment_warehouse_id' => $request->fulfillment_warehouse_id,
-                'shipping_address' => $request->shipping_address,
-                'billing_address' => $request->billing_address,
+            'assigned_employee_id' => $request->assigned_employee_id,
                 'shipping_cost' => $request->shipping_cost,
                 'tax_amount' => $request->tax_amount,
                 'discount_amount' => $request->discount_amount,
@@ -140,9 +138,18 @@ class EnhancedSalesOrderController extends Controller
 
             // Auto-select fulfillment warehouse if not specified
             if (!$order->fulfillment_warehouse_id) {
-                $warehouseId = $this->allocationService->selectFulfillmentWarehouse($order);
-                if ($warehouseId) {
-                    $order->fulfillment_warehouse_id = $warehouseId;
+                $order->load('assignedEmployee');
+
+                if ($order->assignedEmployee?->warehouse_id) {
+                    $order->fulfillment_warehouse_id = $order->assignedEmployee->warehouse_id;
+                } else {
+                    $warehouseId = $this->allocationService->selectFulfillmentWarehouse($order);
+                    if ($warehouseId) {
+                        $order->fulfillment_warehouse_id = $warehouseId;
+                    }
+                }
+
+                if ($order->fulfillment_warehouse_id) {
                     $order->save();
                 }
             }

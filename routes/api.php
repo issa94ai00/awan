@@ -5,6 +5,10 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductUnitController;
+use App\Http\Controllers\Api\ProductWarehouseAssignmentController;
+use App\Http\Controllers\Api\MrpController;
+use App\Http\Controllers\Api\PickingController;
+use App\Http\Controllers\Api\CompositeProductController;
 use App\Http\Controllers\Api\ErpUpgradeController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\AdminSearchController;
@@ -29,6 +33,7 @@ use App\Http\Controllers\Api\LeaveRequestController;use App\Http\Controllers\Api
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockMovementController;
+use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
@@ -61,7 +66,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Public API Routes
-Route::prefix('v1')->group(function () {
+Route::prefix('v1')->middleware('web')->group(function () {
     
     // Home & Featured Content
     Route::get('/home', [HomeController::class, 'index'])->name('api.home');
@@ -77,6 +82,60 @@ Route::prefix('v1')->group(function () {
         Route::post('/cart/remove/{id}', [\App\Http\Controllers\CartController::class, 'remove'])->name('api.cart.remove');
         Route::post('/cart/clear', [\App\Http\Controllers\CartController::class, 'clear'])->name('api.cart.clear');
         Route::get('/cart/count', [\App\Http\Controllers\CartController::class, 'getCartCount'])->name('api.cart.count');
+    });
+    
+    // Admin WMS API (using web middleware for session auth)
+    Route::prefix('admin/wms')->middleware('auth')->group(function () {
+        // Dashboard (لوحة التحكم)
+        Route::get('/dashboard', [WmsController::class, 'dashboard'])->name('api.admin.wms.dashboard');
+
+        // Products (المنتجات)
+        Route::get('/products', [WmsController::class, 'indexProducts'])->name('api.admin.wms.products.index');
+
+        // Assignments (الربط)
+        Route::get('/assignments', [WmsController::class, 'indexAssignments'])->name('api.admin.wms.assignments.index');
+        Route::post('/assignments', [WmsController::class, 'storeAssignment'])->name('api.admin.wms.assignments.store');
+        Route::get('/assignments/{id}', [WmsController::class, 'showAssignment'])->name('api.admin.wms.assignments.show');
+        Route::put('/assignments/{id}', [WmsController::class, 'updateAssignment'])->name('api.admin.wms.assignments.update');
+        Route::delete('/assignments/{id}', [WmsController::class, 'destroyAssignment'])->name('api.admin.wms.assignments.destroy');
+        Route::get('/suggest-stock-levels', [WmsController::class, 'suggestStockLevels'])->name('api.admin.wms.suggest-stock-levels');
+
+        // Stock (المخزون)
+        Route::get('/stock/balance', [WmsController::class, 'getStockBalance'])->name('api.admin.wms.stock.balance');
+        Route::get('/stock/transactions', [WmsController::class, 'getStockTransactions'])->name('api.admin.wms.stock.transactions');
+        Route::post('/stock/movements', [WmsController::class, 'createStockMovement'])->name('api.admin.wms.stock.movements.create');
+
+        // Stats (إحصائيات)
+        Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
+
+        // Warehouses (المستودعات)
+        Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
+        Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
+        Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
+        Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
+        Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+
+        // Warehouse Bins (أماكن التخزين)
+        Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');
+        Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.admin.wms.bins.show');
+        Route::post('/bins', [WmsController::class, 'storeBin'])->name('api.admin.wms.bins.store');
+        Route::put('/bins/{id}', [WmsController::class, 'updateBin'])->name('api.admin.wms.bins.update');
+        Route::delete('/bins/{id}', [WmsController::class, 'destroyBin'])->name('api.admin.wms.bins.destroy');
+
+        // Picking Lists (قوائم الاختيار)
+        Route::get('/picking-lists', [WmsController::class, 'indexPickingLists'])->name('api.admin.wms.picking.index');
+        Route::get('/picking-lists/{id}', [WmsController::class, 'showPickingList'])->name('api.admin.wms.picking.show');
+        Route::post('/picking-lists', [WmsController::class, 'createPickingList'])->name('api.admin.wms.picking.create');
+        Route::post('/picking-lists/{id}/start', [WmsController::class, 'startPicking'])->name('api.admin.wms.picking.start');
+        Route::post('/picking-items/{itemId}', [WmsController::class, 'pickItem'])->name('api.admin.wms.picking.pick');
+        Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.admin.wms.picking.complete');
+        Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.admin.wms.picking.cancel');
+        Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
+    });
+    
+    // Admin Products API (using web middleware for session auth)
+    Route::prefix('admin')->middleware('auth')->group(function () {
+        Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
     });
     
     // Categories
@@ -127,7 +186,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/upload', [UploadController::class, 'upload'])->name('api.upload');
         Route::delete('/upload', [UploadController::class, 'delete'])->name('api.upload.delete');
 
-        // Admin Products API
+        // Admin Products API (using Sanctum for API clients)
         Route::prefix('admin')->group(function () {
             Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
             Route::get('/products/export', [ProductController::class, 'export'])->name('api.admin.products.export');
@@ -143,6 +202,48 @@ Route::prefix('v1')->group(function () {
             Route::put('/products/{product}/units/{unit}', [ProductUnitController::class, 'update'])->name('api.admin.product-units.update');
             Route::delete('/products/{product}/units/{unit}', [ProductUnitController::class, 'destroy'])->name('api.admin.product-units.destroy');
             Route::get('/units/search-barcode', [ProductUnitController::class, 'searchByBarcode'])->name('api.admin.product-units.search-barcode');
+
+            // Product-Warehouse Assignment API
+            Route::get('/product-warehouse-assignments', [ProductWarehouseAssignmentController::class, 'index'])->name('api.admin.product-warehouse-assignments.index');
+            Route::post('/product-warehouse-assignments', [ProductWarehouseAssignmentController::class, 'store'])->name('api.admin.product-warehouse-assignments.store');
+            Route::get('/product-warehouse-assignments/{id}', [ProductWarehouseAssignmentController::class, 'show'])->name('api.admin.product-warehouse-assignments.show');
+            Route::put('/product-warehouse-assignments/{id}', [ProductWarehouseAssignmentController::class, 'update'])->name('api.admin.product-warehouse-assignments.update');
+            Route::delete('/product-warehouse-assignments/{id}', [ProductWarehouseAssignmentController::class, 'destroy'])->name('api.admin.product-warehouse-assignments.destroy');
+            Route::get('/product-warehouse-assignments/products/{productId}/stock-balance', [ProductWarehouseAssignmentController::class, 'getRealTimeStockBalance'])->name('api.admin.product-warehouse-assignments.stock-balance');
+            Route::post('/product-warehouse-assignments/update-stock-balance', [ProductWarehouseAssignmentController::class, 'updateStockBalance'])->name('api.admin.product-warehouse-assignments.update-stock');
+            Route::get('/product-warehouse-assignments/reorder-alerts', [ProductWarehouseAssignmentController::class, 'getReorderAlerts'])->name('api.admin.product-warehouse-assignments.reorder-alerts');
+            Route::get('/product-warehouse-assignments/recommended-warehouse', [ProductWarehouseAssignmentController::class, 'getRecommendedWarehouse'])->name('api.admin.product-warehouse-assignments.recommended-warehouse');
+
+            // MRP (Material Requirements Planning) API
+            Route::get('/mrp/products/{productId}', [MrpController::class, 'runForProduct'])->name('api.admin.mrp.product');
+            Route::get('/mrp/warehouses/{warehouseId}', [MrpController::class, 'runForWarehouse'])->name('api.admin.mrp.warehouse');
+            Route::get('/mrp/run-all', [MrpController::class, 'runForAll'])->name('api.admin.mrp.run-all');
+            Route::post('/mrp/assignments/{assignmentId}/execute', [MrpController::class, 'executeRecommendations'])->name('api.admin.mrp.execute');
+            Route::get('/mrp/summary', [MrpController::class, 'getSummary'])->name('api.admin.mrp.summary');
+
+            // Picking API
+            Route::get('/picking/best-warehouse', [PickingController::class, 'getBestWarehouse'])->name('api.admin.picking.best-warehouse');
+            Route::post('/picking/sales-orders/{salesOrderId}/generate-plan', [PickingController::class, 'generatePickingPlan'])->name('api.admin.picking.generate-plan');
+            Route::get('/picking/lists/{pickingListId}/optimize-route', [PickingController::class, 'optimizeRoute'])->name('api.admin.picking.optimize-route');
+            Route::post('/picking/lists/{pickingListId}/confirm', [PickingController::class, 'confirmPicking'])->name('api.admin.picking.confirm');
+            Route::get('/picking/lists', [PickingController::class, 'getPickingLists'])->name('api.admin.picking.lists');
+            Route::get('/picking/lists/{id}', [PickingController::class, 'getPickingList'])->name('api.admin.picking.list');
+            Route::post('/picking/lists/{pickingListId}/assign', [PickingController::class, 'assignPicker'])->name('api.admin.picking.assign');
+            Route::put('/picking/items/{itemId}', [PickingController::class, 'updatePickingItem'])->name('api.admin.picking.update-item');
+
+            // Composite Product API
+            Route::get('/composite-products/{productId}/is-composite', [CompositeProductController::class, 'isComposite'])->name('api.admin.composite.is-composite');
+            Route::get('/composite-products/{productId}/components', [CompositeProductController::class, 'getComponents'])->name('api.admin.composite.components');
+            Route::post('/composite-products/{productId}/can-assemble', [CompositeProductController::class, 'canAssemble'])->name('api.admin.composite.can-assemble');
+            Route::get('/composite-products/{productId}/best-warehouse', [CompositeProductController::class, 'getBestWarehouseForAssembly'])->name('api.admin.composite.best-warehouse');
+            Route::post('/composite-products/assembly-orders', [CompositeProductController::class, 'createAssemblyOrder'])->name('api.admin.composite.create-assembly');
+            Route::post('/composite-products/assembly-orders/{assemblyOrderId}/complete', [CompositeProductController::class, 'completeAssemblyOrder'])->name('api.admin.composite.complete-assembly');
+            Route::post('/composite-products/disassemble', [CompositeProductController::class, 'disassemble'])->name('api.admin.composite.disassemble');
+            Route::get('/composite-products/{productId}/bom', [CompositeProductController::class, 'getBillOfMaterials'])->name('api.admin.composite.bom');
+            Route::get('/composite-products/{productId}/cost', [CompositeProductController::class, 'calculateCost'])->name('api.admin.composite.cost');
+            Route::put('/composite-products/{productId}/components', [CompositeProductController::class, 'updateComponents'])->name('api.admin.composite.update-components');
+            Route::get('/composite-products/assembly-orders', [CompositeProductController::class, 'getAssemblyOrders'])->name('api.admin.composite.assembly-orders');
+            Route::get('/composite-products/assembly-orders/{id}', [CompositeProductController::class, 'getAssemblyOrder'])->name('api.admin.composite.assembly-order');
 
             // Admin Special Offers API
             Route::get('/special-offers', [SpecialOfferController::class, 'index'])->name('api.admin.special-offers.index');
@@ -207,6 +308,12 @@ Route::prefix('v1')->group(function () {
             // Admin Inventory Movements
             Route::get('/inventory/movements', [StockMovementController::class, 'index'])->name('api.admin.inventory.movements.index');
             Route::post('/inventory/movements', [StockMovementController::class, 'store'])->name('api.admin.inventory.movements.store');
+
+            // Admin Inventory Overview (single source of truth for the screens)
+            Route::get('/inventory/summary', [InventoryController::class, 'summary'])->name('api.admin.inventory.summary');
+            Route::get('/inventory/stock', [InventoryController::class, 'stock'])->name('api.admin.inventory.stock');
+            Route::get('/inventory/export', [InventoryController::class, 'export'])->name('api.admin.inventory.export');
+            Route::post('/inventory/import', [InventoryController::class, 'import'])->name('api.admin.inventory.import');
 
             // Admin Accounting
             Route::get('/accounting/ledger-accounts', [LedgerAccountController::class, 'index'])->name('api.admin.accounting.ledger-accounts.index');
@@ -306,6 +413,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->whereNumber('salesOrder')->name('api.sales-orders.update');
         Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->whereNumber('salesOrder')->name('api.sales-orders.destroy');
         Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->whereNumber('salesOrder')->name('api.sales-orders.convert-to-invoice');
+        Route::post('/sales-orders/{salesOrder}/confirm', [SalesOrderController::class, 'confirmOrder'])->whereNumber('salesOrder')->name('api.sales-orders.confirm');
 
         // Payments (مدفوعات)
         Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');
@@ -407,66 +515,117 @@ Route::prefix('v1')->group(function () {
             // one response, so the profile screen makes a single request.
             Route::get('/customers/{id}/overview', [CustomerOverviewController::class, 'show'])
                 ->whereNumber('id')->name('api.admin.customers.overview');
+
+            // WMS - Warehouse Management System (نظام إدارة المستودعات)
+            Route::prefix('wms')->middleware('web')->group(function () {
+                // Dashboard (لوحة التحكم)
+                Route::get('/dashboard', [WmsController::class, 'dashboard'])->name('api.admin.wms.dashboard');
+
+                // Products (المنتجات)
+                Route::get('/products', [WmsController::class, 'indexProducts'])->name('api.admin.wms.products.index');
+
+                // Assignments (الربط)
+                Route::get('/assignments', [WmsController::class, 'indexAssignments'])->name('api.admin.wms.assignments.index');
+                Route::post('/assignments', [WmsController::class, 'storeAssignment'])->name('api.admin.wms.assignments.store');
+                Route::get('/assignments/{id}', [WmsController::class, 'showAssignment'])->name('api.admin.wms.assignments.show');
+                Route::put('/assignments/{id}', [WmsController::class, 'updateAssignment'])->name('api.admin.wms.assignments.update');
+                Route::delete('/assignments/{id}', [WmsController::class, 'destroyAssignment'])->name('api.admin.wms.assignments.destroy');
+                Route::get('/suggest-stock-levels', [WmsController::class, 'suggestStockLevels'])->name('api.admin.wms.suggest-stock-levels');
+
+                // Stock (المخزون)
+                Route::get('/stock/balance', [WmsController::class, 'getStockBalance'])->name('api.admin.wms.stock.balance');
+                Route::get('/stock/transactions', [WmsController::class, 'getStockTransactions'])->name('api.admin.wms.stock.transactions');
+                Route::post('/stock/movements', [WmsController::class, 'createStockMovement'])->name('api.admin.wms.stock.movements.create');
+
+                // Stats (إحصائيات)
+                Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
+
+                // Warehouses (المستودعات)
+                Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
+                Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
+                Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
+                Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
+                Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+
+                // Warehouse Bins (أماكن التخزين)
+                Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');
+                Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.admin.wms.bins.show');
+                Route::post('/bins', [WmsController::class, 'storeBin'])->name('api.admin.wms.bins.store');
+                Route::put('/bins/{id}', [WmsController::class, 'updateBin'])->name('api.admin.wms.bins.update');
+                Route::delete('/bins/{id}', [WmsController::class, 'destroyBin'])->name('api.admin.wms.bins.destroy');
+
+                // Picking Lists (قوائم الاختيار)
+                Route::get('/picking-lists', [WmsController::class, 'indexPickingLists'])->name('api.admin.wms.picking.index');
+                Route::get('/picking-lists/{id}', [WmsController::class, 'showPickingList'])->name('api.admin.wms.picking.show');
+                Route::post('/picking-lists', [WmsController::class, 'createPickingList'])->name('api.admin.wms.picking.create');
+                Route::post('/picking-lists/{id}/start', [WmsController::class, 'startPicking'])->name('api.admin.wms.picking.start');
+                Route::post('/picking-items/{itemId}', [WmsController::class, 'pickItem'])->name('api.admin.wms.picking.pick');
+                Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.admin.wms.picking.complete');
+                Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.admin.wms.picking.cancel');
+                Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
+            });
         });
 
-        // WMS - Warehouse Management System (نظام إدارة المستودعات)
-        Route::prefix('wms')->group(function () {
+        // WMS - Warehouse Management System (نظام إدارة المستودعات) - Public Routes
+        Route::prefix('admin/wms')->group(function () {
             // Stats (إحصائيات)
-            Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.wms.stats');
+            Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
 
             // Warehouses (المستودعات)
-            Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.wms.warehouses.index');
-            Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.wms.warehouses.show');
-            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.wms.warehouses.store');
-            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.wms.warehouses.update');
-            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.wms.warehouses.destroy');
+            Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
+            Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
+            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
+            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
+            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
 
             // Warehouse Bins (أماكن التخزين)
-            Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.wms.bins.index');
-            Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.wms.bins.show');
-            Route::post('/bins', [WmsController::class, 'storeBin'])->name('api.wms.bins.store');
-            Route::put('/bins/{id}', [WmsController::class, 'updateBin'])->name('api.wms.bins.update');
-            Route::delete('/bins/{id}', [WmsController::class, 'destroyBin'])->name('api.wms.bins.destroy');
+            Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');
+            Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.admin.wms.bins.show');
+            Route::post('/bins', [WmsController::class, 'storeBin'])->name('api.admin.wms.bins.store');
+            Route::put('/bins/{id}', [WmsController::class, 'updateBin'])->name('api.admin.wms.bins.update');
+            Route::delete('/bins/{id}', [WmsController::class, 'destroyBin'])->name('api.admin.wms.bins.destroy');
 
             // Picking Lists (قوائم الاختيار)
-            Route::get('/picking-lists', [WmsController::class, 'indexPickingLists'])->name('api.wms.picking.index');
-            Route::get('/picking-lists/{id}', [WmsController::class, 'showPickingList'])->name('api.wms.picking.show');
-            Route::post('/picking-lists', [WmsController::class, 'createPickingList'])->name('api.wms.picking.create');
-            Route::post('/picking-lists/{id}/start', [WmsController::class, 'startPicking'])->name('api.wms.picking.start');
-            Route::post('/picking-items/{itemId}', [WmsController::class, 'pickItem'])->name('api.wms.picking.pick');
-            Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.wms.picking.complete');
-            Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.wms.picking.cancel');
-            Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.wms.picking.statistics');
+            Route::get('/picking-lists', [WmsController::class, 'indexPickingLists'])->name('api.admin.wms.picking.index');
+            Route::get('/picking-lists/{id}', [WmsController::class, 'showPickingList'])->name('api.admin.wms.picking.show');
+            Route::post('/picking-lists', [WmsController::class, 'createPickingList'])->name('api.admin.wms.picking.create');
+            Route::post('/picking-lists/{id}/start', [WmsController::class, 'startPicking'])->name('api.admin.wms.picking.start');
+            Route::post('/picking-items/{itemId}', [WmsController::class, 'pickItem'])->name('api.admin.wms.picking.pick');
+            Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.admin.wms.picking.complete');
+            Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.admin.wms.picking.cancel');
+            Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
 
             // Packing Lists (قوائم التعبئة)
-            Route::get('/packing-lists', [WmsController::class, 'indexPackingLists'])->name('api.wms.packing.index');
-            Route::get('/packing-lists/{id}', [WmsController::class, 'showPackingList'])->name('api.wms.packing.show');
-            Route::post('/packing-lists', [WmsController::class, 'createPackingList'])->name('api.wms.packing.create');
-            Route::post('/packing-lists/{id}/start', [WmsController::class, 'startPacking'])->name('api.wms.packing.start');
-            Route::put('/packing-items/{itemId}', [WmsController::class, 'updatePackageDetails'])->name('api.wms.packing.update');
-            Route::post('/packing-lists/{id}/complete', [WmsController::class, 'completePacking'])->name('api.wms.packing.complete');
-            Route::post('/packing-lists/{id}/cancel', [WmsController::class, 'cancelPacking'])->name('api.wms.packing.cancel');
-            Route::get('/packing-lists/{id}/labels', [WmsController::class, 'getPackingLabels'])->name('api.wms.packing.labels');
-            Route::get('/packing-lists/{id}/validate', [WmsController::class, 'validatePacking'])->name('api.wms.packing.validate');
-            Route::get('/packing/statistics', [WmsController::class, 'getPackingStatistics'])->name('api.wms.packing.statistics');
+            Route::get('/packing-lists', [WmsController::class, 'indexPackingLists'])->name('api.admin.wms.packing.index');
+            Route::get('/packing-lists/{id}', [WmsController::class, 'showPackingList'])->name('api.admin.wms.packing.show');
+            Route::post('/packing-lists', [WmsController::class, 'createPackingList'])->name('api.admin.wms.packing.create');
+            Route::post('/packing-lists/{id}/start', [WmsController::class, 'startPacking'])->name('api.admin.wms.packing.start');
+            Route::put('/packing-items/{itemId}', [WmsController::class, 'updatePackageDetails'])->name('api.admin.wms.packing.update');
+            Route::post('/packing-lists/{id}/complete', [WmsController::class, 'completePacking'])->name('api.admin.wms.packing.complete');
+            Route::post('/packing-lists/{id}/cancel', [WmsController::class, 'cancelPacking'])->name('api.admin.wms.packing.cancel');
+            Route::get('/packing-lists/{id}/labels', [WmsController::class, 'getPackingLabels'])->name('api.admin.wms.packing.labels');
+            Route::get('/packing-lists/{id}/validate', [WmsController::class, 'validatePacking'])->name('api.admin.wms.packing.validate');
+            Route::get('/packing/statistics', [WmsController::class, 'getPackingStatistics'])->name('api.admin.wms.packing.statistics');
 
             // Shipping Manifests (بيانات الشحن)
-            Route::get('/shipping-manifests', [WmsController::class, 'indexShippingManifests'])->name('api.wms.shipping.index');
-            Route::get('/shipping-manifests/{id}', [WmsController::class, 'showShippingManifest'])->name('api.wms.shipping.show');
-            Route::post('/shipping-manifests', [WmsController::class, 'createShippingManifest'])->name('api.wms.shipping.create');
-            Route::post('/shipping-manifests/{id}/dispatch', [WmsController::class, 'dispatchManifest'])->name('api.wms.shipping.dispatch');
-            Route::post('/shipping-items/{itemId}/deliver', [WmsController::class, 'markItemDelivered'])->name('api.wms.shipping.deliver');
+            Route::get('/shipping-manifests', [WmsController::class, 'indexShippingManifests'])->name('api.admin.wms.shipping.index');
+            Route::get('/shipping-manifests/{id}', [WmsController::class, 'showShippingManifest'])->name('api.admin.wms.shipping.show');
+            Route::post('/shipping-manifests', [WmsController::class, 'createShippingManifest'])->name('api.admin.wms.shipping.create');
+            Route::post('/shipping-manifests/{id}/dispatch', [WmsController::class, 'dispatchManifest'])->name('api.admin.wms.shipping.dispatch');
+            Route::post('/shipping-manifests/{id}/complete', [WmsController::class, 'completeManifest'])->name('api.admin.wms.shipping.complete');
+            Route::get('/shipping-manifests/{id}/items/{itemId}/deliver', [WmsController::class, 'markItemDelivered'])->name('api.admin.wms.shipping.deliver');
+            Route::get('/shipping/statistics', [WmsController::class, 'getShippingStatistics'])->name('api.admin.wms.shipping.statistics');
 
-            // Cycle Counts (الجرد الدوري)
-            Route::get('/cycle-counts', [WmsController::class, 'indexCycleCounts'])->name('api.wms.cycle.index');
-            Route::get('/cycle-counts/{id}', [WmsController::class, 'showCycleCount'])->name('api.wms.cycle.show');
-            Route::post('/cycle-counts', [WmsController::class, 'storeCycleCount'])->name('api.wms.cycle.store');
-            Route::post('/cycle-counts/{id}/start', [WmsController::class, 'startCycleCount'])->name('api.wms.cycle.start');
-            Route::post('/cycle-counts/{countId}/items', [WmsController::class, 'addCycleCountItem'])->name('api.wms.cycle.items.add');
-            Route::post('/cycle-counts/{id}/complete', [WmsController::class, 'completeCycleCount'])->name('api.wms.cycle.complete');
-            Route::post('/cycle-counts/{id}/review', [WmsController::class, 'reviewCycleCount'])->name('api.wms.cycle.review');
-            Route::post('/cycle-counts/{id}/adjust', [WmsController::class, 'applyAdjustment'])->name('api.wms.cycle.adjust');
-            Route::post('/cycle-counts/{id}/cancel', [WmsController::class, 'cancelCycleCount'])->name('api.wms.cycle.cancel');
+            // Cycle Counts (جرد الدوري)
+            Route::get('/cycle-counts', [WmsController::class, 'indexCycleCounts'])->name('api.admin.wms.cycle-counts.index');
+            Route::get('/cycle-counts/{id}', [WmsController::class, 'showCycleCount'])->name('api.admin.wms.cycle-counts.show');
+            Route::post('/cycle-counts', [WmsController::class, 'storeCycleCount'])->name('api.admin.wms.cycle-counts.store');
+            Route::post('/cycle-counts/{id}/start', [WmsController::class, 'startCycleCount'])->name('api.admin.wms.cycle-counts.start');
+            Route::post('/cycle-counts/{countId}/items', [WmsController::class, 'addCycleCountItem'])->name('api.admin.wms.cycle-counts.items.store');
+            Route::post('/cycle-counts/{id}/complete', [WmsController::class, 'completeCycleCount'])->name('api.admin.wms.cycle-counts.complete');
+            Route::post('/cycle-counts/{id}/review', [WmsController::class, 'reviewCycleCount'])->name('api.admin.wms.cycle-counts.review');
+            Route::post('/cycle-counts/{id}/adjustment', [WmsController::class, 'applyAdjustment'])->name('api.admin.wms.cycle-counts.adjustment');
+            Route::post('/cycle-counts/{id}/cancel', [WmsController::class, 'cancelCycleCount'])->name('api.admin.wms.cycle-counts.cancel');
         });
 
         // Analytics & Reporting (التحليلات والتقارير)

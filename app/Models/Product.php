@@ -75,6 +75,11 @@ class Product extends Model implements Sitemapable
         return $this->hasMany(Inquiry::class);
     }
 
+    public function stockMovements(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';
@@ -115,9 +120,49 @@ class Product extends Model implements Sitemapable
         return $this->belongsToMany(Warehouse::class, 'stock_movements');
     }
 
+    public function inventory(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(WarehouseInventory::class);
+    }
+
     public function units(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ProductUnit::class);
+    }
+
+    public function warehouseAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductWarehouseAssignment::class);
+    }
+
+    public function activeWarehouseAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->warehouseAssignments()->active();
+    }
+
+    public function parentComponents(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductComponent::class, 'parent_product_id');
+    }
+
+    public function childComponents(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductComponent::class, 'component_product_id');
+    }
+
+    public function isComposite(): bool
+    {
+        return $this->parentComponents()->required()->exists();
+    }
+
+    public function getRequiredComponents(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->parentComponents()->required();
+    }
+
+    public function getOptionalComponents(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->parentComponents()->optional();
     }
 
     public function getNameAttribute(): string

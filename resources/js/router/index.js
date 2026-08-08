@@ -396,6 +396,11 @@ const routes = [
                 component: () => import('@/views/admin/wms/Index.vue')
             },
             {
+                path: 'wms/dashboard',
+                name: 'admin.wms.dashboard',
+                component: () => import('@/views/admin/wms/Dashboard.vue')
+            },
+            {
                 path: 'wms/warehouses',
                 name: 'admin.wms.warehouses.index',
                 component: () => import('@/views/admin/wms/Warehouses.vue')
@@ -424,6 +429,31 @@ const routes = [
                 path: 'wms/bins/:id/edit',
                 name: 'admin.wms.bins.edit',
                 component: () => import('@/views/admin/wms/BinForm.vue')
+            },
+            {
+                path: 'wms/products',
+                name: 'admin.wms.products.index',
+                component: () => import('@/views/admin/wms/Products/Index.vue')
+            },
+            {
+                path: 'wms/products/:id/assign',
+                name: 'admin.wms.products.assign',
+                component: () => import('@/views/admin/wms/Products/Assign.vue')
+            },
+            {
+                path: 'wms/stock/balances',
+                name: 'admin.wms.stock.balances',
+                component: () => import('@/views/admin/wms/Stock/Balances.vue')
+            },
+            {
+                path: 'wms/stock/organization',
+                name: 'admin.wms.stock.organization',
+                component: () => import('@/views/admin/wms/Stock/Organization.vue')
+            },
+            {
+                path: 'stock',
+                name: 'admin.stock.index',
+                component: () => import('@/views/admin/stock/Index.vue')
             },
             {
                 path: 'wms/picking',

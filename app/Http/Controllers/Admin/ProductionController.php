@@ -104,12 +104,26 @@ class ProductionController extends Controller
 
         $productionOrder->update(['status' => $validated['status']]);
 
-        // If completed, add to stock
+        // If completed, add to stock.
+        //
+        // Receiving flows through InventoryService and is keyed per order, so a
+        // repeated completion cannot book the finished goods twice and the
+        // warehouse row stays in step with the product total.
         if ($validated['status'] === ProductionOrder::STATUS_COMPLETED) {
-            $product = $productionOrder->product;
-            if ($product) {
-                $product->increment('stock_quantity', $productionOrder->quantity);
-            }
+            $inventory = app(\App\Services\Inventory\InventoryService::class);
+            $inventory->receive(
+                $productionOrder->product_id,
+                $productionOrder->quantity,
+                null,
+                [
+                    'key' => 'production:' . $productionOrder->id,
+                    'reference' => $productionOrder->order_number,
+                    'source' => 'production',
+                    'reason' => 'إنتاج مكتمل - أمر إنتاج ' . $productionOrder->order_number,
+                    'unit_cost' => $productionOrder->cost ?? 0,
+                    'created_by' => auth()->id(),
+                ]
+            );
         }
 
         return redirect()->back()

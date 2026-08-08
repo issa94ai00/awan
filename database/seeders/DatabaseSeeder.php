@@ -46,7 +46,6 @@ class DatabaseSeeder extends Seeder
                 ProductSeeder::class,
                 WarehouseBinSeeder::class,
                 SanitaryCategorySeeder::class,
-                SanitaryProductSeeder::class,
                 CustomerSeeder::class,
                 NotificationTemplateSeeder::class,
                 WorkflowSeeder::class,
@@ -86,12 +85,15 @@ class DatabaseSeeder extends Seeder
             // Re-run any migrations added after the backup was taken
             Artisan::call('migrate', ['--force' => true]);
 
+            // Remove legacy categories 1..12 and their products from the SQL restore
+            $this->cleanupLegacyCategoriesAndProducts();
+
             // Re-seed settings to insert any newly added default configurations
             $this->call([
                 SettingSeeder::class,
                 RmaSeeder::class,
                 SanitaryCategorySeeder::class,
-                SanitaryProductSeeder::class,
+                ProductSeeder::class,
             ]);
         } else {
             // Fallback if backup file is missing
@@ -112,15 +114,22 @@ class DatabaseSeeder extends Seeder
                 RoleSeeder::class,
                 UserSeeder::class,
                 CategorySeeder::class,
+                SanitaryCategorySeeder::class,
                 ProductSeeder::class,
                 WarehouseBinSeeder::class,
-                SanitaryCategorySeeder::class,
-                SanitaryProductSeeder::class,
                 CustomerSeeder::class,
                 NotificationTemplateSeeder::class,
                 WorkflowSeeder::class,
                 RmaSeeder::class,
             ]);
         }
+    }
+
+    protected function cleanupLegacyCategoriesAndProducts(): void
+    {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('products')->whereIn('category_id', range(1, 12))->delete();
+        DB::table('categories')->whereIn('id', range(1, 12))->delete();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
     }
 }

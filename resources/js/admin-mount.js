@@ -18,6 +18,11 @@ import WmsPackingForm from './views/admin/wms/PackingForm.vue';
 import WmsCycleCounts from './views/admin/wms/CycleCounts.vue';
 import WmsCycleCountForm from './views/admin/wms/CycleCountForm.vue';
 import WmsPerformance from './views/admin/wms/Performance.vue';
+import WmsStockOrganization from './views/admin/wms/Stock/Organization.vue';
+import WmsProductsIndex from './views/admin/wms/Products/Index.vue';
+import WmsProductsAssign from './views/admin/wms/Products/Assign.vue';
+import WmsStockBalances from './views/admin/wms/Stock/Balances.vue';
+import StockIndex from './views/admin/stock/Index.vue';
 
 import AnalyticsIndex from './views/admin/analytics/Index.vue';
 import AnalyticsSales from './views/admin/analytics/Sales.vue';
@@ -63,6 +68,11 @@ const componentMap = {
     'wms-cycle-counts': WmsCycleCounts,
     'wms-cycle-count-form': WmsCycleCountForm,
     'wms-performance': WmsPerformance,
+    'wms-stock-organization': WmsStockOrganization,
+    'wms-products-index': WmsProductsIndex,
+    'wms-products-assign': WmsProductsAssign,
+    'wms-stock-balances': WmsStockBalances,
+    'admin-stock-index': StockIndex,
     
     'analytics-index': AnalyticsIndex,
     'analytics-sales': AnalyticsSales,

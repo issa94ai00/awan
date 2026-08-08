@@ -253,6 +253,12 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/stock" class="nav-link" :class="{ active: isActive('/admin/stock') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">إدارة المخزون</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/inventory/movements" class="nav-link" :class="{ active: isActive('/admin/inventory/movements') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('stock_movements') }}</span>

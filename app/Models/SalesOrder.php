@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Employee;
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 
 class SalesOrder extends Model
@@ -168,6 +170,22 @@ class SalesOrder extends Model
     public function scopeByContract($query, $contractId)
     {
         return $query->where('contract_id', $contractId);
+    }
+
+    protected static function booted()
+    {
+        static::saving(function (SalesOrder $order) {
+            if (!$order->fulfillment_warehouse_id) {
+                if ($order->assigned_employee_id) {
+                    $employee = Employee::find($order->assigned_employee_id);
+                    $order->fulfillment_warehouse_id = $employee?->warehouse_id;
+                }
+
+                if (!$order->fulfillment_warehouse_id) {
+                    $order->fulfillment_warehouse_id = Warehouse::active()->orderBy('id')->value('id');
+                }
+            }
+        });
     }
 
     public function scopePendingSync($query)

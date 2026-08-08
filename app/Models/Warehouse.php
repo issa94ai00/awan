@@ -110,6 +110,16 @@ class Warehouse extends Model
         return $this->hasMany(SalesOrder::class, 'fulfillment_warehouse_id');
     }
 
+    public function productAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductWarehouseAssignment::class);
+    }
+
+    public function activeProductAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->productAssignments()->active();
+    }
+
     public function getUtilizationPercentageAttribute(): float
     {
         if (!$this->capacity || $this->capacity <= 0) {

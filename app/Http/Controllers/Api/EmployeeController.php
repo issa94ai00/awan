@@ -71,6 +71,7 @@ class EmployeeController extends Controller
             'hire_date' => 'required|date',
             'salary' => 'nullable|numeric|min:0',
             'status' => 'required|in:نشط,غير نشط',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
             'avatar' => 'nullable|url',
             'password' => 'nullable|string|min:8'
@@ -116,6 +117,7 @@ class EmployeeController extends Controller
             'hire_date' => 'required|date',
             'salary' => 'nullable|numeric|min:0',
             'status' => 'required|in:نشط,غير نشط',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
             'avatar' => 'nullable|url',
             'password' => 'nullable|string|min:8'

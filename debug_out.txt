@@ -1,0 +1,25 @@
+﻿zip open: true
+numFiles: 17
+file[0]=[Content_Types].xml
+file[1]=_rels/.rels
+file[2]=xl/workbook.xml
+file[3]=xl/_rels/workbook.xml.rels
+file[4]=xl/worksheets/sheet1.xml
+file[5]=xl/theme/theme1.xml
+file[6]=xl/styles.xml
+file[7]=xl/sharedStrings.xml
+file[8]=xl/drawings/drawing1.xml
+file[9]=xl/media/image1.png
+file[10]=xl/worksheets/_rels/sheet1.xml.rels
+file[11]=xl/drawings/_rels/drawing1.xml.rels
+file[12]=xl/printerSettings/printerSettings1.bin
+file[13]=xl/tables/table1.xml
+file[14]=xl/calcChain.xml
+file[15]=docProps/core.xml
+file[16]=docProps/app.xml
+sheet1.xml present: true
+sharedStrings.xml present: true
+sheet1 length: 203903
+sharedStrings length: 32804
+sharedStrings count: 732
+sheet rows count: 486

@@ -319,12 +319,11 @@ class OrderAllocationService
      */
     public function selectFulfillmentWarehouse(SalesOrder $order): ?int
     {
-        if (!$order->customer || !$order->customer->address) {
-            return null;
+        if ($order->assignedEmployee?->warehouse_id) {
+            return $order->assignedEmployee->warehouse_id;
         }
 
-        // Find closest warehouse to customer
-        $warehouses = Warehouse::active()->get();
+        return Warehouse::active()->orderBy('id')->value('id');
 
         if ($warehouses->isEmpty()) {
             return null;

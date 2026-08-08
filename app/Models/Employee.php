@@ -11,6 +11,7 @@ class Employee extends Model
 
     protected $fillable = [
         'user_id',
+        'warehouse_id',
         'name',
         'first_name',
         'last_name',
@@ -38,6 +39,7 @@ class Employee extends Model
     ];
 
     protected $casts = [
+        'warehouse_id' => 'integer',
         'hire_date' => 'date',
         'salary' => 'decimal:2',
         'bonus' => 'decimal:2',
@@ -62,6 +64,11 @@ class Employee extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function attendance()

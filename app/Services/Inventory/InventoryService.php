@@ -57,6 +57,20 @@ class InventoryService
         return $this->move($productId, -$quantity, $warehouseId, StockMovement::TYPE_OUT, $options);
     }
 
+    /**
+     * Consume stock that was reserved for an order or transfer.
+     *
+     * This is a clear semantic helper for paths that reserve first and then ship.
+     */
+    public function shipReserved(
+        int $productId,
+        int $quantity,
+        ?int $warehouseId = null,
+        array $options = []
+    ): ?StockMovement {
+        return $this->issue($productId, $quantity, $warehouseId, $options + ['consume_reserved' => true]);
+    }
+
     /** Receives stock in — a purchase receipt, a customer return. */
     public function receive(
         int $productId,
@@ -99,7 +113,7 @@ class InventoryService
      * Core movement.
      *
      * @param  int  $signedQuantity  negative takes stock out, positive puts it in
-     * @param  array{key?:string,reason?:string,reference?:string,source?:string,bin_id?:int,unit_cost?:float,condition?:string,allow_negative?:bool,created_by?:int}  $options
+     * @param  array{key?:string,reason?:string,reference?:string,source?:string,bin_id?:int,unit_cost?:float,condition?:string,allow_negative?:bool,consume_reserved?:bool,created_by?:int}  $options
      */
     public function move(
         int $productId,
@@ -146,7 +160,13 @@ class InventoryService
             $bucket = $this->bucketColumn($condition);
 
             if ($signedQuantity < 0 && !$allowNegative) {
-                $availableInBucket = (int) $row->{$bucket} - (int) $row->reserved_quantity;
+                $consumeReserved = (bool) ($options['consume_reserved'] ?? false);
+                $availableInBucket = (int) $row->{$bucket};
+
+                if (!$consumeReserved && $condition === self::CONDITION_AVAILABLE) {
+                    $availableInBucket -= (int) $row->reserved_quantity;
+                }
+
                 if ($availableInBucket < abs($signedQuantity)) {
                     throw new RuntimeException(sprintf(
                         'الكمية المتاحة غير كافية للمنتج #%d في المستودع #%d: المتاح %d، المطلوب %d.',
@@ -155,6 +175,10 @@ class InventoryService
                         max(0, $availableInBucket),
                         abs($signedQuantity)
                     ));
+                }
+
+                if ($consumeReserved && $condition === self::CONDITION_AVAILABLE) {
+                    $row->reserved_quantity = max(0, (int) $row->reserved_quantity - abs($signedQuantity));
                 }
             }
 
@@ -185,6 +209,53 @@ class InventoryService
             ]);
 
             return $movement;
+        });
+    }
+
+    /**
+     * Moves stock between two warehouses in a single transaction.
+     *
+     * One movement pair is written (an `out` from the source, an `in` into the
+     * destination) and both are idempotent under the same `key`. The destination
+     * receive is keyed `{$key}:in` and the source issue `{$key}:out`, so a
+     * repeated transfer can never ship stock it already shipped.
+     *
+     * This is the whole-document primitive for a completed transfer. The
+     * transfer controller keeps its two-step ship/receive lifecycle for partial
+     * receipts; callers that need an atomic move (corrections, initial stock
+     * placement) should use this.
+     *
+     * @return array{0:?StockMovement,1:?StockMovement}  [out, in]
+     *
+     * @throws RuntimeException when the source warehouse lacks available stock
+     */
+    public function transfer(
+        int $productId,
+        int $quantity,
+        int $fromWarehouseId,
+        int $toWarehouseId,
+        array $options = []
+    ): array {
+        if ($quantity <= 0) {
+            return [null, null];
+        }
+
+        $baseKey = $options['key'] ?? null;
+
+        return DB::transaction(function () use ($productId, $quantity, $fromWarehouseId, $toWarehouseId, $options, $baseKey) {
+            $out = $this->issue($productId, $quantity, $fromWarehouseId, $options + [
+                'key' => $baseKey ? $baseKey . ':out' : null,
+                'reference' => $options['reference'] ?? null,
+                'source' => $options['source'] ?? 'transfer',
+            ]);
+
+            $in = $this->receive($productId, $quantity, $toWarehouseId, $options + [
+                'key' => $baseKey ? $baseKey . ':in' : null,
+                'reference' => $options['reference'] ?? null,
+                'source' => $options['source'] ?? 'transfer',
+            ]);
+
+            return [$out, $in];
         });
     }
 

@@ -1,27 +1,40 @@
 import api from '@/api';
+
+/**
+ * Analytics API client.
+ *
+ * Every method here maps to a route that actually exists. Seven others
+ * advertised endpoints the backend never implemented — sales by category and by
+ * region, low-stock, overstock, revenue-by-period, packing efficiency and zone
+ * utilisation. They answered 404 and no screen called them, so they were removed
+ * rather than left as traps. Add them back alongside real routes if that data
+ * gets built.
+ */
+
+/**
+ * Analytics API client.
+ *
+ * Every method here maps to a route that exists. Seven others once advertised
+ * endpoints the backend never implemented (sales by category/region, low-stock,
+ * overstock, revenue-by-period, packing efficiency, zone utilisation); they
+ * answered 404 and no screen called them, so they were removed rather than left
+ * as traps. Add them back alongside real routes if that data is built.
+ */
 const API_BASE_URL = '/analytics';
 
 export const analyticsService = {
     // Dashboard
     getDashboardStats() {
-        return api.get(`${API_BASE_URL}/dashboard`);
+        return api.get(`${API_BASE_URL}/dashboards`);
     },
 
     // Sales Analytics
     getSalesAnalytics(params = {}) {
-        return api.get(`${API_BASE_URL}/sales`, { params });
+        return api.get(`${API_BASE_URL}/sales/summary`, { params });
     },
 
     getSalesTrends(params = {}) {
-        return api.get(`${API_BASE_URL}/sales/trends`, { params });
-    },
-
-    getSalesByCategory(params = {}) {
-        return api.get(`${API_BASE_URL}/sales/by-category`, { params });
-    },
-
-    getSalesByRegion(params = {}) {
-        return api.get(`${API_BASE_URL}/sales/by-region`, { params });
+        return api.get(`${API_BASE_URL}/sales/trend`, { params });
     },
 
     getTopProducts(params = {}) {
@@ -34,49 +47,33 @@ export const analyticsService = {
 
     // Inventory Analytics
     getInventoryAnalytics(params = {}) {
-        return api.get(`${API_BASE_URL}/inventory`, { params });
+        return api.get(`${API_BASE_URL}/inventory/summary`, { params });
     },
 
     getInventoryTurnover(params = {}) {
         return api.get(`${API_BASE_URL}/inventory/turnover`, { params });
     },
 
-    getLowStockAlerts(params = {}) {
-        return api.get(`${API_BASE_URL}/inventory/low-stock`, { params });
-    },
-
-    getOverstockItems(params = {}) {
-        return api.get(`${API_BASE_URL}/inventory/overstock`, { params });
-    },
-
     getABCAnalysis(params = {}) {
-        return api.get(`${API_BASE_URL}/inventory/abc-analysis`, { params });
+        return api.get(`${API_BASE_URL}/inventory/abc`, { params });
     },
 
     // Warehouse Analytics
     getWarehouseAnalytics(params = {}) {
-        return api.get(`${API_BASE_URL}/warehouse`, { params });
+        return api.get(`${API_BASE_URL}/warehouse/performance`, { params });
     },
 
     getWarehouseUtilization(params = {}) {
-        return api.get(`${API_BASE_URL}/warehouse/utilization`, { params });
+        return api.get(`${API_BASE_URL}/warehouse/bin-utilization`, { params });
     },
 
     getPickingEfficiency(params = {}) {
-        return api.get(`${API_BASE_URL}/warehouse/picking-efficiency`, { params });
-    },
-
-    getPackingEfficiency(params = {}) {
-        return api.get(`${API_BASE_URL}/warehouse/packing-efficiency`, { params });
-    },
-
-    getZoneUtilization(params = {}) {
-        return api.get(`${API_BASE_URL}/warehouse/zone-utilization`, { params });
+        return api.get(`${API_BASE_URL}/warehouse/picker-performance`, { params });
     },
 
     // Financial Analytics
     getFinancialAnalytics(params = {}) {
-        return api.get(`${API_BASE_URL}/financial`, { params });
+        return api.get(`${API_BASE_URL}/financial/summary`, { params });
     },
 
     getProfitLoss(params = {}) {
@@ -89,10 +86,6 @@ export const analyticsService = {
 
     getFinancialRatios(params = {}) {
         return api.get(`${API_BASE_URL}/financial/ratios`, { params });
-    },
-
-    getRevenueByPeriod(params = {}) {
-        return api.get(`${API_BASE_URL}/financial/revenue`, { params });
     },
 
     getExpensesByCategory(params = {}) {

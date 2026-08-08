@@ -517,53 +517,41 @@ class RmaController extends Controller
                 // must not be booked into the warehouse. Previously they fell
                 // into the `used` branch and were quarantined as real stock.
                 if ($delta !== 0 && $rmaItem->condition !== RmaItem::CONDITION_MISSING) {
-                    // Find or create Warehouse Inventory record
-                    $inventory = \App\Models\WarehouseInventory::firstOrCreate([
-                        'warehouse_id' => $warehouseId,
-                        'product_id' => $rmaItem->product_id,
-                        'product_variant_id' => $rmaItem->product_variant_id,
-                        'bin_id' => $binId,
-                    ], [
-                        'quantity' => 0,
-                        'available_quantity' => 0,
-                        'damaged_quantity' => 0,
-                        'quarantined_quantity' => 0,
-                        'cost_basis' => 'FIFO',
-                    ]);
-
                     // Which bucket the returned units land in depends on their condition.
-                    [$bucket, $noteLabel] = match ($rmaItem->condition) {
-                        RmaItem::CONDITION_NEW => ['available_quantity', 'مرتجع سليم'],
-                        RmaItem::CONDITION_DAMAGED => ['damaged_quantity', 'مرتجع تالف'],
-                        default => ['quarantined_quantity', 'مرتجع مستعمل (قيد المعاينة)'],
+                    [$condition, $noteLabel] = match ($rmaItem->condition) {
+                        RmaItem::CONDITION_NEW => ['available', 'مرتجع سليم'],
+                        RmaItem::CONDITION_DAMAGED => ['damaged', 'مرتجع تالف'],
+                        default => ['quarantined', 'مرتجع مستعمل (قيد المعاينة)'],
                     };
-
-                    $inventory->increment('quantity', $delta);
-                    $inventory->increment($bucket, $delta);
-
-                    // A downward correction has to leave the warehouse again, so
-                    // the movement type follows the direction of the change.
-                    $movementType = $delta > 0
-                        ? ($rmaItem->condition === RmaItem::CONDITION_NEW
-                            ? \App\Models\StockMovement::TYPE_IN
-                            : \App\Models\StockMovement::TYPE_ADJUSTMENT)
-                        : \App\Models\StockMovement::TYPE_OUT;
 
                     $orderRef = $rmaRequest->salesOrder?->order_number ?? '';
                     $note = $delta > 0
                         ? "{$noteLabel} من العميل لطلب {$orderRef}"
                         : "تصحيح كمية الاستلام لطلب الإرجاع {$rmaRequest->rma_number}";
 
-                    \App\Models\StockMovement::create([
-                        'product_id' => $rmaItem->product_id,
-                        'movement_type' => $movementType,
-                        'quantity' => abs($delta),
-                        'reference' => $rmaRequest->rma_number,
-                        'source' => 'rma',
-                        'notes' => $note,
-                        'warehouse_id' => $warehouseId,
-                        'created_by' => auth()->id(),
-                    ]);
+                    // Book the change through InventoryService, which keeps the
+                    // warehouse row (quantity + condition bucket), the movement
+                    // trail and products.stock_quantity consistent. No movement
+                    // key here: markAsReceived() above already assigns rather
+                    // than adds, and `delta` is derived from the old count, so
+                    // re-submitting the same dialog can never double-book stock.
+                    app(\App\Services\Inventory\InventoryService::class)->move(
+                        $rmaItem->product_id,
+                        $delta,
+                        $warehouseId,
+                        $delta > 0
+                            ? \App\Models\StockMovement::TYPE_IN
+                            : \App\Models\StockMovement::TYPE_OUT,
+                        [
+                            'reference' => $rmaRequest->rma_number,
+                            'source' => 'rma',
+                            'reason' => $note,
+                            'condition' => $condition,
+                            'bin_id' => $binId,
+                            'allow_negative' => $delta < 0,
+                            'created_by' => auth()->id(),
+                        ]
+                    );
                 }
             }
 

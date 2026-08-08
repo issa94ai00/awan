@@ -42,6 +42,7 @@ class PurchaseReceiptController extends Controller
         $validated = $request->validate([
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:suppliers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'receipt_date' => 'nullable|date',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array',
@@ -62,6 +63,29 @@ class PurchaseReceiptController extends Controller
                 'unit_price' => $item['unit_price'],
                 'total' => $item['quantity'] * $item['unit_price'],
             ]);
+        }
+
+        // Take the goods into stock. Previously a model hook on the receipt item
+        // did this on every save — including updates, so editing a receipt
+        // re-added the whole quantity. Receiving now runs once per receipt,
+        // keyed per item so a resubmit is a no-op, and flows through
+        // InventoryService so the warehouse row and the product total agree.
+        $inventory = app(\App\Services\Inventory\InventoryService::class);
+
+        foreach ($request->items as $item) {
+            $inventory->receive(
+                $item['product_id'],
+                $item['quantity'],
+                $request->input('warehouse_id'),
+                [
+                    'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id'],
+                    'reference' => $receipt->receipt_number,
+                    'source' => 'purchase_receipt',
+                    'reason' => 'استلام من أمر شراء',
+                    'unit_cost' => $item['unit_price'],
+                    'created_by' => auth()->id(),
+                ]
+            );
         }
 
         $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product']);

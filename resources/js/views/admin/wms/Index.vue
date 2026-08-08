@@ -75,18 +75,41 @@
           </el-button>
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
-          <el-button type="success" @click="$router.push('/admin/wms/picking')" block>
+          <el-button type="success" @click="$router.push('/admin/wms/products')" block>
+            <el-icon><Box /></el-icon> المنتجات
+          </el-button>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="6">
+          <el-button type="warning" @click="$router.push('/admin/wms/stock/balances')" block>
+            <el-icon><List /></el-icon> الأرصدة
+          </el-button>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="6">
+          <el-button type="info" @click="$router.push('/admin/wms/stock/organization')" block>
+            <el-icon><Open /></el-icon> تنظيم المخزون
+          </el-button>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20" style="margin-top: 10px;">
+        <el-col :xs="12" :sm="8" :md="6">
+          <el-button type="primary" plain @click="$router.push('/admin/wms/picking')" block>
             <el-icon><List /></el-icon> {{ $t('wms.picking_lists') }}
           </el-button>
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
-          <el-button type="warning" @click="$router.push('/admin/wms/packing')" block>
+          <el-button type="success" plain @click="$router.push('/admin/wms/packing')" block>
             <el-icon><Open /></el-icon> {{ $t('wms.packing_lists') }}
           </el-button>
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
-          <el-button type="info" @click="$router.push('/admin/wms/cycle-counts')" block>
+          <el-button type="warning" plain @click="$router.push('/admin/wms/cycle-counts')" block>
             <el-icon><Document /></el-icon> {{ $t('wms.cycle_counts') }}
+          </el-button>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="6">
+          <el-button type="info" plain @click="$router.push('/admin/wms/performance')" block>
+            <el-icon><TrendCharts /></el-icon> الأداء
           </el-button>
         </el-col>
       </el-row>
@@ -144,7 +167,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Management, Box, List, Open, Document, OfficeBuilding } from '@element-plus/icons-vue'
+import { Management, Box, List, Open, Document, OfficeBuilding, TrendCharts } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { wmsService } from '@/services/wms'
 

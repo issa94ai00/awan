@@ -33,23 +33,4 @@ class PurchaseReceiptItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
-
-    protected static function booted(): void
-    {
-        static::saved(function ($item) {
-            // Automatically update stock when purchase receipt item is saved
-            if ($item->product) {
-                StockMovement::create([
-                    'product_id' => $item->product_id,
-                    'movement_type' => 'in',
-                    'quantity' => $item->quantity,
-                    'reference' => $item->purchaseReceipt->receipt_number,
-                    'source' => 'purchase_receipt',
-                    'notes' => 'استلام من أمر شراء',
-                ]);
-                
-                $item->product->increment('stock_quantity', $item->quantity);
-            }
-        });
-    }
 }

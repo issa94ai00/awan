@@ -1,0 +1,4232 @@
+[
+  {
+    "name": "حفر tip on",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.42,
+    "price": 1,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "طبش tip on",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.27,
+    "price": 0.85,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مفصلة ربط بابين",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.25,
+    "price": 2.5,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة 180 درجة هيدرولي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.1,
+    "price": 2,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "sr  fbz100b خلاط مغسلة شك قصير",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 23,
+    "price": 35,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "sr fbz100blخلاط مغسلة شك طويل",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 26,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "اسافين سوبر 6م",
+    "unit": "كيس",
+    "qty": 1,
+    "cost": 1.95,
+    "price": 3.5,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "اكسسوار حمام سايروس ثقيل",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 22,
+    "price": 35,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "اكسسوار حمام سايروس خفيف",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 16,
+    "price": 27,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "التيكو مع بخاخ",
+    "unit": "حبة",
+    "qty": 6,
+    "cost": 1.1,
+    "price": 2,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "اوكرا سن كروم 2سم 1/2انش",
+    "unit": "قطعه",
+    "qty": 16,
+    "cost": 0.1,
+    "price": 0.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرا سن كروم 3سم 1/2انش",
+    "unit": "قطعه",
+    "qty": 16,
+    "cost": 0.12,
+    "price": 0.55,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرة بسن كروم 1/2 5 سم فوال",
+    "unit": "قطعة",
+    "qty": 24,
+    "cost": 0.95,
+    "price": 2,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرة حديد بسن 3/4",
+    "unit": "قطعة",
+    "qty": 57,
+    "cost": 0.3,
+    "price": 0.55,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرة سن كروم 4 سم",
+    "unit": "قطعة",
+    "qty": 25,
+    "cost": 0.8,
+    "price": 1.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكره بسن كروم 3/4 / 1/2",
+    "unit": "قطعة",
+    "qty": 10,
+    "cost": 0.25,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكره حديد 3/4 انثى",
+    "unit": "قطعة",
+    "qty": 10,
+    "cost": 0.29,
+    "price": 0.55,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "بخاخ صدا",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 1.104,
+    "price": 2,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "بربيش تواليت كروم خفيف",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 0.58,
+    "price": 1,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش حمام 1م  سليكون رمادي خفيف",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 1,
+    "price": 2,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش حمام كروم 100مم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.1,
+    "price": 2,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش دوش غروهي",
+    "unit": "",
+    "qty": 4,
+    "cost": 4.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "بربيش راصور حمام 150 سم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.9,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش سليكون حرير",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 0.58,
+    "price": 1,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش سليكون رمادي ثقيل 150سم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.4,
+    "price": 3,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بصاب عدم رجوع",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.6,
+    "price": 3,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "تيفلون صغير",
+    "unit": "قطعه",
+    "qty": 100,
+    "cost": 0.07,
+    "price": 0.37,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "تي 1/2 انش كروم 304",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 0.5,
+    "price": 1,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "تيب عزل اسود عريض",
+    "unit": "قطعه",
+    "qty": 281,
+    "cost": 0.65,
+    "price": 1.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "تيفلون سايروس 30 م",
+    "unit": "قطعه",
+    "qty": 507,
+    "cost": 0.27,
+    "price": 0.6,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "جوان حشر",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 0.15,
+    "price": 0.3,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "جوان فاصل بين خزان وكرسي",
+    "unit": "قطعه",
+    "qty": 0,
+    "cost": 0,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "حمالة خزانين زاوية ثقيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.13,
+    "price": 0.4,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "حمالة خزانين زاوية خفيف",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.07,
+    "price": 0.25,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "حنفية PPR سن نحاس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.28,
+    "price": 0.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية برم نحاس1/2 انش راكور",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.95,
+    "price": 4.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية برندا برم نحاس / 1/2 انش مصري",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.85,
+    "price": 4,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية جداري مصري فوتيس راكور",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 10,
+    "price": 15,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية دحل مازوت نحاس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.5,
+    "price": 4,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية دحل نحاس 135غ صيني",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1,
+    "price": 2,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية دحل نحاس 200غ صيني",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.2,
+    "price": 4.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية دحل نحاس 210غ",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.15,
+    "price": 3.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية راكور برم كروم مصري",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 4,
+    "price": 6,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية راكور فوتيس كروم",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 4,
+    "price": 6,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية شك تركي",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 17,
+    "price": 30,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية شك مصري فوتيس",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 10,
+    "price": 15,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية غساله إيطالي 3/4ب1/2",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3.75,
+    "price": 6,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية كروم طويلة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.35,
+    "price": 5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية كروم قصيرة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.9,
+    "price": 4.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية كروم قصيرة نص برمة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2,
+    "price": 4,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية مصري طويلة كروم",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 3.8,
+    "price": 5.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية موديل بوغاتي نحاس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2,
+    "price": 4.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية نحاس دحل تقيلة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.15,
+    "price": 3.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط  حمام مصري كروم 200",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 19,
+    "price": 30,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط bsl جداري نحاس",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 13,
+    "price": 20,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط BSL حمام",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 13,
+    "price": 20,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط BSL شك نحاس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 13,
+    "price": 20,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط ازرار مع سحابة موديل غروهي",
+    "unit": "",
+    "qty": 1,
+    "cost": 65,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط ايديال إيطالي",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 18,
+    "price": 32,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط تواليت sr fstz400b",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 21,
+    "price": 28,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط تواليت sr fstz410c",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 20,
+    "price": 27,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط تواليت كروم 304 جداري",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 18,
+    "price": 32,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط تواليت مع كباسة مصري كروم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 26,
+    "price": 35,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط جداري غروهي",
+    "unit": "",
+    "qty": 1,
+    "cost": 48,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط جداري كوستا نحاس  BITEL",
+    "unit": "",
+    "qty": 6,
+    "cost": 12,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام ذهبي مصري",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 23,
+    "price": 28,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام غروهي",
+    "unit": "",
+    "qty": 2,
+    "cost": 48,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام كروم مت مع سحابة 304",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 75,
+    "price": 130,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام كوستا نحاس BITEL",
+    "unit": "",
+    "qty": 3,
+    "cost": 12,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام مع دوش sr fsz 310c",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 32,
+    "price": 45,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام مع دوش sr fsz300b",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 30,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام مع دوش sr fsz300c",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 28,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط حمام مع دوش SR SFZ320c",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 30,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط دفن جداري 2401",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 31,
+    "price": 50,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط زمك خفيف جداري",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 8.5,
+    "price": 14,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط زمك خفيف حمام",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 8.5,
+    "price": 14,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط زمك شك انفنتي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 8.5,
+    "price": 14,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك طويل sr fbz100cl",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 25,
+    "price": 35,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك قصير fbz130c",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 22,
+    "price": 33,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك قصير sr fbb100c",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 26,
+    "price": 38,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك قصير sr fbz110c",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 22,
+    "price": 33,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك قصير sr fbz140c",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 22,
+    "price": 33,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك قصير غروهي",
+    "unit": "",
+    "qty": 2,
+    "cost": 48,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك كوستا نحاس BITEL",
+    "unit": "",
+    "qty": 3,
+    "cost": 12,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك مجلى مصري ذهبي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 23,
+    "price": 28,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط شك مصري كروم مجلى 200",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 19,
+    "price": 28,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط شك مغسلة طويل sr fbz120cl",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 25,
+    "price": 35,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شك مغسلة قصير sr fbz120c",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 22,
+    "price": 33,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط شيف معكوف",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 24.83,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط عالي غروهي",
+    "unit": "",
+    "qty": 2,
+    "cost": 48,
+    "price": 75,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط كروم مت 304 شك مجلى",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 18,
+    "price": 30,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط كروم مت 304 شك معكوف",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 18,
+    "price": 30,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط مجلى  غروهي",
+    "unit": "",
+    "qty": 2,
+    "cost": 48,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط مجلى راصور",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 42.26,
+    "price": 60,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط مجلىsr fkz200b",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 25,
+    "price": 40,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط مجلىsr fkz200c",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 22,
+    "price": 35,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط مصري اسود حمام",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 23,
+    "price": 30,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط مصري اسود مجلى شك",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 23,
+    "price": 30,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "خلاط مصري اسود مغسلة جداري",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 23,
+    "price": 30,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط مصري كروم معكوف 200",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 19,
+    "price": 28,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط معكوف مغسلة ذهبي مصري",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 23,
+    "price": 28,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط مغسلة شك كروم 304",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 18,
+    "price": 32,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "خلاط مغسلة مصري كروم 200",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 19,
+    "price": 28,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "دسك قص + حف 4.50",
+    "unit": "",
+    "qty": 1,
+    "cost": 2.5,
+    "price": 5,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك قص + حف 7",
+    "unit": "",
+    "qty": 1,
+    "cost": 5,
+    "price": 9,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دولاب عشراوية عادي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.12,
+    "price": 0.3,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "رقبة خلاط خفيف عكازة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.45,
+    "price": 1,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "رقبة خلاط خفيف مد",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.45,
+    "price": 1,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "رقبة خلاط كروم تقيل قصيرة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.05,
+    "price": 1.75,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "رقبة خلاط كروم كوبرا",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 1.05,
+    "price": 1.75,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "رقبة سليكون مع طربوش هرم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.3,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "رقبة سليكون ملونة متحركة طربوش",
+    "unit": "قطعه",
+    "qty": 210,
+    "cost": 1.4,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "رقبة كروم متحركة طربوش",
+    "unit": "قطعه",
+    "qty": 151,
+    "cost": 1.05,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "رقبة ملونة متحركة بدون طربوش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.15,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "ريشة نمساوي باطون +حجر 150سم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 5,
+    "price": 9,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ريغار 15ب15 فيتيكس",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 3,
+    "price": 5,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "ريكار 30*30 ريزين",
+    "unit": "",
+    "qty": 1,
+    "cost": 14,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "ريكار 35*35 ريزين",
+    "unit": "",
+    "qty": 1,
+    "cost": 17,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "ريكار 40*40 ريزن",
+    "unit": "",
+    "qty": 1,
+    "cost": 19,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "ريكار 60*60 ريزين",
+    "unit": "",
+    "qty": 1,
+    "cost": 38,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "زند طاقة قلاب",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.9,
+    "price": 1.5,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "سحابة دبل صيني DAMO",
+    "unit": "",
+    "qty": 1,
+    "cost": 10.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دبل غروهي",
+    "unit": "",
+    "qty": 2,
+    "cost": 45,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دوش سريوس طاسة مدورة ابيض sr ss700",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 23,
+    "price": 38,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دوش سريوس طاسة مربعه اسود sr ss750",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 32,
+    "price": 45,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دوش صيني bsl",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3.6,
+    "price": 8,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دوش صيني خفيف مفردة mhb",
+    "unit": "قطعه",
+    "qty": 0,
+    "cost": 3.3,
+    "price": 8,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سحابة دوش كروم سيخ مدور mhb",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 29,
+    "price": 40,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكة خرادق 30 c",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 1.15,
+    "price": 3,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكة خرادق 35 c",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 1.4,
+    "price": 3.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكة خرادق 40  c",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 1.65,
+    "price": 4,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكة خرادق 45 c",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 1.9,
+    "price": 4.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكة خرادق 50 c",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 2.15,
+    "price": 5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكة خرادق  c55",
+    "unit": "جوز",
+    "qty": 1,
+    "cost": 2.4,
+    "price": 5.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سكر  نحاس 1/2 ثقيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.1,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر  نحاس 3/4 ثقيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3,
+    "price": 4.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر بلاستيك 2/5 انش  ppr",
+    "unit": "",
+    "qty": 1,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى 1/2ب1/2 mhb",
+    "unit": "قطعه",
+    "qty": 41,
+    "cost": 1.2,
+    "price": 2.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى 1/2ب3/4 MHB",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى 1/2ب3/8 MHB",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1,
+    "price": 2.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى خفيف الماجد",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.75,
+    "price": 2,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى سيريوس 1/2ب1/2",
+    "unit": "قطعه",
+    "qty": 21,
+    "cost": 1.5,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى سيريوس 1/2ب1/2 نص برمى",
+    "unit": "قطعه",
+    "qty": 21,
+    "cost": 1.5,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر اعمى نحاس طبة صغيرة golden 1/2",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.9,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحل صيني 1/2 انش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1,
+    "price": 2,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحل صيني 1انش 305غ",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.2,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحل صيني 3/4انش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.75,
+    "price": 3.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر سوبر مجوز",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.75,
+    "price": 4.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر شمسة PPR قياس 25",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.85,
+    "price": 4.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "سكر غسالة نحاس صيني",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.5,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر كروم شطاف مفرد تقيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 7.5,
+    "price": 12,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر مجوز صيني فتحة جانبية",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.25,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر مجوز مع حمالة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 5.5,
+    "price": 9,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "سكر نحاس دحل صني 1 انش",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 2.2,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر نحاس مصري تقيل 1 انش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 4.5,
+    "price": 7,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر نص دورة 5008 كروم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.85,
+    "price": 6,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر نص دورة 5015 اسود",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3,
+    "price": 5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكرسوبر مسطرة مجوز",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.5,
+    "price": 5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سليكون بلومات تركي 280غ",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.1,
+    "price": 2.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سليكون موديل هولندي (صيني)",
+    "unit": "صندوق",
+    "qty": 1,
+    "cost": 26,
+    "price": 2,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سليكون هولندي 808",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 1,
+    "price": 2,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "سماعة دوش خفيفة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.48,
+    "price": 1.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سماعة دوش راس متحرك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 4.8,
+    "price": 7,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سماعة دوش غروهي مع بربيش",
+    "unit": "",
+    "qty": 3,
+    "cost": 9.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سماعة دوش كروم 304 مت  مع بربيش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 10,
+    "price": 20,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سماعة دوش نيمو",
+    "unit": "",
+    "qty": 1,
+    "cost": 2.85,
+    "price": 5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سن ب عزقة 3/4 ب 1/2 كروم",
+    "unit": "قطعة",
+    "qty": 110,
+    "cost": 0.4,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سن بعزقة 3/4ب1/2",
+    "unit": "قطعة",
+    "qty": 10,
+    "cost": 0.25,
+    "price": 0.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سن بعزقة كروم 1/2 انش",
+    "unit": "قطعه",
+    "qty": 11,
+    "cost": 0.12,
+    "price": 0.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سن بعزقة كروم 3/4ب 1/2",
+    "unit": "قطعه",
+    "qty": 11,
+    "cost": 0.25,
+    "price": 0.75,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سيخ دوش كروم 125سم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 6,
+    "price": 10,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سيخ سخان موديل ايطالي 90سم",
+    "unit": "قطعة",
+    "qty": 10,
+    "cost": 9.75,
+    "price": 18,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف  نحاس ذهبي اونكس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 15,
+    "price": 25,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف فيدال كروم خفيف",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.5,
+    "price": 3.75,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف كروم ثقيل مت",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 10,
+    "price": 20,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف كروم سايروس",
+    "unit": "قطعه",
+    "qty": 21,
+    "cost": 2.25,
+    "price": 5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف كروم وسط كيس ازرق",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.9,
+    "price": 4,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف مع كباسة بيضاء خفيف",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.85,
+    "price": 2,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شطاف نيمو كروم",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.25,
+    "price": 5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "شمسة مسح",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.2,
+    "price": 0.6,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "شمسة هرم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.25,
+    "price": 0.75,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "صباب مجلى نحاس قياس 9",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.2,
+    "price": 4,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "صباب مغسلة كروم mhb قياس 9",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.2,
+    "price": 3,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "صباب مغسلة كروم وسط قياس 9 زمك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.9,
+    "price": 2,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طاسة دوش مدورة 33سم",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 10,
+    "price": 15,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طاسة دوش مربعه 15س",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 1.5,
+    "price": 2.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طبة ليزرية قرص 3سم المنيوم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.22,
+    "price": 0.4,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "طبة ليزرية قرص 5سم المنيوم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.36,
+    "price": 0.5,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "طقم شك اسود تركي خلاط mhb",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 37,
+    "price": 45,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طقم شك ذهبي تركي  خلاط mhb",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 43.75,
+    "price": 55,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طقم شك كروم تركي خلاط mhb",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 28,
+    "price": 45,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "عدة كرسي اسباني فيتكس",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 6.25,
+    "price": 12,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "غطا كرسي عادي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.6,
+    "price": 4,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "غطا كرسي هيدروليك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 5.3,
+    "price": 9,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "فواشة دبل صيني",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 2.35,
+    "price": 5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "فواشة نحاس صيني 1/2 انش",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 1.25,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "قلب سكر شمسة 1/2",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.2,
+    "price": 2.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "قلب سكر شمسة 3/4",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.5,
+    "price": 3,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "قلب نحاس 70غ صيني",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.92,
+    "price": 2.5,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "قلب نحاس إيطالي 70غ",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.25,
+    "price": 4,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كباسة شطاف بلاستيك كروم",
+    "unit": "قطعة",
+    "qty": 5,
+    "cost": 0.4,
+    "price": 1.3,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة شطاف بيضاء خفيف",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.4,
+    "price": 1,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة شطاف كروم ثفيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3.9,
+    "price": 6.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة شطاف كروم لون اسود ثقيل",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3.9,
+    "price": 6.5,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة غروهي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.6,
+    "price": 3,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كرت  دوش نيمو تقيل بكرتونة نيمو",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 3.45,
+    "price": 9,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت دوش  اسود mhb كبيرة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2.9,
+    "price": 8,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت دوش اسود بربيش دبل بولاد",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 5,
+    "price": 10,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت دوش سماعة سودا",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 2.2,
+    "price": 7,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت دوش سماعه خضرا",
+    "unit": "قطعه",
+    "qty": 21,
+    "cost": 2.7,
+    "price": 8,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت شطاف اسود",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 7.75,
+    "price": 13,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت شطاف سكر مجوز",
+    "unit": "قطعه",
+    "qty": 7,
+    "cost": 7,
+    "price": 15,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت شطاف غروهي",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 7.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرسي معلق زنوبيا",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 13,
+    "price": 25,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "كرسي معلق زنوبيا قصير",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 13,
+    "price": 25,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "كوع انثى كروم 1/2 انش 304",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 0.5,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع ذكر 1/2 انش كروم 304",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 0.6,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مجلى 50*80سم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 24,
+    "price": 35,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "مجلى بيانو",
+    "unit": "قطعه",
+    "qty": 13,
+    "cost": 60,
+    "price": 110,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "مربط 1/2",
+    "unit": "قطعة",
+    "qty": 23,
+    "cost": 0.03,
+    "price": 0.15,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مربط طبش  3 انش",
+    "unit": "قطعة",
+    "qty": 18,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مربط طبش 3/4 انش",
+    "unit": "قطعة",
+    "qty": 45,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مربط طبش 4 انش",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مسكة مدخل المنيوم باقي الألوان",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.095,
+    "price": 0.3,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "مسكة منخل المنيوم لون خشبي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.16,
+    "price": 0.5,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "مصفاية 15ب15 فيتيكس ثقيلة",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.6,
+    "price": 5,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية 20c",
+    "unit": "",
+    "qty": 1,
+    "cost": 1.8,
+    "price": 4,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطة f f زرقة 15 c",
+    "unit": "قطعه",
+    "qty": 32,
+    "cost": 2.6,
+    "price": 5,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطة ff خضرا 15 c",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 1.9,
+    "price": 4,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطة شواية 8سم ب 30",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 8.5,
+    "price": 14,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطة صيني 15 c علبة اسود",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 2.6,
+    "price": 5,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطه سيفون 15 c",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 2.85,
+    "price": 5,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مفصلة 180 درجة بدون هيدروليك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.64,
+    "price": 1.5,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة 45 درجة  بدون هيدروليك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.25,
+    "price": 0.6,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة 45 درجة هيدروليك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.6,
+    "price": 1.5,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة 60 غرام",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.1075,
+    "price": 0.3,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة htc يدروليك",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.32,
+    "price": 0.65,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة شبح  120 htc",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.45,
+    "price": 0.28,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة طبش",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.21,
+    "price": 0.5,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "مفصلة قزمة قصيرة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.15,
+    "price": 0.45,
+    "category_id": 15,
+    "category_name": "مفصلات"
+  },
+  {
+    "name": "نقاصة حديد من 1و1/2 الى 1و1/4",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 0.45,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "نقاصة حديد من 1و1/2 الى 2",
+    "unit": "قطعة",
+    "qty": 2,
+    "cost": 0.6,
+    "price": 1.25,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "نقاصة حديد من 1و1/4 الى 3/4",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 0.37,
+    "price": 1,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "نقاصة من 1و1/4 الى 2",
+    "unit": "قطعة",
+    "qty": 1,
+    "cost": 0.6,
+    "price": 1.25,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "هراب مجلى ابيض",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.32,
+    "price": 0.8,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مجلى اوسكار",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.35,
+    "price": 0.5,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مزدوج رمادي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.85,
+    "price": 2.5,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مع صباب رمادي مغسلة",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.85,
+    "price": 2.5,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مع نقاصة سوبر",
+    "unit": "قطعه",
+    "qty": 20,
+    "cost": 0.65,
+    "price": 2,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب معغسلة wl رمادي قمع",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 0.35,
+    "price": 0.5,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مغسلة ابيض",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 0.32,
+    "price": 0.8,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "هراب مغسلة اوسكار",
+    "unit": "قطعه",
+    "qty": 0,
+    "cost": 0.35,
+    "price": 2,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "وجاء حمام 7دوزيم مبخوخ",
+    "unit": "",
+    "qty": 1,
+    "cost": 30,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "وجاء حمام ستانليس 7 دوزيم",
+    "unit": "",
+    "qty": 1,
+    "cost": 33,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "ورق حف صيني",
+    "unit": "قطعه",
+    "qty": 51,
+    "cost": 0.05,
+    "price": 0.2,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "وصلة بولاد 3/8 ب 1/2 50سم",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 0.35,
+    "price": 1,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 304 /50سم كروم",
+    "unit": "قطعه",
+    "qty": 11,
+    "cost": 1,
+    "price": 2,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 304 /60سم",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 1.1,
+    "price": 2.5,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 304 /60سم ضغط عالي",
+    "unit": "قطعه",
+    "qty": 15,
+    "cost": 1.6,
+    "price": 3,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 304 /80سم",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 1.2,
+    "price": 3,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 40 سم عادي",
+    "unit": "قطعه",
+    "qty": 201,
+    "cost": 0.41,
+    "price": 1,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 50 سم ضغط عالي عزقة نحاس",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 1.6,
+    "price": 2.5,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة شك بولاد 40 سم",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 0.35,
+    "price": 1,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "برادي سادة",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 4,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بواري طويل",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 4,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "حماله كروم ثنائية",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 7,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "حماله عادية ثلاثية",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 7,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "حماله كروم ثلاثي",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 7,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "بربيش تواليت دبل كيان",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 1,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "سكر 1/2ب1/2 زمك",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 1.7,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مجلى 60 برونز",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 25,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "محلى 60 كروم",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 17,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "مجلى 70  دهبي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 28,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "مجلى 70 صيني اسود",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 26,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "طاسة دوش مدورة 15س",
+    "unit": "قطعه",
+    "qty": 30,
+    "cost": 1,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "وصلة بولاد 50 سم عادي",
+    "unit": "قطعه",
+    "qty": 200,
+    "cost": 0.37,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 60 سم عادي",
+    "unit": "قطعه",
+    "qty": 200,
+    "cost": 0.42,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة بولاد 100 سم عادي",
+    "unit": "قطعه",
+    "qty": 200,
+    "cost": 0.55,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "كرسي سنفور",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 69,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "كرسي بولو",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 88,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "مصفاية 15*15 مديل امريكي",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 0.83,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "سدة 1/2 انش",
+    "unit": "قطعه",
+    "qty": 2,
+    "cost": 0.09,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "صباب مجلى ستانلس 11",
+    "unit": "قطعه",
+    "qty": 25,
+    "cost": 1.95,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "سدة 1 انش",
+    "unit": "قطعه",
+    "qty": 47,
+    "cost": 0.34,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سدة 3/4",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 0.14,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مصفاية بلاطة f f زرقة 15 c دهبي",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 6,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "فراشي طربوش محسنة3",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.5,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فراشي طربوش محبولة 3",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.8,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فراشي طربوش محسنة4",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.8,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فراشي طربوش محبولة4",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 1,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فراشي 5صنف فولاذ يد خشب",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مفتاح رنش 12",
+    "unit": "قطعه",
+    "qty": 3,
+    "cost": 2.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ورق لزق 240",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 10,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "وصلة كهربا ثقيلة",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 2.5,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة كهربا c",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 3.5,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "وصلة خرطوم",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 0.5,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "فراشي فولاذي خبير",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مسطرين اسود",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.65,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مالج سيراميك يد خشب",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ميزان زيبق 50 سم",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 2.6,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "خيط نايلون1مم",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 0.45,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "قفل منحس2.5",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 16,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حبل غسيل 4م",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 1,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مفتاح امولية مكوش",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 2.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مطرقة يد خشب 300غ",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 1.2,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مطرقة يد خشب 200غ",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حجر قص 5",
+    "unit": "قطعه",
+    "qty": 25,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مطاطة متور 2م",
+    "unit": "قطعه",
+    "qty": 20,
+    "cost": 0.6,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مكواية بواري مع مقص",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 20,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "سلاسل ديكور 3م",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "كفوف جلي موديل ماليزي ازرق",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.46,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "كفوف  جلي اورانج",
+    "unit": "قطعه",
+    "qty": 12,
+    "cost": 0.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مفك منحس الماني صغير",
+    "unit": "قطعه",
+    "qty": 24,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حنفية دحل صيني 135غ",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 0.92,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية بوغاتي تقيل",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 1.22,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة فيكس",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 1.25,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كباسة شطاف خفيف",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 0.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "فواشة قطعه واحده",
+    "unit": "قطعه",
+    "qty": 100,
+    "cost": 1.3,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "طاسة فلين",
+    "unit": "قطعه",
+    "qty": 100,
+    "cost": 0.18,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "فوشة كهربا صيني",
+    "unit": "قطعه",
+    "qty": 20,
+    "cost": 2.65,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "ريغار 20*20",
+    "unit": "قطعه",
+    "qty": 15,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "ريغار 15*15صيني",
+    "unit": "قطعه",
+    "qty": 15,
+    "cost": 1.25,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "طاسة دوش مربعه 20س",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سيخ سخان موديل ايطالي 30سم",
+    "unit": "قطعه",
+    "qty": 5,
+    "cost": 6.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كرت شطاف خفيف ازرق اصفر",
+    "unit": "قطعه",
+    "qty": 60,
+    "cost": 1.4,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر دحلة1/2 mhg",
+    "unit": "قطعه",
+    "qty": 48,
+    "cost": 0.92,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحلة3/4 mhg",
+    "unit": "قطعه",
+    "qty": 36,
+    "cost": 1.2,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحلة1 انش mhg",
+    "unit": "قطعه",
+    "qty": 30,
+    "cost": 1.65,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شراقة مصري",
+    "unit": "قطعه",
+    "qty": 20,
+    "cost": 2.66,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "برجور تنفس مصري",
+    "unit": "قطعه",
+    "qty": 20,
+    "cost": 1.48,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "صباب مغسلة بلاستيك",
+    "unit": "قطعه",
+    "qty": 50,
+    "cost": 0.16,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سن ب عزقة 3/4 كروم",
+    "unit": "قطعه",
+    "qty": 150,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "مصفاية بلاطة 15*15 زرقة",
+    "unit": "قطعه",
+    "qty": 56,
+    "cost": 2.6,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "مصفاية بلاطة 15*15 خضرا",
+    "unit": "قطعه",
+    "qty": 56,
+    "cost": 2.6,
+    "price": 0,
+    "category_id": 23,
+    "category_name": "مصافي وريكارات"
+  },
+  {
+    "name": "هراب مع صباب",
+    "unit": "قطعه",
+    "qty": 10,
+    "cost": 1.21,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "عدة كرسي اسباني",
+    "unit": "قطعه",
+    "qty": 57,
+    "cost": 7,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "ابوكسي اماراتي",
+    "unit": "قطعه",
+    "qty": 4,
+    "cost": 9.5,
+    "price": 0,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "كاوي 60 وات",
+    "unit": "قطعه",
+    "qty": 1,
+    "cost": 2,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "لزيو ورق وطني",
+    "unit": "قطعه",
+    "qty": 6,
+    "cost": 6,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ن",
+    "unit": "قطعه",
+    "qty": 100,
+    "cost": 0.95,
+    "price": 0,
+    "category_id": 13,
+    "category_name": "المواد الاستهلاكية والأدوات"
+  },
+  {
+    "name": "سليكون هولندي b",
+    "unit": "",
+    "qty": 2,
+    "cost": 3,
+    "price": 0,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "بياض سكر مع شمسة",
+    "unit": "",
+    "qty": 10,
+    "cost": 5.5,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فواشة 1/2 صيني نحاس قطعه واحده",
+    "unit": "",
+    "qty": 51,
+    "cost": 1.35,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "تطويلة سكر بشمسة 3/4",
+    "unit": "",
+    "qty": 35,
+    "cost": 3,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "طبة خلاط كوستا",
+    "unit": "",
+    "qty": 60,
+    "cost": 0.66,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "براغي تثبيت مغسلة",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.272,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "عدة صندوق اسباني بطة خضرا",
+    "unit": "",
+    "qty": 100,
+    "cost": 8.25,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "راكور خزان 3/4",
+    "unit": "",
+    "qty": 50,
+    "cost": 1.2,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شراقة نحاس 3/4 صيني",
+    "unit": "",
+    "qty": 20,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "جوان حشر 4/1",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.14,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "جوان حشر 2/1",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.14,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "راكور خزان 2/1",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.85,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "قلب خلاط فوتيس",
+    "unit": "",
+    "qty": 30,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر دحلة 1/2 إيطالي",
+    "unit": "",
+    "qty": 40,
+    "cost": 3.75,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "راكور خزان 1",
+    "unit": "",
+    "qty": 50,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "عزقة خلاط شك 3/4 نحاس",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.45,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "وصلة بولاد شك 50سم",
+    "unit": "",
+    "qty": 40,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر دحلة 3/4 نحاس صيني",
+    "unit": "",
+    "qty": 30,
+    "cost": 1.35,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "صباب مجلى زمك",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.65,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "براغي تثبيت كرسي",
+    "unit": "",
+    "qty": 90,
+    "cost": 0.27,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "براغي تثبيت سخان",
+    "unit": "",
+    "qty": 112,
+    "cost": 0.27,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "عزقة خلاط شك 1 نحاس",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.55,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "حنفية دحلة 1/2 موديل بوغاتي",
+    "unit": "",
+    "qty": 40,
+    "cost": 1.4,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر دحلة 1 نحاس صيني",
+    "unit": "",
+    "qty": 30,
+    "cost": 1.85,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شراقة نحاس صيني",
+    "unit": "",
+    "qty": 20,
+    "cost": 2.45,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "تحويلة كرسي 7 سم",
+    "unit": "",
+    "qty": 60,
+    "cost": 1.85,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "طابة فواشة ستربول",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.16,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "عدة صندوق اسباني بطة زرقا",
+    "unit": "",
+    "qty": 50,
+    "cost": 8.25,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حنفية دحلة بلاستيك  ppr",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.28,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "طبة خلاط فوتيس",
+    "unit": "",
+    "qty": 30,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "تية 1/2 كروم",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.55,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "شراقة نحاس 1/2 صيني",
+    "unit": "",
+    "qty": 20,
+    "cost": 1.2,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "جوان مبروم",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.035,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "طبة خلاط موديل",
+    "unit": "",
+    "qty": 60,
+    "cost": 0.6,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "وصلة اوكرديون مع نقاصة",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.6,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "عزقة خلاط شك 1/2 نحاس",
+    "unit": "",
+    "qty": 50,
+    "cost": 0.35,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر دحلة شك إيطالي",
+    "unit": "",
+    "qty": 40,
+    "cost": 7.75,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "بياض سكر بشمسة 3/4",
+    "unit": "",
+    "qty": 20,
+    "cost": 5,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "صباب مجلى نحاس",
+    "unit": "",
+    "qty": 50,
+    "cost": 2.5,
+    "price": 0,
+    "category_id": 24,
+    "category_name": "هرابات ومجالي"
+  },
+  {
+    "name": "سكر دحلة 3/4 إيطالي",
+    "unit": "",
+    "qty": 30,
+    "cost": 4.75,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر غساله إيطالي",
+    "unit": "",
+    "qty": 10,
+    "cost": 4,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سكر دحلة 1/2 نحاس صيني",
+    "unit": "",
+    "qty": 30,
+    "cost": 0.9,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "تية 25 ppr اول نظامي",
+    "unit": "",
+    "qty": 6,
+    "cost": 0.16,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "سنة بعزقة 1/2 مزيبق حديد صيني",
+    "unit": "",
+    "qty": 6,
+    "cost": 0.125,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "كوع 25مم ppr اول نظامي",
+    "unit": "",
+    "qty": 15,
+    "cost": 0.13,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "كوع بسن 1/2 *25 ppr انثى اول نظاني",
+    "unit": "",
+    "qty": 10,
+    "cost": 0.6,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "تية 1/2 مزيبق حديد صيني",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.34,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "كوع ذكر 1/2 حديد صيني مزيبق",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.265,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "بوري 25 مم 20بار pprاول نظامي",
+    "unit": "",
+    "qty": 40,
+    "cost": 0.5,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "سدة طبة 25مم ppr اول نظامي",
+    "unit": "",
+    "qty": 6,
+    "cost": 0.11,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "سنه بعزقة 3/4 مزيبق حديد صيني",
+    "unit": "",
+    "qty": 1,
+    "cost": 0.17,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سليكون هولندي 1001",
+    "unit": "",
+    "qty": 19,
+    "cost": 0,
+    "price": 0,
+    "category_id": 14,
+    "category_name": "مواد سباكة وصحية"
+  },
+  {
+    "name": "حنفية hbs",
+    "unit": "",
+    "qty": 8,
+    "cost": 0,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة شطاف  تيلو",
+    "unit": "",
+    "qty": 12,
+    "cost": 0,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "عدة كرسي اسباني هايدرو",
+    "unit": "",
+    "qty": 8,
+    "cost": 0,
+    "price": 0,
+    "category_id": 21,
+    "category_name": "كراسي الحمام"
+  },
+  {
+    "name": "كباسة شطاف فرداوية بيضا",
+    "unit": "",
+    "qty": 8,
+    "cost": 0,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "كباسة فرداوية بيضاء مع كروم",
+    "unit": "",
+    "qty": 57,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سحابة دوش صيني موديل اسباني",
+    "unit": "",
+    "qty": 3,
+    "cost": 0,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "سكر سايروس طبة عمياء 500",
+    "unit": "",
+    "qty": 4,
+    "cost": 0,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سحابة دبل خفيفة",
+    "unit": "",
+    "qty": 5,
+    "cost": 10,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "نقاصة 1الى3/4 مزيبق حديد",
+    "unit": "",
+    "qty": 5,
+    "cost": 0.9,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرة بسن 1/2 نحاس ايفان 5سم",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.95,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "اوكرة 1/2 حديد",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.14,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع 3/4 ذكر",
+    "unit": "",
+    "qty": 300,
+    "cost": 0.336,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع 1 انش ذكر",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.404,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع انثى 3/4",
+    "unit": "",
+    "qty": 300,
+    "cost": 0.236,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع انثى 1 انش",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.368,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سدة 1 انش",
+    "unit": "",
+    "qty": 500,
+    "cost": 0.136,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سدة 3/4  مظلوم",
+    "unit": "",
+    "qty": 800,
+    "cost": 0.096,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شد وصل 1",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شد وصل 1/2",
+    "unit": "",
+    "qty": 150,
+    "cost": 0.52,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "شد وصل 3/4",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.68,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "تيه 1",
+    "unit": "",
+    "qty": 150,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "تيه 3/4",
+    "unit": "",
+    "qty": 200,
+    "cost": 0.34,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "تيه 1/2",
+    "unit": "",
+    "qty": 300,
+    "cost": 0.272,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "اوكره بسن 1/2",
+    "unit": "",
+    "qty": 500,
+    "cost": 0.116,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سن بعزقة 1/2",
+    "unit": "",
+    "qty": 600,
+    "cost": 0.1,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "سن بعززقة 3/4",
+    "unit": "",
+    "qty": 400,
+    "cost": 0.136,
+    "price": 0,
+    "category_id": 22,
+    "category_name": "مواسير وواصل"
+  },
+  {
+    "name": "كوع 1/2 ذكر",
+    "unit": "",
+    "qty": 400,
+    "cost": 0.212,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "كوع 1/2 اثنى",
+    "unit": "",
+    "qty": 400,
+    "cost": 0.168,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "قفل منحس رقبة طويلة2.5",
+    "unit": "",
+    "qty": 12,
+    "cost": 2,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "مكواية XAB بدون مقص",
+    "unit": "",
+    "qty": 2,
+    "cost": 10,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "قفل درج رقبة قصيرة 1طقة",
+    "unit": "",
+    "qty": 1,
+    "cost": 5,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "خيط نايلون ابيض 0.8",
+    "unit": "",
+    "qty": 10,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "متر ازرق على كرت 3.5م",
+    "unit": "",
+    "qty": 2,
+    "cost": 7.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "متر ازرق على كرت 5م",
+    "unit": "",
+    "qty": 2,
+    "cost": 9,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "متر ازرق على كرت 5.5م",
+    "unit": "",
+    "qty": 2,
+    "cost": 11,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "متر ازرق على كرت 7م",
+    "unit": "",
+    "qty": 2,
+    "cost": 14,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مقص  فيلكو",
+    "unit": "",
+    "qty": 2,
+    "cost": 4,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حجر قص حديد4",
+    "unit": "",
+    "qty": 20,
+    "cost": 0.22,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "كفوف ضد الماء",
+    "unit": "",
+    "qty": 3,
+    "cost": 9,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ميزان ذئبق  40سم",
+    "unit": "",
+    "qty": 2,
+    "cost": 2,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ترنلك اسود ثقيل",
+    "unit": "",
+    "qty": 24,
+    "cost": 0.6,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حبل ففسيل 4سم",
+    "unit": "",
+    "qty": 5,
+    "cost": 1,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "ديسك ليزري وايزمن 4.5",
+    "unit": "",
+    "qty": 3,
+    "cost": 2.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "مشرط مكوشك معدن 5",
+    "unit": "",
+    "qty": 2,
+    "cost": 1.25,
+    "price": 0,
+    "category_id": 16,
+    "category_name": "خلاطات وحنفيات"
+  },
+  {
+    "name": "بانسة معدن على كرت 7",
+    "unit": "",
+    "qty": 2,
+    "cost": 1.8,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حبسات تايواني",
+    "unit": "",
+    "qty": 1,
+    "cost": 7,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "طقم مسدس قميص",
+    "unit": "",
+    "qty": 2,
+    "cost": 1,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "فرد سليكون اورانج ثقيل",
+    "unit": "",
+    "qty": 2,
+    "cost": 5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "طقم عزقة صاروخ ثقيل",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.55,
+    "price": 0,
+    "category_id": 19,
+    "category_name": "أوكار وصمامات"
+  },
+  {
+    "name": "ديسك حجر 9",
+    "unit": "",
+    "qty": 20,
+    "cost": 0.8,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "بانسةة لقط مكشوكة 10",
+    "unit": "",
+    "qty": 5,
+    "cost": 2.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "بانسة لقط بدون كوشوكة 10",
+    "unit": "",
+    "qty": 5,
+    "cost": 2.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "التيكو سوبر 10",
+    "unit": "",
+    "qty": 5,
+    "cost": 1.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "معجون حديد صغير",
+    "unit": "",
+    "qty": 24,
+    "cost": 0,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "حمالة شامبو عادية",
+    "unit": "",
+    "qty": 6,
+    "cost": 7,
+    "price": 0,
+    "category_id": 18,
+    "category_name": "اكسسوارات الحمام"
+  },
+  {
+    "name": "فراشي سكينة",
+    "unit": "",
+    "qty": 5,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "داموتليك 12/5",
+    "unit": "",
+    "qty": 10,
+    "cost": 5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "لزيو ورق وطني جداري",
+    "unit": "",
+    "qty": 66,
+    "cost": 0.13,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "لزيو ورق وطني 5سم",
+    "unit": "",
+    "qty": 3,
+    "cost": 5.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "لزيو ورق وطني 2.5سم",
+    "unit": "",
+    "qty": 1,
+    "cost": 5.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "زيرو ورق وطني ابيض",
+    "unit": "",
+    "qty": 2,
+    "cost": 5.75,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "كفوف نايلون",
+    "unit": "",
+    "qty": 3,
+    "cost": 5.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 90 حديد صيني",
+    "unit": "",
+    "qty": 1,
+    "cost": 1,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 4.5 حديد تركي",
+    "unit": "",
+    "qty": 1,
+    "cost": 0.4,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 4.5 حديد اسباني",
+    "unit": "",
+    "qty": 1,
+    "cost": 0.3,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 4.5 حديد صيني",
+    "unit": "",
+    "qty": 1,
+    "cost": 0.28,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 9 حديد تركي",
+    "unit": "",
+    "qty": 1,
+    "cost": 1.2,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دسك 7 جلخ  تركي",
+    "unit": "",
+    "qty": 1,
+    "cost": 1.5,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دقر المنيوم 2",
+    "unit": "",
+    "qty": 1,
+    "cost": 3.269,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "دقر المنيوم 3",
+    "unit": "",
+    "qty": 1,
+    "cost": 4.562,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "زاوية 4*4",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.03422,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "زاوية 5*5",
+    "unit": "",
+    "qty": 100,
+    "cost": 0.0418,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "زاوية 6*6",
+    "unit": "",
+    "qty": 35,
+    "cost": 0.06844,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "غراء 6",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.266,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "غراء 8",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.357,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "غراء 10",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.608,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "غراء 12",
+    "unit": "",
+    "qty": 2,
+    "cost": 0.95,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  },
+  {
+    "name": "غراء 14",
+    "unit": "",
+    "qty": 2,
+    "cost": 1.33,
+    "price": 0,
+    "category_id": 17,
+    "category_name": "عدد وأدوات"
+  }
+]

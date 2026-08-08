@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Warehouse;
+use App\Models\WarehouseInventory;
 use DOMDocument;
 use DOMElement;
 use Illuminate\Database\Eloquent\Collection;
@@ -36,6 +38,20 @@ class ProductExcelService
     /**
      * Accepted header aliases (after normalization) mapped to an internal field.
      */
+    private const INVENTORY_EXPORT_COLUMNS = [
+        'المستودع' => 'string',
+        'SKU' => 'string',
+        'الاسم' => 'string',
+        'الاسم بالإنجليزية' => 'string',
+        'الباركود' => 'string',
+        'الكمية' => 'number',
+        'الكمية المتاحة' => 'number',
+        'المحجوز' => 'number',
+        'التالفة' => 'number',
+        'المحتجزة' => 'number',
+        'نقطة إعادة الترتيب' => 'number',
+    ];
+
     private const COLUMN_MAP = [
         'sku' => ['الكود', 'sku', 'code', 'itemcode', 'كود المنتج', 'رقم المنتج', 'المعرف'],
         'name_ar' => ['الاسم', 'name_ar', 'name', 'arabic name', 'الاسم بالعربية', 'الاسم بالعربي', 'الوصف', 'المنتج'],
@@ -43,7 +59,13 @@ class ProductExcelService
         'category' => ['الفئة', 'category', 'categories', 'category_name', 'التصنيف', 'القسم'],
         'price' => ['السعر', 'price', 'سعر البيع', 'selling price', 'المبلغ'],
         'cost_price' => ['سعر التكلفة', 'cost_price', 'التكلفة', 'cost', 'سعر الشراء'],
-        'stock_quantity' => ['الكمية', 'المتبقي', 'stock', 'quantity', 'stock_quantity', 'qty', 'الرصيد', 'المخزون'],
+        'stock_quantity' => ['الكمية', 'المتبقي', 'المتبقي مخزون', 'سحب أيوب', 'stock', 'quantity', 'stock_quantity', 'qty', 'الرصيد', 'المخزون'],
+        'warehouse' => ['المستودع', 'warehouse', 'warehouse_id', 'warehouse name', 'warehouse_name'],
+        'available_quantity' => ['الكمية المتاحة', 'available_quantity', 'available', 'available qty'],
+        'reserved_quantity' => ['المحجوز', 'reserved_quantity', 'reserved'],
+        'damaged_quantity' => ['التالفة', 'damaged_quantity', 'damaged'],
+        'quarantined_quantity' => ['المحتجزة', 'quarantined_quantity', 'quarantined'],
+        'reorder_point' => ['نقطة إعادة الترتيب', 'reorder_point', 'reorder'],
         'unit' => ['الوحدة', 'unit', 'unit_of_measurement', 'وحدة القياس'],
         'brand' => ['العلامة التجارية', 'brand', 'الماركة', 'الشركة'],
         'model' => ['الموديل', 'model', 'الطراز'],
@@ -79,6 +101,77 @@ class ProductExcelService
         })->all();
 
         return $this->buildXlsx(self::EXPORT_COLUMNS, $rows);
+    }
+
+    public function exportWarehouseInventory(Collection $inventory): string
+    {
+        $rows = $inventory->map(function (WarehouseInventory $item) {
+            $nameEn = trim((string) ($item->product->name_en ?? ''));
+            if ($nameEn === '') {
+                $nameEn = trim((string) ($item->product->name_ar ?? ''));
+            }
+
+            return [
+                'المستودع' => $item->warehouse->name ?? '',
+                'SKU' => $item->product->sku ?? '',
+                'الاسم' => $item->product->name_ar ?? '',
+                'الاسم بالإنجليزية' => $nameEn,
+                'الباركود' => $item->product->barcode ?? '',
+                'الكمية' => $item->quantity ?? 0,
+                'الكمية المتاحة' => $item->available_quantity ?? 0,
+                'المحجوز' => $item->reserved_quantity ?? 0,
+                'التالفة' => $item->damaged_quantity ?? 0,
+                'المحتجزة' => $item->quarantined_quantity ?? 0,
+                'نقطة إعادة الترتيب' => $item->reorder_point ?? 0,
+            ];
+        })->all();
+
+        return $this->buildXlsx(self::INVENTORY_EXPORT_COLUMNS, $rows);
+    }
+
+    public function importStockFile(UploadedFile $file): array
+    {
+        $rows = $this->read($file->getRealPath());
+
+        $result = [
+            'products_created' => 0,
+            'products_matched' => 0,
+            'inventory_rows' => 0,
+            'errors' => [],
+        ];
+
+        foreach ($rows as $index => $rawRow) {
+            $rowNumber = $index + 1;
+
+            try {
+                $data = $this->mapRow($rawRow);
+
+                if (empty($data['warehouse'])) {
+                    throw new \RuntimeException('Warehouse value is required.');
+                }
+
+                $product = $this->findOrCreateProduct($data);
+                if ($product->wasRecentlyCreated) {
+                    $result['products_created']++;
+                } else {
+                    $result['products_matched']++;
+                }
+
+                $quantity = $data['stock_quantity'] ?? 0;
+                $reorderPoint = max(0, $data['reorder_point'] ?? 0);
+                $warehouse = $this->resolveWarehouse($data['warehouse']);
+                $this->setWarehouseStock($warehouse, $product, $quantity, $reorderPoint);
+
+                $result['inventory_rows']++;
+            } catch (\Throwable $e) {
+                $result['errors'][] = [
+                    'row' => $rowNumber,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -172,12 +265,197 @@ class ProductExcelService
     }
 
     /**
+     * Import a multi-sheet menu file into warehouses.
+     *
+     * Each worksheet becomes a warehouse named after the sheet; each row is a
+     * product that gets linked to that warehouse. Products are matched by sku
+     * (الكود) first and by name (الوصف) second; unknown products are created.
+     * The per-row quantity lands in the warehouse's inventory row.
+     *
+     * @return array{
+     *     sheets: int,
+     *     warehouses_created: int,
+     *     products_created: int,
+     *     products_updated: int,
+     *     products_matched: int,
+     *     inventory_rows: int,
+     *     errors: array<int, array{sheet: string, row: int, message: string}>
+     * }
+     */
+    public function importMenuFile(string $path): array
+    {
+        $sheets = $this->readAllWorksheets($path);
+
+        $result = [
+            'sheets' => 0,
+            'warehouses_created' => 0,
+            'products_created' => 0,
+            'products_updated' => 0,
+            'products_matched' => 0,
+            'inventory_rows' => 0,
+            'errors' => [],
+        ];
+
+        foreach ($sheets as $sheetName => $rows) {
+            $warehouse = $this->resolveWarehouse($sheetName);
+            $result['sheets']++;
+
+            if ($warehouse->wasRecentlyCreated) {
+                $result['warehouses_created']++;
+            }
+
+            foreach ($rows as $index => $rawRow) {
+                $rowNumber = $index + 1;
+
+                try {
+                    $data = $this->mapRow($rawRow);
+
+                    $nameAr = $data['name_ar'] ?: $data['name_en'];
+                    if (! $nameAr) {
+                        continue;
+                    }
+
+                    $product = $this->findOrCreateProduct($data);
+                    if ($product->wasRecentlyCreated) {
+                        $result['products_created']++;
+                    } else {
+                        $result['products_matched']++;
+                    }
+
+                    $this->setWarehouseStock($warehouse, $product, $data['stock_quantity'] ?? 0);
+                    $result['inventory_rows']++;
+                } catch (\Throwable $e) {
+                    $result['errors'][] = [
+                        'sheet' => $sheetName,
+                        'row' => $rowNumber,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a warehouse by its name, creating it if missing.
+     */
+    private function resolveWarehouse(string $sheetName): Warehouse
+    {
+        $sheetName = trim($sheetName);
+
+        if (is_numeric($sheetName)) {
+            $warehouse = Warehouse::find((int) $sheetName);
+            if ($warehouse) {
+                return $warehouse;
+            }
+        }
+
+        return Warehouse::firstOrCreate(
+            ['name' => $sheetName],
+            [
+                'is_active' => true,
+                'location_type' => Warehouse::TYPE_WAREHOUSE,
+            ]
+        );
+    }
+
+    /**
+     * Match an existing product by sku then name; create it when missing.
+     */
+    private function findOrCreateProduct(array $data): Product
+    {
+        if (! empty($data['sku'])) {
+            $product = Product::where('sku', $data['sku'])->first();
+            if ($product) {
+                return $product;
+            }
+        }
+
+        if (! empty($data['name_ar'])) {
+            $product = Product::where('name_ar', $data['name_ar'])->first();
+            if ($product) {
+                return $product;
+            }
+        }
+
+        $nameAr = $data['name_ar'] ?: $data['name_en'];
+
+        $values = [
+            'name_ar' => $nameAr,
+            'name_en' => $data['name_en'],
+            'is_active' => true,
+            'slug' => $this->uniqueSlug($nameAr, $data['name_en']),
+        ];
+
+        foreach (['sku', 'unit', 'price', 'cost_price', 'barcode'] as $field) {
+            if ($data[$field] !== null) {
+                $values[$field] = $data[$field];
+            }
+        }
+
+        return Product::create($values);
+    }
+
+    /**
+     * Upsert the warehouse inventory row for a product, keeping the condition
+     * buckets consistent (all stock counted as available).
+     */
+    private function setWarehouseStock(Warehouse $warehouse, Product $product, int $quantity, int $reorderPoint = 0): void
+    {
+        $quantity = max(0, $quantity);
+        $reorderPoint = max(0, $reorderPoint);
+
+        WarehouseInventory::updateOrCreate(
+            [
+                'warehouse_id' => $warehouse->id,
+                'product_id' => $product->id,
+                'product_variant_id' => null,
+            ],
+            [
+                'quantity' => $quantity,
+                'available_quantity' => $quantity,
+                'damaged_quantity' => 0,
+                'quarantined_quantity' => 0,
+                'reserved_quantity' => 0,
+                'reorder_point' => $reorderPoint,
+                'safety_stock' => 0,
+                'cost_basis' => WarehouseInventory::COST_BASIS_FIFO,
+            ]
+        );
+    }
+
+    /**
      * Read an xlsx file and return rows keyed by their header values.
      */
     public function read(string $path): array
     {
-        $rows = [];
+        if (!file_exists($path)) {
+            throw new \RuntimeException('The file does not exist.');
+        }
 
+        if (filesize($path) === 0) {
+            throw new \RuntimeException('The file is empty.');
+        }
+
+        $sheets = $this->readAllWorksheets($path);
+
+        if ($sheets === []) {
+            throw new \RuntimeException('The file does not contain a worksheet or the worksheet is empty. Please ensure the file has at least one sheet with data.');
+        }
+
+        return reset($sheets);
+    }
+
+    /**
+     * Read every worksheet in the file, keyed by the sheet name. This is what
+     * a multi-sheet menu file needs — each sheet is treated as a separate
+     * document (e.g. one warehouse per sheet).
+     *
+     * @return array<string, array<int, array<string, string>>>  sheetName => rows
+     */
+    public function readAllWorksheets(string $path): array
+    {
         $zip = new ZipArchive();
         if ($zip->open($path) !== true) {
             throw new \RuntimeException('Unable to open the file as an Excel (xlsx) file.');
@@ -185,72 +463,180 @@ class ProductExcelService
 
         try {
             $shared = $this->readSharedStrings($zip);
-            $sheetXml = $this->readFirstWorksheet($zip);
+            $sheets = [];
 
-            if ($sheetXml === '') {
-                throw new \RuntimeException('The file does not contain a worksheet.');
-            }
-
-            $dom = new DOMDocument();
-            if (! @$dom->loadXML($sheetXml)) {
-                throw new \RuntimeException('The worksheet could not be parsed.');
-            }
-
-            $headers = [];
-            foreach ($dom->getElementsByTagName('row') as $rowElement) {
-                $cells = [];
-                $columnCounter = 0;
-                foreach ($rowElement->getElementsByTagName('c') as $cellElement) {
-                    $ref = $cellElement->getAttribute('r');
-                    $index = $ref !== '' ? $this->colToIndex($ref) : $columnCounter;
-                    $cells[$index] = $this->cellValue($cellElement, $shared);
-                    $columnCounter++;
-                }
-
-                if (! $cells) {
+            foreach ($this->worksheetTargets($zip) as $name => $target) {
+                $xml = $zip->getFromName($target);
+                if ($xml === false) {
                     continue;
                 }
 
-                $maxColumn = max(array_keys($cells));
-
-                if (! $headers) {
-                    // Use the first non-empty row as the header row.
-                    $hasValue = false;
-                    foreach ($cells as $cellValue) {
-                        if (trim((string) $cellValue) !== '') {
-                            $hasValue = true;
-                            break;
-                        }
-                    }
-                    if (! $hasValue) {
-                        continue;
-                    }
-                    for ($i = 0; $i <= $maxColumn; $i++) {
-                        $headers[$i] = trim((string) ($cells[$i] ?? ''));
-                    }
-                    continue;
-                }
-
-                $row = [];
-                $isEmpty = true;
-                for ($i = 0; $i <= $maxColumn; $i++) {
-                    $header = $headers[$i] ?? '';
-                    if ($header === '') {
-                        continue;
-                    }
-                    $value = trim((string) ($cells[$i] ?? ''));
-                    $row[$header] = $value;
-                    if ($value !== '') {
-                        $isEmpty = false;
-                    }
-                }
-
-                if (! $isEmpty) {
-                    $rows[] = $row;
+                $rows = $this->parseWorksheetRows($xml, $shared);
+                if ($rows !== []) {
+                    $sheets[$name] = $rows;
                 }
             }
+
+            if ($sheets === []) {
+                foreach ($this->scanWorksheetFiles($zip) as $name => $target) {
+                    $xml = $zip->getFromName($target);
+                    if ($xml === false) {
+                        continue;
+                    }
+
+                    $rows = $this->parseWorksheetRows($xml, $shared);
+                    if ($rows !== []) {
+                        $sheets[$name] = $rows;
+                    }
+                }
+            }
+
+            return $sheets;
         } finally {
             $zip->close();
+        }
+    }
+
+    /**
+     * Resolve every worksheet part to its path inside the package.
+     *
+     * @return array<string, string>  sheet name => archive path
+     */
+    private function worksheetTargets(ZipArchive $zip): array
+    {
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+
+        // Fallback: try to find any worksheet file directly
+        if ($workbookXml === false || $relsXml === false) {
+            $targets = [];
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = $zip->getNameIndex($i);
+                if (strpos($name, 'xl/worksheets/sheet') === 0 && strpos($name, '.xml') !== false) {
+                    $sheetName = 'Sheet' . (count($targets) + 1);
+                    $targets[$sheetName] = $name;
+                }
+            }
+            return $targets ?: ['Sheet1' => 'xl/worksheets/sheet1.xml'];
+        }
+
+        $relationships = [];
+        $rels = new DOMDocument();
+        if (@$rels->loadXML($relsXml)) {
+            foreach ($rels->getElementsByTagNameNS(
+                'http://schemas.openxmlformats.org/package/2006/relationships',
+                'Relationship'
+            ) as $relationship) {
+                $relationships[$relationship->getAttribute('Id')] = $relationship->getAttribute('Target');
+            }
+        }
+
+        $targets = [];
+        $workbook = new DOMDocument();
+        if (@$workbook->loadXML($workbookXml)) {
+            foreach ($workbook->getElementsByTagNameNS(
+                'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+                'sheet'
+            ) as $sheet) {
+                $name = $sheet->getAttribute('name');
+                $relationshipId = $sheet->getAttributeNS(
+                    'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+                    'id'
+                );
+
+                $target = $relationships[$relationshipId] ?? null;
+                if ($target === null) {
+                    continue;
+                }
+                if (strpos($target, 'worksheets/') === false) {
+                    $target = 'xl/' . ltrim($target, '/');
+                }
+
+                $targets[$name] = $target;
+            }
+        }
+
+        // If no sheets found via workbook.xml, try direct search
+        if (empty($targets)) {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = $zip->getNameIndex($i);
+                if (strpos($name, 'xl/worksheets/sheet') === 0 && strpos($name, '.xml') !== false) {
+                    $sheetName = 'Sheet' . (count($targets) + 1);
+                    $targets[$sheetName] = $name;
+                }
+            }
+        }
+
+        return $targets ?: ['Sheet1' => 'xl/worksheets/sheet1.xml'];
+    }
+
+    /**
+     * Parse a worksheet part into rows keyed by their header values.
+     *
+     * @param  array<int, string>  $shared
+     * @return array<int, array<string, string>>
+     */
+    private function parseWorksheetRows(string $sheetXml, array $shared): array
+    {
+        $rows = [];
+
+        $dom = new DOMDocument();
+        if (! @$dom->loadXML($sheetXml)) {
+            return $rows;
+        }
+
+        $headers = [];
+        foreach ($dom->getElementsByTagName('row') as $rowElement) {
+            $cells = [];
+            $columnCounter = 0;
+            foreach ($rowElement->getElementsByTagName('c') as $cellElement) {
+                $ref = $cellElement->getAttribute('r');
+                $index = $ref !== '' ? $this->colToIndex($ref) : $columnCounter;
+                $cells[$index] = $this->cellValue($cellElement, $shared);
+                $columnCounter++;
+            }
+
+            if (! $cells) {
+                continue;
+            }
+
+            $maxColumn = max(array_keys($cells));
+
+            if (! $headers) {
+                // Use the first non-empty row as the header row.
+                $hasValue = false;
+                foreach ($cells as $cellValue) {
+                    if (trim((string) $cellValue) !== '') {
+                        $hasValue = true;
+                        break;
+                    }
+                }
+                if (! $hasValue) {
+                    continue;
+                }
+                for ($i = 0; $i <= $maxColumn; $i++) {
+                    $headers[$i] = trim((string) ($cells[$i] ?? ''));
+                }
+                continue;
+            }
+
+            $row = [];
+            $isEmpty = true;
+            for ($i = 0; $i <= $maxColumn; $i++) {
+                $header = $headers[$i] ?? '';
+                if ($header === '') {
+                    continue;
+                }
+                $value = trim((string) ($cells[$i] ?? ''));
+                $row[$header] = $value;
+                if ($value !== '') {
+                    $isEmpty = false;
+                }
+            }
+
+            if (! $isEmpty) {
+                $rows[] = $row;
+            }
         }
 
         return $rows;
@@ -582,52 +968,6 @@ class ProductExcelService
         return $shared;
     }
 
-    private function readFirstWorksheet(ZipArchive $zip): string
-    {
-        $workbookXml = $zip->getFromName('xl/workbook.xml');
-        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
-
-        if ($workbookXml !== false && $relsXml !== false) {
-            $workbook = new DOMDocument();
-            if (@$workbook->loadXML($workbookXml)) {
-                $sheet = $workbook->getElementsByTagNameNS(
-                    'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
-                    'sheet'
-                )->item(0);
-
-                if ($sheet) {
-                    $relationshipId = $sheet->getAttributeNS(
-                        'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
-                        'id'
-                    );
-
-                    $rels = new DOMDocument();
-                    if (@$rels->loadXML($relsXml)) {
-                        foreach ($rels->getElementsByTagNameNS(
-                            'http://schemas.openxmlformats.org/package/2006/relationships',
-                            'Relationship'
-                        ) as $relationship) {
-                            if ($relationship->getAttribute('Id') === $relationshipId) {
-                                $target = $relationship->getAttribute('Target');
-                                if (strpos($target, 'worksheets/') === false) {
-                                    $target = 'xl/' . ltrim($target, '/');
-                                }
-                                $xml = $zip->getFromName($target);
-                                if ($xml !== false) {
-                                    return $xml;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        $xml = $zip->getFromName('xl/worksheets/sheet1.xml');
-
-        return $xml === false ? '' : $xml;
-    }
-
     private function colToIndex(string $reference): int
     {
         $column = '';
@@ -663,6 +1003,51 @@ class ProductExcelService
         }
 
         return $letters;
+    }
+
+    private function scanWorksheetFiles(ZipArchive $zip): array
+    {
+        $targets = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name === false) {
+                continue;
+            }
+            if (preg_match('#^xl/worksheets/([^/]+\.xml)$#', $name, $matches)) {
+                $sheetName = $matches[1];
+                $targets[$sheetName] = $name;
+            }
+        }
+
+        return $targets;
+    }
+
+    private function normalizeWorksheetPath(string $target): string
+    {
+        $target = ltrim($target, '/');
+        if (strpos($target, 'xl/') === 0) {
+            $target = substr($target, 3);
+        }
+
+        $segments = explode('/', $target);
+        $resolved = [];
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($resolved);
+                continue;
+            }
+            $resolved[] = $segment;
+        }
+
+        $path = implode('/', $resolved);
+        if (strpos($path, 'worksheets/') === 0) {
+            return 'xl/' . $path;
+        }
+
+        return 'xl/' . $path;
     }
 
     private function escapeXml(string $value): string

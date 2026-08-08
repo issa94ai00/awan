@@ -126,6 +126,11 @@ class InventoryTransfer extends Model
         return $this->status === self::STATUS_IN_TRANSIT;
     }
 
+    public function canCancel(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
     public function ship(): void
     {
         $this->status = self::STATUS_IN_TRANSIT;

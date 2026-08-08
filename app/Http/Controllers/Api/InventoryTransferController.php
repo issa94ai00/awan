@@ -7,6 +7,7 @@ use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferItem;
 use App\Models\WarehouseInventory;
 use App\Models\StockMovement;
+use App\Services\Inventory\InventoryService;
 use App\Services\InventoryAllocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,10 +15,12 @@ use Illuminate\Support\Facades\DB;
 class InventoryTransferController extends Controller
 {
     protected InventoryAllocationService $allocationService;
+    protected InventoryService $inventory;
 
-    public function __construct(InventoryAllocationService $allocationService)
+    public function __construct(InventoryAllocationService $allocationService, InventoryService $inventory)
     {
         $this->allocationService = $allocationService;
+        $this->inventory = $inventory;
     }
 
     public function index(Request $request)
@@ -87,11 +90,10 @@ class InventoryTransferController extends Controller
             ]);
 
             foreach ($request->items as $item) {
-                $inventory = WarehouseInventory::where('product_id', $item['product_id'])
-                    ->where('warehouse_id', $request->from_warehouse_id)
-                    ->first();
-
-                if (!$inventory || $inventory->available_stock < $item['quantity']) {
+                // Reserve through the service so availability is judged against
+                // the same buckets every other path uses, and the reservation is
+                // tracked in one place.
+                if (!$this->inventory->reserve($item['product_id'], $item['quantity'], $request->from_warehouse_id)) {
                     throw new \Exception("Insufficient stock for product ID: {$item['product_id']}");
                 }
 
@@ -105,9 +107,6 @@ class InventoryTransferController extends Controller
                     'expiry_date' => $item['expiry_date'] ?? null,
                     'notes' => $item['notes'] ?? null,
                 ]);
-
-                // Reserve the inventory
-                $inventory->increment('reserved_quantity', $item['quantity']);
             }
 
             DB::commit();
@@ -144,30 +143,25 @@ class InventoryTransferController extends Controller
             DB::beginTransaction();
 
             foreach ($transfer->items as $item) {
-                // Create stock movement for source warehouse
-                StockMovement::create([
-                    'product_id' => $item->product_id,
-                    'movement_type' => StockMovement::TYPE_OUT,
-                    'quantity' => $item->quantity_requested,
-                    'reference' => $transfer->transfer_number,
-                    'source' => 'transfer',
-                    'warehouse_id' => $transfer->from_warehouse_id,
-                    'unit_cost' => $item->unit_cost,
-                    'total_cost' => $item->quantity_requested * $item->unit_cost,
-                    'created_by' => auth()->id(),
-                ]);
+                // Ship from the source warehouse through the service. Keyed per
+                // transfer item so re-shipping is a no-op. The stock moves off
+                // the shelf and consumes the reservation taken at request time.
+                $this->inventory->shipReserved(
+                    $item->product_id,
+                    $item->quantity_requested,
+                    $transfer->from_warehouse_id,
+                    [
+                        'key' => 'transfer:' . $transfer->id . ':item:' . $item->id . ':out',
+                        'reference' => $transfer->transfer_number,
+                        'source' => 'transfer',
+                        'reason' => 'شحن مخزون لنقل رقم ' . $transfer->transfer_number,
+                        'unit_cost' => $item->unit_cost,
+                        'created_by' => auth()->id(),
+                    ]
+                );
 
-                // Update source warehouse inventory
-                $sourceInventory = WarehouseInventory::where('product_id', $item->product_id)
-                    ->where('warehouse_id', $transfer->from_warehouse_id)
-                    ->first();
-
-                if ($sourceInventory) {
-                    $sourceInventory->decrement('quantity', $item->quantity_requested);
-                    $sourceInventory->decrement('reserved_quantity', $item->quantity_requested);
-                }
-
-                // Update transfer item
+                // No explicit release is needed because the reserved quantity is
+                // consumed inside InventoryService when consume_reserved is true.
                 $item->quantity_shipped = $item->quantity_requested;
                 $item->save();
             }
@@ -226,37 +220,22 @@ class InventoryTransferController extends Controller
                 $item->quantity_received = $quantityReceived;
                 $item->save();
 
-                // Create stock movement for destination warehouse
-                StockMovement::create([
-                    'product_id' => $item->product_id,
-                    'movement_type' => StockMovement::TYPE_IN,
-                    'quantity' => $quantityReceived,
-                    'reference' => $transfer->transfer_number,
-                    'source' => 'transfer',
-                    'warehouse_id' => $transfer->to_warehouse_id,
-                    'unit_cost' => $item->unit_cost,
-                    'total_cost' => $quantityReceived * $item->unit_cost,
-                    'created_by' => auth()->id(),
-                    'batch_number' => $item->batch_number,
-                    'expiry_date' => $item->expiry_date,
-                ]);
-
-                // Update or create destination warehouse inventory
-                $destInventory = WarehouseInventory::firstOrCreate(
+                // Receive into the destination warehouse through the service.
+                // Keyed per transfer item so a repeated receive is a no-op and
+                // cannot inflate stock at the destination.
+                $this->inventory->receive(
+                    $item->product_id,
+                    $quantityReceived,
+                    $transfer->to_warehouse_id,
                     [
-                        'product_id' => $item->product_id,
-                        'warehouse_id' => $transfer->to_warehouse_id,
-                        'product_variant_id' => $item->product_variant_id,
-                    ],
-                    [
-                        'quantity' => 0,
-                        'reserved_quantity' => 0,
-                        'reorder_point' => 10,
-                        'safety_stock' => 5,
+                        'key' => 'transfer:' . $transfer->id . ':item:' . $item->id . ':in',
+                        'reference' => $transfer->transfer_number,
+                        'source' => 'transfer',
+                        'reason' => 'استلام مخزون من نقل رقم ' . $transfer->transfer_number,
+                        'unit_cost' => $item->unit_cost,
+                        'created_by' => auth()->id(),
                     ]
                 );
-
-                $destInventory->increment('quantity', $quantityReceived);
             }
 
             $transfer->receive();
@@ -285,10 +264,10 @@ class InventoryTransferController extends Controller
     {
         $transfer = InventoryTransfer::findOrFail($id);
 
-        if ($transfer->status === InventoryTransfer::STATUS_COMPLETED) {
+        if (!$transfer->canCancel()) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن إلغاء الطلبات المكتملة',
+                'message' => 'لا يمكن إلغاء هذا الطلب في هذه الحالة',
                 'data' => null,
             ], 422);
         }
@@ -296,17 +275,9 @@ class InventoryTransferController extends Controller
         try {
             DB::beginTransaction();
 
-            if ($transfer->status === InventoryTransfer::STATUS_PENDING) {
-                // Release reserved inventory
-                foreach ($transfer->items as $item) {
-                    $inventory = WarehouseInventory::where('product_id', $item->product_id)
-                        ->where('warehouse_id', $transfer->from_warehouse_id)
-                        ->first();
-
-                    if ($inventory) {
-                        $inventory->decrement('reserved_quantity', $item->quantity_requested);
-                    }
-                }
+            // Release reserved inventory only for pending transfers.
+            foreach ($transfer->items as $item) {
+                $this->inventory->release($item->product_id, $item->quantity_requested, $transfer->from_warehouse_id);
             }
 
             $transfer->status = InventoryTransfer::STATUS_CANCELLED;

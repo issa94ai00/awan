@@ -230,13 +230,16 @@
                         </el-icon>
                     </template>
                 </el-table-column>
-                <el-table-column :label="$t('procedures')" width="140" fixed="right">
+                <el-table-column :label="$t('procedures')" width="180" fixed="right">
                     <template #default="{ row }">
                         <div class="actions-cell">
+                            <el-tooltip content="تعديل سريع" placement="top">
+                                <el-button :icon="Edit" size="small" text type="warning" @click="quickEdit(row)" />
+                            </el-tooltip>
                             <el-tooltip content="عرض" placement="top">
                                 <el-button :icon="View" size="small" text @click="viewProduct(row)" />
                             </el-tooltip>
-                            <el-tooltip content="تعديل" placement="top">
+                            <el-tooltip content="تعديل كامل" placement="top">
                                 <el-button :icon="Edit" size="small" text type="primary" @click="editProduct(row)" />
                             </el-tooltip>
                             <el-tooltip content="حذف" placement="top">
@@ -269,6 +272,55 @@
                 />
             </div>
         </el-card>
+
+        <!-- Quick Edit Dialog -->
+        <el-dialog
+            v-model="quickEditDialogVisible"
+            title="تعديل سريع"
+            width="600px"
+            :close-on-click-modal="false"
+        >
+            <el-form :model="quickEditForm" label-width="120px" label-position="right">
+                <el-form-item label="الاسم بالعربية">
+                    <el-input v-model="quickEditForm.name_ar" />
+                </el-form-item>
+                <el-form-item label="الاسم بالإنجليزية">
+                    <el-input v-model="quickEditForm.name_en" />
+                </el-form-item>
+                <el-form-item label="السعر">
+                    <el-input-number v-model="quickEditForm.price" :min="0" :step="0.01" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="سعر التخفيض">
+                    <el-input-number v-model="quickEditForm.sale_price" :min="0" :step="0.01" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="سعر التكلفة">
+                    <el-input-number v-model="quickEditForm.cost_price" :min="0" :step="0.01" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="الكمية">
+                    <el-input-number v-model="quickEditForm.stock_quantity" :min="0" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="التصنيف">
+                    <el-select v-model="quickEditForm.category_id" placeholder="اختر التصنيف" style="width: 100%">
+                        <el-option
+                            v-for="cat in categories"
+                            :key="cat.id"
+                            :label="cat.name_ar || cat.name"
+                            :value="cat.id"
+                        />
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="الحالة">
+                    <el-switch v-model="quickEditForm.is_active" />
+                </el-form-item>
+                <el-form-item label="مميز">
+                    <el-switch v-model="quickEditForm.is_featured" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="quickEditDialogVisible = false">إلغاء</el-button>
+                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">حفظ</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -297,6 +349,20 @@ const togglingId = ref(null);
 const exporting = ref(false);
 const importing = ref(false);
 const fileInput = ref(null);
+const quickEditDialogVisible = ref(false);
+const quickEditSubmitting = ref(false);
+const quickEditForm = ref({
+    id: null,
+    name_ar: '',
+    name_en: '',
+    price: 0,
+    sale_price: null,
+    cost_price: null,
+    stock_quantity: 0,
+    category_id: null,
+    is_active: true,
+    is_featured: false,
+});
 
 const products = computed(() => store.products);
 const categories = computed(() => store.categories);
@@ -460,6 +526,46 @@ const viewProduct = (product) => {
 
 const editProduct = (product) => {
     router.push({ name: 'admin.products.edit', params: { id: product.id } });
+};
+
+const quickEdit = (product) => {
+    quickEditForm.value = {
+        id: product.id,
+        name_ar: product.name_ar || '',
+        name_en: product.name_en || '',
+        price: product.price || 0,
+        sale_price: product.sale_price || null,
+        cost_price: product.cost_price || null,
+        stock_quantity: product.stock_quantity || 0,
+        category_id: product.category_id || null,
+        is_active: product.is_active ?? true,
+        is_featured: product.is_featured ?? false,
+    };
+    quickEditDialogVisible.value = true;
+};
+
+const submitQuickEdit = async () => {
+    quickEditSubmitting.value = true;
+    try {
+        await store.updateProduct(quickEditForm.value.id, {
+            name_ar: quickEditForm.value.name_ar,
+            name_en: quickEditForm.value.name_en,
+            price: quickEditForm.value.price,
+            sale_price: quickEditForm.value.sale_price,
+            cost_price: quickEditForm.value.cost_price,
+            stock_quantity: quickEditForm.value.stock_quantity,
+            category_id: quickEditForm.value.category_id,
+            is_active: quickEditForm.value.is_active,
+            is_featured: quickEditForm.value.is_featured,
+        });
+        ElMessage.success('تم تحديث المنتج بنجاح');
+        quickEditDialogVisible.value = false;
+        fetchProducts();
+    } catch (error) {
+        ElMessage.error(error.response?.data?.message || 'فشل في تحديث المنتج');
+    } finally {
+        quickEditSubmitting.value = false;
+    }
 };
 
 const deleteProduct = async (product) => {

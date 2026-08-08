@@ -3,10 +3,13 @@
         <!-- Page Header -->
         <div class="page-header">
             <div class="page-title">
-                <h1><i class="fas fa-history text-primary"></i> {{ $t('inventory_movements') || 'سجل الحركة المخزنية' }}</h1>
-                <p>سجل تفصيلي لكافة الواردات والصادرات والتسويات اليدوية الحادثة على مخازن السلع والمستودعات.</p>
+                <h1><i class="fas fa-history text-primary"></i> سجل الحركة المخزنية</h1>
+                <p>سجل تفصيلي لكافة الواردات والصادرات والتسويات اليدوية الحادثة على المخازن والمستودعات.</p>
             </div>
             <div class="header-actions">
+                <router-link to="/admin/inventory">
+                    <el-button><i class="fas fa-warehouse mr-1"></i> لوحة المخزون</el-button>
+                </router-link>
                 <el-button type="primary" class="create-btn" @click="openAdjustmentDrawer">
                     <i class="fas fa-plus"></i> تسوية مخزنية جديدة
                 </el-button>
@@ -14,33 +17,47 @@
         </div>
 
         <!-- Filter Panel -->
-        <el-card shadow="hover" class="filters-panel mb-4">
+        <el-card shadow="never" class="filters-panel mb-4">
             <div class="filters-row">
                 <div class="filter-item">
                     <label>المنتج / الصنف</label>
-                    <el-select v-model="filters.product_id" placeholder="الكل" clearable style="width: 250px;" filterable @change="applyFilters">
-                        <el-option 
-                            v-for="p in productsStore.products" 
-                            :key="p.id" 
-                            :label="p.name_ar + ' (SKU: ' + p.sku + ')'" 
-                            :value="p.id" 
+                    <el-select v-model="filters.product_id" placeholder="الكل" clearable style="width: 230px;" filterable @change="applyFilters">
+                        <el-option
+                            v-for="p in productsStore.products"
+                            :key="p.id"
+                            :label="`${p.name_ar || p.name_en || p.name} (SKU: ${p.sku})`"
+                            :value="p.id"
                         />
                     </el-select>
                 </div>
                 <div class="filter-item">
+                    <label>المستودع</label>
+                    <el-select v-model="filters.warehouse_id" placeholder="الكل" clearable style="width: 180px;" @change="applyFilters">
+                        <el-option v-for="w in inventoryStore.warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                    </el-select>
+                </div>
+                <div class="filter-item">
                     <label>نوع الحركة</label>
-                    <el-select v-model="filters.movement_type" placeholder="الكل" clearable style="width: 180px;" @change="applyFilters">
+                    <el-select v-model="filters.movement_type" placeholder="الكل" clearable style="width: 160px;" @change="applyFilters">
                         <el-option label="وارد (In)" value="in" />
                         <el-option label="صادر (Out)" value="out" />
                         <el-option label="تسوية (Adjustment)" value="adjustment" />
                     </el-select>
                 </div>
-                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.25rem;">إعادة تعيين</el-button>
+                <div class="filter-item">
+                    <label>من تاريخ</label>
+                    <el-date-picker v-model="filters.from_date" type="date" placeholder="اختر التاريخ" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                </div>
+                <div class="filter-item">
+                    <label>إلى تاريخ</label>
+                    <el-date-picker v-model="filters.to_date" type="date" placeholder="اختر التاريخ" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                </div>
+                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.5rem;">إعادة تعيين</el-button>
             </div>
         </el-card>
 
         <!-- Main Card & Movements Table -->
-        <el-card shadow="hover" class="table-panel">
+        <el-card shadow="never" class="table-panel">
             <template #header>
                 <div class="card-header">
                     <span><i class="fas fa-exchange-alt text-muted"></i> كشف المعاملات المخزنية</span>
@@ -51,12 +68,11 @@
                 <el-skeleton :rows="6" animated />
             </div>
             <div v-else>
-                <el-table 
-                    v-if="store.movements.length" 
-                    :data="store.movements" 
-                    style="width: 100%" 
-                    stripe 
-                    highlight-current-row
+                <el-table
+                    v-if="store.movements.length"
+                    :data="store.movements"
+                    style="width: 100%"
+                    stripe
                     class="custom-table"
                 >
                     <el-table-column prop="created_at" label="التاريخ والوقت" width="180" align="center">
@@ -64,13 +80,18 @@
                             <span>{{ row.created_at ? row.created_at.replace('T', ' ').substring(0, 19) : '-' }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="product.name_ar" label="الصنف / المنتج" min-width="180">
+                    <el-table-column label="الصنف / المنتج" min-width="180">
                         <template #default="{ row }">
-                            <strong style="color: var(--text-dark);">{{ row.product?.name_ar || '-' }}</strong>
+                            <strong style="color: var(--text-dark);">{{ row.product?.name_ar || row.product?.name || '-' }}</strong>
                             <p style="margin: 0.15rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">SKU: {{ row.product?.sku || '-' }}</p>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="movement_type" label="نوع الحركة" width="130" align="center">
+                    <el-table-column label="المستودع" min-width="130">
+                        <template #default="{ row }">
+                            {{ row.warehouse?.name || '-' }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="نوع الحركة" width="140" align="center">
                         <template #default="{ row }">
                             <el-tag :type="typeTagType(row.movement_type)" effect="light" class="status-tag">
                                 <i class="fas status-dot-icon" :class="statusIconClass(row.movement_type)"></i>
@@ -78,16 +99,26 @@
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="quantity" label="الكمية" width="120" align="center">
+                    <el-table-column label="الكمية" width="120" align="center">
                         <template #default="{ row }">
                             <strong :class="quantityColorClass(row.movement_type)" style="font-size: 1rem;">
                                 {{ row.movement_type === 'in' ? '+' : '-' }}{{ row.quantity }}
                             </strong>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="reference" label="رمز المرجع" width="150" show-overflow-tooltip />
-                    <el-table-column prop="creator.name" label="المسؤول" width="140" show-overflow-tooltip />
-                    <el-table-column prop="notes" label="ملاحظات" min-width="180" show-overflow-tooltip />
+                    <el-table-column label="رمز المرجع" width="150" show-overflow-tooltip>
+                        <template #default="{ row }">
+                            <span v-if="row.reference">{{ row.reference }}</span>
+                            <span v-else-if="row.movement_key" class="text-muted">{{ row.movement_key }}</span>
+                            <span v-else>-</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="المسؤول" width="140" show-overflow-tooltip>
+                        <template #default="{ row }">{{ row.creator?.name || '-' }}</template>
+                    </el-table-column>
+                    <el-table-column label="ملاحظات" min-width="180" show-overflow-tooltip>
+                        <template #default="{ row }">{{ row.notes || '-' }}</template>
+                    </el-table-column>
                 </el-table>
 
                 <!-- Empty State -->
@@ -97,6 +128,18 @@
                     <el-button type="primary" size="medium" @click="openAdjustmentDrawer">
                         <i class="fas fa-plus"></i> تسجيل حركة مخزنية
                     </el-button>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="store.movements.length" class="pagination-row">
+                    <el-pagination
+                        layout="prev, pager, next, total"
+                        :total="store.pagination.total"
+                        :current-page="store.pagination.current_page"
+                        :page-size="store.pagination.per_page"
+                        background
+                        @current-change="onPageChange"
+                    />
                 </div>
             </div>
         </el-card>
@@ -113,21 +156,27 @@
             <el-form :model="form" label-position="top">
                 <el-form-item label="المنتج المراد تسويته" required>
                     <el-select v-model="form.product_id" placeholder="اختر المنتج" style="width: 100%" filterable>
-                        <el-option 
-                            v-for="p in productsStore.products" 
-                            :key="p.id" 
-                            :label="p.name_ar + ' (المخزون الحالي: ' + p.stock + ')'" 
-                            :value="p.id" 
+                        <el-option
+                            v-for="p in productsStore.products"
+                            :key="p.id"
+                            :label="`${p.name_ar || p.name_en || p.name} (الرصيد: ${p.stock_quantity ?? 0})`"
+                            :value="p.id"
                         />
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="نوع الحركة المخزنية" required>
-                    <el-select v-model="form.movement_type" style="width: 100%">
-                        <el-option label="إدخال بضائع (In / توريد)" value="in" />
-                        <el-option label="إخراج بضائع (Out / صرف)" value="out" />
-                        <el-option label="تسوية يدوية (Adjustment)" value="adjustment" />
+                <el-form-item label="المستودع">
+                    <el-select v-model="form.warehouse_id" placeholder="المستودع الافتراضي" clearable style="width: 100%">
+                        <el-option v-for="w in inventoryStore.warehouses" :key="w.id" :label="w.name" :value="w.id" />
                     </el-select>
+                </el-form-item>
+
+                <el-form-item label="نوع الحركة المخزنية" required>
+                    <el-radio-group v-model="form.movement_type" class="w-100">
+                        <el-radio-button value="in">وارد (In)</el-radio-button>
+                        <el-radio-button value="out">صادر (Out)</el-radio-button>
+                        <el-radio-button value="adjustment">تسوية (Adjustment)</el-radio-button>
+                    </el-radio-group>
                 </el-form-item>
 
                 <el-form-item label="الكمية" required>
@@ -146,7 +195,7 @@
                     <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="ملاحظات توضيحية حول سبب الحركة أو التسوية..." />
                 </el-form-item>
 
-                <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                <div class="drawer-footer">
                     <el-button @click="adjustmentDrawerVisible = false">إلغاء</el-button>
                     <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">تأكيد الحركة المخزنية</el-button>
                 </div>
@@ -159,50 +208,78 @@
 import { ref, onMounted, reactive } from 'vue';
 import { useStockMovementsStore } from '@/stores/stockMovements';
 import { useProductsStore } from '@/stores/products';
+import { useInventoryStore } from '@/stores/inventory';
 import { stockMovementsApi } from '@/api/stockMovements';
 import { ElMessage } from 'element-plus';
 
 const store = useStockMovementsStore();
 const productsStore = useProductsStore();
+const inventoryStore = useInventoryStore();
 
 // Filters state
 const filters = reactive({
     product_id: '',
-    movement_type: ''
+    warehouse_id: '',
+    movement_type: '',
+    from_date: '',
+    to_date: '',
 });
+
+const buildParams = () => {
+    const params = { per_page: store.pagination.per_page, page: store.pagination.current_page };
+    if (filters.product_id) params.product_id = filters.product_id;
+    if (filters.warehouse_id) params.warehouse_id = filters.warehouse_id;
+    if (filters.movement_type) params.movement_type = filters.movement_type;
+    if (filters.from_date) params.from_date = filters.from_date;
+    if (filters.to_date) params.to_date = filters.to_date;
+    return params;
+};
+
+const applyFilters = async () => {
+    store.pagination.current_page = 1;
+    try {
+        await store.fetchMovements(buildParams());
+    } catch (e) {
+        /* handled by store */
+    }
+};
+
+const resetFilters = () => {
+    filters.product_id = '';
+    filters.warehouse_id = '';
+    filters.movement_type = '';
+    filters.from_date = '';
+    filters.to_date = '';
+    store.pagination.current_page = 1;
+    store.fetchMovements(buildParams()).catch(() => {});
+};
+
+const onPageChange = (page) => {
+    store.pagination.current_page = page;
+    store.fetchMovements(buildParams()).catch(() => {});
+};
 
 // Adjustment Drawer state
 const adjustmentDrawerVisible = ref(false);
 const submittingForm = ref(false);
 const form = reactive({
     product_id: '',
+    warehouse_id: '',
     movement_type: 'adjustment',
     quantity: 1,
     reference: '',
     source: '',
-    notes: ''
+    notes: '',
 });
 
 const resetForm = () => {
     form.product_id = '';
+    form.warehouse_id = '';
     form.movement_type = 'adjustment';
     form.quantity = 1;
     form.reference = '';
     form.source = '';
     form.notes = '';
-};
-
-const applyFilters = () => {
-    const params = {};
-    if (filters.product_id) params.product_id = filters.product_id;
-    if (filters.movement_type) params.movement_type = filters.movement_type;
-    store.fetchMovements(params).catch(() => {});
-};
-
-const resetFilters = () => {
-    filters.product_id = '';
-    filters.movement_type = '';
-    store.fetchMovements().catch(() => {});
 };
 
 const openAdjustmentDrawer = () => {
@@ -222,13 +299,18 @@ const saveAdjustment = async () => {
 
     submittingForm.value = true;
     try {
-        await stockMovementsApi.create(form);
+        await stockMovementsApi.create({
+            ...form,
+            product_id: form.product_id,
+            warehouse_id: form.warehouse_id || null,
+            quantity: Number(form.quantity),
+        });
         ElMessage.success('تم تسجيل وإثبات الحركة المخزنية بنجاح.');
         adjustmentDrawerVisible.value = false;
-        await store.fetchMovements();
+        await store.fetchMovements(buildParams());
         await productsStore.fetchProducts({ per_page: 200 });
     } catch (e) {
-        ElMessage.error('حدث خطأ أثناء حفظ الحركة المخزنية.');
+        ElMessage.error(e.response?.data?.message || 'حدث خطأ أثناء حفظ الحركة المخزنية.');
     } finally {
         submittingForm.value = false;
     }
@@ -263,8 +345,9 @@ const quantityColorClass = (type) => {
 };
 
 onMounted(() => {
-    store.fetchMovements().catch(() => {});
+    store.fetchMovements(buildParams()).catch(() => {});
     productsStore.fetchProducts({ per_page: 200 }).catch(() => {});
+    inventoryStore.fetchWarehouses().catch(() => {});
 });
 </script>
 
@@ -300,6 +383,13 @@ onMounted(() => {
     font-size: 0.9rem;
 }
 
+.header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 .create-btn {
     font-weight: 600;
     border-radius: var(--radius-md);
@@ -307,6 +397,10 @@ onMounted(() => {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.mr-1 {
+    margin-inline-end: 0.35rem;
 }
 
 .filters-panel {
@@ -384,5 +478,28 @@ onMounted(() => {
     font-weight: 500;
     font-size: 1.05rem;
     margin-bottom: 1.5rem;
+}
+
+.pagination-row {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 1.1rem;
+}
+
+.drawer-footer {
+    border-top: 1px solid var(--border-color);
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.w-100 {
+    width: 100%;
+}
+
+.text-muted {
+    color: var(--text-muted);
 }
 </style>
