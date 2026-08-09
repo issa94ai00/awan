@@ -166,7 +166,20 @@ class PurchaseRequestController extends Controller
         // storefront left revenue missing from the income statement. Posting is
         // keyed on the invoice, so confirming the order later will not
         // double-post it.
-        $this->ledger->postInvoice($invoice);
+        //
+        // Deliberately non-fatal. This is a customer pressing "order" on a
+        // storefront: a misconfigured chart of accounts is the shop's problem,
+        // not theirs, and letting a posting failure throw here turned an
+        // accounting gap into a checkout that rejects every order. The failure
+        // is logged, and the unposted invoice is already reported by the system
+        // health check and repairable with `accounting:backfill`.
+        $postingError = null;
+        try {
+            $this->ledger->postInvoice($invoice);
+        } catch (\Throwable $e) {
+            $postingError = $e->getMessage();
+            report($e);
+        }
 
         // Opens the stage history, so a storefront order carries the same trail
         // as one raised by staff.
@@ -190,6 +203,9 @@ class PurchaseRequestController extends Controller
                 'invoice_number' => $invoice->invoice_number,
                 'total' => $subtotal,
             ],
+            // Surfaced for the operator, never shown to the customer: their
+            // order went through either way.
+            'accounting_warning' => $postingError,
         ], 201);
     }
 
