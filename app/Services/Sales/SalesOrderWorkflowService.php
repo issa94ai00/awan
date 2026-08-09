@@ -11,6 +11,7 @@ use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\PickingService;
 use App\Services\Sales\PaymentRecorder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +67,7 @@ class SalesOrderWorkflowService
         private InventoryService $inventory,
         private LedgerPostingService $ledger,
         private PaymentRecorder $payments,
+        private PickingService $picking,
     ) {
     }
 
@@ -295,12 +297,28 @@ class SalesOrderWorkflowService
 
         $order->confirmed_at = now();
 
-        return [
+        $effects = [
             'reserved_warehouse_id' => (int) $warehouseId,
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'journal_posted' => true,
         ];
+
+        // Confirming is the moment the warehouse is told to go and get the
+        // goods, so the picking list is raised here rather than being a
+        // separate thing somebody has to remember. It is guarded: a picking
+        // problem — no bins mapped, a warehouse misconfigured — must not undo a
+        // committed sale, and the missing list is reported instead.
+        try {
+            $picking = $this->picking->createPickingList($order, (int) $warehouseId);
+            $effects['picking_list_id'] = $picking->id;
+            $effects['picking_list_number'] = $picking->list_number;
+        } catch (\Throwable $e) {
+            $effects['picking_list_error'] = $e->getMessage();
+            report($e);
+        }
+
+        return $effects;
     }
 
     /** Picking has started. Nothing financial happens; the reservation stands. */
@@ -467,6 +485,12 @@ class SalesOrderWorkflowService
             // Still on the shelf, just held for this order — let it go.
             $this->releaseAll($order, $warehouseId);
             $effects['reservation_released'] = true;
+        }
+
+        // A pending picking list would send someone to the shelf for a sale
+        // that is off.
+        if ($cancelledList = $this->picking->cancelForOrder($order)) {
+            $effects['picking_list_cancelled'] = $cancelledList->list_number;
         }
 
         // The receivable was raised when the invoice was, so the live invoice —
@@ -1044,6 +1068,14 @@ class SalesOrderWorkflowService
                     ->implode('، ') . ($unpriced->count() > 3 ? ' وغيرها' : '') . '.');
         }
 
+        // A confirmed order with no picking list means nobody has been told to
+        // fetch the goods — the sale is committed but the warehouse never heard.
+        if ($this->holdsReservation($order) && !$this->picking->activePickingList($order)) {
+            $add('warning', 'picking_list_missing', 'لا توجد قائمة تجهيز لهذا الطلب',
+                'الطلب مؤكد لكن لم تُنشأ له قائمة تجهيز، فلن يصل المستودع أمر بسحب الأصناف من الرفوف.',
+                'أعد تأكيد الطلب لإنشاء القائمة، أو أنشئها يدوياً من شاشة WMS.');
+        }
+
         if ($this->holdsReservation($order)) {
             $unreserved = $this->itemsWithNoReservation($order);
 
@@ -1105,6 +1137,12 @@ class SalesOrderWorkflowService
             ->filter(fn ($i) => (int) ($reserved[$i->product_id] ?? 0) === 0)
             ->map(fn ($i) => $i->product->name_ar ?? $i->product->name ?? ('#' . $i->product_id))
             ->values();
+    }
+
+    /** The order's live picking list, for the detail screen. */
+    public function pickingListFor(SalesOrder $order): ?\App\Models\PickingList
+    {
+        return $this->picking->activePickingList($order)?->load(['items.product:id,sku,name_ar,name_en', 'items.bin', 'picker:id,name', 'warehouse:id,name']);
     }
 
     /** Stock movements this order has produced, for the detail screen. */

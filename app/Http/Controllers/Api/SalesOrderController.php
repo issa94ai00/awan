@@ -428,6 +428,7 @@ class SalesOrderController extends Controller
                 'journal_entries' => $entries,
                 'stock_movements' => $this->workflow->movementsFor($salesOrder),
                 'diagnostics' => $this->workflow->diagnose($salesOrder),
+                'picking_list' => $this->workflow->pickingListFor($salesOrder),
                 'follow_up' => $this->workflow->followUp($salesOrder),
                 'history' => $salesOrder->statusHistory,
                 'routing' => $this->routingPayload($salesOrder),

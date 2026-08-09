@@ -16,8 +16,22 @@ class PickingService
     /**
      * Create picking list from sales order
      */
+    /**
+     * The picking list for an order, creating it if there is not one already.
+     *
+     * An order has one live picking list: it is the instruction to go and take
+     * these goods off the shelf, and a second copy means the same units get
+     * picked twice. Confirming an order now raises the list automatically, so
+     * without this guard a re-confirm or a repair run would leave the warehouse
+     * holding duplicates.
+     */
     public function createPickingList(SalesOrder $order, $warehouseId = null): PickingList
     {
+        $existing = $this->activePickingList($order);
+        if ($existing) {
+            return $existing;
+        }
+
         $warehouseId = $warehouseId ?? $order->fulfillment_warehouse_id;
 
         if (!$warehouseId) {
@@ -30,7 +44,9 @@ class PickingService
             $pickingList = PickingList::create([
                 'warehouse_id' => $warehouseId,
                 'sales_order_id' => $order->id,
-                'list_number' => 'PL-' . str_pad(PickingList::count() + 1, 6, '0', STR_PAD_LEFT),
+                // Derived from the last id: counting reuses a number the moment
+                // any list is deleted, and two concurrent confirmations collide.
+                'list_number' => 'PL-' . str_pad((string) (((int) PickingList::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                 'priority' => $this->determinePriority($order),
                 'status' => PickingList::STATUS_PENDING,
                 'total_items' => $order->items->count(),
@@ -72,6 +88,37 @@ class PickingService
     }
 
     /**
+     * The order's live picking list, if it has one. A cancelled list does not
+     * count — that is what makes re-picking a revived order possible.
+     */
+    public function activePickingList(SalesOrder $order): ?PickingList
+    {
+        return PickingList::where('sales_order_id', $order->id)
+            ->where('status', '!=', PickingList::STATUS_CANCELLED)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Stands the picking list down when its order is cancelled. A list left
+     * pending would send someone to pick goods for a sale that is off.
+     */
+    public function cancelForOrder(SalesOrder $order): ?PickingList
+    {
+        $list = $this->activePickingList($order);
+
+        // Once picking is finished the goods have already been taken off the
+        // shelf; cancelling the paperwork then would hide that it happened.
+        if (!$list || $list->status === PickingList::STATUS_COMPLETED) {
+            return null;
+        }
+
+        $list->cancel();
+
+        return $list;
+    }
+
+    /**
      * Determine priority based on order characteristics
      */
     protected function determinePriority(SalesOrder $order): string
@@ -101,76 +148,29 @@ class PickingService
         $variantId = $orderItem->product_variant_id;
         $quantity = $orderItem->quantity;
 
-        // Find bins with the item and sufficient stock
-        $bins = WarehouseBin::active()
+        // This previously filtered `warehouse_bins` on `is_active`, `type` and
+        // `requires_equipment` — none of which are columns on that table — so
+        // every call threw and took the whole picking list down with it.
+        //
+        // Bin mapping is optional here: none are configured today, and
+        // `picking_list_items.bin_id` is nullable for exactly that reason. A
+        // warehouse without bins should get a picking list without bin hints,
+        // not no picking list at all.
+        return WarehouseBin::query()
             ->where('warehouse_id', $warehouseId)
-            ->where('type', WarehouseBin::TYPE_PICKING)
-            ->whereHas('inventory', function ($query) use ($productId, $variantId, $quantity) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId)
-                    ->where('available_stock', '>=', $quantity);
+            ->whereExists(function ($q) use ($productId, $quantity) {
+                $q->select(DB::raw(1))
+                    ->from('warehouse_inventory')
+                    ->whereColumn('warehouse_inventory.bin_id', 'warehouse_bins.id')
+                    ->where('warehouse_inventory.product_id', $productId)
+                    ->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity >= ?', [$quantity]);
             })
-            ->with(['inventory' => function ($query) use ($productId, $variantId) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId);
-            }])
-            ->get();
-
-        if ($bins->isEmpty()) {
-            // Try storage bins if no picking bins available
-            $bins = WarehouseBin::active()
-                ->where('warehouse_id', $warehouseId)
-                ->where('type', WarehouseBin::TYPE_STORAGE)
-                ->whereHas('inventory', function ($query) use ($productId, $variantId, $quantity) {
-                    $query->where('product_id', $productId)
-                        ->where('product_variant_id', $variantId)
-                        ->where('available_stock', '>=', $quantity);
-                })
-                ->with(['inventory' => function ($query) use ($productId, $variantId) {
-                    $query->where('product_id', $productId)
-                        ->where('product_variant_id', $variantId);
-                }])
-                ->get();
-        }
-
-        if ($bins->isEmpty()) {
-            return null;
-        }
-
-        // Score bins based on multiple factors
-        return $bins->map(function ($bin) {
-            $score = 0;
-
-            // Factor 1: Bin utilization (prefer less utilized bins)
-            $utilization = $bin->getUtilizationPercentageAttribute();
-            $score += max(0, 100 - $utilization) * 0.3;
-
-            // Factor 2: Zone proximity (prefer closer zones)
-            $zonePriority = match($bin->zone) {
-                'A' => 40,
-                'B' => 30,
-                'C' => 20,
-                'D' => 10,
-                default => 0,
-            };
-            $score += $zonePriority;
-
-            // Factor 3: Equipment requirement (prefer bins without equipment)
-            if (!$bin->requires_equipment) {
-                $score += 30;
-            }
-
-            // Factor 4: Stock level (prefer bins with higher stock)
-            $inventory = $bin->inventory->first();
-            if ($inventory) {
-                $score += min(20, $inventory->available_stock);
-            }
-
-            return [
-                'bin' => $bin,
-                'score' => $score,
-            ];
-        })->sortByDesc('score')->first()['bin'];
+            // Walking order: nearest zone first, then along the rack and up the
+            // shelf — the same sequence optimizePickingRoute sorts the list by.
+            ->orderBy('zone')
+            ->orderBy('rack')
+            ->orderBy('shelf')
+            ->first();
     }
 
     /**
