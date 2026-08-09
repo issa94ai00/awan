@@ -339,6 +339,22 @@ class SalesOrderWorkflowService
             throw new RuntimeException('لا يمكن شحن طلب بدون مستودع تنفيذ.');
         }
 
+        // Settled before any stock moves. If the picking record contradicts what
+        // is about to ship — a line found short on the shelf — this throws and
+        // the whole transition rolls back, so nothing leaves the warehouse
+        // against a count that was never confirmed. Picking itself moves no
+        // stock; the issue below remains the only place inventory leaves.
+        $pickingEffects = [];
+        try {
+            $picked = $this->picking->completeForShipment($order);
+            if ($picked) {
+                $pickingEffects['picking_list_number'] = $picked->list_number;
+                $pickingEffects['picking_list_status'] = $picked->status;
+            }
+        } catch (\Exception $e) {
+            throw new RuntimeException($e->getMessage());
+        }
+
         $movements = [];
         $cost = 0.0;
 
@@ -387,7 +403,7 @@ class SalesOrderWorkflowService
 
         $this->syncInvoiceStatus($order, Invoice::STATUS_SHIPPED);
 
-        return [
+        return $pickingEffects + [
             'stock_movements' => $movements,
             'cost_of_goods_sold' => round($cost, 2),
         ];

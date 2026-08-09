@@ -6,11 +6,21 @@
                 <h1>
                     <el-icon><Document /></el-icon>
                     {{ isEdit ? 'تعديل طلب البيع' : 'إنشاء طلب بيع جديد' }}
+                    <!-- Editing has a subject; the page used to name only the verb. -->
+                    <span v-if="isEdit && loadedOrder" class="header-order-no">{{ loadedOrder.order_number }}</span>
+                    <el-tag v-if="isEdit && loadedOrder" :type="statusTagType(loadedOrder.status)" effect="dark">
+                        {{ statusLabel(loadedOrder.status) }}
+                    </el-tag>
                 </h1>
-                <p>تجهيز طلب بيع متكامل على مراحل متسلسلة لضمان دقة العمليات وحسابات المخازن والعملاء.</p>
+                <p v-if="isEdit && loadedOrder">
+                    {{ loadedOrder.customer?.name || 'بلا عميل' }}
+                    · أُنشئ {{ formatDate(loadedOrder.order_date) }}
+                    · {{ formatCurrency(loadedOrder.total) }}
+                </p>
+                <p v-else>تجهيز طلب بيع متكامل على مراحل متسلسلة لضمان دقة العمليات وحسابات المخازن والعملاء.</p>
             </div>
             <div class="header-actions">
-                <el-button @click="showShortcutsHelp = true" :icon="Key" class="shortcuts-btn">
+                <el-button v-if="!isLocked" @click="showShortcutsHelp = true" :icon="Key" class="shortcuts-btn">
                     اختصارات لوحة المفاتيح
                 </el-button>
                 <el-button @click="goBack" :icon="ArrowRight" class="back-btn">
@@ -18,6 +28,44 @@
                 </el-button>
             </div>
         </div>
+
+        <!-- Loading the order being edited -->
+        <el-skeleton v-if="isEdit && loadingOrder" :rows="8" animated class="mb-4" />
+
+        <!--
+            A confirmed order is already holding stock, carrying an invoice and
+            posted to the ledger, so the API refuses to rewrite its lines. The
+            page used to load it anyway and let the user redo the whole order
+            before answering with a 422 — all the work lost at the last step.
+            The refusal is stated up front, with the routes that do work.
+        -->
+        <div v-else-if="isLocked" class="locked-panel">
+            <div class="locked-icon"><i class="fas fa-lock"></i></div>
+            <h2>لا يمكن تعديل بنود هذا الطلب</h2>
+            <p class="locked-reason">{{ lockedReason }}</p>
+
+            <div class="locked-facts" v-if="loadedOrder">
+                <div><span>الحالة</span><strong>{{ statusLabel(loadedOrder.status) }}</strong></div>
+                <div><span>العميل</span><strong>{{ loadedOrder.customer?.name || '—' }}</strong></div>
+                <div><span>الإجمالي</span><strong>{{ formatCurrency(loadedOrder.total) }}</strong></div>
+            </div>
+
+            <p class="locked-hint">ما يمكنك فعله بدلاً من ذلك:</p>
+            <div class="locked-actions">
+                <el-button type="primary" @click="goBack">
+                    <i class="fas fa-eye"></i> فتح الطلب لمتابعة مراحله
+                </el-button>
+                <el-button v-if="loadedOrder?.status !== 'cancelled'" type="danger" plain @click="goBack">
+                    <i class="fas fa-ban"></i> إلغاء الطلب وعكس آثاره
+                </el-button>
+            </div>
+            <p class="locked-note">
+                الإلغاء يُحرِّر حجز المخزون (أو يُرجع البضاعة إن كانت شُحنت)، ويُلغي الفاتورة، ويُرحّل قيوداً عكسية —
+                ثم يمكنك إنشاء طلب جديد بالبنود الصحيحة.
+            </p>
+        </div>
+
+        <template v-else>
 
         <!-- Keyboard Shortcuts Help Dialog -->
         <el-dialog v-model="showShortcutsHelp" title="اختصارات لوحة المفاتيح" width="600px" class="shortcuts-dialog">
@@ -236,11 +284,11 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="(item, index) in items" :key="item.product_id" class="item-table-row">
-                                        <td class="product-cell">
+                                        <td class="product-cell" data-label="المنتج">
                                             <div class="product-name">{{ item.name }}</div>
                                             <div class="product-sku" v-if="item.sku">SKU: {{ item.sku }}</div>
                                         </td>
-                                        <td class="unit-cell">
+                                        <td class="unit-cell" data-label="الوحدة">
                                             <el-select
                                                 v-model="item.selectedUnit"
                                                 placeholder="اختر الوحدة"
@@ -260,7 +308,7 @@
                                                 <el-icon><Ticket /></el-icon> {{ item.selectedUnit.barcode }}
                                             </div>
                                         </td>
-                                        <td class="qty-cell">
+                                        <td class="qty-cell" data-label="الكمية">
                                             <div class="qty-control">
                                                 <el-button
                                                     :icon="Minus"
@@ -285,7 +333,7 @@
                                                 />
                                             </div>
                                         </td>
-                                        <td class="price-cell">
+                                        <td class="price-cell" data-label="سعر الوحدة">
                                             <el-input-number
                                                 v-model="item.price"
                                                 :min="0"
@@ -294,12 +342,14 @@
                                                 @change="updateTotals"
                                                 controls-position="right"
                                             />
-                                            <span class="currency">ل.س</span>
+                                            <!-- Was a hardcoded "ل.س" beside every price, contradicting
+                                                 the configured currency shown everywhere else on the row. -->
+                                            <span class="currency">{{ currencyCode }}</span>
                                         </td>
-                                        <td class="total-cell">
+                                        <td class="total-cell" data-label="الإجمالي">
                                             {{ formatCurrency(item.price * item.quantity) }}
                                         </td>
-                                        <td class="action-cell">
+                                        <td class="action-cell" data-label="">
                                             <el-button
                                                 type="danger"
                                                 :icon="Delete"
@@ -759,17 +809,21 @@
                 </el-card>
             </div>
         </Transition>
+        </template>
     </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useCustomersStore } from '@/stores/customers';
 import { useProductsStore } from '@/stores/products';
 import { posApi } from '@/api/pos';
 import { salesOrdersApi } from '@/api/salesOrders';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
+// Status wording, tag colours and money formatting are shared across the sales
+// module so this page cannot drift from the list and detail screens.
+import { statusLabel, statusTagType, formatCurrency, formatDate } from '@/utils/sales';
 import {
     Document, Search, ShoppingCart, User, Wallet, Notebook,
     ArrowRight, ArrowLeft, Plus, Minus, Delete, Check, Loading,
@@ -785,6 +839,43 @@ const productsStore = useProductsStore();
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
 const showShortcutsHelp = ref(false);
+
+/* ------------------------------------------------------------------ *
+ * Editability
+ *
+ * Only a pending order can have its lines rewritten — once confirmed it holds
+ * a stock reservation, an invoice and posted journal entries, and the API
+ * refuses. Deciding that here, before the form is drawn, is what stops the
+ * user rebuilding an order only to be turned away at the save button.
+ * ------------------------------------------------------------------ */
+
+const loadedOrder = ref(null);
+const loadingOrder = ref(false);
+
+const isLocked = computed(() => isEdit.value && loadedOrder.value && loadedOrder.value.status !== 'pending');
+
+const lockedReason = computed(() => {
+    switch (loadedOrder.value?.status) {
+        case 'confirmed':
+            return 'الطلب مؤكد: المخزون محجوز باسمه، وفاتورته صادرة، وقيدها مُرحَّل إلى دفتر الأستاذ. تعديل البنود هنا كان سيترك الثلاثة تصف كميات ومبالغ لم يعد الطلب يحملها.';
+        case 'processing':
+            return 'الطلب قيد التجهيز: صدر أمر سحب الأصناف من الرفوف، وتغيير البنود الآن يجعل ما يُجهَّز مخالفاً لما يُطلب.';
+        case 'shipped':
+            return 'الطلب مشحون: غادرت البضاعة المستودع ورُحّل قيد تكلفتها. ما شُحن واقعة لا تُعدَّل بتحرير نموذج.';
+        case 'delivered':
+            return 'الطلب مُسلَّم للعميل واكتملت دورته.';
+        case 'cancelled':
+            return 'الطلب ملغي وقد عُكست آثاره المخزنية والمحاسبية.';
+        default:
+            return 'حالة الطلب لا تسمح بتعديل بنوده.';
+    }
+});
+
+/** Whether anything has been typed — used to warn before navigating away. */
+const isDirty = ref(false);
+
+/** The configured currency, for labels that sit beside an input rather than a formatted amount. */
+const currencyCode = computed(() => window.systemData?.settings?.default_currency || 'SAR');
 
 // Wizard Active Step
 const activeStep = ref(0);
@@ -895,12 +986,11 @@ const paymentMethodLabel = computed(() => {
 });
 
 // Methods
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SY', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(value || 0) + ' ل.س';
-};
+//
+// `formatCurrency` used to live here and appended a hardcoded "ل.س", so every
+// amount on this page named a different currency from the orders list, the
+// order detail and the invoices — all of which read the configured
+// `default_currency`. It now comes from @/utils/sales with the rest.
 
 const getImageUrl = (image) => {
     if (!image) return '';
@@ -1196,6 +1286,45 @@ const goBack = () => {
     router.push('/admin/sales/sales-orders');
 };
 
+/**
+ * A three-step form with a product search is easy to lose by mistake — a stray
+ * back gesture discarded everything without a word. Only warns when there is
+ * actual work to lose.
+ */
+onBeforeRouteLeave(async () => {
+    if (!isDirty.value || isLocked.value || submitting.value) return true;
+
+    try {
+        await ElMessageBox.confirm(
+            'لديك بيانات غير محفوظة في هذا الطلب. مغادرة الصفحة ستفقدها.',
+            'مغادرة دون حفظ؟',
+            { type: 'warning', confirmButtonText: 'مغادرة', cancelButtonText: 'البقاء' }
+        );
+
+        return true;
+    } catch {
+        return false;
+    }
+});
+
+/**
+ * Anything the user actually entered counts as work worth protecting.
+ *
+ * The watcher stays disarmed until the initial load has settled: prefilling an
+ * order being edited changes all of these, which marked an untouched page dirty
+ * and warned about losing work nobody had done.
+ */
+const trackChanges = ref(false);
+
+// `items` is watched deeply, not by length: changing a quantity or a price is
+// real work too, and watching the count alone missed every edit that did not
+// add or remove a row.
+watch(
+    [items, form],
+    () => { if (trackChanges.value) isDirty.value = true; },
+    { deep: true }
+);
+
 const handleKeyboardShortcuts = (e) => {
     // Ctrl/Cmd + B: Focus search
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
@@ -1261,9 +1390,19 @@ onMounted(async () => {
     }
 
     if (isEdit.value) {
+        loadingOrder.value = true;
         try {
             const res = await salesOrdersApi.getById(route.params.id);
             const order = res.data.data;
+            loadedOrder.value = order || null;
+
+            // A locked order never reaches the form, so there is nothing to
+            // prefill and no point loading product units for it.
+            if (order && order.status !== 'pending') {
+                loadingOrder.value = false;
+                return;
+            }
+
             if (order) {
                 form.customer_id = order.customer_id;
                 form.discount = parseFloat(order.discount) || 0;
@@ -1307,6 +1446,8 @@ onMounted(async () => {
         } catch (error) {
             console.error('Failed to load sales order:', error);
             ElMessage.error('فشل في تحميل تفاصيل طلب البيع للتعديل.');
+        } finally {
+            loadingOrder.value = false;
         }
     }
 
@@ -1315,6 +1456,12 @@ onMounted(async () => {
             searchInputRef.value?.focus();
         }, 100);
     }
+
+    // Everything prefilled above is the starting point, not a change. Arm the
+    // dirty tracking only once that has settled.
+    await nextTick();
+    isDirty.value = false;
+    trackChanges.value = true;
 });
 
 onUnmounted(() => {
@@ -1365,6 +1512,80 @@ onUnmounted(() => {
 .page-title p {
     margin: 0.35rem 0 0;
     color: #5f6d85;
+}
+
+/* The order number and status tag sit inside the gradient heading, so both need
+   their own colour back — the gradient clips text fill to transparent. */
+.header-order-no {
+    font-family: monospace;
+    font-size: 1.1rem;
+    color: var(--el-color-primary);
+    -webkit-text-fill-color: var(--el-color-primary);
+}
+
+.page-title h1 :deep(.el-tag) {
+    -webkit-text-fill-color: currentColor;
+    font-size: 0.8rem;
+}
+
+/* ---- Locked order ---- */
+.locked-panel {
+    max-width: 640px;
+    margin: 3rem auto;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    background: #fff;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+}
+
+.locked-icon {
+    width: 68px;
+    height: 68px;
+    margin: 0 auto 1.25rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fef2f2;
+    color: #dc2626;
+    font-size: 1.6rem;
+}
+
+.locked-panel h2 { margin: 0 0 0.75rem; font-size: 1.3rem; font-weight: 700; color: #1f2d3d; }
+
+.locked-reason {
+    margin: 0 auto 1.5rem;
+    max-width: 520px;
+    font-size: 0.9rem;
+    line-height: 1.9;
+    color: #5f6d85;
+}
+
+.locked-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+.locked-facts > div { display: flex; flex-direction: column; gap: 0.25rem; }
+.locked-facts span { font-size: 0.74rem; color: #64748b; }
+.locked-facts strong { font-size: 0.95rem; color: #1f2d3d; }
+
+.locked-hint { margin: 0 0 0.75rem; font-size: 0.85rem; font-weight: 600; color: #1f2d3d; }
+.locked-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+
+.locked-note {
+    margin: 1.25rem auto 0;
+    max-width: 520px;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    color: #94a3b8;
 }
 
 .back-btn {
@@ -1470,9 +1691,23 @@ onUnmounted(() => {
 /* Layout */
 .sales-order-layout {
     display: grid;
-    grid-template-columns: 1fr 380px;
+    /*
+     * `minmax(0, 1fr)`, not `1fr`. A bare `1fr` track refuses to shrink below
+     * its content's min-width, and the six-column items table has a wide one —
+     * so the track grew, shoved the 380px summary panel off the right edge and
+     * gave the whole page a horizontal scrollbar on desktop. Allowing the track
+     * to reach zero lets the table scroll inside its own wrapper instead.
+     */
+    grid-template-columns: minmax(0, 1fr) 380px;
     gap: 1.5rem;
     align-items: start;
+}
+
+/* Grid and flex children default to min-width:auto, which is what leaked the
+   table's width up to the track in the first place. */
+.sales-order-left-panel,
+.sales-order-right-panel {
+    min-width: 0;
 }
 
 .sales-order-left-panel,
@@ -2391,7 +2626,7 @@ onUnmounted(() => {
 /* Responsive */
 @media (max-width: 1400px) {
     .sales-order-layout {
-        grid-template-columns: 1fr 350px;
+        grid-template-columns: minmax(0, 1fr) 350px;
     }
 }
 
@@ -2432,15 +2667,254 @@ onUnmounted(() => {
     .items-table tbody td, .preview-items-table td {
         padding: 0.8rem;
     }
+
+    /* Descriptions under each step are the first thing to go: the step titles
+       still carry the sequence, and the sentences were wrapping to three lines. */
+    :deep(.sales-steps .el-step__description) {
+        display: none;
+    }
 }
 
+/* ------------------------------------------------------------------ *
+ * Tablet and phone
+ *
+ * The items table is the real problem below this width: six columns, two of
+ * them holding a select and a stepper. Squeezing it produces a horizontal
+ * scroll that hides the price and total — the two numbers being checked. Each
+ * row becomes a card instead, with the column header carried down as a label.
+ * ------------------------------------------------------------------ */
 @media (max-width: 768px) {
     .page-title h1 {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
+        flex-wrap: wrap;
     }
 
     .page-title p {
         font-size: 0.8rem;
+    }
+
+    /* A full-width control is easier to hit than one shrunk to fit a row. */
+    .header-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .header-actions :deep(.el-button) {
+        width: 100%;
+        margin: 0;
+        min-height: 42px;
+    }
+
+    .items-table-wrapper {
+        overflow: visible;
+    }
+
+    .items-table thead {
+        /* Visually hidden, not removed: the header text is what each row's
+           labels repeat, and screen readers still announce the association. */
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .items-table,
+    .items-table tbody,
+    .items-table tr,
+    .items-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .items-table tr.item-table-row {
+        margin-bottom: 0.85rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.75rem 0.9rem;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+
+    .items-table tbody td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.5rem 0 !important;
+        border: none;
+        border-bottom: 1px dashed #eef2f7;
+        text-align: start;
+    }
+
+    .items-table tbody td:last-child {
+        border-bottom: none;
+    }
+
+    /* The column header, carried down beside its value. */
+    .items-table tbody td::before {
+        content: attr(data-label);
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #64748b;
+        flex-shrink: 0;
+    }
+
+    /* The product name is the row's heading, so it spans instead of pairing. */
+    .items-table td.product-cell {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+        padding-bottom: 0.6rem !important;
+    }
+
+    .items-table td.product-cell::before {
+        display: none;
+    }
+
+    .items-table td.product-cell .product-name {
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .items-table td.action-cell {
+        justify-content: flex-end;
+        padding-top: 0.6rem !important;
+    }
+
+    .items-table td.action-cell::before {
+        display: none;
+    }
+
+    .items-table td.total-cell {
+        font-weight: 800;
+        font-size: 1rem;
+        color: var(--el-color-primary, #3b82f6);
+    }
+
+    .unit-select,
+    .qty-control,
+    .price-cell :deep(.el-input-number) {
+        width: auto;
+        min-width: 130px;
+    }
+
+    /* Touch targets. Element Plus renders `size="small"` buttons at 24px, which
+       is well under a fingertip — this covers the quantity steppers and the
+       row's delete button alike. */
+    .items-table :deep(.el-button--small) {
+        min-width: 36px;
+        min-height: 36px;
+        height: auto;
+    }
+
+    /* The delete action is destructive and was a bare 24px circle at the end of
+       a row; on a phone it gets a label so it cannot be hit by accident. */
+    .items-table td.action-cell :deep(.el-button) {
+        min-width: 44px;
+        min-height: 40px;
+        border-radius: 10px;
+    }
+
+    /* Same treatment for the read-only preview table on the last step. */
+    .preview-items-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+    }
+
+    .preview-items-table,
+    .preview-items-table tbody,
+    .preview-items-table tr,
+    .preview-items-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .preview-items-table tr {
+        margin-bottom: 0.6rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.6rem 0.8rem;
+    }
+
+    .preview-items-table td {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.3rem 0 !important;
+        border: none;
+    }
+
+    /* Dialogs: a 600px dialog on a 375px screen is cut off on both sides. */
+    :deep(.el-dialog) {
+        width: calc(100vw - 1.5rem) !important;
+        max-width: 600px;
+        margin: 1rem auto !important;
+    }
+
+    .shortcuts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* The product search dropdown is positioned in JS against the input; on a
+       phone it should simply span the viewport. */
+    .search-dropdown {
+        width: calc(100vw - 1.5rem) !important;
+        max-width: none;
+    }
+
+    .locked-panel {
+        margin: 1.5rem 0.75rem;
+        padding: 1.75rem 1.25rem;
+    }
+
+    .locked-actions {
+        flex-direction: column;
+    }
+
+    .locked-actions :deep(.el-button) {
+        width: 100%;
+        margin: 0;
+    }
+
+    .locked-facts {
+        grid-template-columns: 1fr;
+        text-align: start;
+    }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+    .sales-order-form-page {
+        padding: 0.75rem;
+    }
+
+    .page-title h1 {
+        font-size: 1.15rem;
+    }
+
+    .header-order-no {
+        font-size: 0.95rem;
+    }
+
+    /* Below this width the step titles wrap badly; the numbers carry the
+       sequence on their own. */
+    :deep(.sales-steps .el-step__title) {
+        font-size: 0.7rem;
+    }
+
+    .items-table tbody td {
+        font-size: 0.85rem;
+    }
+
+    .unit-select,
+    .qty-control,
+    .price-cell :deep(.el-input-number) {
+        min-width: 110px;
     }
 }
 

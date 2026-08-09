@@ -100,6 +100,72 @@ class PickingService
     }
 
     /**
+     * Brings the order's picking list to completion as the goods ship.
+     *
+     * Shipping is the moment the stock actually leaves, so leaving the picking
+     * list behind at "pending" would say nobody ever fetched goods that are
+     * demonstrably gone. Any line still awaiting a pick is recorded at its
+     * required quantity — the shipment is the evidence it was fetched.
+     *
+     * Deliberately moves no stock. `SalesOrderWorkflowService::applyShipment`
+     * is the single place inventory leaves for a sale, under an idempotent key;
+     * issuing here as well would deduct every unit twice.
+     *
+     * @throws \Exception when the picking record contradicts what is shipping
+     */
+    public function completeForShipment(SalesOrder $order): ?PickingList
+    {
+        $list = $this->activePickingList($order);
+
+        if (!$list || $list->status === PickingList::STATUS_COMPLETED) {
+            return $list;
+        }
+
+        $list->load('items.product');
+
+        // A short line means the shelf held fewer units than the order wants.
+        // Shipping the full quantity anyway would move stock that was never
+        // found — exactly the contradiction this guard exists to prevent.
+        $short = $list->items->filter(fn ($i) => $i->status === PickingListItem::STATUS_SHORT);
+
+        if ($short->isNotEmpty()) {
+            throw new \Exception(sprintf(
+                'قائمة التجهيز %s تسجّل نقصاً في %s. صحّح الكميات أو عدّل الطلب قبل الشحن، وإلا خرج من المخزون ما لم يُسحب فعلياً.',
+                $list->list_number,
+                $short->take(3)->map(fn ($i) => sprintf(
+                    '"%s" (سُحب %d من %d)',
+                    $i->product->name_ar ?? $i->product->name_en ?? ('#' . $i->product_id),
+                    $i->quantity_picked,
+                    $i->quantity_to_pick
+                ))->implode('، ') . ($short->count() > 3 ? ' وغيرها' : '')
+            ));
+        }
+
+        if ($list->status === PickingList::STATUS_CANCELLED) {
+            throw new \Exception('قائمة التجهيز ' . $list->list_number . ' ملغاة — لا يمكن شحن طلب بلا تجهيز.');
+        }
+
+        // Starting stamps the picker and the time; a list that ships without it
+        // would carry no record of who fetched the goods.
+        if ($list->status === PickingList::STATUS_PENDING) {
+            $list->start(auth()->id());
+        }
+
+        foreach ($list->items as $item) {
+            if ($item->status === PickingListItem::STATUS_PENDING) {
+                $item->markAsPicked($item->quantity_to_pick);
+            }
+        }
+
+        $list->picked_items = $list->items()->whereIn('status', [PickingListItem::STATUS_PICKED, PickingListItem::STATUS_SHORT])->count();
+        $list->save();
+
+        $list->complete();
+
+        return $list;
+    }
+
+    /**
      * Stands the picking list down when its order is cancelled. A list left
      * pending would send someone to pick goods for a sale that is off.
      */
