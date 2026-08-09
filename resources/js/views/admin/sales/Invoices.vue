@@ -200,7 +200,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Refresh, ArrowDown } from '@element-plus/icons-vue';
 import { useInvoicesStore } from '@/stores/invoices';
@@ -223,6 +223,7 @@ import {
 } from '@/utils/sales';
 
 const router = useRouter();
+const route = useRoute();
 const store = useInvoicesStore();
 
 const searchQuery = ref('');
@@ -366,6 +367,13 @@ const removeInvoice = async (invoice) => {
 };
 
 onMounted(() => {
+    // Arriving from a sales order, a journal entry or a stock movement: the
+    // caller names the invoice it means, so the list opens on that row instead
+    // of dropping the user into an unfiltered table to hunt for it.
+    if (route.query.invoice) {
+        searchQuery.value = String(route.query.invoice);
+    }
+
     store.fetchInvoices().catch(() => {});
 });
 </script>

@@ -23,13 +23,22 @@ class InventoryController extends Controller
 {
     public function summary(): JsonResponse
     {
+        // The stored `cost_basis` column is the costing-method enum ("FIFO"), not a
+        // number, so multiplying the quantity by it evaluated to zero and the
+        // overview card always read 0 ر.س. The value is priced off the product
+        // instead — selling price, falling back to cost when a product has not been
+        // priced yet — which is the same rule the stock table's value column uses,
+        // so the card equals the sum of the rows underneath it.
+        $unitPrice = 'COALESCE(NULLIF(products.price, 0), products.cost_price, 0)';
+
         $totals = WarehouseInventory::query()
-            ->selectRaw('COUNT(DISTINCT product_id) as products_with_stock')
-            ->selectRaw('COALESCE(SUM(quantity), 0) as total_quantity')
-            ->selectRaw('COALESCE(SUM(quantity * COALESCE(cost_basis, 0)), 0) as total_value')
-            ->selectRaw('SUM(CASE WHEN quantity - reserved_quantity - damaged_quantity - quarantined_quantity > 0 THEN 1 ELSE 0 END) as in_stock_rows')
-            ->selectRaw('SUM(CASE WHEN quantity - reserved_quantity - damaged_quantity - quarantined_quantity <= COALESCE(reorder_point, 0) AND quantity - reserved_quantity - damaged_quantity - quarantined_quantity > 0 THEN 1 ELSE 0 END) as low_stock_rows')
-            ->selectRaw('SUM(CASE WHEN quantity - reserved_quantity - damaged_quantity - quarantined_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows')
+            ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
+            ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as products_with_stock')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
+            ->selectRaw("COALESCE(SUM(warehouse_inventory.quantity * {$unitPrice}), 0) as total_value")
+            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as in_stock_rows')
+            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= COALESCE(warehouse_inventory.reorder_point, 0) AND warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as low_stock_rows')
+            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows')
             ->first();
 
         $movementsToday = StockMovement::whereDate('created_at', today())->count();

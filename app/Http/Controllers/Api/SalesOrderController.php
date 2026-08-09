@@ -7,25 +7,62 @@ use App\Models\Employee;
 use App\Models\SalesOrder;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
-use App\Models\JournalEntryLine;
-use App\Models\StockMovement;
+use App\Models\SalesOrderStatusHistory;
 use App\Models\Warehouse;
-use App\Models\WarehouseInventory;
+use App\Services\Accounting\LedgerPostingService;
+use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
+/**
+ * Sales orders.
+ *
+ * The lifecycle — confirming, re-routing, moving through the execution stages —
+ * lives in SalesOrderWorkflowService, which owns the stock, invoice and ledger
+ * consequences of each move together. This controller only validates input and
+ * shapes the response.
+ */
 class SalesOrderController extends Controller
 {
+    public function __construct(
+        private SalesOrderWorkflowService $workflow,
+        private LedgerPostingService $ledger,
+    ) {
+    }
+
     public function index(Request $request)
     {
-        $query = SalesOrder::with(['customer', 'creator', 'items.product']);
+        // fulfillmentWarehouse is eager loaded because the list shows where each
+        // order is routed; without it the column would fire a query per row.
+        $query = SalesOrder::with(['customer', 'creator', 'items.product', 'fulfillmentWarehouse']);
 
-        if ($request->has('status') && $request->status) {
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        if ($request->has('customer_id') && $request->customer_id) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
+        }
+
+        // Searching used to happen in the browser over whatever page happened to
+        // be loaded, so an order on page 2 could not be found at all. It is a
+        // filter on the query now, and the pagination reflects the matches.
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%"));
+            });
+        }
+
+        // Orders past their promised delivery date and still open — the follow-up
+        // view's whole purpose.
+        if ($request->boolean('overdue')) {
+            $query->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
+                ->whereNotNull('expected_delivery')
+                ->whereDate('expected_delivery', '<', now()->toDateString());
         }
 
         // per_page was ignored, so callers asking for a larger page (the RMA
@@ -35,11 +72,22 @@ class SalesOrderController extends Controller
 
         $salesOrders = $query->latest()->paginate($perPage);
 
+        // Follow-up figures per row, so the list can flag what is stuck without
+        // the browser re-deriving dates it does not have.
+        $rows = collect($salesOrders->items())->map(function (SalesOrder $order) {
+            $order->setAttribute('follow_up', $this->workflow->followUp($order));
+
+            return $order;
+        });
+
         return response()->json([
             'success' => true,
             'message' => 'Sales orders retrieved successfully',
             'data' => [
-                'sales_orders' => $salesOrders->items(),
+                'sales_orders' => $rows,
+                // Counted across the whole table, not the page: a tab badge that
+                // only counted the current page would be meaningless.
+                'status_counts' => $this->statusCounts(),
                 'pagination' => [
                     'current_page' => $salesOrders->currentPage(),
                     'last_page' => $salesOrders->lastPage(),
@@ -51,19 +99,47 @@ class SalesOrderController extends Controller
         ]);
     }
 
+    /** How many orders sit in each stage, plus how many are past due. */
+    private function statusCounts(): array
+    {
+        $counts = SalesOrder::query()
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $overdue = SalesOrder::query()
+            ->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
+            ->whereNotNull('expected_delivery')
+            ->whereDate('expected_delivery', '<', now()->toDateString())
+            ->count();
+
+        return [
+            'all' => (int) $counts->sum(),
+            'pending' => (int) ($counts[SalesOrder::STATUS_PENDING] ?? 0),
+            'confirmed' => (int) ($counts[SalesOrder::STATUS_CONFIRMED] ?? 0),
+            'processing' => (int) ($counts[SalesOrder::STATUS_PROCESSING] ?? 0),
+            'shipped' => (int) ($counts[SalesOrder::STATUS_SHIPPED] ?? 0),
+            'delivered' => (int) ($counts[SalesOrder::STATUS_DELIVERED] ?? 0),
+            'cancelled' => (int) ($counts[SalesOrder::STATUS_CANCELLED] ?? 0),
+            'overdue' => $overdue,
+        ];
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
+            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
+            'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array',
+            'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
@@ -71,7 +147,14 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
 
-        $validated['order_number'] = 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+        // Derived from the last id, not the row count: counting reuses a number
+        // the moment any order is deleted.
+        $validated['order_number'] = 'SO-' . str_pad(
+            (string) (((int) SalesOrder::max('id')) + 1),
+            6,
+            '0',
+            STR_PAD_LEFT
+        );
         $validated['status'] = SalesOrder::STATUS_PENDING;
         $validated['created_by'] = auth()->id();
 
@@ -91,7 +174,13 @@ class SalesOrderController extends Controller
         }
 
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal - ($validated['discount'] ?? 0) + ($validated['tax'] ?? 0);
+        // Delivery charged to the customer belongs in what they owe. It was
+        // stored on the order but left out of the total, so every shipped order
+        // was invoiced for less than it was worth.
+        $validated['total'] = $subtotal
+            - ($validated['discount'] ?? 0)
+            + ($validated['tax'] ?? 0)
+            + ($validated['shipping_cost'] ?? 0);
 
         $salesOrder = SalesOrder::create($validated);
 
@@ -105,6 +194,16 @@ class SalesOrderController extends Controller
             ]);
         }
 
+        // Opens the stage history, so the trail starts where the order does
+        // rather than at whatever its first transition happens to be.
+        SalesOrderStatusHistory::create([
+            'sales_order_id' => $salesOrder->id,
+            'from_status' => null,
+            'to_status' => SalesOrder::STATUS_PENDING,
+            'note' => 'إنشاء الطلب',
+            'user_id' => auth()->id(),
+        ]);
+
         $salesOrder->load(['customer', 'creator', 'items.product']);
 
         return response()->json([
@@ -116,7 +215,7 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'quote']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'quote', 'fulfillmentWarehouse']);
 
         return response()->json([
             'success' => true,
@@ -127,24 +226,42 @@ class SalesOrderController extends Controller
 
     public function update(Request $request, SalesOrder $salesOrder)
     {
+        // Editing is only safe while the order is still a plan. Once it is
+        // confirmed it has a reservation, an invoice and a posted entry behind
+        // it, and silently rewriting the lines here left all three describing
+        // quantities and amounts the order no longer had.
+        if ($salesOrder->status !== SalesOrder::STATUS_PENDING) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن تعديل بنود طلب بعد تأكيده. ألغِ الطلب أو أنشئ إشعاراً دائناً بدلاً من ذلك.',
+                'data' => null,
+            ], 422);
+        }
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
-            'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
+            'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array',
+            'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
+
+        // The stage is moved through the workflow endpoints, never by writing
+        // the column — a status set here would skip the stock and ledger work
+        // that the stage is supposed to trigger.
+        unset($validated['status']);
 
         $subtotal = 0;
         foreach ($request->items as $item) {
@@ -153,7 +270,10 @@ class SalesOrderController extends Controller
         }
 
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal - ($validated['discount'] ?? 0) + ($validated['tax'] ?? 0);
+        $validated['total'] = $subtotal
+            - ($validated['discount'] ?? 0)
+            + ($validated['tax'] ?? 0)
+            + ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0);
 
         if (!empty($validated['assigned_employee_id']) && empty($validated['fulfillment_warehouse_id'])) {
             $employee = Employee::find($validated['assigned_employee_id']);
@@ -164,18 +284,20 @@ class SalesOrderController extends Controller
             $validated['fulfillment_warehouse_id'] = Warehouse::active()->orderBy('id')->value('id');
         }
 
-        $salesOrder->update($validated);
+        DB::transaction(function () use ($salesOrder, $validated, $request) {
+            $salesOrder->update($validated);
 
-        $salesOrder->items()->delete();
-        foreach ($request->items as $item) {
-            $salesOrder->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'discount' => $item['discount'] ?? 0,
-                'tax' => $item['tax'] ?? 0,
-            ]);
-        }
+            $salesOrder->items()->delete();
+            foreach ($request->items as $item) {
+                $salesOrder->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'discount' => $item['discount'] ?? 0,
+                    'tax' => $item['tax'] ?? 0,
+                ]);
+            }
+        });
 
         $salesOrder->load(['customer', 'creator', 'items.product']);
 
@@ -188,7 +310,21 @@ class SalesOrderController extends Controller
 
     public function destroy(SalesOrder $salesOrder)
     {
-        $salesOrder->delete();
+        // Deleting a confirmed order would strand its invoice and journal entry
+        // with no document behind them, and leave the reserved stock held
+        // forever. Cancelling unwinds all three properly.
+        if (!in_array($salesOrder->status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن حذف طلب مؤكد. استخدم الإلغاء ليُحرَّر الحجز وتُعكس القيود.',
+                'data' => null,
+            ], 422);
+        }
+
+        DB::transaction(function () use ($salesOrder) {
+            $salesOrder->items()->delete();
+            $salesOrder->delete();
+        });
 
         return response()->json([
             'success' => true,
@@ -197,365 +333,256 @@ class SalesOrderController extends Controller
         ]);
     }
 
+    /**
+     * Returns the order's invoice, raising it if confirmation somehow did not.
+     *
+     * This endpoint used to build a second invoice unconditionally and call
+     * `updateBalance` again with it, so pressing the button twice left the order
+     * with duplicate invoices and the customer owing double. Invoicing is now a
+     * property of the confirmed order, not of this button.
+     */
     public function convertToInvoice(SalesOrder $salesOrder)
     {
         if ($salesOrder->status !== SalesOrder::STATUS_CONFIRMED) {
             return response()->json([
                 'success' => false,
                 'message' => 'يمكن تحويل طلبات البيع المؤكدة فقط إلى فواتير',
-                'data' => null
+                'data' => null,
             ], 400);
         }
 
-        $invoice = Invoice::create([
-            'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . str_pad(Invoice::count() + 1, 4, '0', STR_PAD_LEFT),
-            'customer_id' => $salesOrder->customer_id,
-            'sales_order_id' => $salesOrder->id,
-            'customer_name' => $salesOrder->customer->name,
-            'customer_email' => $salesOrder->customer->email,
-            'customer_phone' => $salesOrder->customer->phone,
-            'subtotal' => $salesOrder->subtotal,
-            'tax' => $salesOrder->tax,
-            'discount' => $salesOrder->discount,
-            'total' => $salesOrder->total,
-            'paid_amount' => 0,
-            'due_amount' => $salesOrder->total,
-            'status' => Invoice::STATUS_PENDING,
-            'notes' => $salesOrder->notes,
-            'created_by' => auth()->id(),
-        ]);
+        $existing = $this->workflow->existingInvoice($salesOrder);
 
-        foreach ($salesOrder->items as $item) {
-            $invoice->items()->create([
-                'product_id' => $item->product_id,
-                'description' => $item->product->name_ar,
-                'quantity' => $item->quantity,
-                'unit_price' => $item->unit_price,
-                'discount' => $item->discount,
-                'tax' => $item->tax,
-                'total' => $item->total,
-            ]);
-        }
+        $invoice = DB::transaction(function () use ($salesOrder) {
+            $invoice = $this->workflow->ensureInvoice($salesOrder->load('items.product', 'customer'));
+            $this->ledger->postInvoice($invoice);
 
-        $salesOrder->customer->updateBalance($salesOrder->total);
+            return $invoice;
+        });
 
         $invoice->load(['customer', 'salesOrder', 'items.product']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تحويل طلب البيع إلى فاتورة بنجاح',
-            'data' => $invoice
-        ], 201);
+            'message' => $existing
+                ? 'هذه الطلبية مرتبطة بالفاتورة ' . $invoice->invoice_number . ' مسبقاً.'
+                : 'تم تحويل طلب البيع إلى فاتورة بنجاح',
+            'data' => $invoice,
+        ], $existing ? 200 : 201);
     }
 
+    /**
+     * Everything the detail screen shows, in one request.
+     *
+     * The drawer used to render the order row alone: no invoice, no ledger
+     * entry, no stock movement. An order could therefore look finished while its
+     * revenue had never reached the books, and nothing on the screen said so.
+     * The documents that are supposed to follow an order are returned beside it,
+     * along with the diagnosis of what is missing.
+     */
+    public function detail(SalesOrder $salesOrder)
+    {
+        $salesOrder->load([
+            'customer', 'creator', 'assignedEmployee', 'quote',
+            'items.product', 'fulfillmentWarehouse', 'statusHistory.user',
+        ]);
+
+        $invoice = $this->workflow->existingInvoice($salesOrder);
+        $invoice?->load(['items', 'payments']);
+
+        // Everything the order caused in the ledger: the cost of the goods, the
+        // invoice that billed them, and the collections against it. A payment is
+        // keyed by its own id, so it has to be looked up by payment rather than
+        // by order, or the trail stops at the invoice.
+        $paymentKeys = collect($invoice?->payments ?? [])
+            ->flatMap(fn ($p) => ['payment:' . $p->id, 'payment:' . $p->id . ':reversal']);
+
+        $entries = JournalEntryHeader::with('lines.ledgerAccount')
+            ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys) {
+                $q->whereIn('posting_key', [
+                    'so_cogs:' . $salesOrder->id,
+                    'so_cogs:' . $salesOrder->id . ':reversal',
+                ]);
+
+                if ($invoice) {
+                    // Anchored on the colon: a bare "invoice:1%" prefix would
+                    // also swallow invoice:10, invoice:19 and so on.
+                    $q->orWhere('posting_key', 'invoice:' . $invoice->id)
+                        ->orWhere('posting_key', 'like', 'invoice:' . $invoice->id . ':%');
+                }
+
+                if ($paymentKeys->isNotEmpty()) {
+                    $q->orWhereIn('posting_key', $paymentKeys->all());
+                }
+            })
+            ->orderBy('entry_date')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'sales_order' => $salesOrder,
+                'invoice' => $invoice,
+                'payments' => $invoice?->payments ?? [],
+                'journal_entries' => $entries,
+                'stock_movements' => $this->workflow->movementsFor($salesOrder),
+                'diagnostics' => $this->workflow->diagnose($salesOrder),
+                'follow_up' => $this->workflow->followUp($salesOrder),
+                'history' => $salesOrder->statusHistory,
+                'routing' => $this->routingPayload($salesOrder),
+                'timeline' => [
+                    'confirmed_at' => $salesOrder->confirmed_at,
+                    'shipped_at' => $salesOrder->shipped_at,
+                    'delivered_at' => $salesOrder->delivered_at,
+                    'order_date' => $salesOrder->order_date,
+                    'expected_delivery' => $salesOrder->expected_delivery,
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Coverage of the order across warehouses, so the operator can route it with
+     * the stock figures in front of them instead of discovering a shortfall when
+     * confirmation fails.
+     */
+    public function routingOptions(SalesOrder $salesOrder)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->routingPayload($salesOrder),
+        ]);
+    }
+
+    /** Shared by the routing endpoint and the detail screen, so they cannot drift. */
+    private function routingPayload(SalesOrder $salesOrder): array
+    {
+        return $this->workflow->routingOptions($salesOrder) + [
+            'fulfillment_type' => $salesOrder->fulfillment_type,
+            'status' => $salesOrder->status,
+            'allowed_transitions' => SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? [],
+            'can_change_fulfillment_type' => !in_array(
+                $salesOrder->status,
+                [SalesOrder::STATUS_SHIPPED, SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED],
+                true
+            ),
+        ];
+    }
+
+    /** Moves the order to the next execution stage, with all its side effects. */
+    public function transition(Request $request, SalesOrder $salesOrder)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'tracking_number' => 'nullable|string|max:120',
+            'carrier' => 'nullable|string|max:120',
+            // Kept on the stage history. Required for a cancellation, which the
+            // workflow enforces rather than this rule, so the same guard holds
+            // for every caller.
+            'note' => 'nullable|string|max:500',
+            // Hands the order to whoever owns the stage being entered.
+            'assigned_employee_id' => 'nullable|exists:employees,id',
+            // Collection taken at delivery. `settle` is opt-in because a credit
+            // customer paying later is just as ordinary as cash at the door.
+            'settle' => 'nullable|boolean',
+            'settlement_amount' => 'nullable|numeric|min:0.01',
+            'payment_method' => 'nullable|in:cash,card,bank_transfer,check',
+            'payment_reference' => 'nullable|string|max:100',
+        ]);
+
+        try {
+            $result = $this->workflow->transitionTo($salesOrder, $validated['status'], $validated);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['changed']
+                ? 'تم نقل الطلب إلى مرحلة "' . $this->stageLabel($result['status']) . '".'
+                : 'الطلب في هذه المرحلة بالفعل.',
+            'data' => $this->orderPayload($salesOrder->refresh(), $result),
+        ]);
+    }
+
+    /** Confirms the order: reserves the stock, raises the invoice, posts the entry. */
     public function confirmOrder(SalesOrder $salesOrder)
     {
-        // التحقق من أن الطلبية لم يتم تأكيدها مسبقاً
         if ($salesOrder->status === SalesOrder::STATUS_CONFIRMED) {
-            // التحقق من وجود الفاتورة
-            $invoice = Invoice::where('sales_order_id', $salesOrder->id)->first();
-            $hasInvoice = $invoice && $invoice->status !== Invoice::STATUS_CANCELLED;
-            
-            // التحقق من وجود القيد المحاسبي
-            $journalEntry = JournalEntryHeader::where('reference_type', SalesOrder::class)
-                ->where('reference_id', $salesOrder->id)
-                ->where('status', 'posted')
-                ->first();
-            $hasJournalEntry = $journalEntry !== null;
-            
-            // التحقق من وجود حركات المخزون
-            $stockMovements = StockMovement::where('reference', 'sales_order')
-                ->where('source', $salesOrder->id)
-                ->get();
-            $hasStockMovements = $stockMovements->count() > 0;
-            
-            // إذا كانت كل العمليات صحيحة، عرض رسالة
-            if ($hasInvoice && $hasJournalEntry && $hasStockMovements) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'تم تأكيد هذه الطلبية مسبقا وسجلات الفواتير صحيحة والقيود المحاسبية صحيحة وحركة المخزون صحيحة',
-                    'data' => [
-                        'invoice' => $invoice,
-                        'journal_entry' => $journalEntry,
-                        'stock_movements' => $stockMovements,
-                    ]
-                ]);
-            }
-            
-            // إذا كانت الطلبية مؤكدة لكن بعض العمليات غير مكتملة، أكمل العمليات الناقصة
-            return $this->completeConfirmationProcesses($salesOrder, $invoice, $journalEntry, $stockMovements);
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تأكيد هذه الطلبية مسبقاً.',
+                'data' => $this->orderPayload($salesOrder, ['changed' => false, 'status' => $salesOrder->status, 'effects' => []]),
+            ]);
         }
-        
-        // تأكيد الطلبية وإجراء العمليات
-        return DB::transaction(function () use ($salesOrder) {
-            // تحديث حالة الطلبية
-            $salesOrder->update([
-                'status' => SalesOrder::STATUS_CONFIRMED,
-                'confirmed_at' => now(),
-            ]);
-            
-            // إنشاء الفاتورة
-            $invoice = Invoice::create([
-                'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . str_pad(Invoice::count() + 1, 4, '0', STR_PAD_LEFT),
-                'customer_id' => $salesOrder->customer_id,
-                'sales_order_id' => $salesOrder->id,
-                'subtotal' => $salesOrder->subtotal,
-                'tax' => $salesOrder->tax,
-                'discount' => $salesOrder->discount,
-                'total' => $salesOrder->total,
-                'paid_amount' => 0,
-                'due_amount' => $salesOrder->total,
-                'status' => Invoice::STATUS_CONFIRMED,
-                'notes' => $salesOrder->notes,
-                'created_by' => auth()->id(),
-                'currency' => $salesOrder->currency ?? 'SAR',
-            ]);
-            
-            // إنشاء بنود الفاتورة
-            foreach ($salesOrder->items as $item) {
-                $invoice->items()->create([
-                    'product_id' => $item->product_id,
-                    'description' => $item->product->name_ar ?? $item->product->name,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'discount' => $item->discount,
-                    'tax' => $item->tax,
-                    'total' => ($item->unit_price * $item->quantity) - $item->discount + $item->tax,
-                ]);
-            }
-            
-            // إنشاء القيد المحاسبي
-            $journalEntry = JournalEntryHeader::create([
-                'entry_number' => 'JE-' . now()->format('Ymd') . '-' . str_pad(JournalEntryHeader::count() + 1, 4, '0', STR_PAD_LEFT),
-                'entry_date' => now(),
-                'reference_type' => SalesOrder::class,
-                'reference_id' => $salesOrder->id,
-                'posting_key' => 'SO-' . $salesOrder->id,
-                'source_module' => 'sales',
-                'description' => 'تأكيد طلب بيع رقم ' . $salesOrder->order_number,
-                'total_debit' => $salesOrder->total,
-                'total_credit' => $salesOrder->total,
-                'currency' => $salesOrder->currency ?? 'SAR',
-                'status' => 'posted',
-                'created_by' => auth()->id(),
-            ]);
-            
-            // حساب حسابات محاسبية (مثال - يجب تعديلها حسب نظام الحسابات)
-            $accountsReceivableId = $this->getAccountId('accounts_receivable');
-            $salesRevenueId = $this->getAccountId('sales_revenue');
-            $taxPayableId = $this->getAccountId('tax_payable');
-            
-            // حساب الذمم المدينة (مدين)
-            JournalEntryLine::create([
-                'journal_entry_header_id' => $journalEntry->id,
-                'account_id' => $accountsReceivableId,
-                'description' => 'ذمم العملاء - طلب بيع ' . $salesOrder->order_number,
-                'debit' => $salesOrder->total,
-                'credit' => 0,
-            ]);
-            
-            // حساب الإيرادات (دائن)
-            JournalEntryLine::create([
-                'journal_entry_header_id' => $journalEntry->id,
-                'account_id' => $salesRevenueId,
-                'description' => 'إيرادات المبيعات - طلب بيع ' . $salesOrder->order_number,
-                'debit' => 0,
-                'credit' => $salesOrder->subtotal,
-            ]);
-            
-            // حساب الضريبة (دائن)
-            if ($salesOrder->tax > 0) {
-                JournalEntryLine::create([
-                    'journal_entry_header_id' => $journalEntry->id,
-                    'account_id' => $taxPayableId,
-                    'description' => 'ضريبة القيمة المضافة - طلب بيع ' . $salesOrder->order_number,
-                    'debit' => 0,
-                    'credit' => $salesOrder->tax,
-                ]);
-            }
-            
-            // إنشاء حركات المخزون (إخراج من المخزون)
-            //
-            // Ships through InventoryService so the movement, the warehouse row
-            // and products.stock_quantity all move together. Keyed per item,
-            // so re-confirming the same order can never take stock twice.
-            $warehouseId = $salesOrder->fulfillment_warehouse_id;
-            $inventory = app(\App\Services\Inventory\InventoryService::class);
 
-            foreach ($salesOrder->items as $item) {
-                $inventory->issue(
-                    $item->product_id,
-                    $item->quantity,
-                    $warehouseId,
-                    [
-                        'key' => 'SO-' . $salesOrder->id . '-' . $item->product_id,
-                        'reference' => 'sales_order',
-                        'source' => $salesOrder->id,
-                        'reason' => 'إخراج مخزون لطلب بيع رقم ' . $salesOrder->order_number,
-                        'unit_cost' => $item->product->cost_price ?? 0,
-                        'created_by' => auth()->id(),
-                    ]
-                );
-            }
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'تم تأكيد الطلبية بنجاح وإنشاء الفاتورة والقيد المحاسبي وحركة المخزون',
-                'data' => [
-                    'sales_order' => $salesOrder->load(['customer', 'items.product']),
-                    'invoice' => $invoice->load(['items.product']),
-                    'journal_entry' => $journalEntry->load('lines'),
-                    'stock_movements' => StockMovement::where('reference', 'sales_order')
-                        ->where('source', $salesOrder->id)
-                        ->get(),
-                ]
-            ]);
-        });
+        try {
+            $result = $this->workflow->transitionTo($salesOrder, SalesOrder::STATUS_CONFIRMED);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تأكيد الطلبية: حُجز المخزون وأُنشئت الفاتورة ورُحّل القيد المحاسبي.',
+            'data' => $this->orderPayload($salesOrder->refresh(), $result),
+        ]);
     }
-    
-    private function completeConfirmationProcesses(SalesOrder $salesOrder, $invoice, $journalEntry, $stockMovements)
+
+    /** Changes how the order is fulfilled, and everything that follows from it. */
+    public function changeFulfillmentType(Request $request, SalesOrder $salesOrder)
     {
-        return DB::transaction(function () use ($salesOrder, $invoice, $journalEntry, $stockMovements) {
-            $processesCompleted = [];
-            
-            // إنشاء الفاتورة إذا لم تكن موجودة
-            if (!$invoice || $invoice->status === Invoice::STATUS_CANCELLED) {
-                $invoice = Invoice::create([
-                    'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . str_pad(Invoice::count() + 1, 4, '0', STR_PAD_LEFT),
-                    'customer_id' => $salesOrder->customer_id,
-                    'sales_order_id' => $salesOrder->id,
-                    'subtotal' => $salesOrder->subtotal,
-                    'tax' => $salesOrder->tax,
-                    'discount' => $salesOrder->discount,
-                    'total' => $salesOrder->total,
-                    'paid_amount' => 0,
-                    'due_amount' => $salesOrder->total,
-                    'status' => Invoice::STATUS_CONFIRMED,
-                    'notes' => $salesOrder->notes,
-                    'created_by' => auth()->id(),
-                    'currency' => $salesOrder->currency ?? 'SAR',
-                ]);
-                
-                foreach ($salesOrder->items as $item) {
-                    $invoice->items()->create([
-                        'product_id' => $item->product_id,
-                        'description' => $item->product->name_ar ?? $item->product->name,
-                        'quantity' => $item->quantity,
-                        'unit_price' => $item->unit_price,
-                        'discount' => $item->discount,
-                        'tax' => $item->tax,
-                        'total' => ($item->unit_price * $item->quantity) - $item->discount + $item->tax,
-                    ]);
-                }
-                
-                $processesCompleted[] = 'invoice';
-            }
-            
-            // إنشاء القيد المحاسبي إذا لم يكن موجوداً
-            if (!$journalEntry) {
-                $journalEntry = JournalEntryHeader::create([
-                    'entry_number' => 'JE-' . now()->format('Ymd') . '-' . str_pad(JournalEntryHeader::count() + 1, 4, '0', STR_PAD_LEFT),
-                    'entry_date' => now(),
-                    'reference_type' => SalesOrder::class,
-                    'reference_id' => $salesOrder->id,
-                    'posting_key' => 'SO-' . $salesOrder->id,
-                    'source_module' => 'sales',
-                    'description' => 'تأكيد طلب بيع رقم ' . $salesOrder->order_number,
-                    'total_debit' => $salesOrder->total,
-                    'total_credit' => $salesOrder->total,
-                    'currency' => $salesOrder->currency ?? 'SAR',
-                    'status' => 'posted',
-                    'created_by' => auth()->id(),
-                ]);
-                
-                $accountsReceivableId = $this->getAccountId('accounts_receivable');
-                $salesRevenueId = $this->getAccountId('sales_revenue');
-                $taxPayableId = $this->getAccountId('tax_payable');
-                
-                JournalEntryLine::create([
-                    'journal_entry_header_id' => $journalEntry->id,
-                    'account_id' => $accountsReceivableId,
-                    'description' => 'ذمم العملاء - طلب بيع ' . $salesOrder->order_number,
-                    'debit' => $salesOrder->total,
-                    'credit' => 0,
-                ]);
-                
-                JournalEntryLine::create([
-                    'journal_entry_header_id' => $journalEntry->id,
-                    'account_id' => $salesRevenueId,
-                    'description' => 'إيرادات المبيعات - طلب بيع ' . $salesOrder->order_number,
-                    'debit' => 0,
-                    'credit' => $salesOrder->subtotal,
-                ]);
-                
-                if ($salesOrder->tax > 0) {
-                    JournalEntryLine::create([
-                        'journal_entry_header_id' => $journalEntry->id,
-                        'account_id' => $taxPayableId,
-                        'description' => 'ضريبة القيمة المضافة - طلب بيع ' . $salesOrder->order_number,
-                        'debit' => 0,
-                        'credit' => $salesOrder->tax,
-                    ]);
-                }
-                
-                $processesCompleted[] = 'journal_entry';
-            }
-            
-            // إنشاء حركات المخزون إذا لم تكن موجودة
-            //
-            // The idempotency is now handled inside InventoryService via the
-            // movement_key — re-running this method can only ever book the stock
-            // once. Retrying an issue is a no-op, so no count is needed here.
-            if ($stockMovements->count() === 0) {
-                $warehouseId = $salesOrder->fulfillment_warehouse_id;
-                $inventory = app(\App\Services\Inventory\InventoryService::class);
+        $validated = $request->validate([
+            'fulfillment_type' => 'required|in:ship,pickup,delivery',
+            'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
+            'shipping_cost' => 'nullable|numeric|min:0',
+        ]);
 
-                foreach ($salesOrder->items as $item) {
-                    $inventory->issue(
-                        $item->product_id,
-                        $item->quantity,
-                        $warehouseId,
-                        [
-                            'key' => 'SO-' . $salesOrder->id . '-' . $item->product_id,
-                            'reference' => 'sales_order',
-                            'source' => $salesOrder->id,
-                            'reason' => 'إخراج مخزون لطلب بيع رقم ' . $salesOrder->order_number,
-                            'unit_cost' => $item->product->cost_price ?? 0,
-                            'created_by' => auth()->id(),
-                        ]
-                    );
-                }
+        try {
+            $effects = $this->workflow->changeFulfillmentType($salesOrder, $validated['fulfillment_type'], $validated);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
 
-                $processesCompleted[] = 'stock_movements';
-            }
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'تم إكمال العمليات الناقصة: ' . implode(', ', $processesCompleted),
-                'data' => [
-                    'sales_order' => $salesOrder->load(['customer', 'items.product']),
-                    'invoice' => $invoice ? $invoice->load(['items.product']) : null,
-                    'journal_entry' => $journalEntry ? $journalEntry->load('lines') : null,
-                    'stock_movements' => StockMovement::where('reference', 'sales_order')
-                        ->where('source', $salesOrder->id)
-                        ->get(),
-                ]
-            ]);
-        });
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تغيير نوع التنفيذ وإعادة توجيه الطلب.',
+            'data' => $this->orderPayload($salesOrder->refresh(), ['changed' => true, 'status' => $salesOrder->status, 'effects' => $effects]),
+        ]);
     }
-    
-    private function getAccountId($accountType)
+
+    /** Everything the order screen needs after a stage move. */
+    private function orderPayload(SalesOrder $salesOrder, array $result): array
     {
-        // هذه دالة مساعدة للحصول على معرف الحساب المحاسبي
-        // يجب تعديلها حسب هيكل الحسابات الفعلي في النظام
-        $accounts = [
-            'accounts_receivable' => 1, // معرف افتراضي
-            'sales_revenue' => 2,
-            'tax_payable' => 3,
-            'cost_of_goods_sold' => 4,
-            'inventory' => 5,
+        $invoice = $this->workflow->existingInvoice($salesOrder);
+
+        return [
+            'sales_order' => $salesOrder->load(['customer', 'items.product', 'fulfillmentWarehouse']),
+            'invoice' => $invoice?->load('items.product'),
+            'journal_entries' => JournalEntryHeader::with('lines.ledgerAccount')
+                ->where(function ($q) use ($salesOrder, $invoice) {
+                    $q->where('posting_key', 'so_cogs:' . $salesOrder->id);
+                    if ($invoice) {
+                        $q->orWhere('posting_key', 'invoice:' . $invoice->id)
+                            ->orWhere('posting_key', 'like', 'invoice:' . $invoice->id . ':%');
+                    }
+                })
+                ->get(),
+            'stock_movements' => $this->workflow->movementsFor($salesOrder),
+            'transition' => $result,
         ];
-        
-        return $accounts[$accountType] ?? 1;
+    }
+
+    private function stageLabel(string $status): string
+    {
+        return [
+            SalesOrder::STATUS_PENDING => 'معلق',
+            SalesOrder::STATUS_CONFIRMED => 'مؤكد',
+            SalesOrder::STATUS_PROCESSING => 'قيد المعالجة',
+            SalesOrder::STATUS_SHIPPED => 'تم الشحن',
+            SalesOrder::STATUS_DELIVERED => 'تم التسليم',
+            SalesOrder::STATUS_CANCELLED => 'ملغي',
+        ][$status] ?? $status;
     }
 }

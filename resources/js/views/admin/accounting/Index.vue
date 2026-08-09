@@ -21,6 +21,58 @@
             </div>
         </div>
 
+        <!-- Cross-module consistency. Each module could already answer for
+             itself; nothing asked the question across the system, so a single
+             order whose invoice never reached the ledger stayed invisible until
+             somebody happened to open it. -->
+        <el-card shadow="hover" class="health-panel mb-4" v-loading="healthLoading">
+            <template #header>
+                <div class="health-header">
+                    <span class="card-title-txt">
+                        <i class="fas fa-heart-pulse"></i> سلامة النظام والتكامل بين الوحدات
+                    </span>
+                    <div class="health-header-right">
+                        <span v-if="health.checked_at" class="health-time">آخر فحص {{ health.checked_at }}</span>
+                        <el-button text size="small" :loading="healthLoading" @click="loadHealth">
+                            <i class="fas fa-sync-alt"></i> إعادة الفحص
+                        </el-button>
+                    </div>
+                </div>
+            </template>
+
+            <div v-if="health.is_healthy" class="health-clear">
+                <i class="fas fa-circle-check"></i>
+                جميع الفحوصات سليمة — الدفاتر متطابقة مع السجلات التشغيلية.
+            </div>
+
+            <div v-else class="health-summary">
+                <i class="fas fa-triangle-exclamation"></i>
+                <span>
+                    <strong>{{ health.issue_count }}</strong> فحص يحتاج معالجة،
+                    يشمل <strong>{{ health.affected_records }}</strong> سجلاً.
+                </span>
+            </div>
+
+            <div class="health-grid">
+                <div
+                    v-for="check in orderedChecks"
+                    :key="check.code"
+                    class="health-check"
+                    :class="check.ok ? 'is-ok' : 'is-bad'"
+                >
+                    <div class="check-head">
+                        <i class="fas" :class="check.ok ? 'fa-circle-check' : 'fa-circle-exclamation'"></i>
+                        <span class="check-title">{{ check.title }}</span>
+                        <strong class="check-count">{{ check.count }}</strong>
+                    </div>
+                    <template v-if="!check.ok">
+                        <p class="check-detail">{{ check.detail }}</p>
+                        <p class="check-action"><i class="fas fa-arrow-turn-down"></i> {{ check.action }}</p>
+                    </template>
+                </div>
+            </div>
+        </el-card>
+
         <!-- Metric Indicators Row -->
         <el-row :gutter="16" class="overview-cards">
             <!-- Assets Card -->
@@ -233,8 +285,36 @@ const calculatePercentage = (val) => {
     return Math.min(Math.round((val / total) * 100), 100);
 };
 
+/* ------------------------------------------------------------------ *
+ * System health
+ *
+ * Read-only by design: it reports what disagrees and how to fix it, and never
+ * repairs anything itself. Writing to the books is not something a dashboard
+ * should do while nobody is looking.
+ * ------------------------------------------------------------------ */
+
+const health = ref({ is_healthy: true, issue_count: 0, affected_records: 0, checks: [] });
+const healthLoading = ref(false);
+
+// Failures first: a clean check is confirmation, a failing one is work.
+const orderedChecks = computed(() =>
+    [...(health.value.checks || [])].sort((a, b) => Number(a.ok) - Number(b.ok))
+);
+
+const loadHealth = async () => {
+    healthLoading.value = true;
+    try {
+        health.value = await reportsStore.fetchSystemHealth();
+    } catch (e) {
+        console.error('System health check failed', e);
+    } finally {
+        healthLoading.value = false;
+    }
+};
+
 onMounted(async () => {
     loadingData.value = true;
+    loadHealth();
     try {
         await Promise.all([
             accountsStore.fetchAccounts({ per_page: 100 }),
@@ -395,5 +475,68 @@ onMounted(async () => {
     gap: 0.5rem;
     font-weight: 700;
     color: var(--text-dark);
+}
+/* ---- System health ---- */
+.health-panel { border-radius: 1rem; }
+
+.health-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.health-header-right { display: flex; align-items: center; gap: 0.75rem; }
+.health-time { font-size: 0.75rem; color: var(--text-muted); }
+.card-title-txt { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; }
+.card-title-txt i { color: var(--el-color-primary); }
+
+.health-clear,
+.health-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    font-size: 0.88rem;
+}
+
+.health-clear { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.health-summary { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.75rem;
+}
+
+.health-check {
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    border-inline-start-width: 4px;
+}
+
+/* A passing check stays quiet; a failing one carries its own weight. */
+.health-check.is-ok { border-inline-start-color: var(--el-color-success); opacity: 0.75; }
+.health-check.is-bad { border-inline-start-color: var(--el-color-danger); background: #fffbfb; }
+
+.check-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.check-head i { flex-shrink: 0; }
+.health-check.is-ok .check-head i { color: var(--el-color-success); }
+.health-check.is-bad .check-head i { color: var(--el-color-danger); }
+.check-title { flex: 1; min-width: 0; }
+.check-count { font-size: 1rem; font-variant-numeric: tabular-nums; }
+
+.check-detail { margin: 0.5rem 0 0; font-size: 0.78rem; line-height: 1.7; color: var(--text-muted); }
+
+.check-action {
+    margin: 0.35rem 0 0;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--el-color-danger);
+    overflow-wrap: anywhere;
 }
 </style>

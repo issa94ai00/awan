@@ -215,8 +215,14 @@
                 <el-table-column label="حد الطلب" width="100" align="center">
                     <template #default="{ row }">{{ formatNumber(row.reorder_point) }}</template>
                 </el-table-column>
+                <el-table-column label="السعر" width="120" align="center">
+                    <template #default="{ row }">
+                        <span v-if="unitPrice(row) > 0">{{ formatMoney(unitPrice(row)) }}</span>
+                        <span v-else class="table-sub">—</span>
+                    </template>
+                </el-table-column>
                 <el-table-column label="القيمة" width="130" align="center">
-                    <template #default="{ row }">{{ formatMoney(row.quantity * (row.cost_basis || 0)) }}</template>
+                    <template #default="{ row }">{{ formatMoney(row.quantity * unitPrice(row)) }}</template>
                 </el-table-column>
                 <el-table-column label="الحالة" width="110" align="center">
                     <template #default="{ row }">
@@ -398,6 +404,16 @@ const formatNumber = (n) => (n === null || n === undefined ? '0' : Number(n).toL
 const formatMoney = (n) =>
     (n === null || n === undefined ? '0' : Number(n)).toLocaleString('en-US', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 });
 
+/**
+ * Unit price behind a stock row.
+ *
+ * The value column used to multiply the quantity by `cost_basis`, which is the
+ * costing-method enum ("FIFO"), not a number — every stock value on the screen
+ * came out as NaN. Selling price is used, falling back to cost when a product
+ * has not been priced yet.
+ */
+const unitPrice = (row) => Number(row?.product?.price ?? 0) || Number(row?.product?.cost_price ?? 0) || 0;
+
 const formatDate = (d) => (d ? String(d).replace('T', ' ').substring(0, 16) : '-');
 
 const exporting = ref(false);
@@ -424,13 +440,25 @@ const onInventoryFileSelected = async (event) => {
         formData.append('file', file);
         const res = await inventoryApi.importStock(formData);
         const data = res.data?.data || {};
+        // Split new vs updated stock rows so it is obvious when a sheet added a
+        // product to another warehouse rather than editing its existing balance.
         const messages = [
             `منتجات جديدة: ${data.products_created ?? 0}`,
             `منتجات مطابقة: ${data.products_matched ?? 0}`,
-            `صفوف المخزون: ${data.inventory_rows ?? 0}`,
-            `أخطاء: ${data.errors ? data.errors.length : 0}`,
+            `أسعار محدَّثة: ${data.prices_updated ?? 0}`,
+            `أرصدة جديدة: ${data.inventory_created ?? 0}`,
+            `أرصدة محدَّثة: ${data.inventory_updated ?? 0}`,
         ];
-        ElMessage.success(messages.join('، '));
+
+        const errorCount = data.errors ? data.errors.length : 0;
+        if (errorCount) {
+            messages.push(`أخطاء: ${errorCount}`);
+        }
+
+        ElMessage[errorCount ? 'warning' : 'success']({
+            message: messages.join('، '),
+            duration: 6000,
+        });
         await loadStock(true);
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'فشل في استيراد الرصيد');

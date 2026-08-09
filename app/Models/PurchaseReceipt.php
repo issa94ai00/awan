@@ -13,7 +13,13 @@ class PurchaseReceipt extends Model
         'receipt_number',
         'purchase_order_id',
         'supplier_id',
+        // Without this the controller's validated warehouse_id was silently
+        // discarded on create, so the receipt never recorded where the goods
+        // it brought in actually went.
+        'warehouse_id',
         'receipt_date',
+        'status',
+        'currency',
         'notes',
         'created_by',
     ];
@@ -25,6 +31,11 @@ class PurchaseReceipt extends Model
     public function purchaseOrder()
     {
         return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function supplier()

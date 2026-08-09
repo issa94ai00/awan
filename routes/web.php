@@ -1,17 +1,12 @@
 <?php
 
+// Only what this file actually routes. The imports removed here — the whole
+// App\Http\Controllers\Admin namespace, plus Category/Product/Admin controllers
+// — named classes that no route in this file ever referenced, so the file read
+// as though a web admin existed behind it. It does not: the admin is the Vue
+// SPA talking to routes/api.php.
 use App\Http\Controllers\HomeController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\ProductionController;
-use App\Http\Controllers\Admin\QuoteController;
-use App\Http\Controllers\Admin\InvoiceController;
-use App\Http\Controllers\Admin\PaymentController;
-use App\Http\Controllers\Admin\PayrollController;
-use App\Http\Controllers\Admin\RoleController;
-use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\PublicPageController;
 use Illuminate\Support\Facades\Route;

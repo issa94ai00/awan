@@ -44,9 +44,15 @@ class InventoryTransfer extends Model
         return $this->belongsTo(Warehouse::class, 'to_warehouse_id');
     }
 
+    /**
+     * The foreign key is `transfer_id`, not the `inventory_transfer_id` Laravel
+     * infers from the class name. Without naming it, the relation queried a
+     * column that does not exist and threw on every access — which is every
+     * ship, receive and cancel in InventoryTransferController.
+     */
     public function items()
     {
-        return $this->hasMany(InventoryTransferItem::class);
+        return $this->hasMany(InventoryTransferItem::class, 'transfer_id');
     }
 
     public function createdBy()

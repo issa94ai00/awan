@@ -7,13 +7,19 @@ use App\Models\PurchaseReceipt;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\Product;
+use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PurchaseReceiptController extends Controller
 {
+    public function __construct(private LedgerPostingService $ledger)
+    {
+    }
+
     public function index(Request $request)
     {
-        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product']);
+        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
 
         if ($request->has('supplier_id') && $request->supplier_id) {
             $query->where('supplier_id', $request->supplier_id);
@@ -51,48 +57,79 @@ class PurchaseReceiptController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
         ]);
 
-        $validated['receipt_number'] = 'PR-' . str_pad(PurchaseReceipt::count() + 1, 6, '0', STR_PAD_LEFT);
+        // Derived from the last id: counting reuses a number as soon as any
+        // receipt is deleted, and two concurrent requests always collide.
+        $validated['receipt_number'] = 'PR-' . str_pad(
+            (string) (((int) PurchaseReceipt::max('id')) + 1),
+            6,
+            '0',
+            STR_PAD_LEFT
+        );
         $validated['created_by'] = auth()->id();
 
-        $receipt = PurchaseReceipt::create($validated);
-
-        foreach ($request->items as $item) {
-            $receipt->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total' => $item['quantity'] * $item['unit_price'],
-            ]);
-        }
-
-        // Take the goods into stock. Previously a model hook on the receipt item
-        // did this on every save — including updates, so editing a receipt
-        // re-added the whole quantity. Receiving now runs once per receipt,
-        // keyed per item so a resubmit is a no-op, and flows through
-        // InventoryService so the warehouse row and the product total agree.
         $inventory = app(\App\Services\Inventory\InventoryService::class);
 
-        foreach ($request->items as $item) {
-            $inventory->receive(
-                $item['product_id'],
-                $item['quantity'],
-                $request->input('warehouse_id'),
-                [
-                    'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id'],
-                    'reference' => $receipt->receipt_number,
-                    'source' => 'purchase_receipt',
-                    'reason' => 'استلام من أمر شراء',
-                    'unit_cost' => $item['unit_price'],
-                    'created_by' => auth()->id(),
-                ]
-            );
-        }
+        $receipt = DB::transaction(function () use ($validated, $request, $inventory) {
+            $receipt = PurchaseReceipt::create($validated);
 
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product']);
+            foreach ($request->items as $item) {
+                $receipt->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total' => $item['quantity'] * $item['unit_price'],
+                ]);
+            }
+
+            // Take the goods into stock. Previously a model hook on the receipt
+            // item did this on every save — including updates, so editing a
+            // receipt re-added the whole quantity. Receiving now runs once per
+            // receipt, keyed per item so a resubmit is a no-op, and flows
+            // through InventoryService so the warehouse row and the product
+            // total agree.
+            $warehouseId = $receipt->warehouse_id ?: $inventory->defaultWarehouseId();
+
+            foreach ($request->items as $item) {
+                $inventory->receive(
+                    $item['product_id'],
+                    $item['quantity'],
+                    $warehouseId,
+                    [
+                        'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id'],
+                        'reference' => $receipt->receipt_number,
+                        'source' => 'purchase_receipt',
+                        'reason' => 'استلام من أمر شراء',
+                        'unit_cost' => $item['unit_price'],
+                        'created_by' => auth()->id(),
+                    ]
+                );
+            }
+
+            // The receipt is what puts the goods on the balance sheet. Without
+            // this the inventory account was only ever credited — by sales —
+            // and drifted negative no matter how full the warehouse was.
+            $receipt->load('items');
+            $this->ledger->postGoodsReceipt($receipt);
+
+            // Bought on account, so the supplier is now owed for it.
+            $receipt->supplier?->updateBalance(
+                $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
+            );
+
+            // Persist the warehouse actually used, so this receipt can be
+            // reversed later without guessing.
+            if (!$receipt->warehouse_id && $warehouseId) {
+                $receipt->update(['warehouse_id' => $warehouseId]);
+            }
+
+            return $receipt;
+        });
+
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إنشاء إيصال الاستلام بنجاح',
+            'message' => 'تم إنشاء إيصال الاستلام بنجاح، وأُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي',
             'data' => $receipt
         ], 201);
     }
@@ -108,48 +145,51 @@ class PurchaseReceiptController extends Controller
         ]);
     }
 
+    /**
+     * A receipt records goods that physically arrived, so its lines are not
+     * freely editable: the stock was already taken in against them and the cost
+     * posted to the ledger. Rewriting the lines here changed neither, leaving
+     * the document describing quantities the warehouse and the books had never
+     * seen. Only the descriptive fields can be corrected.
+     */
     public function update(Request $request, PurchaseReceipt $receipt)
     {
         $validated = $request->validate([
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
-            'supplier_id' => 'required|exists:suppliers,id',
             'receipt_date' => 'nullable|date',
             'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            'items' => 'nullable|array',
         ]);
 
-        $receipt->update($validated);
-
-        $receipt->items()->delete();
-        foreach ($request->items as $item) {
-            $receipt->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total' => $item['quantity'] * $item['unit_price'],
-            ]);
+        if ($request->filled('items')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن تعديل بنود إيصال استلام بعد إدخال البضاعة للمخزون. سجّل تسوية مخزنية أو إيصال إرجاع بدلاً من ذلك.',
+                'data' => null,
+            ], 422);
         }
 
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product']);
+        $receipt->update(collect($validated)->except('items')->all());
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تحديث إيصال الاستلام بنجاح',
+            'message' => 'تم تحديث بيانات إيصال الاستلام',
             'data' => $receipt
         ]);
     }
 
+    /**
+     * Deleting a receipt would strand its journal entry against a document that
+     * no longer exists and leave the goods on the shelf with nothing explaining
+     * where they came from.
+     */
     public function destroy(PurchaseReceipt $receipt)
     {
-        $receipt->delete();
-
         return response()->json([
-            'success' => true,
-            'message' => 'تم حذف إيصال الاستلام بنجاح',
-            'data' => null
-        ]);
+            'success' => false,
+            'message' => 'لا يمكن حذف إيصال استلام أُدخلت بضاعته للمخزون ورُحّل قيده. سجّل إرجاعاً للمورّد لعكس أثره.',
+            'data' => null,
+        ], 422);
     }
 }

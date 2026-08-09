@@ -93,4 +93,13 @@ class User extends Authenticatable
     {
         return $this->hasMany(Inquiry::class);
     }
+
+    /**
+     * The staff record behind this login, if there is one. It carries the
+     * warehouse the person works out of, which is what scopes the field app.
+     */
+    public function employee(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Employee::class);
+    }
 }

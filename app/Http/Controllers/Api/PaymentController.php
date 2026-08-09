@@ -52,25 +52,47 @@ class PaymentController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $validated['payment_number'] = 'PAY-' . str_pad(Payment::count() + 1, 6, '0', STR_PAD_LEFT);
+        // A collection against an invoice goes through PaymentRecorder, the same
+        // path delivery-time settlement uses, so the invoice, the customer
+        // balance and the ledger always move together. This method used to do
+        // all four by hand and marked a fully paid invoice as *delivered* —
+        // describing the goods as having arrived because the money had.
+        if (!empty($validated['invoice_id'])) {
+            $invoice = Invoice::findOrFail($validated['invoice_id']);
+
+            try {
+                $payment = app(\App\Services\Sales\PaymentRecorder::class)->record(
+                    $invoice,
+                    (float) $validated['amount'],
+                    [
+                        'method' => $validated['payment_method'],
+                        'date' => $validated['payment_date'] ?? null,
+                        'reference' => $validated['reference'] ?? null,
+                        'notes' => $validated['notes'] ?? null,
+                    ]
+                );
+            } catch (\RuntimeException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+            }
+
+            $payment->load(['invoice', 'customer', 'creator']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تسجيل الدفعة وترحيل قيدها المحاسبي',
+                'data' => $payment,
+            ], 201);
+        }
+
+        // An on-account payment with no invoice behind it: still recorded and
+        // still posted, but there is no invoice to settle.
+        $validated['payment_number'] = 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT);
         $validated['status'] = Payment::STATUS_COMPLETED;
         $validated['created_by'] = auth()->id();
 
         $payment = Payment::create($validated);
-
-        if ($payment->invoice) {
-            $payment->invoice->increment('paid_amount', $payment->amount);
-            $payment->invoice->decrement('due_amount', $payment->amount);
-            
-            // Update invoice status based on payment completion
-            if ($payment->invoice->due_amount <= 0) {
-                $payment->invoice->markAsDelivered();
-            }
-        }
-
         $payment->customer->updateBalance(-$payment->amount);
 
-        // Post the cash movement to the ledger (Dr cash/bank, Cr receivables).
         $postingError = null;
         try {
             app(\App\Services\Accounting\LedgerPostingService::class)->postPayment($payment);

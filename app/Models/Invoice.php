@@ -90,9 +90,24 @@ class Invoice extends Model
         return self::getPaymentOptions()[$this->payment_method] ?? $this->payment_method;
     }
 
+    /**
+     * Whether the invoice has actually been collected.
+     *
+     * This used to return `status === 'delivered'`, which answers a different
+     * question entirely: delivery is about where the goods are, payment about
+     * whether the money arrived. A delivered-but-unpaid invoice reported itself
+     * as settled, and an invoice paid in full while still in the warehouse
+     * reported itself as outstanding. Settlement is decided by the amounts.
+     */
     public function isPaid(): bool
     {
-        return $this->status === self::STATUS_DELIVERED;
+        return $this->amountDue() <= 0.009;
+    }
+
+    /** What is still owed on this invoice. */
+    public function amountDue(): float
+    {
+        return round((float) $this->total - (float) $this->paid_amount, 2);
     }
 
     public function isPending(): bool
@@ -125,10 +140,19 @@ class Invoice extends Model
         return $this->status === self::STATUS_CANCELLED;
     }
 
+    /**
+     * Records that the invoice has been settled.
+     *
+     * It used to set the status to `delivered` — describing the goods as having
+     * arrived because the money had, which then fed the wrong figure into every
+     * screen reading the status. Only the payment fields are touched; where the
+     * goods are is the order's business.
+     */
     public function markAsPaid(): void
     {
         $this->update([
-            'status' => self::STATUS_DELIVERED,
+            'paid_amount' => $this->total,
+            'due_amount' => 0,
             'paid_at' => now(),
         ]);
     }
@@ -154,12 +178,14 @@ class Invoice extends Model
         ]);
     }
 
+    /**
+     * Marks the goods delivered. Deliberately does not stamp `paid_at`: it
+     * previously did, so delivering an invoice recorded a payment that had
+     * never been received.
+     */
     public function markAsDelivered(): void
     {
-        $this->update([
-            'status' => self::STATUS_DELIVERED,
-            'paid_at' => now(),
-        ]);
+        $this->update(['status' => self::STATUS_DELIVERED]);
     }
 
     public function cancel(): void

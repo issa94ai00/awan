@@ -9,11 +9,17 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Http\Resources\CustomerResource;
+use App\Models\SalesOrderStatusHistory;
+use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PurchaseRequestController extends Controller
 {
+    public function __construct(private LedgerPostingService $ledger)
+    {
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -154,6 +160,22 @@ class PurchaseRequestController extends Controller
         }
 
         $customer->updateBalance($subtotal);
+
+        // This path raised an invoice and charged the customer without the
+        // ledger ever hearing about it, so every request placed through the
+        // storefront left revenue missing from the income statement. Posting is
+        // keyed on the invoice, so confirming the order later will not
+        // double-post it.
+        $this->ledger->postInvoice($invoice);
+
+        // Opens the stage history, so a storefront order carries the same trail
+        // as one raised by staff.
+        SalesOrderStatusHistory::create([
+            'sales_order_id' => $salesOrder->id,
+            'from_status' => null,
+            'to_status' => SalesOrder::STATUS_PENDING,
+            'note' => 'طلب شراء من العميل',
+        ]);
 
         return response()->json([
             'success' => true,

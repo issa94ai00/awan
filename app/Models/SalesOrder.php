@@ -129,6 +129,12 @@ class SalesOrder extends Model
         return $this->hasMany(RmaRequest::class);
     }
 
+    /** Append-only record of every stage this order has moved through. */
+    public function statusHistory()
+    {
+        return $this->hasMany(SalesOrderStatusHistory::class)->orderBy('id');
+    }
+
     public function getStatusTextAttribute()
     {
         return match($this->status) {

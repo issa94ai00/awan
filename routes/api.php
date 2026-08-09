@@ -24,6 +24,10 @@ use App\Http\Controllers\Api\SubscribeController;
 use App\Http\Controllers\Api\PurchaseRequestController;
 use App\Http\Controllers\Api\QuoteController;
 use App\Http\Controllers\Api\SalesOrderController;
+use App\Http\Controllers\Api\Field\FieldInventoryController;
+use App\Http\Controllers\Api\Field\FieldOrderController;
+use App\Http\Controllers\Api\Field\FieldReplenishmentController;
+use App\Http\Controllers\Api\Field\FieldSessionController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
 use App\Http\Controllers\Api\PayrollController;
@@ -193,6 +197,36 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/upload', [UploadController::class, 'upload'])->name('api.upload');
         Route::delete('/upload', [UploadController::class, 'delete'])->name('api.upload.delete');
 
+        /*
+         * Field app (Flutter).
+         *
+         * Every endpoint is scoped to the warehouses the signed-in employee may
+         * act on — see App\Services\Field\FieldScope. Orders raised here are
+         * ordinary sales orders and run through SalesOrderWorkflowService, so a
+         * confirmation from a phone reserves stock, raises the invoice and posts
+         * the ledger entries exactly as one from the back office does.
+         */
+        Route::prefix('field')->group(function () {
+            Route::get('/me', [FieldSessionController::class, 'me'])->name('api.field.me');
+
+            Route::get('/inventory', [FieldInventoryController::class, 'index'])->name('api.field.inventory');
+            Route::get('/inventory/movements', [FieldInventoryController::class, 'movements'])->name('api.field.inventory.movements');
+            Route::get('/inventory/products/{product}', [FieldInventoryController::class, 'product'])->whereNumber('product')->name('api.field.inventory.product');
+
+            // Stock the branch asks the main warehouse for. Not a sale — goods
+            // move between the company's own locations — so it runs on
+            // inventory_transfers, the same queue the warehouse ships against.
+            Route::get('/replenishment', [FieldReplenishmentController::class, 'index'])->name('api.field.replenishment.index');
+            Route::post('/replenishment', [FieldReplenishmentController::class, 'store'])->name('api.field.replenishment.store');
+            Route::get('/replenishment/{id}', [FieldReplenishmentController::class, 'show'])->whereNumber('id')->name('api.field.replenishment.show');
+            Route::post('/replenishment/{id}/receive', [FieldReplenishmentController::class, 'receive'])->whereNumber('id')->name('api.field.replenishment.receive');
+
+            Route::get('/orders', [FieldOrderController::class, 'index'])->name('api.field.orders.index');
+            Route::post('/orders', [FieldOrderController::class, 'store'])->name('api.field.orders.store');
+            Route::get('/orders/{salesOrder}', [FieldOrderController::class, 'show'])->whereNumber('salesOrder')->name('api.field.orders.show');
+            Route::post('/orders/{salesOrder}/transition', [FieldOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.field.orders.transition');
+        });
+
         // Admin Products API (using Sanctum for API clients)
         Route::prefix('admin')->group(function () {
             Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
@@ -337,6 +371,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
             Route::get('/accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
             Route::get('/accounting/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('api.admin.accounting.income-statement');
+            // Cross-module consistency: whether the books still agree with the
+            // operational records. Read-only — repairs stay deliberate.
+            Route::get('/accounting/system-health', [AccountingReportController::class, 'systemHealth'])->name('api.admin.accounting.system-health');
             Route::get('/accounting/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('api.admin.accounting.balance-sheet');
         });
 
@@ -421,6 +458,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->whereNumber('salesOrder')->name('api.sales-orders.destroy');
         Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->whereNumber('salesOrder')->name('api.sales-orders.convert-to-invoice');
         Route::post('/sales-orders/{salesOrder}/confirm', [SalesOrderController::class, 'confirmOrder'])->whereNumber('salesOrder')->name('api.sales-orders.confirm');
+        // Order routing and execution stages. Each of these moves stock, the
+        // invoice and the ledger together — see SalesOrderWorkflowService.
+        Route::get('/sales-orders/{salesOrder}/detail', [SalesOrderController::class, 'detail'])->whereNumber('salesOrder')->name('api.sales-orders.detail');
+        Route::get('/sales-orders/{salesOrder}/routing', [SalesOrderController::class, 'routingOptions'])->whereNumber('salesOrder')->name('api.sales-orders.routing');
+        Route::post('/sales-orders/{salesOrder}/transition', [SalesOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.sales-orders.transition');
+        Route::post('/sales-orders/{salesOrder}/fulfillment-type', [SalesOrderController::class, 'changeFulfillmentType'])->whereNumber('salesOrder')->name('api.sales-orders.fulfillment-type');
 
         // Payments (مدفوعات)
         Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');

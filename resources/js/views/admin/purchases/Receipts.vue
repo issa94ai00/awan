@@ -279,9 +279,19 @@
                 </el-row>
 
                 <el-row :gutter="20" class="mt-3">
-                    <el-col :span="24">
+                    <el-col :span="12">
                         <el-form-item label="تاريخ الاستلام الفعلي">
                             <el-date-picker v-model="form.receipt_date" type="date" placeholder="تاريخ الاستلام" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <!-- The receipt puts the goods on the balance sheet, so where
+                             they land is the operator's call rather than a silent
+                             fallback to whichever warehouse happens to be first. -->
+                        <el-form-item label="المستودع المستلِم" required>
+                            <el-select v-model="form.warehouse_id" placeholder="اختر المستودع" style="width: 100%" :disabled="isEditMode">
+                                <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                            </el-select>
                         </el-form-item>
                     </el-col>
                 </el-row>
@@ -294,26 +304,37 @@
                 <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                         <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> الأصناف والكميات الواردة</h3>
-                        <el-button type="primary" size="small" plain @click="addItemRow">
+                        <el-button v-if="!isEditMode" type="primary" size="small" plain @click="addItemRow">
                             <i class="fas fa-plus"></i> إضافة صنف
                         </el-button>
                     </div>
 
+                    <!-- Lines are locked once the receipt exists: the stock was taken
+                         in against them and their cost posted to the ledger, so
+                         changing them here would leave both describing a delivery
+                         that never happened. -->
+                    <el-alert
+                        v-if="isEditMode"
+                        type="info"
+                        show-icon
+                        :closable="false"
+                        class="mb-3"
+                        title="بنود الإيصال غير قابلة للتعديل بعد إدخال البضاعة للمخزون وترحيل قيدها. سجّل تسوية مخزنية أو إرجاعاً للمورّد لتصحيحها."
+                    />
+
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" placeholder="اختر الصنف" filterable style="flex: 2.5;" @change="(val) => updateItemPrice(val, idx)">
-                                <el-option 
-                                    v-for="p in productsStore.products" 
-                                    :key="p.id" 
-                                    :label="p.name_ar + ' (SKU: ' + p.sku + ')'" 
-                                    :value="p.id" 
+                            <el-select v-model="item.product_id" placeholder="اختر الصنف" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
+                                <el-option
+                                    v-for="p in productsStore.products"
+                                    :key="p.id"
+                                    :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
+                                    :value="p.id"
                                 />
                             </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" placeholder="الكمية" style="flex: 1;" />
-                            <el-input v-model="item.unit_price" placeholder="السعر" style="flex: 1;">
-                                <template #suffix>$</template>
-                            </el-input>
-                            <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                            <el-input-number v-model="item.quantity" :min="1" placeholder="الكمية" style="flex: 1;" :disabled="isEditMode" />
+                            <el-input v-model="item.unit_price" placeholder="السعر" style="flex: 1;" :disabled="isEditMode" />
+                            <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                 <i class="fas fa-trash"></i>
                             </el-button>
                         </div>
@@ -335,14 +356,16 @@ import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { useProductsStore } from '@/stores/products';
+import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { Search } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const store = usePurchaseReceiptsStore();
 const suppliersStore = useSuppliersStore();
 const purchaseOrdersStore = usePurchaseOrdersStore();
 const productsStore = useProductsStore();
+const inventoryStore = useInventoryStore();
 
 const searchQuery = ref('');
 
@@ -359,14 +382,19 @@ const editingReceiptId = ref(null);
 const form = reactive({
     supplier_id: '',
     purchase_order_id: '',
+    warehouse_id: '',
     receipt_date: '',
     notes: '',
     items: []
 });
 
+const warehouses = computed(() => inventoryStore.warehouses);
+
 const resetForm = () => {
     form.supplier_id = '';
     form.purchase_order_id = '';
+    // A single active warehouse is not a choice worth asking for.
+    form.warehouse_id = warehouses.value.length === 1 ? warehouses.value[0].id : '';
     form.receipt_date = new Date().toISOString().split('T')[0];
     form.notes = '';
     form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
@@ -418,6 +446,7 @@ const openEditDrawer = async (id) => {
         const receipt = res.data.data;
         form.supplier_id = receipt.supplier_id;
         form.purchase_order_id = receipt.purchase_order_id;
+        form.warehouse_id = receipt.warehouse_id;
         form.receipt_date = receipt.receipt_date;
         form.notes = receipt.notes;
         form.items = receipt.items.map(item => ({
@@ -454,38 +483,59 @@ const saveReceipt = async () => {
         ElMessage.warning('يرجى تحديد المورد أولاً.');
         return;
     }
-    if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
-        ElMessage.warning('يرجى تعبئة كافة حقول الأصناف المضافة.');
-        return;
-    }
-    
+
     submittingForm.value = true;
     try {
         if (isEditMode.value) {
-            await purchaseReceiptsApi.update(editingReceiptId.value, form);
-            ElMessage.success('تم تحديث إيصال الاستلام بنجاح.');
+            // Only the descriptive fields travel: the lines and the warehouse
+            // are fixed once the goods are in and their cost is posted.
+            await purchaseReceiptsApi.update(editingReceiptId.value, {
+                purchase_order_id: form.purchase_order_id || null,
+                receipt_date: form.receipt_date,
+                notes: form.notes,
+            });
+            ElMessage.success('تم تحديث بيانات إيصال الاستلام.');
         } else {
+            if (!form.warehouse_id) {
+                ElMessage.warning('يرجى تحديد المستودع المستلِم.');
+                return;
+            }
+            if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
+                ElMessage.warning('يرجى تعبئة كافة حقول الأصناف المضافة.');
+                return;
+            }
+
             await purchaseReceiptsApi.create(form);
-            ElMessage.success('تم حفظ إيصال الاستلام وتعديل المخازن بنجاح.');
+            ElMessage.success('تم حفظ الإيصال: أُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي.');
         }
         formDrawerVisible.value = false;
         await store.fetchReceipts();
     } catch (e) {
-        ElMessage.error('خطأ أثناء حفظ إيصال الاستلام.');
+        // The API explains precisely why a receipt cannot be rewritten; echoing
+        // a generic failure here would hide the reason and the way forward.
+        ElMessage.error(e.response?.data?.message || 'خطأ أثناء حفظ إيصال الاستلام.');
     } finally {
         submittingForm.value = false;
     }
 };
 
 const deleteReceipt = async (id) => {
-    if (confirm('هل أنت متأكد من حذف إيصال الاستلام هذا وتعديل كميات المخزن؟')) {
-        try {
-            await purchaseReceiptsApi.delete(id);
-            ElMessage.success('تم حذف إيصال الاستلام بنجاح.');
-            await store.fetchReceipts();
-        } catch (error) {
-            ElMessage.error('خطأ أثناء حذف إيصال الاستلام.');
-        }
+    try {
+        await ElMessageBox.confirm(
+            'حذف إيصال الاستلام؟ البضاعة التي أُدخلت به ستبقى في المخزون.',
+            'تأكيد الحذف',
+            { type: 'warning', confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }
+        );
+    } catch {
+        return;
+    }
+
+    try {
+        await purchaseReceiptsApi.delete(id);
+        ElMessage.success('تم حذف إيصال الاستلام بنجاح.');
+        await store.fetchReceipts();
+    } catch (error) {
+        ElMessage.error(error.response?.data?.message || 'خطأ أثناء حذف إيصال الاستلام.');
     }
 };
 
@@ -494,6 +544,7 @@ onMounted(async () => {
     suppliersStore.fetchSuppliers().catch(() => {});
     purchaseOrdersStore.fetchOrders().catch(() => {});
     productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
+    inventoryStore.fetchSummary().catch(() => {});
 });
 </script>
 

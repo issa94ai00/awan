@@ -11,5 +11,10 @@ export const accountingReportsApi = {
 
     balanceSheet() {
         return api.get('/admin/accounting/balance-sheet');
+    },
+
+    /** Cross-module consistency between the books and the operational records. */
+    systemHealth() {
+        return api.get('/admin/accounting/system-health');
     }
 };

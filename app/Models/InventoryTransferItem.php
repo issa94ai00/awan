@@ -27,9 +27,10 @@ class InventoryTransferItem extends Model
         'unit_cost' => 'decimal:2',
     ];
 
+    /** Column is `transfer_id`; the inferred `inventory_transfer_id` does not exist. */
     public function transfer()
     {
-        return $this->belongsTo(InventoryTransfer::class);
+        return $this->belongsTo(InventoryTransfer::class, 'transfer_id');
     }
 
     public function product()

@@ -39,6 +39,16 @@ export const useAccountingReportsStore = defineStore('accountingReports', {
             }
         },
 
+        /**
+         * Cross-module consistency report. Kept out of the shared `loading`
+         * flag so a slow health scan never blanks the figures beside it.
+         */
+        async fetchSystemHealth() {
+            const res = await accountingReportsApi.systemHealth();
+
+            return res.data.data || res.data;
+        },
+
         async fetchBalanceSheet() {
             this.loading = true;
             this.error = null;

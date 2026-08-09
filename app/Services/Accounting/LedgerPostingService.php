@@ -142,6 +142,90 @@ class LedgerPostingService
     }
 
     /**
+     * Cost of the goods that left the warehouse against a sale.
+     *
+     * Invoicing alone only ever recorded the revenue side, so gross profit read
+     * as the full sale price and the inventory asset never came down as stock
+     * shipped. This is the matching half: it is posted at the same moment the
+     * stock movement is written, so the ledger and the warehouse agree on when
+     * the goods stopped being ours.
+     *
+     *   Dr  Cost of goods sold   cost
+     *       Cr  Inventory              cost
+     *
+     * @param  string  $key  posting key of the shipping event, e.g. "so_cogs:12"
+     */
+    public function postCostOfGoodsSold(
+        string $key,
+        float $cost,
+        string $label,
+        $reference = null,
+        ?string $date = null,
+        ?string $currency = null,
+    ): ?JournalEntryHeader {
+        $cost = $this->money($cost);
+
+        // Products with no cost price yield a zero entry. Writing it would add
+        // noise to the ledger without changing a single balance.
+        if ($cost <= 0) {
+            return null;
+        }
+
+        return $this->post(
+            key: $key,
+            date: $date ?? now()->toDateString(),
+            description: 'تكلفة البضاعة المباعة - ' . $label,
+            lines: [
+                ['role' => 'cogs', 'debit' => $cost, 'description' => 'تكلفة مبيعات - ' . $label],
+                ['role' => 'inventory', 'credit' => $cost, 'description' => 'إخراج مخزون - ' . $label],
+            ],
+            reference: $reference,
+            module: 'sales',
+            currency: $currency,
+        );
+    }
+
+    /**
+     * Goods received from a supplier.
+     *
+     * This was the missing half of inventory. Selling debited cost and credited
+     * the inventory account, but nothing ever debited it back — receipts moved
+     * stock in the warehouse and never reached the ledger — so the asset only
+     * ever fell and ran negative against a shelf that was full.
+     *
+     * Buying on account raises what is owed rather than paying it; settlement is
+     * the payables side's job, exactly as collection is for a sales invoice.
+     *
+     *   Dr  Inventory            cost of the goods
+     *       Cr  Accounts payable       cost of the goods
+     */
+    public function postGoodsReceipt($receipt): ?JournalEntryHeader
+    {
+        $total = $this->money(
+            collect($receipt->items ?? [])->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price)
+        );
+
+        if ($total <= 0) {
+            return null;
+        }
+
+        $label = 'إيصال استلام ' . ($receipt->receipt_number ?? ('#' . $receipt->id));
+
+        return $this->post(
+            key: 'goods_receipt:' . $receipt->id,
+            date: $receipt->receipt_date ? (string) $receipt->receipt_date->toDateString() : now()->toDateString(),
+            description: 'إثبات ' . $label,
+            lines: [
+                ['role' => 'inventory', 'debit' => $total, 'description' => 'إدخال مخزون - ' . $label],
+                ['role' => 'accounts_payable', 'credit' => $total, 'description' => 'ذمم موردين - ' . $label],
+            ],
+            reference: $receipt,
+            module: 'purchases',
+            currency: $receipt->currency ?? null,
+        );
+    }
+
+    /**
      * Credit note: goods came back, so revenue is reduced through the contra
      * account and the customer's receivable drops.
      *

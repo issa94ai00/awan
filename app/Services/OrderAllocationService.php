@@ -317,6 +317,16 @@ class OrderAllocationService
     /**
      * Auto-select fulfillment warehouse based on customer location
      */
+    /**
+     * Where an order should be served from.
+     *
+     * Everything below the first `return` used to be unreachable — a geolocation
+     * search over an undefined `$warehouses`, which would have been a fatal error
+     * had it ever run. It has been removed rather than fixed: routing now goes
+     * through SalesOrderWorkflowService::pickWarehouse, which scores warehouses
+     * by whether they can actually cover the order's lines, and there is no
+     * second, quietly different answer to the same question.
+     */
     public function selectFulfillmentWarehouse(SalesOrder $order): ?int
     {
         if ($order->assignedEmployee?->warehouse_id) {
@@ -324,52 +334,5 @@ class OrderAllocationService
         }
 
         return Warehouse::active()->orderBy('id')->value('id');
-
-        if ($warehouses->isEmpty()) {
-            return null;
-        }
-
-        // Simple distance calculation (in production, use proper geolocation)
-        $closestWarehouse = $warehouses->first();
-        $minDistance = PHP_FLOAT_MAX;
-
-        foreach ($warehouses as $warehouse) {
-            if (!$warehouse->latitude || !$warehouse->longitude) {
-                continue;
-            }
-
-            $distance = $this->calculateDistance(
-                $order->customer->address['latitude'] ?? 0,
-                $order->customer->address['longitude'] ?? 0,
-                $warehouse->latitude,
-                $warehouse->longitude
-            );
-
-            if ($distance < $minDistance) {
-                $minDistance = $distance;
-                $closestWarehouse = $warehouse;
-            }
-        }
-
-        return $closestWarehouse?->id;
-    }
-
-    /**
-     * Calculate distance between two coordinates (Haversine formula)
-     */
-    protected function calculateDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
-    {
-        $earthRadius = 6371; // km
-
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLon = deg2rad($lon2 - $lon1);
-
-        $a = sin($dLat / 2) * sin($dLat / 2) +
-             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-             sin($dLon / 2) * sin($dLon / 2);
-
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
-        return $earthRadius * $c;
     }
 }

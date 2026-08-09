@@ -155,7 +155,10 @@ class InventoryCheck extends Command
             ->groupBy('p.id', 'p.name_ar', 'p.stock_quantity')
             ->havingRaw('p.stock_quantity <> COALESCE(SUM(wi.quantity), 0)')
             ->selectRaw('p.id, p.name_ar, p.stock_quantity, COALESCE(SUM(wi.quantity),0) as warehouse_total')
-            ->limit(100)
+            // No limit here on purpose: the display is capped further down, but
+            // --fix has to see every drifted product. Capping the query made a
+            // single run repair only the first slice and report the rest as new
+            // problems on the next run.
             ->get();
 
         if ($rows->isEmpty()) {

@@ -23,5 +23,30 @@ export const salesOrdersApi = {
 
     convertToInvoice(id) {
         return api.post(`/sales-orders/${id}/convert-to-invoice`);
-    }
+    },
+
+    /** The whole detail screen in one call: order, documents, diagnosis. */
+    detail(id) {
+        return api.get(`/sales-orders/${id}/detail`);
+    },
+
+    /** Per-warehouse coverage of the order, for the routing panel. */
+    routing(id) {
+        return api.get(`/sales-orders/${id}/routing`);
+    },
+
+    /** Confirms: reserves the stock, raises the invoice, posts the entry. */
+    confirm(id) {
+        return api.post(`/sales-orders/${id}/confirm`);
+    },
+
+    /** Moves the order to an execution stage, with all its side effects. */
+    transition(id, payload) {
+        return api.post(`/sales-orders/${id}/transition`, payload);
+    },
+
+    /** Changes ship/pickup/delivery, re-routing and re-pricing accordingly. */
+    changeFulfillmentType(id, payload) {
+        return api.post(`/sales-orders/${id}/fulfillment-type`, payload);
+    },
 };

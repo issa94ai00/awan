@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
 use DOMDocument;
 use DOMElement;
 use Illuminate\Database\Eloquent\Collection;
@@ -45,6 +46,7 @@ class ProductExcelService
         'الاسم بالإنجليزية' => 'string',
         'الباركود' => 'string',
         'السعر' => 'number',
+        'سعر التكلفة' => 'number',
         'الكمية' => 'number',
         'الكمية المتاحة' => 'number',
         'المحجوز' => 'number',
@@ -119,8 +121,11 @@ class ProductExcelService
                 'الاسم بالإنجليزية' => $nameEn,
                 'الباركود' => $item->product->barcode ?? '',
                 // Exported so the sheet can be edited and re-imported as a
-                // price list as well as a stock count.
+                // price list as well as a stock count. Cost price rides along
+                // because it drives the unit cost of any adjustment the import
+                // books, and the valuation column on the inventory screen.
                 'السعر' => (float) ($item->product->price ?? 0),
+                'سعر التكلفة' => (float) ($item->product->cost_price ?? 0),
                 'الكمية' => $item->quantity ?? 0,
                 'الكمية المتاحة' => $item->available_quantity ?? 0,
                 'المحجوز' => $item->reserved_quantity ?? 0,
@@ -476,28 +481,59 @@ class ProductExcelService
      * Upsert the warehouse inventory row for a product, keeping the condition
      * buckets consistent (all stock counted as available).
      */
+    /**
+     * Applies a counted quantity to one product in one warehouse.
+     *
+     * The quantity change goes through InventoryService rather than being
+     * written straight into warehouse_inventory. Writing the row directly kept
+     * the warehouse balance right but left `products.stock_quantity` frozen and
+     * produced no movement record, so an imported sheet silently pulled the
+     * product totals out of step with the warehouses they are meant to sum.
+     *
+     * A sheet states what is on the shelf, so the difference is booked as a
+     * stock-count adjustment — which is also what makes it auditable.
+     */
     private function setWarehouseStock(Warehouse $warehouse, Product $product, int $quantity, int $reorderPoint = 0): void
     {
         $quantity = max(0, $quantity);
         $reorderPoint = max(0, $reorderPoint);
 
-        WarehouseInventory::updateOrCreate(
+        $row = WarehouseInventory::firstOrCreate(
             [
                 'warehouse_id' => $warehouse->id,
                 'product_id' => $product->id,
                 'product_variant_id' => null,
             ],
             [
-                'quantity' => $quantity,
-                'available_quantity' => $quantity,
+                'quantity' => 0,
+                'available_quantity' => 0,
                 'damaged_quantity' => 0,
                 'quarantined_quantity' => 0,
                 'reserved_quantity' => 0,
-                'reorder_point' => $reorderPoint,
                 'safety_stock' => 0,
                 'cost_basis' => WarehouseInventory::COST_BASIS_FIFO,
             ]
         );
+
+        // Planning fields are plain settings, not stock, so they are just set.
+        $row->reorder_point = $reorderPoint;
+        $row->save();
+
+        $difference = $quantity - (int) $row->quantity;
+
+        if ($difference !== 0) {
+            app(InventoryService::class)->adjust(
+                $product->id,
+                $difference,
+                $warehouse->id,
+                [
+                    'source' => 'stock_import',
+                    'reason' => 'جرد مستورد من ملف',
+                    'reference' => $warehouse->name,
+                    'unit_cost' => (float) ($product->cost_price ?? 0),
+                ]
+            );
+        }
     }
 
     /**
@@ -765,7 +801,10 @@ class ProductExcelService
         $xml .= '<row r="1">';
         $index = 1;
         foreach (array_keys($columns) as $header) {
-            $xml .= $this->cellXml($this->colLetter($index), $header, 'string');
+            // The reference has to carry the row number ("A1", not "A"), or
+            // every row declares the same cells and Excel offers to repair the
+            // file before opening it.
+            $xml .= $this->cellXml($this->colLetter($index) . '1', $header, 'string');
             $index++;
         }
         $xml .= '</row>';
@@ -776,7 +815,7 @@ class ProductExcelService
             $index = 1;
             foreach ($columns as $header => $type) {
                 $value = $row[$header] ?? '';
-                $xml .= $this->cellXml($this->colLetter($index), $value, $type);
+                $xml .= $this->cellXml($this->colLetter($index) . $rowNumber, $value, $type);
                 $index++;
             }
             $xml .= '</row>';
