@@ -2101,6 +2101,64 @@ onUnmounted(() => {
 .items-table {
     width: 100%;
     border-collapse: collapse;
+    /*
+     * Fixed layout, so the columns share the available width instead of each
+     * one growing to fit its widest control. Left to size themselves, the
+     * quantity stepper claimed 235px and the unit select 150px, pushing the
+     * table to 979px inside a 657px panel — which hid the unit price and the
+     * line total behind a horizontal scrollbar. Those two numbers are the whole
+     * point of the row, so they are the last thing that may be pushed away.
+     */
+    table-layout: fixed;
+}
+
+/* Widths are set on the header cells and inherited by the column. The product
+   name takes whatever is left and wraps; everything else is sized to its
+   control. */
+.items-table thead th:nth-child(1) { width: auto; min-width: 150px; }   /* product   */
+.items-table thead th:nth-child(2) { width: 120px; }                    /* unit      */
+.items-table thead th:nth-child(3) { width: 132px; }                    /* quantity  */
+.items-table thead th:nth-child(4) { width: 128px; }                    /* price     */
+.items-table thead th:nth-child(5) { width: 96px; }                     /* total     */
+.items-table thead th:nth-child(6) { width: 56px; }                     /* delete    */
+
+.items-table td.product-cell {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* The controls fill their column rather than dictating it. */
+.items-table .unit-select,
+.items-table .price-cell :deep(.el-input-number) {
+    width: 100%;
+}
+
+.items-table .qty-control {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    justify-content: center;
+}
+
+.items-table .qty-control :deep(.el-input-number) {
+    width: 62px;
+}
+
+.items-table .qty-control :deep(.el-input-number .el-input__inner) {
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+/* The currency beside the price sits under it once the column is this narrow. */
+.items-table .price-cell {
+    white-space: nowrap;
+}
+
+.items-table .price-cell .currency {
+    display: block;
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin-top: 0.15rem;
 }
 
 .items-table thead th {
@@ -2727,6 +2785,20 @@ onUnmounted(() => {
     .items-table td {
         display: block;
         width: 100%;
+    }
+
+    /* Card mode sizes itself; the desktop column widths must not apply. */
+    .items-table {
+        table-layout: auto;
+    }
+
+    .items-table .qty-control :deep(.el-input-number) {
+        width: 78px;
+    }
+
+    .items-table .price-cell .currency {
+        display: inline;
+        margin: 0 0 0 0.35rem;
     }
 
     .items-table tr.item-table-row {
