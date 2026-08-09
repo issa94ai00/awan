@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\ProductionController;
 use App\Http\Controllers\Api\CustomerAuthController;
 use App\Http\Controllers\Api\SubscribeController;
 use App\Http\Controllers\Api\PurchaseRequestController;
+use App\Http\Controllers\Api\OrderAllocationController;
 use App\Http\Controllers\Api\QuoteController;
 use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\Field\FieldInventoryController;
@@ -401,12 +402,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
         // Admin Purchase Requests Management (employee/manager/admin roles only)
         Route::middleware('manage_orders')->group(function () {
+            Route::post('/admin/purchase-requests', [PurchaseRequestController::class, 'adminStore'])->name('api.purchase-requests.admin.store');
             Route::get('/purchase-requests', [PurchaseRequestController::class, 'adminIndex'])->name('api.purchase-requests.admin.index');
             Route::get('/purchase-requests/{salesOrder}', [PurchaseRequestController::class, 'adminShow'])->name('api.purchase-requests.admin.show');
             Route::put('/purchase-requests/{salesOrder}/status', [PurchaseRequestController::class, 'adminUpdateStatus'])->name('api.purchase-requests.admin.update-status');
             Route::put('/purchase-requests/{salesOrder}/items', [PurchaseRequestController::class, 'adminUpdateItems'])->name('api.purchase-requests.admin.update-items');
             Route::put('/purchase-requests/{salesOrder}/assign', [PurchaseRequestController::class, 'adminAssignEmployee'])->name('api.purchase-requests.admin.assign');
         });
+
+        // Warehouse split suggestions for staff cart (اقتراح توزيع المستودعات)
+        Route::post('/order-allocations/suggest', [OrderAllocationController::class, 'suggest'])->name('api.order-allocations.suggest');
 
         // POS / Flutter POS System
         Route::get('/pos/options', [PosController::class, 'options'])->name('api.pos.options');

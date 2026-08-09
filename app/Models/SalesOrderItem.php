@@ -38,6 +38,15 @@ class SalesOrderItem extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Per-warehouse fulfilment plan. An item may be split across several
+     * warehouses; the sum of allocation quantities equals `quantity`.
+     */
+    public function allocations()
+    {
+        return $this->hasMany(SalesOrderItemAllocation::class);
+    }
+
     protected static function booted(): void
     {
         static::saving(function ($item) {
