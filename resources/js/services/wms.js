@@ -82,6 +82,15 @@ export const wmsService = {
         return api.post(`${API_BASE_URL}/picking-lists/${id}/cancel`);
     },
 
+    /**
+     * Records what was actually taken off the shelf for one line. Returns the
+     * whole refreshed list, so the caller never has to re-fetch to learn the
+     * new progress.
+     */
+    pickItem(itemId, payload) {
+        return api.post(`${API_BASE_URL}/picking-items/${itemId}`, payload);
+    },
+
     // Packing Lists
     getPackingLists(params = {}) {
         return api.get(`${API_BASE_URL}/packing-lists`, { params });

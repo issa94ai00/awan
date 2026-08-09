@@ -701,31 +701,178 @@ class WmsController extends Controller
 
     // ==================== Picking Lists ====================
 
+    /**
+     * The warehouse's picking queue.
+     *
+     * Returns a flattened row per list rather than the raw model graph: the
+     * screen previously bound `row.order_number` and `row.warehouse` against
+     * nested `salesOrder` / `warehouse` objects, so both columns rendered blank
+     * on every row.
+     */
     public function indexPickingLists(Request $request)
     {
-        $query = PickingList::with(['warehouse', 'salesOrder.customer', 'picker', 'items.product', 'items.bin']);
+        $query = PickingList::with(['warehouse:id,name,code', 'salesOrder.customer:id,name', 'picker:id,name']);
 
-        if ($request->warehouse_id) {
+        if ($request->filled('warehouse_id')) {
             $query->byWarehouse($request->warehouse_id);
         }
 
-        if ($request->status) {
+        if ($request->filled('status')) {
             $query->byStatus($request->status);
         }
 
-        if ($request->picker_id) {
+        if ($request->filled('picker_id')) {
             $query->byPicker($request->picker_id);
         }
 
-        return response()->json($query->paginate(20));
+        // What a supervisor actually looks for: the work that is not done.
+        if ($request->boolean('open_only')) {
+            $query->whereIn('status', [PickingList::STATUS_PENDING, PickingList::STATUS_IN_PROGRESS]);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q
+                ->where('list_number', 'like', "%{$search}%")
+                ->orWhereHas('salesOrder', fn ($o) => $o->where('order_number', 'like', "%{$search}%")));
+        }
+
+        $lists = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'lists' => collect($lists->items())->map(fn ($l) => $this->presentPickingList($l))->all(),
+                'status_counts' => $this->pickingStatusCounts($request->input('warehouse_id')),
+                'pagination' => [
+                    'current_page' => $lists->currentPage(),
+                    'last_page' => $lists->lastPage(),
+                    'per_page' => $lists->perPage(),
+                    'total' => $lists->total(),
+                    'has_more_pages' => $lists->hasMorePages(),
+                ],
+            ],
+        ]);
     }
 
+    /**
+     * Every picking action answers with the refreshed list.
+     *
+     * The screen used to fire a second request after each pick to find out what
+     * changed, which left a window where the progress bar and the buttons
+     * disagreed with the server about the state of the list.
+     */
+    private function pickingResponse(PickingList $list, string $message)
+    {
+        $list->refresh()->load([
+            'warehouse:id,name,code', 'salesOrder.customer:id,name,phone',
+            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode', 'items.bin',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => ['list' => $this->presentPickingList($list, withItems: true)],
+        ]);
+    }
+
+    /** How many lists sit in each state, across the whole queue not the page. */
+    private function pickingStatusCounts($warehouseId = null): array
+    {
+        $counts = PickingList::query()
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        return [
+            'all' => (int) $counts->sum(),
+            'pending' => (int) ($counts[PickingList::STATUS_PENDING] ?? 0),
+            'in_progress' => (int) ($counts[PickingList::STATUS_IN_PROGRESS] ?? 0),
+            'completed' => (int) ($counts[PickingList::STATUS_COMPLETED] ?? 0),
+            'cancelled' => (int) ($counts[PickingList::STATUS_CANCELLED] ?? 0),
+        ];
+    }
+
+    /**
+     * One picking list, flattened for the screen.
+     *
+     * Labels and progress are computed here so every client shows the same
+     * wording and the same percentage for the same row.
+     */
+    private function presentPickingList(PickingList $l, bool $withItems = false): array
+    {
+        $total = (int) $l->total_items;
+        $picked = (int) $l->picked_items;
+
+        $row = [
+            'id' => $l->id,
+            'list_number' => $l->list_number,
+            'status' => $l->status,
+            'status_text' => $l->status_text,
+            'priority' => $l->priority,
+            'priority_text' => $l->priority_text,
+            'warehouse_id' => (int) $l->warehouse_id,
+            'warehouse_name' => $l->warehouse?->name,
+            'sales_order_id' => $l->sales_order_id ? (int) $l->sales_order_id : null,
+            'order_number' => $l->salesOrder?->order_number,
+            'customer_name' => $l->salesOrder?->customer?->name,
+            'picker_id' => $l->picker_id ? (int) $l->picker_id : null,
+            'picker_name' => $l->picker?->name,
+            'total_items' => $total,
+            'picked_items' => $picked,
+            'progress' => $total > 0 ? (int) round($picked / $total * 100) : 0,
+            // The screen shows or hides its buttons off these rather than
+            // re-deriving the rules, so the two cannot disagree.
+            'can_start' => $l->status === PickingList::STATUS_PENDING,
+            'can_complete' => $l->status === PickingList::STATUS_IN_PROGRESS,
+            'can_cancel' => !in_array($l->status, [PickingList::STATUS_COMPLETED, PickingList::STATUS_CANCELLED], true),
+            'started_at' => $l->started_at?->toDateTimeString(),
+            'completed_at' => $l->completed_at?->toDateTimeString(),
+            'created_at' => $l->created_at?->toDateTimeString(),
+        ];
+
+        if ($withItems) {
+            $row['items'] = $l->items->map(fn ($i) => [
+                'id' => $i->id,
+                'product_id' => (int) $i->product_id,
+                'sku' => $i->product?->sku,
+                'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
+                'barcode' => $i->barcode,
+                'bin_code' => $i->bin?->bin_code,
+                'bin_location' => $i->bin ? trim(($i->bin->zone ?? '') . ' ' . ($i->bin->rack ?? '') . ' ' . ($i->bin->shelf ?? '')) : null,
+                'quantity_to_pick' => (int) $i->quantity_to_pick,
+                'quantity_picked' => (int) $i->quantity_picked,
+                'remaining' => max(0, (int) $i->quantity_to_pick - (int) $i->quantity_picked),
+                'status' => $i->status,
+                'status_text' => match ($i->status) {
+                    PickingListItem::STATUS_PENDING => 'بانتظار السحب',
+                    PickingListItem::STATUS_PICKED => 'مسحوب',
+                    PickingListItem::STATUS_SHORT => 'ناقص',
+                    PickingListItem::STATUS_CANCELLED => 'ملغي',
+                    default => $i->status,
+                },
+                'verified' => (bool) $i->verified,
+                'picked_at' => $i->picked_at?->toDateTimeString(),
+                'sort_order' => (int) $i->sort_order,
+            ])->sortBy('sort_order')->values();
+        }
+
+        return $row;
+    }
+
+    /** One picking list with its lines — the picker's working screen. */
     public function showPickingList($id)
     {
-        $list = PickingList::with(['warehouse', 'salesOrder.customer', 'picker', 'items.product', 'items.bin', 'items.productVariant'])
-            ->findOrFail($id);
+        $list = PickingList::with([
+            'warehouse:id,name,code', 'salesOrder.customer:id,name,phone',
+            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode', 'items.bin',
+        ])->findOrFail($id);
 
-        return response()->json($list);
+        return response()->json([
+            'success' => true,
+            'data' => ['list' => $this->presentPickingList($list, withItems: true)],
+        ]);
     }
 
     public function createPickingList(Request $request)
@@ -753,9 +900,10 @@ class WmsController extends Controller
 
         try {
             $this->pickingService->startPicking($list, $request->user()->id);
-            return response()->json(['message' => 'Picking started']);
+
+            return $this->pickingResponse($list, 'بدأ سحب الأصناف من الرفوف.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -770,9 +918,12 @@ class WmsController extends Controller
 
         try {
             $this->pickingService->pickItem($item, $validated['quantity'], $validated['verified'] ?? false);
-            return response()->json(['message' => 'Item picked successfully']);
+
+            // The whole list comes back so the screen never has to guess at the
+            // new progress or re-request it.
+            return $this->pickingResponse($item->pickingList()->first(), 'تم تسجيل السحب.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -782,9 +933,10 @@ class WmsController extends Controller
 
         try {
             $this->pickingService->completePicking($list);
-            return response()->json(['message' => 'Picking completed']);
+
+            return $this->pickingResponse($list, 'اكتمل التجهيز — الأصناف جاهزة للشحن.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -794,9 +946,10 @@ class WmsController extends Controller
 
         try {
             $this->pickingService->cancelPicking($list);
-            return response()->json(['message' => 'Picking cancelled']);
+
+            return $this->pickingResponse($list, 'أُلغيت قائمة التجهيز.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 

@@ -239,12 +239,22 @@ class PickingService
      */
     public function pickItem(PickingListItem $item, $quantity, $verified = false): void
     {
+        $list = $item->pickingList()->first();
+
+        // The line's own status said nothing about whether picking had begun,
+        // so quantities could be recorded against a list nobody had started —
+        // or one already completed or cancelled. Starting is what assigns the
+        // picker, and without it a pick has no one's name against it.
+        if (!$list || $list->status !== PickingList::STATUS_IN_PROGRESS) {
+            throw new \Exception('لا يمكن تسجيل السحب قبل بدء التجهيز. ابدأ القائمة أولاً.');
+        }
+
         if ($item->status !== PickingListItem::STATUS_PENDING) {
-            throw new \Exception('Item cannot be picked');
+            throw new \Exception('هذا الصنف سُجّل سحبه مسبقاً.');
         }
 
         if ($quantity > $item->quantity_to_pick) {
-            throw new \Exception('Quantity exceeds required amount');
+            throw new \Exception('الكمية المسحوبة تتجاوز المطلوب (' . $item->quantity_to_pick . ').');
         }
 
         $item->markAsPicked($quantity);

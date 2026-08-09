@@ -466,6 +466,14 @@ const routes = [
                 component: () => import('@/views/admin/wms/PickingForm.vue')
             },
             {
+                // The picking screen itself. The list page has always linked
+                // here, but the route did not exist, so "view" was a dead end
+                // and there was nowhere to actually record a pick.
+                path: 'wms/picking/:id',
+                name: 'admin.wms.picking.show',
+                component: () => import('@/views/admin/wms/PickingDetail.vue')
+            },
+            {
                 path: 'wms/packing',
                 name: 'admin.wms.packing.index',
                 component: () => import('@/views/admin/wms/PackingLists.vue')
