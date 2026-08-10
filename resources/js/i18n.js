@@ -296,6 +296,26 @@ const messages = {
         forgot_password: 'Forgot Password?',
         login_button: 'Login',
         register_button: 'Register',
+
+        // Login screen
+        admin_portal: 'Admin portal',
+        login_welcome_back: 'Welcome back',
+        login_page_subtitle: 'Sign in to your account to manage the control panel.',
+        login_identifier: 'Email or phone number',
+        // `@` starts a linked message in vue-i18n, so it has to be a literal
+        login_identifier_placeholder: "name{'@'}example.com or 0912345678",
+        login_password_placeholder: 'Enter your password',
+        login_in_progress: 'Signing in…',
+        login_failed: 'Login failed. Please check your credentials and try again.',
+        show_password: 'Show password',
+        hide_password: 'Hide password',
+        caps_lock_on: 'Caps Lock is on',
+        remember_identifier: 'Remember my username',
+        back_to_site: 'Back to site',
+        secure_connection_note: 'Secure, encrypted connection',
+        login_point_modules: 'Inventory, sales and accounting in one place',
+        login_point_reports: 'Live reports and up-to-the-minute figures',
+        login_point_roles: 'Fine-grained permissions for every user',
         
         // Messages
         login_success: 'Login successful',
@@ -2448,6 +2468,26 @@ const messages = {
         forgot_password: 'نسيت كلمة المرور؟',
         login_button: 'تسجيل الدخول',
         register_button: 'التسجيل',
+
+        // شاشة تسجيل الدخول
+        admin_portal: 'بوابة الإدارة',
+        login_welcome_back: 'مرحباً بعودتك',
+        login_page_subtitle: 'سجّل الدخول إلى حسابك لإدارة لوحة التحكم.',
+        login_identifier: 'البريد الإلكتروني أو رقم الهاتف',
+        // `@` يبدأ رسالة مرتبطة في vue-i18n، لذا يجب كتابته كنص حرفي
+        login_identifier_placeholder: "name{'@'}example.com أو 0912345678",
+        login_password_placeholder: 'أدخل كلمة المرور',
+        login_in_progress: 'جارٍ تسجيل الدخول…',
+        login_failed: 'فشل تسجيل الدخول. تحقّق من بياناتك وحاول مجدداً.',
+        show_password: 'إظهار كلمة المرور',
+        hide_password: 'إخفاء كلمة المرور',
+        caps_lock_on: 'مفتاح Caps Lock مُفعّل',
+        remember_identifier: 'تذكّر اسم المستخدم',
+        back_to_site: 'العودة إلى الموقع',
+        secure_connection_note: 'اتصال آمن ومشفّر',
+        login_point_modules: 'المخزون والمبيعات والمحاسبة في مكان واحد',
+        login_point_reports: 'تقارير حية وأرقام محدّثة لحظياً',
+        login_point_roles: 'صلاحيات دقيقة لكل مستخدم',
         
         // Messages
         login_success: 'تم تسجيل الدخول بنجاح',
