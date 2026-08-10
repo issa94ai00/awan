@@ -37,7 +37,22 @@ class ProductExcelService
     ];
 
     /**
-     * Accepted header aliases (after normalization) mapped to an internal field.
+     * The stock sheet's columns.
+     *
+     * A stock sheet is a *count document*: it records what is physically on the
+     * shelf and in what condition. That is the line the columns are drawn along.
+     *
+     *   editable    price, cost, the physical condition buckets, reorder point
+     *   computed    reserved, and what is sellable — both derived from orders
+     *               and from the buckets, so importing them would mean the sheet
+     *               overwriting facts it does not own
+     *
+     * "الكمية المتاحة" used to head this sheet, carrying the `available_quantity`
+     * column — the good-condition bucket, which does not subtract reserved. The
+     * inventory panel prints the same words over a different figure (quantity
+     * less reserved, damaged and quarantined), so the export and the screen
+     * disagreed for every product with a reservation against it while insisting
+     * they meant the same thing. Each number now has a name of its own.
      */
     private const INVENTORY_EXPORT_COLUMNS = [
         'المستودع' => 'string',
@@ -45,14 +60,32 @@ class ProductExcelService
         'الاسم' => 'string',
         'الاسم بالإنجليزية' => 'string',
         'الباركود' => 'string',
-        'السعر' => 'number',
+        'سعر البيع' => 'number',
         'سعر التكلفة' => 'number',
-        'الكمية' => 'number',
-        'الكمية المتاحة' => 'number',
-        'المحجوز' => 'number',
+        'الكمية الإجمالية' => 'number',
         'التالفة' => 'number',
         'المحتجزة' => 'number',
         'نقطة إعادة الترتيب' => 'number',
+        // Everything past this point is written for the reader and ignored by
+        // the importer — see IMPORT_IGNORED_FIELDS.
+        'السليمة (محسوب)' => 'number',
+        'المحجوز (محسوب)' => 'number',
+        'المتاح للبيع (محسوب)' => 'number',
+    ];
+
+    /**
+     * Recognised on import, deliberately not applied.
+     *
+     * Reserved is a hold the system places against real orders; a sheet that
+     * could rewrite it would release or invent promises to customers. Sellable
+     * and the good bucket are arithmetic over the other columns. Silently
+     * dropping them is what made the old round trip lossy, so they are named
+     * here and reported back to the caller instead.
+     */
+    private const IMPORT_IGNORED_FIELDS = [
+        'reserved_quantity' => 'المحجوز',
+        'sellable_quantity' => 'المتاح للبيع',
+        'available_quantity' => 'السليمة',
     ];
 
     private const COLUMN_MAP = [
@@ -62,13 +95,19 @@ class ProductExcelService
         'category' => ['الفئة', 'category', 'categories', 'category_name', 'التصنيف', 'القسم'],
         'price' => ['السعر', 'price', 'سعر البيع', 'selling price', 'المبلغ'],
         'cost_price' => ['سعر التكلفة', 'cost_price', 'التكلفة', 'cost', 'سعر الشراء'],
-        'stock_quantity' => ['الكمية', 'المتبقي', 'المتبقي مخزون', 'سحب أيوب', 'stock', 'quantity', 'stock_quantity', 'qty', 'الرصيد', 'المخزون'],
+        // The total physically on the shelf, in every condition. Sheets exported
+        // before the columns were disambiguated say "الكمية"; both are accepted
+        // so an older file still imports as its author meant it.
+        'stock_quantity' => ['الكمية الإجمالية', 'الكمية', 'المتبقي', 'المتبقي مخزون', 'سحب أيوب', 'stock', 'quantity', 'stock_quantity', 'qty', 'الرصيد', 'المخزون'],
         'warehouse' => ['المستودع', 'warehouse', 'warehouse_id', 'warehouse name', 'warehouse_name'],
-        'available_quantity' => ['الكمية المتاحة', 'available_quantity', 'available', 'available qty'],
-        'reserved_quantity' => ['المحجوز', 'reserved_quantity', 'reserved'],
         'damaged_quantity' => ['التالفة', 'damaged_quantity', 'damaged'],
         'quarantined_quantity' => ['المحتجزة', 'quarantined_quantity', 'quarantined'],
         'reorder_point' => ['نقطة إعادة الترتيب', 'reorder_point', 'reorder'],
+        // Recognised so the importer can say it ignored them rather than let a
+        // typed-in change vanish without a word. See IMPORT_IGNORED_FIELDS.
+        'available_quantity' => ['السليمة (محسوب)', 'السليمة', 'الكمية المتاحة', 'available_quantity', 'available', 'available qty'],
+        'reserved_quantity' => ['المحجوز (محسوب)', 'المحجوز', 'reserved_quantity', 'reserved'],
+        'sellable_quantity' => ['المتاح للبيع (محسوب)', 'المتاح للبيع', 'sellable', 'sellable_quantity'],
         'unit' => ['الوحدة', 'unit', 'unit_of_measurement', 'وحدة القياس'],
         'brand' => ['العلامة التجارية', 'brand', 'الماركة', 'الشركة'],
         'model' => ['الموديل', 'model', 'الطراز'],
@@ -114,6 +153,11 @@ class ProductExcelService
                 $nameEn = trim((string) ($item->product->name_ar ?? ''));
             }
 
+            $quantity = (int) ($item->quantity ?? 0);
+            $reserved = (int) ($item->reserved_quantity ?? 0);
+            $damaged = (int) ($item->damaged_quantity ?? 0);
+            $quarantined = (int) ($item->quarantined_quantity ?? 0);
+
             return [
                 'المستودع' => $item->warehouse->name ?? '',
                 'SKU' => $item->product->sku ?? '',
@@ -124,14 +168,22 @@ class ProductExcelService
                 // price list as well as a stock count. Cost price rides along
                 // because it drives the unit cost of any adjustment the import
                 // books, and the valuation column on the inventory screen.
-                'السعر' => (float) ($item->product->price ?? 0),
+                'سعر البيع' => (float) ($item->product->price ?? 0),
                 'سعر التكلفة' => (float) ($item->product->cost_price ?? 0),
-                'الكمية' => $item->quantity ?? 0,
-                'الكمية المتاحة' => $item->available_quantity ?? 0,
-                'المحجوز' => $item->reserved_quantity ?? 0,
-                'التالفة' => $item->damaged_quantity ?? 0,
-                'المحتجزة' => $item->quarantined_quantity ?? 0,
-                'نقطة إعادة الترتيب' => $item->reorder_point ?? 0,
+                'الكمية الإجمالية' => $quantity,
+                'التالفة' => $damaged,
+                'المحتجزة' => $quarantined,
+                'نقطة إعادة الترتيب' => (int) ($item->reorder_point ?? 0),
+
+                /* -- computed, for reading only -- */
+
+                'السليمة (محسوب)' => (int) ($item->available_quantity ?? 0),
+                'المحجوز (محسوب)' => $reserved,
+                // Derived here exactly as the inventory panel derives it, so a
+                // figure read off the sheet and the same figure read off the
+                // screen are the same number rather than two that merely share
+                // a name.
+                'المتاح للبيع (محسوب)' => max(0, $quantity - $reserved - $damaged - $quarantined),
             ];
         })->all();
 
@@ -149,17 +201,29 @@ class ProductExcelService
             'inventory_rows' => 0,
             'inventory_created' => 0,
             'inventory_updated' => 0,
+            // Columns present in the sheet that the importer will not apply.
+            // Reported rather than dropped in silence: an operator who edits the
+            // reserved column deserves to be told it did nothing, instead of
+            // believing the change took and finding out later from a wrong
+            // figure on a screen somewhere else.
+            'ignored_columns' => $this->ignoredColumnsIn($rows),
             'errors' => [],
         ];
 
         foreach ($rows as $index => $rawRow) {
-            $rowNumber = $index + 1;
+            // +1 for the header row, so the number matches what the operator
+            // sees in the spreadsheet's own gutter when they go to fix it.
+            $rowNumber = $index + 2;
 
             try {
                 $data = $this->mapRow($rawRow);
 
                 if (empty($data['warehouse'])) {
-                    throw new \RuntimeException('Warehouse value is required.');
+                    throw new \RuntimeException('عمود المستودع مطلوب.');
+                }
+
+                if ($data['stock_quantity'] === null) {
+                    throw new \RuntimeException('عمود الكمية الإجمالية مطلوب.');
                 }
 
                 $product = $this->findOrCreateProduct($data);
@@ -176,19 +240,31 @@ class ProductExcelService
                     }
                 }
 
-                $quantity = $data['stock_quantity'] ?? 0;
-                $reorderPoint = max(0, $data['reorder_point'] ?? 0);
+                $quantity = (int) $data['stock_quantity'];
+                // A missing reorder-point column leaves the existing setting
+                // alone rather than resetting every product's trigger to zero,
+                // which would silence the restock screen company-wide.
+                $reorderPoint = $data['reorder_point'];
                 $warehouse = $this->resolveWarehouse($data['warehouse']);
 
                 // Keyed on warehouse + product, so the same product listed under
                 // a second warehouse gets its own stock row rather than moving
                 // the existing one.
-                $existed = WarehouseInventory::where('warehouse_id', $warehouse->id)
+                $existing = WarehouseInventory::where('warehouse_id', $warehouse->id)
                     ->where('product_id', $product->id)
                     ->whereNull('product_variant_id')
-                    ->exists();
+                    ->first();
 
-                $this->setWarehouseStock($warehouse, $product, $quantity, $reorderPoint);
+                $this->setWarehouseStock(
+                    $warehouse,
+                    $product,
+                    $quantity,
+                    $reorderPoint ?? (int) ($existing->reorder_point ?? 0),
+                    $data['damaged_quantity'],
+                    $data['quarantined_quantity'],
+                );
+
+                $existed = $existing !== null;
 
                 $result['inventory_rows']++;
                 $existed ? $result['inventory_updated']++ : $result['inventory_created']++;
@@ -201,6 +277,28 @@ class ProductExcelService
         }
 
         return $result;
+    }
+
+    /**
+     * Which computed columns the sheet carries that the importer will not apply.
+     *
+     * @param  array<int,array<string,mixed>>  $rows
+     * @return array<int,string>  Arabic labels, ready to show
+     */
+    private function ignoredColumnsIn(array $rows): array
+    {
+        $headers = array_keys($rows[0] ?? []);
+        $present = [];
+
+        foreach ($headers as $header) {
+            $field = $this->fieldForHeader($header);
+
+            if ($field !== null && isset(self::IMPORT_IGNORED_FIELDS[$field])) {
+                $present[$field] = self::IMPORT_IGNORED_FIELDS[$field];
+            }
+        }
+
+        return array_values($present);
     }
 
     /**
@@ -478,23 +576,42 @@ class ProductExcelService
     }
 
     /**
-     * Upsert the warehouse inventory row for a product, keeping the condition
-     * buckets consistent (all stock counted as available).
-     */
-    /**
      * Applies a counted quantity to one product in one warehouse.
      *
-     * The quantity change goes through InventoryService rather than being
-     * written straight into warehouse_inventory. Writing the row directly kept
-     * the warehouse balance right but left `products.stock_quantity` frozen and
+     * The change goes through InventoryService rather than being written
+     * straight into warehouse_inventory. Writing the row directly kept the
+     * warehouse balance right but left `products.stock_quantity` frozen and
      * produced no movement record, so an imported sheet silently pulled the
      * product totals out of step with the warehouses they are meant to sum.
      *
      * A sheet states what is on the shelf, so the difference is booked as a
      * stock-count adjustment — which is also what makes it auditable.
+     *
+     * ## The buckets
+     *
+     * `quantity` is not a figure of its own: it is the sum of the condition
+     * buckets, and everything downstream depends on that holding. The
+     * reservation check reads `available_quantity - reserved_quantity`; the
+     * field app's sourcing and restock screens read the same. Adjusting only the
+     * total — which is what this did — pushed the entire difference into the
+     * good bucket while damaged and quarantined stayed where they were, so a
+     * sheet reporting three damaged units *added* three sellable ones.
+     *
+     * Each bucket is therefore moved to its own counted figure, and the total
+     * follows from them. Reserved is never touched here: it is a hold against
+     * real orders, and no count document owns it.
+     *
+     * @param  int|null  $damaged      null leaves the bucket as it is
+     * @param  int|null  $quarantined  null leaves the bucket as it is
      */
-    private function setWarehouseStock(Warehouse $warehouse, Product $product, int $quantity, int $reorderPoint = 0): void
-    {
+    private function setWarehouseStock(
+        Warehouse $warehouse,
+        Product $product,
+        int $quantity,
+        int $reorderPoint = 0,
+        ?int $damaged = null,
+        ?int $quarantined = null,
+    ): void {
         $quantity = max(0, $quantity);
         $reorderPoint = max(0, $reorderPoint);
 
@@ -519,14 +636,57 @@ class ProductExcelService
         $row->reorder_point = $reorderPoint;
         $row->save();
 
-        $difference = $quantity - (int) $row->quantity;
+        // A column the sheet left out means "unchanged", not "zero". Wiping a
+        // damaged count because the operator exported a narrower view would
+        // quietly return broken goods to sale.
+        $targetDamaged = max(0, $damaged ?? (int) $row->damaged_quantity);
+        $targetQuarantined = max(0, $quarantined ?? (int) $row->quarantined_quantity);
 
-        if ($difference !== 0) {
-            app(InventoryService::class)->adjust(
+        $unusable = $targetDamaged + $targetQuarantined;
+
+        if ($unusable > $quantity) {
+            throw new \RuntimeException(sprintf(
+                'التالفة (%d) والمحتجزة (%d) معاً تتجاوزان الكمية الإجمالية (%d).',
+                $targetDamaged,
+                $targetQuarantined,
+                $quantity
+            ));
+        }
+
+        // Whatever is left after the unusable stock is the good bucket.
+        $targetAvailable = $quantity - $unusable;
+
+        $reserved = (int) $row->reserved_quantity;
+        if ($targetAvailable < $reserved) {
+            throw new \RuntimeException(sprintf(
+                'الكمية السليمة بعد الجرد (%d) أقل من المحجوز لطلبات قائمة (%d). عالج الطلبات أولاً أو صحّح الجرد.',
+                $targetAvailable,
+                $reserved
+            ));
+        }
+
+        $inventory = app(InventoryService::class);
+
+        // One adjustment per bucket, each writing its own movement — a count
+        // that finds damage is a real inventory event and belongs in the log,
+        // not folded invisibly into a single net number.
+        $moves = [
+            InventoryService::CONDITION_AVAILABLE => $targetAvailable - (int) $row->available_quantity,
+            InventoryService::CONDITION_DAMAGED => $targetDamaged - (int) $row->damaged_quantity,
+            InventoryService::CONDITION_QUARANTINED => $targetQuarantined - (int) $row->quarantined_quantity,
+        ];
+
+        foreach ($moves as $condition => $difference) {
+            if ($difference === 0) {
+                continue;
+            }
+
+            $inventory->adjust(
                 $product->id,
                 $difference,
                 $warehouse->id,
                 [
+                    'condition' => $condition,
                     'source' => 'stock_import',
                     'reason' => 'جرد مستورد من ملف',
                     'reference' => $warehouse->name,
@@ -870,6 +1030,18 @@ class ProductExcelService
             'slug' => null,
             'is_active' => null,
             'is_featured' => null,
+            // Stock-sheet fields. These were absent from this list, so they
+            // reached the importer through the catch-all branch below as raw
+            // strings — untyped, and impossible to tell apart from "the column
+            // was not in the sheet at all", which is the distinction the whole
+            // "leave it as it is" behaviour rests on.
+            'warehouse' => null,
+            'damaged_quantity' => null,
+            'quarantined_quantity' => null,
+            'reorder_point' => null,
+            'available_quantity' => null,
+            'reserved_quantity' => null,
+            'sellable_quantity' => null,
         ];
 
         foreach ($raw as $header => $value) {
@@ -889,6 +1061,12 @@ class ProductExcelService
                     $data[$field] = $this->toNumber($value);
                     break;
                 case 'stock_quantity':
+                case 'damaged_quantity':
+                case 'quarantined_quantity':
+                case 'reorder_point':
+                case 'available_quantity':
+                case 'reserved_quantity':
+                case 'sellable_quantity':
                     $data[$field] = max(0, (int) $this->toNumber($value));
                     break;
                 case 'is_active':

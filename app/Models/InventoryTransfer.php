@@ -13,11 +13,14 @@ class InventoryTransfer extends Model
         'from_warehouse_id',
         'to_warehouse_id',
         'status',
+        'fulfillment_method',
         'requested_at',
+        'approved_at',
         'shipped_at',
         'received_at',
         'notes',
         'created_by',
+        'approved_by',
         'shipped_by',
         'received_by',
         'transfer_number',
@@ -25,14 +28,25 @@ class InventoryTransfer extends Model
 
     protected $casts = [
         'requested_at' => 'datetime',
+        'approved_at' => 'datetime',
         'shipped_at' => 'datetime',
         'received_at' => 'datetime',
     ];
 
     const STATUS_PENDING = 'pending';
     const STATUS_IN_TRANSIT = 'in_transit';
+    /** Approved for collection: the goods are set aside at the source. */
+    const STATUS_READY_FOR_PICKUP = 'ready_for_pickup';
     const STATUS_COMPLETED = 'completed';
     const STATUS_CANCELLED = 'cancelled';
+
+    /** Someone carries the goods to the branch. */
+    const METHOD_DELIVERY = 'delivery';
+    /** The requester collects them from the source warehouse in person. */
+    const METHOD_PICKUP = 'pickup';
+
+    /** Stages at which the source is holding stock it has not yet released. */
+    const HELD_STAGES = [self::STATUS_PENDING, self::STATUS_READY_FOR_PICKUP];
 
     public function fromWarehouse()
     {
@@ -76,7 +90,12 @@ class InventoryTransfer extends Model
 
         static::creating(function ($transfer) {
             if (empty($transfer->transfer_number)) {
-                $transfer->transfer_number = 'TRF-' . str_pad(static::count() + 1, 6, '0', STR_PAD_LEFT);
+                // Derived from the last id, not a count: counting reuses a
+                // number the moment any transfer is deleted, and the column is
+                // unique — so the next insert failed rather than renumbering.
+                $transfer->transfer_number = 'TRF-' . str_pad(
+                    (string) (((int) static::max('id')) + 1), 6, '0', STR_PAD_LEFT
+                );
             }
         });
     }
@@ -114,40 +133,73 @@ class InventoryTransfer extends Model
     public function getStatusTextAttribute(): string
     {
         return match($this->status) {
-            self::STATUS_PENDING => 'معلق',
-            self::STATUS_IN_TRANSIT => 'قيد النقل',
+            self::STATUS_PENDING => 'بانتظار موافقة المستودع',
+            self::STATUS_IN_TRANSIT => 'قيد النقل إلى الفرع',
+            self::STATUS_READY_FOR_PICKUP => 'جاهز للاستلام من المستودع',
             self::STATUS_COMPLETED => 'مكتمل',
             self::STATUS_CANCELLED => 'ملغي',
             default => $this->status,
         };
     }
 
-    public function canShip(): bool
+    public function getFulfillmentMethodTextAttribute(): ?string
+    {
+        return match($this->fulfillment_method) {
+            self::METHOD_DELIVERY => 'شحن إلى الفرع',
+            self::METHOD_PICKUP => 'استلام من المستودع',
+            default => null,
+        };
+    }
+
+    /** Waiting on the source warehouse to decide how it will be fulfilled. */
+    public function canApprove(): bool
     {
         return $this->status === self::STATUS_PENDING;
     }
 
+    /**
+     * Ready for the requester to take delivery.
+     *
+     * Both approved stages qualify, and they mean different things physically:
+     * in transit the goods have already left the source, waiting for pickup
+     * they are still on its shelf. What happens at receipt differs accordingly
+     * — see ReplenishmentWorkflowService::receive.
+     */
     public function canReceive(): bool
     {
-        return $this->status === self::STATUS_IN_TRANSIT;
+        return in_array($this->status, [self::STATUS_IN_TRANSIT, self::STATUS_READY_FOR_PICKUP], true);
     }
 
+    /**
+     * Cancellable until the goods physically leave.
+     *
+     * Stock set aside for collection can still be released — nothing has moved.
+     * Once it is in transit it is somewhere on a road, and calling that off is
+     * a return, not a cancellation.
+     */
     public function canCancel(): bool
     {
-        return $this->status === self::STATUS_PENDING;
+        return in_array($this->status, self::HELD_STAGES, true);
     }
 
-    public function ship(): void
+    /** Whether the source still holds a reservation for this transfer. */
+    public function holdsReservation(): bool
     {
-        $this->status = self::STATUS_IN_TRANSIT;
-        $this->shipped_at = now();
-        $this->save();
+        return in_array($this->status, self::HELD_STAGES, true);
     }
 
-    public function receive(): void
+    public function isPickup(): bool
     {
-        $this->status = self::STATUS_COMPLETED;
-        $this->received_at = now();
-        $this->save();
+        return $this->fulfillment_method === self::METHOD_PICKUP;
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function scopeReadyForPickup($query)
+    {
+        return $query->where('status', self::STATUS_READY_FOR_PICKUP);
     }
 }

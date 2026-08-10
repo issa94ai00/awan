@@ -24,18 +24,15 @@ class InventoryController extends Controller
     public function summary(): JsonResponse
     {
         // The stored `cost_basis` column is the costing-method enum ("FIFO"), not a
-        // number, so multiplying the quantity by it evaluated to zero and the
-        // overview card always read 0 ر.س. The value is priced off the product
-        // instead — selling price, falling back to cost when a product has not been
-        // priced yet — which is the same rule the stock table's value column uses,
-        // so the card equals the sum of the rows underneath it.
-        $unitPrice = 'COALESCE(NULLIF(products.price, 0), products.cost_price, 0)';
-
+        // number, so the inventory value is priced off the product's cost_price.
+        // "available" = quantity minus reserved/damaged/quarantined — the units
+        // that can actually be sold.
         $totals = WarehouseInventory::query()
             ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
             ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as products_with_stock')
             ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
-            ->selectRaw("COALESCE(SUM(warehouse_inventory.quantity * {$unitPrice}), 0) as total_value")
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity), 0) as total_available')
+            ->selectRaw('COALESCE(SUM((warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity) * COALESCE(products.cost_price, 0)), 0) as total_value')
             ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as in_stock_rows')
             ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= COALESCE(warehouse_inventory.reorder_point, 0) AND warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as low_stock_rows')
             ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows')
@@ -51,7 +48,7 @@ class InventoryController extends Controller
 
         $warehouses = Warehouse::query()
             ->select('warehouses.id', 'warehouses.name', 'warehouses.code', 'warehouses.is_active')
-            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity), 0) as total_quantity')
             ->leftJoin('warehouse_inventory', 'warehouse_inventory.warehouse_id', '=', 'warehouses.id')
             ->groupBy('warehouses.id', 'warehouses.name', 'warehouses.code', 'warehouses.is_active')
             ->orderBy('warehouses.id')
@@ -63,6 +60,7 @@ class InventoryController extends Controller
                 'summary' => [
                     'products_with_stock' => (int) ($totals->products_with_stock ?? 0),
                     'total_quantity' => (int) ($totals->total_quantity ?? 0),
+                    'total_available' => (int) ($totals->total_available ?? 0),
                     'total_value' => round((float) ($totals->total_value ?? 0), 2),
                     'in_stock_rows' => (int) ($totals->in_stock_rows ?? 0),
                     'low_stock_rows' => (int) ($totals->low_stock_rows ?? 0),

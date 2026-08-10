@@ -10,6 +10,7 @@ use App\Models\Warehouse;
 use App\Services\Field\BranchReplenishmentService;
 use App\Services\Field\FieldScope;
 use App\Services\Inventory\InventoryService;
+use App\Services\Inventory\ReplenishmentWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,10 +27,18 @@ use RuntimeException;
  *
  * The lifecycle is deliberately split between the two ends:
  *
- *   requested   the branch asks; stock is held at the source so it cannot be
- *               promised twice while the request waits
- *   in transit  the main warehouse ships — that end owns the decision
- *   completed   the branch confirms what physically arrived
+ *   pending            the branch asks; stock is held at the source so it
+ *                      cannot be promised twice while the request waits
+ *   in transit         the source approved and shipped — the goods are on a
+ *                      road, belonging to neither warehouse
+ *   ready for pickup   the source approved and set them aside; they are still
+ *                      on its shelf until the requester collects
+ *   completed          the goods are in the requester's warehouse
+ *
+ * Approval belongs to the source and receipt to the destination, which is what
+ * the two guards in this class enforce. The rules themselves live in
+ * ReplenishmentWorkflowService, shared with the back office — they used to be
+ * written twice and had already drifted apart.
  *
  * Stock only ever moves through InventoryService, so every leg writes a movement
  * and the warehouse figures stay in step with the audit trail.
@@ -39,6 +48,7 @@ class FieldReplenishmentController extends Controller
     public function __construct(
         private InventoryService $inventory,
         private BranchReplenishmentService $replenishment,
+        private ReplenishmentWorkflowService $workflow,
     ) {
     }
 
@@ -83,21 +93,64 @@ class FieldReplenishmentController extends Controller
         ]);
     }
 
-    /** Requests raised for the branches this person covers. */
+    /**
+     * Requests this person has a part in.
+     *
+     * Two sides, and everyone sees both by default:
+     *
+     *   incoming  raised *by* their warehouse — what is coming to them
+     *   outgoing  raised *against* it — what they owe someone else
+     *
+     * Outgoing was missing entirely, which meant a person working in the main
+     * warehouse could not see a single request anyone had made of them. Nothing
+     * could be approved from the app at all, and the branch waited on a queue
+     * only the back office could read.
+     */
     public function index(Request $request): JsonResponse
     {
         $scope = FieldScope::for($request->user());
+        $mine = $scope->warehouseIds();
+
+        $direction = $request->input('direction', 'all');
 
         $query = InventoryTransfer::query()
-            ->with(['fromWarehouse:id,name,code', 'toWarehouse:id,name,code', 'items.product:id,sku,name_ar,name_en'])
-            ->whereIn('to_warehouse_id', $scope->warehouseIds());
+            ->with([
+                'fromWarehouse:id,name,code',
+                'toWarehouse:id,name,code',
+                'items.product:id,sku,name_ar,name_en',
+            ])
+            ->where(fn ($q) => match ($direction) {
+                'incoming' => $q->whereIn('to_warehouse_id', $mine),
+                'outgoing' => $q->whereIn('from_warehouse_id', $mine),
+                default => $q->whereIn('to_warehouse_id', $mine)->orWhereIn('from_warehouse_id', $mine),
+            });
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
         if ($request->boolean('open_only')) {
-            $query->whereIn('status', [InventoryTransfer::STATUS_PENDING, InventoryTransfer::STATUS_IN_TRANSIT]);
+            $query->whereIn('status', [
+                InventoryTransfer::STATUS_PENDING,
+                InventoryTransfer::STATUS_IN_TRANSIT,
+                InventoryTransfer::STATUS_READY_FOR_PICKUP,
+            ]);
+        }
+
+        // What the person can actually do about it — the app's action buttons
+        // are drawn off this rather than re-deriving the rules client-side.
+        if ($request->boolean('awaiting_my_action')) {
+            $query->where(function ($q) use ($mine) {
+                $q->where(fn ($inner) => $inner
+                    ->where('status', InventoryTransfer::STATUS_PENDING)
+                    ->whereIn('from_warehouse_id', $mine))
+                    ->orWhere(fn ($inner) => $inner
+                        ->whereIn('status', [
+                            InventoryTransfer::STATUS_IN_TRANSIT,
+                            InventoryTransfer::STATUS_READY_FOR_PICKUP,
+                        ])
+                        ->whereIn('to_warehouse_id', $mine));
+            });
         }
 
         $rows = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
@@ -105,7 +158,7 @@ class FieldReplenishmentController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'requests' => collect($rows->items())->map(fn ($t) => $this->present($t))->all(),
+                'requests' => collect($rows->items())->map(fn ($t) => $this->present($t, $mine))->all(),
                 'pagination' => [
                     'current_page' => $rows->currentPage(),
                     'last_page' => $rows->lastPage(),
@@ -123,11 +176,18 @@ class FieldReplenishmentController extends Controller
             'fromWarehouse:id,name,code', 'toWarehouse:id,name,code', 'items.product:id,sku,name_ar,name_en',
         ])->findOrFail($id);
 
-        if ($denied = $this->guard($request, $transfer)) {
-            return $denied;
+        $mine = FieldScope::for($request->user())->warehouseIds();
+
+        // Readable from either end: the warehouse being asked needs to open a
+        // request as much as the branch that raised it.
+        $isEitherEnd = in_array((int) $transfer->to_warehouse_id, $mine, true)
+            || in_array((int) $transfer->from_warehouse_id, $mine, true);
+
+        if (!$isEitherEnd) {
+            return $this->outOfScope();
         }
 
-        return response()->json(['success' => true, 'data' => ['request' => $this->present($transfer)]]);
+        return response()->json(['success' => true, 'data' => ['request' => $this->present($transfer, $mine)]]);
     }
 
     /**
@@ -145,6 +205,11 @@ class FieldReplenishmentController extends Controller
             'to_warehouse_id' => 'nullable|integer|exists:warehouses,id',
             'from_warehouse_id' => 'nullable|integer|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
+            // What the branch would prefer. Recorded as a request, not a
+            // decision: the warehouse holding the goods is the one that knows
+            // whether it can spare a driver today, so it confirms or overrides
+            // at approval.
+            'preferred_fulfillment_method' => 'nullable|in:delivery,pickup',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -180,6 +245,7 @@ class FieldReplenishmentController extends Controller
                     'from_warehouse_id' => $source,
                     'to_warehouse_id' => $destination,
                     'status' => InventoryTransfer::STATUS_PENDING,
+                    'fulfillment_method' => $validated['preferred_fulfillment_method'] ?? null,
                     'requested_at' => now(),
                     'notes' => $validated['notes'] ?? null,
                     'created_by' => $request->user()->id,
@@ -217,36 +283,77 @@ class FieldReplenishmentController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
-        $transfer->load(['fromWarehouse:id,name,code', 'toWarehouse:id,name,code', 'items.product:id,sku,name_ar,name_en']);
+        $transfer->load($this->relations());
+        $mine = $scope->warehouseIds();
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إرسال طلب التزويد إلى المستودع الرئيسي وحُجزت الكميات.',
-            'data' => ['request' => $this->present($transfer)],
+            'message' => 'تم إرسال طلب التزويد وحُجزت الكميات بانتظار موافقة المستودع.',
+            'data' => ['request' => $this->present($transfer, $mine)],
         ], 201);
     }
 
     /**
-     * The branch confirms what actually arrived.
+     * The source warehouse agrees, and says how the goods will travel.
      *
-     * Received quantities are taken per line rather than assumed, because a
-     * shipment that arrives short is the normal case this step exists to catch;
-     * booking the requested amount would invent stock that never came.
+     * This is the step that was missing: nothing in the app could move a request
+     * off "pending", so a branch's request sat until somebody opened the back
+     * office. The person who can act on it is whoever works in the warehouse
+     * being asked — which is what the guard below checks.
      */
-    public function receive(Request $request, int $id): JsonResponse
+    public function approve(Request $request, int $id): JsonResponse
     {
-        $transfer = InventoryTransfer::with('items')->findOrFail($id);
+        $transfer = InventoryTransfer::with('items.product')->findOrFail($id);
+        $mine = FieldScope::for($request->user())->warehouseIds();
 
-        if ($denied = $this->guard($request, $transfer)) {
+        if ($denied = $this->guardSource($request, $transfer)) {
             return $denied;
         }
 
-        if ($transfer->status !== InventoryTransfer::STATUS_IN_TRANSIT) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن استلام طلب لم يُشحن بعد من المستودع الرئيسي. الحالة الحالية: ' . $this->statusText($transfer->status),
-                'data' => null,
-            ], 422);
+        $validated = $request->validate([
+            'fulfillment_method' => 'required|in:delivery,pickup',
+        ]);
+
+        try {
+            $effects = $this->workflow->approve(
+                $transfer,
+                $validated['fulfillment_method'],
+                $request->user()->id
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        $transfer->refresh()->load($this->relations());
+
+        return response()->json([
+            'success' => true,
+            'message' => $effects['method'] === InventoryTransfer::METHOD_DELIVERY
+                ? 'تمت الموافقة وشُحنت البضاعة إلى ' . ($transfer->toWarehouse->name ?? 'الفرع') . '.'
+                : 'تمت الموافقة والبضاعة جاهزة للاستلام من ' . ($transfer->fromWarehouse->name ?? 'المستودع') . '.',
+            'data' => ['request' => $this->present($transfer, $mine), 'effects' => $effects],
+        ]);
+    }
+
+    /**
+     * The requester takes delivery, and the stock lands in their warehouse.
+     *
+     * Serves both paths. A delivery is being confirmed as arrived; a pickup is
+     * being collected at the counter, and the goods leave the source in this
+     * same call. Either way the branch's warehouse is holding them afterwards —
+     * which is the point of the whole request.
+     *
+     * Received quantities are taken per line rather than assumed, because a
+     * shipment that arrives short, or a rep who takes only part of what they
+     * asked for, are both ordinary.
+     */
+    public function receive(Request $request, int $id): JsonResponse
+    {
+        $transfer = InventoryTransfer::with('items.product')->findOrFail($id);
+        $mine = FieldScope::for($request->user())->warehouseIds();
+
+        if ($denied = $this->guard($request, $transfer)) {
+            return $denied;
         }
 
         $validated = $request->validate([
@@ -255,52 +362,87 @@ class FieldReplenishmentController extends Controller
             'items.*.quantity_received' => 'required_with:items|integer|min:0',
         ]);
 
-        $received = collect($validated['items'] ?? [])->keyBy('product_id');
+        // The app speaks in products; the workflow keys on transfer lines, which
+        // is what survives the same product appearing twice on one request.
+        $byProduct = collect($validated['items'] ?? [])->keyBy('product_id');
+        $byItem = [];
 
-        DB::transaction(function () use ($transfer, $received, $request) {
-            foreach ($transfer->items as $item) {
-                $qty = $received->has($item->product_id)
-                    ? (int) $received[$item->product_id]['quantity_received']
-                    : (int) ($item->quantity_shipped ?: $item->quantity_requested);
-
-                if ($qty <= 0) {
-                    continue;
-                }
-
-                $this->inventory->receive(
-                    (int) $item->product_id,
-                    $qty,
-                    (int) $transfer->to_warehouse_id,
-                    [
-                        'key' => 'transfer:' . $transfer->id . ':in:' . $item->product_id,
-                        'reference' => 'inventory_transfer',
-                        'source' => (string) $transfer->id,
-                        'reason' => 'استلام تزويد من المستودع الرئيسي - ' . $transfer->transfer_number,
-                        'unit_cost' => (float) $item->unit_cost,
-                        'created_by' => $request->user()->id,
-                    ]
-                );
-
-                $item->update(['quantity_received' => $qty]);
+        foreach ($transfer->items as $item) {
+            if ($byProduct->has($item->product_id)) {
+                $byItem[$item->id] = (int) $byProduct[$item->product_id]['quantity_received'];
             }
+        }
 
-            $transfer->update([
-                'status' => InventoryTransfer::STATUS_COMPLETED,
-                'received_at' => now(),
-                'received_by' => $request->user()->id,
-            ]);
-        });
+        try {
+            $effects = $this->workflow->receive($transfer, $byItem, $request->user()->id);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
 
-        $transfer->load(['fromWarehouse:id,name,code', 'toWarehouse:id,name,code', 'items.product:id,sku,name_ar,name_en']);
+        $transfer->refresh()->load($this->relations());
+
+        $message = 'تم تأكيد الاستلام ودخلت الكميات إلى مخزون ' . ($transfer->toWarehouse->name ?? 'الفرع') . '.';
+
+        if ($effects['discrepancies'] !== []) {
+            $message .= ' وسُجّل نقص في ' . count($effects['discrepancies']) . ' صنف مقارنةً بما شُحن.';
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تأكيد الاستلام وإدخال الكميات لمخزون الفرع.',
-            'data' => ['request' => $this->present($transfer)],
+            'message' => $message,
+            'data' => ['request' => $this->present($transfer, $mine), 'effects' => $effects],
+        ]);
+    }
+
+    /**
+     * Calls the request off and puts the held stock back on sale.
+     *
+     * Open to either end: the branch may no longer need the goods, and the
+     * warehouse may be unable to spare them. Only while they are still on the
+     * source's shelf — once in transit it is a return, not a cancellation.
+     */
+    public function cancel(Request $request, int $id): JsonResponse
+    {
+        $transfer = InventoryTransfer::with('items')->findOrFail($id);
+
+        $mine = FieldScope::for($request->user())->warehouseIds();
+        $isEitherEnd = in_array((int) $transfer->to_warehouse_id, $mine, true)
+            || in_array((int) $transfer->from_warehouse_id, $mine, true);
+
+        if (!$isEitherEnd) {
+            return $this->outOfScope();
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $effects = $this->workflow->cancel($transfer, $request->user()->id, $validated['reason'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        $transfer->refresh()->load($this->relations());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم إلغاء الطلب وأُعيدت الكميات المحجوزة إلى المتاح للبيع.',
+            'data' => ['request' => $this->present($transfer, $mine), 'effects' => $effects],
         ]);
     }
 
     /* ------------------------------------------------------------------ */
+
+    /** @return array<int,string> */
+    private function relations(): array
+    {
+        return [
+            'fromWarehouse:id,name,code',
+            'toWarehouse:id,name,code',
+            'items.product:id,sku,name_ar,name_en',
+        ];
+    }
 
     /** @throws RuntimeException */
     private function resolveSource(?int $requested, int $destination): int
@@ -318,6 +460,10 @@ class FieldReplenishmentController extends Controller
         return $source;
     }
 
+    /**
+     * Receiving belongs to the destination — only the branch the goods are
+     * going to can say they arrived.
+     */
     private function guard(Request $request, InventoryTransfer $transfer): ?JsonResponse
     {
         $allowed = FieldScope::for($request->user())->warehouseIds();
@@ -326,6 +472,30 @@ class FieldReplenishmentController extends Controller
             return null;
         }
 
+        return $this->outOfScope();
+    }
+
+    /**
+     * Approving belongs to the source — the warehouse being asked for the goods
+     * is the one that decides whether, and how, they go.
+     */
+    private function guardSource(Request $request, InventoryTransfer $transfer): ?JsonResponse
+    {
+        $allowed = FieldScope::for($request->user())->warehouseIds();
+
+        if (in_array((int) $transfer->from_warehouse_id, $allowed, true)) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'الموافقة على هذا الطلب تخصّ مستودع المصدر، وهو خارج نطاق صلاحيتك.',
+            'data' => null,
+        ], 403);
+    }
+
+    private function outOfScope(): JsonResponse
+    {
         return response()->json([
             'success' => false,
             'message' => 'هذا الطلب يخص مستودعاً خارج نطاق صلاحيتك.',
@@ -333,33 +503,62 @@ class FieldReplenishmentController extends Controller
         ], 403);
     }
 
-    private function statusText(string $status): string
+    /**
+     * Which end of the transfer the viewer is on.
+     *
+     * A person can be both — a warehouse asking another warehouse for stock it
+     * in turn owes to a third — so "both" is a real answer, not a fallback.
+     *
+     * @param  array<int,int>  $viewerWarehouseIds
+     */
+    private function directionFor(InventoryTransfer $t, array $viewerWarehouseIds): string
     {
-        return [
-            InventoryTransfer::STATUS_PENDING => 'بانتظار الشحن من المستودع الرئيسي',
-            InventoryTransfer::STATUS_IN_TRANSIT => 'قيد النقل',
-            InventoryTransfer::STATUS_COMPLETED => 'مكتمل',
-            InventoryTransfer::STATUS_CANCELLED => 'ملغي',
-        ][$status] ?? $status;
+        $incoming = in_array((int) $t->to_warehouse_id, $viewerWarehouseIds, true);
+        $outgoing = in_array((int) $t->from_warehouse_id, $viewerWarehouseIds, true);
+
+        return match (true) {
+            $incoming && $outgoing => 'both',
+            $incoming => 'incoming',
+            $outgoing => 'outgoing',
+            default => 'none',
+        };
     }
 
-    /** @return array<string,mixed> */
-    private function present(InventoryTransfer $t): array
+    /**
+     * @param  array<int,int>  $viewerWarehouseIds
+     * @return array<string,mixed>
+     */
+    private function present(InventoryTransfer $t, array $viewerWarehouseIds = []): array
     {
         return [
             'id' => $t->id,
             'request_number' => $t->transfer_number,
             'status' => $t->status,
-            'status_text' => $this->statusText($t->status),
+            'status_text' => $t->status_text,
+            'fulfillment_method' => $t->fulfillment_method,
+            'fulfillment_method_text' => $t->fulfillment_method_text,
             'from_warehouse_id' => (int) $t->from_warehouse_id,
             'from_warehouse_name' => $t->fromWarehouse?->name,
             'to_warehouse_id' => (int) $t->to_warehouse_id,
             'to_warehouse_name' => $t->toWarehouse?->name,
-            // The app shows the receive button off this rather than re-deriving
-            // the rule, so the two can never disagree about what is allowed.
-            'can_receive' => $t->status === InventoryTransfer::STATUS_IN_TRANSIT,
+            // Which side of this transfer the caller is standing on. The app
+            // draws entirely different actions for the two, and deciding it
+            // here means the phone never has to know the scope rules.
+            'direction' => $this->directionFor($t, $viewerWarehouseIds),
+            // Every button the app might show is answered here rather than
+            // re-derived client-side, so the two can never disagree about what
+            // is allowed. A rule added to the workflow reaches the UI for free.
+            'can_approve' => $t->canApprove()
+                && in_array((int) $t->from_warehouse_id, $viewerWarehouseIds, true),
+            'can_receive' => $t->canReceive()
+                && in_array((int) $t->to_warehouse_id, $viewerWarehouseIds, true),
+            'can_cancel' => $t->canCancel(),
+            // Where the goods physically are right now — the thing a person
+            // actually wants to know when they open the request.
+            'is_awaiting_pickup' => $t->status === InventoryTransfer::STATUS_READY_FOR_PICKUP,
             'notes' => $t->notes,
             'requested_at' => $t->requested_at?->toDateTimeString(),
+            'approved_at' => $t->approved_at?->toDateTimeString(),
             'shipped_at' => $t->shipped_at?->toDateTimeString(),
             'received_at' => $t->received_at?->toDateTimeString(),
             'items' => $t->items->map(fn ($i) => [

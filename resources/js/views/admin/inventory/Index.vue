@@ -46,8 +46,8 @@
                     <div class="stat-card-inner">
                         <div class="stat-icon-box green-grad"><i class="fas fa-cubes"></i></div>
                         <div class="stat-details">
-                            <h3>{{ formatNumber(summary?.total_quantity) }}</h3>
-                            <p>إجمالي الوحدات المخزنة</p>
+                            <h3>{{ formatNumber(summary?.total_available) }}</h3>
+                            <p>الوحدات المتاحة للبيع</p>
                         </div>
                     </div>
                 </el-card>
@@ -201,28 +201,25 @@
                         <p class="table-sub">{{ row.bin?.code || '' }}</p>
                     </template>
                 </el-table-column>
-                <el-table-column label="الرصيد الكلي" width="120" align="center">
-                    <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
-                </el-table-column>
-                <el-table-column label="المحجوز" width="100" align="center">
-                    <template #default="{ row }">{{ formatNumber(row.reserved_quantity) }}</template>
-                </el-table-column>
                 <el-table-column label="المتاح" width="110" align="center">
                     <template #default="{ row }">
                         <strong :class="availableClass(row)">{{ formatNumber(row.available) }}</strong>
                     </template>
                 </el-table-column>
-                <el-table-column label="حد الطلب" width="100" align="center">
-                    <template #default="{ row }">{{ formatNumber(row.reorder_point) }}</template>
-                </el-table-column>
-                <el-table-column label="السعر" width="120" align="center">
+                <el-table-column label="التكلفة" width="120" align="center">
                     <template #default="{ row }">
-                        <span v-if="unitPrice(row) > 0">{{ formatMoney(unitPrice(row)) }}</span>
+                        <span v-if="row.product?.cost_price > 0">{{ formatMoney(row.product.cost_price) }}</span>
+                        <span v-else class="table-sub">—</span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="سعر البيع" width="120" align="center">
+                    <template #default="{ row }">
+                        <span v-if="row.product?.price > 0">{{ formatMoney(row.product.price) }}</span>
                         <span v-else class="table-sub">—</span>
                     </template>
                 </el-table-column>
                 <el-table-column label="القيمة" width="130" align="center">
-                    <template #default="{ row }">{{ formatMoney(row.quantity * unitPrice(row)) }}</template>
+                    <template #default="{ row }">{{ formatMoney(row.available * (row.product?.cost_price || 0)) }}</template>
                 </el-table-column>
                 <el-table-column label="الحالة" width="110" align="center">
                     <template #default="{ row }">
@@ -357,7 +354,7 @@ import { useRouter } from 'vue-router';
 import { useInventoryStore } from '@/stores/inventory';
 import { useProductsStore } from '@/stores/products';
 import { inventoryApi } from '@/api/inventory';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const router = useRouter();
 const store = useInventoryStore();
@@ -404,16 +401,6 @@ const formatNumber = (n) => (n === null || n === undefined ? '0' : Number(n).toL
 const formatMoney = (n) =>
     (n === null || n === undefined ? '0' : Number(n)).toLocaleString('en-US', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 });
 
-/**
- * Unit price behind a stock row.
- *
- * The value column used to multiply the quantity by `cost_basis`, which is the
- * costing-method enum ("FIFO"), not a number — every stock value on the screen
- * came out as NaN. Selling price is used, falling back to cost when a product
- * has not been priced yet.
- */
-const unitPrice = (row) => Number(row?.product?.price ?? 0) || Number(row?.product?.cost_price ?? 0) || 0;
-
 const formatDate = (d) => (d ? String(d).replace('T', ' ').substring(0, 16) : '-');
 
 const exporting = ref(false);
@@ -450,15 +437,44 @@ const onInventoryFileSelected = async (event) => {
             `أرصدة محدَّثة: ${data.inventory_updated ?? 0}`,
         ];
 
-        const errorCount = data.errors ? data.errors.length : 0;
-        if (errorCount) {
-            messages.push(`أخطاء: ${errorCount}`);
+        const errors = data.errors || [];
+        if (errors.length) {
+            messages.push(`أخطاء: ${errors.length}`);
         }
 
-        ElMessage[errorCount ? 'warning' : 'success']({
+        ElMessage[errors.length ? 'warning' : 'success']({
             message: messages.join('، '),
             duration: 6000,
         });
+
+        // Computed columns the sheet carried but the importer does not apply.
+        // Said out loud, because an operator who edited "المحجوز" and saw a
+        // success message would otherwise assume it took.
+        const ignored = data.ignored_columns || [];
+        if (ignored.length) {
+            ElMessage({
+                type: 'info',
+                message: `أعمدة محسوبة لم تُستورد: ${ignored.join('، ')} — تُشتق من الحركات والطلبات ولا يُغيّرها ملف الجرد.`,
+                duration: 9000,
+                showClose: true,
+            });
+        }
+
+        // Rows are listed rather than counted: "12 أخطاء" tells the operator
+        // nothing they can act on, and the row numbers match the spreadsheet's
+        // own gutter so each one can be found and fixed.
+        if (errors.length) {
+            ElMessageBox.alert(
+                errors
+                    .slice(0, 20)
+                    .map((e) => `صف ${e.row}: ${e.message}`)
+                    .join('<br>') +
+                    (errors.length > 20 ? `<br>… و${errors.length - 20} صفاً آخر` : ''),
+                'صفوف لم تُستورد',
+                { dangerouslyUseHTMLString: true, confirmButtonText: 'حسناً' },
+            );
+        }
+
         await loadStock(true);
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'فشل في استيراد الرصيد');

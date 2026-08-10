@@ -223,7 +223,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/replenishment/suggestions', [FieldReplenishmentController::class, 'suggestions'])->name('api.field.replenishment.suggestions');
             Route::post('/replenishment', [FieldReplenishmentController::class, 'store'])->name('api.field.replenishment.store');
             Route::get('/replenishment/{id}', [FieldReplenishmentController::class, 'show'])->whereNumber('id')->name('api.field.replenishment.show');
+            // Approval belongs to the warehouse being asked; receipt to the one
+            // that asked. Cancelling is open to either while the goods have not
+            // moved. FieldReplenishmentController enforces which is which.
+            Route::post('/replenishment/{id}/approve', [FieldReplenishmentController::class, 'approve'])->whereNumber('id')->name('api.field.replenishment.approve');
             Route::post('/replenishment/{id}/receive', [FieldReplenishmentController::class, 'receive'])->whereNumber('id')->name('api.field.replenishment.receive');
+            Route::post('/replenishment/{id}/cancel', [FieldReplenishmentController::class, 'cancel'])->whereNumber('id')->name('api.field.replenishment.cancel');
 
             Route::get('/orders', [FieldOrderController::class, 'index'])->name('api.field.orders.index');
             // Where the goods would come from, before anything is created. Read

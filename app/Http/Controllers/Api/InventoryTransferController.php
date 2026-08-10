@@ -8,19 +8,35 @@ use App\Models\InventoryTransferItem;
 use App\Models\WarehouseInventory;
 use App\Models\StockMovement;
 use App\Services\Inventory\InventoryService;
+use App\Services\Inventory\ReplenishmentWorkflowService;
 use App\Services\InventoryAllocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
+/**
+ * Back-office view of stock transfers between warehouses.
+ *
+ * Ship, receive and cancel all go through ReplenishmentWorkflowService — the
+ * same door the field app uses. This controller had its own copy of those rules
+ * and the two had already diverged: a receipt with no explicit quantity meant
+ * "nothing" here and "everything that shipped" there, so the same transfer
+ * settled differently depending on which screen closed it.
+ */
 class InventoryTransferController extends Controller
 {
     protected InventoryAllocationService $allocationService;
     protected InventoryService $inventory;
+    protected ReplenishmentWorkflowService $workflow;
 
-    public function __construct(InventoryAllocationService $allocationService, InventoryService $inventory)
-    {
+    public function __construct(
+        InventoryAllocationService $allocationService,
+        InventoryService $inventory,
+        ReplenishmentWorkflowService $workflow
+    ) {
         $this->allocationService = $allocationService;
         $this->inventory = $inventory;
+        $this->workflow = $workflow;
     }
 
     public function index(Request $request)
@@ -127,177 +143,113 @@ class InventoryTransferController extends Controller
         }
     }
 
+    /**
+     * Approve the transfer and put the goods on their way.
+     *
+     * Kept at `ship` because that is what the back office calls it and what the
+     * existing screens post to, but it is the same approval the field app makes:
+     * `fulfillment_method` decides whether the stock leaves now (delivery) or is
+     * set aside for the requester to collect (pickup). Shipping is the default,
+     * which is what this endpoint always did.
+     */
     public function ship(Request $request, $id)
     {
-        $transfer = InventoryTransfer::findOrFail($id);
+        $transfer = InventoryTransfer::with('items.product')->findOrFail($id);
 
-        if (!$transfer->canShip()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن شحن هذا الطلب',
-                'data' => null,
-            ], 422);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            foreach ($transfer->items as $item) {
-                // Ship from the source warehouse through the service. Keyed per
-                // transfer item so re-shipping is a no-op. The stock moves off
-                // the shelf and consumes the reservation taken at request time.
-                $this->inventory->shipReserved(
-                    $item->product_id,
-                    $item->quantity_requested,
-                    $transfer->from_warehouse_id,
-                    [
-                        'key' => 'transfer:' . $transfer->id . ':item:' . $item->id . ':out',
-                        'reference' => $transfer->transfer_number,
-                        'source' => 'transfer',
-                        'reason' => 'شحن مخزون لنقل رقم ' . $transfer->transfer_number,
-                        'unit_cost' => $item->unit_cost,
-                        'created_by' => auth()->id(),
-                    ]
-                );
-
-                // No explicit release is needed because the reserved quantity is
-                // consumed inside InventoryService when consume_reserved is true.
-                $item->quantity_shipped = $item->quantity_requested;
-                $item->save();
-            }
-
-            $transfer->ship();
-            $transfer->shipped_by = auth()->id();
-            $transfer->save();
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'تم شحن الطلب بنجاح',
-                'data' => $transfer->load('items'),
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null,
-            ], 422);
-        }
-    }
-
-    public function receive(Request $request, $id)
-    {
-        $transfer = InventoryTransfer::findOrFail($id);
-
-        if (!$transfer->canReceive()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن استلام هذا الطلب',
-                'data' => null,
-            ], 422);
-        }
-
-        $request->validate([
-            'items' => 'required|array',
-            'items.*.transfer_item_id' => 'required|exists:inventory_transfer_items,id',
-            'items.*.quantity_received' => 'required|integer|min:1',
+        $validated = $request->validate([
+            'fulfillment_method' => 'nullable|in:delivery,pickup',
         ]);
 
         try {
-            DB::beginTransaction();
-
-            foreach ($request->items as $itemData) {
-                $item = InventoryTransferItem::find($itemData['transfer_item_id']);
-
-                if ($item->transfer_id !== $transfer->id) {
-                    continue;
-                }
-
-                $quantityReceived = min($itemData['quantity_received'], $item->quantity_shipped);
-                $item->quantity_received = $quantityReceived;
-                $item->save();
-
-                // Receive into the destination warehouse through the service.
-                // Keyed per transfer item so a repeated receive is a no-op and
-                // cannot inflate stock at the destination.
-                $this->inventory->receive(
-                    $item->product_id,
-                    $quantityReceived,
-                    $transfer->to_warehouse_id,
-                    [
-                        'key' => 'transfer:' . $transfer->id . ':item:' . $item->id . ':in',
-                        'reference' => $transfer->transfer_number,
-                        'source' => 'transfer',
-                        'reason' => 'استلام مخزون من نقل رقم ' . $transfer->transfer_number,
-                        'unit_cost' => $item->unit_cost,
-                        'created_by' => auth()->id(),
-                    ]
-                );
-            }
-
-            $transfer->receive();
-            $transfer->received_by = auth()->id();
-            $transfer->save();
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'تم استلام الطلب بنجاح',
-                'data' => $transfer->load('items'),
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
+            $effects = $this->workflow->approve(
+                $transfer,
+                $validated['fulfillment_method'] ?? InventoryTransfer::METHOD_DELIVERY,
+                auth()->id()
+            );
+        } catch (RuntimeException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
                 'data' => null,
             ], 422);
         }
+
+        return response()->json([
+            'success' => true,
+            'message' => $effects['method'] === InventoryTransfer::METHOD_DELIVERY
+                ? 'تم شحن الطلب بنجاح'
+                : 'الطلب جاهز للاستلام من المستودع المصدر',
+            'data' => $transfer->refresh()->load('items'),
+        ]);
     }
 
-    public function cancel($id)
+    /**
+     * The destination confirms what arrived, and the stock lands there.
+     *
+     * Lines are optional now. They used to be required, and a caller that sent
+     * none received nothing at all while the transfer still closed as complete —
+     * goods issued from the source and never booked in anywhere. Omitting them
+     * now means "everything that was sent", which is both the common case and
+     * the safe one.
+     */
+    public function receive(Request $request, $id)
     {
-        $transfer = InventoryTransfer::findOrFail($id);
+        $transfer = InventoryTransfer::with('items.product')->findOrFail($id);
 
-        if (!$transfer->canCancel()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن إلغاء هذا الطلب في هذه الحالة',
-                'data' => null,
-            ], 422);
+        $validated = $request->validate([
+            'items' => 'nullable|array',
+            'items.*.transfer_item_id' => 'required_with:items|exists:inventory_transfer_items,id',
+            'items.*.quantity_received' => 'required_with:items|integer|min:0',
+        ]);
+
+        $byItem = [];
+        foreach ($validated['items'] ?? [] as $row) {
+            $byItem[(int) $row['transfer_item_id']] = (int) $row['quantity_received'];
         }
 
         try {
-            DB::beginTransaction();
-
-            // Release reserved inventory only for pending transfers.
-            foreach ($transfer->items as $item) {
-                $this->inventory->release($item->product_id, $item->quantity_requested, $transfer->from_warehouse_id);
-            }
-
-            $transfer->status = InventoryTransfer::STATUS_CANCELLED;
-            $transfer->save();
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'تم إلغاء الطلب بنجاح',
-                'data' => $transfer,
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
+            $effects = $this->workflow->receive($transfer, $byItem, auth()->id());
+        } catch (RuntimeException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
                 'data' => null,
             ], 422);
         }
+
+        return response()->json([
+            'success' => true,
+            'message' => $effects['discrepancies'] === []
+                ? 'تم استلام الطلب بنجاح'
+                : 'تم الاستلام مع فروقات في ' . count($effects['discrepancies']) . ' صنف',
+            'data' => $transfer->refresh()->load('items'),
+            'effects' => $effects,
+        ]);
+    }
+
+    public function cancel(Request $request, $id)
+    {
+        $transfer = InventoryTransfer::with('items')->findOrFail($id);
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $effects = $this->workflow->cancel($transfer, auth()->id(), $validated['reason'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم إلغاء الطلب وأُعيدت الكميات المحجوزة',
+            'data' => $transfer->refresh(),
+            'effects' => $effects,
+        ]);
     }
 }
