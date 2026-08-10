@@ -106,7 +106,14 @@ class PurchaseRequestController extends Controller
         }
 
         $salesOrder = SalesOrder::create([
-            'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
+            // Derived from the last id under a lock — counting reuses a number
+            // as soon as any order is deleted, and concurrent requests collide.
+            'order_number' => 'SO-' . str_pad(
+                (string) (((int) SalesOrder::lockForUpdate()->max('id')) + 1),
+                6,
+                '0',
+                STR_PAD_LEFT
+            ),
             'customer_id' => $customer->id,
             'status' => SalesOrder::STATUS_PENDING,
             'order_date' => now(),
@@ -369,7 +376,15 @@ class PurchaseRequestController extends Controller
                 }
 
                 $salesOrder = SalesOrder::create([
-                    'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
+                    // Derived from the last id under a lock. Counting reuses a
+                    // number the moment any order is deleted, and two reps
+                    // submitting at once always collided on it.
+                    'order_number' => 'SO-' . str_pad(
+                        (string) (((int) SalesOrder::lockForUpdate()->max('id')) + 1),
+                        6,
+                        '0',
+                        STR_PAD_LEFT
+                    ),
                     'customer_id' => $customer->id,
                     'status' => SalesOrder::STATUS_PENDING,
                     'order_date' => now(),

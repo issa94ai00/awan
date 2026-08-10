@@ -105,6 +105,17 @@ class PurchaseReceiptController extends Controller
                 );
             }
 
+            // Persist the warehouse actually used, so this receipt can be
+            // reversed later without guessing — and so the posting below knows
+            // which warehouse's inventory account to debit. This used to happen
+            // after the posting, which left a receipt that arrived without an
+            // explicit warehouse booked to the pooled account while its stock
+            // went into the default one: the very mismatch the per-warehouse
+            // debit exists to prevent.
+            if (!$receipt->warehouse_id && $warehouseId) {
+                $receipt->update(['warehouse_id' => $warehouseId]);
+            }
+
             // The receipt is what puts the goods on the balance sheet. Without
             // this the inventory account was only ever credited — by sales —
             // and drifted negative no matter how full the warehouse was.
@@ -115,12 +126,6 @@ class PurchaseReceiptController extends Controller
             $receipt->supplier?->updateBalance(
                 $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
             );
-
-            // Persist the warehouse actually used, so this receipt can be
-            // reversed later without guessing.
-            if (!$receipt->warehouse_id && $warehouseId) {
-                $receipt->update(['warehouse_id' => $warehouseId]);
-            }
 
             return $receipt;
         });

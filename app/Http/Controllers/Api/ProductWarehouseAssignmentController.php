@@ -403,7 +403,7 @@ class ProductWarehouseAssignmentController extends Controller
         $assignments = ProductWarehouseAssignment::active()
             ->forProduct($validated['product_id'])
             ->with(['warehouse'])
-            ->where('available_stock', '>=', $validated['quantity'])
+            ->whereAvailableStock('>=', $validated['quantity'])
             ->get();
 
         if ($assignments->isEmpty()) {

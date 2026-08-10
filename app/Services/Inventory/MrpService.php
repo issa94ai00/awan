@@ -391,7 +391,7 @@ class MrpService
         $sourceAssignments = ProductWarehouseAssignment::active()
             ->forProduct($assignment->product_id)
             ->where('warehouse_id', '!=', $assignment->warehouse_id)
-            ->where('available_stock', '>', $assignment->min_stock_level)
+            ->whereAvailableStock('>', $assignment->min_stock_level)
             ->with(['warehouse'])
             ->get();
 

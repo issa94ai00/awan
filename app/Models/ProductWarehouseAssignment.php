@@ -114,6 +114,35 @@ class ProductWarehouseAssignment extends Model
         return $query->where('product_id', $productId);
     }
 
+    /**
+     * Filters assignments by their available stock.
+     *
+     * `available_stock` is an accessor that sums the warehouse rows behind the
+     * assignment — there is no such column. Callers were passing it straight to
+     * `where()`, which SQL rejects outright ("Unknown column 'available_stock'"),
+     * so every path that looked for a warehouse able to cover a quantity threw
+     * instead of answering. This is the same sum expressed as a correlated
+     * subquery, so the filter and the accessor can never drift apart.
+     */
+    public function scopeWhereAvailableStock($query, string $operator, $value)
+    {
+        // The operator lands in raw SQL, so it is matched against a fixed list
+        // rather than trusted — a comparison operator is never user input here,
+        // and this keeps it impossible for it to become one.
+        if (!in_array($operator, ['=', '!=', '<', '<=', '>', '>='], true)) {
+            throw new \InvalidArgumentException('عامل مقارنة غير مدعوم: ' . $operator);
+        }
+
+        return $query->whereRaw(
+            '(SELECT COALESCE(SUM(wi.available_quantity), 0)
+                FROM warehouse_inventory wi
+               WHERE wi.product_id = product_warehouse_assignments.product_id
+                 AND wi.warehouse_id = product_warehouse_assignments.warehouse_id) '
+            . $operator . ' ?',
+            [$value]
+        );
+    }
+
     public function scopeFutureDated($query)
     {
         return $query->where('effective_date', '>', now());

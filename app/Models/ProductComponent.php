@@ -88,7 +88,7 @@ class ProductComponent extends Model
     {
         $assignments = $this->componentProduct->warehouseAssignments()
             ->active()
-            ->where('available_stock', '>=', $this->quantity_required)
+            ->whereAvailableStock('>=', $this->quantity_required)
             ->get();
 
         if ($assignments->isEmpty()) {

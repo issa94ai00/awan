@@ -20,6 +20,14 @@ class LedgerAccount extends Model
         'currency',
         'opening_balance',
         'is_system',
+        // These three were missing, so an account created through the model
+        // silently lost its place in the tree, its posting role, and — for the
+        // per-warehouse inventory accounts — the warehouse it belongs to. The
+        // migrations that introduced them insert with the query builder and so
+        // never noticed; anything creating an account through Eloquent did.
+        'parent_id',
+        'posting_role',
+        'warehouse_id',
     ];
 
     protected $casts = [

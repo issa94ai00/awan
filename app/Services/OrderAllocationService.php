@@ -3,22 +3,22 @@
 namespace App\Services;
 
 use App\Models\Product;
-use App\Models\ProductVariant;
 use App\Models\SalesOrder;
-use App\Models\SalesOrderItem;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
+/**
+ * Suggests how an order's lines should be split across warehouses.
+ *
+ * Purely advisory: nothing here reserves, ships or posts. The suggestion is a
+ * plan the operator confirms and may edit, and it becomes real only when the
+ * order is confirmed through SalesOrderWorkflowService.
+ *
+ * The InventoryAllocationService dependency this class used to carry went with
+ * the lifecycle methods that needed it — see the note further down.
+ */
 class OrderAllocationService
 {
-    protected InventoryAllocationService $inventoryAllocation;
-
-    public function __construct(InventoryAllocationService $inventoryAllocation)
-    {
-        $this->inventoryAllocation = $inventoryAllocation;
-    }
 
     /**
      * Suggest how an order's lines should be split across warehouses.
@@ -114,303 +114,34 @@ class OrderAllocationService
             ->all();
     }
 
-    /**
-     * Allocate inventory for a sales order
+    /* ------------------------------------------------------------------ *
+     * What used to live here
+     * ------------------------------------------------------------------ *
+     *
+     * `allocateOrder`, `allocateOrderItem`, `findBestWarehouse`,
+     * `getAvailableWarehouses`, `allocateAcrossWarehouses`, `canFulfillOrder`,
+     * `canFulfillItem`, `getFulfillmentSummary` and `releaseOrderAllocation`
+     * have been removed rather than repaired.
+     *
+     * They were a second implementation of the order lifecycle, and it disagreed
+     * with the real one on every point that matters. It reserved through a
+     * separate batch/serial mechanism instead of `warehouse_inventory`, ignored
+     * the per-warehouse split recorded on the order's own lines, and left the
+     * order at "processing" with no invoice, no journal entry and no picking
+     * list — so an order routed through it never reached the books.
+     *
+     * They could not have worked in any case: `getAvailableWarehouses`,
+     * `allocateAcrossWarehouses` and `canFulfillItem` filtered on
+     * `available_stock`, which is a model accessor and not a column, so every
+     * one of them raised "Unknown column 'available_stock'" on contact.
+     *
+     * Allocation, coverage and release now belong to SalesOrderWorkflowService,
+     * which measures each line against the warehouses it is actually planned to
+     * come from. What remains below is the suggestion engine — a plan the caller
+     * confirms — which reserves nothing and is the one part of this class the
+     * rest of the system depends on.
      */
-    public function allocateOrder(SalesOrder $order): Collection
-    {
-        $allocations = collect();
 
-        foreach ($order->items as $item) {
-            $allocation = $this->allocateOrderItem($item, $order);
-            $allocations->push($allocation);
-        }
-
-        return $allocations;
-    }
-
-    /**
-     * Allocate inventory for a single order item
-     */
-    public function allocateOrderItem(SalesOrderItem $item, SalesOrder $order): array
-    {
-        $productId = $item->product_id;
-        $variantId = $item->product_variant_id;
-        $quantity = $item->quantity;
-        $preferredWarehouseId = $order->fulfillment_warehouse_id;
-
-        // If preferred warehouse is specified, try to allocate from it
-        if ($preferredWarehouseId) {
-            if ($this->inventoryAllocation->checkAvailability($productId, $quantity, $preferredWarehouseId, $variantId)) {
-                $allocation = $this->inventoryAllocation->allocate($productId, $quantity, $preferredWarehouseId, $variantId);
-                return [
-                    'item_id' => $item->id,
-                    'warehouse_id' => $preferredWarehouseId,
-                    'quantity' => $quantity,
-                    'allocation' => $allocation,
-                    'status' => 'fulfilled',
-                ];
-            }
-        }
-
-        // Find best warehouse for allocation
-        $bestWarehouse = $this->findBestWarehouse($productId, $quantity, $variantId, $order->channel_id);
-
-        if ($bestWarehouse) {
-            $allocation = $this->inventoryAllocation->allocate($productId, $quantity, $bestWarehouse->id, $variantId);
-            return [
-                'item_id' => $item->id,
-                'warehouse_id' => $bestWarehouse->id,
-                'quantity' => $quantity,
-                'allocation' => $allocation,
-                'status' => 'fulfilled',
-            ];
-        }
-
-        // Try to split across multiple warehouses
-        $splitAllocation = $this->allocateAcrossWarehouses($productId, $quantity, $variantId);
-
-        if ($splitAllocation) {
-            return [
-                'item_id' => $item->id,
-                'warehouse_id' => null,
-                'quantity' => $quantity,
-                'allocation' => $splitAllocation,
-                'status' => 'split',
-            ];
-        }
-
-        return [
-            'item_id' => $item->id,
-            'warehouse_id' => null,
-            'quantity' => 0,
-            'allocation' => collect(),
-            'status' => 'backordered',
-        ];
-    }
-
-    /**
-     * Find the best warehouse for allocation based on multiple factors
-     */
-    protected function findBestWarehouse(int $productId, int $quantity, ?int $variantId, ?int $channelId): ?Warehouse
-    {
-        $availableWarehouses = $this->getAvailableWarehouses($productId, $quantity, $variantId);
-
-        if ($availableWarehouses->isEmpty()) {
-            return null;
-        }
-
-        // Score each warehouse based on multiple factors
-        return $availableWarehouses->map(function ($warehouse) use ($channelId) {
-            $score = 0;
-
-            // Factor 1: Proximity to channel (if channel has preferred warehouses)
-            if ($channelId) {
-                $channel = \App\Models\OrderChannel::find($channelId);
-                if ($channel && $channel->getConfigValue('preferred_warehouse_id') == $warehouse->id) {
-                    $score += 50;
-                }
-            }
-
-            // Factor 2: Utilization (prefer less utilized warehouses)
-            $utilization = $warehouse->getUtilizationPercentage();
-            $score += max(0, 100 - $utilization) * 0.3;
-
-            // Factor 3: Stock level (prefer warehouses with higher stock)
-            $inventory = $warehouse->inventory->where('product_id', $productId)
-                ->where('product_variant_id', $variantId)
-                ->first();
-            if ($inventory) {
-                $score += min(100, $inventory->available_stock) * 0.2;
-            }
-
-            // Factor 4: Location type priority
-            $locationPriority = match($warehouse->location_type) {
-                'distribution_center' => 30,
-                'warehouse' => 20,
-                'branch' => 10,
-                '3pl' => 5,
-                default => 0,
-            };
-            $score += $locationPriority;
-
-            return [
-                'warehouse' => $warehouse,
-                'score' => $score,
-            ];
-        })->sortByDesc('score')->first()['warehouse'] ?? null;
-    }
-
-    /**
-     * Get warehouses with available stock for a product
-     */
-    protected function getAvailableWarehouses(int $productId, int $quantity, ?int $variantId): Collection
-    {
-        return Warehouse::active()
-            ->whereHas('inventory', function ($query) use ($productId, $variantId, $quantity) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId)
-                    ->where('available_stock', '>=', $quantity);
-            })
-            ->with(['inventory' => function ($query) use ($productId, $variantId) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId);
-            }])
-            ->get();
-    }
-
-    /**
-     * Allocate quantity across multiple warehouses
-     */
-    protected function allocateAcrossWarehouses(int $productId, int $quantity, ?int $variantId): ?Collection
-    {
-        $allocations = collect();
-        $remaining = $quantity;
-
-        // Get all warehouses with available stock
-        $warehouses = Warehouse::active()
-            ->whereHas('inventory', function ($query) use ($productId, $variantId) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId)
-                    ->where('available_stock', '>', 0);
-            })
-            ->with(['inventory' => function ($query) use ($productId, $variantId) {
-                $query->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId);
-            }])
-            ->get()
-            ->sortByDesc(function ($warehouse) use ($productId, $variantId) {
-                return $warehouse->inventory->where('product_id', $productId)
-                    ->where('product_variant_id', $variantId)
-                    ->first()?->available_stock ?? 0;
-            });
-
-        foreach ($warehouses as $warehouse) {
-            if ($remaining <= 0) {
-                break;
-            }
-
-            $inventory = $warehouse->inventory->where('product_id', $productId)
-                ->where('product_variant_id', $variantId)
-                ->first();
-
-            if (!$inventory || $inventory->available_stock <= 0) {
-                continue;
-            }
-
-            $allocateQty = min($remaining, $inventory->available_stock);
-            $allocation = $this->inventoryAllocation->allocate($productId, $allocateQty, $warehouse->id, $variantId);
-
-            $allocations->push([
-                'warehouse_id' => $warehouse->id,
-                'quantity' => $allocateQty,
-                'allocation' => $allocation,
-            ]);
-
-            $remaining -= $allocateQty;
-        }
-
-        return $remaining > 0 ? null : $allocations;
-    }
-
-    /**
-     * Check if an order can be fully fulfilled
-     */
-    public function canFulfillOrder(SalesOrder $order): bool
-    {
-        foreach ($order->items as $item) {
-            $canFulfill = $this->canFulfillItem($item, $order);
-            if (!$canFulfill) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Check if a single item can be fulfilled
-     */
-    public function canFulfillItem(SalesOrderItem $item, SalesOrder $order): bool
-    {
-        $productId = $item->product_id;
-        $variantId = $item->product_variant_id;
-        $quantity = $item->quantity;
-        $preferredWarehouseId = $order->fulfillment_warehouse_id;
-
-        // Check preferred warehouse first
-        if ($preferredWarehouseId) {
-            if ($this->inventoryAllocation->checkAvailability($productId, $quantity, $preferredWarehouseId, $variantId)) {
-                return true;
-            }
-        }
-
-        // Check if any warehouse has enough stock
-        $bestWarehouse = $this->findBestWarehouse($productId, $quantity, $variantId, $order->channel_id);
-        if ($bestWarehouse) {
-            return true;
-        }
-
-        // Check if split allocation is possible
-        $totalAvailable = WarehouseInventory::where('product_id', $productId)
-            ->where('product_variant_id', $variantId)
-            ->whereHas('warehouse', fn($q) => $q->where('is_active', true))
-            ->sum('available_stock');
-
-        return $totalAvailable >= $quantity;
-    }
-
-    /**
-     * Release allocated inventory for an order
-     */
-    public function releaseOrderAllocation(SalesOrder $order): void
-    {
-        foreach ($order->items as $item) {
-            $this->inventoryAllocation->release(
-                $item->product_id,
-                $item->quantity,
-                $order->fulfillment_warehouse_id,
-                $item->product_variant_id
-            );
-        }
-    }
-
-    /**
-     * Get fulfillment summary for an order
-     */
-    public function getFulfillmentSummary(SalesOrder $order): array
-    {
-        $summary = [
-            'total_items' => $order->items->count(),
-            'fulfilled_items' => 0,
-            'backordered_items' => 0,
-            'split_items' => 0,
-            'warehouses_used' => collect(),
-            'estimated_delivery' => $order->estimated_delivery,
-        ];
-
-        foreach ($order->items as $item) {
-            $allocation = $this->allocateOrderItem($item, $order);
-            
-            match($allocation['status']) {
-                'fulfilled' => $summary['fulfilled_items']++,
-                'backordered' => $summary['backordered_items']++,
-                'split' => $summary['split_items']++,
-            };
-
-            if ($allocation['warehouse_id']) {
-                $summary['warehouses_used']->push($allocation['warehouse_id']);
-            }
-        }
-
-        $summary['warehouses_used'] = $summary['warehouses_used']->unique()->values();
-        $summary['fulfillment_percentage'] = ($summary['fulfilled_items'] / $summary['total_items']) * 100;
-
-        return $summary;
-    }
-
-    /**
-     * Auto-select fulfillment warehouse based on customer location
-     */
     /**
      * Where an order should be served from.
      *

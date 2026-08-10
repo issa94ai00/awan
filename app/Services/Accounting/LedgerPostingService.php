@@ -329,10 +329,19 @@ class LedgerPostingService
     }
 
     /**
-     * The inventory account for a warehouse, falling back to the shared one.
+     * The inventory account for a warehouse, opening one if it has none.
      *
-     * Installations that never split an order have no per-warehouse accounts,
-     * and must keep posting to `inventory` exactly as before.
+     * The accounts were created by a migration that walked the warehouses
+     * existing at the time. Anything opened since — a new branch, a warehouse
+     * added by an import — had no account of its own and quietly posted to the
+     * shared one, so its stock was on the shelves but nowhere in the books, and
+     * the pooled balance mixed it in with everyone else's. Provisioning here
+     * means the account exists by the time the first posting needs it, however
+     * the warehouse came to be.
+     *
+     * Falls back to the shared `inventory` account when there is no such
+     * warehouse, or when the chart has no 1005 parent to hang one from — an
+     * installation that never split an order keeps posting exactly as before.
      */
     public function inventoryAccountIdFor(int $warehouseId): int
     {
@@ -340,7 +349,40 @@ class LedgerPostingService
             ->where('type', 'asset')
             ->value('id');
 
-        return (int) ($id ?? $this->accountIdForRole('inventory'));
+        if ($id) {
+            return (int) $id;
+        }
+
+        $warehouse = Warehouse::find($warehouseId);
+        $parentId = LedgerAccount::where('code', '1005')->value('id');
+
+        if ($warehouse && $parentId) {
+            // firstOrCreate on the code: two postings for a new warehouse
+            // arriving together must not open the account twice, and the code
+            // is what the chart treats as unique.
+            $account = LedgerAccount::firstOrCreate(
+                ['code' => '1005-' . $warehouse->id],
+                [
+                    'parent_id' => $parentId,
+                    'name' => 'مخزون - ' . $warehouse->name,
+                    'type' => 'asset',
+                    'account_type' => 'asset',
+                    // No posting_role: the column is unique across the chart,
+                    // and these are resolved by warehouse rather than by role.
+                    'posting_role' => null,
+                    'warehouse_id' => $warehouse->id,
+                    'currency' => 'SAR',
+                    'balance' => 0,
+                    'opening_balance' => 0,
+                    'is_active' => true,
+                    'is_system' => true,
+                ]
+            );
+
+            return (int) $account->id;
+        }
+
+        return (int) $this->accountIdForRole('inventory');
     }
 
     /**
@@ -354,8 +396,17 @@ class LedgerPostingService
      * Buying on account raises what is owed rather than paying it; settlement is
      * the payables side's job, exactly as collection is for a sales invoice.
      *
-     *   Dr  Inventory            cost of the goods
-     *       Cr  Accounts payable       cost of the goods
+     *   Dr  Inventory — receiving warehouse   cost of the goods
+     *       Cr  Accounts payable                    cost of the goods
+     *
+     * The debit lands on the warehouse that actually took the goods in. It used
+     * to go to the pooled `inventory` account while sales credited the
+     * per-warehouse accounts, so stock only ever left a warehouse's balance and
+     * never entered it: every `1005-{warehouse}` account fell without limit
+     * while the parent rose, and no warehouse's holding could be read off the
+     * books at all. The stock ledger has always been per warehouse — the
+     * receipt names one, moves the units into it and opens its FIFO layer
+     * there — and this is the general ledger agreeing with it.
      */
     public function postGoodsReceipt($receipt): ?JournalEntryHeader
     {
@@ -369,12 +420,26 @@ class LedgerPostingService
 
         $label = 'إيصال استلام ' . ($receipt->receipt_number ?? ('#' . $receipt->id));
 
+        // A receipt whose warehouse was never resolved falls back to the shared
+        // account, which is exactly what `inventoryAccountIdFor` does for an
+        // installation that has no per-warehouse accounts.
+        $warehouseId = (int) ($receipt->warehouse_id ?? 0);
+
+        $debit = $warehouseId
+            ? ['account_id' => $this->inventoryAccountIdFor($warehouseId)]
+            : ['role' => 'inventory'];
+
+        $name = $warehouseId ? (Warehouse::find($warehouseId)?->name ?? ('#' . $warehouseId)) : null;
+
         return $this->post(
             key: 'goods_receipt:' . $receipt->id,
             date: $receipt->receipt_date ? (string) $receipt->receipt_date->toDateString() : now()->toDateString(),
             description: 'إثبات ' . $label,
             lines: [
-                ['role' => 'inventory', 'debit' => $total, 'description' => 'إدخال مخزون - ' . $label],
+                $debit + [
+                    'debit' => $total,
+                    'description' => 'إدخال مخزون' . ($name ? ' (' . $name . ')' : '') . ' - ' . $label,
+                ],
                 ['role' => 'accounts_payable', 'credit' => $total, 'description' => 'ذمم موردين - ' . $label],
             ],
             reference: $receipt,

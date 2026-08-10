@@ -7,16 +7,23 @@ use App\Models\OrderChannel;
 use App\Models\SalesContract;
 use App\Models\SalesOrder;
 use App\Services\OrderAllocationService;
+use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class EnhancedSalesOrderController extends Controller
 {
     protected OrderAllocationService $allocationService;
 
-    public function __construct(OrderAllocationService $allocationService)
-    {
+    protected SalesOrderWorkflowService $workflow;
+
+    public function __construct(
+        OrderAllocationService $allocationService,
+        SalesOrderWorkflowService $workflow
+    ) {
         $this->allocationService = $allocationService;
+        $this->workflow = $workflow;
     }
 
     public function index(Request $request)
@@ -175,36 +182,60 @@ class EnhancedSalesOrderController extends Controller
         }
     }
 
+    /**
+     * Holds the stock this order needs and starts the warehouse work.
+     *
+     * This used to reserve through a second, parallel mechanism and then set
+     * the status straight to "processing" by hand. Doing so skipped everything
+     * confirmation is responsible for: no invoice was raised, no revenue or
+     * cost reached the ledger, no picking list told a warehouse to fetch
+     * anything, and the per-warehouse split recorded on the order's lines was
+     * ignored — the goods were held in one place and shipped from another.
+     * Orders allocated here were therefore invisible to the books.
+     *
+     * It now walks the real lifecycle, which reserves against each line's own
+     * sources, invoices, posts, and raises one picking list per warehouse.
+     */
     public function allocateInventory(Request $request, $id)
     {
         $order = SalesOrder::with('items')->findOrFail($id);
 
-        if ($order->status !== SalesOrder::STATUS_PENDING && $order->status !== SalesOrder::STATUS_CONFIRMED) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن تخصيص المخزون لهذا الطلب',
-                'data' => null,
-            ], 422);
-        }
-
         try {
-            DB::beginTransaction();
+            $effects = [];
 
-            $allocations = $this->allocationService->allocateOrder($order);
+            // Confirmation is what performs the allocation: it checks coverage
+            // per source and holds the units. An already-confirmed order has
+            // done that and only needs moving on to picking.
+            if ($order->status === SalesOrder::STATUS_PENDING) {
+                $effects[] = $this->workflow->transitionTo($order, SalesOrder::STATUS_CONFIRMED, [
+                    'assigned_employee_id' => $request->input('assigned_employee_id'),
+                ]);
+                $order->refresh();
+            }
 
-            $order->status = SalesOrder::STATUS_PROCESSING;
-            $order->save();
+            if ($order->status === SalesOrder::STATUS_CONFIRMED) {
+                $effects[] = $this->workflow->transitionTo($order, SalesOrder::STATUS_PROCESSING);
+                $order->refresh();
+            }
 
-            DB::commit();
+            if ($effects === []) {
+                throw new RuntimeException(
+                    'لا يمكن تخصيص المخزون لهذا الطلب في حالته الحالية.'
+                );
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'تم تخصيص المخزون بنجاح',
-                'data' => $allocations,
+                'data' => [
+                    'status' => $order->status,
+                    'effects' => $effects,
+                    // The split actually held, per line and per warehouse.
+                    'sourcing_plan' => $this->workflow->sourcingPlan($order),
+                ],
             ]);
 
-        } catch (\Exception $e) {
-            DB::rollBack();
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -213,18 +244,49 @@ class EnhancedSalesOrderController extends Controller
         }
     }
 
+    /**
+     * Whether this order can actually be filled, and from where.
+     *
+     * The old answer came from a helper that re-ran allocation as a side effect
+     * of reporting on it — asking the question reserved stock — and queried a
+     * column that does not exist, so it raised a SQL error rather than
+     * answering. Coverage is now read from the routing and sourcing views,
+     * which measure each line against the warehouses it is planned to come
+     * from and change nothing.
+     */
     public function checkFulfillment(Request $request, $id)
     {
         $order = SalesOrder::with('items')->findOrFail($id);
 
-        $canFulfill = $this->allocationService->canFulfillOrder($order);
-        $summary = $this->allocationService->getFulfillmentSummary($order);
+        $routing = $this->workflow->routingOptions($order);
+        $plan = $this->workflow->sourcingPlan($order);
+
+        $lines = collect($plan['lines']);
 
         return response()->json([
             'success' => true,
             'data' => [
-                'can_fulfill' => $canFulfill,
-                'summary' => $summary,
+                // Fillable when every line has all of its quantity sourced, and
+                // every source can actually give what the plan asks of it.
+                'can_fulfill' => $lines->every(
+                    fn ($line) => $line['is_complete']
+                        && collect($line['sources'])->every(
+                            fn ($source) => $source['allocated'] <= $source['available']
+                        )
+                ),
+                'summary' => [
+                    'total_items' => $lines->count(),
+                    'complete_items' => $lines->where('is_complete', true)->count(),
+                    'incomplete_items' => $lines->where('is_complete', false)->count(),
+                    'warehouses_used' => $lines
+                        ->flatMap(fn ($line) => collect($line['sources'])
+                            ->where('allocated', '>', 0)
+                            ->pluck('warehouse_id'))
+                        ->unique()->values(),
+                    'recommended_warehouse_id' => $routing['recommended_warehouse_id'],
+                ],
+                'routing' => $routing,
+                'sourcing_plan' => $plan,
             ],
         ]);
     }
