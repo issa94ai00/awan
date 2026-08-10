@@ -550,6 +550,73 @@
                                         </div>
                                     </div>
                                 </el-card>
+
+                                <!-- Where each line's goods actually come from.
+                                     Routing above picks a warehouse for the
+                                     whole order; this decides it per line, and
+                                     lets one line be split across sources. -->
+                                <el-card shadow="never" class="info-card sourcing-card">
+                                    <template #header>
+                                        <div class="routing-header">
+                                            <span class="card-title-txt"><i class="fas fa-code-branch"></i> مصدر البضاعة لكل صنف</span>
+                                            <el-button
+                                                v-if="sourcing.editable && sourcingDirty"
+                                                type="primary" size="small" :loading="savingSourcing"
+                                                @click="saveSourcing"
+                                            >حفظ المصادر</el-button>
+                                        </div>
+                                    </template>
+
+                                    <p v-if="!sourcing.editable" class="routing-locked-note">
+                                        <i class="fas fa-lock"></i> لا يمكن تغيير المصدر بعد شحن الطلب.
+                                    </p>
+
+                                    <div v-loading="sourcingLoading" class="sourcing-lines">
+                                        <div v-for="l in sourcing.lines" :key="l.item_id" class="sourcing-line">
+                                            <div class="sl-head">
+                                                <div>
+                                                    <strong>{{ l.product_name }}</strong>
+                                                    <span class="muted"> · {{ l.sku || '—' }}</span>
+                                                </div>
+                                                <!-- The gap is the number that matters: unsourced units
+                                                     cannot ship, so it is stated rather than implied. -->
+                                                <el-tag
+                                                    :type="l.allocated === l.quantity ? 'success' : 'danger'"
+                                                    size="small"
+                                                    effect="plain"
+                                                >
+                                                    {{ l.allocated }} / {{ l.quantity }}
+                                                    <template v-if="l.allocated !== l.quantity">
+                                                        — ناقص {{ l.quantity - l.allocated }}
+                                                    </template>
+                                                </el-tag>
+                                            </div>
+
+                                            <div class="sl-sources">
+                                                <div v-for="s in l.sources" :key="s.warehouse_id" class="sl-source">
+                                                    <div class="sl-wh">
+                                                        <span>{{ s.warehouse_name }}</span>
+                                                        <el-tag v-if="s.is_primary" size="small" effect="plain">رئيسي</el-tag>
+                                                        <span class="sl-avail" :class="{ 'text-danger': s.available <= 0 }">
+                                                            متاح {{ s.available }}
+                                                        </span>
+                                                    </div>
+                                                    <el-input-number
+                                                        :model-value="s.allocated"
+                                                        :min="0"
+                                                        :max="s.available"
+                                                        size="small"
+                                                        controls-position="right"
+                                                        :disabled="!sourcing.editable || s.available <= 0"
+                                                        @change="(v) => setSource(l, s, v)"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <el-empty v-if="!sourcing.lines?.length" description="لا توجد أصناف" :image-size="46" />
+                                    </div>
+                                </el-card>
                             </el-col>
 
                             <el-col :xs="24" :md="10">
@@ -792,6 +859,7 @@
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
+import { salesOrdersApi } from '@/api/salesOrders';
 import { useCustomersStore } from '@/stores/customers';
 import { useProductsStore } from '@/stores/products';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -949,6 +1017,74 @@ const deliverForm = reactive({
     payment_reference: '',
     note: '',
 });
+
+/* ------------------------------------------------------------------ *
+ * Source selection
+ *
+ * Routing chooses a warehouse for the whole order. This chooses it per line,
+ * and lets a single line draw from more than one place — the seller's own
+ * stock first, the remainder from the main warehouse. The split is what the
+ * ledger then credits, so it has to be visible and editable here rather than
+ * being decided silently.
+ * ------------------------------------------------------------------ */
+
+const sourcing = ref({ lines: [], editable: false });
+const sourcingLoading = ref(false);
+const savingSourcing = ref(false);
+const sourcingDirty = ref(false);
+
+const loadSourcing = async (id) => {
+    sourcingLoading.value = true;
+    try {
+        const res = await salesOrdersApi.sourcing(id);
+        sourcing.value = res.data?.data || { lines: [], editable: false };
+        sourcingDirty.value = false;
+    } catch (e) {
+        ElMessage.error(apiErrorMessage(e, 'تعذّر تحميل مصادر البضاعة.'));
+    } finally {
+        sourcingLoading.value = false;
+    }
+};
+
+/** Edits one warehouse's share locally; nothing is committed until saved. */
+const setSource = (line, source, value) => {
+    source.allocated = Number(value) || 0;
+    line.allocated = line.sources.reduce((sum, s) => sum + (Number(s.allocated) || 0), 0);
+    sourcingDirty.value = true;
+};
+
+const saveSourcing = async () => {
+    // Refused server-side too, but catching it here spares a round trip and
+    // names the line that is short.
+    const incomplete = (sourcing.value.lines || []).find((l) => l.allocated !== l.quantity);
+    if (incomplete) {
+        ElMessage.warning(
+            `«${incomplete.product_name}»: مُسند ${incomplete.allocated} من ${incomplete.quantity}. أكمل المصادر قبل الحفظ.`
+        );
+        return;
+    }
+
+    savingSourcing.value = true;
+    try {
+        const res = await salesOrdersApi.saveSourcing(selectedOrder.value.id, {
+            lines: sourcing.value.lines.map((l) => ({
+                item_id: l.item_id,
+                sources: l.sources
+                    .filter((s) => Number(s.allocated) > 0)
+                    .map((s) => ({ warehouse_id: s.warehouse_id, quantity: Number(s.allocated) })),
+            })),
+        });
+
+        sourcing.value = res.data?.data || sourcing.value;
+        sourcingDirty.value = false;
+        ElMessage.success(res.data?.message || 'تم حفظ مصادر البضاعة.');
+        await refreshDetail();
+    } catch (e) {
+        ElMessage.error(apiErrorMessage(e, 'تعذّر حفظ مصادر البضاعة.'));
+    } finally {
+        savingSourcing.value = false;
+    }
+};
 
 const loadRouting = async (id) => {
     routingLoading.value = true;
@@ -1296,6 +1432,7 @@ const openDetailDrawer = async (id) => {
         detail.value = await store.fetchDetail(id);
         selectedOrder.value = detail.value.sales_order;
         routing.value = detail.value.routing || routing.value;
+        await loadSourcing(id);
     } catch (e) {
         ElMessage.error(apiErrorMessage(e, 'خطأ أثناء تحميل تفاصيل الطلب.'));
     } finally {
@@ -1858,6 +1995,46 @@ onMounted(async () => {
 .entry-lines td.acc-code { font-family: monospace; color: var(--text-muted); width: 60px; }
 
 .muted { color: var(--text-muted); }
+
+/* ---- Source selection ---- */
+.sourcing-card { margin-top: 0.75rem; }
+.sourcing-lines { display: flex; flex-direction: column; gap: 0.9rem; min-height: 50px; }
+
+.sourcing-line {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+}
+
+.sl-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+    font-size: 0.86rem;
+}
+
+.sl-sources { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.sl-source {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--bg-light);
+    border-radius: 8px;
+}
+
+.sl-wh { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; min-width: 0; }
+
+/* What the shelf can give sits beside the box that spends it, so the ceiling
+   is visible while typing rather than discovered on save. */
+.sl-avail { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+
+.text-danger { color: var(--el-color-danger); }
 
 /* ---- Pipeline tabs and follow-up ---- */
 .stage-tabs { margin-bottom: 0.5rem; }

@@ -218,11 +218,19 @@ Route::prefix('v1')->middleware('web')->group(function () {
             // move between the company's own locations — so it runs on
             // inventory_transfers, the same queue the warehouse ships against.
             Route::get('/replenishment', [FieldReplenishmentController::class, 'index'])->name('api.field.replenishment.index');
+            // What the branch is running out of, with what the main warehouse
+            // could send. Declared before `{id}`, which is numeric-only anyway.
+            Route::get('/replenishment/suggestions', [FieldReplenishmentController::class, 'suggestions'])->name('api.field.replenishment.suggestions');
             Route::post('/replenishment', [FieldReplenishmentController::class, 'store'])->name('api.field.replenishment.store');
             Route::get('/replenishment/{id}', [FieldReplenishmentController::class, 'show'])->whereNumber('id')->name('api.field.replenishment.show');
             Route::post('/replenishment/{id}/receive', [FieldReplenishmentController::class, 'receive'])->whereNumber('id')->name('api.field.replenishment.receive');
 
             Route::get('/orders', [FieldOrderController::class, 'index'])->name('api.field.orders.index');
+            // Where the goods would come from, before anything is created. Read
+            // only — it holds no stock, so an abandoned draft costs nothing.
+            // Declared before the `{salesOrder}` routes cannot shadow it, since
+            // those are constrained to numbers.
+            Route::post('/orders/preview', [FieldOrderController::class, 'preview'])->name('api.field.orders.preview');
             Route::post('/orders', [FieldOrderController::class, 'store'])->name('api.field.orders.store');
             Route::get('/orders/{salesOrder}', [FieldOrderController::class, 'show'])->whereNumber('salesOrder')->name('api.field.orders.show');
             Route::post('/orders/{salesOrder}/transition', [FieldOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.field.orders.transition');
@@ -467,6 +475,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // invoice and the ledger together — see SalesOrderWorkflowService.
         Route::get('/sales-orders/{salesOrder}/detail', [SalesOrderController::class, 'detail'])->whereNumber('salesOrder')->name('api.sales-orders.detail');
         Route::get('/sales-orders/{salesOrder}/routing', [SalesOrderController::class, 'routingOptions'])->whereNumber('salesOrder')->name('api.sales-orders.routing');
+        // Where each line's goods come from. A line may be split across
+        // warehouses; saving the plan moves the stock hold with it.
+        Route::get('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'sourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing');
+        Route::put('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'saveSourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing.save');
         Route::post('/sales-orders/{salesOrder}/transition', [SalesOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.sales-orders.transition');
         Route::post('/sales-orders/{salesOrder}/fulfillment-type', [SalesOrderController::class, 'changeFulfillmentType'])->whereNumber('salesOrder')->name('api.sales-orders.fulfillment-type');
 

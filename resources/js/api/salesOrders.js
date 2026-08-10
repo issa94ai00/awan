@@ -30,6 +30,16 @@ export const salesOrdersApi = {
         return api.get(`/sales-orders/${id}/detail`);
     },
 
+    /** Where each line's goods come from, and what each warehouse could supply. */
+    sourcing(id) {
+        return api.get(`/sales-orders/${id}/sourcing`);
+    },
+
+    /** Saves the sourcing plan; the stock hold moves with it. */
+    saveSourcing(id, payload) {
+        return api.put(`/sales-orders/${id}/sourcing`, payload);
+    },
+
     /** Per-warehouse coverage of the order, for the routing panel. */
     routing(id) {
         return api.get(`/sales-orders/${id}/routing`);

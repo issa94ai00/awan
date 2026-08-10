@@ -78,15 +78,23 @@ class FieldInventoryController extends Controller
      *
      * This is the "can I source it from somewhere else?" question, and it is why
      * the endpoint is not confined to a single warehouse the way the list is.
+     *
+     * "May see" is wider than "may act on". A rep confined to their branch also
+     * sees the main warehouse here, flagged as a supply source, because that is
+     * what the shortage prompt on the order screen is built from — a seller
+     * cannot sensibly be asked whether to draw on stock they are not allowed to
+     * know the size of. It grants nothing: the endpoints that move goods ask
+     * FieldScope::warehouseIds(), which still stops at their own branch.
      */
     public function product(Request $request, int $productId): JsonResponse
     {
         $scope = FieldScope::for($request->user());
+        $supplyId = $scope->supplyWarehouseId();
 
         $rows = WarehouseInventory::query()
             ->with(['product:id,sku,name_ar,name_en,price,cost_price', 'warehouse:id,name,code,location_type'])
             ->where('product_id', $productId)
-            ->whereIn('warehouse_id', $scope->warehouseIds())
+            ->whereIn('warehouse_id', $scope->visibleWarehouseIds())
             ->get();
 
         if ($rows->isEmpty()) {
@@ -96,18 +104,29 @@ class FieldInventoryController extends Controller
             ]);
         }
 
+        $sellable = fn ($row) => $this->available($row);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'product_id' => $productId,
                 'product' => $rows->first()->product,
-                'total_available' => $rows->sum(fn ($r) => $this->available($r)),
+                // Only what the rep can actually sell. Counting the supply
+                // warehouse into this figure would read as "you have this much",
+                // which is exactly the confusion the split below exists to avoid.
+                'total_available' => $rows
+                    ->reject(fn ($r) => (int) $r->warehouse_id === $supplyId)
+                    ->sum($sellable),
+                'supply_available' => $supplyId
+                    ? (int) $rows->where('warehouse_id', $supplyId)->sum($sellable)
+                    : 0,
                 'warehouses' => $rows->map(fn ($r) => [
                     'warehouse_id' => (int) $r->warehouse_id,
                     'warehouse_name' => $r->warehouse?->name,
                     'quantity' => (int) $r->quantity,
                     'reserved' => (int) $r->reserved_quantity,
-                    'available' => $this->available($r),
+                    'available' => $sellable($r),
+                    'is_supply_source' => (int) $r->warehouse_id === $supplyId,
                 ])->values(),
             ],
         ]);

@@ -471,6 +471,49 @@ class SalesOrderController extends Controller
         ];
     }
 
+    /** The per-line sourcing plan and what each warehouse could supply. */
+    public function sourcing(SalesOrder $salesOrder)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->workflow->sourcingPlan($salesOrder),
+        ]);
+    }
+
+    /**
+     * Replaces the sourcing plan. Any stock already held moves with it, so the
+     * hold always sits where the goods will actually be taken from.
+     */
+    public function saveSourcing(Request $request, SalesOrder $salesOrder)
+    {
+        $validated = $request->validate([
+            'lines' => 'required|array|min:1',
+            'lines.*.item_id' => 'required|integer',
+            'lines.*.sources' => 'required|array|min:1',
+            'lines.*.sources.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'lines.*.sources.*.quantity' => 'required|integer|min:0',
+        ]);
+
+        $plan = [];
+        foreach ($validated['lines'] as $line) {
+            foreach ($line['sources'] as $source) {
+                $plan[(int) $line['item_id']][(int) $source['warehouse_id']] = (int) $source['quantity'];
+            }
+        }
+
+        try {
+            $result = $this->workflow->saveSourcingPlan($salesOrder, $plan);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم حفظ مصادر البضاعة، ونُقل الحجز ليطابقها.',
+            'data' => $result,
+        ]);
+    }
+
     /** Moves the order to the next execution stage, with all its side effects. */
     public function transition(Request $request, SalesOrder $salesOrder)
     {

@@ -8,6 +8,7 @@ use App\Models\JournalEntryHeader;
 use App\Models\JournalEntryLine;
 use App\Models\LedgerAccount;
 use App\Models\Payment;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -183,6 +184,163 @@ class LedgerPostingService
             module: 'sales',
             currency: $currency,
         );
+    }
+
+    /**
+     * Cost of goods sold, split by the warehouse each unit actually came from.
+     *
+     * A sale filled from two places — part of it the seller's own stock, the
+     * rest the main warehouse — must credit both holdings, not one pooled
+     * figure. Otherwise the books record what the sale cost while losing where
+     * the goods came from, and a branch's stock value can never be told apart
+     * from the company's.
+     *
+     *   Dr  Cost of goods sold          total
+     *       Cr  Inventory — warehouse A       its share
+     *       Cr  Inventory — warehouse B       its share
+     *
+     * @param  array<int,float>  $costByWarehouse  warehouse id => cost
+     */
+    public function postCostOfGoodsSoldBySource(
+        string $key,
+        array $costByWarehouse,
+        string $label,
+        $reference = null,
+        ?string $date = null,
+        ?string $currency = null,
+    ): ?JournalEntryHeader {
+        $lines = [];
+        $total = 0.0;
+
+        foreach ($costByWarehouse as $warehouseId => $cost) {
+            $cost = $this->money($cost);
+            if ($cost <= 0) {
+                continue;
+            }
+
+            $total += $cost;
+            $warehouse = Warehouse::find($warehouseId);
+            $name = $warehouse?->name ?? ('#' . $warehouseId);
+
+            $lines[] = [
+                'account_id' => $this->inventoryAccountIdFor((int) $warehouseId),
+                'credit' => $cost,
+                'description' => 'إخراج مخزون (' . $name . ') - ' . $label,
+            ];
+        }
+
+        // Products with no cost price yield a zero entry; writing it would add
+        // noise without moving a single balance.
+        if ($lines === [] || $total <= 0) {
+            return null;
+        }
+
+        array_unshift($lines, [
+            'role' => 'cogs',
+            'debit' => $this->money($total),
+            'description' => 'تكلفة مبيعات - ' . $label,
+        ]);
+
+        return $this->post(
+            key: $key,
+            date: $date ?? now()->toDateString(),
+            description: 'تكلفة البضاعة المباعة - ' . $label,
+            lines: $lines,
+            reference: $reference,
+            module: 'sales',
+            currency: $currency,
+        );
+    }
+
+    /**
+     * Goods leaving a warehouse on their way to another of ours.
+     *
+     *   Dr  Goods in transit      cost
+     *       Cr  Inventory — source      cost
+     *
+     * Nothing is sold here, so no cost of sale arises: the value simply stops
+     * belonging to the source and waits somewhere visible until it arrives.
+     */
+    public function postTransferShipment(
+        string $key,
+        int $fromWarehouseId,
+        float $cost,
+        string $label,
+        $reference = null,
+        ?string $date = null,
+    ): ?JournalEntryHeader {
+        $cost = $this->money($cost);
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $name = Warehouse::find($fromWarehouseId)?->name ?? ('#' . $fromWarehouseId);
+
+        return $this->post(
+            key: $key,
+            date: $date ?? now()->toDateString(),
+            description: 'شحن مناقلة - ' . $label,
+            lines: [
+                ['role' => 'inventory_in_transit', 'debit' => $cost, 'description' => 'بضاعة في الطريق - ' . $label],
+                ['account_id' => $this->inventoryAccountIdFor($fromWarehouseId), 'credit' => $cost,
+                 'description' => 'إخراج من ' . $name . ' - ' . $label],
+            ],
+            reference: $reference,
+            module: 'inventory',
+        );
+    }
+
+    /**
+     * Goods arriving at the destination warehouse.
+     *
+     *   Dr  Inventory — destination   cost
+     *       Cr  Goods in transit            cost
+     *
+     * Posted for what actually arrived. A short delivery leaves the difference
+     * sitting in transit rather than quietly appearing at the destination.
+     */
+    public function postTransferReceipt(
+        string $key,
+        int $toWarehouseId,
+        float $cost,
+        string $label,
+        $reference = null,
+        ?string $date = null,
+    ): ?JournalEntryHeader {
+        $cost = $this->money($cost);
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $name = Warehouse::find($toWarehouseId)?->name ?? ('#' . $toWarehouseId);
+
+        return $this->post(
+            key: $key,
+            date: $date ?? now()->toDateString(),
+            description: 'استلام مناقلة - ' . $label,
+            lines: [
+                ['account_id' => $this->inventoryAccountIdFor($toWarehouseId), 'debit' => $cost,
+                 'description' => 'إدخال إلى ' . $name . ' - ' . $label],
+                ['role' => 'inventory_in_transit', 'credit' => $cost, 'description' => 'وصول بضاعة - ' . $label],
+            ],
+            reference: $reference,
+            module: 'inventory',
+        );
+    }
+
+    /**
+     * The inventory account for a warehouse, falling back to the shared one.
+     *
+     * Installations that never split an order have no per-warehouse accounts,
+     * and must keep posting to `inventory` exactly as before.
+     */
+    public function inventoryAccountIdFor(int $warehouseId): int
+    {
+        $id = LedgerAccount::where('warehouse_id', $warehouseId)
+            ->where('type', 'asset')
+            ->value('id');
+
+        return (int) ($id ?? $this->accountIdForRole('inventory'));
     }
 
     /**

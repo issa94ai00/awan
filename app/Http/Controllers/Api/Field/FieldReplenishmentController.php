@@ -7,6 +7,7 @@ use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferItem;
 use App\Models\Product;
 use App\Models\Warehouse;
+use App\Services\Field\BranchReplenishmentService;
 use App\Services\Field\FieldScope;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Http\JsonResponse;
@@ -35,8 +36,51 @@ use RuntimeException;
  */
 class FieldReplenishmentController extends Controller
 {
-    public function __construct(private InventoryService $inventory)
+    public function __construct(
+        private InventoryService $inventory,
+        private BranchReplenishmentService $replenishment,
+    ) {
+    }
+
+    /**
+     * What this branch needs, ready to submit.
+     *
+     * The screen this feeds answers "what am I running out of?" — a question
+     * the app could not previously ask at all. Without it, restocking meant
+     * scrolling the whole shelf from memory, and an item nobody happened to
+     * look at simply ran out.
+     *
+     * Each line carries what the main warehouse can actually send, so the
+     * seller sees a refusal coming instead of meeting it after submitting.
+     */
+    public function suggestions(Request $request): JsonResponse
     {
+        $scope = FieldScope::for($request->user());
+
+        try {
+            $warehouseId = $scope->resolveWarehouseId($request->integer('warehouse_id') ?: null);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 403);
+        }
+
+        $data = $this->replenishment->suggestions(
+            $warehouseId,
+            $scope->supplyWarehouse(),
+            $request->filled('search') ? $request->string('search')->toString() : null
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => $data['summary']['total'] === 0
+                ? 'لا توجد أصناف تحتاج تزويداً في مستودعك.'
+                : sprintf(
+                    '%d صنف يحتاج تزويداً (%d نافد، %d منخفض).',
+                    $data['summary']['total'],
+                    $data['summary']['out_of_stock'],
+                    $data['summary']['low_stock']
+                ),
+            'data' => ['warehouse_id' => $warehouseId] + $data,
+        ]);
     }
 
     /** Requests raised for the branches this person covers. */
@@ -113,6 +157,22 @@ class FieldReplenishmentController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
+        // Checked as a whole before anything is held. The reservation loop below
+        // still refuses a line it cannot take — stock moves between this check
+        // and that hold — but it is no longer the thing that *reports* the
+        // problem. It used to be, and it stopped at the first short product: a
+        // seller restocking eight items met the shortages one submission at a
+        // time, each attempt rolling the other seven back.
+        $shortfalls = $this->replenishment->shortfalls($validated['items'], $source);
+
+        if ($shortfalls !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->replenishment->shortfallSummary($shortfalls, Warehouse::find($source)),
+                'data' => ['reason' => 'insufficient_source_stock', 'shortfalls' => $shortfalls],
+            ], 422);
+        }
+
         try {
             $transfer = DB::transaction(function () use ($validated, $source, $destination, $request) {
                 $transfer = InventoryTransfer::create([
@@ -131,10 +191,12 @@ class FieldReplenishmentController extends Controller
                     $product = $products[$item['product_id']];
 
                     // Held at the source while the request waits, so the same
-                    // units cannot be promised to a sale in the meantime.
+                    // units cannot be promised to a sale in the meantime. The
+                    // breakdown above has already reported any shortage; this
+                    // only catches stock that moved in between.
                     if (!$this->inventory->reserve((int) $item['product_id'], (int) $item['quantity'], $source)) {
                         throw new RuntimeException(sprintf(
-                            'الكمية المتاحة غير كافية من "%s" في مستودع المصدر.',
+                            'تغيّر رصيد "%s" في مستودع المصدر أثناء الإرسال. أعد المحاولة.',
                             $product->name_ar ?? $product->name_en ?? ('#' . $product->id)
                         ));
                     }

@@ -73,6 +73,55 @@ class FieldScope
     }
 
     /**
+     * The warehouse a branch falls back on when its own shelf runs short.
+     *
+     * This is a *supply source*, not an extension of the person's authority.
+     * A rep confined to their branch may see what the main warehouse holds and
+     * may draw on it to complete a sale — they still cannot raise an order
+     * against it, receive into it, or read its movement history, because
+     * `warehouseIds()` is what those endpoints ask and it is untouched.
+     *
+     * Keeping the two apart is the whole point: "where may I sell from" and
+     * "where may the company source from on my behalf" are different questions,
+     * and answering them with one list is how a branch account quietly gains
+     * the run of the company's stock.
+     */
+    public function supplyWarehouse(): ?Warehouse
+    {
+        $primary = Warehouse::where('is_primary', true)->where('is_active', true)->first();
+
+        // Nothing to fall back on when the rep already works out of the main
+        // warehouse — a top-up from yourself is not a top-up.
+        if (!$primary || $primary->id === $this->homeWarehouseId()) {
+            return null;
+        }
+
+        return $primary;
+    }
+
+    public function supplyWarehouseId(): ?int
+    {
+        return $this->supplyWarehouse()?->id;
+    }
+
+    /**
+     * Warehouses whose stock figures this person may *read* — their own, plus
+     * the supply source. Never use this to authorise a write.
+     *
+     * @return array<int,int>
+     */
+    public function visibleWarehouseIds(): array
+    {
+        $ids = $this->warehouseIds();
+
+        if ($supply = $this->supplyWarehouseId()) {
+            $ids[] = $supply;
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Resolves the warehouse an operation should run against.
      *
      * A requested warehouse is honoured only if the person is allowed to use it;
@@ -108,6 +157,7 @@ class FieldScope
     {
         $employee = $this->employee();
         $home = $this->homeWarehouseId() ? Warehouse::find($this->homeWarehouseId()) : null;
+        $supply = $this->supplyWarehouse();
 
         return [
             'user_id' => $this->user->id,
@@ -121,6 +171,14 @@ class FieldScope
                 'name' => $home->name,
                 'code' => $home->code,
                 'location_type' => $home->location_type,
+            ] : null,
+            // Named up front so the app can word its shortage prompt with the
+            // real warehouse rather than a generic "the main warehouse".
+            'supply_warehouse' => $supply ? [
+                'id' => $supply->id,
+                'name' => $supply->name,
+                'code' => $supply->code,
+                'location_type' => $supply->location_type,
             ] : null,
         ];
     }

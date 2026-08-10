@@ -186,6 +186,25 @@ class InventoryService
             $row->{$bucket} = (int) $row->{$bucket} + $signedQuantity;
             $row->save();
 
+            // FIFO layers ride on the same locked transaction as the balance,
+            // so the two can never disagree about what is on the shelf or what
+            // it cost. Stock leaving is costed against the oldest layers; the
+            // real figure replaces whatever the caller guessed at.
+            $costing = app(InventoryCostingService::class);
+            $unitCost = (float) ($options['unit_cost'] ?? 0);
+            $costedTotal = null;
+
+            if ($signedQuantity < 0) {
+                $consumed = $costing->consume($productId, $warehouseId, abs($signedQuantity));
+                $unitCost = $consumed['unit_cost'];
+                $costedTotal = $consumed['cost'];
+            } else {
+                $costing->addLayer($productId, $warehouseId, $signedQuantity, $unitCost, [
+                    'source' => $options['source'] ?? null,
+                    'reference' => $options['reference'] ?? null,
+                ]);
+            }
+
             // The model hook on StockMovement maintains products.stock_quantity,
             // so it is deliberately not touched here — doing both would double
             // every movement.
@@ -203,8 +222,11 @@ class InventoryService
                 'reference' => $options['reference'] ?? null,
                 'source' => $options['source'] ?? null,
                 'notes' => $options['reason'] ?? null,
-                'unit_cost' => $options['unit_cost'] ?? 0,
-                'total_cost' => round((float) ($options['unit_cost'] ?? 0) * abs($signedQuantity), 2),
+                // The movement records what the units were actually worth: for
+                // an issue that is the FIFO cost just consumed, not the caller's
+                // estimate.
+                'unit_cost' => round($unitCost, 4),
+                'total_cost' => $costedTotal ?? round($unitCost * abs($signedQuantity), 2),
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 

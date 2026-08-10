@@ -87,7 +87,10 @@ class SalesOrderWorkflowService
      */
     public function routingOptions(SalesOrder $order): array
     {
-        $order->loadMissing('items.product');
+        // Allocations come along because coverage is now measured against each
+        // line's planned sources; loading them here keeps the per-warehouse loop
+        // below from firing a query per line.
+        $order->loadMissing('items.product', 'items.allocations');
 
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('id')->get();
 
@@ -358,35 +361,68 @@ class SalesOrderWorkflowService
         $movements = [];
         $cost = 0.0;
 
+        // Cost accumulated per source warehouse, so the ledger can credit each
+        // holding for exactly what left it.
+        $costByWarehouse = [];
+
+        $order->loadMissing('items.allocations');
+
         foreach ($order->items as $item) {
             $unitCost = (float) ($item->product->cost_price ?? 0);
 
-            // Consumes the units held at confirmation rather than demanding
-            // fresh availability, otherwise an order's own reservation would
-            // block it from shipping.
-            $movement = $this->inventory->shipReserved(
-                (int) $item->product_id,
-                (int) $item->quantity,
-                $warehouseId,
-                [
-                    'key' => 'SO-' . $order->id . '-' . $item->product_id,
-                    'reference' => 'sales_order',
-                    'source' => $order->id,
-                    'reason' => 'إخراج مخزون لطلب بيع رقم ' . $order->order_number,
-                    'unit_cost' => $unitCost,
-                ]
-            );
+            // A line may be filled from several places — part from the seller's
+            // own stock, the rest from the main warehouse. Where a plan exists
+            // it decides the sources; a line without one ships whole from the
+            // order's fulfilment warehouse, which is the single-source case.
+            $sources = $this->shipmentSourcesFor($item, $warehouseId);
 
-            if ($movement) {
-                $movements[] = $movement->id;
+            foreach ($sources as $sourceWarehouseId => $quantity) {
+                if ($quantity <= 0) {
+                    continue;
+                }
+
+                // Consumes the units held at confirmation rather than demanding
+                // fresh availability, otherwise an order's own reservation would
+                // block it from shipping.
+                $movement = $this->inventory->shipReserved(
+                    (int) $item->product_id,
+                    (int) $quantity,
+                    (int) $sourceWarehouseId,
+                    [
+                        // Keyed per source as well as per product: a split line
+                        // writes one movement per warehouse, and sharing a key
+                        // would make the second look like a repeat of the first
+                        // and be skipped.
+                        'key' => 'SO-' . $order->id . '-' . $item->product_id . '-W' . $sourceWarehouseId,
+                        'reference' => 'sales_order',
+                        'source' => $order->id,
+                        'reason' => 'إخراج مخزون لطلب بيع رقم ' . $order->order_number,
+                        'unit_cost' => $unitCost,
+                    ]
+                );
+
+                if ($movement) {
+                    $movements[] = $movement->id;
+                }
+
+                // The movement carries what the units actually cost, drawn from
+                // the FIFO layers as they were consumed. Using the product's
+                // current cost price instead valued a batch bought at 20 and a
+                // batch bought at 30 identically, and the margin was wrong by
+                // the difference on every unit.
+                $lineCost = $movement
+                    ? (float) $movement->total_cost
+                    : $unitCost * (int) $quantity;
+
+                $cost += $lineCost;
+                $costByWarehouse[(int) $sourceWarehouseId] =
+                    ($costByWarehouse[(int) $sourceWarehouseId] ?? 0) + $lineCost;
             }
-
-            $cost += $unitCost * (int) $item->quantity;
         }
 
-        $this->ledger->postCostOfGoodsSold(
+        $this->ledger->postCostOfGoodsSoldBySource(
             key: 'so_cogs:' . $order->id,
-            cost: $cost,
+            costByWarehouse: $costByWarehouse,
             label: 'طلب بيع ' . $order->order_number,
             reference: $order,
             currency: $order->currency,
@@ -407,6 +443,51 @@ class SalesOrderWorkflowService
             'stock_movements' => $movements,
             'cost_of_goods_sold' => round($cost, 2),
         ];
+    }
+
+    /**
+     * Which warehouses a line ships from, and how much comes out of each.
+     *
+     * Returns `[warehouse_id => quantity]`. Three shapes come out of this, and
+     * they are the three ways an order gets filled:
+     *
+     *   - no plan            the whole line leaves the order's warehouse
+     *   - a single-row plan  the whole line leaves that one warehouse
+     *   - a multi-row plan   the line is split across its sources
+     *
+     * A plan that does not add up to the line's quantity has the remainder
+     * taken from the order's own warehouse, so a stale or partial plan can
+     * never ship fewer goods than the customer is being charged for.
+     *
+     * @return array<int,int>
+     */
+    private function shipmentSourcesFor($item, int $fallbackWarehouseId): array
+    {
+        $allocations = $item->allocations ?? collect();
+
+        if ($allocations->isEmpty()) {
+            return [$fallbackWarehouseId => (int) $item->quantity];
+        }
+
+        $sources = [];
+        foreach ($allocations as $allocation) {
+            $quantity = (int) $allocation->quantity;
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $id = (int) $allocation->warehouse_id;
+            $sources[$id] = ($sources[$id] ?? 0) + $quantity;
+        }
+
+        $planned = array_sum($sources);
+        $shortfall = (int) $item->quantity - $planned;
+
+        if ($shortfall > 0) {
+            $sources[$fallbackWarehouseId] = ($sources[$fallbackWarehouseId] ?? 0) + $shortfall;
+        }
+
+        return $sources;
     }
 
     /**
@@ -778,17 +859,24 @@ class SalesOrderWorkflowService
 
     private function reserveAll(SalesOrder $order, int $warehouseId): void
     {
-        foreach ($order->items as $item) {
-            $ok = $this->inventory->reserve((int) $item->product_id, (int) $item->quantity, $warehouseId);
+        $order->loadMissing('items.allocations');
 
-            if (!$ok) {
-                // Inside the caller's transaction, so the reservations already
-                // taken in this loop roll back with the throw.
-                throw new RuntimeException(sprintf(
-                    'تعذّر حجز %d من "%s" في المستودع المحدد — الكمية المتاحة تغيّرت.',
-                    $item->quantity,
-                    $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id)
-                ));
+        foreach ($order->items as $item) {
+            // Held where the goods will actually be taken from. Reserving the
+            // whole line at one warehouse while shipping it from two left the
+            // first over-held and the second unprotected, so a split line's
+            // second half could be sold out from under it before it shipped.
+            foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $quantity) {
+                $ok = $this->inventory->reserve((int) $item->product_id, (int) $quantity, (int) $sourceId);
+
+                if (!$ok) {
+                    throw new RuntimeException(sprintf(
+                        'تعذّر حجز %d من "%s" في مستودع %s — الكمية المتاحة تغيّرت.',
+                        $quantity,
+                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
+                        Warehouse::find($sourceId)?->name ?? ('#' . $sourceId)
+                    ));
+                }
             }
         }
     }
@@ -799,40 +887,54 @@ class SalesOrderWorkflowService
             return;
         }
 
+        $order->loadMissing('items.allocations');
+
+        // Released from wherever it was held. Releasing the whole line from one
+        // warehouse would leave a split line's other source held for an order
+        // that no longer exists.
         foreach ($order->items as $item) {
-            $this->inventory->release((int) $item->product_id, (int) $item->quantity, $warehouseId);
+            foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $quantity) {
+                $this->inventory->release((int) $item->product_id, (int) $quantity, (int) $sourceId);
+            }
         }
     }
 
     /**
-     * Refuses the move unless every line can be served from the warehouse,
-     * naming the products that fall short rather than failing on the first one.
+     * Refuses the move unless every line can be served from the place it is
+     * planned to come from, naming the products that fall short rather than
+     * failing on the first one.
+     *
+     * Checked per source, not against the order's own warehouse. A line topped
+     * up from the main warehouse — the field app's shortage flow — is held and
+     * shipped from there, so measuring it against the branch reported a
+     * shortfall that did not exist and made such an order impossible to confirm.
+     * This mirrors reserveAll(), which was already source-aware; the check and
+     * the act it guards now ask the same question.
      */
     private function assertCanCover(SalesOrder $order, int $warehouseId): void
     {
+        $order->loadMissing('items.allocations');
+
         $short = [];
 
         foreach ($order->items as $item) {
-            $available = $this->sellableFor((int) $item->product_id, $warehouseId, $order);
+            foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $required) {
+                $available = $this->sellableFor((int) $item->product_id, (int) $sourceId, $order);
 
-            if ($available < (int) $item->quantity) {
-                $short[] = sprintf(
-                    '%s (مطلوب %d، متاح %d)',
-                    $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
-                    $item->quantity,
-                    $available
-                );
+                if ($available < $required) {
+                    $short[] = sprintf(
+                        '%s في مستودع "%s" (مطلوب %d، متاح %d)',
+                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
+                        Warehouse::find($sourceId)?->name ?? ('#' . $sourceId),
+                        $required,
+                        $available
+                    );
+                }
             }
         }
 
         if ($short) {
-            $warehouse = Warehouse::find($warehouseId);
-
-            throw new RuntimeException(sprintf(
-                'الرصيد غير كافٍ في مستودع "%s": %s.',
-                $warehouse?->name ?? ('#' . $warehouseId),
-                implode('، ', $short)
-            ));
+            throw new RuntimeException('الرصيد غير كافٍ: ' . implode('، ', $short) . '.');
         }
     }
 
@@ -855,12 +957,41 @@ class SalesOrderWorkflowService
 
         $sellable = max(0, (int) $row->available_quantity - (int) $row->reserved_quantity);
 
-        if ($this->holdsReservation($order) && (int) $order->fulfillment_warehouse_id === $warehouseId) {
-            $ownHold = (int) $order->items->where('product_id', $productId)->sum('quantity');
+        $ownHold = $this->ownHoldAt($order, $productId, $warehouseId);
+        if ($ownHold > 0) {
             $sellable += min($ownHold, (int) $row->reserved_quantity);
         }
 
         return $sellable;
+    }
+
+    /**
+     * How much of a product this order is itself holding at one warehouse.
+     *
+     * Read from the sourcing plan rather than assumed to sit at the order's
+     * fulfilment warehouse. A split order holds units in two places, and
+     * crediting the whole line back at one of them told the caller a warehouse
+     * had stock it does not — enough to pass a coverage check that the
+     * reservation would then refuse.
+     */
+    private function ownHoldAt(SalesOrder $order, int $productId, int $warehouseId): int
+    {
+        if (!$this->holdsReservation($order)) {
+            return 0;
+        }
+
+        $fallback = (int) $order->fulfillment_warehouse_id;
+        $held = 0;
+
+        foreach ($order->items as $item) {
+            if ((int) $item->product_id !== $productId) {
+                continue;
+            }
+
+            $held += (int) ($this->shipmentSourcesFor($item, $fallback)[$warehouseId] ?? 0);
+        }
+
+        return $held;
     }
 
     /* ------------------------------------------------------------------ */
@@ -916,6 +1047,149 @@ class SalesOrderWorkflowService
             SalesOrder::STATUS_CANCELLED => 'ملغي',
             default => $status,
         };
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Source selection
+     * ------------------------------------------------------------------ */
+
+    /**
+     * The per-line sourcing plan, with what each warehouse could actually give.
+     *
+     * This is what the operator chooses from: for every line, every warehouse
+     * that holds any of it, how much is free there, and how much the current
+     * plan takes. Without it the split is invisible — the order simply ships
+     * from wherever the plan happens to say.
+     *
+     * @return array<string,mixed>
+     */
+    public function sourcingPlan(SalesOrder $order): array
+    {
+        $order->loadMissing('items.product', 'items.allocations');
+
+        $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_primary')->orderBy('id')->get();
+        $fallback = (int) $order->fulfillment_warehouse_id;
+
+        $lines = $order->items->map(function ($item) use ($warehouses, $order, $fallback) {
+            $planned = $this->shipmentSourcesFor($item, $fallback);
+
+            $sources = $warehouses->map(function (Warehouse $w) use ($item, $order, $planned) {
+                return [
+                    'warehouse_id' => $w->id,
+                    'warehouse_name' => $w->name,
+                    'is_primary' => (bool) $w->is_primary,
+                    'available' => $this->sellableFor((int) $item->product_id, $w->id, $order),
+                    'allocated' => (int) ($planned[$w->id] ?? 0),
+                ];
+            })->values();
+
+            $allocated = (int) array_sum($planned);
+
+            return [
+                'item_id' => $item->id,
+                'product_id' => (int) $item->product_id,
+                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? ('#' . $item->product_id),
+                'sku' => $item->product->sku,
+                'quantity' => (int) $item->quantity,
+                'allocated' => $allocated,
+                'remaining' => max(0, (int) $item->quantity - $allocated),
+                // A plan is only complete when every unit has a source named.
+                'is_complete' => $allocated === (int) $item->quantity,
+                'has_explicit_plan' => $item->allocations->isNotEmpty(),
+                'sources' => $sources,
+            ];
+        })->values();
+
+        return [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'fulfillment_warehouse_id' => $fallback,
+            'editable' => $this->sourcingEditable($order),
+            'lines' => $lines,
+        ];
+    }
+
+    /** Sourcing may be changed until the goods leave; after that it is history. */
+    public function sourcingEditable(SalesOrder $order): bool
+    {
+        return !in_array((string) $order->status, [
+            SalesOrder::STATUS_SHIPPED,
+            SalesOrder::STATUS_DELIVERED,
+            SalesOrder::STATUS_CANCELLED,
+        ], true);
+    }
+
+    /**
+     * Replaces the sourcing plan, moving any stock already held to match.
+     *
+     * @param  array<int,array<int,int>>  $plan  item id => [warehouse id => quantity]
+     *
+     * @throws RuntimeException
+     */
+    public function saveSourcingPlan(SalesOrder $order, array $plan): array
+    {
+        return DB::transaction(function () use ($order, $plan) {
+            $order = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $order->load('items.product', 'items.allocations');
+
+            if (!$this->sourcingEditable($order)) {
+                throw new RuntimeException(
+                    'لا يمكن تغيير مصدر البضاعة بعد شحن الطلب — ما خرج من المستودعات واقعة لا تُعدَّل.'
+                );
+            }
+
+            $held = $this->holdsReservation($order);
+            $fallback = (int) $order->fulfillment_warehouse_id;
+
+            // Everything currently held goes back first, so the new plan is
+            // checked against true availability rather than against stock this
+            // same order is sitting on.
+            if ($held) {
+                $this->releaseAll($order, $fallback);
+            }
+
+            foreach ($order->items as $item) {
+                $requested = $plan[$item->id] ?? null;
+                if ($requested === null) {
+                    continue;
+                }
+
+                $total = array_sum($requested);
+                if ($total !== (int) $item->quantity) {
+                    throw new RuntimeException(sprintf(
+                        'مجموع مصادر "%s" هو %d بينما الكمية المطلوبة %d.',
+                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
+                        $total,
+                        $item->quantity
+                    ));
+                }
+
+                $item->allocations()->delete();
+
+                foreach ($requested as $warehouseId => $quantity) {
+                    if ((int) $quantity <= 0) {
+                        continue;
+                    }
+
+                    $item->allocations()->create([
+                        'warehouse_id' => (int) $warehouseId,
+                        'quantity' => (int) $quantity,
+                        'status' => 'pending',
+                    ]);
+                }
+            }
+
+            $order->load('items.allocations');
+
+            // Re-taken against the new plan. A source that cannot cover its
+            // share fails here, with the whole change rolled back — the old
+            // plan and its holds survive intact rather than being half-applied.
+            if ($held) {
+                $this->reserveAll($order, $fallback);
+            }
+
+            return $this->sourcingPlan($order->refresh());
+        });
     }
 
     /* ------------------------------------------------------------------ *

@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -60,17 +59,27 @@ return new class extends Migration
         Schema::dropIfExists(self::TABLE);
     }
 
-    /** Whether the table already carries an index of this name. */
+    /**
+     * Whether the table already carries an index of this name.
+     *
+     * Asked through Schema rather than by selecting from
+     * `information_schema.statistics`, which exists only on MySQL. On SQLite —
+     * what the test suite runs on — that query is not merely empty but fatal,
+     * so every migration after this one was unreachable and no test in the
+     * project could boot a database.
+     */
     private function hasIndex(string $index): bool
     {
         if (!Schema::hasTable(self::TABLE)) {
             return false;
         }
 
-        return DB::table('information_schema.statistics')
-            ->where('table_schema', DB::getDatabaseName())
-            ->where('table_name', self::TABLE)
-            ->where('index_name', $index)
-            ->exists();
+        foreach (Schema::getIndexes(self::TABLE) as $existing) {
+            if (($existing['name'] ?? null) === $index) {
+                return true;
+            }
+        }
+
+        return false;
     }
 };

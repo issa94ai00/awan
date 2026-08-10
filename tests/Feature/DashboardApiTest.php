@@ -37,7 +37,11 @@ test('dashboard stats endpoint returns summary data', function () {
         'total' => 120.50,
         'paid_amount' => 120.50,
         'due_amount' => 0,
-        'status' => Invoice::STATUS_PAID,
+        // STATUS_PAID no longer exists on the model — payment is tracked by
+        // paid_amount/due_amount, and the stage is what `status` records. A
+        // settled, delivered invoice is DELIVERED, which is also what the
+        // revenue figure asserted below counts.
+        'status' => Invoice::STATUS_DELIVERED,
         'created_by' => $this->user->id,
     ]);
 
