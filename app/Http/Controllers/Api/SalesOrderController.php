@@ -147,6 +147,14 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
 
+        // Who the order belongs to comes from the caller: the back office files
+        // orders on behalf of the rep who took them, and the apps send their own
+        // employee. Omitting it falls back to the signed-in user's employee
+        // record rather than leaving the order unattributed — an order nobody
+        // owns has no one to chase it, and drops out of "my orders" everywhere.
+        $validated['assigned_employee_id'] = $validated['assigned_employee_id']
+            ?? Employee::where('user_id', auth()->id())->value('id');
+
         // Derived from the last id, not the row count: counting reuses a number
         // the moment any order is deleted.
         $validated['order_number'] = 'SO-' . str_pad(
@@ -258,6 +266,14 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
 
+        // Reassignment is a real back-office action — an order moves to whoever
+        // is covering the round. A request that leaves the field out keeps the
+        // current owner rather than clearing it, so editing a delivery address
+        // cannot silently orphan the order.
+        if (!array_key_exists('assigned_employee_id', $validated) || $validated['assigned_employee_id'] === null) {
+            $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
+        }
+
         // The stage is moved through the workflow endpoints, never by writing
         // the column — a status set here would skip the stock and ledger work
         // that the stage is supposed to trigger.
@@ -275,9 +291,11 @@ class SalesOrderController extends Controller
             + ($validated['tax'] ?? 0)
             + ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0);
 
-        if (!empty($validated['assigned_employee_id']) && empty($validated['fulfillment_warehouse_id'])) {
-            $employee = Employee::find($validated['assigned_employee_id']);
-            $validated['fulfillment_warehouse_id'] = $employee?->warehouse_id;
+        // Derived from whoever the order now belongs to — which may be a rep it
+        // was just reassigned to, so the warehouse follows the round rather than
+        // staying with the person who happened to raise it.
+        if (empty($validated['fulfillment_warehouse_id']) && !empty($validated['assigned_employee_id'])) {
+            $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id;
         }
 
         if (empty($validated['fulfillment_warehouse_id'])) {
@@ -429,6 +447,9 @@ class SalesOrderController extends Controller
                 'stock_movements' => $this->workflow->movementsFor($salesOrder),
                 'diagnostics' => $this->workflow->diagnose($salesOrder),
                 'picking_list' => $this->workflow->pickingListFor($salesOrder),
+                // All of them: an order routed across two warehouses raises two
+                // picking jobs, and the single key above can only show one.
+                'picking_lists' => $this->workflow->pickingListsFor($salesOrder),
                 'follow_up' => $this->workflow->followUp($salesOrder),
                 'history' => $salesOrder->statusHistory,
                 'routing' => $this->routingPayload($salesOrder),

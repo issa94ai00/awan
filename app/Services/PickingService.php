@@ -14,33 +14,79 @@ use Illuminate\Support\Facades\DB;
 class PickingService
 {
     /**
-     * Create picking list from sales order
-     */
-    /**
-     * The picking list for an order, creating it if there is not one already.
+     * Picking instructions for an order, one per warehouse it is routed to.
      *
-     * An order has one live picking list: it is the instruction to go and take
-     * these goods off the shelf, and a second copy means the same units get
-     * picked twice. Confirming an order now raises the list automatically, so
-     * without this guard a re-confirm or a repair run would leave the warehouse
-     * holding duplicates.
+     * A picking list is an instruction to a *building*: go to these shelves and
+     * take these goods off them. An order split across two warehouses therefore
+     * needs two, each naming only its own share.
+     *
+     * Previously one list was raised at the order's fulfilment warehouse for the
+     * whole quantity. On a split order that was wrong twice over: the branch was
+     * told to pick eight units when only three were routed to it and only three
+     * were held there, and the warehouse supplying the other five was never told
+     * anything at all.
+     *
+     * @param  array<int,array<int,int>>  $plan  warehouse id => [order item id => quantity]
+     * @return array<int,PickingList>  keyed by warehouse id
+     */
+    public function createPickingListsForPlan(SalesOrder $order, array $plan): array
+    {
+        $order->loadMissing('items.product');
+
+        $existing = $this->activePickingLists($order)->keyBy('warehouse_id');
+        $lists = [];
+
+        foreach ($plan as $warehouseId => $quantities) {
+            $warehouseId = (int) $warehouseId;
+
+            // One live list per warehouse. A re-confirm or a repair run must not
+            // leave a building holding two instructions for the same units.
+            if ($existing->has($warehouseId)) {
+                $lists[$warehouseId] = $existing[$warehouseId];
+                continue;
+            }
+
+            $quantities = array_filter($quantities, fn ($q) => (int) $q > 0);
+
+            if ($quantities === []) {
+                continue;
+            }
+
+            $lists[$warehouseId] = $this->buildList($order, $warehouseId, $quantities);
+        }
+
+        return $lists;
+    }
+
+    /**
+     * The whole order picked from one warehouse — the single-source case.
+     *
+     * Kept for callers that have no routing to speak of; it delegates so the
+     * building of a list lives in one place.
      */
     public function createPickingList(SalesOrder $order, $warehouseId = null): PickingList
     {
-        $existing = $this->activePickingList($order);
-        if ($existing) {
-            return $existing;
-        }
-
-        $warehouseId = $warehouseId ?? $order->fulfillment_warehouse_id;
+        $warehouseId = (int) ($warehouseId ?? $order->fulfillment_warehouse_id);
 
         if (!$warehouseId) {
             throw new \Exception('No warehouse specified for picking');
         }
 
-        DB::beginTransaction();
+        $order->loadMissing('items');
 
-        try {
+        $lists = $this->createPickingListsForPlan($order, [
+            $warehouseId => $order->items->pluck('quantity', 'id')->map(fn ($q) => (int) $q)->all(),
+        ]);
+
+        return $lists[$warehouseId]
+            ?? $this->activePickingLists($order)->first()
+            ?? throw new \Exception('Could not raise a picking list for this order');
+    }
+
+    /** Writes one list and its lines. */
+    private function buildList(SalesOrder $order, int $warehouseId, array $quantities): PickingList
+    {
+        return DB::transaction(function () use ($order, $warehouseId, $quantities) {
             $pickingList = PickingList::create([
                 'warehouse_id' => $warehouseId,
                 'sales_order_id' => $order->id,
@@ -49,11 +95,20 @@ class PickingService
                 'list_number' => 'PL-' . str_pad((string) (((int) PickingList::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                 'priority' => $this->determinePriority($order),
                 'status' => PickingList::STATUS_PENDING,
-                'total_items' => $order->items->count(),
+                'total_items' => count($quantities),
                 'picked_items' => 0,
             ]);
 
             foreach ($order->items as $orderItem) {
+                $quantity = (int) ($quantities[$orderItem->id] ?? 0);
+
+                // A line this warehouse supplies nothing of does not belong on
+                // its list — printing it would send a picker looking for goods
+                // that were never routed here.
+                if ($quantity <= 0) {
+                    continue;
+                }
+
                 $bin = $this->findBestBinForItem($orderItem, $warehouseId);
 
                 $pickingListItem = $pickingList->items()->create([
@@ -61,7 +116,7 @@ class PickingService
                     'product_id' => $orderItem->product_id,
                     'product_variant_id' => $orderItem->product_variant_id,
                     'bin_id' => $bin?->id,
-                    'quantity_to_pick' => $orderItem->quantity,
+                    'quantity_to_pick' => $quantity,
                     'quantity_picked' => 0,
                     'status' => PickingListItem::STATUS_PENDING,
                     'sort_order' => $bin?->id ?? 0,
@@ -74,29 +129,35 @@ class PickingService
                 }
             }
 
-            // Optimize picking route
             $this->optimizePickingRoute($pickingList);
 
-            DB::commit();
-
             return $pickingList;
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
     }
 
     /**
-     * The order's live picking list, if it has one. A cancelled list does not
-     * count — that is what makes re-picking a revived order possible.
+     * Every live picking list for the order — one per warehouse it is routed to.
+     *
+     * A cancelled list does not count; that is what makes re-picking a revived
+     * order possible.
+     *
+     * @return Collection<int,PickingList>
      */
-    public function activePickingList(SalesOrder $order): ?PickingList
+    public function activePickingLists(SalesOrder $order): Collection
     {
         return PickingList::where('sales_order_id', $order->id)
             ->where('status', '!=', PickingList::STATUS_CANCELLED)
-            ->latest('id')
-            ->first();
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * One live picking list, for callers that only need to know whether the
+     * order has been given to a warehouse at all.
+     */
+    public function activePickingList(SalesOrder $order): ?PickingList
+    {
+        return $this->activePickingLists($order)->last();
     }
 
     /**
@@ -115,9 +176,23 @@ class PickingService
      */
     public function completeForShipment(SalesOrder $order): ?PickingList
     {
-        $list = $this->activePickingList($order);
+        // Every warehouse the order was routed to has its own list, and the
+        // shipment is only honest once all of them are accounted for. Completing
+        // just one left the other building's instruction open for goods that had
+        // demonstrably left it.
+        $completed = null;
 
-        if (!$list || $list->status === PickingList::STATUS_COMPLETED) {
+        foreach ($this->activePickingLists($order) as $list) {
+            $completed = $this->completeList($list) ?? $completed;
+        }
+
+        return $completed;
+    }
+
+    /** @throws \Exception when the picking record contradicts what is shipping */
+    private function completeList(PickingList $list): ?PickingList
+    {
+        if ($list->status === PickingList::STATUS_COMPLETED) {
             return $list;
         }
 
@@ -171,17 +246,23 @@ class PickingService
      */
     public function cancelForOrder(SalesOrder $order): ?PickingList
     {
-        $list = $this->activePickingList($order);
+        $cancelled = null;
 
-        // Once picking is finished the goods have already been taken off the
-        // shelf; cancelling the paperwork then would hide that it happened.
-        if (!$list || $list->status === PickingList::STATUS_COMPLETED) {
-            return null;
+        // Stood down at every warehouse the order reached. Cancelling only one
+        // would leave the other still sending someone to the shelves for a sale
+        // that is off.
+        foreach ($this->activePickingLists($order) as $list) {
+            // Once picking is finished the goods have already been taken off the
+            // shelf; cancelling the paperwork then would hide that it happened.
+            if ($list->status === PickingList::STATUS_COMPLETED) {
+                continue;
+            }
+
+            $list->cancel();
+            $cancelled = $list;
         }
 
-        $list->cancel();
-
-        return $list;
+        return $cancelled;
     }
 
     /**

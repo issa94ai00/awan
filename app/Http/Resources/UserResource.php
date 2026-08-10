@@ -29,6 +29,17 @@ class UserResource extends JsonResource
             ] : null,
             'can_manage_orders' => $this->isAdmin() || $this->hasRole('manager') || $this->hasRole('employee'),
 
+            // Who this account is as a member of staff.
+            //
+            // The apps carry an `employee_id` field and had nowhere to fill it
+            // from: this resource is what login returns, and it stopped at the
+            // user account. So every order the staff app raised went in with no
+            // responsible employee — invisible in "my orders", with nobody to
+            // chase it — and the warehouse could not be derived from the person
+            // either. Both are attached here, at the one place that knows.
+            'employee_id' => $this->employee?->id,
+            'employee_warehouse_id' => $this->employee?->warehouse_id,
+
             // Timestamps
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

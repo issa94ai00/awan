@@ -307,15 +307,26 @@ class SalesOrderWorkflowService
             'journal_posted' => true,
         ];
 
-        // Confirming is the moment the warehouse is told to go and get the
-        // goods, so the picking list is raised here rather than being a
-        // separate thing somebody has to remember. It is guarded: a picking
-        // problem — no bins mapped, a warehouse misconfigured — must not undo a
-        // committed sale, and the missing list is reported instead.
+        // Confirming is the moment the warehouses are told to go and get the
+        // goods, so the picking lists are raised here rather than being a
+        // separate thing somebody has to remember. One per warehouse the order
+        // is routed to, each naming only its own share — an order split across
+        // two buildings is two picking jobs, not one.
+        //
+        // Guarded: a picking problem — no bins mapped, a warehouse
+        // misconfigured — must not undo a committed sale, and the missing lists
+        // are reported instead.
         try {
-            $picking = $this->picking->createPickingList($order, (int) $warehouseId);
-            $effects['picking_list_id'] = $picking->id;
-            $effects['picking_list_number'] = $picking->list_number;
+            $lists = $this->picking->createPickingListsForPlan(
+                $order,
+                $this->pickingPlanFor($order, (int) $warehouseId)
+            );
+
+            $effects['picking_lists'] = collect($lists)
+                ->map(fn ($list, $whId) => [
+                    'warehouse_id' => (int) $whId,
+                    'list_number' => $list->list_number,
+                ])->values()->all();
         } catch (\Throwable $e) {
             $effects['picking_list_error'] = $e->getMessage();
             report($e);
@@ -446,6 +457,35 @@ class SalesOrderWorkflowService
     }
 
     /**
+     * The order's routing turned inside out: what each warehouse must pick.
+     *
+     * `shipmentSourcesFor` answers per line ("this line comes from here and
+     * there"); a picking list is per building ("fetch these lines off your
+     * shelves"), so the same plan is needed the other way round.
+     *
+     * @return array<int,array<int,int>>  warehouse id => [order item id => quantity]
+     */
+    private function pickingPlanFor(SalesOrder $order, int $fallbackWarehouseId): array
+    {
+        $order->loadMissing('items.allocations');
+
+        $plan = [];
+
+        foreach ($order->items as $item) {
+            foreach ($this->shipmentSourcesFor($item, $fallbackWarehouseId) as $warehouseId => $quantity) {
+                if ($quantity <= 0) {
+                    continue;
+                }
+
+                $plan[(int) $warehouseId][$item->id] =
+                    ($plan[(int) $warehouseId][$item->id] ?? 0) + (int) $quantity;
+            }
+        }
+
+        return $plan;
+    }
+
+    /**
      * Which warehouses a line ships from, and how much comes out of each.
      *
      * Returns `[warehouse_id => quantity]`. Three shapes come out of this, and
@@ -560,24 +600,48 @@ class SalesOrderWorkflowService
         $warehouseId = (int) $order->fulfillment_warehouse_id;
 
         if (in_array($from, self::SHIPPED_STAGES, true)) {
-            // The goods are already out. Bring them back and reverse the cost.
+            // The goods are already out. Bring them back to the shelves they
+            // actually left, and reverse the cost.
+            //
+            // Returning everything to the order's own warehouse — which is what
+            // this did — put a split order's whole quantity in one building: the
+            // fulfilment warehouse gained units it never shipped and the other
+            // lost them for good. The ledger reversal credits each holding
+            // correctly, so the books and the shelves stopped agreeing.
+            $order->loadMissing('items.allocations');
+
+            $returned = [];
+
             foreach ($order->items as $item) {
-                $this->inventory->receive(
-                    (int) $item->product_id,
-                    (int) $item->quantity,
-                    $warehouseId,
-                    [
-                        'key' => 'SO-CANCEL-' . $order->id . '-' . $item->product_id,
-                        'reference' => 'sales_order_cancelled',
-                        'source' => $order->id,
-                        'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم ' . $order->order_number,
-                        'unit_cost' => (float) ($item->product->cost_price ?? 0),
-                    ]
-                );
+                foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $quantity) {
+                    if ($quantity <= 0) {
+                        continue;
+                    }
+
+                    $this->inventory->receive(
+                        (int) $item->product_id,
+                        (int) $quantity,
+                        (int) $sourceId,
+                        [
+                            // Keyed per source as well as per product, matching
+                            // the shipment: one return per warehouse, and a
+                            // shared key would make the second look like a
+                            // repeat of the first and be skipped.
+                            'key' => 'SO-CANCEL-' . $order->id . '-' . $item->product_id . '-W' . $sourceId,
+                            'reference' => 'sales_order_cancelled',
+                            'source' => $order->id,
+                            'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم ' . $order->order_number,
+                            'unit_cost' => (float) ($item->product?->cost_price ?? 0),
+                        ]
+                    );
+
+                    $returned[(int) $sourceId] = ($returned[(int) $sourceId] ?? 0) + (int) $quantity;
+                }
             }
 
             $this->ledger->reverseFor('so_cogs:' . $order->id);
             $effects['stock_returned'] = true;
+            $effects['returned_by_warehouse'] = $returned;
         } elseif (in_array($from, self::RESERVED_STAGES, true)) {
             // Still on the shelf, just held for this order — let it go.
             $this->releaseAll($order, $warehouseId);
@@ -1349,21 +1413,58 @@ class SalesOrderWorkflowService
 
         // Cost price drives the COGS entry; a zero cost silently books the sale
         // at full margin.
-        $unpriced = $order->items->filter(fn ($i) => (float) ($i->product->cost_price ?? 0) <= 0);
+        // Orphaned lines are excluded: they have no product to price, and the
+        // check above already says so. Reading through a null product here also
+        // emitted a warning per line on every diagnose() call.
+        $unpriced = $order->items->filter(
+            fn ($i) => $i->product !== null && (float) ($i->product->cost_price ?? 0) <= 0
+        );
+
         if ($unpriced->isNotEmpty() && $isConfirmed) {
             $add('warning', 'cost_price_missing', 'أصناف بلا سعر تكلفة',
                 $unpriced->count() . ' من أصناف الطلب لا يحمل سعر تكلفة، فتكلفة البضاعة المباعة تُحتسب صفراً لها ويظهر هامش الربح أعلى من حقيقته.',
                 'أدخل سعر تكلفة هذه الأصناف: ' . $unpriced->take(3)
-                    ->map(fn ($i) => $i->product->name_ar ?? $i->product->name ?? ('#' . $i->product_id))
+                    ->map(fn ($i) => $this->itemLabel($i))
                     ->implode('، ') . ($unpriced->count() > 3 ? ' وغيرها' : '') . '.');
         }
 
         // A confirmed order with no picking list means nobody has been told to
         // fetch the goods — the sale is committed but the warehouse never heard.
-        if ($this->holdsReservation($order) && !$this->picking->activePickingList($order)) {
-            $add('warning', 'picking_list_missing', 'لا توجد قائمة تجهيز لهذا الطلب',
-                'الطلب مؤكد لكن لم تُنشأ له قائمة تجهيز، فلن يصل المستودع أمر بسحب الأصناف من الرفوف.',
-                'أعد تأكيد الطلب لإنشاء القائمة، أو أنشئها يدوياً من شاشة WMS.');
+        //
+        // Checked per routed warehouse, not once for the order: a split order
+        // with a list at only one of its two sources looked perfectly served
+        // while the other building had been told nothing.
+        if ($this->holdsReservation($order)) {
+            $instructed = $this->picking->activePickingLists($order)->pluck('warehouse_id')
+                ->map(fn ($id) => (int) $id)->all();
+
+            $uninstructed = collect(array_keys($this->pickingPlanFor($order, (int) $order->fulfillment_warehouse_id)))
+                ->reject(fn ($warehouseId) => in_array((int) $warehouseId, $instructed, true))
+                ->map(fn ($warehouseId) => Warehouse::find($warehouseId)?->name ?? ('#' . $warehouseId))
+                ->values();
+
+            if ($uninstructed->isNotEmpty()) {
+                $add('warning', 'picking_list_missing', 'لا توجد قائمة تجهيز لهذا الطلب',
+                    'الطلب مؤكد لكن لم تُنشأ قائمة تجهيز في ' . $uninstructed->implode('، ')
+                        . '، فلن يصل ذلك المستودع أمر بسحب الأصناف من الرفوف.',
+                    'أعد تأكيد الطلب لإنشاء القائمة، أو أنشئها يدوياً من شاشة WMS.');
+            }
+        }
+
+        // Checked before the reservation, and reported instead of it for these
+        // lines: a product that no longer exists is the *reason* nothing is
+        // held, and leading with the symptom sent operators to re-route an
+        // order that no warehouse could ever cover.
+        $orphaned = $this->itemsWithMissingProduct($order);
+
+        if ($orphaned->isNotEmpty()) {
+            $add('error', 'product_missing', 'أصناف الطلب لم تعد موجودة في الكتالوج',
+                $orphaned->count() . ' من بنود هذا الطلب تشير إلى منتجات محذوفة — غالباً بعد حذف الكتالوج '
+                    . 'وإعادة استيراده بمعرّفات جديدة. البند بلا رصيد في أي مستودع، فلا يمكن حجزه ولا '
+                    . 'تجهيزه ولا شحنه ولا احتساب تكلفته: ' . $orphaned->take(3)->implode('، ')
+                    . ($orphaned->count() > 3 ? ' وغيرها' : '') . '.',
+                'أعد ربط البنود بالمنتجات الحالية، أو ألغِ الطلب وأنشئه من جديد. '
+                    . 'إعادة التأكيد أو تغيير المستودع لن تُجديا هنا.');
         }
 
         if ($this->holdsReservation($order)) {
@@ -1372,7 +1473,7 @@ class SalesOrderWorkflowService
             if ($unreserved->isNotEmpty()) {
                 $add('warning', 'reservation_missing', 'أصناف بلا حجز في مستودع التنفيذ',
                     'الطلب مؤكد لكن لا توجد أي كمية محجوزة من ' . $unreserved->count()
-                        . ' من أصنافه في مستودع التنفيذ، فقد تُباع لطلب آخر قبل الشحن: '
+                        . ' من أصنافه في المستودع الذي ستُسحب منه، فقد تُباع لطلب آخر قبل الشحن: '
                         . $unreserved->take(3)->implode('، ') . ($unreserved->count() > 3 ? ' وغيرها' : '') . '.',
                     'أعد توجيه الطلب إلى مستودع يغطيه، أو أعد تأكيده ليُعاد الحجز.');
             }
@@ -1395,8 +1496,8 @@ class SalesOrderWorkflowService
     }
 
     /**
-     * Products this order needs of which the fulfilment warehouse is holding
-     * nothing at all.
+     * Lines this order is holding nothing for, at the place it plans to take
+     * them from.
      *
      * `warehouse_inventory.reserved_quantity` is a single aggregate with no link
      * back to the order that placed the hold, so "is *my* reservation intact?"
@@ -1409,30 +1510,94 @@ class SalesOrderWorkflowService
      * alarms, at the cost of staying silent on partial shortfalls — which is the
      * right trade for a panel whose value rests on being believed.
      *
+     * Measured per planned source, not against the order's own warehouse. A line
+     * topped up from the main warehouse is held *there*, and checking the branch
+     * for it would report a missing reservation that is sitting safely one
+     * warehouse over — the exact false alarm the paragraph above promises not to
+     * raise.
+     *
+     * Lines whose product no longer exists are left out: they are reported by
+     * their own check, which explains the real cause and gives advice that can
+     * actually be followed.
+     *
      * @return \Illuminate\Support\Collection<int,string>  product names
      */
     private function itemsWithNoReservation(SalesOrder $order)
     {
-        $warehouseId = (int) $order->fulfillment_warehouse_id;
+        $order->loadMissing('items.allocations');
 
-        if (!$warehouseId) {
-            return $order->items->map(fn ($i) => $i->product->name_ar ?? $i->product->name ?? ('#' . $i->product_id));
+        $fallback = (int) $order->fulfillment_warehouse_id;
+
+        $live = $order->items->filter(fn ($i) => $i->product !== null);
+
+        if (!$fallback) {
+            return $live->map(fn ($i) => $this->itemLabel($i))->values();
         }
 
-        $reserved = WarehouseInventory::where('warehouse_id', $warehouseId)
-            ->whereIn('product_id', $order->items->pluck('product_id'))
-            ->pluck('reserved_quantity', 'product_id');
+        $reserved = WarehouseInventory::whereIn('product_id', $live->pluck('product_id'))
+            ->get(['warehouse_id', 'product_id', 'reserved_quantity'])
+            ->groupBy('warehouse_id')
+            ->map(fn ($rows) => $rows->pluck('reserved_quantity', 'product_id'));
 
-        return $order->items
-            ->filter(fn ($i) => (int) ($reserved[$i->product_id] ?? 0) === 0)
-            ->map(fn ($i) => $i->product->name_ar ?? $i->product->name ?? ('#' . $i->product_id))
+        return $live
+            ->filter(function ($item) use ($order, $fallback, $reserved) {
+                foreach ($this->shipmentSourcesFor($item, $fallback) as $sourceId => $quantity) {
+                    if ($quantity <= 0) {
+                        continue;
+                    }
+
+                    // Held somewhere it is planned to come from is enough. The
+                    // check is deliberately generous for the reason above.
+                    if ((int) ($reserved[$sourceId][$item->product_id] ?? 0) > 0) {
+                        return false;
+                    }
+                }
+
+                return true;
+            })
+            ->map(fn ($i) => $this->itemLabel($i))
             ->values();
+    }
+
+    /**
+     * Lines pointing at a product that is no longer in the catalogue.
+     *
+     * Deleting and re-importing the product list leaves older orders holding
+     * ids that resolve to nothing. Such a line has no stock row anywhere, so it
+     * cannot be reserved, picked, shipped or costed — and it read as an ordinary
+     * missing reservation, which sent the operator off to re-route or re-confirm
+     * an order that no warehouse on earth could cover.
+     *
+     * @return \Illuminate\Support\Collection<int,string>
+     */
+    private function itemsWithMissingProduct(SalesOrder $order)
+    {
+        return $order->items
+            ->filter(fn ($i) => $i->product === null)
+            ->map(fn ($i) => $i->description ?: ('#' . $i->product_id))
+            ->values();
+    }
+
+    private function itemLabel($item): string
+    {
+        return $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id);
     }
 
     /** The order's live picking list, for the detail screen. */
     public function pickingListFor(SalesOrder $order): ?\App\Models\PickingList
     {
         return $this->picking->activePickingList($order)?->load(['items.product:id,sku,name_ar,name_en', 'items.bin', 'picker:id,name', 'warehouse:id,name']);
+    }
+
+    /**
+     * Every picking list the order has raised — one per warehouse it is routed
+     * to. A split order is two picking jobs, and showing only one of them hides
+     * half the work from whoever is chasing the order.
+     */
+    public function pickingListsFor(SalesOrder $order)
+    {
+        return $this->picking->activePickingLists($order)
+            ->load(['items.product:id,sku,name_ar,name_en', 'items.bin', 'picker:id,name', 'warehouse:id,name']);
     }
 
     /** Stock movements this order has produced, for the detail screen. */

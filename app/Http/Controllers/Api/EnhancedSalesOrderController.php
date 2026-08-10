@@ -81,7 +81,6 @@ class EnhancedSalesOrderController extends Controller
             'channel_id' => 'nullable|exists:order_channels,id',
             'contract_id' => 'nullable|exists:sales_contracts,id',
             'fulfillment_type' => 'required|in:ship,pickup,delivery',
-            'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'shipping_address' => 'nullable|array',
             'billing_address' => 'nullable|array',
@@ -101,12 +100,16 @@ class EnhancedSalesOrderController extends Controller
         try {
             DB::beginTransaction();
 
+            // The responsible employee is always the current session user — never
+            // taken from the request, so it cannot be reassigned on creation.
+            $assignedEmployeeId = App\Models\Employee::where('user_id', auth()->id())->value('id');
+
             $order = SalesOrder::create([
                 'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
                 'customer_id' => $request->customer_id,
                 'channel_id' => $request->channel_id,
                 'contract_id' => $request->contract_id,
-            'assigned_employee_id' => $request->assigned_employee_id,
+                'assigned_employee_id' => $assignedEmployeeId,
                 'shipping_cost' => $request->shipping_cost,
                 'tax_amount' => $request->tax_amount,
                 'discount_amount' => $request->discount_amount,

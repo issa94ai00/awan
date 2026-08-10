@@ -380,7 +380,11 @@ class PurchaseRequestController extends Controller
                     'shipping_address' => $validated['address'] ?? null,
                     'notes' => $validated['notes'] ?? null,
                     'created_by' => auth()->id(),
-                    'assigned_employee_id' => $validated['assigned_employee_id'] ?? null,
+                    // Sent by the app for the rep raising it; falls back to the
+                    // signed-in user's own employee record so an order is never
+                    // left unattributed just because the client omitted it.
+                    'assigned_employee_id' => $validated['assigned_employee_id']
+                        ?? \App\Models\Employee::where('user_id', auth()->id())->value('id'),
                 ]);
 
                 $this->createOrderItemsWithAllocations($salesOrder, $itemsData);
