@@ -27,7 +27,10 @@ class EmployeeController extends Controller
     }
     public function index(Request $request)
     {
-        $query = Employee::query();
+        // The warehouse comes along so the list can show where each person
+        // works. Without it an admin had no way to check field-app setup short
+        // of opening every employee in turn.
+        $query = Employee::query()->with('warehouse:id,name,code');
 
         if ($request->has('search') && $request->search) {
             $search = strtolower($request->search);
@@ -93,10 +96,16 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee)
     {
+        $employee->load('warehouse:id,name,code');
+
         return response()->json([
             'success' => true,
             'message' => 'Employee retrieved successfully',
-            'data' => $employee
+            // Whether this person can sign in at all. The edit form shows an
+            // empty password box either way, so without this an admin could not
+            // tell a staff member who has a login from one who has never had
+            // one — and "why can't they open the app?" had no answer on screen.
+            'data' => $employee->toArray() + ['has_login' => $employee->user_id !== null],
         ]);
     }
 

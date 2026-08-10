@@ -65,6 +65,30 @@
                 <el-table-column prop="position" :label="$t('position')" />
                 <el-table-column prop="email" :label="$t('mail')" />
                 <el-table-column prop="phone" :label="$t('phone')" width="140" />
+                <!--
+                    Where the person works, and whether they can sign in. Both
+                    are needed for the field app, and an admin previously had to
+                    open each employee in turn to find out.
+                -->
+                <el-table-column :label="$t('linked_warehouse')" width="170">
+                    <template #default="{ row }">
+                        <el-tag v-if="row.warehouse" type="success" effect="plain" size="small">
+                            {{ row.warehouse.name }}
+                        </el-tag>
+                        <el-tooltip v-else :content="$t('warehouse_unrestricted_hint')" placement="top">
+                            <el-tag type="warning" effect="plain" size="small">
+                                {{ $t('not_linked') }}
+                            </el-tag>
+                        </el-tooltip>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('login_account')" width="120">
+                    <template #default="{ row }">
+                        <el-tag :type="row.user_id ? 'success' : 'info'" effect="plain" size="small">
+                            {{ row.user_id ? $t('enabled') : $t('none') }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
                 <el-table-column prop="status" :label="$t('status')" width="120">
                     <template #default="{ row }">
                         <el-tag :type="row.status === 'نشط' ? 'success' : 'info'">
