@@ -4,25 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\Employee;
+use App\Models\Product;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
-use App\Models\Invoice;
-use App\Models\InvoiceItem;
-use App\Models\Product;
-use App\Http\Resources\CustomerResource;
 use App\Models\SalesOrderStatusHistory;
-use App\Services\Accounting\LedgerPostingService;
 use App\Services\OrderAllocationService;
+use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class PurchaseRequestController extends Controller
 {
-    public function __construct(private LedgerPostingService $ledger)
-    {
-    }
+    public function __construct(
+        private SalesOrderWorkflowService $workflow
+    ) {}
 
     public function store(Request $request): JsonResponse
     {
@@ -48,7 +48,7 @@ class PurchaseRequestController extends Controller
         ]);
 
         $customer = Customer::where('phone', $validated['phone'])->first();
-        if (!$customer && !empty($validated['email'])) {
+        if (! $customer && ! empty($validated['email'])) {
             $customer = Customer::where('email', $validated['email'])->first();
         }
 
@@ -72,13 +72,13 @@ class PurchaseRequestController extends Controller
 
         $subtotal = 0;
         $itemsData = [];
-        if (!empty($validated['items'])) {
+        if (! empty($validated['items'])) {
             foreach ($validated['items'] as $item) {
                 $unitPrice = 0;
                 $itemTotal = 0;
                 $productId = null;
 
-                if (!empty($item['product_id'])) {
+                if (! empty($item['product_id'])) {
                     $product = Product::find($item['product_id']);
                 } else {
                     $product = Product::where('name_ar', $item['product_name'])
@@ -108,7 +108,7 @@ class PurchaseRequestController extends Controller
         $salesOrder = SalesOrder::create([
             // Derived from the last id under a lock — counting reuses a number
             // as soon as any order is deleted, and concurrent requests collide.
-            'order_number' => 'SO-' . str_pad(
+            'order_number' => 'SO-'.str_pad(
                 (string) (((int) SalesOrder::lockForUpdate()->max('id')) + 1),
                 6,
                 '0',
@@ -138,62 +138,9 @@ class PurchaseRequestController extends Controller
             ]);
         }
 
-        $invoiceNumber = 'INV-' . now()->format('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
-        $invoice = Invoice::create([
-            'invoice_number' => $invoiceNumber,
-            'customer_id' => $customer->id,
-            'sales_order_id' => $salesOrder->id,
-            'customer_name' => $customer->name,
-            'customer_email' => $customer->email,
-            'customer_phone' => $customer->phone,
-            'subtotal' => $subtotal,
-            'tax' => 0,
-            'discount' => 0,
-            'total' => $subtotal,
-            'paid_amount' => 0,
-            'due_amount' => $subtotal,
-            'payment_method' => Invoice::PAYMENT_CASH,
-            'status' => Invoice::STATUS_PENDING,
-            'notes' => $validated['notes'] ?? null,
-            'created_by' => null,
-        ]);
-
-        foreach ($itemsData as $itemData) {
-            InvoiceItem::create([
-                'invoice_id' => $invoice->id,
-                'product_id' => $itemData['product_id'],
-                'product_name' => $itemData['product_name'],
-                'quantity' => $itemData['quantity'],
-                'unit_price' => $itemData['unit_price'],
-                'total_price' => $itemData['total_price'],
-                'notes' => $itemData['notes'] ?? null,
-            ]);
-        }
-
-        $customer->updateBalance($subtotal);
-
-        // This path raised an invoice and charged the customer without the
-        // ledger ever hearing about it, so every request placed through the
-        // storefront left revenue missing from the income statement. Posting is
-        // keyed on the invoice, so confirming the order later will not
-        // double-post it.
-        //
-        // Deliberately non-fatal. This is a customer pressing "order" on a
-        // storefront: a misconfigured chart of accounts is the shop's problem,
-        // not theirs, and letting a posting failure throw here turned an
-        // accounting gap into a checkout that rejects every order. The failure
-        // is logged, and the unposted invoice is already reported by the system
-        // health check and repairable with `accounting:backfill`.
-        $postingError = null;
-        try {
-            $this->ledger->postInvoice($invoice);
-        } catch (\Throwable $e) {
-            $postingError = $e->getMessage();
-            report($e);
-        }
-
-        // Opens the stage history, so a storefront order carries the same trail
-        // as one raised by staff.
+        // Storefront checkout is a draft only: no stock reservation, no invoice,
+        // no customer balance charge, no ledger posting. Those start when staff
+        // confirm the order through the sales workflow.
         SalesOrderStatusHistory::create([
             'sales_order_id' => $salesOrder->id,
             'from_status' => null,
@@ -211,12 +158,9 @@ class PurchaseRequestController extends Controller
                     'phone' => $customer->phone,
                 ],
                 'order_number' => $salesOrder->order_number,
-                'invoice_number' => $invoice->invoice_number,
+                'status' => $salesOrder->status,
                 'total' => $subtotal,
             ],
-            // Surfaced for the operator, never shown to the customer: their
-            // order went through either way.
-            'accounting_warning' => $postingError,
         ], 201);
     }
 
@@ -228,7 +172,7 @@ class PurchaseRequestController extends Controller
 
         $customer = Customer::where('phone', $validated['phone'])->first();
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'success' => false,
                 'message' => 'لا يوجد عميل بهذا الرقم',
@@ -289,11 +233,8 @@ class PurchaseRequestController extends Controller
     /**
      * Staff-created internal order ("طلب محلي").
      *
-     * Mirrors the storefront [store] flow (customer find-or-create, invoice,
-     * ledger posting, status history) but is raised by a staff user, records
-     * who created it, and persists the confirmed per-warehouse plan for every
-     * line. When a line's allocations are omitted the server suggests the
-     * split through OrderAllocationService and stores that plan.
+     * Creates a pending draft with optional warehouse allocation plans.
+     * Stock reservation, invoice and ledger posting happen only on confirmation.
      */
     public function adminStore(Request $request): JsonResponse
     {
@@ -325,7 +266,7 @@ class PurchaseRequestController extends Controller
         try {
             return DB::transaction(function () use ($validated) {
                 $customer = Customer::where('phone', $validated['phone'])->first();
-                if (!$customer && !empty($validated['email'])) {
+                if (! $customer && ! empty($validated['email'])) {
                     $customer = Customer::where('email', $validated['email'])->first();
                 }
 
@@ -379,7 +320,7 @@ class PurchaseRequestController extends Controller
                     // Derived from the last id under a lock. Counting reuses a
                     // number the moment any order is deleted, and two reps
                     // submitting at once always collided on it.
-                    'order_number' => 'SO-' . str_pad(
+                    'order_number' => 'SO-'.str_pad(
                         (string) (((int) SalesOrder::lockForUpdate()->max('id')) + 1),
                         6,
                         '0',
@@ -399,57 +340,19 @@ class PurchaseRequestController extends Controller
                     // signed-in user's own employee record so an order is never
                     // left unattributed just because the client omitted it.
                     'assigned_employee_id' => $validated['assigned_employee_id']
-                        ?? \App\Models\Employee::where('user_id', auth()->id())->value('id'),
+                        ?? Employee::where('user_id', auth()->id())->value('id'),
                 ]);
 
                 $this->createOrderItemsWithAllocations($salesOrder, $itemsData);
 
-                $invoiceNumber = 'INV-' . now()->format('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
-                $invoice = Invoice::create([
-                    'invoice_number' => $invoiceNumber,
-                    'customer_id' => $customer->id,
-                    'sales_order_id' => $salesOrder->id,
-                    'customer_name' => $customer->name,
-                    'customer_email' => $customer->email,
-                    'customer_phone' => $customer->phone,
-                    'subtotal' => $subtotal,
-                    'tax' => 0,
-                    'discount' => 0,
-                    'total' => $subtotal,
-                    'paid_amount' => 0,
-                    'due_amount' => $subtotal,
-                    'payment_method' => Invoice::PAYMENT_CASH,
-                    'status' => Invoice::STATUS_PENDING,
-                    'notes' => $validated['notes'] ?? null,
-                    'created_by' => auth()->id(),
-                ]);
-
-                foreach ($itemsData as $itemData) {
-                    InvoiceItem::create([
-                        'invoice_id' => $invoice->id,
-                        'product_id' => $itemData['product_id'],
-                        'product_name' => $itemData['product_name'],
-                        'quantity' => $itemData['quantity'],
-                        'unit_price' => $itemData['unit_price'],
-                        'total_price' => $itemData['total_price'],
-                    ]);
-                }
-
-                $customer->updateBalance($subtotal);
-
-                $postingError = null;
-                try {
-                    $this->ledger->postInvoice($invoice);
-                } catch (\Throwable $e) {
-                    $postingError = $e->getMessage();
-                    report($e);
-                }
-
+                // Staff-raised local orders are drafts too: confirmation is what
+                // reserves stock, raises the invoice and posts the ledger.
                 SalesOrderStatusHistory::create([
                     'sales_order_id' => $salesOrder->id,
                     'from_status' => null,
                     'to_status' => SalesOrder::STATUS_PENDING,
                     'note' => 'طلب محلي من فريق العمل',
+                    'user_id' => auth()->id(),
                 ]);
 
                 $salesOrder->load(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
@@ -458,10 +361,9 @@ class PurchaseRequestController extends Controller
                     'success' => true,
                     'message' => 'تم إنشاء الطلبية بنجاح',
                     'data' => $this->orderPayload($salesOrder),
-                    'accounting_warning' => $postingError,
                 ], 201);
             });
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             return response()->json([
@@ -483,7 +385,7 @@ class PurchaseRequestController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = '%' . $request->search . '%';
+            $search = '%'.$request->search.'%';
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', $search)
                     ->orWhereHas('customer', function ($cq) use ($search) {
@@ -562,27 +464,34 @@ class PurchaseRequestController extends Controller
     {
         $validated = $request->validate([
             'status' => 'required|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'note' => 'nullable|string|max:1000',
         ]);
 
-        $salesOrder->update(['status' => $validated['status']]);
-
-        if ($validated['status'] === SalesOrder::STATUS_CONFIRMED) {
-            $salesOrder->update(['confirmed_at' => now()]);
-        } elseif ($validated['status'] === SalesOrder::STATUS_SHIPPED) {
-            $salesOrder->update(['shipped_at' => now()]);
-        } elseif ($validated['status'] === SalesOrder::STATUS_DELIVERED) {
-            $salesOrder->update(['delivered_at' => now()]);
+        // Never flip the column alone — confirmation must reserve stock, raise
+        // the invoice and post the ledger through the workflow.
+        if ($validated['status'] === SalesOrder::STATUS_PENDING) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن إرجاع الطلبية إلى مسودة بعد انتقالها.',
+                'data' => null,
+            ], 422);
         }
 
-        // Update related invoices
-        $invoiceStatus = match ($validated['status']) {
-            SalesOrder::STATUS_DELIVERED => Invoice::STATUS_PAID,
-            SalesOrder::STATUS_CANCELLED => Invoice::STATUS_CANCELLED,
-            default => null,
-        };
-        if ($invoiceStatus) {
-            $salesOrder->invoices()->update(['status' => $invoiceStatus]);
+        try {
+            $result = $this->workflow->transitionTo(
+                $salesOrder,
+                $validated['status'],
+                ['note' => $validated['note'] ?? null]
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
         }
+
+        $salesOrder->refresh();
 
         return response()->json([
             'success' => true,
@@ -591,6 +500,7 @@ class PurchaseRequestController extends Controller
                 'id' => $salesOrder->id,
                 'status' => $salesOrder->status,
                 'status_text' => $salesOrder->status_text,
+                'transition' => $result,
             ],
         ]);
     }
@@ -623,6 +533,14 @@ class PurchaseRequestController extends Controller
 
     public function adminUpdateItems(Request $request, SalesOrder $salesOrder): JsonResponse
     {
+        if ($salesOrder->status !== SalesOrder::STATUS_PENDING) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن تعديل بنود طلب بعد تأكيده.',
+                'data' => null,
+            ], 422);
+        }
+
         $validated = $request->validate([
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
@@ -675,26 +593,6 @@ class PurchaseRequestController extends Controller
                     'total' => $subtotal,
                 ]);
 
-                // Keep the linked invoice(s) in sync, mirroring how store() creates both together.
-                foreach ($salesOrder->invoices as $invoice) {
-                    $invoice->items()->delete();
-                    foreach ($itemsData as $itemData) {
-                        InvoiceItem::create([
-                            'invoice_id' => $invoice->id,
-                            'product_id' => $itemData['product_id'],
-                            'product_name' => $itemData['product_name'],
-                            'quantity' => $itemData['quantity'],
-                            'unit_price' => $itemData['unit_price'],
-                            'total_price' => $itemData['total_price'],
-                        ]);
-                    }
-                    $invoice->update([
-                        'subtotal' => $subtotal,
-                        'total' => $subtotal,
-                        'due_amount' => max($subtotal - $invoice->paid_amount, 0),
-                    ]);
-                }
-
                 $salesOrder->load(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
 
                 return response()->json([
@@ -703,7 +601,7 @@ class PurchaseRequestController extends Controller
                     'data' => $this->orderPayload($salesOrder),
                 ]);
             });
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             return response()->json([
@@ -720,7 +618,7 @@ class PurchaseRequestController extends Controller
      */
     private function suggestAllocationsFor(array $item, ?Product $product): array
     {
-        if (!$product) {
+        if (! $product) {
             return [];
         }
 
@@ -745,7 +643,7 @@ class PurchaseRequestController extends Controller
 
         $sum = array_sum(array_column($allocations, 'quantity'));
         if ((int) $sum !== $quantity) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "مجموع كميات التخصيص ({$sum}) لا يساوي كمية الصنف ({$quantity})"
             );
         }

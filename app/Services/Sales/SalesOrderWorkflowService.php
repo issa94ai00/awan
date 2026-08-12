@@ -290,10 +290,9 @@ class SalesOrderWorkflowService
         $this->reserveAll($order, (int) $warehouseId);
 
         // Whether this confirmation is what raised the invoice decides whether
-        // it is also what should charge the customer. Orders that arrive with an
-        // invoice already attached — a customer purchase request builds one up
-        // front — had the receivable applied when that invoice was created, and
-        // charging again here billed them twice for the same goods.
+        // it is also what should charge the customer. Legacy rows that somehow
+        // already carry an invoice (older storefront path) must not be billed
+        // twice; new drafts never have one until this moment.
         $invoiceExisted = $this->existingInvoice($order) !== null;
 
         $invoice = $this->ensureInvoice($order);

@@ -273,4 +273,32 @@ test('creating a sales order does not raise an invoice or post to the ledger', f
     expect(JournalEntryHeader::query()
         ->where('posting_key', 'like', '%'.$orderId.'%')
         ->exists())->toBeFalse();
+    expect((float) $customer->fresh()->balance)->toBe(0.0);
+});
+
+test('storefront purchase request creates a pending order without invoice ledger or balance charge', function () {
+    $product = Product::create(['name_ar' => 'منتج واجهة', 'price' => 75]);
+
+    $response = $this->postJson('/api/v1/purchase-requests', [
+        'name' => 'زبون المتجر',
+        'phone' => '+966500000099',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'product_name' => 'منتج واجهة',
+                'quantity' => 2,
+            ],
+        ],
+    ])->assertCreated();
+
+    $orderNumber = $response->json('data.order_number');
+    $order = SalesOrder::where('order_number', $orderNumber)->firstOrFail();
+    $customer = Customer::where('phone', '+966500000099')->firstOrFail();
+
+    expect($order->status)->toBe(SalesOrder::STATUS_PENDING);
+    expect(Invoice::where('sales_order_id', $order->id)->exists())->toBeFalse();
+    expect(JournalEntryHeader::query()
+        ->where('posting_key', 'like', '%'.$order->id.'%')
+        ->exists())->toBeFalse();
+    expect((float) $customer->balance)->toBe(0.0);
 });
