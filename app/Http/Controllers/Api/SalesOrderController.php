@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
+use App\Models\ProductUnit;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
 use App\Services\Accounting\LedgerPostingService;
@@ -143,6 +144,7 @@ class SalesOrderController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
         ]);
 
         // Who the order belongs to comes from the caller: the back office files
@@ -173,11 +175,10 @@ class SalesOrderController extends Controller
         // routed stays unrouted until confirmation, which picks the warehouse —
         // or the set of them — that can actually fill it.
 
-        $subtotal = 0;
-        foreach ($request->items as $item) {
-            $itemTotal = ($item['unit_price'] * $item['quantity']) - ($item['discount'] ?? 0) + ($item['tax'] ?? 0);
-            $subtotal += $itemTotal;
-        }
+        $lineItems = $this->buildLineItems($request->items);
+        $subtotal = collect($lineItems)->sum(
+            fn (array $item) => ($item['unit_price'] * $item['quantity']) - $item['discount'] + $item['tax']
+        );
 
         $validated['subtotal'] = $subtotal;
         // Delivery charged to the customer belongs in what they owe. It was
@@ -190,14 +191,8 @@ class SalesOrderController extends Controller
 
         $salesOrder = SalesOrder::create($validated);
 
-        foreach ($request->items as $item) {
-            $salesOrder->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'discount' => $item['discount'] ?? 0,
-                'tax' => $item['tax'] ?? 0,
-            ]);
+        foreach ($lineItems as $item) {
+            $salesOrder->items()->create($item);
         }
 
         // Opens the stage history, so the trail starts where the order does
@@ -210,7 +205,7 @@ class SalesOrderController extends Controller
             'user_id' => auth()->id(),
         ]);
 
-        $salesOrder->load(['customer', 'creator', 'items.product']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
 
         return response()->json([
             'success' => true,
@@ -221,7 +216,7 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'quote', 'fulfillmentWarehouse']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'quote', 'fulfillmentWarehouse']);
 
         return response()->json([
             'success' => true,
@@ -245,7 +240,9 @@ class SalesOrderController extends Controller
         }
 
         $validated = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            // Header fields are optional so item-only saves need not restate
+            // customer/shipping/notes — missing keys keep the current values.
+            'customer_id' => 'sometimes|nullable|exists:customers,id',
             'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
@@ -262,32 +259,56 @@ class SalesOrderController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
         ]);
-
-        // Reassignment is a real back-office action — an order moves to whoever
-        // is covering the round. A request that leaves the field out keeps the
-        // current owner rather than clearing it, so editing a delivery address
-        // cannot silently orphan the order.
-        if (! array_key_exists('assigned_employee_id', $validated) || $validated['assigned_employee_id'] === null) {
-            $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
-        }
 
         // The stage is moved through the workflow endpoints, never by writing
         // the column — a status set here would skip the stock and ledger work
         // that the stage is supposed to trigger.
         unset($validated['status']);
 
-        $subtotal = 0;
-        foreach ($request->items as $item) {
-            $itemTotal = ($item['unit_price'] * $item['quantity']) - ($item['discount'] ?? 0) + ($item['tax'] ?? 0);
-            $subtotal += $itemTotal;
+        $headerKeys = [
+            'customer_id',
+            'assigned_employee_id',
+            'fulfillment_warehouse_id',
+            'fulfillment_type',
+            'order_date',
+            'expected_delivery',
+            'discount',
+            'tax',
+            'shipping_cost',
+            'shipping_address',
+            'notes',
+        ];
+
+        foreach ($headerKeys as $key) {
+            if (! array_key_exists($key, $validated)) {
+                $validated[$key] = $salesOrder->{$key};
+            }
         }
+
+        // Reassignment is a real back-office action — an order moves to whoever
+        // is covering the round. A request that leaves the field out keeps the
+        // current owner rather than clearing it, so editing a delivery address
+        // cannot silently orphan the order.
+        if ($validated['assigned_employee_id'] === null) {
+            $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
+        }
+
+        if ($validated['customer_id'] === null) {
+            $validated['customer_id'] = $salesOrder->customer_id;
+        }
+
+        $lineItems = $this->buildLineItems($request->items);
+        $subtotal = collect($lineItems)->sum(
+            fn (array $item) => ($item['unit_price'] * $item['quantity']) - $item['discount'] + $item['tax']
+        );
 
         $validated['subtotal'] = $subtotal;
         $validated['total'] = $subtotal
             - ($validated['discount'] ?? 0)
             + ($validated['tax'] ?? 0)
-            + ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0);
+            + ($validated['shipping_cost'] ?? 0);
 
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than
@@ -296,28 +317,67 @@ class SalesOrderController extends Controller
             $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id;
         }
 
-        DB::transaction(function () use ($salesOrder, $validated, $request) {
+        DB::transaction(function () use ($salesOrder, $validated, $lineItems) {
             $salesOrder->update($validated);
 
             $salesOrder->items()->delete();
-            foreach ($request->items as $item) {
-                $salesOrder->items()->create([
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'discount' => $item['discount'] ?? 0,
-                    'tax' => $item['tax'] ?? 0,
-                ]);
+            foreach ($lineItems as $item) {
+                $salesOrder->items()->create($item);
             }
         });
 
-        $salesOrder->load(['customer', 'creator', 'items.product']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
 
         return response()->json([
             'success' => true,
             'message' => 'تم تحديث طلب البيع بنجاح',
             'data' => $salesOrder,
         ]);
+    }
+
+    /**
+     * Resolve unit metadata onto each line so create/update persist the same shape.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function buildLineItems(array $items): array
+    {
+        $unitIds = collect($items)->pluck('product_unit_id')->filter()->unique()->all();
+        $units = $unitIds === []
+            ? collect()
+            : ProductUnit::query()->whereIn('id', $unitIds)->get()->keyBy('id');
+
+        $lines = [];
+
+        foreach ($items as $item) {
+            $unitName = null;
+            $unitMultiplier = 1;
+            $unitId = $item['product_unit_id'] ?? null;
+
+            if (! empty($unitId)) {
+                $unit = $units->get($unitId);
+                if ($unit) {
+                    $unitName = $unit->name_ar ?: $unit->name;
+                    $unitMultiplier = (float) $unit->base_unit_multiplier;
+                } else {
+                    $unitId = null;
+                }
+            }
+
+            $lines[] = [
+                'product_id' => $item['product_id'],
+                'product_unit_id' => $unitId,
+                'unit_name' => $unitName,
+                'unit_multiplier' => $unitMultiplier,
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'discount' => $item['discount'] ?? 0,
+                'tax' => $item['tax'] ?? 0,
+            ];
+        }
+
+        return $lines;
     }
 
     public function destroy(SalesOrder $salesOrder)

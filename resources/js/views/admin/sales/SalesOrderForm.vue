@@ -385,13 +385,25 @@
                             </div>
                             <el-divider />
                             <el-button
+                                v-if="isEdit"
+                                type="success"
+                                size="large"
+                                class="w-full submit-btn step-nav-btn"
+                                :disabled="items.length === 0"
+                                :loading="submitting"
+                                @click="submitSalesOrder({ itemsOnly: true })"
+                            >
+                                حفظ تعديلات البنود
+                            </el-button>
+                            <el-button
                                 type="primary"
                                 size="large"
                                 class="w-full submit-btn step-nav-btn"
                                 :disabled="items.length === 0"
                                 @click="goToStep(1)"
                             >
-                                التالي: بيانات العميل والشحن <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                                {{ isEdit ? 'التالي: بيانات العميل والشحن' : 'التالي: بيانات العميل والشحن' }}
+                                <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
                             </el-button>
                         </div>
                     </el-card>
@@ -1075,7 +1087,7 @@ const addProduct = (product) => {
     updateTotals();
 };
 
-const loadProductUnits = async (productId, itemIndex) => {
+const loadProductUnits = async (productId, itemIndex, { preserveSelection = false } = {}) => {
     try {
         const token = localStorage.getItem('token');
         const res = await fetch(`/api/v1/admin/products/${productId}/units`, {
@@ -1093,17 +1105,34 @@ const loadProductUnits = async (productId, itemIndex) => {
                 name_ar: u.name_ar || u.name,
                 base_unit_multiplier: parseFloat(u.base_unit_multiplier),
                 price_multiplier: parseFloat(u.price_multiplier),
-                barcode: u.barcode || ''
+                barcode: u.barcode || '',
+                is_default: !!u.is_default,
             }));
 
-            const defaultUnit = units.find(u => u.is_default) || units[0];
-
-            if (items.value[itemIndex]) {
-                items.value[itemIndex].units = units;
-                items.value[itemIndex].selectedUnit = defaultUnit;
-                items.value[itemIndex].price = items.value[itemIndex].base_price * defaultUnit.price_multiplier;
-                updateTotals();
+            const item = items.value[itemIndex];
+            if (!item) {
+                return;
             }
+
+            item.units = units;
+
+            // Editing must not erase the saved unit/price: only fill the list,
+            // then re-select the stored unit when we have its id.
+            if (preserveSelection) {
+                const savedId = item.selectedUnit?.id || item.product_unit_id || null;
+                if (savedId) {
+                    const match = units.find(u => u.id === savedId);
+                    if (match) {
+                        item.selectedUnit = match;
+                    }
+                }
+                return;
+            }
+
+            const defaultUnit = units.find(u => u.is_default) || units[0];
+            item.selectedUnit = defaultUnit;
+            item.price = item.base_price * defaultUnit.price_multiplier;
+            updateTotals();
         }
     } catch (error) {
         console.error('Failed to load units:', error);
@@ -1226,11 +1255,17 @@ const goToStep = (step) => {
     }
 };
 
-const submitSalesOrder = async () => {
+const submitSalesOrder = async (options = {}) => {
+    const itemsOnly = !!options.itemsOnly;
     formErrors.value = [];
 
-    if (!form.customer_id) {
+    if (!itemsOnly && !form.customer_id) {
         formErrors.value.push('الرجاء اختيار العميل المشتري للطلب.');
+        return;
+    }
+
+    if (isEdit.value && itemsOnly && !form.customer_id && !loadedOrder.value?.customer_id) {
+        formErrors.value.push('الطلب بلا عميل؛ اختر عميلاً قبل الحفظ أو أكمل بيانات الطلب.');
         return;
     }
 
@@ -1242,32 +1277,42 @@ const submitSalesOrder = async () => {
     submitting.value = true;
 
     try {
-        const payload = {
-            customer_id: form.customer_id,
-            discount: form.discount || 0,
-            tax: form.tax || 0,
-            notes: form.notes,
-            status: form.status,
-            order_date: form.order_date,
-            expected_delivery: form.expected_delivery || null,
-            shipping_address: form.shipping_address,
-            payment_method: form.payment_method,
-            items: items.value.map(item => ({
-                product_id: item.product_id,
-                quantity: item.quantity,
-                unit_price: item.price,
-                product_unit_id: item.selectedUnit?.id || null
-            }))
-        };
+        const payload = itemsOnly
+            ? {
+                items: items.value.map(item => ({
+                    product_id: item.product_id,
+                    quantity: item.quantity,
+                    unit_price: item.price,
+                    product_unit_id: item.selectedUnit?.id || null,
+                })),
+            }
+            : {
+                customer_id: form.customer_id,
+                discount: form.discount || 0,
+                tax: form.tax || 0,
+                notes: form.notes,
+                status: form.status,
+                order_date: form.order_date,
+                expected_delivery: form.expected_delivery || null,
+                shipping_address: form.shipping_address,
+                payment_method: form.payment_method,
+                items: items.value.map(item => ({
+                    product_id: item.product_id,
+                    quantity: item.quantity,
+                    unit_price: item.price,
+                    product_unit_id: item.selectedUnit?.id || null,
+                })),
+            };
 
         if (isEdit.value) {
             await salesOrdersApi.update(route.params.id, payload);
-            ElMessage.success('تم تحديث طلب البيع بنجاح.');
+            ElMessage.success(itemsOnly ? 'تم حفظ تعديلات البنود.' : 'تم تحديث طلب البيع بنجاح.');
         } else {
             await salesOrdersApi.create(payload);
             ElMessage.success('تم إنشاء طلب البيع بنجاح.');
         }
 
+        isDirty.value = false;
         router.push('/admin/sales/sales-orders');
     } catch (error) {
         console.error('Submit error:', error);
@@ -1275,7 +1320,7 @@ const submitSalesOrder = async () => {
             const errors = error.response.data.errors;
             formErrors.value = Object.values(errors).flat();
         } else {
-            formErrors.value = [error.message || 'فشل في حفظ طلب البيع.'];
+            formErrors.value = [error.response?.data?.message || error.message || 'فشل في حفظ طلب البيع.'];
         }
     } finally {
         submitting.value = false;
@@ -1416,17 +1461,19 @@ onMounted(async () => {
 
                 if (order.items) {
                     items.value = order.items.map(item => {
+                        const unitName = item.unit_name || item.product?.unit || 'قطعة';
                         const defaultUnit = {
                             id: item.product_unit_id || null,
-                            name: item.product?.unit || 'قطعة',
-                            name_ar: item.product?.unit || 'قطعة',
-                            base_unit_multiplier: 1,
+                            name: unitName,
+                            name_ar: unitName,
+                            base_unit_multiplier: parseFloat(item.unit_multiplier) || 1,
                             price_multiplier: 1,
-                            barcode: item.product?.barcode || ''
+                            barcode: item.product?.barcode || '',
                         };
 
                         return {
                             product_id: item.product_id,
+                            product_unit_id: item.product_unit_id || null,
                             name: item.product?.name_ar || item.product?.name_en || 'منتج غير معروف',
                             sku: item.product?.sku || '',
                             price: parseFloat(item.unit_price) || 0,
@@ -1434,12 +1481,14 @@ onMounted(async () => {
                             stock: item.product?.stock_quantity || 0,
                             selectedUnit: defaultUnit,
                             units: [defaultUnit],
-                            base_price: parseFloat(item.unit_price) || 0
+                            // Keep the line price as loaded; product catalogue price
+                            // is only used when the user changes unit on a new line.
+                            base_price: parseFloat(item.product?.price) || parseFloat(item.unit_price) || 0,
                         };
                     });
 
                     for (let i = 0; i < items.value.length; i++) {
-                        loadProductUnits(items.value[i].product_id, i);
+                        loadProductUnits(items.value[i].product_id, i, { preserveSelection: true });
                     }
                 }
             }
