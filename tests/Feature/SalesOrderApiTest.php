@@ -2,6 +2,8 @@
 
 use App\Models\Customer;
 use App\Models\Employee;
+use App\Models\Invoice;
+use App\Models\JournalEntryHeader;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\SalesOrder;
@@ -239,4 +241,36 @@ test('creating a sales order persists the chosen product unit', function () {
     expect($item->product_unit_id)->toBe($unit->id);
     expect($item->unit_name)->toBe('دستة');
     expect((float) $item->unit_multiplier)->toBe(12.0);
+});
+
+test('creating a sales order does not raise an invoice or post to the ledger', function () {
+    $customer = Customer::create([
+        'name' => 'عميل بلا قيد',
+        'email' => 'no-ledger@example.com',
+        'phone' => '+966500000013',
+        'status' => 'نشط',
+    ]);
+    $product = Product::create(['name_ar' => 'منتج', 'price' => 40]);
+
+    $response = $this->actingAs($this->user, 'sanctum')
+        ->postJson('/api/v1/sales-orders', [
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 2,
+                    'unit_price' => 40,
+                ],
+            ],
+        ])
+        ->assertCreated();
+
+    $orderId = $response->json('data.id');
+
+    expect($response->json('data.status'))->toBe(SalesOrder::STATUS_PENDING);
+    expect(Invoice::where('sales_order_id', $orderId)->exists())->toBeFalse();
+    expect(JournalEntryHeader::query()
+        ->where('posting_key', 'like', '%'.$orderId.'%')
+        ->exists())->toBeFalse();
 });

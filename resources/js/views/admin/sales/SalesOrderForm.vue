@@ -41,7 +41,7 @@
         -->
         <div v-else-if="isLocked" class="locked-panel">
             <div class="locked-icon"><i class="fas fa-lock"></i></div>
-            <h2>لا يمكن تعديل بنود هذا الطلب</h2>
+            <h2>الطلب محمي من التعديل بعد التأكيد</h2>
             <p class="locked-reason">{{ lockedReason }}</p>
 
             <div class="locked-facts" v-if="loadedOrder">
@@ -60,8 +60,8 @@
                 </el-button>
             </div>
             <p class="locked-note">
-                الإلغاء يُحرِّر حجز المخزون (أو يُرجع البضاعة إن كانت شُحنت)، ويُلغي الفاتورة، ويُرحّل قيوداً عكسية —
-                ثم يمكنك إنشاء طلب جديد بالبنود الصحيحة.
+                بعد التأكيد يُحجز المخزون وتُنشأ الفاتورة وتُرحَّل القيود. لذلك يُمنع تعديل البنود هنا
+                لتجنّب أخطاء محاسبية — الإلغاء يعكس الآثار ثم يمكن إنشاء طلب جديد بالبنود الصحيحة.
             </p>
         </div>
 
@@ -815,9 +815,14 @@
                             @click="submitSalesOrder"
                             class="confirm-order-btn"
                         >
-                            <el-icon class="el-icon--left"><Check /></el-icon> تأكيد وإنشاء طلب البيع النهائي
+                            <el-icon class="el-icon--left"><Check /></el-icon>
+                            {{ isEdit ? 'حفظ تعديلات الطلب' : 'حفظ طلب البيع (مسودة)' }}
                         </el-button>
                     </div>
+                    <p class="create-hint">
+                        الحفظ ينشئ طلباً معلّقاً فقط — بلا حجز مخزون ولا فاتورة ولا قيود محاسبية.
+                        التأكيد المحاسبي يتم لاحقاً من قائمة طلبات البيع.
+                    </p>
                 </el-card>
             </div>
         </Transition>
@@ -2728,6 +2733,14 @@ onUnmounted(() => {
 .confirm-order-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(22, 163, 74, 0.3);
+}
+
+.create-hint {
+    margin: 0.75rem 0 0;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.5;
 }
 
 /* Responsive */

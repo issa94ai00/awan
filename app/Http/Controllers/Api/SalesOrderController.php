@@ -197,6 +197,9 @@ class SalesOrderController extends Controller
 
         // Opens the stage history, so the trail starts where the order does
         // rather than at whatever its first transition happens to be.
+        //
+        // Creation is deliberately a draft: no stock reservation, no invoice,
+        // no ledger posting. Those start only when the order is confirmed.
         SalesOrderStatusHistory::create([
             'sales_order_id' => $salesOrder->id,
             'from_status' => null,

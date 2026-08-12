@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\SalesOrder;
 use App\Models\Customer;
-use App\Models\Product;
 use App\Models\Invoice;
+use App\Models\Product;
+use App\Models\SalesOrder;
 use Illuminate\Http\Request;
 
 class SalesOrderController extends Controller
@@ -20,9 +20,9 @@ class SalesOrderController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('order_number', 'like', '%' . $request->search . '%')
+            $query->where('order_number', 'like', '%'.$request->search.'%')
                 ->orWhereHas('customer', function ($q) use ($request) {
-                    $q->where('name', 'like', '%' . $request->search . '%');
+                    $q->where('name', 'like', '%'.$request->search.'%');
                 });
         }
 
@@ -36,6 +36,7 @@ class SalesOrderController extends Controller
     {
         $customers = Customer::all();
         $products = Product::where('is_active', true)->get();
+
         return view('admin.sales-orders.create', compact('customers', 'products'));
     }
 
@@ -57,7 +58,7 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
 
-        $validated['order_number'] = 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+        $validated['order_number'] = 'SO-'.str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
         $validated['status'] = SalesOrder::STATUS_PENDING;
         $validated['created_by'] = auth()->id();
 
@@ -91,6 +92,7 @@ class SalesOrderController extends Controller
     public function show(SalesOrder $salesOrder)
     {
         $salesOrder->load(['customer', 'creator', 'items.product', 'quote']);
+
         return view('admin.sales-orders.show', compact('salesOrder'));
     }
 
@@ -99,21 +101,28 @@ class SalesOrderController extends Controller
         $salesOrder->load('items.product');
         $customers = Customer::all();
         $products = Product::where('is_active', true)->get();
+
         return view('admin.sales-orders.edit', compact('salesOrder', 'customers', 'products'));
     }
 
     public function update(Request $request, SalesOrder $salesOrder)
     {
+        // Same boundary as the API: only a pending plan may be rewritten.
+        // Confirmation (and later stages) have reserved stock / invoice / ledger.
+        if ($salesOrder->status !== SalesOrder::STATUS_PENDING) {
+            return redirect()->back()
+                ->with('error', 'لا يمكن تعديل بنود طلب بعد تأكيده. ألغِ الطلب أو أنشئ إشعاراً دائناً بدلاً من ذلك.');
+        }
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
-            'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array',
+            'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
@@ -121,7 +130,10 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
         ]);
 
-        // Calculate totals
+        // Status is never written here — confirmation and later stages go through
+        // the workflow so stock, invoice and ledger stay in step.
+        unset($validated['status']);
+
         $subtotal = 0;
         foreach ($request->items as $item) {
             $itemTotal = ($item['unit_price'] * $item['quantity']) - ($item['discount'] ?? 0) + ($item['tax'] ?? 0);
@@ -133,7 +145,6 @@ class SalesOrderController extends Controller
 
         $salesOrder->update($validated);
 
-        // Update sales order items
         $salesOrder->items()->delete();
         foreach ($request->items as $item) {
             $salesOrder->items()->create([
@@ -151,6 +162,12 @@ class SalesOrderController extends Controller
 
     public function destroy(SalesOrder $salesOrder)
     {
+        if (! in_array($salesOrder->status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true)) {
+            return redirect()->back()
+                ->with('error', 'لا يمكن حذف طلب مؤكد. استخدم الإلغاء ليُحرَّر الحجز وتُعكس القيود.');
+        }
+
+        $salesOrder->items()->delete();
         $salesOrder->delete();
 
         return redirect()->route('admin.sales-orders.index')
@@ -165,7 +182,7 @@ class SalesOrderController extends Controller
         }
 
         $invoice = Invoice::create([
-            'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . str_pad(Invoice::count() + 1, 4, '0', STR_PAD_LEFT),
+            'invoice_number' => 'INV-'.now()->format('Ymd').'-'.str_pad(Invoice::count() + 1, 4, '0', STR_PAD_LEFT),
             'customer_id' => $salesOrder->customer_id,
             'sales_order_id' => $salesOrder->id,
             'customer_name' => $salesOrder->customer->name,
