@@ -358,6 +358,8 @@ class SalesOrderWorkflowService
      */
     private function applyShipment(SalesOrder $order, array $options): array
     {
+        $this->assertHasItems($order);
+
         $warehouseId = (int) $order->fulfillment_warehouse_id;
         if (! $warehouseId) {
             throw new RuntimeException('لا يمكن شحن طلب بدون مستودع تنفيذ.');
@@ -448,6 +450,26 @@ class SalesOrderWorkflowService
             reference: $order,
             currency: $order->currency,
         );
+
+        // A shipment with items but no OUT movements means the stock settlement
+        // never ran — status alone would say the goods left while the shelves
+        // still showed them. Refuse rather than leave the two records disagreeing.
+        $expectedUnits = (int) $order->items->sum(fn ($item) => (int) $item->quantity);
+        if ($expectedUnits > 0 && $movements === []) {
+            throw new RuntimeException(
+                'تعذّر تسجيل حركات المخزون عند الشحن. لم تُخصم الكمية المحجوزة — أعد المحاولة أو راجع أرصدة المستودع.'
+            );
+        }
+
+        // The plan is spent: each allocation is now fulfilled rather than left
+        // pending forever after the goods have left.
+        foreach ($order->items as $item) {
+            foreach ($item->allocations as $allocation) {
+                if ($allocation->status !== SalesOrderItemAllocation::STATUS_FULFILLED) {
+                    $allocation->update(['status' => SalesOrderItemAllocation::STATUS_FULFILLED]);
+                }
+            }
+        }
 
         $order->shipped_at = now();
 
@@ -1343,22 +1365,29 @@ class SalesOrderWorkflowService
      * An order that already holds a reservation must not be told it is short by
      * its own hold — that would make re-routing or re-checking a confirmed order
      * impossible — so its own reserved units are counted back in.
+     *
+     * Summed across every inventory row in the warehouse (warehouse-level and
+     * per-bin). Measuring only first() understated coverage whenever stock sat
+     * on a bin row while an empty warehouse-level row existed beside it.
      */
     private function sellableFor(int $productId, int $warehouseId, SalesOrder $order): int
     {
-        $row = WarehouseInventory::where('product_id', $productId)
+        $rows = WarehouseInventory::where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
-            ->first();
+            ->get();
 
-        if (! $row) {
+        if ($rows->isEmpty()) {
             return 0;
         }
 
-        $sellable = max(0, (int) $row->available_quantity - (int) $row->reserved_quantity);
+        $sellable = (int) $rows->sum(
+            fn ($row) => max(0, (int) $row->available_quantity - (int) $row->reserved_quantity)
+        );
 
         $ownHold = $this->ownHoldAt($order, $productId, $warehouseId);
         if ($ownHold > 0) {
-            $sellable += min($ownHold, (int) $row->reserved_quantity);
+            $totalReserved = (int) $rows->sum(fn ($row) => (int) $row->reserved_quantity);
+            $sellable += min($ownHold, $totalReserved);
         }
 
         return $sellable;
@@ -2138,9 +2167,11 @@ class SalesOrderWorkflowService
     /** Stock movements this order has produced, for the detail screen. */
     public function movementsFor(SalesOrder $order)
     {
+        // `source` is a varchar; compare as string so MySQL/SQLite never miss a
+        // movement written for this order id.
         return StockMovement::with('warehouse')
             ->whereIn('reference', ['sales_order', 'sales_order_cancelled'])
-            ->where('source', $order->id)
+            ->where('source', (string) $order->id)
             ->orderBy('id')
             ->get();
     }

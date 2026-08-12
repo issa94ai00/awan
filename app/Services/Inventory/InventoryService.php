@@ -160,12 +160,23 @@ class InventoryService
                 }
             }
 
-            $row = $this->lockedInventoryRow($productId, $warehouseId, $options['bin_id'] ?? null, $productVariantId);
+            $consumeReserved = (bool) ($options['consume_reserved'] ?? false);
+
+            // Shipping reserved stock must lock the same shelf the hold was taken
+            // on. An arbitrary first() across bin rows left the reserved balance
+            // untouched while another row's quantity moved — the order looked
+            // shipped and the inventory screen looked unchanged.
+            $row = $this->lockedInventoryRow(
+                $productId,
+                $warehouseId,
+                $options['bin_id'] ?? null,
+                $productVariantId,
+                preferReserved: $consumeReserved && $signedQuantity < 0
+            );
 
             $bucket = $this->bucketColumn($condition);
 
             if ($signedQuantity < 0 && ! $allowNegative) {
-                $consumeReserved = (bool) ($options['consume_reserved'] ?? false);
                 $availableInBucket = (int) $row->{$bucket};
 
                 if (! $consumeReserved && $condition === self::CONDITION_AVAILABLE) {
@@ -183,7 +194,20 @@ class InventoryService
                 }
 
                 if ($consumeReserved && $condition === self::CONDITION_AVAILABLE) {
-                    $row->reserved_quantity = max(0, (int) $row->reserved_quantity - abs($signedQuantity));
+                    // Refuse to ship against a row that never held the reservation.
+                    // Clamping to zero used to hide that and leave the real hold
+                    // stuck on another warehouse_inventory row.
+                    if ((int) $row->reserved_quantity < abs($signedQuantity)) {
+                        throw new RuntimeException(sprintf(
+                            'لا يوجد حجز كافٍ للمنتج #%d في المستودع #%d: المحجوز %d، المطلوب %d.',
+                            $productId,
+                            $warehouseId,
+                            (int) $row->reserved_quantity,
+                            abs($signedQuantity)
+                        ));
+                    }
+
+                    $row->reserved_quantity = (int) $row->reserved_quantity - abs($signedQuantity);
                 }
             }
 
@@ -368,23 +392,82 @@ class InventoryService
     /**
      * Fetches (or opens) the warehouse row for a product and locks it for the
      * rest of the transaction, so concurrent movements cannot interleave.
+     *
+     * When no bin is named, several rows can exist for the same product in one
+     * warehouse (a warehouse-level balance plus per-bin balances). Picking an
+     * arbitrary first() made reserve and shipReserved disagree about which
+     * shelf they meant. The rules below keep them on the same row:
+     *
+     *   - a named bin is always that bin
+     *   - shipping reserved stock prefers the row that actually holds the hold
+     *   - otherwise the warehouse-level (bin-less) row, or the fullest shelf
      */
-    private function lockedInventoryRow(int $productId, int $warehouseId, ?int $binId = null, ?int $productVariantId = null): WarehouseInventory
-    {
-        $row = WarehouseInventory::where('product_id', $productId)
+    private function lockedInventoryRow(
+        int $productId,
+        int $warehouseId,
+        ?int $binId = null,
+        ?int $productVariantId = null,
+        bool $preferReserved = false
+    ): WarehouseInventory {
+        $base = WarehouseInventory::query()
+            ->where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
-            ->when($binId, fn ($q) => $q->where('bin_id', $binId))
-            ->when($productVariantId !== null, fn ($q) => $q->where('product_variant_id', $productVariantId))
-            ->lockForUpdate()
-            ->first();
+            ->when(
+                $productVariantId !== null,
+                fn ($q) => $q->where('product_variant_id', $productVariantId)
+            );
 
-        if ($row) {
-            return $row;
+        if ($binId !== null) {
+            $row = (clone $base)->where('bin_id', $binId)->lockForUpdate()->first();
+            if ($row) {
+                return $row;
+            }
+        } else {
+            if ($preferReserved) {
+                $row = (clone $base)
+                    ->where('reserved_quantity', '>', 0)
+                    ->orderByDesc('reserved_quantity')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($row) {
+                    return $row;
+                }
+            }
+
+            $warehouseLevel = (clone $base)
+                ->whereNull('bin_id')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            // Prefer the warehouse-level balance when it can actually be sold from,
+            // so reserve and ship stay on one row instead of drifting to a bin.
+            if ($warehouseLevel && $this->sellableOn($warehouseLevel) > 0) {
+                return $warehouseLevel;
+            }
+
+            $row = (clone $base)
+                ->orderByDesc(DB::raw('available_quantity - reserved_quantity'))
+                ->orderByDesc('available_quantity')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            if ($row) {
+                return $row;
+            }
+
+            if ($warehouseLevel) {
+                return $warehouseLevel;
+            }
         }
 
         return WarehouseInventory::create([
             'warehouse_id' => $warehouseId,
             'product_id' => $productId,
+            'product_variant_id' => $productVariantId,
             'bin_id' => $binId,
             'quantity' => 0,
             'available_quantity' => 0,

@@ -72,7 +72,7 @@ class EnhancedSalesOrderController extends Controller
             'items.product',
             'items.variant',
             'invoices',
-            'creator'
+            'creator',
         ])->findOrFail($id);
 
         return response()->json([
@@ -112,7 +112,7 @@ class EnhancedSalesOrderController extends Controller
             $assignedEmployeeId = App\Models\Employee::where('user_id', auth()->id())->value('id');
 
             $order = SalesOrder::create([
-                'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
+                'order_number' => 'SO-'.str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
                 'customer_id' => $request->customer_id,
                 'channel_id' => $request->channel_id,
                 'contract_id' => $request->contract_id,
@@ -147,7 +147,7 @@ class EnhancedSalesOrderController extends Controller
             $order->save();
 
             // Auto-select fulfillment warehouse if not specified
-            if (!$order->fulfillment_warehouse_id) {
+            if (! $order->fulfillment_warehouse_id) {
                 $order->load('assignedEmployee');
 
                 if ($order->assignedEmployee?->warehouse_id) {
@@ -174,6 +174,7 @@ class EnhancedSalesOrderController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -300,33 +301,75 @@ class EnhancedSalesOrderController extends Controller
 
         $order = SalesOrder::findOrFail($id);
 
-        $order->tracking_number = $request->tracking_number;
-        $order->carrier = $request->carrier;
-        $order->status = SalesOrder::STATUS_SHIPPED;
-        $order->shipped_at = now();
-        $order->save();
+        try {
+            // Tracking used to flip status to shipped by writing the column,
+            // which skipped shipReserved / COGS / movements entirely — the order
+            // looked shipped while quantity and reserved stayed put. Hand the
+            // stage change to the workflow so stock settles with the status.
+            if ($order->status === SalesOrder::STATUS_PROCESSING) {
+                $result = $this->workflow->transitionTo($order, SalesOrder::STATUS_SHIPPED, [
+                    'tracking_number' => $request->tracking_number,
+                    'carrier' => $request->carrier,
+                ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تحديث معلومات التتبع بنجاح',
-            'data' => $order,
-        ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم تأكيد الشحن وتحديث معلومات التتبع',
+                    'data' => $order->refresh()->load(['customer', 'items.product', 'fulfillmentWarehouse']),
+                    'effects' => $result['effects'] ?? [],
+                ]);
+            }
+
+            if (in_array($order->status, [SalesOrder::STATUS_SHIPPED, SalesOrder::STATUS_DELIVERED], true)) {
+                $order->tracking_number = $request->tracking_number;
+                $order->carrier = $request->carrier;
+                $order->save();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم تحديث معلومات التتبع بنجاح',
+                    'data' => $order,
+                ]);
+            }
+
+            throw new RuntimeException(
+                'لا يمكن تسجيل الشحن إلا لطلب قيد التجهيز. الحالة الحالية: '.$order->status
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
     }
 
     public function markAsDelivered(Request $request, $id)
     {
         $order = SalesOrder::findOrFail($id);
 
-        $order->status = SalesOrder::STATUS_DELIVERED;
-        $order->actual_delivery_date = now();
-        $order->delivered_at = now();
-        $order->save();
+        try {
+            $result = $this->workflow->transitionTo($order, SalesOrder::STATUS_DELIVERED, [
+                'settle' => $request->boolean('settle'),
+                'settlement_amount' => $request->input('settlement_amount'),
+                'payment_method' => $request->input('payment_method'),
+                'payment_reference' => $request->input('payment_reference'),
+                'note' => $request->input('note'),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم تسليم الطلب بنجاح',
-            'data' => $order,
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تسليم الطلب بنجاح',
+                'data' => $order->refresh()->load(['customer', 'items.product', 'fulfillmentWarehouse']),
+                'effects' => $result['effects'] ?? [],
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
     }
 
     public function getChannels(Request $request)
@@ -360,7 +403,7 @@ class EnhancedSalesOrderController extends Controller
         }
 
         if ($request->has('status')) {
-            match($request->status) {
+            match ($request->status) {
                 'active' => $query->active(),
                 'expired' => $query->expired(),
                 'draft' => $query->draft(),
@@ -393,7 +436,7 @@ class EnhancedSalesOrderController extends Controller
 
             $contract = SalesContract::create([
                 'customer_id' => $request->customer_id,
-                'contract_number' => 'CTR-' . str_pad(SalesContract::count() + 1, 6, '0', STR_PAD_LEFT),
+                'contract_number' => 'CTR-'.str_pad(SalesContract::count() + 1, 6, '0', STR_PAD_LEFT),
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'total_value' => $request->total_value,
@@ -414,6 +457,7 @@ class EnhancedSalesOrderController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -447,7 +491,7 @@ class EnhancedSalesOrderController extends Controller
     {
         $order = SalesOrder::findOrFail($id);
 
-        if (!$order->isMultiChannel()) {
+        if (! $order->isMultiChannel()) {
             return response()->json([
                 'success' => false,
                 'message' => 'هذا الطلب ليس من قناة متعددة',
