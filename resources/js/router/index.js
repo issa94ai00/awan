@@ -92,6 +92,13 @@ const routes = [
                 component: () => import('@/views/admin/Settings.vue')
             },
             {
+                // Currencies and their rates. Separate from settings because a
+                // rate is a dated record with history, not a value in a form.
+                path: 'currencies',
+                name: 'admin.currencies',
+                component: () => import('@/views/admin/settings/Currencies.vue')
+            },
+            {
                 path: 'special-offers',
                 name: 'admin.special-offers',
                 component: () => import('@/views/admin/SpecialOffers.vue')

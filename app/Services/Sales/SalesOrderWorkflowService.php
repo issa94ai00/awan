@@ -4,7 +4,10 @@ namespace App\Services\Sales;
 
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
+use App\Models\PickingList;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderItem;
+use App\Models\SalesOrderItemAllocation;
 use App\Models\SalesOrderStatusHistory;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
@@ -12,7 +15,6 @@ use App\Models\WarehouseInventory;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PickingService;
-use App\Services\Sales\PaymentRecorder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -68,8 +70,7 @@ class SalesOrderWorkflowService
         private LedgerPostingService $ledger,
         private PaymentRecorder $payments,
         private PickingService $picking,
-    ) {
-    }
+    ) {}
 
     /* ------------------------------------------------------------------ *
      * Routing — which warehouse should serve this order
@@ -90,18 +91,19 @@ class SalesOrderWorkflowService
         // Allocations come along because coverage is now measured against each
         // line's planned sources; loading them here keeps the per-warehouse loop
         // below from firing a query per line.
-        $order->loadMissing('items.product', 'items.allocations');
+        $order->loadMissing('items.product', 'items.allocations', 'routings');
 
         $warehouses = Warehouse::query()->where('is_active', true)->orderBy('id')->get();
+        $selected = $this->selectedRoutingIds($order) ?? [];
 
-        $rows = $warehouses->map(function (Warehouse $warehouse) use ($order) {
+        $rows = $warehouses->map(function (Warehouse $warehouse) use ($order, $selected) {
             $items = $order->items->map(function ($item) use ($warehouse, $order) {
                 $required = (int) $item->quantity;
                 $available = $this->sellableFor((int) $item->product_id, $warehouse->id, $order);
 
                 return [
                     'product_id' => (int) $item->product_id,
-                    'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? '#' . $item->product_id,
+                    'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? '#'.$item->product_id,
                     'sku' => $item->product->sku ?? null,
                     'required' => $required,
                     'available' => $available,
@@ -124,6 +126,10 @@ class SalesOrderWorkflowService
                 'total_items' => $items->count(),
                 'coverage_percentage' => (int) round(($covered / $total) * 100),
                 'is_current' => $warehouse->id === (int) $order->fulfillment_warehouse_id,
+                // Whether this warehouse is one of the order's chosen routings.
+                // `is_current` marks the single owner; an order can be routed
+                // through several, and only these may source its lines.
+                'is_selected' => in_array($warehouse->id, $selected, true),
             ];
         });
 
@@ -199,7 +205,7 @@ class SalesOrderWorkflowService
      * commercially. The whole move is one transaction: either the status, the
      * stock and the ledger all move, or none of them do.
      *
-     * @return array<string,mixed>  what the move actually changed
+     * @return array<string,mixed> what the move actually changed
      */
     public function transitionTo(SalesOrder $order, string $target, array $options = []): array
     {
@@ -216,7 +222,7 @@ class SalesOrderWorkflowService
             }
 
             $allowed = self::TRANSITIONS[$current] ?? [];
-            if (!in_array($target, $allowed, true)) {
+            if (! in_array($target, $allowed, true)) {
                 throw new RuntimeException(sprintf(
                     'لا يمكن نقل الطلب من "%s" إلى "%s". الانتقالات المسموحة: %s.',
                     $this->statusLabel($current),
@@ -243,7 +249,7 @@ class SalesOrderWorkflowService
             // Handing the order to whoever owns the next stage. Routing it with
             // the move keeps "who is doing this now" attached to the stage that
             // needs doing, rather than to whoever happened to raise the order.
-            if (!empty($options['assigned_employee_id'])) {
+            if (! empty($options['assigned_employee_id'])) {
                 $order->assigned_employee_id = (int) $options['assigned_employee_id'];
                 $effects['assigned_employee_id'] = $order->assigned_employee_id;
             }
@@ -273,10 +279,10 @@ class SalesOrderWorkflowService
     {
         $this->assertHasItems($order);
 
-        $warehouseId = $order->fulfillment_warehouse_id ?: $this->pickWarehouse($order);
-        if (!$warehouseId) {
-            throw new RuntimeException('لا يوجد مستودع نشط يمكن توجيه الطلب إليه.');
-        }
+        // Where the goods come from is settled here, against the stock as it
+        // stands, and recorded on the lines before anything is held.
+        $routing = $this->planSourcing($order);
+        $warehouseId = $routing['warehouse_id'];
 
         $order->fulfillment_warehouse_id = $warehouseId;
 
@@ -294,7 +300,7 @@ class SalesOrderWorkflowService
 
         $this->ledger->postInvoice($invoice);
 
-        if (!$invoiceExisted) {
+        if (! $invoiceExisted) {
             $order->customer?->updateBalance((float) $order->total);
         }
 
@@ -302,6 +308,11 @@ class SalesOrderWorkflowService
 
         $effects = [
             'reserved_warehouse_id' => (int) $warehouseId,
+            // What the routing decided, so the stage history says which
+            // warehouses served the order and with how much each — an order
+            // that quietly split is otherwise indistinguishable from one that
+            // did not.
+            'routing' => $routing,
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'journal_posted' => true,
@@ -349,7 +360,7 @@ class SalesOrderWorkflowService
     private function applyShipment(SalesOrder $order, array $options): array
     {
         $warehouseId = (int) $order->fulfillment_warehouse_id;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             throw new RuntimeException('لا يمكن شحن طلب بدون مستودع تنفيذ.');
         }
 
@@ -404,10 +415,10 @@ class SalesOrderWorkflowService
                         // writes one movement per warehouse, and sharing a key
                         // would make the second look like a repeat of the first
                         // and be skipped.
-                        'key' => 'SO-' . $order->id . '-' . $item->product_id . '-W' . $sourceWarehouseId,
+                        'key' => 'SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId,
                         'reference' => 'sales_order',
                         'source' => $order->id,
-                        'reason' => 'إخراج مخزون لطلب بيع رقم ' . $order->order_number,
+                        'reason' => 'إخراج مخزون لطلب بيع رقم '.$order->order_number,
                         'unit_cost' => $unitCost,
                     ]
                 );
@@ -432,19 +443,19 @@ class SalesOrderWorkflowService
         }
 
         $this->ledger->postCostOfGoodsSoldBySource(
-            key: 'so_cogs:' . $order->id,
+            key: 'so_cogs:'.$order->id,
             costByWarehouse: $costByWarehouse,
-            label: 'طلب بيع ' . $order->order_number,
+            label: 'طلب بيع '.$order->order_number,
             reference: $order,
             currency: $order->currency,
         );
 
         $order->shipped_at = now();
 
-        if (!empty($options['tracking_number'])) {
+        if (! empty($options['tracking_number'])) {
             $order->tracking_number = $options['tracking_number'];
         }
-        if (!empty($options['carrier'])) {
+        if (! empty($options['carrier'])) {
             $order->carrier = $options['carrier'];
         }
 
@@ -456,6 +467,315 @@ class SalesOrderWorkflowService
         ];
     }
 
+    /* ------------------------------------------------------------------ *
+     * Routing at confirmation
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Decides where an order's goods actually come from, and records it.
+     *
+     * Routing used to be settled when the order was *created*: the warehouse
+     * defaulted to the lowest-numbered active one — the main warehouse — before
+     * anybody had looked at the stock. Confirmation then found the field already
+     * filled and never re-considered it, so an order for goods only a branch
+     * held was pinned to the main warehouse and refused for lack of them, and an
+     * order that no single warehouse could fill was refused outright rather than
+     * split. The decision belongs here, where the figures are known.
+     *
+     * Four outcomes, in order of preference:
+     *
+     *   - lines that already carry a plan keep it — that is a decision somebody
+     *     made, whether in the field app or on the sourcing screen
+     *   - one warehouse that can cover everything serves the whole order, which
+     *     is one pick and one shipment
+     *   - failing that the order is split, and every line records its sources so
+     *     the hold, the picking lists, the movements and any return all follow
+     *     the goods rather than the order's label
+     *   - nothing that can cover it at all is refused, naming the true shortfall
+     *
+     * @return array{warehouse_id:int,split:bool,sources:array<int,int>}
+     */
+    private function planSourcing(SalesOrder $order): array
+    {
+        $order->loadMissing('items.product', 'items.allocations');
+
+        // Lines the field app or the sourcing screen already routed. Their
+        // quantities are fixed; they only matter here for the stock they will
+        // consume out from under whatever is still to be planned.
+        $unplanned = $order->items->filter(fn ($item) => $item->allocations->isEmpty());
+
+        $free = $this->availabilityLedger($order);
+
+        if ($unplanned->isEmpty()) {
+            return $this->routingResult($order, $this->plannedSources($order));
+        }
+
+        $candidates = $this->sourceCandidates($order);
+
+        if ($candidates->isEmpty()) {
+            throw new RuntimeException(
+                $order->fulfillment_type === SalesOrder::FULFILLMENT_PICKUP
+                    ? 'لا يوجد فرع نشط يمكن للعميل الاستلام منه. غيّر نوع التنفيذ إلى شحن.'
+                    : 'لا يوجد مستودع نشط يمكن توجيه الطلب إليه.'
+            );
+        }
+
+        // Two lines of the same product draw on one shelf, so they are weighed
+        // together — separately, each would look affordable while the pair is not.
+        $needed = [];
+        foreach ($unplanned as $item) {
+            $needed[(int) $item->product_id] = ($needed[(int) $item->product_id] ?? 0) + (int) $item->quantity;
+        }
+
+        $single = $candidates->first(function (Warehouse $warehouse) use ($needed, $free) {
+            foreach ($needed as $productId => $quantity) {
+                if ($free($warehouse->id, $productId) < $quantity) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if ($single) {
+            if (! $order->fulfillment_warehouse_id) {
+                // Nobody had routed it, so the warehouse that can fill it becomes
+                // the order's own and the lines need no allocations — an
+                // unplanned line ships from the order's warehouse by definition.
+                $order->fulfillment_warehouse_id = $single->id;
+            } elseif ((int) $order->fulfillment_warehouse_id !== $single->id) {
+                // The order belongs to a branch that cannot fill it — an empty
+                // shelf, a seller ordering against the main warehouse's stock.
+                // The goods come from elsewhere and the lines say so; the order
+                // stays with the branch that took it. Moving the order instead
+                // would drop it out of that branch's list and hand a customer's
+                // own salesperson's work to another building.
+                $this->splitAcross($unplanned, collect([$single]), $free);
+                $order->load('items.allocations');
+            }
+
+            return $this->routingResult($order, $this->plannedSources($order));
+        }
+
+        // Collecting in person happens at one counter. Splitting a pickup would
+        // ask the customer to drive to two buildings for one order, so it is
+        // refused and the operator decides — ship it, or reduce the quantity.
+        if ($order->fulfillment_type === SalesOrder::FULFILLMENT_PICKUP) {
+            throw new RuntimeException(
+                'لا يوجد فرع واحد يغطي كامل الطلب، ولا يمكن تقسيم طلب استلام من الفرع على أكثر من مستودع. '
+                .'غيّر نوع التنفيذ إلى شحن، أو عدّل الكميات.'
+            );
+        }
+
+        $this->splitAcross($unplanned, $candidates, $free);
+
+        $order->load('items.allocations');
+
+        return $this->routingResult($order, $this->plannedSources($order));
+    }
+
+    /**
+     * Draws each line from the warehouses that hold it, best source first, and
+     * writes the result to the line.
+     *
+     * @param  Collection<int,SalesOrderItem>  $items
+     * @param  Collection<int,Warehouse>  $candidates
+     * @param  callable(int,int):int  $free  units of a product a warehouse can still give
+     */
+    private function splitAcross($items, Collection $candidates, callable $free): void
+    {
+        $short = [];
+
+        foreach ($items as $item) {
+            $remaining = (int) $item->quantity;
+            $shares = [];
+
+            foreach ($candidates as $warehouse) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $take = min($remaining, $free($warehouse->id, (int) $item->product_id));
+                if ($take <= 0) {
+                    continue;
+                }
+
+                // Taken off the running total as well as the shelf, so the next
+                // line of the same product cannot be promised the same units.
+                $free($warehouse->id, (int) $item->product_id, -$take);
+                $shares[$warehouse->id] = $take;
+                $remaining -= $take;
+            }
+
+            if ($remaining > 0) {
+                // Nothing is recorded for a line that cannot be filled, so the
+                // units it had provisionally taken go back on the shelf. Left
+                // taken, they would make the *next* line look shorter than it is
+                // and the message would name a shortfall that does not exist.
+                foreach ($shares as $warehouseId => $quantity) {
+                    $free((int) $warehouseId, (int) $item->product_id, $quantity);
+                }
+
+                $short[] = sprintf(
+                    '%s (ناقص %d من أصل %d في كل المستودعات)',
+                    $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id),
+                    $remaining,
+                    (int) $item->quantity
+                );
+
+                continue;
+            }
+
+            foreach ($shares as $warehouseId => $quantity) {
+                $item->allocations()->create([
+                    'warehouse_id' => (int) $warehouseId,
+                    'quantity' => (int) $quantity,
+                    'status' => SalesOrderItemAllocation::STATUS_PENDING,
+                ]);
+            }
+        }
+
+        if ($short) {
+            // Reported against the whole network rather than one building: the
+            // per-warehouse message sent the operator to check a shelf that was
+            // never going to be the answer.
+            throw new RuntimeException('الرصيد غير كافٍ في أي مستودع: '.implode('، ', $short).'.');
+        }
+    }
+
+    /**
+     * Warehouses this order may draw on, best first.
+     *
+     * The order's own warehouse leads — it is either what an operator chose or
+     * where the seller who raised the order stands, and serving from anywhere
+     * else means moving goods first. After that: the seller's branch, the main
+     * warehouse, then whoever is left.
+     *
+     * @return Collection<int,Warehouse>
+     */
+    private function sourceCandidates(SalesOrder $order): Collection
+    {
+        $warehouses = Warehouse::query()->where('is_active', true)->get();
+
+        // A deliberate routing outranks the automatic plan. Confirming an order
+        // routed to two branches must not quietly pull the shortfall from a
+        // third warehouse nobody chose — that is the automatic behaviour the
+        // routing selection exists to override.
+        $selected = $this->selectedRoutingIds($order);
+        if ($selected !== null) {
+            $warehouses = $warehouses->whereIn('id', $selected);
+        }
+
+        // A pickup has to be collectable, so only places a customer can walk
+        // into count — unless the operator already named somewhere themselves.
+        if ($order->fulfillment_type === SalesOrder::FULFILLMENT_PICKUP) {
+            $warehouses = $warehouses->filter(
+                fn (Warehouse $w) => $w->location_type === Warehouse::TYPE_BRANCH
+                    || $w->id === (int) $order->fulfillment_warehouse_id
+            );
+        }
+
+        $preferred = (int) $order->fulfillment_warehouse_id;
+        $employeeWarehouseId = (int) ($order->assignedEmployee?->warehouse_id ?? 0);
+
+        return $warehouses->sortBy([
+            fn (Warehouse $a, Warehouse $b) => ($b->id === $preferred) <=> ($a->id === $preferred),
+            fn (Warehouse $a, Warehouse $b) => ($b->id === $employeeWarehouseId) <=> ($a->id === $employeeWarehouseId),
+            fn (Warehouse $a, Warehouse $b) => ((bool) $b->is_primary) <=> ((bool) $a->is_primary),
+            fn (Warehouse $a, Warehouse $b) => $a->id <=> $b->id,
+        ])->values();
+    }
+
+    /**
+     * A running count of what each warehouse can still give this order.
+     *
+     * Seeded from real availability and drawn down as the plan takes units, so
+     * one shelf cannot be promised to two lines. Called with a delta it adjusts
+     * the running figure; called without one it reads it.
+     *
+     * @return callable(int,int,int=):int
+     */
+    private function availabilityLedger(SalesOrder $order): callable
+    {
+        $ledger = [];
+
+        $free = function (int $warehouseId, int $productId, int $delta = 0) use (&$ledger, $order): int {
+            if (! isset($ledger[$warehouseId][$productId])) {
+                $ledger[$warehouseId][$productId] = $this->sellableFor($productId, $warehouseId, $order);
+            }
+
+            if ($delta !== 0) {
+                $ledger[$warehouseId][$productId] = max(0, $ledger[$warehouseId][$productId] + $delta);
+            }
+
+            return $ledger[$warehouseId][$productId];
+        };
+
+        // Lines that are already routed have first claim on the stock they name,
+        // even though nothing is held yet — planning the rest against the full
+        // shelf would promise the same units twice.
+        foreach ($order->items as $item) {
+            foreach ($item->allocations as $allocation) {
+                $free((int) $allocation->warehouse_id, (int) $item->product_id, -1 * (int) $allocation->quantity);
+            }
+        }
+
+        return $free;
+    }
+
+    /**
+     * How many units each warehouse ends up supplying.
+     *
+     * @return array<int,int> warehouse id => units, largest first
+     */
+    private function plannedSources(SalesOrder $order, ?int $fallbackWarehouseId = null): array
+    {
+        $fallback = $fallbackWarehouseId ?? (int) $order->fulfillment_warehouse_id;
+
+        $sources = [];
+        foreach ($order->items as $item) {
+            foreach ($this->shipmentSourcesFor($item, $fallback) as $warehouseId => $quantity) {
+                $sources[(int) $warehouseId] = ($sources[(int) $warehouseId] ?? 0) + (int) $quantity;
+            }
+        }
+
+        arsort($sources);
+
+        return $sources;
+    }
+
+    /**
+     * The routing decision, with the order's warehouse settled.
+     *
+     * An order still needs one warehouse on the order itself — screens, the
+     * field app's branch scope and the picking fallback all read it. An order
+     * that already has one keeps it, even when the goods come from somewhere
+     * else entirely: it says who is serving the customer, not where the stock
+     * sits, and a branch selling the main warehouse's stock is still the
+     * branch's order. Only an unrouted order takes a warehouse from here, and
+     * then it is whichever building is doing most of the work.
+     *
+     * @param  array<int,int>  $sources
+     * @return array{warehouse_id:int,split:bool,sources:array<int,int>}
+     */
+    private function routingResult(SalesOrder $order, array $sources): array
+    {
+        $warehouseId = (int) $order->fulfillment_warehouse_id
+            ?: (int) (array_key_first($sources) ?? 0);
+
+        if (! $warehouseId) {
+            throw new RuntimeException('لا يوجد مستودع نشط يمكن توجيه الطلب إليه.');
+        }
+
+        $order->fulfillment_warehouse_id = $warehouseId;
+
+        return [
+            'warehouse_id' => $warehouseId,
+            'split' => count($sources) > 1,
+            'sources' => $sources,
+        ];
+    }
+
     /**
      * The order's routing turned inside out: what each warehouse must pick.
      *
@@ -463,7 +783,7 @@ class SalesOrderWorkflowService
      * there"); a picking list is per building ("fetch these lines off your
      * shelves"), so the same plan is needed the other way round.
      *
-     * @return array<int,array<int,int>>  warehouse id => [order item id => quantity]
+     * @return array<int,array<int,int>> warehouse id => [order item id => quantity]
      */
     private function pickingPlanFor(SalesOrder $order, int $fallbackWarehouseId): array
     {
@@ -556,7 +876,7 @@ class SalesOrderWorkflowService
         }
 
         $invoice = $this->existingInvoice($order);
-        if (!$invoice) {
+        if (! $invoice) {
             throw new RuntimeException('لا توجد فاتورة لتسويتها على هذا الطلب.');
         }
 
@@ -576,7 +896,7 @@ class SalesOrderWorkflowService
         $payment = $this->payments->record($invoice, $amount, [
             'method' => $options['payment_method'] ?? null,
             'reference' => $options['payment_reference'] ?? null,
-            'notes' => 'تحصيل عند تسليم الطلب ' . $order->order_number,
+            'notes' => 'تحصيل عند تسليم الطلب '.$order->order_number,
             'sales_order_id' => $order->id,
         ]);
 
@@ -627,10 +947,10 @@ class SalesOrderWorkflowService
                             // the shipment: one return per warehouse, and a
                             // shared key would make the second look like a
                             // repeat of the first and be skipped.
-                            'key' => 'SO-CANCEL-' . $order->id . '-' . $item->product_id . '-W' . $sourceId,
+                            'key' => 'SO-CANCEL-'.$order->id.'-'.$item->product_id.'-W'.$sourceId,
                             'reference' => 'sales_order_cancelled',
                             'source' => $order->id,
-                            'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم ' . $order->order_number,
+                            'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم '.$order->order_number,
                             'unit_cost' => (float) ($item->product?->cost_price ?? 0),
                         ]
                     );
@@ -639,7 +959,7 @@ class SalesOrderWorkflowService
                 }
             }
 
-            $this->ledger->reverseFor('so_cogs:' . $order->id);
+            $this->ledger->reverseFor('so_cogs:'.$order->id);
             $effects['stock_returned'] = true;
             $effects['returned_by_warehouse'] = $returned;
         } elseif (in_array($from, self::RESERVED_STAGES, true)) {
@@ -658,7 +978,7 @@ class SalesOrderWorkflowService
         // not a timestamp — is what says whether there is anything to reverse.
         $invoice = $this->existingInvoice($order);
         if ($invoice) {
-            $this->ledger->reverseFor('invoice:' . $invoice->id);
+            $this->ledger->reverseFor('invoice:'.$invoice->id);
             $invoice->update(['status' => Invoice::STATUS_CANCELLED, 'paid_at' => null]);
             $effects['invoice_cancelled'] = $invoice->invoice_number;
 
@@ -686,8 +1006,8 @@ class SalesOrderWorkflowService
     {
         $allowedTypes = [SalesOrder::FULFILLMENT_SHIP, SalesOrder::FULFILLMENT_PICKUP, SalesOrder::FULFILLMENT_DELIVERY];
 
-        if (!in_array($type, $allowedTypes, true)) {
-            throw new RuntimeException('نوع تنفيذ غير معروف: ' . $type);
+        if (! in_array($type, $allowedTypes, true)) {
+            throw new RuntimeException('نوع تنفيذ غير معروف: '.$type);
         }
 
         return DB::transaction(function () use ($order, $type, $options) {
@@ -707,6 +1027,22 @@ class SalesOrderWorkflowService
             $previousType = $order->fulfillment_type;
             $previousWarehouseId = (int) $order->fulfillment_warehouse_id;
 
+            // An order already drawn from two buildings cannot become a
+            // collection: the customer would have to call at both counters. The
+            // sourcing screen is where that is undone, and saying so is more use
+            // than switching the type and leaving the split behind it.
+            if ($type === SalesOrder::FULFILLMENT_PICKUP) {
+                $order->loadMissing('items.allocations');
+                $sources = $this->plannedSources($order);
+
+                if (count($sources) > 1) {
+                    throw new RuntimeException(
+                        'الطلب مقسّم على '.count($sources).' مستودعات، ولا يمكن استلامه من الفرع من عدة أماكن. '
+                        .'وحّد مصدر البضاعة من شاشة "مصدر البضاعة" أولاً.'
+                    );
+                }
+            }
+
             $order->fulfillment_type = $type;
 
             // Re-route. An explicit warehouse from the operator wins over the
@@ -714,7 +1050,7 @@ class SalesOrderWorkflowService
             $targetWarehouseId = (int) ($options['fulfillment_warehouse_id'] ?? 0)
                 ?: (int) $this->pickWarehouse($order, $type);
 
-            if (!$targetWarehouseId) {
+            if (! $targetWarehouseId) {
                 throw new RuntimeException('لا يوجد مستودع نشط يمكن توجيه الطلب إليه.');
             }
 
@@ -809,7 +1145,7 @@ class SalesOrderWorkflowService
             // down with it. That is why no order had ever reached the ledger.
             $invoice->items()->create([
                 'product_id' => $item->product_id,
-                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#' . $item->product_id),
+                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'discount' => $item->discount ?? 0,
@@ -832,13 +1168,13 @@ class SalesOrderWorkflowService
     /**
      * Rewrites an invoice to match the order it came from and re-posts it.
      *
-     * @return float  how much the customer's balance moved
+     * @return float how much the customer's balance moved
      */
     private function restateInvoice(SalesOrder $order, Invoice $invoice): float
     {
         $previousTotal = (float) $invoice->total;
 
-        $this->ledger->reverseFor('invoice:' . $invoice->id);
+        $this->ledger->reverseFor('invoice:'.$invoice->id);
 
         $invoice->update([
             'subtotal' => $order->subtotal,
@@ -853,9 +1189,9 @@ class SalesOrderWorkflowService
         // original key is now attached to a reversed entry — so the restatement
         // needs a key of its own.
         $this->ledger->post(
-            key: 'invoice:' . $invoice->id . ':restated:' . $order->updated_at?->getTimestamp(),
+            key: 'invoice:'.$invoice->id.':restated:'.$order->updated_at?->getTimestamp(),
             date: now()->toDateString(),
-            description: 'إعادة إثبات فاتورة ' . $invoice->invoice_number . ' بعد تغيير نوع التنفيذ',
+            description: 'إعادة إثبات فاتورة '.$invoice->invoice_number.' بعد تغيير نوع التنفيذ',
             lines: $this->invoiceLines($invoice),
             reference: $invoice,
             module: 'sales',
@@ -878,18 +1214,18 @@ class SalesOrderWorkflowService
         $charges = round((float) ($invoice->additional_charges ?? 0), 2);
         $goods = round($total - $tax - $charges, 2);
 
-        $label = 'فاتورة ' . $invoice->invoice_number;
+        $label = 'فاتورة '.$invoice->invoice_number;
 
-        $lines = [['role' => 'accounts_receivable', 'debit' => $total, 'description' => 'ذمم مدينة - ' . $label]];
+        $lines = [['role' => 'accounts_receivable', 'debit' => $total, 'description' => 'ذمم مدينة - '.$label]];
 
         if ($goods > 0) {
-            $lines[] = ['role' => 'sales_revenue', 'credit' => $goods, 'description' => 'إيراد مبيعات - ' . $label];
+            $lines[] = ['role' => 'sales_revenue', 'credit' => $goods, 'description' => 'إيراد مبيعات - '.$label];
         }
         if ($charges > 0) {
-            $lines[] = ['role' => 'additional_charges_revenue', 'credit' => $charges, 'description' => 'إيراد شحن وخدمات - ' . $label];
+            $lines[] = ['role' => 'additional_charges_revenue', 'credit' => $charges, 'description' => 'إيراد شحن وخدمات - '.$label];
         }
         if ($tax > 0) {
-            $lines[] = ['role' => 'tax_payable', 'credit' => $tax, 'description' => 'ضريبة مستحقة - ' . $label];
+            $lines[] = ['role' => 'tax_payable', 'credit' => $tax, 'description' => 'ضريبة مستحقة - '.$label];
         }
 
         return $lines;
@@ -904,7 +1240,7 @@ class SalesOrderWorkflowService
     {
         $lastId = (int) (Invoice::orderByDesc('id')->lockForUpdate()->value('id') ?? 0);
 
-        return 'INV-' . now()->format('Ymd') . '-' . str_pad((string) ($lastId + 1), 5, '0', STR_PAD_LEFT);
+        return 'INV-'.now()->format('Ymd').'-'.str_pad((string) ($lastId + 1), 5, '0', STR_PAD_LEFT);
     }
 
     private function syncInvoiceStatus(SalesOrder $order, string $status): void
@@ -933,12 +1269,12 @@ class SalesOrderWorkflowService
             foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $quantity) {
                 $ok = $this->inventory->reserve((int) $item->product_id, (int) $quantity, (int) $sourceId);
 
-                if (!$ok) {
+                if (! $ok) {
                     throw new RuntimeException(sprintf(
                         'تعذّر حجز %d من "%s" في مستودع %s — الكمية المتاحة تغيّرت.',
                         $quantity,
-                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
-                        Warehouse::find($sourceId)?->name ?? ('#' . $sourceId)
+                        $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id),
+                        Warehouse::find($sourceId)?->name ?? ('#'.$sourceId)
                     ));
                 }
             }
@@ -947,7 +1283,7 @@ class SalesOrderWorkflowService
 
     private function releaseAll(SalesOrder $order, ?int $warehouseId): void
     {
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return;
         }
 
@@ -988,8 +1324,8 @@ class SalesOrderWorkflowService
                 if ($available < $required) {
                     $short[] = sprintf(
                         '%s في مستودع "%s" (مطلوب %d، متاح %d)',
-                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
-                        Warehouse::find($sourceId)?->name ?? ('#' . $sourceId),
+                        $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id),
+                        Warehouse::find($sourceId)?->name ?? ('#'.$sourceId),
                         $required,
                         $available
                     );
@@ -998,7 +1334,7 @@ class SalesOrderWorkflowService
         }
 
         if ($short) {
-            throw new RuntimeException('الرصيد غير كافٍ: ' . implode('، ', $short) . '.');
+            throw new RuntimeException('الرصيد غير كافٍ: '.implode('، ', $short).'.');
         }
     }
 
@@ -1015,7 +1351,7 @@ class SalesOrderWorkflowService
             ->where('warehouse_id', $warehouseId)
             ->first();
 
-        if (!$row) {
+        if (! $row) {
             return 0;
         }
 
@@ -1040,7 +1376,7 @@ class SalesOrderWorkflowService
      */
     private function ownHoldAt(SalesOrder $order, int $productId, int $warehouseId): int
     {
-        if (!$this->holdsReservation($order)) {
+        if (! $this->holdsReservation($order)) {
             return 0;
         }
 
@@ -1129,9 +1465,27 @@ class SalesOrderWorkflowService
      */
     public function sourcingPlan(SalesOrder $order): array
     {
-        $order->loadMissing('items.product', 'items.allocations');
+        $order->loadMissing('items.product', 'items.allocations', 'routings');
 
         $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_primary')->orderBy('id')->get();
+
+        // Only the chosen routings are offered as sources. A warehouse already
+        // carrying an allocation stays on the list even if it has since been
+        // deselected, otherwise the quantity sitting there would vanish from the
+        // screen while still being real — invisible, unshippable, and impossible
+        // to correct from here.
+        $selected = $this->selectedRoutingIds($order);
+        if ($selected !== null) {
+            $allocated = $order->items
+                ->flatMap(fn ($item) => $item->allocations->pluck('warehouse_id'))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->all();
+
+            $allowed = array_unique([...$selected, ...$allocated]);
+            $warehouses = $warehouses->whereIn('id', $allowed)->values();
+        }
+
         $fallback = (int) $order->fulfillment_warehouse_id;
 
         $lines = $order->items->map(function ($item) use ($warehouses, $order, $fallback) {
@@ -1152,8 +1506,12 @@ class SalesOrderWorkflowService
             return [
                 'item_id' => $item->id,
                 'product_id' => (int) $item->product_id,
-                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? ('#' . $item->product_id),
-                'sku' => $item->product->sku,
+                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? ('#'.$item->product_id),
+                // Null-safe: a line whose product was deleted still has to
+                // render, and this raised "property sku on null" on every load
+                // of an order carrying one. The name above only escaped it
+                // because `??` swallows the same warning.
+                'sku' => $item->product?->sku,
                 'quantity' => (int) $item->quantity,
                 'allocated' => $allocated,
                 'remaining' => max(0, (int) $item->quantity - $allocated),
@@ -1169,14 +1527,185 @@ class SalesOrderWorkflowService
             'order_number' => $order->order_number,
             'fulfillment_warehouse_id' => $fallback,
             'editable' => $this->sourcingEditable($order),
+            // `null` tells the screen no routing has been narrowed down yet, so
+            // it can say so rather than implying every warehouse was chosen.
+            'selected_warehouse_ids' => $selected,
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * Replaces the set of warehouses the order is routed through.
+     *
+     * The owning warehouse (`fulfillment_warehouse_id`) is kept inside the
+     * selection: it is where an unallocated line is picked from, so a selection
+     * that excluded it would describe a plan the shipment could not carry out.
+     * If the current owner is dropped, the first chosen warehouse takes over.
+     *
+     * Removing a warehouse that still holds part of the plan is refused rather
+     * than applied. Silently deleting those allocations would release stock the
+     * order is holding — on a confirmed order, stock another order could then
+     * take — and the operator would have no way to see what was lost.
+     *
+     * @param  array<int,int>  $warehouseIds
+     * @return array<string,mixed>
+     *
+     * @throws RuntimeException
+     */
+    public function saveRoutings(SalesOrder $order, array $warehouseIds): array
+    {
+        return DB::transaction(function () use ($order, $warehouseIds) {
+            $order = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $order->load('items.product', 'items.allocations', 'routings');
+
+            if (! $this->sourcingEditable($order)) {
+                throw new RuntimeException(
+                    'لا يمكن تغيير توجيهات الطلب بعد شحنه — ما خرج من المستودعات واقعة لا تُعدَّل.'
+                );
+            }
+
+            $ids = collect($warehouseIds)->map(fn ($id) => (int) $id)->unique()->values();
+
+            if ($ids->isEmpty()) {
+                throw new RuntimeException('اختر مستودعاً واحداً على الأقل لتوجيه الطلب إليه.');
+            }
+
+            $active = Warehouse::whereIn('id', $ids)->where('is_active', true)->pluck('id')
+                ->map(fn ($id) => (int) $id);
+
+            if ($active->count() !== $ids->count()) {
+                throw new RuntimeException('بعض المستودعات المختارة غير نشطة.');
+            }
+
+            // A collection happens at one counter, so it cannot be routed
+            // through several places at once.
+            if ($order->fulfillment_type === SalesOrder::FULFILLMENT_PICKUP && $ids->count() > 1) {
+                throw new RuntimeException(
+                    'طلب الاستلام من الفرع يُوجَّه إلى فرع واحد فقط — لا يمكن للعميل الاستلام من عدة أماكن.'
+                );
+            }
+
+            $this->assertNoAllocationsOutside($order, $ids->all());
+
+            $order->routings()->sync($ids->all());
+
+            // The owner has to be one of the chosen. Keeping it when still
+            // chosen avoids moving an order out of the branch that raised it.
+            if (! $ids->contains((int) $order->fulfillment_warehouse_id)) {
+                $order->fulfillment_warehouse_id = $ids->first();
+                $order->save();
+            }
+
+            return $this->sourcingPlan($order->refresh());
+        });
+    }
+
+    /**
+     * Refuses dropping a warehouse that still supplies part of the order.
+     *
+     * @param  array<int,int>  $keeping
+     *
+     * @throws RuntimeException
+     */
+    private function assertNoAllocationsOutside(SalesOrder $order, array $keeping): void
+    {
+        $stranded = [];
+
+        foreach ($order->items as $item) {
+            foreach ($item->allocations as $allocation) {
+                $warehouseId = (int) $allocation->warehouse_id;
+                if ((int) $allocation->quantity <= 0 || in_array($warehouseId, $keeping, true)) {
+                    continue;
+                }
+
+                $name = Warehouse::find($warehouseId)?->name ?? ('#'.$warehouseId);
+                $product = $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id);
+                $stranded[] = sprintf('%s (%d من "%s")', $name, (int) $allocation->quantity, $product);
+            }
+        }
+
+        if ($stranded) {
+            throw new RuntimeException(
+                'لا يمكن إزالة توجيه ما زال يزوّد الطلب: '.implode('، ', $stranded)
+                .'. صفّر الكمية من شاشة "مصدر البضاعة" أولاً.'
+            );
+        }
+    }
+
+    /**
+     * Refuses a plan that sources from a warehouse the order was not routed to.
+     *
+     * Names the offenders rather than failing on the first, so an operator
+     * fixing a stale plan sees the whole list in one go.
+     *
+     * @param  array<int,array<int,int>>  $plan  item id => [warehouse id => quantity]
+     *
+     * @throws RuntimeException
+     */
+    private function assertSourcesAreRouted(SalesOrder $order, array $plan): void
+    {
+        $selected = $this->selectedRoutingIds($order);
+        if ($selected === null) {
+            return;
+        }
+
+        $stray = [];
+
+        foreach ($plan as $warehouses) {
+            foreach ($warehouses as $warehouseId => $quantity) {
+                if ((int) $quantity <= 0 || in_array((int) $warehouseId, $selected, true)) {
+                    continue;
+                }
+
+                $stray[(int) $warehouseId] = Warehouse::find($warehouseId)?->name ?? ('#'.$warehouseId);
+            }
+        }
+
+        if ($stray) {
+            throw new RuntimeException(
+                'لا يمكن السحب من مستودعات خارج توجيهات الطلب: '.implode('، ', $stray)
+                .'. أضفها إلى التوجيهات أولاً أو وزّع الكمية على المستودعات المختارة.'
+            );
+        }
+    }
+
+    /**
+     * The warehouse ids this order may draw on, or `null` when nobody has said.
+     *
+     * `null` and "every warehouse" are deliberately different answers. An order
+     * nobody has routed can be filled from anywhere, which is what the sourcing
+     * screen used to assume for every order — so a line offered a dozen
+     * locations and the operator had to remember which ones were actually part
+     * of the plan. Once even one routing is chosen, the choice is the plan and
+     * everything else is off the table.
+     *
+     * @return array<int,int>|null
+     */
+    public function selectedRoutingIds(SalesOrder $order): ?array
+    {
+        $order->loadMissing('routings');
+
+        if ($order->routings->isEmpty()) {
+            return null;
+        }
+
+        $ids = $order->routings->pluck('id')->map(fn ($id) => (int) $id);
+
+        // The owning warehouse is always part of its own order: an unallocated
+        // line falls back to it at shipment, so excluding it would let the plan
+        // name a source the shipment would then ignore.
+        $owner = (int) $order->fulfillment_warehouse_id;
+        if ($owner && ! $ids->contains($owner)) {
+            $ids->push($owner);
+        }
+
+        return $ids->unique()->values()->all();
     }
 
     /** Sourcing may be changed until the goods leave; after that it is history. */
     public function sourcingEditable(SalesOrder $order): bool
     {
-        return !in_array((string) $order->status, [
+        return ! in_array((string) $order->status, [
             SalesOrder::STATUS_SHIPPED,
             SalesOrder::STATUS_DELIVERED,
             SalesOrder::STATUS_CANCELLED,
@@ -1196,7 +1725,7 @@ class SalesOrderWorkflowService
             $order = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
             $order->load('items.product', 'items.allocations');
 
-            if (!$this->sourcingEditable($order)) {
+            if (! $this->sourcingEditable($order)) {
                 throw new RuntimeException(
                     'لا يمكن تغيير مصدر البضاعة بعد شحن الطلب — ما خرج من المستودعات واقعة لا تُعدَّل.'
                 );
@@ -1204,6 +1733,13 @@ class SalesOrderWorkflowService
 
             $held = $this->holdsReservation($order);
             $fallback = (int) $order->fulfillment_warehouse_id;
+
+            // Sourcing may only draw on the warehouses the order was routed
+            // through. Without this the screen's restriction would be cosmetic:
+            // a stale tab or a direct API call could still allocate to a
+            // warehouse nobody chose, and the split would stop matching the
+            // decision it is supposed to carry out.
+            $this->assertSourcesAreRouted($order, $plan);
 
             // Everything currently held goes back first, so the new plan is
             // checked against true availability rather than against stock this
@@ -1222,7 +1758,7 @@ class SalesOrderWorkflowService
                 if ($total !== (int) $item->quantity) {
                     throw new RuntimeException(sprintf(
                         'مجموع مصادر "%s" هو %d بينما الكمية المطلوبة %d.',
-                        $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id),
+                        $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id),
                         $total,
                         $item->quantity
                     ));
@@ -1287,7 +1823,7 @@ class SalesOrderWorkflowService
     public function followUp(SalesOrder $order): array
     {
         $status = (string) $order->status;
-        $isOpen = !in_array($status, [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED], true);
+        $isOpen = ! in_array($status, [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED], true);
 
         // When the order last moved. Falls back to when it was raised, so an
         // order that has never moved still ages from a real date.
@@ -1315,10 +1851,10 @@ class SalesOrderWorkflowService
 
         $reasons = [];
         if ($isOverdue) {
-            $reasons[] = 'تجاوز موعد التسليم المتوقع بـ ' . $daysOverdue . ' يوم';
+            $reasons[] = 'تجاوز موعد التسليم المتوقع بـ '.$daysOverdue.' يوم';
         }
         if ($isStalled) {
-            $reasons[] = 'متوقف في مرحلة "' . $this->statusLabel($status) . '" منذ ' . $daysInStage . ' يوم';
+            $reasons[] = 'متوقف في مرحلة "'.$this->statusLabel($status).'" منذ '.$daysInStage.' يوم';
         }
 
         return [
@@ -1356,7 +1892,7 @@ class SalesOrderWorkflowService
 
         $issues = [];
         $status = (string) $order->status;
-        $isConfirmed = !in_array($status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true);
+        $isConfirmed = ! in_array($status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true);
         $hasShipped = in_array($status, self::SHIPPED_STAGES, true);
 
         $invoice = $this->existingInvoice($order);
@@ -1367,26 +1903,26 @@ class SalesOrderWorkflowService
 
         /* ---- The invoice ---- */
 
-        if ($isConfirmed && !$invoice) {
+        if ($isConfirmed && ! $invoice) {
             $add('error', 'invoice_missing', 'لا توجد فاتورة لهذا الطلب',
                 'الطلب مؤكد لكن لم تُنشأ له فاتورة مبيعات، فالإيراد غير مثبت والعميل غير مدين به.',
                 'أعد تأكيد الطلب لإنشاء الفاتورة وترحيل قيدها.');
         }
 
         if ($invoice) {
-            $posted = JournalEntryHeader::where('posting_key', 'invoice:' . $invoice->id)->exists();
+            $posted = JournalEntryHeader::where('posting_key', 'invoice:'.$invoice->id)->exists();
 
-            if (!$posted) {
+            if (! $posted) {
                 $add('error', 'invoice_not_posted', 'الفاتورة غير مُرحَّلة إلى دفتر الأستاذ',
-                    'الفاتورة ' . $invoice->invoice_number . ' بقيمة ' . number_format((float) $invoice->total, 2)
-                        . ' غير موجودة في القيود، فالإيراد لا يظهر في قائمة الدخل بينما تظهر تكلفته.',
+                    'الفاتورة '.$invoice->invoice_number.' بقيمة '.number_format((float) $invoice->total, 2)
+                        .' غير موجودة في القيود، فالإيراد لا يظهر في قائمة الدخل بينما تظهر تكلفته.',
                     'رحِّل الفاتورة إلى دفتر الأستاذ لتتطابق الإيرادات مع التكاليف.');
             }
 
             if (abs((float) $invoice->total - (float) $order->total) > 0.01) {
                 $add('error', 'invoice_total_mismatch', 'إجمالي الفاتورة لا يطابق إجمالي الطلب',
-                    'الطلب ' . number_format((float) $order->total, 2) . ' والفاتورة '
-                        . number_format((float) $invoice->total, 2) . '.',
+                    'الطلب '.number_format((float) $order->total, 2).' والفاتورة '
+                        .number_format((float) $invoice->total, 2).'.',
                     'راجع بنود الفاتورة أو أعد إثباتها من الطلب.');
             }
         }
@@ -1398,13 +1934,13 @@ class SalesOrderWorkflowService
         if ($hasShipped) {
             if ($movements->count() < $order->items->count()) {
                 $add('error', 'movements_incomplete', 'حركات المخزون ناقصة',
-                    'الطلب مشحون لكن عدد حركات الإخراج (' . $movements->count() . ') أقل من عدد الأصناف ('
-                        . $order->items->count() . ').',
+                    'الطلب مشحون لكن عدد حركات الإخراج ('.$movements->count().') أقل من عدد الأصناف ('
+                        .$order->items->count().').',
                     'راجع سجل الحركات المخزنية لهذا الطلب.');
             }
 
-            $cogsPosted = JournalEntryHeader::where('posting_key', 'so_cogs:' . $order->id)->exists();
-            if (!$cogsPosted) {
+            $cogsPosted = JournalEntryHeader::where('posting_key', 'so_cogs:'.$order->id)->exists();
+            if (! $cogsPosted) {
                 $add('error', 'cogs_not_posted', 'تكلفة البضاعة المباعة غير مسجَّلة',
                     'خرجت البضاعة من المستودع دون قيد تكلفة، فمجمل الربح مبالغ فيه بمقدار تكلفة هذا الطلب.',
                     'تحقق من تسعير تكلفة المنتجات ثم أعد ترحيل قيد التكلفة.');
@@ -1422,10 +1958,10 @@ class SalesOrderWorkflowService
 
         if ($unpriced->isNotEmpty() && $isConfirmed) {
             $add('warning', 'cost_price_missing', 'أصناف بلا سعر تكلفة',
-                $unpriced->count() . ' من أصناف الطلب لا يحمل سعر تكلفة، فتكلفة البضاعة المباعة تُحتسب صفراً لها ويظهر هامش الربح أعلى من حقيقته.',
-                'أدخل سعر تكلفة هذه الأصناف: ' . $unpriced->take(3)
+                $unpriced->count().' من أصناف الطلب لا يحمل سعر تكلفة، فتكلفة البضاعة المباعة تُحتسب صفراً لها ويظهر هامش الربح أعلى من حقيقته.',
+                'أدخل سعر تكلفة هذه الأصناف: '.$unpriced->take(3)
                     ->map(fn ($i) => $this->itemLabel($i))
-                    ->implode('، ') . ($unpriced->count() > 3 ? ' وغيرها' : '') . '.');
+                    ->implode('، ').($unpriced->count() > 3 ? ' وغيرها' : '').'.');
         }
 
         // A confirmed order with no picking list means nobody has been told to
@@ -1440,13 +1976,13 @@ class SalesOrderWorkflowService
 
             $uninstructed = collect(array_keys($this->pickingPlanFor($order, (int) $order->fulfillment_warehouse_id)))
                 ->reject(fn ($warehouseId) => in_array((int) $warehouseId, $instructed, true))
-                ->map(fn ($warehouseId) => Warehouse::find($warehouseId)?->name ?? ('#' . $warehouseId))
+                ->map(fn ($warehouseId) => Warehouse::find($warehouseId)?->name ?? ('#'.$warehouseId))
                 ->values();
 
             if ($uninstructed->isNotEmpty()) {
                 $add('warning', 'picking_list_missing', 'لا توجد قائمة تجهيز لهذا الطلب',
-                    'الطلب مؤكد لكن لم تُنشأ قائمة تجهيز في ' . $uninstructed->implode('، ')
-                        . '، فلن يصل ذلك المستودع أمر بسحب الأصناف من الرفوف.',
+                    'الطلب مؤكد لكن لم تُنشأ قائمة تجهيز في '.$uninstructed->implode('، ')
+                        .'، فلن يصل ذلك المستودع أمر بسحب الأصناف من الرفوف.',
                     'أعد تأكيد الطلب لإنشاء القائمة، أو أنشئها يدوياً من شاشة WMS.');
             }
         }
@@ -1459,12 +1995,12 @@ class SalesOrderWorkflowService
 
         if ($orphaned->isNotEmpty()) {
             $add('error', 'product_missing', 'أصناف الطلب لم تعد موجودة في الكتالوج',
-                $orphaned->count() . ' من بنود هذا الطلب تشير إلى منتجات محذوفة — غالباً بعد حذف الكتالوج '
-                    . 'وإعادة استيراده بمعرّفات جديدة. البند بلا رصيد في أي مستودع، فلا يمكن حجزه ولا '
-                    . 'تجهيزه ولا شحنه ولا احتساب تكلفته: ' . $orphaned->take(3)->implode('، ')
-                    . ($orphaned->count() > 3 ? ' وغيرها' : '') . '.',
+                $orphaned->count().' من بنود هذا الطلب تشير إلى منتجات محذوفة — غالباً بعد حذف الكتالوج '
+                    .'وإعادة استيراده بمعرّفات جديدة. البند بلا رصيد في أي مستودع، فلا يمكن حجزه ولا '
+                    .'تجهيزه ولا شحنه ولا احتساب تكلفته: '.$orphaned->take(3)->implode('، ')
+                    .($orphaned->count() > 3 ? ' وغيرها' : '').'.',
                 'أعد ربط البنود بالمنتجات الحالية، أو ألغِ الطلب وأنشئه من جديد. '
-                    . 'إعادة التأكيد أو تغيير المستودع لن تُجديا هنا.');
+                    .'إعادة التأكيد أو تغيير المستودع لن تُجديا هنا.');
         }
 
         if ($this->holdsReservation($order)) {
@@ -1472,9 +2008,9 @@ class SalesOrderWorkflowService
 
             if ($unreserved->isNotEmpty()) {
                 $add('warning', 'reservation_missing', 'أصناف بلا حجز في مستودع التنفيذ',
-                    'الطلب مؤكد لكن لا توجد أي كمية محجوزة من ' . $unreserved->count()
-                        . ' من أصنافه في المستودع الذي ستُسحب منه، فقد تُباع لطلب آخر قبل الشحن: '
-                        . $unreserved->take(3)->implode('، ') . ($unreserved->count() > 3 ? ' وغيرها' : '') . '.',
+                    'الطلب مؤكد لكن لا توجد أي كمية محجوزة من '.$unreserved->count()
+                        .' من أصنافه في المستودع الذي ستُسحب منه، فقد تُباع لطلب آخر قبل الشحن: '
+                        .$unreserved->take(3)->implode('، ').($unreserved->count() > 3 ? ' وغيرها' : '').'.',
                     'أعد توجيه الطلب إلى مستودع يغطيه، أو أعد تأكيده ليُعاد الحجز.');
             }
         }
@@ -1486,8 +2022,8 @@ class SalesOrderWorkflowService
 
             if ($due > 0.01 && $hasShipped) {
                 $add('info', 'invoice_unpaid', 'الفاتورة غير محصَّلة',
-                    'المتبقي على العميل ' . number_format($due, 2) . ' من أصل '
-                        . number_format((float) $invoice->total, 2) . '.',
+                    'المتبقي على العميل '.number_format($due, 2).' من أصل '
+                        .number_format((float) $invoice->total, 2).'.',
                     'سجّل دفعة من شاشة المدفوعات.');
             }
         }
@@ -1520,7 +2056,7 @@ class SalesOrderWorkflowService
      * their own check, which explains the real cause and gives advice that can
      * actually be followed.
      *
-     * @return \Illuminate\Support\Collection<int,string>  product names
+     * @return Collection<int,string> product names
      */
     private function itemsWithNoReservation(SalesOrder $order)
     {
@@ -1530,7 +2066,7 @@ class SalesOrderWorkflowService
 
         $live = $order->items->filter(fn ($i) => $i->product !== null);
 
-        if (!$fallback) {
+        if (! $fallback) {
             return $live->map(fn ($i) => $this->itemLabel($i))->values();
         }
 
@@ -1540,7 +2076,7 @@ class SalesOrderWorkflowService
             ->map(fn ($rows) => $rows->pluck('reserved_quantity', 'product_id'));
 
         return $live
-            ->filter(function ($item) use ($order, $fallback, $reserved) {
+            ->filter(function ($item) use ($fallback, $reserved) {
                 foreach ($this->shipmentSourcesFor($item, $fallback) as $sourceId => $quantity) {
                     if ($quantity <= 0) {
                         continue;
@@ -1568,23 +2104,23 @@ class SalesOrderWorkflowService
      * missing reservation, which sent the operator off to re-route or re-confirm
      * an order that no warehouse on earth could cover.
      *
-     * @return \Illuminate\Support\Collection<int,string>
+     * @return Collection<int,string>
      */
     private function itemsWithMissingProduct(SalesOrder $order)
     {
         return $order->items
             ->filter(fn ($i) => $i->product === null)
-            ->map(fn ($i) => $i->description ?: ('#' . $i->product_id))
+            ->map(fn ($i) => $i->description ?: ('#'.$i->product_id))
             ->values();
     }
 
     private function itemLabel($item): string
     {
-        return $item->product->name_ar ?? $item->product->name ?? ('#' . $item->product_id);
+        return $item->product->name_ar ?? $item->product->name ?? ('#'.$item->product_id);
     }
 
     /** The order's live picking list, for the detail screen. */
-    public function pickingListFor(SalesOrder $order): ?\App\Models\PickingList
+    public function pickingListFor(SalesOrder $order): ?PickingList
     {
         return $this->picking->activePickingList($order)?->load(['items.product:id,sku,name_ar,name_en', 'items.bin', 'picker:id,name', 'warehouse:id,name']);
     }

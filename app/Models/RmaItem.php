@@ -29,13 +29,19 @@ class RmaItem extends Model
     ];
 
     const CONDITION_NEW = 'new';
+
     const CONDITION_USED = 'used';
+
     const CONDITION_DAMAGED = 'damaged';
+
     const CONDITION_MISSING = 'missing';
 
     const RESOLUTION_REFUND = 'refund';
+
     const RESOLUTION_EXCHANGE = 'exchange';
+
     const RESOLUTION_REPAIR = 'repair';
+
     const RESOLUTION_DISCARD = 'discard';
 
     public function rmaRequest()
@@ -70,7 +76,7 @@ class RmaItem extends Model
 
     public function getConditionTextAttribute(): string
     {
-        return match($this->condition) {
+        return match ($this->condition) {
             self::CONDITION_NEW => 'جديد',
             self::CONDITION_USED => 'مستعمل',
             self::CONDITION_DAMAGED => 'تالف',
@@ -81,7 +87,7 @@ class RmaItem extends Model
 
     public function getResolutionTextAttribute(): string
     {
-        return match($this->resolution) {
+        return match ($this->resolution) {
             self::RESOLUTION_REFUND => 'استرداد',
             self::RESOLUTION_EXCHANGE => 'تبديل',
             self::RESOLUTION_REPAIR => 'إصلاح',
@@ -113,7 +119,7 @@ class RmaItem extends Model
 
     public function calculateRefundAmount(float $originalPrice): float
     {
-        $multiplier = match($this->condition) {
+        $multiplier = match ($this->condition) {
             self::CONDITION_NEW => 1.0,
             self::CONDITION_USED => 0.7,
             self::CONDITION_DAMAGED => 0.5,
@@ -122,5 +128,37 @@ class RmaItem extends Model
         };
 
         return $originalPrice * $multiplier * $this->quantity_requested;
+    }
+
+    /**
+     * Units the settlement actually stands on: what physically came back, and
+     * where nothing was booked in (a discard that never shipped back, a request
+     * completed straight from approval) the requested count is the fact keep.
+     */
+    public function getSettledQuantityAttribute(): int
+    {
+        return $this->quantity_received > 0
+            ? (int) $this->quantity_received
+            : (int) $this->quantity_requested;
+    }
+
+    /** The per-unit refund value this line carries. */
+    public function getUnitRefundAmountAttribute(): float
+    {
+        $requested = (int) $this->quantity_requested;
+
+        return $requested > 0 ? (float) $this->refund_amount / $requested : 0.0;
+    }
+
+    /**
+     * What this line is actually worth in settlement.
+     *
+     * Refunds are prorated to the units received back, so returning 3 of 10
+     * settles for 30% of the line, not the whole request. Requesting more than
+     * you return was paying for stock that never came back.
+     */
+    public function refundableNow(): float
+    {
+        return round($this->unit_refund_amount * $this->settled_quantity, 2);
     }
 }

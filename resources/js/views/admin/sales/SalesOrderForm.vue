@@ -875,7 +875,7 @@ const lockedReason = computed(() => {
 const isDirty = ref(false);
 
 /** The configured currency, for labels that sit beside an input rather than a formatted amount. */
-const currencyCode = computed(() => window.systemData?.settings?.default_currency || 'SAR');
+const currencyCode = computed(() => window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR');
 
 // Wizard Active Step
 const activeStep = ref(0);

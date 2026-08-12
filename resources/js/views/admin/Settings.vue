@@ -89,17 +89,33 @@
 
                 <el-tab-pane :label="$t('currency_and_language')" name="localization">
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
+                        <el-alert
+                            :title="$t('base_currency_settings_hint')"
+                            type="info"
+                            :closable="false"
+                            show-icon
+                            class="mb-4"
+                        />
                         <el-row :gutter="20">
                             <el-col :xs="24" :md="12">
-                                <el-form-item :label="$t('virtual_currency')">
-                                    <el-select v-model="form.default_currency" :placeholder="$t('select_currency')">
+                                <el-form-item :label="$t('base_currency')">
+                                    <el-select
+                                        v-model="form.default_currency"
+                                        :placeholder="$t('select_currency')"
+                                        :loading="currenciesLoading"
+                                        filterable
+                                    >
                                         <el-option
-                                            v-for="item in currencies"
+                                            v-for="item in currencyOptions"
                                             :key="item.value"
                                             :label="item.label"
                                             :value="item.value"
                                         />
                                     </el-select>
+                                    <p class="field-hint">
+                                        {{ $t('base_currency_help') }}
+                                        <router-link to="/admin/currencies">{{ $t('manage_currencies') }}</router-link>
+                                    </p>
                                 </el-form-item>
                             </el-col>
                             <el-col :xs="24" :md="12">
@@ -1111,7 +1127,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import currenciesApi from '@/api/currencies';
 
 const settingsStore = useSettingsStore();
 const activeTab = ref('general');
@@ -1122,6 +1139,10 @@ const seoLang = ref('ar');
 const contactLang = ref('ar');
 const submitting = ref(false);
 const formRef = ref(null);
+const currenciesLoading = ref(false);
+const managedCurrencies = ref([]);
+const baseCurrencyCode = ref(window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR');
+const initialBaseCurrency = ref(baseCurrencyCode.value);
 
 const form = reactive({
     site_name: '',
@@ -1132,7 +1153,7 @@ const form = reactive({
     site_description_en: '',
     show_site_name: true,
     show_product_price: true,
-    default_currency: 'USD',
+    default_currency: window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR',
     default_language: 'ar',
     timezone: 'Asia/Riyadh',
     contact_phone: '',
@@ -1577,14 +1598,21 @@ const faviconPreview = ref('');
 const ogImagePreview = ref('');
 const heroBgPreview = ref('');
 
-const currencies = [
-    { value: 'USD', label: window.t('us_dollar_usd')},
-    { value: 'EUR', label: window.t('euro_eur')},
-    { value: 'SAR', label: window.t('saudi_riyal_sar')},
-    { value: 'SYP', label: window.t('syrian_pound_syp')},
-    { value: 'AED', label: window.t('emirati_dirham_aed')},
-    { value: 'EGP', label: window.t('egyptian_pound_egp')}
-];
+const currencyOptions = computed(() => {
+    const locale = window.systemData?.locale || 'ar';
+    return managedCurrencies.value.map((c) => {
+        const name = locale === 'en'
+            ? (c.name_en || c.name || c.code)
+            : (c.name_ar || c.name || c.code);
+        const baseTag = c.is_base || c.code === baseCurrencyCode.value
+            ? ` — ${window.t('base_currency_tag')}`
+            : '';
+        return {
+            value: c.code,
+            label: `${name} (${c.code})${baseTag}`,
+        };
+    });
+});
 
 const languages = [
     { value: 'ar', label: window.t('arabic')},
@@ -1601,6 +1629,39 @@ const timezones = [
     { value: 'Europe/Paris', label: 'Europe/Paris' },
     { value: 'UTC', label: 'UTC' }
 ];
+
+const applyCurrencyPayload = (payload = {}) => {
+    const list = payload.currencies || payload.list || [];
+    if (Array.isArray(list) && list.length) {
+        managedCurrencies.value = list;
+    }
+    if (payload.base_currency || payload.base) {
+        baseCurrencyCode.value = payload.base_currency || payload.base;
+        initialBaseCurrency.value = baseCurrencyCode.value;
+    }
+};
+
+const loadManagedCurrencies = async () => {
+    currenciesLoading.value = true;
+    try {
+        // Prefer the boot payload, then refresh from the API so new currencies appear.
+        const boot = window.systemData?.currencies;
+        if (boot?.list?.length) {
+            applyCurrencyPayload({ currencies: boot.list, base: boot.base });
+        }
+
+        const res = await currenciesApi.publicList();
+        applyCurrencyPayload(res.data?.data || {});
+    } catch (e) {
+        if (!managedCurrencies.value.length) {
+            managedCurrencies.value = [
+                { code: baseCurrencyCode.value, name_ar: baseCurrencyCode.value, name_en: baseCurrencyCode.value, is_base: true },
+            ];
+        }
+    } finally {
+        currenciesLoading.value = false;
+    }
+};
 
 const normalizeBoolean = (value) => {
     return value === '1' || value === 1 || value === true || value === 'true';
@@ -1619,9 +1680,11 @@ const loadSettings = (settings) => {
     form.site_description_en = settings.site_description_en ?? '';
     form.show_site_name = normalizeBoolean(settings.show_site_name ?? '1');
     form.show_product_price = normalizeBoolean(settings.show_product_price ?? '1');
-    form.default_currency = settings.default_currency || 'USD';
+    form.default_currency = settings.default_currency || baseCurrencyCode.value || 'SAR';
     form.default_language = settings.default_language || 'ar';
     form.timezone = settings.timezone || 'Asia/Riyadh';
+    initialBaseCurrency.value = form.default_currency;
+    baseCurrencyCode.value = form.default_currency;
     form.contact_phone = settings.contact_phone || '';
     form.contact_whatsapp = settings.contact_whatsapp || '';
     form.contact_email = settings.contact_email || '';
@@ -1745,7 +1808,13 @@ watch(
 
 const fetchSettings = async () => {
     try {
-        await settingsStore.fetch();
+        await Promise.all([settingsStore.fetch(), loadManagedCurrencies()]);
+        if (settingsStore.currencies?.length) {
+            applyCurrencyPayload({
+                currencies: settingsStore.currencies,
+                base_currency: settingsStore.baseCurrency,
+            });
+        }
     } catch (error) {
         ElMessage.error(window.t('an_error_occurred_while_fetching'));
     }
@@ -1786,6 +1855,25 @@ const onFileSelect = (event, field) => {
 };
 
 const submitSettings = async () => {
+    if (form.default_currency && form.default_currency !== initialBaseCurrency.value) {
+        try {
+            const confirmMsg = String(window.t('base_currency_change_confirm') || '')
+                .replace('{code}', form.default_currency);
+            await ElMessageBox.confirm(
+                confirmMsg,
+                window.t('base_currency_change_title'),
+                {
+                    type: 'warning',
+                    confirmButtonText: 'متابعة',
+                    cancelButtonText: window.t('cancel') || 'إلغاء',
+                },
+            );
+        } catch {
+            form.default_currency = initialBaseCurrency.value;
+            return;
+        }
+    }
+
     submitting.value = true;
 
     try {
@@ -1820,7 +1908,20 @@ const submitSettings = async () => {
 
         if (response?.data?.success) {
             ElMessage.success(window.t('settings_have_been_saved_successfully'));
-            loadSettings(response.data.data.settings || settingsStore.data);
+            const payload = response.data.data || {};
+            applyCurrencyPayload(payload);
+            loadSettings(payload.settings || settingsStore.data);
+
+            if (window.systemData) {
+                window.systemData.settings = {
+                    ...(window.systemData.settings || {}),
+                    default_currency: payload.base_currency || form.default_currency,
+                };
+                window.systemData.currencies = {
+                    base: payload.base_currency || form.default_currency,
+                    list: payload.currencies || managedCurrencies.value,
+                };
+            }
         } else {
             ElMessage.error(response?.data?.message || window.t('failed_to_save_settings'));
         }
@@ -1855,6 +1956,21 @@ onMounted(fetchSettings);
 .text-muted {
     color: #6b7280;
     font-size: 0.95rem;
+}
+
+.field-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+.field-hint a {
+    color: var(--el-color-primary);
+}
+
+.mb-4 {
+    margin-bottom: 1rem;
 }
 
 .lang-switch-bar {

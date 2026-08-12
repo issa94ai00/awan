@@ -7,7 +7,6 @@ use App\Models\ProductComponent;
 use App\Models\ProductWarehouseAssignment;
 use App\Models\WarehouseInventory;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class CompositeProductService
 {
@@ -180,7 +179,7 @@ class CompositeProductService
     {
         $availability = $this->canAssembleProduct($productId, $quantity, $warehouseId);
 
-        if (!$availability['can_assemble']) {
+        if (! $availability['can_assemble']) {
             return [
                 'success' => false,
                 'message' => 'المكونات غير متوفرة بالكامل',
@@ -226,8 +225,13 @@ class CompositeProductService
                     ->first();
 
                 if ($inventory) {
+                    // Holding stock moves nothing between the condition buckets:
+                    // the units are still sound and still on the shelf, merely
+                    // spoken for. Taking them out of `available_quantity` as well
+                    // removed them from availability twice — reserving 10 made 20
+                    // disappear — and left `quantity` disagreeing with its own
+                    // buckets for as long as the assembly order stayed open.
                     $inventory->reserved_quantity += $requiredQuantity;
-                    $inventory->available_quantity -= $requiredQuantity;
                     $inventory->save();
                 }
             }
@@ -243,9 +247,10 @@ class CompositeProductService
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return [
                 'success' => false,
-                'message' => 'حدث خطأ أثناء إنشاء أمر التجميع: ' . $e->getMessage(),
+                'message' => 'حدث خطأ أثناء إنشاء أمر التجميع: '.$e->getMessage(),
             ];
         }
     }
@@ -260,7 +265,7 @@ class CompositeProductService
             ->where('status', 'pending')
             ->first();
 
-        if (!$assemblyOrder) {
+        if (! $assemblyOrder) {
             return [
                 'success' => false,
                 'message' => 'أمر التجميع غير موجود أو تم إكماله بالفعل',
@@ -282,8 +287,13 @@ class CompositeProductService
                     ->first();
 
                 if ($inventory) {
+                    // Consuming takes the units off the shelf, out of the sound
+                    // bucket and out of the hold together. `available_quantity`
+                    // was left untouched here, so the buckets no longer added up
+                    // to `quantity` and the row claimed sound stock it had eaten.
                     $inventory->quantity -= $item->quantity_required;
-                    $inventory->reserved_quantity -= $item->quantity_reserved;
+                    $inventory->available_quantity -= $item->quantity_required;
+                    $inventory->reserved_quantity = max(0, (int) $inventory->reserved_quantity - (int) $item->quantity_reserved);
                     $inventory->save();
                 }
             }
@@ -325,9 +335,10 @@ class CompositeProductService
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return [
                 'success' => false,
-                'message' => 'حدث خطأ أثناء إكمال أمر التجميع: ' . $e->getMessage(),
+                'message' => 'حدث خطأ أثناء إكمال أمر التجميع: '.$e->getMessage(),
             ];
         }
     }
@@ -353,11 +364,13 @@ class CompositeProductService
             ->where('product_id', $productId)
             ->first();
 
-        if (!$inventory || $inventory->available_quantity < $quantity) {
+        // Net of reservations: composites already promised to an order cannot
+        // also be taken apart.
+        if (! $inventory || $inventory->available_stock < $quantity) {
             return [
                 'success' => false,
                 'message' => 'المخزون غير كافٍ للتفكيك',
-                'available' => $inventory ? $inventory->available_quantity : 0,
+                'available' => $inventory ? $inventory->available_stock : 0,
                 'requested' => $quantity,
             ];
         }
@@ -402,9 +415,10 @@ class CompositeProductService
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return [
                 'success' => false,
-                'message' => 'حدث خطأ أثناء تفكيك المنتج: ' . $e->getMessage(),
+                'message' => 'حدث خطأ أثناء تفكيك المنتج: '.$e->getMessage(),
             ];
         }
     }
@@ -479,7 +493,7 @@ class CompositeProductService
      */
     private function calculateDistance($lat1, $lon1, $lat2, $lon2): float
     {
-        if (!$lat1 || !$lon1 || !$lat2 || !$lon2) {
+        if (! $lat1 || ! $lon1 || ! $lat2 || ! $lon2) {
             return PHP_FLOAT_MAX;
         }
 
@@ -528,9 +542,10 @@ class CompositeProductService
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return [
                 'success' => false,
-                'message' => 'حدث خطأ أثناء تحديث المكونات: ' . $e->getMessage(),
+                'message' => 'حدث خطأ أثناء تحديث المكونات: '.$e->getMessage(),
             ];
         }
     }

@@ -7,10 +7,9 @@ use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use App\Services\ProductExcelService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Read side of the inventory screens.
@@ -23,19 +22,23 @@ class InventoryController extends Controller
 {
     public function summary(): JsonResponse
     {
+        // One definition of "available", shared with the sell gate and with
+        // every other screen — see WarehouseInventory::availableSql(). It used to
+        // be spelled out by hand in each of the twelve places below, which is how
+        // this screen and the WMS balance screen came to disagree.
+        $available = WarehouseInventory::availableSql();
+
         // The stored `cost_basis` column is the costing-method enum ("FIFO"), not a
         // number, so the inventory value is priced off the product's cost_price.
-        // "available" = quantity minus reserved/damaged/quarantined — the units
-        // that can actually be sold.
         $totals = WarehouseInventory::query()
             ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
             ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as products_with_stock')
             ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
-            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity), 0) as total_available')
-            ->selectRaw('COALESCE(SUM((warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity) * COALESCE(products.cost_price, 0)), 0) as total_value')
-            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as in_stock_rows')
-            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= COALESCE(warehouse_inventory.reorder_point, 0) AND warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0 THEN 1 ELSE 0 END) as low_stock_rows')
-            ->selectRaw('SUM(CASE WHEN warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows')
+            ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
+            ->selectRaw("COALESCE(SUM(({$available}) * COALESCE(products.cost_price, 0)), 0) as total_value")
+            ->selectRaw("SUM(CASE WHEN ({$available}) > 0 THEN 1 ELSE 0 END) as in_stock_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= COALESCE(warehouse_inventory.reorder_point, 0) AND ({$available}) > 0 THEN 1 ELSE 0 END) as low_stock_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows")
             ->first();
 
         $movementsToday = StockMovement::whereDate('created_at', today())->count();
@@ -46,9 +49,14 @@ class InventoryController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN movement_type = 'out' THEN quantity ELSE 0 END), 0) as issued")
             ->first();
 
+        // Named `total_available`, because that is what it is. It was called
+        // `total_quantity` while holding the available figure, next to a
+        // `total_quantity` in the same response that held the gross one — one
+        // key, two meanings, in a single payload.
         $warehouses = Warehouse::query()
             ->select('warehouses.id', 'warehouses.name', 'warehouses.code', 'warehouses.is_active')
-            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity), 0) as total_quantity')
+            ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
             ->leftJoin('warehouse_inventory', 'warehouse_inventory.warehouse_id', '=', 'warehouses.id')
             ->groupBy('warehouses.id', 'warehouses.name', 'warehouses.code', 'warehouses.is_active')
             ->orderBy('warehouses.id')
@@ -81,7 +89,7 @@ class InventoryController extends Controller
         $query = WarehouseInventory::query()
             ->with(['product', 'warehouse', 'bin'])
             ->select('warehouse_inventory.*')
-            ->selectRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity as available')
+            ->withAvailable()
             ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_inventory.warehouse_id');
 
@@ -93,16 +101,7 @@ class InventoryController extends Controller
             $query->where('warehouse_inventory.product_id', $request->product_id);
         }
 
-        if ($request->filled('status')) {
-            match ($request->status) {
-                'low' => $query->where(function ($q) {
-                    $q->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= COALESCE(warehouse_inventory.reorder_point, 0)')
-                        ->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0');
-                }),
-                'out' => $query->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= 0'),
-                default => null,
-            };
-        }
+        $this->applyStatusFilter($query, $request->input('status'));
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -118,7 +117,7 @@ class InventoryController extends Controller
         $direction = $request->input('sort_dir', 'desc');
 
         if (in_array($orderBy, ['quantity', 'available', 'reserved_quantity', 'reorder_point', 'updated_at'], true)) {
-            $query->orderBy($orderBy === 'available' ? 'available' : 'warehouse_inventory.' . $orderBy, $direction === 'asc' ? 'asc' : 'desc');
+            $query->orderBy($orderBy === 'available' ? 'available' : 'warehouse_inventory.'.$orderBy, $direction === 'asc' ? 'asc' : 'desc');
         } else {
             $query->orderByDesc('warehouse_inventory.updated_at');
         }
@@ -138,6 +137,31 @@ class InventoryController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * The three states a stock row can be in, measured the one way.
+     *
+     * `ok` used to fall through to `default => null`, so the screen's "متاح"
+     * filter — which sends exactly that — quietly returned everything, nil and
+     * negative rows included. The filter looked like it worked because the list
+     * did change: it went back to being unfiltered.
+     */
+    private function applyStatusFilter($query, ?string $status): void
+    {
+        if (! $status) {
+            return;
+        }
+
+        $available = WarehouseInventory::availableSql();
+
+        match ($status) {
+            'ok' => $query->whereRaw("({$available}) > COALESCE(warehouse_inventory.reorder_point, 0)"),
+            'low' => $query->whereRaw("({$available}) <= COALESCE(warehouse_inventory.reorder_point, 0)")
+                ->whereRaw("({$available}) > 0"),
+            'out' => $query->whereRaw("({$available}) <= 0"),
+            default => null,
+        };
     }
 
     public function export(Request $request, ProductExcelService $excel): Response
@@ -162,27 +186,18 @@ class InventoryController extends Controller
             });
         }
 
-        if ($request->filled('status')) {
-            match ($request->status) {
-                'low' => $query->where(function ($q) {
-                    $q->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= COALESCE(warehouse_inventory.reorder_point, 0)')
-                        ->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity > 0');
-                }),
-                'out' => $query->whereRaw('warehouse_inventory.quantity - warehouse_inventory.reserved_quantity - warehouse_inventory.damaged_quantity - warehouse_inventory.quarantined_quantity <= 0'),
-                default => null,
-            };
-        }
+        $this->applyStatusFilter($query, $request->input('status'));
 
         $inventory = $query->orderBy('warehouses.name')
             ->orderBy('products.name_ar')
             ->get();
 
         $binary = $excel->exportWarehouseInventory($inventory);
-        $filename = 'warehouse-stock-' . now()->format('Y-m-d') . '.xlsx';
+        $filename = 'warehouse-stock-'.now()->format('Y-m-d').'.xlsx';
 
         return response($binary, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'Cache-Control' => 'no-store',
         ]);
     }

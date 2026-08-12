@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 class ProductWarehouseAssignment extends Model
 {
@@ -43,19 +44,27 @@ class ProductWarehouseAssignment extends Model
 
     // Replenishment Methods
     const REPLENISHMENT_PURCHASE = 'purchase';
+
     const REPLENISHMENT_MANUFACTURE = 'manufacture';
+
     const REPLENISHMENT_INTERNAL_DISTRIBUTION = 'internal_distribution';
+
     const REPLENISHMENT_WAREHOUSE_TRANSFER = 'warehouse_transfer';
 
     // Planning Methods
     const PLANNING_ROP = 'rop';
+
     const PLANNING_MRP = 'mrp';
 
     // Putaway Strategies
     const PUTAWAY_FIFO = 'fifo';
+
     const PUTAWAY_FEFO = 'fefo';
+
     const PUTAWAY_SIMILARITY = 'similarity';
+
     const PUTAWAY_WEIGHT_BASED = 'weight_based';
+
     const PUTAWAY_VOLUME_BASED = 'volume_based';
 
     public function product()
@@ -129,16 +138,16 @@ class ProductWarehouseAssignment extends Model
         // The operator lands in raw SQL, so it is matched against a fixed list
         // rather than trusted — a comparison operator is never user input here,
         // and this keeps it impossible for it to become one.
-        if (!in_array($operator, ['=', '!=', '<', '<=', '>', '>='], true)) {
-            throw new \InvalidArgumentException('عامل مقارنة غير مدعوم: ' . $operator);
+        if (! in_array($operator, ['=', '!=', '<', '<=', '>', '>='], true)) {
+            throw new \InvalidArgumentException('عامل مقارنة غير مدعوم: '.$operator);
         }
 
         return $query->whereRaw(
-            '(SELECT COALESCE(SUM(wi.available_quantity), 0)
+            '(SELECT COALESCE(SUM('.WarehouseInventory::availableSql('wi').'), 0)
                 FROM warehouse_inventory wi
                WHERE wi.product_id = product_warehouse_assignments.product_id
                  AND wi.warehouse_id = product_warehouse_assignments.warehouse_id) '
-            . $operator . ' ?',
+            .$operator.' ?',
             [$value]
         );
     }
@@ -155,7 +164,7 @@ class ProductWarehouseAssignment extends Model
 
     public function getReplenishmentMethodTextAttribute(): string
     {
-        return match($this->replenishment_method) {
+        return match ($this->replenishment_method) {
             self::REPLENISHMENT_PURCHASE => 'شراء',
             self::REPLENISHMENT_MANUFACTURE => 'تصنيع',
             self::REPLENISHMENT_INTERNAL_DISTRIBUTION => 'توزيع داخلي',
@@ -166,7 +175,7 @@ class ProductWarehouseAssignment extends Model
 
     public function getPlanningMethodTextAttribute(): string
     {
-        return match($this->planning_method) {
+        return match ($this->planning_method) {
             self::PLANNING_ROP => 'نقطة إعادة طلب',
             self::PLANNING_MRP => 'تخطيط متطلبات المواد',
             default => $this->planning_method,
@@ -178,9 +187,19 @@ class ProductWarehouseAssignment extends Model
         return $this->inventory()->sum('quantity');
     }
 
+    /**
+     * Units of this product the warehouse can actually give.
+     *
+     * Was `SUM(available_quantity)`, which counts stock already promised to
+     * confirmed orders. Every caller — the composite-product check, the MRP
+     * shortfall, "which warehouse can cover this?" — was therefore told about
+     * units it could not have, and the sell gate refused them later.
+     */
     public function getAvailableStockAttribute(): int
     {
-        return $this->inventory()->sum('available_quantity');
+        return (int) $this->inventory()->sum(
+            DB::raw(WarehouseInventory::availableSql())
+        );
     }
 
     public function isBelowMinStock(): bool
@@ -196,17 +215,18 @@ class ProductWarehouseAssignment extends Model
     public function calculateReorderQuantity(): int
     {
         $targetStock = $this->max_stock_level ?? ($this->min_stock_level * 2);
+
         return $targetStock - $this->available_stock;
     }
 
     public function calculateDistanceFromSupplier(): ?float
     {
-        if (!$this->supplier || !$this->warehouse) {
+        if (! $this->supplier || ! $this->warehouse) {
             return null;
         }
 
-        if (!$this->supplier->latitude || !$this->supplier->longitude ||
-            !$this->warehouse->latitude || !$this->warehouse->longitude) {
+        if (! $this->supplier->latitude || ! $this->supplier->longitude ||
+            ! $this->warehouse->latitude || ! $this->warehouse->longitude) {
             return null;
         }
 
@@ -243,6 +263,7 @@ class ProductWarehouseAssignment extends Model
 
             case self::PUTAWAY_VOLUME_BASED:
                 $productVolume = ($product->length ?? 0) * ($product->width ?? 0) * ($product->height ?? 0);
+
                 return $warehouse->bins()
                     ->active()
                     ->where('capacity_type', 'volume')
@@ -274,9 +295,10 @@ class ProductWarehouseAssignment extends Model
             case self::PUTAWAY_FIFO:
             default:
                 // Default FIFO: use primary bin or least utilized bin
-                if ($this->primaryBin && !$this->primaryBin->isFull()) {
+                if ($this->primaryBin && ! $this->primaryBin->isFull()) {
                     return $this->primaryBin;
                 }
+
                 return $warehouse->bins()
                     ->active()
                     ->where('type', WarehouseBin::TYPE_STORAGE)

@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\Employee;
-use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 
 class SalesOrder extends Model
@@ -69,14 +67,21 @@ class SalesOrder extends Model
     ];
 
     const FULFILLMENT_SHIP = 'ship';
+
     const FULFILLMENT_PICKUP = 'pickup';
+
     const FULFILLMENT_DELIVERY = 'delivery';
 
     const STATUS_PENDING = 'pending';
+
     const STATUS_CONFIRMED = 'confirmed';
+
     const STATUS_PROCESSING = 'processing';
+
     const STATUS_SHIPPED = 'shipped';
+
     const STATUS_DELIVERED = 'delivered';
+
     const STATUS_CANCELLED = 'cancelled';
 
     public function customer()
@@ -124,6 +129,24 @@ class SalesOrder extends Model
         return $this->belongsTo(Warehouse::class, 'fulfillment_warehouse_id');
     }
 
+    /**
+     * The warehouses this order is deliberately routed through.
+     *
+     * `fulfillment_warehouse_id` above names the one that owns the order — whose
+     * branch list it appears in, and where an unallocated line is picked from.
+     * This names every warehouse allowed to supply it, which for a split order
+     * is more than one and always includes the owner.
+     *
+     * Empty means nobody has narrowed it down, and every active warehouse is
+     * fair game — the behaviour before this existed.
+     */
+    public function routings()
+    {
+        return $this->belongsToMany(Warehouse::class, 'sales_order_routings')
+            ->withTimestamps()
+            ->orderBy('warehouses.id');
+    }
+
     public function rmaRequests()
     {
         return $this->hasMany(RmaRequest::class);
@@ -137,7 +160,7 @@ class SalesOrder extends Model
 
     public function getStatusTextAttribute()
     {
-        return match($this->status) {
+        return match ($this->status) {
             self::STATUS_PENDING => 'معلق',
             self::STATUS_CONFIRMED => 'مؤكد',
             self::STATUS_PROCESSING => 'قيد المعالجة',
@@ -150,7 +173,7 @@ class SalesOrder extends Model
 
     public function getFulfillmentTypeTextAttribute(): string
     {
-        return match($this->fulfillment_type) {
+        return match ($this->fulfillment_type) {
             self::FULFILLMENT_SHIP => 'شحن',
             self::FULFILLMENT_PICKUP => 'استلام من الفرع',
             self::FULFILLMENT_DELIVERY => 'توصيل',
@@ -160,7 +183,7 @@ class SalesOrder extends Model
 
     public function generateOrderNumber(): string
     {
-        return 'SO-' . str_pad($this->id ?? SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+        return 'SO-'.str_pad($this->id ?? SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
     }
 
     public function scopeByChannel($query, $channelId)
@@ -181,15 +204,21 @@ class SalesOrder extends Model
     protected static function booted()
     {
         static::saving(function (SalesOrder $order) {
-            if (!$order->fulfillment_warehouse_id) {
-                if ($order->assigned_employee_id) {
-                    $employee = Employee::find($order->assigned_employee_id);
-                    $order->fulfillment_warehouse_id = $employee?->warehouse_id;
-                }
-
-                if (!$order->fulfillment_warehouse_id) {
-                    $order->fulfillment_warehouse_id = Warehouse::active()->orderBy('id')->value('id');
-                }
+            // The seller who owns the order works out of one building, and that
+            // is a real answer to "where does this come from".
+            //
+            // What used to follow it was not: an order with no employee fell
+            // back to `Warehouse::active()->orderBy('id')` — the lowest-numbered
+            // active warehouse, which is the main one. Nothing about the goods
+            // was consulted, and because the field was then never empty,
+            // confirmation's stock-aware routing never ran. Every web and
+            // customer order was pinned to the main warehouse whether or not it
+            // held any of the stock.
+            //
+            // Left null instead. SalesOrderWorkflowService::planSourcing settles
+            // it at confirmation, against the figures.
+            if (! $order->fulfillment_warehouse_id && $order->assigned_employee_id) {
+                $order->fulfillment_warehouse_id = Employee::find($order->assigned_employee_id)?->warehouse_id;
             }
         });
     }
@@ -201,7 +230,7 @@ class SalesOrder extends Model
 
     public function isMultiChannel(): bool
     {
-        return !is_null($this->channel_id);
+        return ! is_null($this->channel_id);
     }
 
     public function markAsSynced(): void

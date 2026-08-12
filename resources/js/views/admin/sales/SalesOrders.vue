@@ -511,17 +511,39 @@
 
                                     <el-divider />
 
+                                    <!-- A routing is a set, not a single choice:
+                                         an order split across two branches is
+                                         routed to both, and only those two can
+                                         then source its lines. -->
+                                    <div class="routing-select-head">
+                                        <span class="lbl">المستودعات المُوجَّه إليها</span>
+                                        <el-button
+                                            v-if="routingsDirty && sourcing.editable"
+                                            type="primary" size="small" :loading="savingRoutings"
+                                            @click="saveRoutings"
+                                        >حفظ التوجيهات</el-button>
+                                    </div>
+                                    <p class="routing-hint">
+                                        <i class="fas fa-circle-info"></i>
+                                        اختر مستودعاً أو أكثر. مصدر البضاعة لكل صنف يُختار من هذه المستودعات فقط.
+                                    </p>
+
                                     <div v-loading="routingLoading" class="warehouse-options">
                                         <div
                                             v-for="wh in routing.warehouses"
                                             :key="wh.warehouse_id"
                                             class="warehouse-option"
-                                            :class="{ current: wh.is_current, short: !wh.covers_all }"
+                                            :class="{ current: wh.is_current, selected: selectedRoutingIds.includes(wh.warehouse_id), short: !wh.covers_all }"
                                         >
                                             <div class="wh-head">
                                                 <div class="wh-name">
+                                                    <el-checkbox
+                                                        :model-value="selectedRoutingIds.includes(wh.warehouse_id)"
+                                                        :disabled="!sourcing.editable || savingRoutings"
+                                                        @change="(checked) => toggleRouting(wh.warehouse_id, checked)"
+                                                    />
                                                     <strong>{{ wh.name }}</strong>
-                                                    <el-tag v-if="wh.is_current" size="small" type="primary" effect="dark">الحالي</el-tag>
+                                                    <el-tag v-if="wh.is_current" size="small" type="primary" effect="dark">المسؤول</el-tag>
                                                     <el-tag v-else-if="wh.is_recommended" size="small" type="success" effect="plain">مقترح</el-tag>
                                                 </div>
                                                 <span class="wh-type">{{ wh.location_type_text }}</span>
@@ -538,7 +560,7 @@
                                                     v-if="!wh.is_current && routing.can_change_fulfillment_type"
                                                     size="small" text type="primary" :loading="store.saving"
                                                     @click="routeToWarehouse(wh.warehouse_id)"
-                                                >توجيه هنا</el-button>
+                                                >اجعله المسؤول</el-button>
                                             </div>
 
                                             <ul v-if="!wh.covers_all" class="shortfall-list">
@@ -569,6 +591,17 @@
 
                                     <p v-if="!sourcing.editable" class="routing-locked-note">
                                         <i class="fas fa-lock"></i> لا يمكن تغيير المصدر بعد شحن الطلب.
+                                    </p>
+                                    <!-- Says which list the operator is choosing
+                                         from, so a warehouse missing here reads
+                                         as "not routed" rather than "not found". -->
+                                    <p v-else-if="sourcing.selected_warehouse_ids" class="routing-hint">
+                                        <i class="fas fa-filter"></i>
+                                        المصادر المعروضة هي توجيهات الطلب ({{ sourcing.selected_warehouse_ids.length }} مستودع).
+                                    </p>
+                                    <p v-else class="routing-hint">
+                                        <i class="fas fa-circle-info"></i>
+                                        لم تُحدَّد توجيهات بعد، فكل المستودعات النشطة معروضة.
                                     </p>
 
                                     <div v-loading="sourcingLoading" class="sourcing-lines">
@@ -1028,17 +1061,78 @@ const deliverForm = reactive({
  * being decided silently.
  * ------------------------------------------------------------------ */
 
-const sourcing = ref({ lines: [], editable: false });
+const sourcing = ref({ lines: [], editable: false, selected_warehouse_ids: null });
 const sourcingLoading = ref(false);
 const savingSourcing = ref(false);
 const sourcingDirty = ref(false);
+
+/* ------------------------------------------------------------------ *
+ * Routing selection
+ *
+ * The order may be routed through several warehouses at once, and the sourcing
+ * editor below offers exactly those. The selection is edited locally and
+ * committed in one call, so ticking three boxes is one decision rather than
+ * three separate saves the server would have to reconcile.
+ * ------------------------------------------------------------------ */
+
+const selectedRoutingIds = ref([]);
+const savingRoutings = ref(false);
+const routingsDirty = ref(false);
+
+const sameIds = (a, b) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
+
+/** Mirrors the saved selection back into the local one, clearing the dirty flag. */
+const syncRoutingSelection = () => {
+    // `null` means nothing has been narrowed down; the boxes start empty rather
+    // than pretending every warehouse was deliberately chosen.
+    selectedRoutingIds.value = [...(sourcing.value.selected_warehouse_ids || [])];
+    routingsDirty.value = false;
+};
+
+const toggleRouting = (warehouseId, checked) => {
+    const next = new Set(selectedRoutingIds.value);
+    if (checked) {
+        next.add(warehouseId);
+    } else {
+        next.delete(warehouseId);
+    }
+    selectedRoutingIds.value = [...next];
+    routingsDirty.value = !sameIds(selectedRoutingIds.value, sourcing.value.selected_warehouse_ids || []);
+};
+
+const saveRoutings = async () => {
+    if (!selectedRoutingIds.value.length) {
+        ElMessage.warning('اختر مستودعاً واحداً على الأقل لتوجيه الطلب إليه.');
+        return;
+    }
+
+    savingRoutings.value = true;
+    try {
+        const res = await salesOrdersApi.saveRoutings(selectedOrder.value.id, selectedRoutingIds.value);
+        sourcing.value = res.data?.data || sourcing.value;
+        syncRoutingSelection();
+        sourcingDirty.value = false;
+        ElMessage.success(res.data?.message || 'تم حفظ توجيهات الطلب.');
+        // The coverage panel and the order header both read the owning
+        // warehouse, which may have moved with the selection.
+        await Promise.all([loadRouting(selectedOrder.value.id), refreshDetail()]);
+    } catch (e) {
+        ElMessage.error(apiErrorMessage(e, 'تعذّر حفظ توجيهات الطلب.'));
+        // Put the boxes back to what the server actually holds, so the screen
+        // never shows a selection that was refused.
+        syncRoutingSelection();
+    } finally {
+        savingRoutings.value = false;
+    }
+};
 
 const loadSourcing = async (id) => {
     sourcingLoading.value = true;
     try {
         const res = await salesOrdersApi.sourcing(id);
-        sourcing.value = res.data?.data || { lines: [], editable: false };
+        sourcing.value = res.data?.data || { lines: [], editable: false, selected_warehouse_ids: null };
         sourcingDirty.value = false;
+        syncRoutingSelection();
     } catch (e) {
         ElMessage.error(apiErrorMessage(e, 'تعذّر تحميل مصادر البضاعة.'));
     } finally {
@@ -1077,6 +1171,7 @@ const saveSourcing = async () => {
 
         sourcing.value = res.data?.data || sourcing.value;
         sourcingDirty.value = false;
+        syncRoutingSelection();
         ElMessage.success(res.data?.message || 'تم حفظ مصادر البضاعة.');
         await refreshDetail();
     } catch (e) {
@@ -2320,6 +2415,21 @@ onMounted(async () => {
     color: var(--text-muted);
 }
 
+.routing-select-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-block-start: 0.4rem;
+}
+
+.routing-hint {
+    margin: 0.35rem 0 0.7rem;
+    font-size: 0.76rem;
+    line-height: 1.7;
+    color: var(--text-muted);
+}
+
 .warehouse-options {
     display: flex;
     flex-direction: column;
@@ -2334,7 +2444,14 @@ onMounted(async () => {
     transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-/* The warehouse actually serving the order has to be findable at a glance. */
+/* A chosen routing is one of the places this order may draw on. */
+.warehouse-option.selected {
+    border-color: color-mix(in srgb, var(--el-color-primary) 55%, transparent);
+    background: color-mix(in srgb, var(--el-color-primary) 4%, transparent);
+}
+
+/* The warehouse actually serving the order has to be findable at a glance, and
+   outranks the plain "selected" tint when it is both. */
 .warehouse-option.current {
     border-color: var(--el-color-primary);
     background: color-mix(in srgb, var(--el-color-primary) 6%, transparent);

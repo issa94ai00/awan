@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\LandedCost;
 use App\Models\PurchaseReceipt;
 use App\Models\PurchaseReceiptItem;
-use App\Models\LandedCost;
 use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
 
 class ErpUpgradeService
@@ -26,7 +27,7 @@ class ErpUpgradeService
             $items = PurchaseReceiptItem::where('purchase_receipt_id', $purchaseReceiptId)->get();
 
             if ($items->isEmpty()) {
-                throw new \Exception("لا توجد أصناف في مستند الاستلام لتخصيص التكاليف.");
+                throw new \Exception('لا توجد أصناف في مستند الاستلام لتخصيص التكاليف.');
             }
 
             // Create LandedCost record
@@ -44,7 +45,7 @@ class ErpUpgradeService
             if ($method === 'quantity') {
                 $totalQuantity = $items->sum('quantity');
                 if ($totalQuantity <= 0) {
-                    throw new \Exception("إجمالي الكميات يجب أن يكون أكبر من الصفر.");
+                    throw new \Exception('إجمالي الكميات يجب أن يكون أكبر من الصفر.');
                 }
 
                 foreach ($items as $item) {
@@ -57,7 +58,7 @@ class ErpUpgradeService
             } else { // Default to 'value'
                 $totalValue = $items->sum('total');
                 if ($totalValue <= 0) {
-                    throw new \Exception("إجمالي قيمة الفاتورة يجب أن يكون أكبر من الصفر.");
+                    throw new \Exception('إجمالي قيمة الفاتورة يجب أن يكون أكبر من الصفر.');
                 }
 
                 foreach ($items as $item) {
@@ -75,64 +76,57 @@ class ErpUpgradeService
 
     /**
      * Reserve inventory in a specific warehouse.
+     *
+     * Delegated to InventoryService so the reservation uses the same sellable
+     * gate and row handling as the rest of the WMS. Rows it opens get the full
+     * bucket defaults (available/damaged/quarantined), unlike the partial rows
+     * this method used to create, which left every other InventoryService call
+     * reading NULLs as zero.
      */
     public function reserveInventory(int $warehouseId, int $productId, ?int $variantId, int $quantity): bool
     {
-        return DB::transaction(function () use ($warehouseId, $productId, $variantId, $quantity) {
-            $inventory = WarehouseInventory::where('warehouse_id', $warehouseId)
-                ->where('product_id', $productId)
-                ->where('product_variant_id', $variantId)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$inventory) {
-                // Initialize inventory if not found
-                $inventory = WarehouseInventory::create([
-                    'warehouse_id' => $warehouseId,
-                    'product_id' => $productId,
-                    'product_variant_id' => $variantId,
-                    'quantity' => 0,
-                    'reserved_quantity' => 0,
-                    'reorder_point' => 10,
-                    'safety_stock' => 5,
-                ]);
-            }
-
-            // Check if available stock is sufficient
-            $available = $inventory->quantity - $inventory->reserved_quantity;
-            if ($available < $quantity) {
-                return false;
-            }
-
-            $inventory->increment('reserved_quantity', $quantity);
-            return true;
-        });
+        return app(InventoryService::class)->reserve($productId, $quantity, $warehouseId, $variantId);
     }
 
     /**
      * Release reserved inventory (either due to shipping or order cancellation).
+     *
+     * A plain release just hands the units back to the sellable pool. A shipped
+     * release consumes the reservation as an actual issue through InventoryService,
+     * which records the movement, draws down the FIFO cost layers, keeps the
+     * condition buckets in balance and updates the product's cached stock count.
+     * This used to decrement `quantity` directly — the movement trail, the cost
+     * layers and `products.stock_quantity` were all left untouched, and the
+     * bucket invariant (quantity = available + damaged + quarantined) broke the
+     * moment anything had been reserved.
      */
     public function releaseInventory(int $warehouseId, int $productId, ?int $variantId, int $quantity, bool $isShipped = false): bool
     {
-        return DB::transaction(function () use ($warehouseId, $productId, $variantId, $quantity, $isShipped) {
-            $inventory = WarehouseInventory::where('warehouse_id', $warehouseId)
+        $inventory = app(InventoryService::class);
+
+        if ($isShipped) {
+            // Only units actually held as reserved may ship out of the
+            // reservation. Checked here, under lock, before any stock moves.
+            $row = WarehouseInventory::where('warehouse_id', $warehouseId)
                 ->where('product_id', $productId)
-                ->where('product_variant_id', $variantId)
+                ->when($variantId !== null, fn ($q) => $q->where('product_variant_id', $variantId))
                 ->lockForUpdate()
                 ->first();
 
-            if (!$inventory || $inventory->reserved_quantity < $quantity) {
+            if (! $row || (int) $row->reserved_quantity < $quantity) {
                 return false;
             }
 
-            $inventory->decrement('reserved_quantity', $quantity);
-
-            if ($isShipped) {
-                // If shipped, deduct from actual stock as well
-                $inventory->decrement('quantity', $quantity);
-            }
+            $inventory->shipReserved($productId, $quantity, $warehouseId, [
+                'source' => 'erp',
+                'reason' => 'إخراج مخزون محجوز عبر التكامل الخارجي',
+            ], $variantId);
 
             return true;
-        });
+        }
+
+        $inventory->release($productId, $quantity, $warehouseId, $variantId);
+
+        return true;
     }
 }

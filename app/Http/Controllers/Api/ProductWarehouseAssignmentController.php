@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProductWarehouseAssignment;
 use App\Models\Product;
+use App\Models\ProductWarehouseAssignment;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -66,7 +68,7 @@ class ProductWarehouseAssignmentController extends Controller
             'primaryBin',
             'binAssignments.bin',
             'inventory.bin',
-            'inventory.batches'
+            'inventory.batches',
         ])->findOrFail($id);
 
         return response()->json([
@@ -276,25 +278,25 @@ class ProductWarehouseAssignmentController extends Controller
             // row, the movement trail and products.stock_quantity stay in step.
             // putaway/transfer/adjustment add, picking takes.
             $movementType = match ($validated['movement_type']) {
-                'picking' => \App\Models\StockMovement::TYPE_OUT,
-                'adjustment' => \App\Models\StockMovement::TYPE_ADJUSTMENT,
-                default => \App\Models\StockMovement::TYPE_IN,
+                'picking' => StockMovement::TYPE_OUT,
+                'adjustment' => StockMovement::TYPE_ADJUSTMENT,
+                default => StockMovement::TYPE_IN,
             };
 
             $signedChange = $validated['movement_type'] === 'picking' ? -$quantityChange : $quantityChange;
 
-            $movement = app(\App\Services\Inventory\InventoryService::class)->move(
+            $movement = app(InventoryService::class)->move(
                 $validated['product_id'],
                 $signedChange,
                 $validated['warehouse_id'],
                 $movementType,
                 [
                     'key' => isset($validated['reference_type'], $validated['reference_id'])
-                        ? $validated['reference_type'] . ':' . $validated['reference_id'] . ':bin:' . ($validated['bin_id'] ?? 0)
+                        ? $validated['reference_type'].':'.$validated['reference_id'].':bin:'.($validated['bin_id'] ?? 0)
                         : null,
                     'reference' => $validated['reference_type'] ?? null,
                     'source' => 'assignment_operation',
-                    'reason' => $validated['notes'] ?? ('عملية ' . $validated['movement_type']),
+                    'reason' => $validated['notes'] ?? ('عملية '.$validated['movement_type']),
                     'condition' => 'available',
                     'bin_id' => $validated['bin_id'] ?? null,
                     'allow_negative' => $validated['movement_type'] === 'adjustment',
@@ -330,13 +332,14 @@ class ProductWarehouseAssignmentController extends Controller
                 'data' => [
                     'inventory_id' => $inventory?->id,
                     'new_quantity' => $inventory?->quantity ?? 0,
-                    'new_available' => $inventory ? ($inventory->quantity - $inventory->reserved_quantity - $inventory->damaged_quantity - $inventory->quarantined_quantity) : 0,
+                    'new_available' => $inventory ? $inventory->available_stock : 0,
                     'movement_id' => $movement?->id,
                 ],
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),

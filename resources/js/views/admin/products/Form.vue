@@ -72,11 +72,12 @@
                             <el-col :xs="24" :md="6">
                                 <el-form-item :label="$t('currency')">
                                     <el-select v-model="form.currency" size="large" style="width:100%">
-                                        <el-option :label="$t('saudi_riyal_sar')" value="SAR" />
-                                        <el-option :label="$t('us_dollar_usd')" value="USD" />
-                                        <el-option :label="$t('syrian_pound_syp')" value="SYP" />
-                                        <el-option :label="$t('iraqi_dinar_iqd')" value="IQD" />
-                                        <el-option :label="$t('uae_dirham_aed')" value="AED" />
+                                        <el-option
+                                            v-for="c in currencyOptions"
+                                            :key="c.code"
+                                            :label="c.label"
+                                            :value="c.code"
+                                        />
                                     </el-select>
                                 </el-form-item>
                             </el-col>
@@ -366,6 +367,20 @@ const uploadHeaders = reactive({
     'Accept': 'application/json'
 });
 
+const currencyOptions = computed(() => {
+    const locale = window.systemData?.locale || 'ar';
+    const list = window.systemData?.currencies?.list || [];
+    if (list.length) {
+        return list.map((c) => ({
+            code: c.code,
+            label: `${locale === 'en' ? (c.name_en || c.name || c.code) : (c.name_ar || c.name || c.code)} (${c.code})`,
+        }));
+    }
+
+    const base = window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR';
+    return [{ code: base, label: base }];
+});
+
 const form = reactive({
     name_ar: '',
     name_en: '',
@@ -376,7 +391,7 @@ const form = reactive({
     price: 0,
     cost_price: 0,
     sale_price: null,
-    currency: 'SAR',
+    currency: window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR',
     show_price: true,
     tax_rate: 0,
     taxable: true,
@@ -580,7 +595,7 @@ const loadProduct = async () => {
             price: p.price ?? 0,
             cost_price: p.cost_price ?? 0,
             sale_price: p.sale_price ?? null,
-            currency: p.currency || 'SAR',
+            currency: p.currency || window.systemData?.currencies?.base || 'SAR',
             show_price: p.show_price ?? true,
             tax_rate: p.tax_rate ?? 0,
             taxable: p.taxable ?? true,

@@ -3,22 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
-use App\Models\Product;
+use App\Models\Customer;
 use App\Models\Inquiry;
-use App\Models\Setting;
-use App\Models\SiteVisitor;
+use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\Payroll;
+use App\Models\Product;
+use App\Models\Product as ProductModel;
 use App\Models\Quote;
 use App\Models\SalesOrder;
-use App\Models\Payment;
-use App\Models\PurchaseReceipt;
-use App\Models\Payroll;
-use App\Models\Customer;
+use App\Models\Setting;
+use App\Models\SiteVisitor;
 use App\Models\Supplier;
-use App\Models\Invoice;
-use App\Models\Product as ProductModel;
+use App\Models\Visitor;
+use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class AdminController extends Controller
 {
@@ -51,11 +54,11 @@ class AdminController extends Controller
         $suppliersCount = Supplier::count();
         $payrollsCount = Payroll::count();
         $payrollsTotal = Payroll::where('status', Payroll::STATUS_PAID)->sum('net_salary');
-        
+
         // Stock KPIs
         $lowStockProducts = ProductModel::where('stock_quantity', '<=', 10)->where('is_active', true)->count();
         $totalStockValue = ProductModel::where('is_active', true)->sum(\DB::raw('stock_quantity * price'));
-        
+
         // Financial KPIs
         $totalRevenue = Invoice::where('status', Invoice::STATUS_PAID)->sum('total');
         $totalDue = Invoice::where('status', Invoice::STATUS_PENDING)->sum('due_amount');
@@ -104,9 +107,9 @@ class AdminController extends Controller
         $query = Category::query();
 
         if ($request->filled('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name_ar', 'like', '%' . $request->search . '%')
-                  ->orWhere('name_en', 'like', '%' . $request->search . '%');
+            $query->where(function ($q) use ($request) {
+                $q->where('name_ar', 'like', '%'.$request->search.'%')
+                    ->orWhere('name_en', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -165,13 +168,13 @@ class AdminController extends Controller
         \Log::info('Category update request received', [
             'category_id' => $category->id,
             'category_slug' => $category->slug,
-            'request_data' => $request->all()
+            'request_data' => $request->all(),
         ]);
 
         $validated = $request->validate([
             'name_ar' => 'required|string|max:255',
             'name_en' => 'required|string|max:255',
-            'slug' => 'nullable|string|unique:categories,slug,' . $category->id,
+            'slug' => 'nullable|string|unique:categories,slug,'.$category->id,
             'icon' => 'nullable|string|max:50',
             'description' => 'nullable|string',
             'sort_order' => 'nullable|integer',
@@ -219,10 +222,10 @@ class AdminController extends Controller
         $query = Product::query()->with('category');
 
         if ($request->filled('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name_ar', 'like', '%' . $request->search . '%')
-                  ->orWhere('name_en', 'like', '%' . $request->search . '%')
-                  ->orWhere('brand', 'like', '%' . $request->search . '%');
+            $query->where(function ($q) use ($request) {
+                $q->where('name_ar', 'like', '%'.$request->search.'%')
+                    ->orWhere('name_en', 'like', '%'.$request->search.'%')
+                    ->orWhere('brand', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -243,6 +246,7 @@ class AdminController extends Controller
     public function productsCreate()
     {
         $categories = Category::where('is_active', 1)->get();
+
         return view('admin.products.form', compact('categories'));
     }
 
@@ -280,8 +284,8 @@ class AdminController extends Controller
         // Handle SEO data (model casts to array, pass array directly)
         if ($request->has('seo')) {
             $seoData = $request->input('seo', []);
-            $seoData = array_filter($seoData, fn($v) => !empty($v));
-            $validated['seo'] = !empty($seoData) ? $seoData : null;
+            $seoData = array_filter($seoData, fn ($v) => ! empty($v));
+            $validated['seo'] = ! empty($seoData) ? $seoData : null;
         }
 
         if ($request->hasFile('image_main')) {
@@ -307,6 +311,7 @@ class AdminController extends Controller
     public function productsEdit(Product $product)
     {
         $categories = Category::where('is_active', 1)->get();
+
         return view('admin.products.form', compact('product', 'categories'));
     }
 
@@ -316,7 +321,7 @@ class AdminController extends Controller
             'category_id' => 'required|exists:categories,id',
             'name_ar' => 'required|string|max:255',
             'name_en' => 'required|string|max:255',
-            'slug' => 'nullable|string|unique:products,slug,' . $product->id,
+            'slug' => 'nullable|string|unique:products,slug,'.$product->id,
             'description_ar' => 'nullable|string',
             'description_en' => 'nullable|string',
             'price' => 'nullable|numeric|min:0',
@@ -344,8 +349,8 @@ class AdminController extends Controller
         // Handle SEO data (model casts to array, pass array directly)
         if ($request->has('seo')) {
             $seoData = $request->input('seo', []);
-            $seoData = array_filter($seoData, fn($v) => !empty($v));
-            $validated['seo'] = !empty($seoData) ? $seoData : null;
+            $seoData = array_filter($seoData, fn ($v) => ! empty($v));
+            $validated['seo'] = ! empty($seoData) ? $seoData : null;
         }
 
         // Handle main image removal (without uploading a new one)
@@ -365,7 +370,7 @@ class AdminController extends Controller
 
         // Handle gallery images
         $existingGallery = json_decode($product->image_gallery ?? '[]', true);
-        
+
         // Handle gallery image removal
         if ($request->has('remove_gallery_images')) {
             $imagesToRemove = $request->input('remove_gallery_images', []);
@@ -377,14 +382,14 @@ class AdminController extends Controller
             }
             $existingGallery = array_values($existingGallery);
         }
-        
+
         // Add new gallery images
         if ($request->hasFile('image_gallery')) {
             foreach ($request->file('image_gallery') as $image) {
                 $existingGallery[] = $image->store('products/gallery', 'public');
             }
         }
-        
+
         $validated['image_gallery'] = json_encode(array_values($existingGallery));
 
         $validated['show_price'] = $request->boolean('show_price', true);
@@ -414,10 +419,10 @@ class AdminController extends Controller
         $query = Inquiry::query();
 
         if ($request->filled('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('email', 'like', '%' . $request->search . '%')
-                  ->orWhere('subject', 'like', '%' . $request->search . '%');
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('email', 'like', '%'.$request->search.'%')
+                    ->orWhere('subject', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -454,6 +459,7 @@ class AdminController extends Controller
     public function inquiriesDestroy(Inquiry $inquiry)
     {
         $inquiry->delete();
+
         return redirect()->route('admin.inquiries.index')->with('success', 'تم حذف الاستفسار');
     }
 
@@ -461,12 +467,17 @@ class AdminController extends Controller
     public function settingsIndex()
     {
         $settings = Setting::all()->pluck('value', 'key')->toArray();
-        return view('admin.settings.index', compact('settings'));
+        $currencies = app(CurrencyService::class);
+        $settings['default_currency'] = $currencies->baseCode();
+        $managedCurrencies = $currencies->active();
+
+        return view('admin.settings.index', compact('settings', 'managedCurrencies'));
     }
 
     public function settingsUpdate(Request $request)
     {
-        $availableCurrencies = ['USD', 'EUR', 'SAR', 'AED', 'EGP'];
+        $currencies = app(CurrencyService::class);
+        $availableCurrencies = $currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
         $availableTimezones = ['Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
@@ -476,9 +487,9 @@ class AdminController extends Controller
             'settings.site_description' => 'nullable|string|max:1000',
             'settings.show_site_name' => 'sometimes|boolean',
             'settings.show_product_price' => 'sometimes|boolean',
-            'settings.default_currency' => ['nullable', 'in:' . implode(',', $availableCurrencies)],
-            'settings.default_language' => ['nullable', 'in:' . implode(',', $availableLanguages)],
-            'settings.timezone' => ['nullable', 'in:' . implode(',', $availableTimezones)],
+            'settings.default_currency' => ['nullable', 'string', Rule::in($availableCurrencies)],
+            'settings.default_language' => ['nullable', 'in:'.implode(',', $availableLanguages)],
+            'settings.timezone' => ['nullable', 'in:'.implode(',', $availableTimezones)],
             'settings.contact_phone' => 'nullable|string|max:50',
             'settings.contact_whatsapp' => 'nullable|string|max:50',
             'settings.contact_email' => 'nullable|email|max:255',
@@ -504,9 +515,18 @@ class AdminController extends Controller
         // Handle boolean/checkbox fields - set to 0 if not present
         $booleanFields = ['show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications'];
         foreach ($booleanFields as $field) {
-            if (!isset($data[$field])) {
+            if (! isset($data[$field])) {
                 $data[$field] = '0';
             }
+        }
+
+        if (array_key_exists('default_currency', $data) && filled($data['default_currency'])) {
+            try {
+                $currencies->applyDefaultCurrency((string) $data['default_currency']);
+            } catch (RuntimeException $e) {
+                return redirect()->route('admin.settings.index')->with('error', $e->getMessage());
+            }
+            unset($data['default_currency']);
         }
 
         foreach ($data as $key => $value) {
@@ -561,7 +581,7 @@ class AdminController extends Controller
     // Visitors
     public function visitorsIndex(Request $request)
     {
-        $query = \App\Models\Visitor::query();
+        $query = Visitor::query();
 
         // Filter by date range
         if ($request->filled('date_from')) {
@@ -588,10 +608,10 @@ class AdminController extends Controller
 
         // Search by IP or page URL
         if ($request->filled('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('ip_address', 'like', '%' . $request->search . '%')
-                  ->orWhere('page_url', 'like', '%' . $request->search . '%')
-                  ->orWhere('browser', 'like', '%' . $request->search . '%');
+            $query->where(function ($q) use ($request) {
+                $q->where('ip_address', 'like', '%'.$request->search.'%')
+                    ->orWhere('page_url', 'like', '%'.$request->search.'%')
+                    ->orWhere('browser', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -599,23 +619,23 @@ class AdminController extends Controller
 
         // Statistics
         $stats = [
-            'today' => \App\Models\Visitor::todayCount(),
-            'week' => \App\Models\Visitor::weekCount(),
-            'month' => \App\Models\Visitor::monthCount(),
-            'total' => \App\Models\Visitor::totalCount(),
-            'unique_today' => \App\Models\Visitor::uniqueTodayCount(),
+            'today' => Visitor::todayCount(),
+            'week' => Visitor::weekCount(),
+            'month' => Visitor::monthCount(),
+            'total' => Visitor::totalCount(),
+            'unique_today' => Visitor::uniqueTodayCount(),
         ];
 
         // Charts data
-        $dailyStats = \App\Models\Visitor::dailyStats(30);
-        $deviceStats = \App\Models\Visitor::byDeviceType();
-        $browserStats = \App\Models\Visitor::byBrowser();
-        $topPages = \App\Models\Visitor::topPages(10);
+        $dailyStats = Visitor::dailyStats(30);
+        $deviceStats = Visitor::byDeviceType();
+        $browserStats = Visitor::byBrowser();
+        $topPages = Visitor::topPages(10);
 
         // Filter options
-        $deviceTypes = \App\Models\Visitor::select('device_type')->distinct()->whereNotNull('device_type')->pluck('device_type');
-        $browsers = \App\Models\Visitor::select('browser')->distinct()->whereNotNull('browser')->pluck('browser');
-        $countries = \App\Models\Visitor::select('country')->distinct()->whereNotNull('country')->pluck('country');
+        $deviceTypes = Visitor::select('device_type')->distinct()->whereNotNull('device_type')->pluck('device_type');
+        $browsers = Visitor::select('browser')->distinct()->whereNotNull('browser')->pluck('browser');
+        $countries = Visitor::select('country')->distinct()->whereNotNull('country')->pluck('country');
 
         return view('admin.visitors.index', compact(
             'visitors', 'stats', 'dailyStats', 'deviceStats', 'browserStats', 'topPages',
@@ -643,6 +663,7 @@ class AdminController extends Controller
     public function profileEdit()
     {
         $user = auth()->user();
+
         return view('admin.profile.edit', compact('user'));
     }
 
@@ -652,7 +673,7 @@ class AdminController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
+            'email' => 'required|email|unique:users,email,'.$user->id,
             'current_password' => 'nullable|required_with:password',
             'password' => 'nullable|min:8|confirmed',
         ]);
@@ -662,8 +683,8 @@ class AdminController extends Controller
         $user->email = $validated['email'];
 
         // Update password if provided
-        if (!empty($validated['password'])) {
-            if (!\Hash::check($validated['current_password'], $user->password)) {
+        if (! empty($validated['password'])) {
+            if (! \Hash::check($validated['current_password'], $user->password)) {
                 return back()->with('error', 'كلمة المرور الحالية غير صحيحة');
             }
             $user->password = \Hash::make($validated['password']);

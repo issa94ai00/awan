@@ -10,6 +10,7 @@ use App\Models\RmaItem;
 use App\Models\RmaRequest;
 use App\Models\SalesOrder;
 use App\Models\Warehouse;
+use App\Services\Accounting\LedgerPostingService;
 
 /**
  * Financial settlement for return requests.
@@ -43,7 +44,7 @@ class RmaSettlementService
     {
         return (float) $rmaRequest->items
             ->whereIn('resolution', self::REFUNDABLE_RESOLUTIONS)
-            ->sum('refund_amount');
+            ->sum(fn (RmaItem $item) => $item->refundableNow());
     }
 
     /** Credit carried by the exchange lines, applied against the replacement order. */
@@ -51,7 +52,7 @@ class RmaSettlementService
     {
         return (float) $rmaRequest->items
             ->where('resolution', RmaItem::RESOLUTION_EXCHANGE)
-            ->sum('refund_amount');
+            ->sum(fn (RmaItem $item) => $item->refundableNow());
     }
 
     /**
@@ -79,7 +80,7 @@ class RmaSettlementService
             'store_credit' => 0.0,
         ];
 
-        if ($refundAmount <= 0 || !$rmaRequest->customer) {
+        if ($refundAmount <= 0 || ! $rmaRequest->customer) {
             return $empty;
         }
 
@@ -121,7 +122,7 @@ class RmaSettlementService
                 $storeCredit = $remaining;
             } else {
                 $payment = Payment::create([
-                    'payment_number' => 'REF-' . $rmaRequest->rma_number,
+                    'payment_number' => 'REF-'.$rmaRequest->rma_number,
                     'invoice_id' => $invoice?->id,
                     'customer_id' => $rmaRequest->customer_id,
                     'sales_order_id' => $rmaRequest->sales_order_id,
@@ -132,7 +133,7 @@ class RmaSettlementService
                     'amount' => -1 * $remaining,
                     'payment_date' => now()->toDateString(),
                     'reference' => $creditNote->credit_note_number,
-                    'notes' => 'استرداد مرتجع ' . $rmaRequest->rma_number . ' بموجب إشعار دائن ' . $creditNote->credit_note_number,
+                    'notes' => 'استرداد مرتجع '.$rmaRequest->rma_number.' بموجب إشعار دائن '.$creditNote->credit_note_number,
                     'created_by' => $userId,
                 ]);
 
@@ -157,7 +158,7 @@ class RmaSettlementService
 
         // Post both documents to the ledger: the credit note reduces revenue
         // through the returns account, and any cash refund is its own entry.
-        $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+        $ledger = app(LedgerPostingService::class);
         try {
             $ledger->postCreditNote($creditNote);
             if ($payment) {
@@ -192,7 +193,7 @@ class RmaSettlementService
             'tax' => 0,
             'total' => $amount,
             'status' => CreditNote::STATUS_ISSUED,
-            'reason' => 'مرتجع ' . $rmaRequest->rma_number,
+            'reason' => 'مرتجع '.$rmaRequest->rma_number,
             'notes' => $rmaRequest->reason_description,
             'created_by' => $userId,
         ]);
@@ -200,8 +201,8 @@ class RmaSettlementService
         $refundableItems = $rmaRequest->items->whereIn('resolution', self::REFUNDABLE_RESOLUTIONS);
 
         foreach ($refundableItems as $item) {
-            $quantity = max(1, (int) $item->quantity_requested);
-            $lineTotal = (float) $item->refund_amount;
+            $quantity = max(1, $item->settled_quantity);
+            $lineTotal = $item->refundableNow();
 
             $creditNote->items()->create([
                 'rma_item_id' => $item->id,
@@ -251,7 +252,7 @@ class RmaSettlementService
             'discount' => 0,
             'total' => 0,
             'created_by' => $userId,
-            'notes' => 'طلب بديل تلقائي لطلب الإرجاع: ' . $rmaRequest->rma_number,
+            'notes' => 'طلب بديل تلقائي لطلب الإرجاع: '.$rmaRequest->rma_number,
             'fulfillment_warehouse_id' => $rmaRequest->salesOrder?->fulfillment_warehouse_id ?? Warehouse::first()?->id,
             'shipping_address' => $rmaRequest->salesOrder?->shipping_address,
             'billing_address' => $rmaRequest->salesOrder?->billing_address,
@@ -262,12 +263,12 @@ class RmaSettlementService
         $unusedCredit = 0.0;
 
         foreach ($exchangeItems as $item) {
-            $quantity = max(1, (int) $item->quantity_requested);
+            $quantity = max(1, $item->settled_quantity);
             $unitPrice = $this->replacementUnitPrice($item);
             $gross = $unitPrice * $quantity;
 
             // The returned goods pay for the replacement, up to their value.
-            $lineCredit = (float) $item->refund_amount;
+            $lineCredit = $item->refundableNow();
             $credit = min($gross, $lineCredit);
             $unusedCredit += max(0, $lineCredit - $credit);
 
@@ -321,13 +322,14 @@ class RmaSettlementService
         }
 
         // Last resort: derive from the credit we already calculated.
-        $quantity = max(1, (int) $item->quantity_requested);
-        return round((float) $item->refund_amount / $quantity, 2);
+        $quantity = max(1, $item->settled_quantity);
+
+        return round($item->refundableNow() / $quantity, 2);
     }
 
     private function invoiceFor(RmaRequest $rmaRequest): ?Invoice
     {
-        if (!$rmaRequest->sales_order_id) {
+        if (! $rmaRequest->sales_order_id) {
             return null;
         }
 
@@ -355,6 +357,6 @@ class RmaSettlementService
 
     private function nextReplacementOrderNumber(): string
     {
-        return 'SO-RPL-' . str_pad((string) (SalesOrder::max('id') + 1), 6, '0', STR_PAD_LEFT);
+        return 'SO-RPL-'.str_pad((string) (SalesOrder::max('id') + 1), 6, '0', STR_PAD_LEFT);
     }
 }

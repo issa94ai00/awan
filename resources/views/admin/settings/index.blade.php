@@ -95,16 +95,21 @@
         <div class="tab-content" id="localization">
             <div class="form-grid">
                 <div class="form-group">
-                    <label for="default_currency">العملة الافتراضية</label>
+                    <label for="default_currency">عملة الأساس (المحاسبة)</label>
                     <select id="default_currency" name="settings[default_currency]" class="form-control">
-                        @php
-                            $currencies = ['USD' => 'دولار أمريكي - USD', 'EUR' => 'يورو - EUR', 'SAR' => 'ريال سعودي - SAR', 'AED' => 'درهم إماراتي - AED', 'EGP' => 'جنيه مصري - EGP'];
-                        @endphp
-                        @foreach($currencies as $code => $label)
-                            <option value="{{ $code }}" {{ ($settings['default_currency'] ?? 'USD') === $code ? 'selected' : '' }}>{{ $label }}</option>
-                        @endforeach
+                        @forelse(($managedCurrencies ?? collect()) as $currency)
+                            <option value="{{ $currency['code'] }}" {{ ($settings['default_currency'] ?? '') === $currency['code'] ? 'selected' : '' }}>
+                                {{ $currency['name_ar'] ?? $currency['name'] ?? $currency['code'] }} ({{ $currency['code'] }})
+                                @if(!empty($currency['is_base'])) — الأساس @endif
+                            </option>
+                        @empty
+                            <option value="{{ $settings['default_currency'] ?? 'SAR' }}" selected>{{ $settings['default_currency'] ?? 'SAR' }}</option>
+                        @endforelse
                     </select>
-                    <small class="form-text">العملة الافتراضية المستخدمة في كافة الفواتير والمنتجات.</small>
+                    <small class="form-text">
+                        العملة التي تُخزَّن بها المبالغ في النظام. لإضافة عملات أو أسعار صرف استخدم
+                        <a href="{{ url('/admin/currencies') }}">إدارة العملات</a>.
+                    </small>
                 </div>
 
                 <div class="form-group">

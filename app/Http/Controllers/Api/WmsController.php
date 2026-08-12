@@ -2,32 +2,31 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\StockAlert;
+use App\Events\StockMovementCreated;
 use App\Http\Controllers\Controller;
-use App\Models\Product;
-use App\Models\ProductWarehouseAssignment;
-use App\Models\Warehouse;
-use App\Models\WarehouseInventory;
-use App\Models\WarehouseBin;
-use App\Models\PickingList;
-use App\Models\PickingListItem;
+use App\Models\CycleCount;
 use App\Models\PackingList;
 use App\Models\PackingListItem;
-use App\Services\PickingService;
-use App\Services\PackingService;
-use App\Services\Inventory\InventoryService;
-use App\Events\StockMovementCreated;
-use App\Events\StockAlert;
-use Illuminate\Http\Request;
-use App\Models\CycleCount;
-use App\Models\CycleCountItem;
+use App\Models\PickingList;
+use App\Models\PickingListItem;
+use App\Models\Product;
+use App\Models\ProductWarehouseAssignment;
 use App\Models\SalesOrder;
 use App\Models\ShippingManifest;
 use App\Models\ShippingManifestItem;
-use Illuminate\Support\Facades\DB;
+use App\Models\Warehouse;
+use App\Models\WarehouseBin;
+use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
+use App\Services\PackingService;
+use App\Services\PickingService;
+use Illuminate\Http\Request;
 
 class WmsController extends Controller
 {
     protected PickingService $pickingService;
+
     protected PackingService $packingService;
 
     public function __construct(PickingService $pickingService, PackingService $packingService)
@@ -45,7 +44,12 @@ class WmsController extends Controller
             'total_products' => Product::count(),
             'active_warehouses' => Warehouse::where('is_active', true)->count(),
             'total_warehouses' => Warehouse::count(),
-            'reorder_products' => WarehouseInventory::whereColumn('available_quantity', '<=', 'reorder_point')->count(),
+            // Measured against what can actually be sold. Comparing the raw
+            // bucket meant a product whose entire balance was reserved still
+            // looked comfortably stocked and raised no reorder alert.
+            'reorder_products' => WarehouseInventory::whereRaw(
+                '('.WarehouseInventory::availableSql().') <= COALESCE(reorder_point, 0)'
+            )->count(),
             'total_stock' => WarehouseInventory::sum('quantity'),
             'total_value' => WarehouseInventory::selectRaw('SUM(quantity * cost_basis) as total')->value('total') ?? 0,
             'today_movements' => 0, // TODO: Add movements table
@@ -68,9 +72,10 @@ class WmsController extends Controller
             ->where('is_active', true)
             ->get()
             ->map(function ($warehouse) use ($stats) {
-                $percentage = $stats['total_stock'] > 0 
-                    ? ($warehouse->total_stock / $stats['total_stock']) * 100 
+                $percentage = $stats['total_stock'] > 0
+                    ? ($warehouse->total_stock / $stats['total_stock']) * 100
                     : 0;
+
                 return [
                     'id' => $warehouse->id,
                     'name' => $warehouse->name,
@@ -78,7 +83,9 @@ class WmsController extends Controller
                 ];
             });
 
-        $alerts = WarehouseInventory::whereColumn('available_quantity', '<=', 'reorder_point')
+        $alerts = WarehouseInventory::whereRaw(
+            '('.WarehouseInventory::availableSql().') <= COALESCE(reorder_point, 0)'
+        )
             ->with(['product', 'warehouse'])
             ->limit(10)
             ->get()
@@ -107,9 +114,9 @@ class WmsController extends Controller
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('code', 'like', '%' . $request->search . '%')
-                  ->orWhere('sku', 'like', '%' . $request->search . '%');
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('code', 'like', '%'.$request->search.'%')
+                    ->orWhere('sku', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -162,9 +169,9 @@ class WmsController extends Controller
         // Search by product name or code
         if ($request->filled('search')) {
             $query->whereHas('product', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('code', 'like', '%' . $request->search . '%')
-                  ->orWhere('sku', 'like', '%' . $request->search . '%');
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('code', 'like', '%'.$request->search.'%')
+                    ->orWhere('sku', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -174,7 +181,7 @@ class WmsController extends Controller
         $assignments->getCollection()->transform(function ($assignment) {
             $inventory = $assignment->inventory->first();
             $product = $assignment->product;
-            
+
             return [
                 'id' => $assignment->id,
                 'product_id' => $assignment->product_id,
@@ -193,7 +200,9 @@ class WmsController extends Controller
                     'code' => $assignment->warehouse->code,
                 ],
                 'quantity' => $inventory ? $inventory->quantity : 0,
-                'available_quantity' => $inventory ? $inventory->available_quantity : 0,
+                // Net of what is already promised — the raw bucket counted
+                // reserved units as available.
+                'available_quantity' => $inventory ? $inventory->available_stock : 0,
                 'reserved_quantity' => $inventory ? $inventory->reserved_quantity : 0,
                 'min_stock_level' => $assignment->min_stock_level,
                 'max_stock_level' => $assignment->max_stock_level,
@@ -253,7 +262,9 @@ class WmsController extends Controller
                     'address' => $assignment->warehouse->address,
                 ],
                 'quantity' => $inventory ? $inventory->quantity : 0,
-                'available_quantity' => $inventory ? $inventory->available_quantity : 0,
+                // Net of what is already promised — the raw bucket counted
+                // reserved units as available.
+                'available_quantity' => $inventory ? $inventory->available_stock : 0,
                 'reserved_quantity' => $inventory ? $inventory->reserved_quantity : 0,
                 'damaged_quantity' => $inventory ? $inventory->damaged_quantity : 0,
                 'quarantined_quantity' => $inventory ? $inventory->quarantined_quantity : 0,
@@ -342,7 +353,7 @@ class WmsController extends Controller
 
             if ($warehouseRow && $difference !== 0) {
                 $inventory->adjust($assignment->product_id, $difference, $assignment->warehouse_id, [
-                    'key' => 'assign:' . $assignment->id,
+                    'key' => 'assign:'.$assignment->id,
                     'source' => 'assignment',
                     'reference' => $assignment->id,
                     'reason' => 'تحديث رصيد التعيين من شاشة المخزون',
@@ -358,9 +369,9 @@ class WmsController extends Controller
                 $warehouseRow->save();
             }
 
-            if (!$warehouseRow && $newQuantity > 0) {
+            if (! $warehouseRow && $newQuantity > 0) {
                 $inventory->receive($assignment->product_id, $newQuantity, $assignment->warehouse_id, [
-                    'key' => 'assign:' . $assignment->id . ':opening',
+                    'key' => 'assign:'.$assignment->id.':opening',
                     'source' => 'assignment',
                     'reference' => $assignment->id,
                     'reason' => 'رصيد افتتاحي للتعيين',
@@ -502,7 +513,7 @@ class WmsController extends Controller
             ->with(['product', 'warehouse'])
             ->first();
 
-        if (!$balance) {
+        if (! $balance) {
             return response()->json([
                 'data' => null,
             ]);
@@ -515,7 +526,13 @@ class WmsController extends Controller
                 'warehouse_id' => $balance->warehouse_id,
                 'quantity' => $balance->quantity,
                 'reserved_quantity' => $balance->reserved_quantity,
-                'available_quantity' => $balance->quantity - $balance->reserved_quantity,
+                // `quantity - reserved` counted damaged and quarantined units as
+                // available, so this screen — the one an operator checks before
+                // committing a movement — offered stock that cannot leave the
+                // shelf. One definition now, shared with the sell gate.
+                'available_quantity' => $balance->available_stock,
+                'damaged_quantity' => $balance->damaged_quantity,
+                'quarantined_quantity' => $balance->quarantined_quantity,
                 'reorder_point' => $balance->reorder_point,
                 'safety_stock' => $balance->safety_stock,
                 'product' => $balance->product,
@@ -665,7 +682,7 @@ class WmsController extends Controller
         $bin = WarehouseBin::findOrFail($id);
 
         $validated = $request->validate([
-            'code' => 'string|unique:warehouse_bins,code,' . $id,
+            'code' => 'string|unique:warehouse_bins,code,'.$id,
             'name' => 'string',
             'zone' => 'nullable|string',
             'aisle' => 'nullable|string',
@@ -826,7 +843,7 @@ class WmsController extends Controller
             // re-deriving the rules, so the two cannot disagree.
             'can_start' => $l->status === PickingList::STATUS_PENDING,
             'can_complete' => $l->status === PickingList::STATUS_IN_PROGRESS,
-            'can_cancel' => !in_array($l->status, [PickingList::STATUS_COMPLETED, PickingList::STATUS_CANCELLED], true),
+            'can_cancel' => ! in_array($l->status, [PickingList::STATUS_COMPLETED, PickingList::STATUS_CANCELLED], true),
             'started_at' => $l->started_at?->toDateTimeString(),
             'completed_at' => $l->completed_at?->toDateTimeString(),
             'created_at' => $l->created_at?->toDateTimeString(),
@@ -840,7 +857,7 @@ class WmsController extends Controller
                 'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
                 'barcode' => $i->barcode,
                 'bin_code' => $i->bin?->bin_code,
-                'bin_location' => $i->bin ? trim(($i->bin->zone ?? '') . ' ' . ($i->bin->rack ?? '') . ' ' . ($i->bin->shelf ?? '')) : null,
+                'bin_location' => $i->bin ? trim(($i->bin->zone ?? '').' '.($i->bin->rack ?? '').' '.($i->bin->shelf ?? '')) : null,
                 'quantity_to_pick' => (int) $i->quantity_to_pick,
                 'quantity_picked' => (int) $i->quantity_picked,
                 'remaining' => max(0, (int) $i->quantity_to_pick - (int) $i->quantity_picked),
@@ -1017,6 +1034,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->startPacking($list, $request->user()->id);
+
             return response()->json(['message' => 'Packing started']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1037,6 +1055,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->updatePackageDetails($item, $validated);
+
             return response()->json(['message' => 'Package details updated']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1049,6 +1068,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->completePacking($list);
+
             return response()->json(['message' => 'Packing completed']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1061,6 +1081,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->cancelPacking($list);
+
             return response()->json(['message' => 'Packing cancelled']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1151,6 +1172,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->dispatchManifest($manifest);
+
             return response()->json(['message' => 'Manifest dispatched']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1163,6 +1185,7 @@ class WmsController extends Controller
 
         try {
             $this->packingService->markItemDelivered($item, $request->signature ?? null);
+
             return response()->json(['message' => 'Item marked as delivered']);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
@@ -1214,7 +1237,7 @@ class WmsController extends Controller
         $count = CycleCount::create([
             'warehouse_id' => $validated['warehouse_id'],
             'bin_id' => $validated['bin_id'],
-            'count_number' => 'CC-' . str_pad(CycleCount::count() + 1, 6, '0', STR_PAD_LEFT),
+            'count_number' => 'CC-'.str_pad(CycleCount::count() + 1, 6, '0', STR_PAD_LEFT),
             'type' => $validated['type'],
             'status' => CycleCount::STATUS_PENDING,
             'notes' => $validated['notes'] ?? null,
@@ -1227,7 +1250,7 @@ class WmsController extends Controller
     {
         $count = CycleCount::findOrFail($id);
 
-        if (!$count->canStart()) {
+        if (! $count->canStart()) {
             return response()->json(['message' => 'Cycle count cannot be started'], 400);
         }
 
@@ -1288,7 +1311,7 @@ class WmsController extends Controller
     {
         $count = CycleCount::findOrFail($id);
 
-        if (!$count->requires_adjustment) {
+        if (! $count->requires_adjustment) {
             return response()->json(['message' => 'No adjustment required'], 400);
         }
 
@@ -1312,8 +1335,8 @@ class WmsController extends Controller
         $query = Warehouse::query();
 
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('code', 'like', '%' . $request->search . '%');
+            $query->where('name', 'like', '%'.$request->search.'%')
+                ->orWhere('code', 'like', '%'.$request->search.'%');
         }
 
         if ($request->filled('is_active')) {
@@ -1321,12 +1344,14 @@ class WmsController extends Controller
         }
 
         $warehouses = $query->latest()->paginate($request->input('per_page', 20));
+
         return response()->json($warehouses);
     }
 
     public function showWarehouse($id)
     {
         $warehouse = Warehouse::findOrFail($id);
+
         return response()->json($warehouse);
     }
 
@@ -1364,7 +1389,7 @@ class WmsController extends Controller
 
         $validated = $request->validate([
             'name' => 'string|max:255',
-            'code' => 'string|max:50|unique:warehouses,code,' . $id,
+            'code' => 'string|max:50|unique:warehouses,code,'.$id,
             'address' => 'nullable|string|max:1000',
             'city' => 'nullable|string|max:255',
             'country' => 'nullable|string|max:255',
@@ -1409,4 +1434,3 @@ class WmsController extends Controller
         ]);
     }
 }
-

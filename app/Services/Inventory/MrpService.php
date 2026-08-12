@@ -2,9 +2,8 @@
 
 namespace App\Services\Inventory;
 
-use App\Models\ProductWarehouseAssignment;
-use App\Models\WarehouseInventory;
 use App\Models\InventoryTransfer;
+use App\Models\ProductWarehouseAssignment;
 use App\Models\PurchaseOrder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +59,10 @@ class MrpService
         $product = $assignment->product;
         $inventory = $assignment->inventory->first();
 
-        $currentStock = $inventory ? $inventory->available_quantity : 0;
+        // Net of reservations: units already promised to confirmed orders cannot
+        // also cover future demand, and counting them made the plan see supply
+        // it did not have and skip replenishment it needed.
+        $currentStock = $inventory ? $inventory->available_stock : 0;
         $leadTime = $assignment->lead_time_days;
         $safetyStock = $assignment->safety_stock;
         $minStock = $assignment->min_stock_level;
@@ -68,7 +70,7 @@ class MrpService
 
         // Calculate forecasted demand (based on historical sales)
         $dailyDemand = $this->calculateDailyDemand($assignment->product_id, $assignment->warehouse_id);
-        
+
         // Calculate gross requirements (sales orders + forecasts)
         $grossRequirements = $this->calculateGrossRequirements(
             $assignment->product_id,
@@ -137,7 +139,7 @@ class MrpService
     {
         // Get sales from the last 30 days
         $startDate = Carbon::now()->subDays(30);
-        
+
         $totalSold = DB::table('stock_movements')
             ->where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
@@ -158,7 +160,7 @@ class MrpService
 
         for ($day = 0; $day <= $horizonDays; $day++) {
             $date = $today->copy()->addDays($day);
-            
+
             // Get actual sales orders for this date
             $salesOrderQuantity = DB::table('sales_orders')
                 ->join('sales_order_items', 'sales_orders.id', '=', 'sales_order_items.sales_order_id')
@@ -201,13 +203,13 @@ class MrpService
                 'purchase_orders.expected_date as date',
                 'purchase_order_items.quantity as quantity',
                 'purchase_orders.status as status',
-                DB::raw("'purchase' as type")
+                DB::raw("'purchase' as type"),
             ])
             ->get();
 
         foreach ($purchaseOrders as $po) {
             $date = $po->date;
-            if (!isset($receipts[$date])) {
+            if (! isset($receipts[$date])) {
                 $receipts[$date] = [];
             }
             $receipts[$date][] = [
@@ -229,13 +231,13 @@ class MrpService
                 'inventory_transfers.expected_arrival as date',
                 'inventory_transfer_items.quantity_requested as quantity',
                 'inventory_transfers.status as status',
-                DB::raw("'transfer' as type")
+                DB::raw("'transfer' as type"),
             ])
             ->get();
 
         foreach ($transfers as $transfer) {
             $date = $transfer->date;
-            if (!isset($receipts[$date])) {
+            if (! isset($receipts[$date])) {
                 $receipts[$date] = [];
             }
             $receipts[$date][] = [
@@ -292,7 +294,7 @@ class MrpService
 
                 // Calculate release date (lead time before requirement date)
                 $releaseDate = $date->copy()->subDays($leadTime);
-                
+
                 if ($releaseDate->gte($today)) {
                     $plannedOrders[$releaseDate->toDateString()] = [
                         'quantity' => $orderQuantity,
@@ -415,7 +417,7 @@ class MrpService
     public function executeMrpRecommendations($assignmentId, $recommendationIds = [])
     {
         $assignment = ProductWarehouseAssignment::with(['product', 'warehouse', 'supplier'])->findOrFail($assignmentId);
-        
+
         $mrpResult = $this->calculateWarehouseMrp($assignment, 90);
         $recommendations = $mrpResult['recommendations'];
 
@@ -423,7 +425,7 @@ class MrpService
 
         foreach ($recommendations as $recommendation) {
             // Filter by recommendation IDs if provided
-            if (!empty($recommendationIds) && !in_array($recommendation['type'], $recommendationIds)) {
+            if (! empty($recommendationIds) && ! in_array($recommendation['type'], $recommendationIds)) {
                 continue;
             }
 
@@ -454,7 +456,7 @@ class MrpService
      */
     private function createPurchaseOrder($assignment, $recommendation)
     {
-        if (!$assignment->supplier_id) {
+        if (! $assignment->supplier_id) {
             return null;
         }
 

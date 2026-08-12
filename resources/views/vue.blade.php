@@ -234,7 +234,7 @@
                 site_description_en: {!! json_encode(get_setting('site_description_en') ?? 'At Awan Al Taqaddam, we offer building supplies that combine global quality with modern design, to be your ideal partner in your construction projects.') !!},
                 show_site_name: {{ get_setting('show_site_name') ?? '1' }},
                 show_product_price: {{ get_setting('show_product_price') ?? '0' }},
-                default_currency: {!! json_encode(get_setting('default_currency') ?? 'SAR') !!},
+                default_currency: {!! json_encode(base_currency_code()) !!},
                 default_language: {!! json_encode(get_setting('default_language') ?? 'ar') !!},
                 timezone: {!! json_encode(get_setting('timezone') ?? 'Asia/Riyadh') !!},
                 contact_phone: {!! json_encode(get_setting('contact_phone') ?? '00963962889577') !!},
@@ -326,7 +326,12 @@
                 vision_feature_3_title_en: {!! json_encode(get_setting('vision_feature_3_title_en') ?? 'Trusted Partnership') !!},
                 vision_feature_3_description: {!! json_encode(get_setting('vision_feature_3_description') ?? 'نبني مع شركائنا علاقات استراتيجية طويلة الأمد ترتكز على الثقة والشفافية والمنفعة المشتركة. نرى أنفسنا شريكاً حقيقياً في نجاح مشاريعكم الإنشائية.') !!},
                 vision_feature_3_description_en: {!! json_encode(get_setting('vision_feature_3_description_en') ?? "We build long-term strategic relationships with our partners based on trust, transparency, and mutual benefit. We see ourselves as a true partner in the success of your construction projects.") !!},
-            }
+            },
+            // Single source of truth for money: base = accounting currency (= default_currency).
+            currencies: {
+                base: {!! json_encode(base_currency_code()) !!},
+                list: {!! json_encode(active_currencies()) !!},
+            },
         };
     </script>
 </body>

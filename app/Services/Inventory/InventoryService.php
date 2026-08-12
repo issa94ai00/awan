@@ -36,7 +36,9 @@ class InventoryService
      * excluded from availability.
      */
     public const CONDITION_AVAILABLE = 'available';
+
     public const CONDITION_DAMAGED = 'damaged';
+
     public const CONDITION_QUARANTINED = 'quarantined';
 
     /**
@@ -48,13 +50,14 @@ class InventoryService
         int $productId,
         int $quantity,
         ?int $warehouseId = null,
-        array $options = []
+        array $options = [],
+        ?int $productVariantId = null
     ): ?StockMovement {
         if ($quantity <= 0) {
             return null;
         }
 
-        return $this->move($productId, -$quantity, $warehouseId, StockMovement::TYPE_OUT, $options);
+        return $this->move($productId, -$quantity, $warehouseId, StockMovement::TYPE_OUT, $options, $productVariantId);
     }
 
     /**
@@ -66,9 +69,10 @@ class InventoryService
         int $productId,
         int $quantity,
         ?int $warehouseId = null,
-        array $options = []
+        array $options = [],
+        ?int $productVariantId = null
     ): ?StockMovement {
-        return $this->issue($productId, $quantity, $warehouseId, $options + ['consume_reserved' => true]);
+        return $this->issue($productId, $quantity, $warehouseId, $options + ['consume_reserved' => true], $productVariantId);
     }
 
     /** Receives stock in — a purchase receipt, a customer return. */
@@ -120,7 +124,8 @@ class InventoryService
         int $signedQuantity,
         ?int $warehouseId,
         string $movementType,
-        array $options = []
+        array $options = [],
+        ?int $productVariantId = null
     ): ?StockMovement {
         if ($signedQuantity === 0) {
             return null;
@@ -136,7 +141,7 @@ class InventoryService
         }
 
         $warehouseId = $warehouseId ?: $this->defaultWarehouseId();
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             throw new RuntimeException('لا يوجد مستودع لتسجيل حركة المخزون.');
         }
 
@@ -144,7 +149,7 @@ class InventoryService
         $allowNegative = (bool) ($options['allow_negative'] ?? false);
 
         return DB::transaction(function () use (
-            $productId, $signedQuantity, $warehouseId, $movementType, $options, $key, $condition, $allowNegative
+            $productId, $signedQuantity, $warehouseId, $movementType, $options, $key, $condition, $allowNegative, $productVariantId
         ) {
             // Re-check inside the transaction: two concurrent requests for the
             // same document would otherwise both get past the check above.
@@ -155,15 +160,15 @@ class InventoryService
                 }
             }
 
-            $row = $this->lockedInventoryRow($productId, $warehouseId, $options['bin_id'] ?? null);
+            $row = $this->lockedInventoryRow($productId, $warehouseId, $options['bin_id'] ?? null, $productVariantId);
 
             $bucket = $this->bucketColumn($condition);
 
-            if ($signedQuantity < 0 && !$allowNegative) {
+            if ($signedQuantity < 0 && ! $allowNegative) {
                 $consumeReserved = (bool) ($options['consume_reserved'] ?? false);
                 $availableInBucket = (int) $row->{$bucket};
 
-                if (!$consumeReserved && $condition === self::CONDITION_AVAILABLE) {
+                if (! $consumeReserved && $condition === self::CONDITION_AVAILABLE) {
                     $availableInBucket -= (int) $row->reserved_quantity;
                 }
 
@@ -247,7 +252,7 @@ class InventoryService
      * receipts; callers that need an atomic move (corrections, initial stock
      * placement) should use this.
      *
-     * @return array{0:?StockMovement,1:?StockMovement}  [out, in]
+     * @return array{0:?StockMovement,1:?StockMovement} [out, in]
      *
      * @throws RuntimeException when the source warehouse lacks available stock
      */
@@ -266,13 +271,13 @@ class InventoryService
 
         return DB::transaction(function () use ($productId, $quantity, $fromWarehouseId, $toWarehouseId, $options, $baseKey) {
             $out = $this->issue($productId, $quantity, $fromWarehouseId, $options + [
-                'key' => $baseKey ? $baseKey . ':out' : null,
+                'key' => $baseKey ? $baseKey.':out' : null,
                 'reference' => $options['reference'] ?? null,
                 'source' => $options['source'] ?? 'transfer',
             ]);
 
             $in = $this->receive($productId, $quantity, $toWarehouseId, $options + [
-                'key' => $baseKey ? $baseKey . ':in' : null,
+                'key' => $baseKey ? $baseKey.':in' : null,
                 'reference' => $options['reference'] ?? null,
                 'source' => $options['source'] ?? 'transfer',
             ]);
@@ -290,19 +295,19 @@ class InventoryService
      * stay in `quantity` but stop being sellable, which is what keeps two orders
      * from promising the same unit.
      */
-    public function reserve(int $productId, int $quantity, ?int $warehouseId = null): bool
+    public function reserve(int $productId, int $quantity, ?int $warehouseId = null, ?int $productVariantId = null): bool
     {
         if ($quantity <= 0) {
             return true;
         }
 
         $warehouseId = $warehouseId ?: $this->defaultWarehouseId();
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return false;
         }
 
-        return DB::transaction(function () use ($productId, $quantity, $warehouseId) {
-            $row = $this->lockedInventoryRow($productId, $warehouseId);
+        return DB::transaction(function () use ($productId, $quantity, $warehouseId, $productVariantId) {
+            $row = $this->lockedInventoryRow($productId, $warehouseId, null, $productVariantId);
 
             if ($this->sellableOn($row) < $quantity) {
                 return false;
@@ -315,19 +320,19 @@ class InventoryService
         });
     }
 
-    public function release(int $productId, int $quantity, ?int $warehouseId = null): void
+    public function release(int $productId, int $quantity, ?int $warehouseId = null, ?int $productVariantId = null): void
     {
         if ($quantity <= 0) {
             return;
         }
 
         $warehouseId = $warehouseId ?: $this->defaultWarehouseId();
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return;
         }
 
-        DB::transaction(function () use ($productId, $quantity, $warehouseId) {
-            $row = $this->lockedInventoryRow($productId, $warehouseId);
+        DB::transaction(function () use ($productId, $quantity, $warehouseId, $productVariantId) {
+            $row = $this->lockedInventoryRow($productId, $warehouseId, null, $productVariantId);
             // Never let a release push the reservation below zero.
             $row->reserved_quantity = max(0, (int) $row->reserved_quantity - $quantity);
             $row->save();
@@ -364,11 +369,12 @@ class InventoryService
      * Fetches (or opens) the warehouse row for a product and locks it for the
      * rest of the transaction, so concurrent movements cannot interleave.
      */
-    private function lockedInventoryRow(int $productId, int $warehouseId, ?int $binId = null): WarehouseInventory
+    private function lockedInventoryRow(int $productId, int $warehouseId, ?int $binId = null, ?int $productVariantId = null): WarehouseInventory
     {
         $row = WarehouseInventory::where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
             ->when($binId, fn ($q) => $q->where('bin_id', $binId))
+            ->when($productVariantId !== null, fn ($q) => $q->where('product_variant_id', $productVariantId))
             ->lockForUpdate()
             ->first();
 

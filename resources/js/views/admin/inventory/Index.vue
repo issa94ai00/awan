@@ -96,12 +96,15 @@
                                     <span class="wh-code">{{ w.code }}</span>
                                     <el-tag v-if="!w.is_active" type="info" size="small">غير نشط</el-tag>
                                 </div>
-                                <span class="wh-qty">{{ formatNumber(w.total_quantity) }} وحدة</span>
+                                <span class="wh-qty">
+                                    {{ formatNumber(w.total_available) }} متاح
+                                    <span class="wh-gross">من {{ formatNumber(w.total_quantity) }}</span>
+                                </span>
                             </div>
                             <el-progress
-                                :percentage="warehousePercentage(w.total_quantity)"
+                                :percentage="warehousePercentage(w.total_available)"
                                 :stroke-width="10"
-                                :color="warehouseProgressColor(w.total_quantity)"
+                                :color="warehouseProgressColor(w.total_available)"
                                 :show-text="false"
                             />
                         </div>
@@ -201,9 +204,28 @@
                         <p class="table-sub">{{ row.bin?.code || '' }}</p>
                     </template>
                 </el-table-column>
+                <!-- The three figures side by side: without them a balance that
+                     dropped because another order reserved it looks like stock
+                     that went missing. -->
+                <el-table-column label="الإجمالي" width="100" align="center">
+                    <template #default="{ row }">
+                        <span class="table-sub">{{ formatNumber(row.quantity) }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="المحجوز" width="100" align="center">
+                    <template #default="{ row }">
+                        <span v-if="Number(row.reserved_quantity) > 0" class="text-warning">
+                            {{ formatNumber(row.reserved_quantity) }}
+                        </span>
+                        <span v-else class="table-sub">—</span>
+                    </template>
+                </el-table-column>
                 <el-table-column label="المتاح" width="110" align="center">
                     <template #default="{ row }">
                         <strong :class="availableClass(row)">{{ formatNumber(row.available) }}</strong>
+                        <p v-if="unsellable(row) > 0" class="table-sub">
+                            {{ formatNumber(unsellable(row)) }} تالف/محتجز
+                        </p>
                     </template>
                 </el-table-column>
                 <el-table-column label="التكلفة" width="120" align="center">
@@ -384,11 +406,14 @@ const stockStatus = (row) => {
 };
 
 const warehousePercentage = (qty) => {
-    const max = Math.max(...warehouses.value.map((w) => Number(w.total_quantity) || 0), 1);
+    const max = Math.max(...warehouses.value.map((w) => Number(w.total_available) || 0), 1);
     return Math.round(((Number(qty) || 0) / max) * 100);
 };
 
 const warehouseProgressColor = (qty) => (Number(qty) > 0 ? '#667eea' : '#9ca3af');
+
+/** Units on the shelf that cannot be sold at all — not merely spoken for. */
+const unsellable = (row) => (Number(row.damaged_quantity) || 0) + (Number(row.quarantined_quantity) || 0);
 
 const availableClass = (row) => {
     const available = Number(row.available ?? 0);
@@ -822,6 +847,13 @@ onMounted(() => {
 .wh-qty {
     font-weight: 700;
     color: var(--text-dark);
+    white-space: nowrap;
+}
+
+.wh-gross {
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: #94a3b8;
 }
 
 .today-stats {

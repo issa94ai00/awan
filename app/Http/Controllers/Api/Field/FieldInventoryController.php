@@ -41,7 +41,8 @@ class FieldInventoryController extends Controller
         $query = WarehouseInventory::query()
             ->with('product:id,sku,name_ar,name_en,price,cost_price,barcode')
             ->where('warehouse_id', $warehouseId)
-            ->selectRaw('*, quantity - reserved_quantity - damaged_quantity - quarantined_quantity as available');
+            ->selectRaw('*')
+            ->withAvailable();
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -53,12 +54,14 @@ class FieldInventoryController extends Controller
         }
 
         // The two filters a rep standing in a warehouse actually needs.
+        $available = WarehouseInventory::availableSql();
+
         if ($request->boolean('in_stock_only')) {
-            $query->whereRaw('quantity - reserved_quantity - damaged_quantity - quarantined_quantity > 0');
+            $query->whereRaw("({$available}) > 0");
         }
 
         if ($request->boolean('low_stock_only')) {
-            $query->whereRaw('quantity - reserved_quantity - damaged_quantity - quarantined_quantity <= COALESCE(reorder_point, 0)');
+            $query->whereRaw("({$available}) <= COALESCE(reorder_point, 0)");
         }
 
         $rows = $query->orderByDesc('updated_at')->paginate(min((int) $request->input('per_page', 30) ?: 30, 200));
@@ -197,10 +200,14 @@ class FieldInventoryController extends Controller
 
     /* ------------------------------------------------------------------ */
 
+    /**
+     * What the rep standing in the warehouse may sell — the one definition, so
+     * the field app and the back office never quote different figures for the
+     * same shelf. See WarehouseInventory::availableSql().
+     */
     private function available(WarehouseInventory $row): int
     {
-        return max(0, (int) $row->quantity - (int) $row->reserved_quantity
-            - (int) $row->damaged_quantity - (int) $row->quarantined_quantity);
+        return $row->available_stock;
     }
 
     private function stockRow(WarehouseInventory $row): array

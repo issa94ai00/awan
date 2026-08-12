@@ -3,26 +3,37 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\Setting;
+use App\Services\CurrencyService;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class SettingsController extends Controller
 {
+    public function __construct(
+        private CurrencyService $currencies
+    ) {}
+
     public function index()
     {
         $settings = Setting::all()->pluck('value', 'key')->toArray();
+        // Mirror the books' base so the settings UI never shows a stale code.
+        $settings['default_currency'] = $this->currencies->baseCode();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'settings' => $settings,
-            ]
+                'currencies' => $this->currencies->active()->values(),
+                'base_currency' => $this->currencies->baseCode(),
+            ],
         ]);
     }
 
     public function update(Request $request)
     {
-        $availableCurrencies = ['USD', 'EUR', 'SAR', 'AED', 'EGP'];
+        $availableCurrencies = $this->currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
         $availableTimezones = ['Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
@@ -35,9 +46,9 @@ class SettingsController extends Controller
             'settings.site_description_en' => 'nullable|string|max:1000',
             'settings.show_site_name' => 'sometimes|boolean',
             'settings.show_product_price' => 'sometimes|boolean',
-            'settings.default_currency' => ['nullable', 'in:' . implode(',', $availableCurrencies)],
-            'settings.default_language' => ['nullable', 'in:' . implode(',', $availableLanguages)],
-            'settings.timezone' => ['nullable', 'in:' . implode(',', $availableTimezones)],
+            'settings.default_currency' => ['nullable', 'string', Rule::in($availableCurrencies)],
+            'settings.default_language' => ['nullable', 'in:'.implode(',', $availableLanguages)],
+            'settings.timezone' => ['nullable', 'in:'.implode(',', $availableTimezones)],
             'settings.contact_phone' => 'nullable|string|max:50',
             'settings.contact_whatsapp' => 'nullable|string|max:50',
             'settings.contact_email' => 'nullable|email|max:255',
@@ -145,9 +156,23 @@ class SettingsController extends Controller
 
         $booleanFields = ['show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications'];
         foreach ($booleanFields as $field) {
-            if (!isset($data[$field])) {
+            if (! isset($data[$field])) {
                 $data[$field] = '0';
             }
+        }
+
+        // Apply base-currency change through CurrencyService so the setting and
+        // the currencies.is_base row stay one fact, not two.
+        if (array_key_exists('default_currency', $data) && filled($data['default_currency'])) {
+            try {
+                $this->currencies->applyDefaultCurrency((string) $data['default_currency']);
+            } catch (RuntimeException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+            unset($data['default_currency']);
         }
 
         foreach ($data as $key => $value) {
@@ -175,11 +200,16 @@ class SettingsController extends Controller
         }
 
         $settings = Setting::all()->pluck('value', 'key')->toArray();
+        $settings['default_currency'] = $this->currencies->baseCode();
 
         return response()->json([
             'success' => true,
             'message' => 'Settings updated',
-            'data' => ['settings' => $settings]
+            'data' => [
+                'settings' => $settings,
+                'currencies' => $this->currencies->active()->values(),
+                'base_currency' => $this->currencies->baseCode(),
+            ],
         ]);
     }
 

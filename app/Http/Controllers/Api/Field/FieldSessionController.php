@@ -8,7 +8,6 @@ use App\Models\WarehouseInventory;
 use App\Services\Field\FieldScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * What the field app needs on launch: who is signed in, which warehouses they
@@ -51,15 +50,17 @@ class FieldSessionController extends Controller
     {
         if ($warehouseIds === []) {
             return ['open_orders' => 0, 'awaiting_confirmation' => 0, 'ready_to_ship' => 0,
-                    'my_open_orders' => 0, 'overdue_orders' => 0, 'low_stock_items' => 0, 'out_of_stock_items' => 0];
+                'my_open_orders' => 0, 'overdue_orders' => 0, 'low_stock_items' => 0, 'out_of_stock_items' => 0];
         }
 
         $base = fn () => SalesOrder::whereIn('fulfillment_warehouse_id', $warehouseIds);
         $open = [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING, SalesOrder::STATUS_SHIPPED];
 
+        $available = WarehouseInventory::availableSql();
+
         $stock = WarehouseInventory::whereIn('warehouse_id', $warehouseIds)
-            ->selectRaw('SUM(CASE WHEN quantity - reserved_quantity - damaged_quantity - quarantined_quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock')
-            ->selectRaw('SUM(CASE WHEN quantity - reserved_quantity - damaged_quantity - quarantined_quantity > 0 AND quantity - reserved_quantity - damaged_quantity - quarantined_quantity <= COALESCE(reorder_point, 0) THEN 1 ELSE 0 END) as low_stock')
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= 0 THEN 1 ELSE 0 END) as out_of_stock")
+            ->selectRaw("SUM(CASE WHEN ({$available}) > 0 AND ({$available}) <= COALESCE(reorder_point, 0) THEN 1 ELSE 0 END) as low_stock")
             ->first();
 
         return [

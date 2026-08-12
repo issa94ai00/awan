@@ -622,6 +622,12 @@
                                 <span v-if="!collapsed" class="nav-text">{{ t('permissions') }}</span>
                             </router-link>
                         </li>
+                        <li>
+                            <router-link to="/admin/currencies" class="nav-link" :class="{ active: isActive('/admin/currencies') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('currencies') }}</span>
+                            </router-link>
+                        </li>
                     </ul>
                 </li>
             </ul>

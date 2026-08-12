@@ -3,12 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
+use App\Models\Customer;
 use App\Models\RmaItem;
 use App\Models\RmaRequest;
+use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
+use App\Models\StockMovement;
+use App\Models\Warehouse;
+use App\Models\WarehouseBin;
+use App\Services\AuditService;
+use App\Services\Inventory\InventoryService;
+use App\Services\RmaSettlementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class RmaController extends Controller
@@ -40,7 +50,7 @@ class RmaController extends Controller
             ->limit(5000)
             ->get();
 
-        $filename = 'rma-requests-' . now()->format('Y-m-d') . '.csv';
+        $filename = 'rma-requests-'.now()->format('Y-m-d').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -51,7 +61,7 @@ class RmaController extends Controller
             $handle = fopen('php://output', 'w');
 
             // BOM so Excel opens the Arabic columns in UTF-8.
-            fwrite($handle, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fwrite($handle, chr(0xEF).chr(0xBB).chr(0xBF));
 
             fputcsv($handle, [
                 'رقم الإرجاع',
@@ -105,10 +115,10 @@ class RmaController extends Controller
      */
     private function defaultBinFor($warehouseId): ?int
     {
-        $query = \App\Models\WarehouseBin::where('warehouse_id', $warehouseId);
+        $query = WarehouseBin::where('warehouse_id', $warehouseId);
 
         foreach (['is_active' => 1, 'status' => 'active'] as $column => $activeValue) {
-            if (\Illuminate\Support\Facades\Schema::hasColumn('warehouse_bins', $column)) {
+            if (Schema::hasColumn('warehouse_bins', $column)) {
                 $preferred = (clone $query)->where($column, $activeValue)->first();
                 if ($preferred) {
                     return $preferred->id;
@@ -156,13 +166,13 @@ class RmaController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('rma_number', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                      $customerQuery->where('name', 'like', "%{$search}%")
-                                   ->orWhere('phone', 'like', "%{$search}%");
-                  })
-                  ->orWhereHas('salesOrder', function ($orderQuery) use ($search) {
-                      $orderQuery->where('order_number', 'like', "%{$search}%");
-                  });
+                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                        $customerQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('salesOrder', function ($orderQuery) use ($search) {
+                        $orderQuery->where('order_number', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -230,7 +240,7 @@ class RmaController extends Controller
             DB::beginTransaction();
 
             // Check if sales order belongs to the customer
-            $salesOrder = \App\Models\SalesOrder::findOrFail($request->sales_order_id);
+            $salesOrder = SalesOrder::findOrFail($request->sales_order_id);
             if ($salesOrder->customer_id != $request->customer_id) {
                 throw new \Exception('الطلب لا ينتمي للعميل المحدد');
             }
@@ -246,7 +256,7 @@ class RmaController extends Controller
 
                 // Sum previously requested quantities for this order item in active requests
                 $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
-                    ->whereHas('rmaRequest', function($query) {
+                    ->whereHas('rmaRequest', function ($query) {
                         $query->whereNotIn('status', ['rejected', 'cancelled']);
                     })
                     ->sum('quantity_requested');
@@ -254,15 +264,16 @@ class RmaController extends Controller
                 $totalRequested = $previouslyRequested + $item['quantity_requested'];
                 if ($totalRequested > $orderItem->quantity) {
                     $availableToReturn = $orderItem->quantity - $previouslyRequested;
-                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: " . ($orderItem->product ? $orderItem->product->name : ''));
+                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($orderItem->product ? $orderItem->product->name : ''));
                 }
             }
 
             // Generate unique RMA number using database lock
-            $rmaNumber = DB::transaction(function() {
+            $rmaNumber = DB::transaction(function () {
                 $lastRma = RmaRequest::orderBy('id', 'desc')->lockForUpdate()->first();
                 $nextId = $lastRma ? $lastRma->id + 1 : 1;
-                return 'RMA-' . str_pad($nextId, 6, '0', STR_PAD_LEFT);
+
+                return 'RMA-'.str_pad($nextId, 6, '0', STR_PAD_LEFT);
             });
 
             $rmaRequest = RmaRequest::create([
@@ -307,7 +318,7 @@ class RmaController extends Controller
             $rmaRequest->save();
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'create_rma',
                 get_class($rmaRequest),
@@ -330,6 +341,7 @@ class RmaController extends Controller
 
         } catch (ValidationException $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطأ في التحقق من البيانات',
@@ -339,6 +351,7 @@ class RmaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('RMA Request Creation Failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -351,11 +364,12 @@ class RmaController extends Controller
     {
         $rmaRequest = RmaRequest::with('items')->findOrFail($id);
 
-        if (!$rmaRequest->canApprove()) {
+        if (! $rmaRequest->canApprove()) {
             Log::warning('RMA Approval Failed - Invalid Status', ['rma_id' => $id, 'status' => $rmaRequest->status]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن الموافقة على هذا الطلب. الحالة الحالية: ' . $rmaRequest->status_text,
+                'message' => 'لا يمكن الموافقة على هذا الطلب. الحالة الحالية: '.$rmaRequest->status_text,
                 'data' => null,
             ], 422);
         }
@@ -374,7 +388,7 @@ class RmaController extends Controller
             }
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'approve_rma',
                 get_class($rmaRequest),
@@ -398,6 +412,7 @@ class RmaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('RMA Approval Failed', ['rma_id' => $id, 'error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -410,11 +425,12 @@ class RmaController extends Controller
     {
         $rmaRequest = RmaRequest::findOrFail($id);
 
-        if (!$rmaRequest->canReject()) {
+        if (! $rmaRequest->canReject()) {
             Log::warning('RMA Rejection Failed - Invalid Status', ['rma_id' => $id, 'status' => $rmaRequest->status]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن رفض هذا الطلب. الحالة الحالية: ' . $rmaRequest->status_text,
+                'message' => 'لا يمكن رفض هذا الطلب. الحالة الحالية: '.$rmaRequest->status_text,
                 'data' => null,
             ], 422);
         }
@@ -431,7 +447,7 @@ class RmaController extends Controller
             $rmaRequest->reject(auth()->id(), $request->reason);
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'reject_rma',
                 get_class($rmaRequest),
@@ -455,6 +471,7 @@ class RmaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('RMA Rejection Failed', ['rma_id' => $id, 'error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -467,7 +484,7 @@ class RmaController extends Controller
     {
         $rmaRequest = RmaRequest::with(['items', 'salesOrder'])->findOrFail($id);
 
-        if (!$rmaRequest->canReceive()) {
+        if (! $rmaRequest->canReceive()) {
             return response()->json([
                 'success' => false,
                 'message' => 'لا يمكن استلام المنتجات لهذا الطلب. يجب أن يكون الطلب موافق عليه أولاً.',
@@ -488,9 +505,9 @@ class RmaController extends Controller
 
             $warehouseId = $request->warehouse_id
                 ?? $rmaRequest->salesOrder?->fulfillment_warehouse_id
-                ?? \App\Models\Warehouse::first()?->id;
+                ?? Warehouse::first()?->id;
 
-            if (!$warehouseId) {
+            if (! $warehouseId) {
                 throw new \Exception('يجب تحديد مستودع لاستلام المنتجات المرتجعة');
             }
 
@@ -529,25 +546,38 @@ class RmaController extends Controller
                         ? "{$noteLabel} من العميل لطلب {$orderRef}"
                         : "تصحيح كمية الاستلام لطلب الإرجاع {$rmaRequest->rma_number}";
 
+                    // Returned units must not open a zero-cost layer: the FIFO
+                    // layers decide what a later sale costs, and stock that came
+                    // back valued at 0 quietly understates the inventory's worth
+                    // and inflates the margin of whatever finally ships. The
+                    // units are valued at what they cost to acquire (the variant
+                    // cost when there is one, else the product's).
+                    $returnCost = (float) (
+                        $rmaItem->product_variant_id && $rmaItem->variant?->cost_price
+                            ? $rmaItem->variant->cost_price
+                            : ($rmaItem->product?->cost_price ?? 0)
+                    );
+
                     // Book the change through InventoryService, which keeps the
                     // warehouse row (quantity + condition bucket), the movement
                     // trail and products.stock_quantity consistent. No movement
                     // key here: markAsReceived() above already assigns rather
                     // than adds, and `delta` is derived from the old count, so
                     // re-submitting the same dialog can never double-book stock.
-                    app(\App\Services\Inventory\InventoryService::class)->move(
+                    app(InventoryService::class)->move(
                         $rmaItem->product_id,
                         $delta,
                         $warehouseId,
                         $delta > 0
-                            ? \App\Models\StockMovement::TYPE_IN
-                            : \App\Models\StockMovement::TYPE_OUT,
+                            ? StockMovement::TYPE_IN
+                            : StockMovement::TYPE_OUT,
                         [
                             'reference' => $rmaRequest->rma_number,
                             'source' => 'rma',
                             'reason' => $note,
                             'condition' => $condition,
                             'bin_id' => $binId,
+                            'unit_cost' => $returnCost,
                             'allow_negative' => $delta < 0,
                             'created_by' => auth()->id(),
                         ]
@@ -565,7 +595,7 @@ class RmaController extends Controller
             }
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'receive_items',
                 get_class($rmaRequest),
@@ -586,6 +616,7 @@ class RmaController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -598,7 +629,7 @@ class RmaController extends Controller
     {
         $rmaRequest = RmaRequest::with(['items', 'customer', 'salesOrder'])->findOrFail($id);
 
-        if (!$rmaRequest->canComplete()) {
+        if (! $rmaRequest->canComplete()) {
             return response()->json([
                 'success' => false,
                 'message' => 'لا يمكن إكمال هذا الطلب',
@@ -615,7 +646,7 @@ class RmaController extends Controller
         try {
             DB::beginTransaction();
 
-            $settlement = app(\App\Services\RmaSettlementService::class);
+            $settlement = app(RmaSettlementService::class);
 
             $rmaRequest->loadMissing('items');
 
@@ -646,7 +677,7 @@ class RmaController extends Controller
             $replacementOrder = $replacement['order'];
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'complete_rma',
                 get_class($rmaRequest),
@@ -703,6 +734,7 @@ class RmaController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -729,7 +761,7 @@ class RmaController extends Controller
             $rmaRequest->cancel();
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'cancel_rma',
                 get_class($rmaRequest),
@@ -749,6 +781,7 @@ class RmaController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -791,8 +824,8 @@ class RmaController extends Controller
     public function getCustomersWithOrders(Request $request)
     {
         // Debug: Log all customers with their orders
-        $allCustomers = \App\Models\Customer::with('salesOrders')->get();
-        \Log::info('All customers count: ' . $allCustomers->count());
+        $allCustomers = Customer::with('salesOrders')->get();
+        \Log::info('All customers count: '.$allCustomers->count());
         foreach ($allCustomers as $customer) {
             \Log::info("Customer: {$customer->name}, Orders count: {$customer->salesOrders->count()}");
             foreach ($customer->salesOrders as $order) {
@@ -800,25 +833,25 @@ class RmaController extends Controller
             }
         }
 
-        $query = \App\Models\Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
+        $query = Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
             $query->where('status', 'delivered');
         }])->whereHas('salesOrders', function ($query) {
             $query->where('status', 'delivered');
         });
 
-        if ($request->has('search') && !empty($request->search)) {
+        if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
         $customers = $query->orderBy('name', 'asc')
             ->paginate($request->per_page ?? 50);
 
-        \Log::info('Filtered customers with delivered orders count: ' . $customers->count());
+        \Log::info('Filtered customers with delivered orders count: '.$customers->count());
 
         return response()->json([
             'success' => true,
@@ -853,7 +886,7 @@ class RmaController extends Controller
             'quantity_received',
             'condition',
             'resolution',
-            'notes'
+            'notes',
         ]));
 
         return response()->json([
@@ -870,9 +903,10 @@ class RmaController extends Controller
         // Only allow updates for pending requests
         if ($rmaRequest->status !== RmaRequest::STATUS_PENDING) {
             Log::warning('RMA Update Failed - Invalid Status', ['rma_id' => $id, 'status' => $rmaRequest->status]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن تحديث طلب الإرجاع. الحالة الحالية: ' . $rmaRequest->status_text,
+                'message' => 'لا يمكن تحديث طلب الإرجاع. الحالة الحالية: '.$rmaRequest->status_text,
                 'data' => null,
             ], 422);
         }
@@ -904,7 +938,7 @@ class RmaController extends Controller
                 'reason_description',
                 'return_address',
                 'admin_notes',
-                'refund_method'
+                'refund_method',
             ]));
 
             // Update items if provided
@@ -918,7 +952,7 @@ class RmaController extends Controller
 
                     // Sum previously requested quantities for this order item in other active requests
                     $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
-                        ->whereHas('rmaRequest', function($query) use ($id) {
+                        ->whereHas('rmaRequest', function ($query) use ($id) {
                             $query->whereNotIn('status', ['rejected', 'cancelled'])
                                 ->where('id', '!=', $id);
                         })
@@ -927,7 +961,7 @@ class RmaController extends Controller
                     $totalRequested = $previouslyRequested + $item['quantity_requested'];
                     if ($totalRequested > $orderItem->quantity) {
                         $availableToReturn = $orderItem->quantity - $previouslyRequested;
-                        throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: " . ($orderItem->product ? $orderItem->product->name : ''));
+                        throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($orderItem->product ? $orderItem->product->name : ''));
                     }
 
                     $rmaItem = $rmaRequest->items()->create([
@@ -955,7 +989,7 @@ class RmaController extends Controller
             }
 
             // Log action in AuditLog
-            $auditService = app(\App\Services\AuditService::class);
+            $auditService = app(AuditService::class);
             $auditService->log(
                 'update_rma',
                 get_class($rmaRequest),
@@ -978,6 +1012,7 @@ class RmaController extends Controller
 
         } catch (ValidationException $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطأ في التحقق من البيانات',
@@ -987,6 +1022,7 @@ class RmaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('RMA Update Failed', ['rma_id' => $id, 'error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -1007,6 +1043,21 @@ class RmaController extends Controller
             ], 422);
         }
 
+        // Goods may have already been booked back into the warehouse. Deleting
+        // the request would wipe the document behind those inbound movements
+        // while the stock stays on the shelf — an untraceable quantity, and the
+        // "received" trail disappears. The receipt must be reversed first.
+        $receivedCount = RmaItem::where('rma_request_id', $rmaRequest->id)
+            ->sum('quantity_received');
+
+        if ($receivedCount > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن حذف طلب إرجاع تم استلام بضاعته. أعد تصحيح الكميات المستلمة إلى صفر أولاً.',
+                'data' => null,
+            ], 422);
+        }
+
         $rmaRequest->delete();
 
         return response()->json([
@@ -1018,8 +1069,8 @@ class RmaController extends Controller
 
     public function getActivity($id)
     {
-        $activities = \App\Models\AuditLog::with('user')
-            ->where('entity_type', \App\Models\RmaRequest::class)
+        $activities = AuditLog::with('user')
+            ->where('entity_type', RmaRequest::class)
             ->where('entity_id', $id)
             ->orderBy('created_at', 'desc')
             ->get()

@@ -19,7 +19,6 @@ use App\Models\WarehouseInventory;
  */
 class OrderAllocationService
 {
-
     /**
      * Suggest how an order's lines should be split across warehouses.
      *
@@ -143,21 +142,24 @@ class OrderAllocationService
      */
 
     /**
-     * Where an order should be served from.
+     * Where an order should be served from, as far as anyone can tell at the
+     * moment it is raised.
      *
      * Everything below the first `return` used to be unreachable — a geolocation
      * search over an undefined `$warehouses`, which would have been a fatal error
      * had it ever run. It has been removed rather than fixed: routing now goes
-     * through SalesOrderWorkflowService::pickWarehouse, which scores warehouses
-     * by whether they can actually cover the order's lines, and there is no
-     * second, quietly different answer to the same question.
+     * through SalesOrderWorkflowService, which measures warehouses against the
+     * lines they would have to fill, and there is no second, quietly different
+     * answer to the same question.
+     *
+     * The old fallback to `Warehouse::active()->orderBy('id')` — the main
+     * warehouse — went with it. Naming a warehouse here settled the routing
+     * before the stock had been looked at, and confirmation, finding the order
+     * already routed, never reconsidered it. `null` means "nobody has decided
+     * yet", which is the truth, and confirmation decides.
      */
     public function selectFulfillmentWarehouse(SalesOrder $order): ?int
     {
-        if ($order->assignedEmployee?->warehouse_id) {
-            return $order->assignedEmployee->warehouse_id;
-        }
-
-        return Warehouse::active()->orderBy('id')->value('id');
+        return $order->assignedEmployee?->warehouse_id;
     }
 }

@@ -155,13 +155,15 @@ const toNumber = (value) => {
 };
 
 /**
- * Currency formatter. The sales views each hard-coded a different currency
- * (one used 'SYP', another a bare '$'), so amounts disagreed screen to screen.
- * The configured `default_currency` setting is the single source of truth.
+ * Currency formatter. Amounts are stored in the base currency; that code is
+ * the single source of truth (mirrored as settings.default_currency).
  */
 export const formatCurrency = (value, currency) => {
     const amount = toNumber(value);
-    const code = currency || window.systemData?.settings?.default_currency || 'SAR';
+    const code = currency
+        || window.systemData?.currencies?.base
+        || window.systemData?.settings?.default_currency
+        || 'SAR';
     const locale = i18n.global.locale.value === 'en' ? 'en-US' : 'ar-SY';
 
     const formatted = new Intl.NumberFormat(locale, {

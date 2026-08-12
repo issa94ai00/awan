@@ -4,11 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
-use App\Models\SalesOrder;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
+use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
-use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
@@ -28,8 +27,7 @@ class SalesOrderController extends Controller
     public function __construct(
         private SalesOrderWorkflowService $workflow,
         private LedgerPostingService $ledger,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -94,8 +92,8 @@ class SalesOrderController extends Controller
                     'per_page' => $salesOrders->perPage(),
                     'total' => $salesOrders->total(),
                     'has_more_pages' => $salesOrders->hasMorePages(),
-                ]
-            ]
+                ],
+            ],
         ]);
     }
 
@@ -157,7 +155,7 @@ class SalesOrderController extends Controller
 
         // Derived from the last id, not the row count: counting reuses a number
         // the moment any order is deleted.
-        $validated['order_number'] = 'SO-' . str_pad(
+        $validated['order_number'] = 'SO-'.str_pad(
             (string) (((int) SalesOrder::max('id')) + 1),
             6,
             '0',
@@ -166,14 +164,14 @@ class SalesOrderController extends Controller
         $validated['status'] = SalesOrder::STATUS_PENDING;
         $validated['created_by'] = auth()->id();
 
-        if (!empty($validated['assigned_employee_id']) && empty($validated['fulfillment_warehouse_id'])) {
+        if (! empty($validated['assigned_employee_id']) && empty($validated['fulfillment_warehouse_id'])) {
             $employee = Employee::find($validated['assigned_employee_id']);
             $validated['fulfillment_warehouse_id'] = $employee?->warehouse_id;
         }
 
-        if (empty($validated['fulfillment_warehouse_id'])) {
-            $validated['fulfillment_warehouse_id'] = Warehouse::active()->orderBy('id')->value('id');
-        }
+        // No blind fallback to the first active warehouse. An order nobody has
+        // routed stays unrouted until confirmation, which picks the warehouse —
+        // or the set of them — that can actually fill it.
 
         $subtotal = 0;
         foreach ($request->items as $item) {
@@ -217,7 +215,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'تم إنشاء طلب البيع بنجاح',
-            'data' => $salesOrder
+            'data' => $salesOrder,
         ], 201);
     }
 
@@ -228,7 +226,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Sales order retrieved successfully',
-            'data' => $salesOrder
+            'data' => $salesOrder,
         ]);
     }
 
@@ -270,7 +268,7 @@ class SalesOrderController extends Controller
         // is covering the round. A request that leaves the field out keeps the
         // current owner rather than clearing it, so editing a delivery address
         // cannot silently orphan the order.
-        if (!array_key_exists('assigned_employee_id', $validated) || $validated['assigned_employee_id'] === null) {
+        if (! array_key_exists('assigned_employee_id', $validated) || $validated['assigned_employee_id'] === null) {
             $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
         }
 
@@ -294,12 +292,8 @@ class SalesOrderController extends Controller
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than
         // staying with the person who happened to raise it.
-        if (empty($validated['fulfillment_warehouse_id']) && !empty($validated['assigned_employee_id'])) {
+        if (empty($validated['fulfillment_warehouse_id']) && ! empty($validated['assigned_employee_id'])) {
             $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id;
-        }
-
-        if (empty($validated['fulfillment_warehouse_id'])) {
-            $validated['fulfillment_warehouse_id'] = Warehouse::active()->orderBy('id')->value('id');
         }
 
         DB::transaction(function () use ($salesOrder, $validated, $request) {
@@ -322,7 +316,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'تم تحديث طلب البيع بنجاح',
-            'data' => $salesOrder
+            'data' => $salesOrder,
         ]);
     }
 
@@ -331,7 +325,7 @@ class SalesOrderController extends Controller
         // Deleting a confirmed order would strand its invoice and journal entry
         // with no document behind them, and leave the reserved stock held
         // forever. Cancelling unwinds all three properly.
-        if (!in_array($salesOrder->status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true)) {
+        if (! in_array($salesOrder->status, [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CANCELLED], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'لا يمكن حذف طلب مؤكد. استخدم الإلغاء ليُحرَّر الحجز وتُعكس القيود.',
@@ -347,7 +341,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'تم حذف طلب البيع بنجاح',
-            'data' => null
+            'data' => null,
         ]);
     }
 
@@ -383,7 +377,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => $existing
-                ? 'هذه الطلبية مرتبطة بالفاتورة ' . $invoice->invoice_number . ' مسبقاً.'
+                ? 'هذه الطلبية مرتبطة بالفاتورة '.$invoice->invoice_number.' مسبقاً.'
                 : 'تم تحويل طلب البيع إلى فاتورة بنجاح',
             'data' => $invoice,
         ], $existing ? 200 : 201);
@@ -413,20 +407,20 @@ class SalesOrderController extends Controller
         // keyed by its own id, so it has to be looked up by payment rather than
         // by order, or the trail stops at the invoice.
         $paymentKeys = collect($invoice?->payments ?? [])
-            ->flatMap(fn ($p) => ['payment:' . $p->id, 'payment:' . $p->id . ':reversal']);
+            ->flatMap(fn ($p) => ['payment:'.$p->id, 'payment:'.$p->id.':reversal']);
 
         $entries = JournalEntryHeader::with('lines.ledgerAccount')
             ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys) {
                 $q->whereIn('posting_key', [
-                    'so_cogs:' . $salesOrder->id,
-                    'so_cogs:' . $salesOrder->id . ':reversal',
+                    'so_cogs:'.$salesOrder->id,
+                    'so_cogs:'.$salesOrder->id.':reversal',
                 ]);
 
                 if ($invoice) {
                     // Anchored on the colon: a bare "invoice:1%" prefix would
                     // also swallow invoice:10, invoice:19 and so on.
-                    $q->orWhere('posting_key', 'invoice:' . $invoice->id)
-                        ->orWhere('posting_key', 'like', 'invoice:' . $invoice->id . ':%');
+                    $q->orWhere('posting_key', 'invoice:'.$invoice->id)
+                        ->orWhere('posting_key', 'like', 'invoice:'.$invoice->id.':%');
                 }
 
                 if ($paymentKeys->isNotEmpty()) {
@@ -484,12 +478,38 @@ class SalesOrderController extends Controller
             'fulfillment_type' => $salesOrder->fulfillment_type,
             'status' => $salesOrder->status,
             'allowed_transitions' => SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? [],
-            'can_change_fulfillment_type' => !in_array(
+            'can_change_fulfillment_type' => ! in_array(
                 $salesOrder->status,
                 [SalesOrder::STATUS_SHIPPED, SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED],
                 true
             ),
         ];
+    }
+
+    /**
+     * Replaces the warehouses the order is routed through.
+     *
+     * More than one may be chosen: an order split across two branches is routed
+     * to both, and only those two can then source its lines.
+     */
+    public function saveRoutings(Request $request, SalesOrder $salesOrder)
+    {
+        $validated = $request->validate([
+            'warehouse_ids' => 'required|array|min:1',
+            'warehouse_ids.*' => 'required|integer|exists:warehouses,id',
+        ]);
+
+        try {
+            $result = $this->workflow->saveRoutings($salesOrder, $validated['warehouse_ids']);
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم حفظ توجيهات الطلب.',
+            'data' => $result,
+        ]);
     }
 
     /** The per-line sourcing plan and what each warehouse could supply. */
@@ -565,7 +585,7 @@ class SalesOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => $result['changed']
-                ? 'تم نقل الطلب إلى مرحلة "' . $this->stageLabel($result['status']) . '".'
+                ? 'تم نقل الطلب إلى مرحلة "'.$this->stageLabel($result['status']).'".'
                 : 'الطلب في هذه المرحلة بالفعل.',
             'data' => $this->orderPayload($salesOrder->refresh(), $result),
         ]);
@@ -627,10 +647,10 @@ class SalesOrderController extends Controller
             'invoice' => $invoice?->load('items.product'),
             'journal_entries' => JournalEntryHeader::with('lines.ledgerAccount')
                 ->where(function ($q) use ($salesOrder, $invoice) {
-                    $q->where('posting_key', 'so_cogs:' . $salesOrder->id);
+                    $q->where('posting_key', 'so_cogs:'.$salesOrder->id);
                     if ($invoice) {
-                        $q->orWhere('posting_key', 'invoice:' . $invoice->id)
-                            ->orWhere('posting_key', 'like', 'invoice:' . $invoice->id . ':%');
+                        $q->orWhere('posting_key', 'invoice:'.$invoice->id)
+                            ->orWhere('posting_key', 'like', 'invoice:'.$invoice->id.':%');
                     }
                 })
                 ->get(),

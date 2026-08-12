@@ -179,11 +179,11 @@ class ProductExcelService
 
                 'السليمة (محسوب)' => (int) ($item->available_quantity ?? 0),
                 'المحجوز (محسوب)' => $reserved,
-                // Derived here exactly as the inventory panel derives it, so a
-                // figure read off the sheet and the same figure read off the
-                // screen are the same number rather than two that merely share
-                // a name.
-                'المتاح للبيع (محسوب)' => max(0, $quantity - $reserved - $damaged - $quarantined),
+                // Read off the model rather than recomputed, so the sheet cannot
+                // drift from the screen. Spelling the sum out here was already
+                // one definition too many: it agreed with the panel only while
+                // the condition buckets added up to `quantity`.
+                'المتاح للبيع (محسوب)' => $item->available_stock,
             ];
         })->all();
 
@@ -283,7 +283,7 @@ class ProductExcelService
      * Which computed columns the sheet carries that the importer will not apply.
      *
      * @param  array<int,array<string,mixed>>  $rows
-     * @return array<int,string>  Arabic labels, ready to show
+     * @return array<int,string> Arabic labels, ready to show
      */
     private function ignoredColumnsIn(array $rows): array
     {
@@ -325,6 +325,7 @@ class ProductExcelService
                 $nameAr = $data['name_ar'] ?: $data['name_en'];
                 if (! $nameAr) {
                     $result['skipped']++;
+
                     continue;
                 }
 
@@ -360,6 +361,7 @@ class ProductExcelService
                         $this->applyUniqueSlug($product, $values);
                         $product->update($values);
                         $result['updated']++;
+
                         continue;
                     }
                 } elseif (! empty($data['name_ar'])) {
@@ -368,6 +370,7 @@ class ProductExcelService
                         $this->applyUniqueSlug($product, $values);
                         $product->update($values);
                         $result['updated']++;
+
                         continue;
                     }
                 }
@@ -531,7 +534,7 @@ class ProductExcelService
         $next = (int) (Warehouse::max('id') ?? 0) + 1;
 
         do {
-            $code = 'WH-' . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+            $code = 'WH-'.str_pad((string) $next, 3, '0', STR_PAD_LEFT);
             $next++;
         } while (Warehouse::where('code', $code)->exists());
 
@@ -601,7 +604,7 @@ class ProductExcelService
      * follows from them. Reserved is never touched here: it is a hold against
      * real orders, and no count document owns it.
      *
-     * @param  int|null  $damaged      null leaves the bucket as it is
+     * @param  int|null  $damaged  null leaves the bucket as it is
      * @param  int|null  $quarantined  null leaves the bucket as it is
      */
     private function setWarehouseStock(
@@ -701,7 +704,7 @@ class ProductExcelService
      */
     public function read(string $path): array
     {
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             throw new \RuntimeException('The file does not exist.');
         }
 
@@ -723,11 +726,11 @@ class ProductExcelService
      * a multi-sheet menu file needs — each sheet is treated as a separate
      * document (e.g. one warehouse per sheet).
      *
-     * @return array<string, array<int, array<string, string>>>  sheetName => rows
+     * @return array<string, array<int, array<string, string>>> sheetName => rows
      */
     public function readAllWorksheets(string $path): array
     {
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($path) !== true) {
             throw new \RuntimeException('Unable to open the file as an Excel (xlsx) file.');
         }
@@ -771,7 +774,7 @@ class ProductExcelService
     /**
      * Resolve every worksheet part to its path inside the package.
      *
-     * @return array<string, string>  sheet name => archive path
+     * @return array<string, string> sheet name => archive path
      */
     private function worksheetTargets(ZipArchive $zip): array
     {
@@ -784,15 +787,16 @@ class ProductExcelService
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $name = $zip->getNameIndex($i);
                 if (strpos($name, 'xl/worksheets/sheet') === 0 && strpos($name, '.xml') !== false) {
-                    $sheetName = 'Sheet' . (count($targets) + 1);
+                    $sheetName = 'Sheet'.(count($targets) + 1);
                     $targets[$sheetName] = $name;
                 }
             }
+
             return $targets ?: ['Sheet1' => 'xl/worksheets/sheet1.xml'];
         }
 
         $relationships = [];
-        $rels = new DOMDocument();
+        $rels = new DOMDocument;
         if (@$rels->loadXML($relsXml)) {
             foreach ($rels->getElementsByTagNameNS(
                 'http://schemas.openxmlformats.org/package/2006/relationships',
@@ -803,7 +807,7 @@ class ProductExcelService
         }
 
         $targets = [];
-        $workbook = new DOMDocument();
+        $workbook = new DOMDocument;
         if (@$workbook->loadXML($workbookXml)) {
             foreach ($workbook->getElementsByTagNameNS(
                 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
@@ -820,7 +824,7 @@ class ProductExcelService
                     continue;
                 }
                 if (strpos($target, 'worksheets/') === false) {
-                    $target = 'xl/' . ltrim($target, '/');
+                    $target = 'xl/'.ltrim($target, '/');
                 }
 
                 $targets[$name] = $target;
@@ -832,7 +836,7 @@ class ProductExcelService
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $name = $zip->getNameIndex($i);
                 if (strpos($name, 'xl/worksheets/sheet') === 0 && strpos($name, '.xml') !== false) {
-                    $sheetName = 'Sheet' . (count($targets) + 1);
+                    $sheetName = 'Sheet'.(count($targets) + 1);
                     $targets[$sheetName] = $name;
                 }
             }
@@ -851,7 +855,7 @@ class ProductExcelService
     {
         $rows = [];
 
-        $dom = new DOMDocument();
+        $dom = new DOMDocument;
         if (! @$dom->loadXML($sheetXml)) {
             return $rows;
         }
@@ -888,6 +892,7 @@ class ProductExcelService
                 for ($i = 0; $i <= $maxColumn; $i++) {
                     $headers[$i] = trim((string) ($cells[$i] ?? ''));
                 }
+
                 continue;
             }
 
@@ -932,7 +937,7 @@ class ProductExcelService
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'products');
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($tmpPath, ZipArchive::OVERWRITE) !== true) {
             throw new \RuntimeException('Unable to create the Excel file.');
         }
@@ -964,18 +969,18 @@ class ProductExcelService
             // The reference has to carry the row number ("A1", not "A"), or
             // every row declares the same cells and Excel offers to repair the
             // file before opening it.
-            $xml .= $this->cellXml($this->colLetter($index) . '1', $header, 'string');
+            $xml .= $this->cellXml($this->colLetter($index).'1', $header, 'string');
             $index++;
         }
         $xml .= '</row>';
 
         $rowNumber = 2;
         foreach ($rows as $row) {
-            $xml .= '<row r="' . $rowNumber . '">';
+            $xml .= '<row r="'.$rowNumber.'">';
             $index = 1;
             foreach ($columns as $header => $type) {
                 $value = $row[$header] ?? '';
-                $xml .= $this->cellXml($this->colLetter($index) . $rowNumber, $value, $type);
+                $xml .= $this->cellXml($this->colLetter($index).$rowNumber, $value, $type);
                 $index++;
             }
             $xml .= '</row>';
@@ -985,11 +990,11 @@ class ProductExcelService
         $xml .= '</sheetData>';
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
-            . '<sheetFormatPr defaultRowHeight="15"/>'
-            . $xml
-            . '</worksheet>';
+            .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            .'<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
+            .'<sheetFormatPr defaultRowHeight="15"/>'
+            .$xml
+            .'</worksheet>';
     }
 
     /**
@@ -998,12 +1003,12 @@ class ProductExcelService
     private function cellXml(string $reference, mixed $value, string $type): string
     {
         if ($type === 'number' && $value !== '' && is_numeric($value)) {
-            return '<c r="' . $reference . '"><v>' . $value . '</v></c>';
+            return '<c r="'.$reference.'"><v>'.$value.'</v></c>';
         }
 
         $text = $this->escapeXml((string) $value);
 
-        return '<c r="' . $reference . '" t="inlineStr"><is><t xml:space="preserve">' . $text . '</t></is></c>';
+        return '<c r="'.$reference.'" t="inlineStr"><is><t xml:space="preserve">'.$text.'</t></is></c>';
     }
 
     /**
@@ -1131,7 +1136,7 @@ class ProductExcelService
             $slug = Str::slug($nameEn);
         }
         if ($slug === '') {
-            $slug = 'product-' . substr(md5($base . uniqid('', true)), 0, 10);
+            $slug = 'product-'.substr(md5($base.uniqid('', true)), 0, 10);
         }
 
         $candidate = $slug;
@@ -1139,7 +1144,7 @@ class ProductExcelService
         while (Product::where('slug', $candidate)
             ->where('id', '!=', $ignoreId ?? 0)
             ->exists()) {
-            $candidate = $slug . '-' . $counter;
+            $candidate = $slug.'-'.$counter;
             $counter++;
         }
 
@@ -1246,7 +1251,7 @@ class ProductExcelService
         }
 
         $shared = [];
-        $dom = new DOMDocument();
+        $dom = new DOMDocument;
         if (@$dom->loadXML($xml)) {
             foreach ($dom->getElementsByTagName('si') as $item) {
                 $text = '';
@@ -1290,7 +1295,7 @@ class ProductExcelService
         $letters = '';
         while ($index > 0) {
             $index--;
-            $letters = chr(65 + ($index % 26)) . $letters;
+            $letters = chr(65 + ($index % 26)).$letters;
             $index = intdiv($index, 26);
         }
 
@@ -1329,6 +1334,7 @@ class ProductExcelService
             }
             if ($segment === '..') {
                 array_pop($resolved);
+
                 continue;
             }
             $resolved[] = $segment;
@@ -1336,10 +1342,10 @@ class ProductExcelService
 
         $path = implode('/', $resolved);
         if (strpos($path, 'worksheets/') === 0) {
-            return 'xl/' . $path;
+            return 'xl/'.$path;
         }
 
-        return 'xl/' . $path;
+        return 'xl/'.$path;
     }
 
     private function escapeXml(string $value): string
@@ -1356,51 +1362,51 @@ class ProductExcelService
     private function contentTypesXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            . '<Default Extension="xml" ContentType="application/xml"/>'
-            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-            . '</Types>';
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            .'<Default Extension="xml" ContentType="application/xml"/>'
+            .'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            .'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            .'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            .'</Types>';
     }
 
     private function rootRelsXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-            . '</Relationships>';
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            .'</Relationships>';
     }
 
     private function workbookXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            . '<sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets>'
-            . '</workbook>';
+            .'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+            .' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets>'
+            .'</workbook>';
     }
 
     private function workbookRelsXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            . '</Relationships>';
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            .'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            .'</Relationships>';
     }
 
     private function stylesXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
-            . '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
-            . '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
-            . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            . '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
-            . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
-            . '</styleSheet>';
+            .'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            .'<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+            .'<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+            .'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+            .'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+            .'<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+            .'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+            .'</styleSheet>';
     }
 }

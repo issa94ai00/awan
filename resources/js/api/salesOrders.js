@@ -45,6 +45,14 @@ export const salesOrdersApi = {
         return api.get(`/sales-orders/${id}/routing`);
     },
 
+    /**
+     * Sets which warehouses the order may draw on. More than one is allowed:
+     * sourcing then distributes each line across exactly these.
+     */
+    saveRoutings(id, warehouseIds) {
+        return api.put(`/sales-orders/${id}/routings`, { warehouse_ids: warehouseIds });
+    },
+
     /** Confirms: reserves the stock, raises the invoice, posts the entry. */
     confirm(id) {
         return api.post(`/sales-orders/${id}/confirm`);

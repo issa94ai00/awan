@@ -1,20 +1,67 @@
 <?php
 
 use App\Models\Setting;
+use App\Services\CurrencyService;
+use Illuminate\Support\Facades\Schema;
 
 if (! function_exists('get_setting')) {
     function get_setting(string $key, mixed $default = null): mixed
     {
+        // The books' base currency is the single source of truth; the setting
+        // is a mirror kept in sync by CurrencyService.
+        if ($key === 'default_currency') {
+            try {
+                if (Schema::hasTable('currencies')) {
+                    return app(CurrencyService::class)->baseCode();
+                }
+            } catch (Throwable $e) {
+                // Fall through to the settings row / default.
+            }
+        }
+
         try {
             $row = Setting::query()->where('key', $key)->first();
             if ($row && isset($row->value)) {
                 return $row->value;
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // ignore failures during early bootstrap (config loading)
         }
 
         return $default;
+    }
+}
+
+if (! function_exists('base_currency_code')) {
+    function base_currency_code(): string
+    {
+        try {
+            if (Schema::hasTable('currencies')) {
+                return app(CurrencyService::class)->baseCode();
+            }
+        } catch (Throwable $e) {
+            // ignore
+        }
+
+        return (string) (get_setting('default_currency') ?: 'SAR');
+    }
+}
+
+if (! function_exists('active_currencies')) {
+    /**
+     * @return list<array<string, mixed>>
+     */
+    function active_currencies(): array
+    {
+        try {
+            if (Schema::hasTable('currencies')) {
+                return app(CurrencyService::class)->active()->values()->all();
+            }
+        } catch (Throwable $e) {
+            // ignore
+        }
+
+        return [];
     }
 }
 
@@ -61,6 +108,6 @@ if (! function_exists('image_url')) {
             }
         }
 
-        return asset('storage/' . $path);
+        return asset('storage/'.$path);
     }
 }

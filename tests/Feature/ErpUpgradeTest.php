@@ -1,14 +1,14 @@
 <?php
 
-use App\Models\User;
+use App\Models\Customer;
 use App\Models\Product;
-use App\Models\Supplier;
 use App\Models\PurchaseReceipt;
 use App\Models\PurchaseReceiptItem;
+use App\Models\SalesOrder;
+use App\Models\Supplier;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
-use App\Models\RmaRequest;
-use App\Models\WarehouseBin;
 use App\Services\ErpUpgradeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -17,7 +17,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->token = $this->user->createToken('test-token')->plainTextToken;
-    $this->service = new ErpUpgradeService();
+    $this->service = new ErpUpgradeService;
 });
 
 test('it can allocate landed cost by value', function () {
@@ -101,11 +101,17 @@ test('it can reserve and release inventory', function () {
         'stock_quantity' => 100,
     ]);
 
+    // `quantity` is the gross shelf count and the condition buckets have to add
+    // up to it — a row with 50 units and an empty sound bucket says all 50 are
+    // damaged or quarantined. Every path that writes stock keeps the two in
+    // step; only this fixture did not, and it read as "nothing sellable" once
+    // availability stopped being measured off the gross count.
     $inventory = WarehouseInventory::create([
         'warehouse_id' => $warehouse->id,
         'product_id' => $product->id,
         'product_variant_id' => null,
         'quantity' => 50,
+        'available_quantity' => 50,
         'reserved_quantity' => 0,
     ]);
 
@@ -162,13 +168,13 @@ test('it can call allocate landed cost api', function () {
 });
 
 test('it can manage rma requests via api', function () {
-    $customer = \App\Models\Customer::create([
+    $customer = Customer::create([
         'name' => 'Customer Test',
         'email' => 'customer@test.com',
         'phone' => '0987654321',
     ]);
 
-    $salesOrder = \App\Models\SalesOrder::create([
+    $salesOrder = SalesOrder::create([
         'order_number' => 'SO-0001',
         'customer_id' => $customer->id,
         'customer_name' => $customer->name,
@@ -179,7 +185,7 @@ test('it can manage rma requests via api', function () {
 
     // Create RMA via API
     $response = $this->withHeader('Authorization', "Bearer {$this->token}")
-        ->postJson("/api/v1/rmas", [
+        ->postJson('/api/v1/rmas', [
             'sales_order_id' => $salesOrder->id,
             'customer_id' => $customer->id,
             'reason' => 'Defected product',
@@ -193,7 +199,7 @@ test('it can manage rma requests via api', function () {
 
     // Get RMAs
     $responseGet = $this->withHeader('Authorization', "Bearer {$this->token}")
-        ->getJson("/api/v1/rmas");
+        ->getJson('/api/v1/rmas');
 
     $responseGet->assertStatus(200)
         ->assertJsonCount(1, 'data');
@@ -216,7 +222,7 @@ test('it can manage warehouse bins via api', function () {
     ]);
 
     $response = $this->withHeader('Authorization', "Bearer {$this->token}")
-        ->postJson("/api/v1/warehouse-bins", [
+        ->postJson('/api/v1/warehouse-bins', [
             'warehouse_id' => $warehouse->id,
             'bin_code' => 'ZONE-A-RACK1',
             'zone' => 'A',
@@ -227,7 +233,7 @@ test('it can manage warehouse bins via api', function () {
         ->assertJson(['success' => true]);
 
     $responseGet = $this->withHeader('Authorization', "Bearer {$this->token}")
-        ->getJson("/api/v1/warehouse-bins");
+        ->getJson('/api/v1/warehouse-bins');
 
     $responseGet->assertStatus(200)
         ->assertJsonCount(1, 'data');
