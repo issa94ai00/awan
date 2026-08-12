@@ -3,11 +3,11 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductWarehouseAssignmentController;
 use App\Http\Controllers\Api\MrpController;
-use App\Http\Controllers\Api\PickingController;
 use App\Http\Controllers\Api\CompositeProductController;
 use App\Http\Controllers\Api\ErpUpgradeController;
 use App\Http\Controllers\Api\SearchController;
@@ -78,6 +78,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
     Route::get('/featured-products', [HomeController::class, 'featuredProducts'])->name('api.featured-products');
     Route::get('/special-offers', [SpecialOfferController::class, 'activeOffers'])->name('api.special-offers.active');
     Route::get('/settings', [SettingsController::class, 'index'])->name('api.settings.public');
+    // The currencies a shopper may view prices in, with their current rates.
+    // Public: the storefront and the mobile app both read it before login.
+    Route::get('/currencies', [CurrencyController::class, 'index'])->name('api.currencies.public');
 
     // Cart API (with Session / Web Middleware)
     Route::middleware('web')->group(function () {
@@ -276,15 +279,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/mrp/assignments/{assignmentId}/execute', [MrpController::class, 'executeRecommendations'])->name('api.admin.mrp.execute');
             Route::get('/mrp/summary', [MrpController::class, 'getSummary'])->name('api.admin.mrp.summary');
 
-            // Picking API
-            Route::get('/picking/best-warehouse', [PickingController::class, 'getBestWarehouse'])->name('api.admin.picking.best-warehouse');
-            Route::post('/picking/sales-orders/{salesOrderId}/generate-plan', [PickingController::class, 'generatePickingPlan'])->name('api.admin.picking.generate-plan');
-            Route::get('/picking/lists/{pickingListId}/optimize-route', [PickingController::class, 'optimizeRoute'])->name('api.admin.picking.optimize-route');
-            Route::post('/picking/lists/{pickingListId}/confirm', [PickingController::class, 'confirmPicking'])->name('api.admin.picking.confirm');
-            Route::get('/picking/lists', [PickingController::class, 'getPickingLists'])->name('api.admin.picking.lists');
-            Route::get('/picking/lists/{id}', [PickingController::class, 'getPickingList'])->name('api.admin.picking.list');
-            Route::post('/picking/lists/{pickingListId}/assign', [PickingController::class, 'assignPicker'])->name('api.admin.picking.assign');
-            Route::put('/picking/items/{itemId}', [PickingController::class, 'updatePickingItem'])->name('api.admin.picking.update-item');
+            // Picking lives entirely under /picking-lists (WmsController, backed by
+            // App\Services\PickingService). The old /picking/* routes here called
+            // App\Services\Inventory\PickingService, whose confirmPicking() wrote
+            // straight to warehouse_inventory — bypassing InventoryService, FIFO
+            // costing and the ledger entirely, and consuming the same reservation
+            // applyShipment() consumes. Nothing in the frontend called them; the
+            // controller and service behind them have been removed rather than
+            // left as a live route two systems could disagree over.
 
             // Composite Product API
             Route::get('/composite-products/{productId}/is-composite', [CompositeProductController::class, 'isComposite'])->name('api.admin.composite.is-composite');
@@ -393,6 +395,19 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
         // Settings
         Route::post('/settings', [SettingsController::class, 'update'])->name('api.settings.update');
+
+        // Currencies: the managed list, their rates, and which one is base.
+        //
+        // Under /admin so the management endpoint does not sit on the same URI
+        // as the public list — Laravel keeps only the last route registered for
+        // a given method and path, and the public one was being swallowed.
+        Route::prefix('admin')->group(function () {
+            Route::get('/currencies', [CurrencyController::class, 'adminIndex'])->name('api.admin.currencies.index');
+            Route::post('/currencies', [CurrencyController::class, 'store'])->name('api.admin.currencies.store');
+            Route::put('/currencies/{currency}', [CurrencyController::class, 'update'])->name('api.admin.currencies.update');
+            Route::post('/currencies/{currency}/rates', [CurrencyController::class, 'storeRate'])->name('api.admin.currencies.rates.store');
+            Route::post('/currencies/{currency}/base', [CurrencyController::class, 'setBase'])->name('api.admin.currencies.base');
+        });
         
         // User Inquiries
         Route::get('/user/inquiries', [InquiryController::class, 'index'])->name('api.user.inquiries.index');
@@ -484,6 +499,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // warehouses; saving the plan moves the stock hold with it.
         Route::get('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'sourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing');
         Route::put('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'saveSourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing.save');
+        // The set of warehouses the order may draw on. Sourcing above then
+        // distributes each line across exactly these.
+        Route::put('/sales-orders/{salesOrder}/routings', [SalesOrderController::class, 'saveRoutings'])->whereNumber('salesOrder')->name('api.sales-orders.routings.save');
         Route::post('/sales-orders/{salesOrder}/transition', [SalesOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.sales-orders.transition');
         Route::post('/sales-orders/{salesOrder}/fulfillment-type', [SalesOrderController::class, 'changeFulfillmentType'])->whereNumber('salesOrder')->name('api.sales-orders.fulfillment-type');
 

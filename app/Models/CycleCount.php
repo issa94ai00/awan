@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\Inventory\InventoryService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class CycleCount extends Model
 {
@@ -163,12 +165,43 @@ class CycleCount extends Model
         $this->save();
     }
 
+    /**
+     * Moves the shelf to match what was actually counted.
+     *
+     * This used to only flip `requires_adjustment` off and stamp who approved
+     * it — the count was reviewed and its variance calculated, but
+     * `warehouse_inventory` never moved, so an "applied" adjustment had
+     * corrected nothing and the next count found the exact same variance.
+     * Each line goes through `InventoryService::adjust()`, keyed per item so
+     * a repeated approval cannot move the same stock twice.
+     */
     public function applyAdjustment($userId): void
     {
-        $this->requires_adjustment = false;
-        $this->adjustment_by = $userId;
-        $this->adjusted_at = now();
-        $this->save();
+        DB::transaction(function () use ($userId) {
+            $inventory = app(InventoryService::class);
+
+            foreach ($this->items()->where('variance', '!=', 0)->get() as $item) {
+                $inventory->adjust(
+                    (int) $item->product_id,
+                    (int) $item->variance,
+                    (int) $this->warehouse_id,
+                    [
+                        'key' => 'cycle_count:' . $this->id . ':item:' . $item->id,
+                        'reference' => 'cycle_count',
+                        'source' => $this->id,
+                        'reason' => 'تسوية جرد دوري رقم ' . $this->count_number,
+                        'unit_cost' => (float) ($item->unit_cost ?? 0),
+                        'bin_id' => $item->bin_id,
+                        'created_by' => $userId,
+                    ]
+                );
+            }
+
+            $this->requires_adjustment = false;
+            $this->adjustment_by = $userId;
+            $this->adjusted_at = now();
+            $this->save();
+        });
     }
 
     public function cancel(): void

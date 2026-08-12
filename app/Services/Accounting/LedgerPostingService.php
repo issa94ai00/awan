@@ -109,7 +109,12 @@ class LedgerPostingService
      *   received:  Dr Cash/Bank   Cr Accounts receivable
      *   refunded:  Dr Accounts receivable   Cr Cash/Bank
      */
-    public function postPayment(Payment $payment): ?JournalEntryHeader
+    /**
+     * @param  ?string  $key  overrides the default `payment:{id}` posting key —
+     *                        used when correcting an already-posted payment,
+     *                        whose original key now belongs to a reversed entry.
+     */
+    public function postPayment(Payment $payment, ?string $key = null): ?JournalEntryHeader
     {
         $amount = $this->money($payment->amount);
         if (abs($amount) < self::EPSILON) {
@@ -132,7 +137,7 @@ class LedgerPostingService
             ];
 
         return $this->post(
-            key: 'payment:' . $payment->id,
+            key: $key ?? ('payment:' . $payment->id),
             date: $payment->payment_date ? (string) $payment->payment_date : now()->toDateString(),
             description: ($isRefund ? 'استرداد دفعة ' : 'إثبات دفعة ') . $label,
             lines: $lines,

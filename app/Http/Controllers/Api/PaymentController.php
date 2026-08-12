@@ -122,31 +122,79 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * Corrects a payment already on the books.
+     *
+     * Reassigning a payment to a different invoice or customer is refused
+     * rather than half-handled — the old code accepted both fields but never
+     * moved the balance or the ledger off the original invoice, so the
+     * receivable stayed charged to whoever it started on while the payment
+     * record pointed elsewhere. Only what a correction actually means —
+     * the amount, method, date, reference, notes — is editable here.
+     *
+     * An amount change reverses the original ledger entry and posts the
+     * corrected one under its own key, the same way an invoice is restated
+     * after it changes (`SalesOrderWorkflowService::restateInvoice`) — the
+     * original key now belongs to a reversed entry, so re-posting under it
+     * would just hand back that reversed header instead of writing a new one.
+     *
+     * This also drops the old `markAsDelivered()` call: an invoice reaching
+     * zero due says the money arrived, not that the goods did, and conflating
+     * the two is exactly the bug `store()` already had to be fixed for.
+     */
     public function update(Request $request, Payment $payment)
     {
         $validated = $request->validate([
-            'invoice_id' => 'nullable|exists:invoices,id',
-            'customer_id' => 'required|exists:customers,id',
             'payment_method' => 'required|in:cash,card,bank_transfer,check',
-            'status' => 'required|in:pending,completed,failed,refunded',
-            'amount' => 'required|numeric|min:0',
+            'amount' => 'required|numeric|min:0.01',
             'payment_date' => 'nullable|date',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $oldAmount = $payment->amount;
-        $payment->update($validated);
+        $oldAmount = round((float) $payment->amount, 2);
+        $newAmount = round((float) $validated['amount'], 2);
+        $invoice = $payment->invoice;
 
-        if ($payment->invoice && $oldAmount != $payment->amount) {
-            $difference = $payment->amount - $oldAmount;
-            $payment->invoice->increment('paid_amount', $difference);
-            $payment->invoice->decrement('due_amount', $difference);
-            
-            // Update invoice status based on payment completion
-            if ($payment->invoice->due_amount <= 0) {
-                $payment->invoice->markAsDelivered();
+        if ($invoice && abs($newAmount - $oldAmount) > 0.009) {
+            // What the invoice's other payments already cover, so the new
+            // amount is checked against what is actually left rather than
+            // against the total this payment used to claim.
+            $otherPaid = round((float) $invoice->paid_amount - $oldAmount, 2);
+
+            if ($newAmount - ((float) $invoice->total - $otherPaid) > 0.009) {
+                return response()->json([
+                    'success' => false,
+                    'message' => sprintf(
+                        'المبلغ (%s) يتجاوز المتبقي على الفاتورة %s.',
+                        number_format($newAmount, 2),
+                        $invoice->invoice_number
+                    ),
+                    'data' => null,
+                ], 422);
             }
+
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $invoice, $validated, $oldAmount, $newAmount, $otherPaid) {
+                $payment->update($validated);
+
+                $paid = round($otherPaid + $newAmount, 2);
+                $invoice->update([
+                    'paid_amount' => $paid,
+                    'due_amount' => max(0, round((float) $invoice->total - $paid, 2)),
+                    'paid_at' => $paid + 0.009 >= (float) $invoice->total ? now() : null,
+                ]);
+
+                // The customer owes the difference more, or less, than before.
+                $invoice->customer?->updateBalance($oldAmount - $newAmount);
+
+                app(\App\Services\Accounting\LedgerPostingService::class)->reverseFor('payment:' . $payment->id);
+                app(\App\Services\Accounting\LedgerPostingService::class)->postPayment(
+                    $payment,
+                    'payment:' . $payment->id . ':corrected:' . now()->getTimestamp()
+                );
+            });
+        } else {
+            $payment->update($validated);
         }
 
         $payment->load(['invoice', 'customer', 'creator']);
