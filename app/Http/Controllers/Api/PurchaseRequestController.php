@@ -37,6 +37,9 @@ class PurchaseRequestController extends Controller
             'items.*.product_name' => 'required_without:items.*.product_id|nullable|string|max:255',
             'items.*.quantity' => 'required_with:items|integer|min:1',
             'items.*.notes' => 'nullable|string|max:500',
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
         ], [
             'name.required' => 'الاسم مطلوب',
             'phone.required' => 'رقم الهاتف مطلوب',
@@ -45,6 +48,8 @@ class PurchaseRequestController extends Controller
             'items.*.product_name.required_without' => 'اسم المنتج مطلوب',
             'items.*.quantity.required_with' => 'الكمية مطلوبة',
             'items.*.quantity.min' => 'الكمية يجب أن تكون 1 على الأقل',
+            'items.*.allocations.*.warehouse_id.exists' => 'أحد المستودعات المحددة غير موجود',
+            'items.*.allocations.*.quantity.min' => 'كمية التخصيص يجب أن تكون 1 على الأقل',
         ]);
 
         $customer = Customer::where('phone', $validated['phone'])->first();
@@ -93,6 +98,15 @@ class PurchaseRequestController extends Controller
                     $itemTotal = $unitPrice * $item['quantity'];
                 }
 
+                // The storefront cart plans its warehouse split up front and
+                // sends it along; when the plan is absent (older clients, or a
+                // quick checkout) the order stays a draft with no allocations.
+                $allocations = $item['allocations'] ?? [];
+
+                if ($allocations !== []) {
+                    $this->assertAllocationsSum($allocations, $item['quantity']);
+                }
+
                 $itemsData[] = [
                     'product_id' => $productId,
                     'product_name' => $item['product_name'] ?? ($product->name_ar ?? $product->name_en ?? ''),
@@ -100,6 +114,7 @@ class PurchaseRequestController extends Controller
                     'unit_price' => $unitPrice,
                     'total_price' => $itemTotal,
                     'notes' => $item['notes'] ?? null,
+                    'allocations' => $allocations,
                 ];
                 $subtotal += $itemTotal;
             }
@@ -126,17 +141,7 @@ class PurchaseRequestController extends Controller
             'created_by' => null,
         ]);
 
-        foreach ($itemsData as $itemData) {
-            $salesOrder->items()->create([
-                'product_id' => $itemData['product_id'],
-                'description' => $itemData['product_name'],
-                'quantity' => $itemData['quantity'],
-                'unit_price' => $itemData['unit_price'],
-                'discount' => 0,
-                'tax' => 0,
-                'total' => $itemData['total_price'],
-            ]);
-        }
+        $this->createOrderItemsWithAllocations($salesOrder, $itemsData);
 
         // Storefront checkout is a draft only: no stock reservation, no invoice,
         // no customer balance charge, no ledger posting. Those start when staff

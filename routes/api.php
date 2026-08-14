@@ -56,6 +56,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\Api\FlutterCartController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -90,6 +91,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/cart/remove/{id}', [\App\Http\Controllers\CartController::class, 'remove'])->name('api.cart.remove');
         Route::post('/cart/clear', [\App\Http\Controllers\CartController::class, 'clear'])->name('api.cart.clear');
         Route::get('/cart/count', [\App\Http\Controllers\CartController::class, 'getCartCount'])->name('api.cart.count');
+    });
+
+    // Flutter Cart API (Token-based for mobile app)
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/flutter/cart', [FlutterCartController::class, 'index'])->name('api.flutter.cart.index');
+        Route::post('/flutter/cart/add', [FlutterCartController::class, 'add'])->name('api.flutter.cart.add');
+        Route::post('/flutter/cart/update', [FlutterCartController::class, 'update'])->name('api.flutter.cart.update');
+        Route::post('/flutter/cart/remove', [FlutterCartController::class, 'remove'])->name('api.flutter.cart.remove');
+        Route::post('/flutter/cart/clear', [FlutterCartController::class, 'clear'])->name('api.flutter.cart.clear');
     });
     
     // Admin WMS API (using web middleware for session auth)
@@ -185,6 +195,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
     // Sales Employees (public - for registration forms)
     Route::get('/sales-employees', [EmployeeController::class, 'salesEmployees'])->name('api.sales-employees');
+
+    // Warehouse split suggestions. Public so the storefront cart can plan its
+    // order against live per-warehouse availability without a staff session.
+    Route::post('/order-allocations/suggest', [OrderAllocationController::class, 'suggest'])->name('api.order-allocations.suggest');
     
     // Authentication
     Route::post('/auth/register', [AuthController::class, 'register'])->name('api.auth.register');
@@ -437,9 +451,6 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/purchase-requests/{salesOrder}/items', [PurchaseRequestController::class, 'adminUpdateItems'])->name('api.purchase-requests.admin.update-items');
             Route::put('/purchase-requests/{salesOrder}/assign', [PurchaseRequestController::class, 'adminAssignEmployee'])->name('api.purchase-requests.admin.assign');
         });
-
-        // Warehouse split suggestions for staff cart (اقتراح توزيع المستودعات)
-        Route::post('/order-allocations/suggest', [OrderAllocationController::class, 'suggest'])->name('api.order-allocations.suggest');
 
         // POS / Flutter POS System
         Route::get('/pos/options', [PosController::class, 'options'])->name('api.pos.options');
