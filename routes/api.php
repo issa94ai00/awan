@@ -57,6 +57,7 @@ use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\Api\FlutterCartController;
+use App\Http\Controllers\Api\StaffCustomerController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -100,6 +101,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/flutter/cart/update', [FlutterCartController::class, 'update'])->name('api.flutter.cart.update');
         Route::post('/flutter/cart/remove', [FlutterCartController::class, 'remove'])->name('api.flutter.cart.remove');
         Route::post('/flutter/cart/clear', [FlutterCartController::class, 'clear'])->name('api.flutter.cart.clear');
+    });
+
+    // Staff Customer API (Token-based for staff to manage their customers)
+    Route::middleware('auth:sanctum')->prefix('staff/customers')->group(function () {
+        Route::get('/', [StaffCustomerController::class, 'index'])->name('api.staff.customers.index');
+        Route::post('/', [StaffCustomerController::class, 'store'])->name('api.staff.customers.store');
+        Route::get('/{id}', [StaffCustomerController::class, 'show'])->name('api.staff.customers.show');
+        Route::put('/{id}', [StaffCustomerController::class, 'update'])->name('api.staff.customers.update');
     });
     
     // Admin WMS API (using web middleware for session auth)
