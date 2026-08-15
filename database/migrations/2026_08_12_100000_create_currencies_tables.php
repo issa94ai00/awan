@@ -117,11 +117,11 @@ return new class extends Migration
      */
     private function seedInitialCurrencies(): void
     {
-        $baseCode = 'SYP';
+        $baseCode = 'USD';
 
         if (Schema::hasTable('settings')) {
             $configured = DB::table('settings')->where('key', 'default_currency')->value('value');
-            $baseCode = strtoupper(trim((string) $configured)) ?: 'SYP';
+            $baseCode = strtoupper(trim((string) $configured)) ?: 'USD';
         }
 
         // name_ar, name_en, symbol, decimal_places, rounding_step.
@@ -142,7 +142,7 @@ return new class extends Migration
         // Deduplicated, base first. Listing the base alongside a fixed list
         // inserted it twice whenever the platform was already on the riyal or
         // the dollar, and the unique index turned that into a failed migration.
-        $initialCodes = array_values(array_unique([$baseCode, 'SYP', 'SAR', 'USD']));
+        $initialCodes = array_values(array_unique([$baseCode, 'USD', 'SYP', 'SAR']));
 
         $baseId = null;
         foreach ($initialCodes as $index => $code) {

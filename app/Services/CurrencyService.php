@@ -35,10 +35,10 @@ class CurrencyService
 
     /** Fallback used before the migration has run, or if the table is empty. */
     private const FALLBACK = [
-        'code' => 'SYP',
-        'symbol' => 'ل.س',
-        'decimal_places' => 0,
-        'rounding_step' => 500,
+        'code' => 'USD',
+        'symbol' => '$',
+        'decimal_places' => 2,
+        'rounding_step' => 0,
     ];
 
     /**
@@ -267,7 +267,7 @@ class CurrencyService
         // The three the platform ships with. The old fallback also offered the
         // euro, the dirham and the Egyptian pound, so settings accepted a
         // currency that had no row, no symbol and no rate behind it.
-        return [self::FALLBACK['code'], 'SAR', 'USD'];
+        return [self::FALLBACK['code'], 'SYP', 'SAR'];
     }
 
     /**

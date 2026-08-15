@@ -7,24 +7,24 @@ use App\Services\CurrencyService;
 use Illuminate\Database\Seeder;
 
 /**
- * The currencies this platform trades in: the Syrian pound, the Saudi riyal
- * and the US dollar.
+ * The currencies this platform trades in: the US dollar, the Syrian pound,
+ * and the Saudi riyal.
  *
- * The pound is the base — the books are kept in it and every rate is quoted
+ * The dollar is the base — the books are kept in it and every rate is quoted
  * against it. The other two are catalogued so a shopper can read prices in
- * them, but they ship **rateless**: what a dollar is worth in pounds is a
+ * them, but they ship **rateless**: what a pound is worth in dollars is a
  * market fact that changes weekly, and inventing one here would put a made-up
  * number in front of customers. Until an admin records a quote, the clients
  * show base prices, which is the honest answer.
  *
  * Idempotent: matched on the code, which is the currency's identity, so
  * re-seeding refreshes the presentation of an existing row instead of adding
- * a second pound. Rates are never touched — they are an append-only history
+ * a second dollar. Rates are never touched — they are an append-only history
  * and a seeder has no business rewriting them.
  */
 class CurrencySeeder extends Seeder
 {
-    public const BASE_CODE = 'SYP';
+    public const BASE_CODE = 'USD';
 
     /**
      * code => [name_ar, name_en, symbol, decimal_places, rounding_step]
@@ -34,9 +34,9 @@ class CurrencySeeder extends Seeder
      * the riyal and the dollar are quoted to the fils and the cent.
      */
     private const CURRENCIES = [
+        'USD' => ['دولار أمريكي', 'US Dollar', '$', 2, 0],
         'SYP' => ['ليرة سورية', 'Syrian Pound', 'ل.س', 0, 500],
         'SAR' => ['ريال سعودي', 'Saudi Riyal', 'ر.س', 2, 0],
-        'USD' => ['دولار أمريكي', 'US Dollar', '$', 2, 0],
     ];
 
     public function run(): void

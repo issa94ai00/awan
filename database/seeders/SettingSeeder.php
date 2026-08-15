@@ -29,7 +29,7 @@ class SettingSeeder extends Seeder
             ['key' => 'show_product_price', 'value' => '0', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'logo', 'value' => 'assets/images/logo.png', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'favicon', 'value' => null, 'type' => 'file', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
-            ['key' => 'default_currency', 'value' => 'SYP', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
+            ['key' => 'default_currency', 'value' => 'USD', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'default_language', 'value' => 'ar', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
             ['key' => 'timezone', 'value' => 'Asia/Riyadh', 'type' => 'text', 'group' => 'general', 'created_at' => now(), 'updated_at' => now()],
 
