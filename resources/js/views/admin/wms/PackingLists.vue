@@ -168,7 +168,7 @@ const loadPackingLists = async () => {
     packingLists.value = data.data || data || []
     pagination.value.total = data.total || packingLists.value.length
   } catch (error) {
-    ElMessage.error('خطأ في تحميل قوائم التعبئة')
+    ElMessage.error(t('failed_to_load_packing_lists'))
   } finally {
     loading.value = false
   }
@@ -183,11 +183,11 @@ const createPackingList = async () => {
       warehouse_id: form.value.warehouse_id
     }
     await wmsService.createPackingList(payload)
-    ElMessage.success('تم إنشاء قائمة التعبئة بنجاح')
+    ElMessage.success(t('packing_list_created'))
     showCreateDialog.value = false
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error('خطأ أثناء حفظ قائمة التعبئة')
+    ElMessage.error(t('failed_to_save_packing_list'))
   } finally {
     saving.value = false
   }
@@ -196,30 +196,30 @@ const createPackingList = async () => {
 const startPacking = async (packingList) => {
   try {
     await wmsService.startPacking(packingList.id)
-    ElMessage.success('تم بدء التعبئة')
+    ElMessage.success(t('packing_started'))
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error('خطأ أثناء بدء التعبئة')
+    ElMessage.error(t('failed_to_start_packing'))
   }
 }
 
 const completePacking = async (packingList) => {
   try {
     await wmsService.completePacking(packingList.id)
-    ElMessage.success('تم إنهاء التعبئة بنجاح')
+    ElMessage.success(t('packing_completed'))
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error('خطأ أثناء إنهاء التعبئة')
+    ElMessage.error(t('failed_to_complete_packing'))
   }
 }
 
 const cancelPacking = async (packingList) => {
   try {
     await wmsService.cancelPacking(packingList.id)
-    ElMessage.success('تم إلغاء التعبئة')
+    ElMessage.success(t('packing_cancelled'))
     await loadPackingLists()
   } catch (error) {
-    ElMessage.error('خطأ أثناء إلغاء التعبئة')
+    ElMessage.error(t('failed_to_cancel_packing'))
   }
 }
 

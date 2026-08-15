@@ -168,7 +168,7 @@ const loadCycleCounts = async () => {
     cycleCounts.value = data.data || data || []
     pagination.value.total = data.total || cycleCounts.value.length
   } catch (error) {
-    ElMessage.error('خطأ في تحميل مهام الجرد')
+    ElMessage.error(t('failed_to_load_cycle_counts'))
   } finally {
     loading.value = false
   }
@@ -185,11 +185,11 @@ const createCycleCount = async () => {
       notes: form.value.notes
     }
     await wmsService.createCycleCount(payload)
-    ElMessage.success('تم إنشاء مهمة الجرد بنجاح')
+    ElMessage.success(t('cycle_count_created'))
     showCreateDialog.value = false
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error('خطأ أثناء حفظ مهمة الجرد')
+    ElMessage.error(t('failed_to_save_cycle_count'))
   } finally {
     saving.value = false
   }
@@ -198,30 +198,30 @@ const createCycleCount = async () => {
 const startCount = async (cycleCount) => {
   try {
     await wmsService.startCycleCount(cycleCount.id)
-    ElMessage.success('تم بدء مهمة الجرد')
+    ElMessage.success(t('cycle_count_started'))
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error('خطأ أثناء بدء مهمة الجرد')
+    ElMessage.error(t('failed_to_start_cycle_count'))
   }
 }
 
 const completeCount = async (cycleCount) => {
   try {
     await wmsService.completeCycleCount(cycleCount.id)
-    ElMessage.success('تم إنهاء مهمة الجرد بنجاح')
+    ElMessage.success(t('cycle_count_completed'))
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error('خطأ أثناء إنهاء مهمة الجرد')
+    ElMessage.error(t('failed_to_complete_cycle_count'))
   }
 }
 
 const cancelCount = async (cycleCount) => {
   try {
     await wmsService.cancelCycleCount(cycleCount.id)
-    ElMessage.success('تم إلغاء مهمة الجرد')
+    ElMessage.success(t('cycle_count_cancelled'))
     await loadCycleCounts()
   } catch (error) {
-    ElMessage.error('خطأ أثناء إلغاء مهمة الجرد')
+    ElMessage.error(t('failed_to_cancel_cycle_count'))
   }
 }
 

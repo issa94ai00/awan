@@ -110,7 +110,7 @@ const loadWarehouses = async () => {
     const data = response.data
     warehouses.value = data.data || data || []
   } catch (error) {
-    ElMessage.error('خطأ في تحميل المستودعات')
+    ElMessage.error(t('failed_to_load_warehouses'))
   } finally {
     loading.value = false
   }
@@ -127,17 +127,17 @@ const saveWarehouse = async () => {
   try {
     if (editingWarehouse.value) {
       await wmsService.updateWarehouse(editingWarehouse.value.id, form.value)
-      ElMessage.success('تم تحديث المستودع بنجاح')
+      ElMessage.success(t('warehouse_updated'))
     } else {
       await wmsService.createWarehouse(form.value)
-      ElMessage.success('تم إنشاء المستودع بنجاح')
+      ElMessage.success(t('warehouse_created'))
     }
     showCreateDialog.value = false
     editingWarehouse.value = null
     resetForm()
     await loadWarehouses()
   } catch (error) {
-    ElMessage.error('خطأ أثناء حفظ المستودع')
+    ElMessage.error(t('failed_to_save_warehouse'))
   } finally {
     saving.value = false
   }
@@ -145,15 +145,15 @@ const saveWarehouse = async () => {
 
 const deleteWarehouse = async (warehouse) => {
   try {
-    await ElMessageBox.confirm('هل أنت متأكد من حذف هذا المستودع بالكامل؟', 'تنبيه', {
+    await ElMessageBox.confirm(t('confirm_delete_warehouse'), t('warning_title'), {
       type: 'warning'
     })
     await wmsService.deleteWarehouse(warehouse.id)
-    ElMessage.success('تم حذف المستودع بنجاح')
+    ElMessage.success(t('warehouse_deleted'))
     await loadWarehouses()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('خطأ في حذف المستودع')
+      ElMessage.error(t('failed_to_delete_warehouse'))
     }
   }
 }
