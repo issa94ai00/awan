@@ -1,16 +1,17 @@
 <template>
   <div class="notifications-page">
-    <div class="page-header">
-      <h1><el-icon><Bell /></el-icon> {{ $t('notifications.title') }}</h1>
-      <div class="header-actions">
-        <el-button @click="markAllAsRead" :disabled="unreadCount === 0">
-          <el-icon><Check /></el-icon> {{ $t('notifications.mark_all_read') }}
-        </el-button>
-        <el-button type="primary" @click="showSendDialog = true">
-          <el-icon><Plus /></el-icon> {{ $t('notifications.send_notification') }}
-        </el-button>
-      </div>
-    </div>
+    <AdminPageHeader
+        :title="$t('notifications.title')"
+    >
+        <template #actions>
+            <el-button @click="markAllAsRead" :disabled="unreadCount === 0">
+              <el-icon><Check /></el-icon> {{ $t('notifications.mark_all_read') }}
+            </el-button>
+            <el-button type="primary" @click="showSendDialog = true">
+              <el-icon><Plus /></el-icon> {{ $t('notifications.send_notification') }}
+            </el-button>
+        </template>
+    </AdminPageHeader>
 
     <!-- Stats -->
     <el-row :gutter="20" class="stats-row">
@@ -165,6 +166,7 @@
 </template>
 
 <script setup>
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { ref, onMounted } from 'vue'
 import { Bell, Plus, Check, Message, Search, View, Delete, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -270,7 +272,7 @@ const markAllAsRead = async () => {
 
 const viewNotification = (notification) => {
   ElMessageBox.alert(notification.message, notification.title, {
-    confirmButtonText: t('common.close') || 'OK'
+    confirmButtonText: t('close_button')
   })
 }
 

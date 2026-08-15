@@ -1,60 +1,56 @@
 <template>
     <div class="purchases-page purchases-receipts">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-truck-loading text-primary"></i> {{ $t('receipts') || 'إيصالات الاستلام' }}</h1>
-                <p>{{ $t('clearly_view_receipts_with_live') || 'إدارة وتوثيق البضائع الواردة إلى المخازن وتتبع تاريخ الاستلام والملاحظات.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-truck-loading text-primary"
+            :title="$t('receipts')"
+            :subtitle="$t('clearly_view_receipts_with_live')"
+        >
+            <template #actions>
                 <el-input 
                     v-model="searchQuery" 
-                    :placeholder="$t('search_by_receipt_number_or') || 'ابحث برقم الإيصال أو المورد...'" 
+                    :placeholder="$t('search_by_receipt_number_or')" 
                     clearable 
                     class="search-input"
                     :prefix-icon="Search"
                 />
                 <el-button type="primary" @click="openCreateDrawer" class="create-btn">
-                    <i class="fas fa-plus-circle"></i> إيصال جديد
+                    <i class="fas fa-plus-circle"></i> {{ $t('new_receipt') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Metrics cards row -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="12">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box blue-grad">
-                            <i class="fas fa-receipt"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ store.receipts.length }}</h3>
-                            <p>{{ $t('total_receipts') || 'إجمالي إيصالات الاستلام' }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box blue-grad">
+                        <i class="fas fa-receipt"></i>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="12">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box green-grad">
-                            <i class="fas fa-calendar-check"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ recentCount }}</h3>
-                            <p>{{ $t('latest_receipts') || 'الإيصالات الحديثة' }}</p>
-                        </div>
+                    <div class="stat-details">
+                        <h3>{{ store.receipts.length }}</h3>
+                        <p>{{ $t('total_receipts') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box green-grad">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3>{{ recentCount }}</h3>
+                        <p>{{ $t('latest_receipts') }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- Table Panel -->
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list text-muted"></i> {{ $t('list_of_receipts') || 'جدول إيصالات الاستلام' }}</span>
+                    <span><i class="fas fa-list text-muted"></i> {{ $t('list_of_receipts') }}</span>
                 </div>
             </template>
 
@@ -70,12 +66,12 @@
                     highlight-current-row
                     class="custom-table"
                 >
-                    <el-table-column prop="receipt_number" label="رقم الإيصال" width="140">
+                    <el-table-column prop="receipt_number" :label="$t('receipt_number')" width="140">
                         <template #default="{ row }">
                             <span class="receipt-link-txt" @click="openDetailDrawer(row.id)">{{ row.receipt_number }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="supplier.name" :label="$t('supplier') || 'المورد'">
+                    <el-table-column prop="supplier.name" :label="$t('supplier')">
                         <template #default="{ row }">
                             <div class="supplier-cell">
                                 <i class="fas fa-truck text-muted"></i>
@@ -83,20 +79,20 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="receipt_date" :label="$t('the_date') || 'التاريخ'" width="180" align="center" />
-                    <el-table-column prop="notes" :label="$t('comments') || 'ملاحظات'" min-width="200" show-overflow-tooltip />
+                    <el-table-column prop="receipt_date" :label="$t('the_date')" width="180" align="center" />
+                    <el-table-column prop="notes" :label="$t('comments')" min-width="200" show-overflow-tooltip />
                     
                     <!-- Actions Column -->
-                    <el-table-column label="الإجراءات" width="220" align="center">
+                    <el-table-column :label="$t('actions')" width="220" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
-                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" title="عرض التفاصيل">
+                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
                                 </el-button>
-                                <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" title="تعديل">
+                                <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
                                     <i class="fas fa-edit"></i>
                                 </el-button>
-                                <el-button size="small" type="danger" plain @click="deleteReceipt(row.id)" title="حذف">
+                                <el-button size="small" type="danger" plain @click="deleteReceipt(row.id)" :title="$t('delete')">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </el-button-group>
@@ -107,9 +103,9 @@
                 <!-- Empty State -->
                 <div v-if="!filteredReceipts.length" class="empty-state-box">
                     <i class="fas fa-receipt empty-icon"></i>
-                    <p>{{ $t('there_are_no_receipts_matching') || 'لا توجد إيصالات استلام مطابقة لشروط البحث.' }}</p>
+                    <p>{{ $t('there_are_no_receipts_matching') }}</p>
                     <el-button type="primary" size="medium" @click="openCreateDrawer">
-                        <i class="fas fa-plus-circle"></i> إنشاء إيصال جديد
+                        <i class="fas fa-plus-circle"></i> {{ $t('create_new_receipt') }}
                     </el-button>
                 </div>
             </div>
@@ -118,7 +114,7 @@
         <!-- Detail Drawer -->
         <el-drawer
             v-model="detailDrawerVisible"
-            title="تفاصيل إيصال استلام البضائع"
+            :title="$t('goods_receipt_details')"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -135,15 +131,15 @@
                         <div class="timeline-nodes-wrapper">
                             <div class="timeline-node completed">
                                 <div class="node-icon"><i class="fas fa-file-signature"></i></div>
-                                <span>أمر الشراء المرتبط</span>
+                                <span>{{ $t('linked_purchase_order') }}</span>
                             </div>
                             <div class="timeline-node completed">
                                 <div class="node-icon"><i class="fas fa-truck-loading"></i></div>
-                                <span>توثيق الاستلام</span>
+                                <span>{{ $t('document_the_receipt') }}</span>
                             </div>
                             <div class="timeline-node completed">
                                 <div class="node-icon"><i class="fas fa-boxes"></i></div>
-                                <span>تحديث المستودع</span>
+                                <span>{{ $t('update_the_warehouse') }}</span>
                             </div>
                         </div>
                     </div>
@@ -154,22 +150,22 @@
                     <el-col :xs="24" :lg="16">
                         <el-card shadow="never" class="mb-4">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-list text-muted mr-1"></i> الأصناف والكميات المستلمة</span>
+                                <span class="card-title-txt"><i class="fas fa-list text-muted mr-1"></i> {{ $t('items_and_quantities_received') }}</span>
                             </template>
                             <el-table :data="selectedReceipt.items || []" style="width: 100%" stripe>
-                                <el-table-column prop="product.name_ar" label="الصنف / المنتج" />
-                                <el-table-column prop="quantity" label="الكمية المستلمة" width="140" align="center" />
-                                <el-table-column prop="unit_price" label="سعر الشراء" width="130">
+                                <el-table-column prop="product.name_ar" :label="$t('item_product')" />
+                                <el-table-column prop="quantity" :label="$t('quantity_received')" width="140" align="center" />
+                                <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
                                 </el-table-column>
-                                <el-table-column label="الإجمالي" width="130">
+                                <el-table-column :label="$t('grand_total')" width="130">
                                     <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
                                 </el-table-column>
                             </el-table>
 
                             <div class="financial-summary-block mt-4">
                                 <div class="financial-row grand-total">
-                                    <span>الإجمالي الكلي:</span>
+                                    <span>{{ $t('grand_total_label') }}</span>
                                     <span>${{ parseFloat(selectedReceipt.total || 0).toFixed(2) }}</span>
                                 </div>
                             </div>
@@ -179,10 +175,10 @@
                         <div class="alert-success-box mb-4">
                             <i class="fas fa-check-circle text-success"></i>
                             <div>
-                                <h4>تم إدخال الكميات للمخزن بنجاح</h4>
+                                <h4>{{ $t('quantities_booked_into_stock') }}</h4>
                                 <ul>
                                     <li v-for="item in selectedReceipt.items" :key="item.id">
-                                        {{ item.product?.name_ar }}: <strong>+{{ item.quantity }} وحدة</strong>
+                                        {{ item.product?.name_ar }}: <strong>+{{ item.quantity }} {{ ('unit_suffix') }}</strong>
                                     </li>
                                 </ul>
                             </div>
@@ -193,19 +189,19 @@
                     <el-col :xs="24" :lg="8">
                         <el-card shadow="never" class="mb-3">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-user-tie text-muted mr-1"></i> بيانات المورد</span>
+                                <span class="card-title-txt"><i class="fas fa-user-tie text-muted mr-1"></i> {{ $t('supplier_details') }}</span>
                             </template>
                             <div class="info-list">
                                 <div class="info-item">
-                                    <span class="lbl">اسم المورد:</span>
+                                    <span class="lbl">{{ $t('supplier_name_label') }}</span>
                                     <strong>{{ selectedReceipt.supplier?.name || '-' }}</strong>
                                 </div>
                                 <div class="info-item" v-if="selectedReceipt.supplier?.company">
-                                    <span class="lbl">الشركة:</span>
+                                    <span class="lbl">{{ $t('company_label') }}</span>
                                     <strong>{{ selectedReceipt.supplier.company }}</strong>
                                 </div>
                                 <div class="info-item" v-if="selectedReceipt.supplier?.phone">
-                                    <span class="lbl">الهاتف:</span>
+                                    <span class="lbl">{{ $t('phone_label') }}</span>
                                     <strong>{{ selectedReceipt.supplier.phone }}</strong>
                                 </div>
                             </div>
@@ -213,26 +209,26 @@
 
                         <el-card shadow="never" class="mb-3">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-info-circle text-muted mr-1"></i> تفاصيل الشحنة</span>
+                                <span class="card-title-txt"><i class="fas fa-info-circle text-muted mr-1"></i> {{ $t('shipment_details') }}</span>
                             </template>
                             <div class="info-list">
                                 <div class="info-item">
-                                    <span class="lbl">تاريخ الاستلام:</span>
+                                    <span class="lbl">{{ $t('receipt_date_label') }}</span>
                                     <strong>{{ selectedReceipt.receipt_date || '-' }}</strong>
                                 </div>
                                 <div class="info-item">
-                                    <span class="lbl">مرتبط بأمر شراء:</span>
+                                    <span class="lbl">{{ $t('linked_to_purchase_order_label') }}</span>
                                     <strong v-if="selectedReceipt.purchase_order" style="color: var(--accent-blue);">
                                         #{{ selectedReceipt.purchase_order.order_number }}
                                     </strong>
-                                    <strong v-else>استلام مباشر</strong>
+                                    <strong v-else>{{ $t('direct_receipt') }}</strong>
                                 </div>
                             </div>
                         </el-card>
 
                         <el-card v-if="selectedReceipt.notes" shadow="never">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-sticky-note text-muted mr-1"></i> ملاحظات</span>
+                                <span class="card-title-txt"><i class="fas fa-sticky-note text-muted mr-1"></i> {{ $t('notes') }}</span>
                             </template>
                             <p class="notes-txt-view">{{ selectedReceipt.notes }}</p>
                         </el-card>
@@ -244,7 +240,7 @@
         <!-- Form Drawer (Create / Edit) -->
         <el-drawer
             v-model="formDrawerVisible"
-            :title="isEditMode ? 'تعديل إيصال استلام' : 'إنشاء إيصال استلام جديد'"
+            :title="isEditMode ? ('edit_goods_receipt') : ('create_goods_receipt')"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -253,8 +249,8 @@
             <el-form :model="form" label-position="top">
                 <el-row :gutter="20">
                     <el-col :span="12">
-                        <el-form-item label="المورد" required>
-                            <el-select v-model="form.supplier_id" placeholder="اختر المورد" style="width: 100%" filterable>
+                        <el-form-item :label="$t('supplier')" required>
+                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable>
                                 <el-option 
                                     v-for="s in suppliersStore.suppliers" 
                                     :key="s.id" 
@@ -265,8 +261,8 @@
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                        <el-form-item label="أمر الشراء المرتبط">
-                            <el-select v-model="form.purchase_order_id" placeholder="اختر أمر الشراء (شراء مباشر إذا كان خالياً)" style="width: 100%" filterable clearable @change="handlePurchaseOrderChange">
+                        <el-form-item :label="$t('linked_purchase_order')">
+                            <el-select v-model="form.purchase_order_id" :placeholder="$t('select_purchase_order_or_direct')" style="width: 100%" filterable clearable @change="handlePurchaseOrderChange">
                                 <el-option 
                                     v-for="o in purchaseOrdersStore.orders" 
                                     :key="o.id" 
@@ -280,32 +276,32 @@
 
                 <el-row :gutter="20" class="mt-3">
                     <el-col :span="12">
-                        <el-form-item label="تاريخ الاستلام الفعلي">
-                            <el-date-picker v-model="form.receipt_date" type="date" placeholder="تاريخ الاستلام" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        <el-form-item :label="$t('actual_receipt_date')">
+                            <el-date-picker v-model="form.receipt_date" type="date" :placeholder="$t('receipt_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
                         <!-- The receipt puts the goods on the balance sheet, so where
                              they land is the operator's call rather than a silent
                              fallback to whichever warehouse happens to be first. -->
-                        <el-form-item label="المستودع المستلِم" required>
-                            <el-select v-model="form.warehouse_id" placeholder="اختر المستودع" style="width: 100%" :disabled="isEditMode">
+                        <el-form-item :label="$t('receiving_warehouse')" required>
+                            <el-select v-model="form.warehouse_id" :placeholder="$t('choose_warehouse')" style="width: 100%" :disabled="isEditMode">
                                 <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                             </el-select>
                         </el-form-item>
                     </el-col>
                 </el-row>
 
-                <el-form-item label="ملاحظات الاستلام" class="mt-3">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="أدخل أي ملاحظات حول الشحنة أو حالة الاستلام..." />
+                <el-form-item :label="$t('receipt_notes')" class="mt-3">
+                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('receipt_notes_placeholder')" />
                 </el-form-item>
 
                 <!-- Dynamic items grid -->
                 <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> الأصناف والكميات الواردة</h3>
+                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> {{ $t('incoming_items_and_quantities') }}</h3>
                         <el-button v-if="!isEditMode" type="primary" size="small" plain @click="addItemRow">
-                            <i class="fas fa-plus"></i> إضافة صنف
+                            <i class="fas fa-plus"></i> {{ $t('add_item') }}
                         </el-button>
                     </div>
 
@@ -319,12 +315,12 @@
                         show-icon
                         :closable="false"
                         class="mb-3"
-                        title="بنود الإيصال غير قابلة للتعديل بعد إدخال البضاعة للمخزون وترحيل قيدها. سجّل تسوية مخزنية أو إرجاعاً للمورّد لتصحيحها."
+                        :title="$t('receipt_lines_locked_notice')"
                     />
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" placeholder="اختر الصنف" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
+                            <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
                                 <el-option
                                     v-for="p in productsStore.products"
                                     :key="p.id"
@@ -332,8 +328,8 @@
                                     :value="p.id"
                                 />
                             </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" placeholder="الكمية" style="flex: 1;" :disabled="isEditMode" />
-                            <el-input v-model="item.unit_price" placeholder="السعر" style="flex: 1;" :disabled="isEditMode" />
+                            <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
+                            <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;" :disabled="isEditMode" />
                             <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                 <i class="fas fa-trash"></i>
                             </el-button>
@@ -342,8 +338,8 @@
                 </div>
 
                 <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <el-button @click="formDrawerVisible = false">إلغاء</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveReceipt">حفظ الإيصال</el-button>
+                    <el-button @click="formDrawerVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :loading="submittingForm" @click="saveReceipt">{{ $t('save_receipt') }}</el-button>
                 </div>
             </el-form>
         </el-drawer>
@@ -351,6 +347,7 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
@@ -360,6 +357,10 @@ import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const store = usePurchaseReceiptsStore();
 const suppliersStore = useSuppliersStore();
@@ -423,7 +424,7 @@ const openDetailDrawer = async (id) => {
         const res = await purchaseReceiptsApi.getById(id);
         selectedReceipt.value = res.data.data;
     } catch (e) {
-        ElMessage.error('خطأ أثناء تحميل تفاصيل الإيصال.');
+        ElMessage.error(t('failed_to_load_receipt_details'));
     } finally {
         loadingDetail.value = false;
     }
@@ -455,7 +456,7 @@ const openEditDrawer = async (id) => {
             unit_price: item.unit_price
         }));
     } catch (e) {
-        ElMessage.error('خطأ أثناء تحميل بيانات الإيصال للتعديل.');
+        ElMessage.error(t('failed_to_load_receipt_for_edit'));
         formDrawerVisible.value = false;
     } finally {
         submittingForm.value = false;
@@ -503,18 +504,18 @@ const handlePurchaseOrderChange = async (purchaseOrderId) => {
                     unit_price: item.unit_price
                 }));
                 
-                ElMessage.success('تم تعبئة الأصناف والكميات تلقائياً من أمر الشراء');
+                ElMessage.success(t('items_filled_from_purchase_order'));
             }
         }
     } catch (error) {
-        ElMessage.error('خطأ أثناء جلب بيانات أمر الشراء');
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
         console.error('Error fetching purchase order details:', error);
     }
 };
 
 const saveReceipt = async () => {
     if (!form.supplier_id) {
-        ElMessage.warning('يرجى تحديد المورد أولاً.');
+        ElMessage.warning(t('please_select_supplier_first'));
         return;
     }
 
@@ -528,26 +529,26 @@ const saveReceipt = async () => {
                 receipt_date: form.receipt_date,
                 notes: form.notes,
             });
-            ElMessage.success('تم تحديث بيانات إيصال الاستلام.');
+            ElMessage.success(t('receipt_updated'));
         } else {
             if (!form.warehouse_id) {
-                ElMessage.warning('يرجى تحديد المستودع المستلِم.');
+                ElMessage.warning(t('please_select_receiving_warehouse'));
                 return;
             }
             if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
-                ElMessage.warning('يرجى تعبئة كافة حقول الأصناف المضافة.');
+                ElMessage.warning(t('please_fill_all_item_fields'));
                 return;
             }
 
             await purchaseReceiptsApi.create(form);
-            ElMessage.success('تم حفظ الإيصال: أُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي.');
+            ElMessage.success(t('receipt_saved_stock_and_entry'));
         }
         formDrawerVisible.value = false;
         await store.fetchReceipts();
     } catch (e) {
         // The API explains precisely why a receipt cannot be rewritten; echoing
         // a generic failure here would hide the reason and the way forward.
-        ElMessage.error(e.response?.data?.message || 'خطأ أثناء حفظ إيصال الاستلام.');
+        ElMessage.error(e.response?.data?.message || t('failed_to_save_receipt'));
     } finally {
         submittingForm.value = false;
     }
@@ -556,9 +557,9 @@ const saveReceipt = async () => {
 const deleteReceipt = async (id) => {
     try {
         await ElMessageBox.confirm(
-            'حذف إيصال الاستلام؟ البضاعة التي أُدخلت به ستبقى في المخزون.',
-            'تأكيد الحذف',
-            { type: 'warning', confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }
+            t('confirm_delete_receipt'),
+            t('confirm_deletion'),
+            { type: 'warning', confirmButtonText: t('delete'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -566,10 +567,10 @@ const deleteReceipt = async (id) => {
 
     try {
         await purchaseReceiptsApi.delete(id);
-        ElMessage.success('تم حذف إيصال الاستلام بنجاح.');
+        ElMessage.success(t('receipt_deleted'));
         await store.fetchReceipts();
     } catch (error) {
-        ElMessage.error(error.response?.data?.message || 'خطأ أثناء حذف إيصال الاستلام.');
+        ElMessage.error(error.response?.data?.message || t('failed_to_delete_receipt'));
     }
 };
 

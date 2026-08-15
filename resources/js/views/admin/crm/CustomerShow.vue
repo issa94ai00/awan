@@ -15,14 +15,14 @@
       </div>
       <div class="header-actions">
         <el-button @click="router.back()" class="btn-back-premium">
-          <el-icon><Back /></el-icon> رجوع
+          <el-icon><Back /></el-icon> {{ $t('back') }}
         </el-button>
         <el-button :icon="Refresh" :loading="loading" @click="loadOverview" />
         <el-button type="success" plain @click="paymentDialogVisible = true">
-          <i class="fas fa-money-bill-wave"></i> تسجيل دفعة
+          <i class="fas fa-money-bill-wave"></i> {{ $t('record_payment') }}
         </el-button>
         <el-button type="warning" class="btn-edit-premium" @click="editCustomer">
-          <el-icon><Edit /></el-icon> تعديل البيانات
+          <el-icon><Edit /></el-icon> {{ $t('edit_data') }}
         </el-button>
       </div>
     </div>
@@ -47,7 +47,7 @@
       show-icon
       :closable="false"
       class="credit-alert"
-      title="تجاوز الحد الائتماني"
+      :title="$t('credit_limit_exceeded')"
       :description="`الرصيد المستحق ${money(metrics.balance)} يتجاوز الحد الائتماني المعتمد ${money(metrics.credit_limit)}.`"
     />
 
@@ -68,29 +68,29 @@
 
           <div class="divider"></div>
 
-          <h4 class="info-section-title">معلومات الاتصال والشركة</h4>
+          <h4 class="info-section-title">{{ $t('contact_and_company_info') }}</h4>
           <el-descriptions :column="1" class="descriptions-premium">
-            <el-descriptions-item label="اسم الشركة">{{ customer.company || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="البريد الإلكتروني">
+            <el-descriptions-item :label="$t('company_name')">{{ customer.company || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('email')">
               <a v-if="customer.email" :href="`mailto:${customer.email}`" class="contact-link">{{ customer.email }}</a>
               <span v-else>-</span>
             </el-descriptions-item>
-            <el-descriptions-item label="رقم الجوال">
+            <el-descriptions-item :label="$t('mobile_number')">
               <a v-if="customer.phone" :href="`tel:${customer.phone}`" class="contact-link" dir="ltr">{{ customer.phone }}</a>
               <span v-else>-</span>
             </el-descriptions-item>
-            <el-descriptions-item label="مصدر العميل">{{ customer.source || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="الموظف المسؤول">{{ customer.employee?.name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('customer_source')">{{ customer.source || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('assigned_employee')">{{ customer.employee?.name || '-' }}</el-descriptions-item>
           </el-descriptions>
 
           <div class="divider"></div>
 
-          <h4 class="info-section-title">العنوان</h4>
+          <h4 class="info-section-title">{{ $t('address') }}</h4>
           <el-descriptions :column="1" class="descriptions-premium">
-            <el-descriptions-item label="العنوان">{{ customer.address || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="المدينة">{{ customer.city || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="الدولة">{{ customer.country || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="الرمز البريدي">{{ customer.postal_code || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('address')">{{ customer.address || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('city')">{{ customer.city || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('country')">{{ customer.country || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('postal_code')">{{ customer.postal_code || '-' }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
 
@@ -98,14 +98,14 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot green"></span>
-              <h3>الملخص المالي</h3>
+              <h3>{{ $t('financial_summary') }}</h3>
             </div>
           </template>
 
           <!-- Credit utilisation, so the limit is a live control not a stored number -->
           <div v-if="metrics.credit_limit > 0" class="credit-meter">
             <div class="credit-meter-head">
-              <span>استهلاك الحد الائتماني</span>
+              <span>{{ $t('credit_limit_usage') }}</span>
               <strong>{{ creditUsagePercent }}%</strong>
             </div>
             <el-progress
@@ -121,23 +121,23 @@
           </div>
 
           <el-descriptions :column="1" class="descriptions-premium">
-            <el-descriptions-item label="الرصيد القائم">
+            <el-descriptions-item :label="$t('outstanding_balance')">
               <span class="balance-value" :class="{ 'has-debt': metrics.balance > 0, 'has-credit': metrics.balance < 0 }">
                 {{ money(metrics.balance) }}
               </span>
-              <small v-if="metrics.balance < 0" class="inline-hint">رصيد لصالح العميل</small>
+              <small v-if="metrics.balance < 0" class="inline-hint">{{ $t('credit_in_customers_favour') }}</small>
             </el-descriptions-item>
-            <el-descriptions-item label="إجمالي ما فُوتر">{{ money(metrics.invoiced_total) }}</el-descriptions-item>
-            <el-descriptions-item label="إجمالي المحصَّل">{{ money(metrics.collected_total) }}</el-descriptions-item>
-            <el-descriptions-item label="المستحق على الفواتير">
+            <el-descriptions-item :label="$t('total_invoiced')">{{ money(metrics.invoiced_total) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('total_collected')">{{ money(metrics.collected_total) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('due_on_invoices')">
               <span :class="{ 'has-debt': metrics.outstanding_total > 0 }">{{ money(metrics.outstanding_total) }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="إجمالي المسترد">{{ money(metrics.refunded_total) }}</el-descriptions-item>
-            <el-descriptions-item label="إشعارات دائنة مفتوحة">{{ money(metrics.open_credit_total) }}</el-descriptions-item>
-            <el-descriptions-item label="الرقم الضريبي">{{ customer.tax_number || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="العملة">{{ currency }}</el-descriptions-item>
-            <el-descriptions-item label="أول طلب">{{ date(metrics.first_order_at) }}</el-descriptions-item>
-            <el-descriptions-item label="آخر طلب">{{ date(metrics.last_order_at) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('total_refunded')">{{ money(metrics.refunded_total) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('open_credit_notes')">{{ money(metrics.open_credit_total) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('tax_number')">{{ customer.tax_number || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('currency')">{{ currency }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('first_order')">{{ date(metrics.first_order_at) }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('last_order')">{{ date(metrics.last_order_at) }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
       </el-col>
@@ -148,20 +148,20 @@
           <el-tabs v-model="activeTab" class="premium-tabs">
             <el-tab-pane name="orders" :label="tabLabel('طلبات البيع', data.sales_orders)">
               <el-table :data="data.sales_orders" stripe class="premium-table">
-                <el-table-column label="رقم الطلب" width="150">
+                <el-table-column :label="$t('order_number')" width="150">
                   <template #default="{ row }">
                     <button type="button" class="record-link" @click="go('/admin/sales/sales-orders')">
                       {{ row.order_number }}
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="الإجمالي" width="150">
+                <el-table-column :label="$t('grand_total')" width="150">
                   <template #default="{ row }">{{ money(row.total) }}</template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="140" align="center">
+                <el-table-column :label="$t('status')" width="140" align="center">
                   <template #default="{ row }"><StatusTag :status="row.status" /></template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="140">
+                <el-table-column :label="$t('date')" width="140">
                   <template #default="{ row }">{{ date(row.order_date) }}</template>
                 </el-table-column>
               </el-table>
@@ -170,17 +170,17 @@
 
             <el-tab-pane name="invoices" :label="tabLabel('الفواتير', data.invoices)">
               <el-table :data="data.invoices" stripe class="premium-table">
-                <el-table-column label="رقم الفاتورة" width="160">
+                <el-table-column :label="$t('invoice_number')" width="160">
                   <template #default="{ row }">
                     <button type="button" class="record-link" @click="go(`/admin/sales/invoices/${row.id}/edit`)">
                       {{ row.invoice_number }}
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="الإجمالي" width="130">
+                <el-table-column :label="$t('grand_total')" width="130">
                   <template #default="{ row }">{{ money(row.total) }}</template>
                 </el-table-column>
-                <el-table-column label="التحصيل" width="180">
+                <el-table-column :label="$t('payment_status')" width="180">
                   <template #default="{ row }">
                     <el-progress
                       :percentage="paidPercent(row)"
@@ -195,10 +195,10 @@
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="130" align="center">
+                <el-table-column :label="$t('status')" width="130" align="center">
                   <template #default="{ row }"><StatusTag :status="row.status" /></template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="130">
+                <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.created_at) }}</template>
                 </el-table-column>
               </el-table>
@@ -207,27 +207,27 @@
 
             <el-tab-pane name="payments" :label="tabLabel('المدفوعات', data.payments)">
               <el-table :data="data.payments" stripe class="premium-table">
-                <el-table-column label="رقم الدفعة" width="170">
+                <el-table-column :label="$t('payment_number')" width="170">
                   <template #default="{ row }">{{ row.payment_number || row.reference || '—' }}</template>
                 </el-table-column>
-                <el-table-column label="الفاتورة" width="150">
+                <el-table-column :label="$t('invoice')" width="150">
                   <template #default="{ row }">{{ row.invoice?.invoice_number || '—' }}</template>
                 </el-table-column>
-                <el-table-column label="المبلغ" width="150">
+                <el-table-column :label="$t('amount')" width="150">
                   <template #default="{ row }">
                     <!-- Refunds are negative, so they read as money out -->
                     <strong :class="Number(row.amount) < 0 ? 'due' : 'paid'">{{ money(row.amount) }}</strong>
                   </template>
                 </el-table-column>
-                <el-table-column label="الطريقة" width="130" align="center">
+                <el-table-column :label="$t('method')" width="130" align="center">
                   <template #default="{ row }">
                     <el-tag size="small" effect="plain">{{ methodLabel(row.payment_method) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="120" align="center">
+                <el-table-column :label="$t('status')" width="120" align="center">
                   <template #default="{ row }"><StatusTag :status="row.status" /></template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="130">
+                <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.payment_date) }}</template>
                 </el-table-column>
               </el-table>
@@ -236,24 +236,24 @@
 
             <el-tab-pane name="credit_notes" :label="tabLabel('إشعارات دائنة', data.credit_notes)">
               <el-table :data="data.credit_notes" stripe class="premium-table">
-                <el-table-column prop="credit_note_number" label="رقم الإشعار" width="150" />
-                <el-table-column label="المصدر" width="150">
+                <el-table-column prop="credit_note_number" :label="$t('note_number')" width="150" />
+                <el-table-column :label="$t('source')" width="150">
                   <template #default="{ row }">{{ row.rma_request?.rma_number || row.invoice?.invoice_number || '—' }}</template>
                 </el-table-column>
-                <el-table-column label="القيمة" width="140">
+                <el-table-column :label="$t('value')" width="140">
                   <template #default="{ row }">{{ money(row.total) }}</template>
                 </el-table-column>
-                <el-table-column label="غير مسوّى" width="140">
+                <el-table-column :label="$t('not_settled')" width="140">
                   <template #default="{ row }">
                     <strong :class="Number(row.open_amount) > 0 ? 'due' : ''">{{ money(row.open_amount) }}</strong>
                   </template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="140" align="center">
+                <el-table-column :label="$t('status')" width="140" align="center">
                   <template #default="{ row }">
                     <el-tag :type="creditNoteTone(row.status)" size="small">{{ row.status_text }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="130">
+                <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.issue_date) }}</template>
                 </el-table-column>
               </el-table>
@@ -262,25 +262,25 @@
 
             <el-tab-pane name="returns" :label="tabLabel('المرتجعات', data.rma_requests)">
               <el-table :data="data.rma_requests" stripe class="premium-table">
-                <el-table-column label="رقم المرتجع" width="150">
+                <el-table-column :label="$t('rma_number')" width="150">
                   <template #default="{ row }">
                     <button type="button" class="record-link" @click="go(`/admin/rma/${row.id}`)">
                       {{ row.rma_number }}
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="طلب البيع" width="150">
+                <el-table-column :label="$t('sales_order')" width="150">
                   <template #default="{ row }">{{ row.sales_order?.order_number || '—' }}</template>
                 </el-table-column>
-                <el-table-column label="قيمة التعويض" width="150">
+                <el-table-column :label="$t('compensation_value')" width="150">
                   <template #default="{ row }">{{ money(row.refund_amount) }}</template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="150" align="center">
+                <el-table-column :label="$t('status')" width="150" align="center">
                   <template #default="{ row }">
                     <el-tag :type="rmaTone(row.status)" size="small">{{ rmaStatusLabel(row.status) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="130">
+                <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.requested_at) }}</template>
                 </el-table-column>
               </el-table>
@@ -289,20 +289,20 @@
 
             <el-tab-pane name="quotes" :label="tabLabel('عروض الأسعار', data.quotes)">
               <el-table :data="data.quotes" stripe class="premium-table">
-                <el-table-column label="رقم العرض" width="150">
+                <el-table-column :label="$t('quote_number')" width="150">
                   <template #default="{ row }">
                     <button type="button" class="record-link" @click="go('/admin/sales/quotes')">
                       {{ row.quote_number }}
                     </button>
                   </template>
                 </el-table-column>
-                <el-table-column label="الإجمالي" width="150">
+                <el-table-column :label="$t('grand_total')" width="150">
                   <template #default="{ row }">{{ money(row.total) }}</template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="140" align="center">
+                <el-table-column :label="$t('status')" width="140" align="center">
                   <template #default="{ row }"><StatusTag :status="row.status" /></template>
                 </el-table-column>
-                <el-table-column label="صالح حتى" width="140">
+                <el-table-column :label="$t('valid_until')" width="140">
                   <template #default="{ row }">{{ date(row.valid_until) }}</template>
                 </el-table-column>
               </el-table>
@@ -314,20 +314,20 @@
                 <el-table-column label="#" width="90">
                   <template #default="{ row }">#{{ row.id }}</template>
                 </el-table-column>
-                <el-table-column prop="subject" label="العنوان" min-width="180" />
-                <el-table-column label="الأولوية" width="120" align="center">
+                <el-table-column prop="subject" :label="$t('address')" min-width="180" />
+                <el-table-column :label="$t('priority')" width="120" align="center">
                   <template #default="{ row }">
                     <el-tag :type="getPriorityClass(row.priority)" size="small">{{ getPriorityLabel(row.priority) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="120" align="center">
+                <el-table-column :label="$t('status')" width="120" align="center">
                   <template #default="{ row }">
                     <el-tag :type="['closed', 'resolved'].includes(row.status) ? 'success' : 'danger'" size="small">
                       {{ ['closed', 'resolved'].includes(row.status) ? 'مغلقة' : 'مفتوحة' }}
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="التاريخ" width="130">
+                <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.created_at) }}</template>
                 </el-table-column>
               </el-table>
@@ -347,12 +347,15 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, h, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { User, Back, Edit, Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElTag } from 'element-plus';
 import api from '@/api';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
+
+const { t } = useI18n();
 import {
   formatCurrency,
   formatDate,
@@ -418,7 +421,7 @@ const paidPercent = (invoice) => {
 const kpis = computed(() => [
   {
     key: 'outstanding',
-    label: 'المستحق على الفواتير',
+    label: t('due_on_invoices'),
     value: money(metrics.value.outstanding_total),
     icon: 'fa-hand-holding-dollar',
     tone: Number(metrics.value.outstanding_total) > 0 ? 'red' : 'green',
@@ -426,7 +429,7 @@ const kpis = computed(() => [
   },
   {
     key: 'lifetime',
-    label: 'إجمالي التعامل',
+    label: t('total_business'),
     value: money(metrics.value.orders_total),
     icon: 'fa-cart-shopping',
     tone: 'blue',
@@ -434,7 +437,7 @@ const kpis = computed(() => [
   },
   {
     key: 'collected',
-    label: 'إجمالي المحصَّل',
+    label: t('total_collected'),
     value: money(metrics.value.collected_total),
     icon: 'fa-sack-dollar',
     tone: 'green',
@@ -442,7 +445,7 @@ const kpis = computed(() => [
   },
   {
     key: 'credit',
-    label: 'إشعارات دائنة مفتوحة',
+    label: t('open_credit_notes'),
     value: money(metrics.value.open_credit_total),
     icon: 'fa-receipt',
     tone: 'purple',
@@ -467,12 +470,12 @@ const rmaTone = (status) => ({
 }[status] || 'info');
 
 const rmaStatusLabel = (status) => ({
-  pending: 'بانتظار الموافقة',
-  approved: 'تمت الموافقة',
-  received: 'تم الاستلام',
-  completed: 'مكتمل',
-  rejected: 'مرفوض',
-  cancelled: 'ملغي',
+  pending: t('awaiting_approval'),
+  approved: t('approved'),
+  received: t('event_received'),
+  completed: t('sales_status_completed'),
+  rejected: t('sales_status_rejected'),
+  cancelled: t('sales_status_cancelled'),
 }[status] || status);
 
 /**
@@ -502,7 +505,7 @@ const loadOverview = async () => {
     };
   } catch (error) {
     console.error('Failed to load customer profile:', error);
-    ElMessage.error(error.response?.data?.message || 'خطأ في تحميل ملف العميل');
+    ElMessage.error(error.response?.data?.message || t('failed_to_load_customer_profile'));
     if (error.response?.status === 404) router.back();
   } finally {
     loading.value = false;
@@ -531,10 +534,10 @@ const getAvatarColor = (name) => {
 };
 
 const getPriorityLabel = (priority) => ({
-  low: 'منخفضة',
-  medium: 'متوسطة',
-  high: 'عالية',
-  urgent: 'عاجلة',
+  low: t('low'),
+  medium: t('medium'),
+  high: t('high'),
+  urgent: t('urgent'),
 }[priority] || priority || '-');
 
 const getPriorityClass = (priority) => ({

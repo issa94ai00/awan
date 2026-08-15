@@ -1,24 +1,24 @@
 <template>
     <div class="accounting-page accounting-journal">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-book text-primary"></i> {{ $t('journal') || 'دفتر اليومية العامة' }}</h1>
-                <p>تسجيل ومتابعة القيود المحاسبية المزدوجة (Double-Entry) وضمان توازن كل قيد.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-book text-primary"
+            :title="$t('journal')"
+            :subtitle="$t('journal_subtitle')"
+        >
+            <template #actions>
                 <el-button type="primary" class="create-btn" @click="openCreateDrawer">
-                    <i class="fas fa-plus"></i> تسجيل قيد يدوي
+                    <i class="fas fa-plus"></i> {{ $t('record_manual_entry') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Filters Bar Panel -->
         <el-card shadow="hover" class="filters-panel mb-4">
             <div class="filters-row">
                 <div class="filter-item">
-                    <label>حساب دفتر الأستاذ</label>
-                    <el-select v-model="filters.ledger_account_id" placeholder="الكل" clearable style="width: 220px;" filterable @change="applyFilters">
+                    <label>{{ $t('ledger_account') }}</label>
+                    <el-select v-model="filters.ledger_account_id" :placeholder="$t('all')" clearable style="width: 220px;" filterable @change="applyFilters">
                         <el-option
                             v-for="acc in ledgerStore.accounts"
                             :key="acc.id"
@@ -28,14 +28,14 @@
                     </el-select>
                 </div>
                 <div class="filter-item">
-                    <label>الفترة من</label>
-                    <el-date-picker v-model="filters.date_from" type="date" placeholder="من تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <label>{{ $t('period_from') }}</label>
+                    <el-date-picker v-model="filters.date_from" type="date" :placeholder="$t('date_from')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
                 </div>
                 <div class="filter-item">
-                    <label>إلى</label>
-                    <el-date-picker v-model="filters.date_to" type="date" placeholder="إلى تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <label>{{ $t('to') }}</label>
+                    <el-date-picker v-model="filters.date_to" type="date" :placeholder="$t('date_to')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
                 </div>
-                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.25rem;">إعادة تعيين</el-button>
+                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.25rem;">{{ $t('reset') }}</el-button>
             </div>
         </el-card>
 
@@ -43,7 +43,7 @@
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list-alt text-muted"></i> قيود دفتر اليومية</span>
+                    <span><i class="fas fa-list-alt text-muted"></i> {{ $t('journal_entries') }}</span>
                 </div>
             </template>
 
@@ -59,41 +59,41 @@
                     highlight-current-row
                     class="custom-table"
                 >
-                    <el-table-column prop="entry_number" label="رقم القيد" width="120" align="center">
+                    <el-table-column prop="entry_number" :label="$t('entry_number')" width="120" align="center">
                         <template #default="{ row }">
                             <span class="code-badge">{{ row.entry_number }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="entry_date" :label="$t('the_date') || 'التاريخ'" width="120" align="center">
+                    <el-table-column prop="entry_date" :label="$t('the_date')" width="120" align="center">
                         <template #default="{ row }">{{ formatDate(row.entry_date) }}</template>
                     </el-table-column>
-                    <el-table-column prop="description" :label="$t('description') || 'البيان/الوصف'" min-width="220" show-overflow-tooltip />
-                    <el-table-column label="عدد السطور" width="110" align="center">
+                    <el-table-column prop="description" :label="$t('description')" min-width="220" show-overflow-tooltip />
+                    <el-table-column :label="$t('lines_count')" width="110" align="center">
                         <template #default="{ row }">{{ row.lines?.length || 0 }}</template>
                     </el-table-column>
-                    <el-table-column prop="total_debit" :label="$t('debtor') || 'إجمالي المدين'" width="150" align="right">
+                    <el-table-column prop="total_debit" :label="$t('debtor')" width="150" align="right">
                         <template #default="{ row }">
                             <strong class="text-success">${{ parseFloat(row.total_debit).toFixed(2) }}</strong>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="total_credit" :label="$t('creditor') || 'إجمالي الدائن'" width="150" align="right">
+                    <el-table-column prop="total_credit" :label="$t('creditor')" width="150" align="right">
                         <template #default="{ row }">
                             <strong class="text-warning">${{ parseFloat(row.total_credit).toFixed(2) }}</strong>
                         </template>
                     </el-table-column>
-                    <el-table-column label="التوازن" width="100" align="center">
+                    <el-table-column :label="$t('balance_status')" width="100" align="center">
                         <template #default="{ row }">
                             <el-tag :type="isRowBalanced(row) ? 'success' : 'danger'" effect="light">
                                 {{ isRowBalanced(row) ? '✓ متوازن' : '✗ غير متوازن' }}
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الحالة" width="100" align="center">
+                    <el-table-column :label="$t('status')" width="100" align="center">
                         <template #default="{ row }">
                             <el-tag :type="row.status === 'posted' ? 'success' : 'info'" effect="plain">{{ statusLabel(row.status) }}</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الإجراءات" width="150" align="center" fixed="left">
+                    <el-table-column :label="$t('actions')" width="150" align="center" fixed="left">
                         <template #default="{ row }">
                             <el-button-group>
                                 <el-button size="small" @click="openEditDrawer(row)"><i class="fas fa-edit"></i></el-button>
@@ -106,9 +106,9 @@
                 <!-- Empty State -->
                 <div v-if="!store.entries.length" class="empty-state-box">
                     <i class="fas fa-book empty-icon"></i>
-                    <p>لا توجد قيود يومية مطابقة للبحث حالياً.</p>
+                    <p>{{ $t('no_matching_journal_entries') }}</p>
                     <el-button type="primary" size="medium" @click="openCreateDrawer">
-                        <i class="fas fa-plus"></i> تسجيل قيد يدوي
+                        <i class="fas fa-plus"></i> {{ $t('record_manual_entry') }}
                     </el-button>
                 </div>
             </div>
@@ -126,29 +126,29 @@
             <el-form :model="form" label-position="top">
                 <el-row :gutter="20">
                     <el-col :span="12">
-                        <el-form-item label="تاريخ القيد" required>
-                            <el-date-picker v-model="form.entry_date" type="date" placeholder="اختر التاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        <el-form-item :label="$t('entry_date')" required>
+                            <el-date-picker v-model="form.entry_date" type="date" :placeholder="$t('choose_the_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                        <el-form-item label="مرجع المعاملة (اختياري)">
-                            <el-input v-model="form.reference" placeholder="مثال: INV-2026-009" />
+                        <el-form-item :label="$t('transaction_reference_optional')">
+                            <el-input v-model="form.reference" :placeholder="$t('journal_reference_example')" />
                         </el-form-item>
                     </el-col>
                 </el-row>
 
-                <el-form-item label="البيان / الوصف التفصيلي" required>
-                    <el-input v-model="form.description" type="textarea" :rows="2" placeholder="اكتب بياناً واضحاً ومفصلاً للقيد المالي..." />
+                <el-form-item :label="$t('detailed_narration')" required>
+                    <el-input v-model="form.description" type="textarea" :rows="2" :placeholder="$t('narration_placeholder')" />
                 </el-form-item>
 
                 <div class="lines-section">
                     <div class="lines-header">
-                        <span>سطور القيد (مدين/دائن)</span>
-                        <el-button size="small" type="primary" plain @click="addLine"><i class="fas fa-plus"></i> إضافة سطر</el-button>
+                        <span>{{ $t('entry_lines_debit_credit') }}</span>
+                        <el-button size="small" type="primary" plain @click="addLine"><i class="fas fa-plus"></i> {{ $t('add_line') }}</el-button>
                     </div>
 
                     <div v-for="(line, index) in form.lines" :key="index" class="line-row">
-                        <el-select v-model="line.ledger_account_id" placeholder="الحساب" filterable style="flex: 2;">
+                        <el-select v-model="line.ledger_account_id" :placeholder="$t('the_account')" filterable style="flex: 2;">
                             <el-option
                                 v-for="acc in ledgerStore.accounts"
                                 :key="acc.id"
@@ -156,11 +156,11 @@
                                 :value="acc.id"
                             />
                         </el-select>
-                        <el-input v-model="line.debit" type="number" placeholder="مدين" style="flex: 1;" @input="line.credit = 0">
-                            <template #prefix>مدين</template>
+                        <el-input v-model="line.debit" type="number" :placeholder="$t('debtor')" style="flex: 1;" @input="line.credit = 0">
+                            <template #prefix>{{ $t('debtor') }}</template>
                         </el-input>
-                        <el-input v-model="line.credit" type="number" placeholder="دائن" style="flex: 1;" @input="line.debit = 0">
-                            <template #prefix>دائن</template>
+                        <el-input v-model="line.credit" type="number" :placeholder="$t('creditor')" style="flex: 1;" @input="line.debit = 0">
+                            <template #prefix>{{ $t('creditor') }}</template>
                         </el-input>
                         <el-button
                             size="small"
@@ -174,14 +174,14 @@
                     </div>
 
                     <div class="totals-row" :class="isFormBalanced ? 'balanced' : 'unbalanced'">
-                        <span>إجمالي المدين: <strong>${{ formTotalDebit.toFixed(2) }}</strong></span>
-                        <span>إجمالي الدائن: <strong>${{ formTotalCredit.toFixed(2) }}</strong></span>
+                        <span>{{ $t('total_debit') }} <strong>${{ formTotalDebit.toFixed(2) }}</strong></span>
+                        <span>{{ $t('total_credit') }} <strong>${{ formTotalCredit.toFixed(2) }}</strong></span>
                         <span>{{ isFormBalanced ? '✓ متوازن' : '✗ غير متوازن' }}</span>
                     </div>
                 </div>
 
                 <div style="border-top: 1px solid var(--border-color); margin-top: 1.5rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <el-button @click="drawerVisible = false">إلغاء</el-button>
+                    <el-button @click="drawerVisible = false">{{ $t('cancel') }}</el-button>
                     <el-button type="primary" :loading="submittingForm" :disabled="!canSubmit" @click="saveEntry">
                         {{ editingId ? 'حفظ التعديلات' : 'تسجيل وإثبات القيد' }}
                     </el-button>
@@ -192,10 +192,14 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, reactive, computed } from 'vue';
 import { useJournalEntriesStore } from '@/stores/journalEntries';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+
+const { t } = useI18n();
 
 const store = useJournalEntriesStore();
 const ledgerStore = useLedgerAccountsStore();
@@ -239,7 +243,7 @@ const canSubmit = computed(() => isFormBalanced.value && form.lines.every((l) =>
 
 const isRowBalanced = (row) => parseFloat(row.total_debit).toFixed(2) === parseFloat(row.total_credit).toFixed(2);
 
-const statusLabel = (status) => (status === 'posted' ? 'مرحّل' : status);
+const statusLabel = (status) => (status === 'posted' ? t('posted') : status);
 
 const formatDate = (date) => (date ? String(date).slice(0, 10) : '');
 
@@ -280,11 +284,11 @@ const openEditDrawer = async (row) => {
 
 const saveEntry = async () => {
     if (!form.description.trim()) {
-        ElMessage.warning('يرجى كتابة بيان ووصف القيد.');
+        ElMessage.warning(t('narration_required'));
         return;
     }
     if (!canSubmit.value) {
-        ElMessage.warning('يجب اختيار حساب لكل سطر، وأن يكون إجمالي المدين مساوياً لإجمالي الدائن.');
+        ElMessage.warning(t('entry_must_balance'));
         return;
     }
 
@@ -303,16 +307,16 @@ const saveEntry = async () => {
     try {
         if (editingId.value) {
             await store.updateEntry(editingId.value, payload);
-            ElMessage.success('تم تعديل القيد بنجاح.');
+            ElMessage.success(t('entry_updated'));
         } else {
             await store.createEntry(payload);
-            ElMessage.success('تم تسجيل وإثبات القيد بنجاح.');
+            ElMessage.success(t('entry_recorded_and_posted'));
         }
         drawerVisible.value = false;
         await store.fetchEntries();
         await ledgerStore.fetchAccounts({ per_page: 100 });
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'خطأ أثناء حفظ القيد المحاسبي.');
+        ElMessage.error(e.response?.data?.message || t('failed_to_save_entry'));
     } finally {
         submittingForm.value = false;
     }
@@ -321,16 +325,16 @@ const saveEntry = async () => {
 const confirmDelete = (row) => {
     ElMessageBox.confirm(
         `هل أنت متأكد من حذف القيد رقم ${row.entry_number}؟ سيتم عكس تأثيره على أرصدة الحسابات.`,
-        'تأكيد الحذف',
-        { confirmButtonText: 'حذف', cancelButtonText: 'إلغاء', type: 'warning' }
+        t('confirm_deletion'),
+        { confirmButtonText: t('delete'), cancelButtonText: t('cancel'), type: 'warning' }
     ).then(async () => {
         try {
             await store.deleteEntry(row.id);
-            ElMessage.success('تم حذف القيد بنجاح.');
+            ElMessage.success(t('entry_deleted'));
             await store.fetchEntries();
             await ledgerStore.fetchAccounts({ per_page: 100 });
         } catch (e) {
-            ElMessage.error('خطأ أثناء حذف القيد.');
+            ElMessage.error(t('failed_to_delete_entry'));
         }
     }).catch(() => {});
 };

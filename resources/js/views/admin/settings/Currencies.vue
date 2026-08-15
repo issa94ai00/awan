@@ -2,14 +2,13 @@
     <div class="currencies-page">
         <div class="page-head">
             <div>
-                <h1><i class="fas fa-coins"></i> إدارة العملات</h1>
+                <h1><i class="fas fa-coins"></i> {{ $t('manage_currencies') }}</h1>
                 <p class="muted">
-                    كل المبالغ تُخزَّن وتُرحَّل بعملة الأساس. أسعار الصرف هنا تُستخدم لعرض الأسعار
-                    للزبون بعملته فقط، ولا تغيّر المبلغ المُحصَّل.
+                    {{ $t('currency_display_only_notice') }}
                 </p>
             </div>
             <el-button type="primary" @click="openCreate">
-                <i class="fas fa-plus"></i> إضافة عملة
+                <i class="fas fa-plus"></i> {{ $t('add_currency') }}
             </el-button>
         </div>
 
@@ -23,32 +22,32 @@
         />
 
         <el-card shadow="never" v-loading="loading">
-            <el-table :data="currencies" stripe empty-text="لا توجد عملات">
-                <el-table-column label="العملة" min-width="180">
+            <el-table :data="currencies" stripe :empty-text="$t('no_currencies')">
+                <el-table-column :label="$t('currency')" min-width="180">
                     <template #default="{ row }">
                         <div class="cur-name">
                             <strong>{{ row.name_ar || row.code }}</strong>
-                            <el-tag v-if="row.is_base" type="primary" size="small" effect="dark">الأساس</el-tag>
-                            <el-tag v-if="!row.is_active" type="info" size="small">معطّلة</el-tag>
+                            <el-tag v-if="row.is_base" type="primary" size="small" effect="dark">{{ $t('base_currency_tag') }}</el-tag>
+                            <el-tag v-if="!row.is_active" type="info" size="small">{{ $t('disabled_female') }}</el-tag>
                         </div>
                         <span class="muted mono">{{ row.code }} · {{ row.symbol }}</span>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="سعر الصرف" min-width="200">
+                <el-table-column :label="$t('exchange_rate')" min-width="200">
                     <template #default="{ row }">
-                        <div v-if="row.is_base" class="muted">1 (عملة الأساس)</div>
+                        <div v-if="row.is_base" class="muted">{{ $t('one_base_currency') }}</div>
                         <div v-else-if="row.rate">
                             <span class="mono">1 {{ baseCode }} = {{ row.rate }} {{ row.code }}</span>
                             <p class="muted tiny">{{ formatDate(row.rate_effective_at) }}</p>
                         </div>
                         <!-- No rate means the clients show base prices rather than
                              converting by a number nobody supplied. -->
-                        <el-tag v-else type="warning" size="small">لم يُدخل سعر بعد</el-tag>
+                        <el-tag v-else type="warning" size="small">{{ $t('no_rate_entered_yet') }}</el-tag>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="التنسيق" width="150">
+                <el-table-column :label="$t('formatting')" width="150">
                     <template #default="{ row }">
                         <span class="muted tiny">
                             {{ row.decimal_places }} منزلة
@@ -57,14 +56,14 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="إجراءات" width="280" align="center">
+                <el-table-column :label="$t('procedures')" width="280" align="center">
                     <template #default="{ row }">
                         <el-button v-if="!row.is_base" size="small" text type="primary" @click="openRate(row)">
-                            سعر جديد
+                            {{ $t('new_rate') }}
                         </el-button>
-                        <el-button size="small" text @click="openEdit(row)">تعديل</el-button>
+                        <el-button size="small" text @click="openEdit(row)">{{ $t('edit') }}</el-button>
                         <el-button v-if="!row.is_base" size="small" text type="warning" @click="makeBase(row)">
-                            اجعلها الأساس
+                            {{ $t('make_it_the_base') }}
                         </el-button>
                     </template>
                 </el-table-column>
@@ -72,8 +71,8 @@
                 <el-table-column type="expand">
                     <template #default="{ row }">
                         <div class="history">
-                            <p class="muted tiny">سجل الأسعار (الأحدث أولاً)</p>
-                            <el-empty v-if="!row.rate_history?.length" description="لا يوجد سجل" :image-size="40" />
+                            <p class="muted tiny">{{ $t('rate_history_newest_first') }}</p>
+                            <el-empty v-if="!row.rate_history?.length" :description="$t('no_history')" :image-size="40" />
                             <ul v-else>
                                 <li v-for="entry in row.rate_history" :key="entry.id">
                                     <span class="mono">{{ entry.rate }}</span>
@@ -89,73 +88,76 @@
         </el-card>
 
         <!-- Add / edit -->
-        <el-dialog v-model="formVisible" :title="form.id ? 'تعديل العملة' : 'إضافة عملة'" width="520px">
+        <el-dialog v-model="formVisible" :title="form.id ? $t('edit_currency') : $t('add_currency')" width="520px">
             <el-form label-position="top">
-                <el-form-item label="الرمز (ISO)" v-if="!form.id">
+                <el-form-item :label="$t('iso_code')" v-if="!form.id">
                     <el-input v-model="form.code" placeholder="USD" maxlength="8" />
                     <!-- The code is what every stored amount's currency column
                          refers to, so it is set once and never edited. -->
-                    <p class="muted tiny">يُحفظ مع كل مبلغ ولا يمكن تغييره لاحقاً.</p>
+                    <p class="muted tiny">{{ $t('code_saved_with_amounts') }}</p>
                 </el-form-item>
-                <el-form-item label="الاسم بالعربية">
+                <el-form-item :label="$t('name_arabic')">
                     <el-input v-model="form.name_ar" />
                 </el-form-item>
-                <el-form-item label="الاسم بالإنجليزية">
+                <el-form-item :label="$t('name_english')">
                     <el-input v-model="form.name_en" dir="ltr" />
                 </el-form-item>
-                <el-form-item label="الرمز الكتابي">
-                    <el-input v-model="form.symbol" placeholder="ل.س" />
+                <el-form-item :label="$t('written_symbol')">
+                    <el-input v-model="form.symbol" :placeholder="$t('symbol_example')" />
                 </el-form-item>
-                <el-form-item label="المنازل العشرية">
+                <el-form-item :label="$t('decimal_places')">
                     <el-input-number v-model="form.decimal_places" :min="0" :max="4" />
                 </el-form-item>
-                <el-form-item label="خطوة التقريب">
+                <el-form-item :label="$t('rounding_step')">
                     <el-input-number v-model="form.rounding_step" :min="0" :step="100" />
                     <p class="muted tiny">
-                        صفر = بلا تقريب. استخدمها حين تكون أصغر فئة نقدية كبيرة (مثلاً 500).
+                        {{ $t('rounding_step_hint') }}
                     </p>
                 </el-form-item>
-                <el-form-item v-if="!form.id" label="سعر الصرف الابتدائي">
+                <el-form-item v-if="!form.id" :label="$t('initial_exchange_rate')">
                     <el-input-number v-model="form.rate" :min="0" :precision="4" :step="0.01" />
-                    <p class="muted tiny">1 {{ baseCode }} = كم من هذه العملة؟</p>
+                    <p class="muted tiny">{{ $t('how_many_of_this_currency', { base: baseCode }) }}</p>
                 </el-form-item>
                 <el-form-item v-if="form.id">
-                    <el-checkbox v-model="form.is_active">مفعّلة</el-checkbox>
+                    <el-checkbox v-model="form.is_active">{{ $t('enabled_female') }}</el-checkbox>
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="formVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="saving" @click="save">حفظ</el-button>
+                <el-button @click="formVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="saving" @click="save">{{ $t('save') }}</el-button>
             </template>
         </el-dialog>
 
         <!-- New rate -->
         <el-dialog v-model="rateVisible" :title="`سعر جديد لـ ${rateTarget?.code || ''}`" width="460px">
             <el-form label-position="top">
-                <el-form-item label="السعر">
+                <el-form-item :label="$t('price')">
                     <el-input-number v-model="rateForm.rate" :min="0" :precision="4" :step="0.01" style="width: 100%" />
                     <p class="muted tiny">1 {{ baseCode }} = كم من {{ rateTarget?.code }}؟</p>
                 </el-form-item>
-                <el-form-item label="يبدأ من">
+                <el-form-item :label="$t('effective_from')">
                     <el-date-picker v-model="rateForm.effective_at" type="datetime" style="width: 100%" />
-                    <p class="muted tiny">اتركه فارغاً ليبدأ الآن. السعر السابق يبقى محفوظاً.</p>
+                    <p class="muted tiny">{{ $t('leave_empty_to_start_now') }}</p>
                 </el-form-item>
-                <el-form-item label="ملاحظة">
+                <el-form-item :label="$t('note')">
                     <el-input v-model="rateForm.note" />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="rateVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="saving" @click="saveRate">حفظ السعر</el-button>
+                <el-button @click="rateVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="saving" @click="saveRate">{{ $t('save_rate') }}</el-button>
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import currenciesApi from '@/api/currencies';
+
+const { t } = useI18n();
 
 const currencies = ref([]);
 const baseCode = ref('');
@@ -188,7 +190,7 @@ const load = async () => {
         currencies.value = res.data?.data?.currencies || [];
         baseCode.value = res.data?.data?.base || '';
     } catch (e) {
-        ElMessage.error(errorMessage(e, 'تعذّر تحميل العملات.'));
+        ElMessage.error(errorMessage(e, t('failed_to_load_currencies')));
     } finally {
         loading.value = false;
     }
@@ -233,10 +235,10 @@ const save = async () => {
             await currenciesApi.create({ ...form, id: undefined });
         }
         formVisible.value = false;
-        ElMessage.success('تم الحفظ.');
+        ElMessage.success(t('saved'));
         await load();
     } catch (e) {
-        ElMessage.error(errorMessage(e, 'تعذّر حفظ العملة.'));
+        ElMessage.error(errorMessage(e, t('failed_to_save_currency')));
     } finally {
         saving.value = false;
     }
@@ -257,10 +259,10 @@ const saveRate = async () => {
             note: rateForm.note || undefined,
         });
         rateVisible.value = false;
-        ElMessage.success('تم حفظ سعر الصرف.');
+        ElMessage.success(t('exchange_rate_saved'));
         await load();
     } catch (e) {
-        ElMessage.error(errorMessage(e, 'تعذّر حفظ السعر.'));
+        ElMessage.error(errorMessage(e, t('failed_to_save_rate')));
     } finally {
         saving.value = false;
     }
@@ -272,9 +274,9 @@ const makeBase = async (row) => {
     // the new base or they mean nothing.
     try {
         await ElMessageBox.confirm(
-            `سيتم اعتماد ${row.code} كعملة أساس. المبالغ المخزّنة لن تُحوَّل، ويجب إعادة إدخال أسعار الصرف مقابل العملة الجديدة. متابعة؟`,
-            'تغيير عملة الأساس',
-            { type: 'warning', confirmButtonText: 'متابعة', cancelButtonText: 'إلغاء' },
+            t('confirm_set_base_currency', { code: row.code }),
+            t('base_currency_change_title'),
+            { type: 'warning', confirmButtonText: t('tracking'), cancelButtonText: t('cancel') },
         );
     } catch {
         return;
@@ -282,7 +284,7 @@ const makeBase = async (row) => {
 
     try {
         const res = await currenciesApi.setBase(row.id);
-        ElMessage.warning(res.data?.message || 'تم تغيير عملة الأساس.');
+        ElMessage.warning(res.data?.message || t('base_currency_changed'));
         const base = res.data?.data?.base || row.code;
         if (window.systemData) {
             window.systemData.settings = {
@@ -296,7 +298,7 @@ const makeBase = async (row) => {
         }
         await load();
     } catch (e) {
-        ElMessage.error(errorMessage(e, 'تعذّر تغيير عملة الأساس.'));
+        ElMessage.error(errorMessage(e, t('failed_to_change_base_currency')));
     }
 };
 

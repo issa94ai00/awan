@@ -1,19 +1,20 @@
 <template>
   <div class="workflow-show-page">
-    <div class="page-header">
-      <h1><el-icon><Operation /></el-icon> {{ workflow.name }}</h1>
-      <div class="header-actions">
-        <el-button @click="$router.back()">
-          <el-icon><Back /></el-icon> {{ $t('common.back') }}
-        </el-button>
-        <el-button @click="$router.push(`/admin/workflows/${workflow.id}/edit`)">
-          <el-icon><Edit /></el-icon> {{ $t('common.edit') }}
-        </el-button>
-        <el-button type="success" @click="executeWorkflow" :disabled="workflow.status !== 'active'">
-          <el-icon><VideoPlay /></el-icon> {{ $t('workflows.execute') }}
-        </el-button>
-      </div>
-    </div>
+    <AdminPageHeader
+        :title="workflow.name"
+    >
+        <template #actions>
+            <el-button @click="$router.back()">
+              <el-icon><Back /></el-icon> {{ $t('common.back') }}
+            </el-button>
+            <el-button @click="$router.push(`/admin/workflows/${workflow.id}/edit`)">
+              <el-icon><Edit /></el-icon> {{ $t('common.edit') }}
+            </el-button>
+            <el-button type="success" @click="executeWorkflow" :disabled="workflow.status !== 'active'">
+              <el-icon><VideoPlay /></el-icon> {{ $t('workflows.execute') }}
+            </el-button>
+        </template>
+    </AdminPageHeader>
 
     <el-row :gutter="20">
       <el-col :xs="24" :md="12">
@@ -143,6 +144,7 @@
 </template>
 
 <script setup>
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Operation, Back, Edit, VideoPlay, Plus, Delete, View } from '@element-plus/icons-vue'

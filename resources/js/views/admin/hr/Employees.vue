@@ -1,40 +1,31 @@
 <template>
     <div class="hr-page hr-employees">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ $t('employees') }}</h1>
-                <p>{{ $t('manage_employee_data_view_status') }}</p>
-            </div>
-            <div class="page-actions">
+        <AdminPageHeader
+            :title="$t('employees')"
+            :subtitle="$t('manage_employee_data_view_status')"
+        >
+            <template #actions>
                 <el-button type="primary" :icon="Plus" @click="createEmployee">
                     {{ $t('add_an_employee') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-card shadow="hover" class="filter-panel">
-            <el-row :gutter="20">
-                <el-col :xs="24" :sm="12" :md="8">
-                    <el-input
-                        v-model="searchQuery"
-                        :placeholder="$t('search_by_name_department_or_position')"
-                        :prefix-icon="Search"
-                        clearable
-                    />
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="8">
-                    <el-select v-model="selectedStatus" :placeholder="$t('status')" clearable>
-                        <el-option :label="$t('active')" value="نشط" />
-                        <el-option :label="$t('inactive')" value="غير نشط" />
-                    </el-select>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="8">
-                    <el-button type="primary" :icon="Refresh" @click="fetchEmployees">
-                        {{ $t('update') }}
-                    </el-button>
-                </el-col>
-            </el-row>
-        </el-card>
+        <AdminFilterBar>
+            <el-input
+                v-model="searchQuery"
+                :placeholder="$t('search_by_name_department_or_position')"
+                :prefix-icon="Search"
+                clearable
+            />
+            <el-select v-model="selectedStatus" :placeholder="$t('status')" clearable>
+                <el-option :label="$t('active')" value="نشط" />
+                <el-option :label="$t('inactive')" value="غير نشط" />
+            </el-select>
+            <el-button type="primary" :icon="Refresh" @click="fetchEmployees">
+                {{ $t('update') }}
+            </el-button>
+        </AdminFilterBar>
 
         <el-card shadow="hover" class="table-card">
             <template #header>
@@ -118,6 +109,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useEmployeesStore } from '@/stores/employees';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import {
     Plus,
     Search,

@@ -1,39 +1,37 @@
 <template>
     <div class="sales-page sales-index">
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-chart-line"></i> {{ $t('sales_overview') || 'نظرة عامة على المبيعات' }}</h1>
-                <p>{{ $t('track_orders_invoices_offers_and') || 'تابع عروض الأسعار وطلبات البيع والفواتير والتحصيل من مكان واحد.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-chart-line"
+            :title="$t('sales_overview')"
+            :subtitle="$t('track_orders_invoices_offers_and')"
+        >
+            <template #actions>
                 <el-button :icon="Refresh" :loading="loading" @click="refreshSummary">
-                    {{ $t('data_update') || 'تحديث البيانات' }}
+                    {{ $t('data_update') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- KPI row. Each card navigates to the screen it summarises. -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col v-for="card in stats" :key="card.key" :xs="12" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card" @click="card.to && router.push(card.to)">
-                    <div class="stat-inner">
-                        <div class="stat-icon" :class="card.tone">
-                            <i class="fas" :class="card.icon"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ card.value }}</h3>
-                            <p>{{ card.label }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card v-for="card in stats" :key="card.key" shadow="hover" class="stat-card" @click="card.to && router.push(card.to)">
+                <div class="stat-inner">
+                    <div class="stat-icon" :class="card.tone">
+                        <i class="fas" :class="card.icon"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ card.value }}</h3>
+                        <p>{{ card.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- The sales pipeline, showing where work is stuck. -->
         <el-card shadow="hover" class="table-panel pipeline-card">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-diagram-project"></i> {{ $t('sales_pipeline') || 'مسار المبيعات' }}</span>
+                    <span><i class="fas fa-diagram-project"></i> {{ $t('sales_pipeline') }}</span>
                 </div>
             </template>
             <div class="pipeline">
@@ -58,11 +56,11 @@
                 <el-card shadow="hover" class="table-panel">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-clock-rotate-left"></i> {{ $t('recent_activity') || 'أحدث الحركات' }}</span>
+                            <span><i class="fas fa-clock-rotate-left"></i> {{ $t('recent_activity') }}</span>
                             <el-radio-group v-model="activityTab" size="small">
-                                <el-radio-button value="orders">{{ $t('sales_orders') || 'طلبات البيع' }}</el-radio-button>
-                                <el-radio-button value="invoices">{{ $t('invoices') || 'الفواتير' }}</el-radio-button>
-                                <el-radio-button value="quotes">{{ $t('quotes') || 'العروض' }}</el-radio-button>
+                                <el-radio-button value="orders">{{ $t('sales_orders') }}</el-radio-button>
+                                <el-radio-button value="invoices">{{ $t('invoices') }}</el-radio-button>
+                                <el-radio-button value="quotes">{{ $t('quotes') }}</el-radio-button>
                             </el-radio-group>
                         </div>
                     </template>
@@ -71,22 +69,22 @@
 
                     <template v-else>
                         <el-table v-if="activityRows.length" :data="activityRows" style="width: 100%" stripe>
-                            <el-table-column :label="$t('reference') || 'المرجع'" width="150">
+                            <el-table-column :label="$t('reference')" width="150">
                                 <template #default="{ row }">
                                     <button type="button" class="record-link" @click="router.push(activityTarget)">
                                         {{ row.reference }}
                                     </button>
                                 </template>
                             </el-table-column>
-                            <el-table-column :label="$t('client') || 'العميل'" min-width="150">
+                            <el-table-column :label="$t('client')" min-width="150">
                                 <template #default="{ row }">{{ row.customer }}</template>
                             </el-table-column>
-                            <el-table-column :label="$t('total') || 'الإجمالي'" width="150">
+                            <el-table-column :label="$t('total')" width="150">
                                 <template #default="{ row }">
                                     <strong class="amount">{{ formatCurrency(row.total) }}</strong>
                                 </template>
                             </el-table-column>
-                            <el-table-column :label="$t('status') || 'الحالة'" width="150" align="center">
+                            <el-table-column :label="$t('status')" width="150" align="center">
                                 <template #default="{ row }">
                                     <!-- This was `type="item.type"` (no binding), so Element
                                          Plus received the literal string and rendered an
@@ -99,7 +97,7 @@
                             </el-table-column>
                         </el-table>
 
-                        <el-empty v-else :description="$t('there_are_no_sell_orders_yet') || 'لا توجد حركات بعد'" />
+                        <el-empty v-else :description="$t('there_are_no_sell_orders_yet')" />
                     </template>
                 </el-card>
             </el-col>
@@ -107,7 +105,7 @@
             <el-col :xs="24" :lg="8">
                 <el-card shadow="hover" class="table-panel insight-card">
                     <template #header>
-                        <span><i class="fas fa-circle-info"></i> {{ $t('quick_summary') || 'ملخص سريع' }}</span>
+                        <span><i class="fas fa-circle-info"></i> {{ $t('quick_summary') }}</span>
                     </template>
                     <div class="insight-list">
                         <router-link
@@ -128,7 +126,7 @@
                         :closable="false"
                         class="outstanding-alert"
                     >
-                        {{ $t('outstanding_amount') || 'مبالغ مستحقة غير محصّلة' }}:
+                        {{ $t('outstanding_amount') }}:
                         <strong>{{ formatCurrency(outstandingTotal) }}</strong>
                     </el-alert>
                 </el-card>
@@ -138,12 +136,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Refresh } from '@element-plus/icons-vue';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
 import { useQuotesStore } from '@/stores/quotes';
 import { useInvoicesStore } from '@/stores/invoices';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 import {
     normalizeStatus,
     statusTagType,
@@ -185,7 +188,7 @@ const outstandingTotal = computed(() =>
 const stats = computed(() => [
     {
         key: 'quotes',
-        label: window.t?.('quotes') || 'عروض الأسعار',
+        label: window.t?.('quotes') || t('quotes'),
         value: quotesStore.quotes.length,
         icon: 'fa-file-signature',
         tone: 'purple',
@@ -193,7 +196,7 @@ const stats = computed(() => [
     },
     {
         key: 'orders',
-        label: window.t?.('sales_orders') || 'طلبات البيع',
+        label: window.t?.('sales_orders') || t('sales_orders'),
         value: salesStore.orders.length,
         icon: 'fa-cart-shopping',
         tone: 'blue',
@@ -201,7 +204,7 @@ const stats = computed(() => [
     },
     {
         key: 'invoices',
-        label: window.t?.('invoices') || 'الفواتير',
+        label: window.t?.('invoices') || t('invoices'),
         value: invoicesStore.invoices.length,
         icon: 'fa-file-invoice-dollar',
         tone: 'orange',
@@ -209,7 +212,7 @@ const stats = computed(() => [
     },
     {
         key: 'revenue',
-        label: window.t?.('collected_amount') || 'المحصّل',
+        label: window.t?.('collected_amount') || t('collected'),
         value: formatCurrency(collectedRevenue.value),
         icon: 'fa-sack-dollar',
         tone: 'green',
@@ -232,7 +235,7 @@ const pipeline = computed(() => {
     return [
         {
             key: 'quotes',
-            label: window.t?.('accepted_offers') || 'عروض مقبولة',
+            label: window.t?.('accepted_offers') || t('accepted_quotes'),
             count: acceptedQuotes.length,
             amount: formatCurrency(sumBy(acceptedQuotes, 'total')),
             icon: 'fa-file-signature',
@@ -241,7 +244,7 @@ const pipeline = computed(() => {
         },
         {
             key: 'orders',
-            label: window.t?.('open_orders') || 'طلبات مفتوحة',
+            label: window.t?.('open_orders') || t('open_orders'),
             count: openOrders.length,
             amount: formatCurrency(sumBy(openOrders, 'total')),
             icon: 'fa-cart-shopping',
@@ -250,7 +253,7 @@ const pipeline = computed(() => {
         },
         {
             key: 'unpaid',
-            label: window.t?.('unpaid_invoices') || 'فواتير غير مسددة',
+            label: window.t?.('unpaid_invoices') || t('unpaid_invoices'),
             count: unpaidInvoices.length,
             amount: formatCurrency(unpaidInvoices.reduce((s, i) => s + Math.max(0, dueAmount(i)), 0)),
             icon: 'fa-hourglass-half',
@@ -259,7 +262,7 @@ const pipeline = computed(() => {
         },
         {
             key: 'settled',
-            label: window.t?.('settled_invoices') || 'فواتير مسددة',
+            label: window.t?.('settled_invoices') || t('settled_invoices'),
             count: settledInvoices.length,
             amount: formatCurrency(sumBy(settledInvoices, 'paid_amount')),
             icon: 'fa-circle-check',
@@ -272,28 +275,28 @@ const pipeline = computed(() => {
 const insights = computed(() => [
     {
         key: 'orders',
-        label: window.t?.('sales_orders') || 'طلبات البيع',
+        label: window.t?.('sales_orders') || t('sales_orders'),
         value: salesStore.orders.length,
         to: '/admin/sales/sales-orders',
         tone: '',
     },
     {
         key: 'invoices',
-        label: window.t?.('invoices') || 'الفواتير',
+        label: window.t?.('invoices') || t('invoices'),
         value: invoicesStore.invoices.length,
         to: '/admin/sales/invoices',
         tone: '',
     },
     {
         key: 'quotes',
-        label: window.t?.('quotes') || 'عروض الأسعار',
+        label: window.t?.('quotes') || t('quotes'),
         value: quotesStore.quotes.length,
         to: '/admin/sales/quotes',
         tone: '',
     },
     {
         key: 'collected',
-        label: window.t?.('collected_amount') || 'المحصّل',
+        label: window.t?.('collected_amount') || t('collected'),
         value: formatCurrency(collectedRevenue.value),
         to: '/admin/sales/payments',
         tone: 'positive',

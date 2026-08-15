@@ -401,7 +401,7 @@
                              left on their account afterwards. -->
                         <div class="settlement-block">
                             <div class="summary-input-row">
-                                <label>{{ t('paid_amount') || 'المبلغ المدفوع' }}</label>
+                                <label>{{ t('paid_amount') }}</label>
                                 <el-input-number
                                     v-model="form.paid_amount"
                                     :min="0"
@@ -414,25 +414,24 @@
 
                             <div class="quick-pay">
                                 <el-button size="small" text @click="form.paid_amount = total">
-                                    {{ t('pay_full') || 'سداد كامل' }}
+                                    {{ t('pay_full') }}
                                 </el-button>
                                 <el-button size="small" text @click="form.paid_amount = 0">
-                                    {{ t('pay_none') || 'آجل بالكامل' }}
+                                    {{ t('pay_none') }}
                                 </el-button>
                             </div>
 
                             <div class="summary-row remaining" :class="remainingTone">
                                 <span class="label">
                                     {{ remaining >= 0
-                                        ? (t('remaining_amount') || 'المتبقي على العميل')
-                                        : (t('customer_credit') || 'رصيد للعميل') }}
+                                        ? (t('remaining_amount'))
+                                        : (t('customer_credit')) }}
                                 </span>
                                 <span class="value">{{ formatCurrency(Math.abs(remaining)) }}</span>
                             </div>
 
                             <p v-if="!form.customer_id && form.paid_amount !== total" class="settlement-hint">
-                                {{ t('select_customer_to_track_debt')
-                                    || 'اختر عميلاً لتسجيل المتبقي على حسابه — بدون عميل لا يمكن تتبّع المديونية.' }}
+                                {{ t('select_customer_to_track_debt') }}
                             </p>
                         </div>
                     </div>
@@ -521,12 +520,12 @@ const statusTransitions = {
 };
 
 const statusLabels = {
-    pending: 'معلق',
-    confirmed: 'مؤكد',
-    processing: 'قيد المعالجة',
-    shipped: 'تم الشحن',
-    delivered: 'تم التسليم',
-    cancelled: 'ملغي'
+    pending: t('sales_status_pending'),
+    confirmed: t('sales_status_confirmed'),
+    processing: t('sales_status_processing'),
+    shipped: t('sales_status_shipped'),
+    delivered: t('sales_status_delivered'),
+    cancelled: t('sales_status_cancelled')
 };
 
 const statusColors = {
@@ -841,12 +840,12 @@ const submitInvoice = async () => {
             const s = created?.settlement;
             const parts = [t('invoice_created_successfully')];
             if (s?.payment_number) {
-                parts.push(`${t('payment') || 'دفعة'} ${s.payment_number}`);
+                parts.push(`${t('payment')} ${s.payment_number}`);
             }
             if (s && Math.abs(s.remaining) >= 0.005) {
                 parts.push(s.remaining > 0
-                    ? `${t('remaining_on_customer') || 'متبقٍ على العميل'} ${formatCurrency(s.remaining)}`
-                    : `${t('customer_credit') || 'رصيد للعميل'} ${formatCurrency(Math.abs(s.remaining))}`);
+                    ? `${t('remaining_on_customer')} ${formatCurrency(s.remaining)}`
+                    : `${t('customer_credit')} ${formatCurrency(Math.abs(s.remaining))}`);
             }
             ElMessage.success({ message: parts.join(' • '), duration: 5000 });
         }

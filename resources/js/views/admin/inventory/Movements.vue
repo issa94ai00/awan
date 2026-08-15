@@ -1,27 +1,27 @@
 <template>
     <div class="inventory-page inventory-movements">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-history text-primary"></i> سجل الحركة المخزنية</h1>
-                <p>سجل تفصيلي لكافة الواردات والصادرات والتسويات اليدوية الحادثة على المخازن والمستودعات.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-history text-primary"
+            :title="$t('stock_movement_log')"
+            :subtitle="$t('movement_log_subtitle')"
+        >
+            <template #actions>
                 <router-link to="/admin/inventory">
-                    <el-button><i class="fas fa-warehouse mr-1"></i> لوحة المخزون</el-button>
+                    <el-button><i class="fas fa-warehouse mr-1"></i> {{ $t('inventory_board') }}</el-button>
                 </router-link>
                 <el-button type="primary" class="create-btn" @click="openAdjustmentDrawer">
-                    <i class="fas fa-plus"></i> تسوية مخزنية جديدة
+                    <i class="fas fa-plus"></i> {{ $t('new_stock_adjustment') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Filter Panel -->
         <el-card shadow="never" class="filters-panel mb-4">
             <div class="filters-row">
                 <div class="filter-item">
-                    <label>المنتج / الصنف</label>
-                    <el-select v-model="filters.product_id" placeholder="الكل" clearable style="width: 230px;" filterable @change="applyFilters">
+                    <label>{{ $t('product_item') }}</label>
+                    <el-select v-model="filters.product_id" :placeholder="$t('all')" clearable style="width: 230px;" filterable @change="applyFilters">
                         <el-option
                             v-for="p in productsStore.products"
                             :key="p.id"
@@ -31,28 +31,28 @@
                     </el-select>
                 </div>
                 <div class="filter-item">
-                    <label>المستودع</label>
-                    <el-select v-model="filters.warehouse_id" placeholder="الكل" clearable style="width: 180px;" @change="applyFilters">
+                    <label>{{ $t('warehouse') }}</label>
+                    <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable style="width: 180px;" @change="applyFilters">
                         <el-option v-for="w in inventoryStore.warehouses" :key="w.id" :label="w.name" :value="w.id" />
                     </el-select>
                 </div>
                 <div class="filter-item">
-                    <label>نوع الحركة</label>
-                    <el-select v-model="filters.movement_type" placeholder="الكل" clearable style="width: 160px;" @change="applyFilters">
-                        <el-option label="وارد (In)" value="in" />
-                        <el-option label="صادر (Out)" value="out" />
-                        <el-option label="تسوية (Adjustment)" value="adjustment" />
+                    <label>{{ $t('movement_type') }}</label>
+                    <el-select v-model="filters.movement_type" :placeholder="$t('all')" clearable style="width: 160px;" @change="applyFilters">
+                        <el-option :label="$t('movement_in')" value="in" />
+                        <el-option :label="$t('movement_out_label')" value="out" />
+                        <el-option :label="$t('movement_adjustment')" value="adjustment" />
                     </el-select>
                 </div>
                 <div class="filter-item">
-                    <label>من تاريخ</label>
-                    <el-date-picker v-model="filters.from_date" type="date" placeholder="اختر التاريخ" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <label>{{ $t('date_from') }}</label>
+                    <el-date-picker v-model="filters.from_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
                 </div>
                 <div class="filter-item">
-                    <label>إلى تاريخ</label>
-                    <el-date-picker v-model="filters.to_date" type="date" placeholder="اختر التاريخ" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <label>{{ $t('date_to') }}</label>
+                    <el-date-picker v-model="filters.to_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
                 </div>
-                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.5rem;">إعادة تعيين</el-button>
+                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.5rem;">{{ $t('reset') }}</el-button>
             </div>
         </el-card>
 
@@ -60,7 +60,7 @@
         <el-card shadow="never" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-exchange-alt text-muted"></i> كشف المعاملات المخزنية</span>
+                    <span><i class="fas fa-exchange-alt text-muted"></i> {{ $t('stock_transactions_statement') }}</span>
                 </div>
             </template>
 
@@ -75,23 +75,23 @@
                     stripe
                     class="custom-table"
                 >
-                    <el-table-column prop="created_at" label="التاريخ والوقت" width="180" align="center">
+                    <el-table-column prop="created_at" :label="$t('date_and_time')" width="180" align="center">
                         <template #default="{ row }">
                             <span>{{ row.created_at ? row.created_at.replace('T', ' ').substring(0, 19) : '-' }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الصنف / المنتج" min-width="180">
+                    <el-table-column :label="$t('item_product')" min-width="180">
                         <template #default="{ row }">
                             <strong style="color: var(--text-dark);">{{ row.product?.name_ar || row.product?.name || '-' }}</strong>
                             <p style="margin: 0.15rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">SKU: {{ row.product?.sku || '-' }}</p>
                         </template>
                     </el-table-column>
-                    <el-table-column label="المستودع" min-width="130">
+                    <el-table-column :label="$t('warehouse')" min-width="130">
                         <template #default="{ row }">
                             {{ row.warehouse?.name || '-' }}
                         </template>
                     </el-table-column>
-                    <el-table-column label="نوع الحركة" width="140" align="center">
+                    <el-table-column :label="$t('movement_type')" width="140" align="center">
                         <template #default="{ row }">
                             <el-tag :type="typeTagType(row.movement_type)" effect="light" class="status-tag">
                                 <i class="fas status-dot-icon" :class="statusIconClass(row.movement_type)"></i>
@@ -99,24 +99,24 @@
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الكمية" width="120" align="center">
+                    <el-table-column :label="$t('quantity')" width="120" align="center">
                         <template #default="{ row }">
                             <strong :class="quantityColorClass(row.movement_type)" style="font-size: 1rem;">
                                 {{ row.movement_type === 'in' ? '+' : '-' }}{{ row.quantity }}
                             </strong>
                         </template>
                     </el-table-column>
-                    <el-table-column label="رمز المرجع" width="150" show-overflow-tooltip>
+                    <el-table-column :label="$t('reference_code')" width="150" show-overflow-tooltip>
                         <template #default="{ row }">
                             <span v-if="row.reference">{{ row.reference }}</span>
                             <span v-else-if="row.movement_key" class="text-muted">{{ row.movement_key }}</span>
                             <span v-else>-</span>
                         </template>
                     </el-table-column>
-                    <el-table-column label="المسؤول" width="140" show-overflow-tooltip>
+                    <el-table-column :label="$t('responsible')" width="140" show-overflow-tooltip>
                         <template #default="{ row }">{{ row.creator?.name || '-' }}</template>
                     </el-table-column>
-                    <el-table-column label="ملاحظات" min-width="180" show-overflow-tooltip>
+                    <el-table-column :label="$t('notes')" min-width="180" show-overflow-tooltip>
                         <template #default="{ row }">{{ row.notes || '-' }}</template>
                     </el-table-column>
                 </el-table>
@@ -124,9 +124,9 @@
                 <!-- Empty State -->
                 <div v-if="!store.movements.length" class="empty-state-box">
                     <i class="fas fa-exchange-alt empty-icon"></i>
-                    <p>لا توجد حركات مخزنية مطابقة لشروط البحث.</p>
+                    <p>{{ $t('no_matching_movements') }}</p>
                     <el-button type="primary" size="medium" @click="openAdjustmentDrawer">
-                        <i class="fas fa-plus"></i> تسجيل حركة مخزنية
+                        <i class="fas fa-plus"></i> {{ $t('record_stock_movement') }}
                     </el-button>
                 </div>
 
@@ -147,15 +147,15 @@
         <!-- Quick Adjustment Form Drawer -->
         <el-drawer
             v-model="adjustmentDrawerVisible"
-            title="تسجيل حركة مخزنية جديدة"
+            :title="$t('record_new_stock_movement')"
             size="40%"
             direction="rtl"
             destroy-on-close
             class="form-drawer"
         >
             <el-form :model="form" label-position="top">
-                <el-form-item label="المنتج المراد تسويته" required>
-                    <el-select v-model="form.product_id" placeholder="اختر المنتج" style="width: 100%" filterable>
+                <el-form-item :label="$t('product_to_adjust')" required>
+                    <el-select v-model="form.product_id" :placeholder="$t('select_product')" style="width: 100%" filterable>
                         <el-option
                             v-for="p in productsStore.products"
                             :key="p.id"
@@ -165,39 +165,39 @@
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="المستودع">
-                    <el-select v-model="form.warehouse_id" placeholder="المستودع الافتراضي" clearable style="width: 100%">
+                <el-form-item :label="$t('warehouse')">
+                    <el-select v-model="form.warehouse_id" :placeholder="$t('default_warehouse')" clearable style="width: 100%">
                         <el-option v-for="w in inventoryStore.warehouses" :key="w.id" :label="w.name" :value="w.id" />
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="نوع الحركة المخزنية" required>
+                <el-form-item :label="$t('stock_movement_type')" required>
                     <el-radio-group v-model="form.movement_type" class="w-100">
-                        <el-radio-button value="in">وارد (In)</el-radio-button>
-                        <el-radio-button value="out">صادر (Out)</el-radio-button>
-                        <el-radio-button value="adjustment">تسوية (Adjustment)</el-radio-button>
+                        <el-radio-button value="in">{{ $t('movement_in') }}</el-radio-button>
+                        <el-radio-button value="out">{{ $t('movement_out_label') }}</el-radio-button>
+                        <el-radio-button value="adjustment">{{ $t('movement_adjustment') }}</el-radio-button>
                     </el-radio-group>
                 </el-form-item>
 
-                <el-form-item label="الكمية" required>
+                <el-form-item :label="$t('quantity')" required>
                     <el-input-number v-model="form.quantity" :min="1" style="width: 100%" />
                 </el-form-item>
 
-                <el-form-item label="رمز المرجع (رقم الإذن / الفاتورة)">
-                    <el-input v-model="form.reference" placeholder="مثال: ADJ-2026-09" />
+                <el-form-item :label="$t('reference_code_hint')">
+                    <el-input v-model="form.reference" :placeholder="$t('reference_example')" />
                 </el-form-item>
 
-                <el-form-item label="المصدر">
-                    <el-input v-model="form.source" placeholder="مثال: مستودع جدة الرئيسي..." />
+                <el-form-item :label="$t('source')">
+                    <el-input v-model="form.source" :placeholder="$t('source_example')" />
                 </el-form-item>
 
-                <el-form-item label="ملاحظات التسوية">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="ملاحظات توضيحية حول سبب الحركة أو التسوية..." />
+                <el-form-item :label="$t('adjustment_notes')">
+                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('adjustment_notes_placeholder')" />
                 </el-form-item>
 
                 <div class="drawer-footer">
-                    <el-button @click="adjustmentDrawerVisible = false">إلغاء</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">تأكيد الحركة المخزنية</el-button>
+                    <el-button @click="adjustmentDrawerVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">{{ $t('confirm_stock_movement') }}</el-button>
                 </div>
             </el-form>
         </el-drawer>
@@ -205,12 +205,16 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, reactive } from 'vue';
 import { useStockMovementsStore } from '@/stores/stockMovements';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { stockMovementsApi } from '@/api/stockMovements';
 import { ElMessage } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+
+const { t } = useI18n();
 
 const store = useStockMovementsStore();
 const productsStore = useProductsStore();
@@ -289,11 +293,11 @@ const openAdjustmentDrawer = () => {
 
 const saveAdjustment = async () => {
     if (!form.product_id) {
-        ElMessage.warning('يرجى اختيار صنف السلعة أولاً.');
+        ElMessage.warning(t('please_select_item_first'));
         return;
     }
     if (!form.quantity) {
-        ElMessage.warning('يرجى تحديد الكمية.');
+        ElMessage.warning(t('please_set_quantity'));
         return;
     }
 
@@ -305,12 +309,12 @@ const saveAdjustment = async () => {
             warehouse_id: form.warehouse_id || null,
             quantity: Number(form.quantity),
         });
-        ElMessage.success('تم تسجيل وإثبات الحركة المخزنية بنجاح.');
+        ElMessage.success(t('stock_movement_recorded_and_posted'));
         adjustmentDrawerVisible.value = false;
         await store.fetchMovements(buildParams());
         await productsStore.fetchProducts({ per_page: 200 });
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'حدث خطأ أثناء حفظ الحركة المخزنية.');
+        ElMessage.error(e.response?.data?.message || t('failed_to_save_stock_movement'));
     } finally {
         submittingForm.value = false;
     }
@@ -332,9 +336,9 @@ const statusIconClass = (type) => {
 
 const getArabicType = (type) => {
     const val = String(type || '').toLowerCase();
-    if (val === 'in') return 'وارد (In)';
-    if (val === 'out') return 'صادر (Out)';
-    return 'تسوية (Adjustment)';
+    if (val === 'in') return t('movement_in');
+    if (val === 'out') return t('movement_out_label');
+    return t('movement_adjustment');
 };
 
 const quantityColorClass = (type) => {

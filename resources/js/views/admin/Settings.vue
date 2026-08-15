@@ -15,7 +15,7 @@
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
                         <div class="lang-switch-bar">
                             <el-radio-group v-model="generalLang" size="small">
-                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="ar">{{ $t('arabic') }}</el-radio-button>
                                 <el-radio-button value="en">English</el-radio-button>
                             </el-radio-group>
                         </div>
@@ -23,24 +23,24 @@
                         <template v-if="generalLang === 'ar'">
                             <el-row :gutter="20">
                                 <el-col :xs="24" :md="12">
-                                    <el-form-item label="اسم الموقع">
-                                        <el-input v-model="form.site_name" placeholder="أوان التقدم" />
+                                    <el-form-item :label="$t('site_name')">
+                                        <el-input v-model="form.site_name" :placeholder="$t('site_fallback_name')" />
                                     </el-form-item>
                                 </el-col>
 
                                 <el-col :xs="24" :md="12">
-                                    <el-form-item label="الشعار الفرعي">
+                                    <el-form-item :label="$t('tagline')">
                                         <el-input v-model="form.site_tagline" placeholder="نبني معاً غد سورية الأجمل" />
                                     </el-form-item>
                                 </el-col>
                             </el-row>
 
-                            <el-form-item label="وصف الموقع">
+                            <el-form-item :label="$t('site_description')">
                                 <el-input
                                     type="textarea"
                                     :rows="4"
                                     v-model="form.site_description"
-                                    placeholder="وصف مختصر للموقع..."
+                                    :placeholder="$t('site_short_description_placeholder')"
                                 />
                             </el-form-item>
                         </template>
@@ -149,7 +149,7 @@
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
                         <div class="lang-switch-bar">
                             <el-radio-group v-model="contactLang" size="small">
-                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="ar">{{ $t('arabic') }}</el-radio-button>
                                 <el-radio-button value="en">English</el-radio-button>
                             </el-radio-group>
                         </div>
@@ -238,7 +238,7 @@
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
                         <div class="lang-switch-bar">
                             <el-radio-group v-model="seoLang" size="small">
-                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="ar">{{ $t('arabic') }}</el-radio-button>
                                 <el-radio-button value="en">English</el-radio-button>
                             </el-radio-group>
                         </div>
@@ -246,19 +246,19 @@
                         <template v-if="seoLang === 'ar'">
                             <el-row :gutter="20">
                                 <el-col :xs="24" :md="12">
-                                    <el-form-item label="عنوان الموقع (Meta Title)">
+                                    <el-form-item :label="$t('site_title_meta_title')">
                                         <el-input v-model="form.meta_title" placeholder="أوان التقدم - مستلزمات البناء والمواد الإنشائية" />
                                     </el-form-item>
                                 </el-col>
                                 <el-col :xs="24" :md="12">
-                                    <el-form-item label="الكلمات المفتاحية">
+                                    <el-form-item :label="$t('keywords')">
                                         <el-input v-model="form.meta_keywords" placeholder="مواد بناء, مضخات مياه, خلاطات حمامات, أكسسوارات صحية, كلادينج, قواطع جبسية" />
                                     </el-form-item>
                                 </el-col>
                             </el-row>
 
-                            <el-form-item label="وصف الموقع (Meta Description)">
-                                <el-input type="textarea" :rows="3" v-model="form.meta_description" placeholder="وصف مختصر للموقع لمحركات البحث..." />
+                            <el-form-item :label="$t('site_description_meta_description')">
+                                <el-input type="textarea" :rows="3" v-model="form.meta_description" :placeholder="$t('site_seo_description_placeholder')" />
                             </el-form-item>
                         </template>
 
@@ -328,26 +328,26 @@
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
                         <div class="lang-switch-bar">
                             <el-radio-group v-model="aboutLang" size="small">
-                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="ar">{{ $t('arabic') }}</el-radio-button>
                                 <el-radio-button value="en">English</el-radio-button>
                             </el-radio-group>
                         </div>
 
                         <template v-if="aboutLang === 'ar'">
-                            <el-form-item label="عنوان الصفحة">
-                                <el-input v-model="form.about_title" placeholder="من نحن" />
+                            <el-form-item :label="$t('page_title')">
+                                <el-input v-model="form.about_title" :placeholder="$t('about')" />
                             </el-form-item>
 
-                            <el-form-item label="وصف الصفحة">
+                            <el-form-item :label="$t('page_description')">
                                 <el-input
                                     type="textarea"
                                     :rows="3"
                                     v-model="form.about_description"
-                                    placeholder="نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية."
+                                    :placeholder="$t('site_description_default')"
                                 />
                             </el-form-item>
 
-                            <el-form-item label="قصتنا">
+                            <el-form-item :label="$t('our_story')">
                                 <el-input
                                     type="textarea"
                                     :rows="5"
@@ -356,22 +356,22 @@
                                 />
                             </el-form-item>
 
-                            <el-divider content-position="left">القيم</el-divider>
+                            <el-divider content-position="left">{{ $t('values') }}</el-divider>
                             <div class="values-editor-grid">
                                 <el-card v-for="i in 5" :key="'ar-val-'+i" class="value-editor-card" shadow="hover">
                                     <template #header>
                                         <span class="value-card-title">القيمة {{ i }}</span>
                                     </template>
-                                    <el-form-item label="العنوان">
+                                    <el-form-item :label="$t('address')">
                                         <el-input v-model="form[`about_value_${i}_title`]" :placeholder="`عنوان القيمة ${i}`" />
                                     </el-form-item>
-                                    <el-form-item label="الوصف">
+                                    <el-form-item :label="$t('description')">
                                         <el-input type="textarea" :rows="2" v-model="form[`about_value_${i}_desc`]" :placeholder="`وصف القيمة ${i}`" />
                                     </el-form-item>
                                 </el-card>
                             </div>
 
-                            <el-form-item label="ما نقدمه">
+                            <el-form-item :label="$t('what_we_offer')">
                                 <el-input
                                     type="textarea"
                                     :rows="4"
@@ -458,17 +458,17 @@
                     <el-form ref="formRef" :model="form" label-width="140px" label-position="top">
                         <div class="lang-switch-bar">
                             <el-radio-group v-model="visionLang" size="small">
-                                <el-radio-button value="ar">العربية</el-radio-button>
+                                <el-radio-button value="ar">{{ $t('arabic') }}</el-radio-button>
                                 <el-radio-button value="en">English</el-radio-button>
                             </el-radio-group>
                         </div>
 
                         <template v-if="visionLang === 'ar'">
-                            <el-form-item label="عنوان الصفحة">
-                                <el-input v-model="form.vision_title" placeholder="الهوية والرؤية" />
+                            <el-form-item :label="$t('page_title')">
+                                <el-input v-model="form.vision_title" :placeholder="$t('nav_vision')" />
                             </el-form-item>
 
-                            <el-form-item label="وصف الصفحة">
+                            <el-form-item :label="$t('page_description')">
                                 <el-input
                                     type="textarea"
                                     :rows="3"
@@ -477,11 +477,11 @@
                                 />
                             </el-form-item>
 
-                            <el-divider content-position="left">الميزة الأولى</el-divider>
-                            <el-form-item label="عنوان الميزة الأولى">
-                                <el-input v-model="form.vision_feature_1_title" placeholder="جودة عالمية" />
+                            <el-divider content-position="left">{{ $t('the_first_advantage') }}</el-divider>
+                            <el-form-item :label="$t('title_of_the_first_feature')">
+                                <el-input v-model="form.vision_feature_1_title" :placeholder="$t('global_quality')" />
                             </el-form-item>
-                            <el-form-item label="وصف الميزة الأولى">
+                            <el-form-item :label="$t('description_of_the_first_feature')">
                                 <el-input
                                     type="textarea"
                                     :rows="3"
@@ -490,11 +490,11 @@
                                 />
                             </el-form-item>
 
-                            <el-divider content-position="left">الميزة الثانية</el-divider>
-                            <el-form-item label="عنوان الميزة الثانية">
-                                <el-input v-model="form.vision_feature_2_title" placeholder="تصميم عصري" />
+                            <el-divider content-position="left">{{ $t('the_second_advantage') }}</el-divider>
+                            <el-form-item :label="$t('title_of_the_second_feature')">
+                                <el-input v-model="form.vision_feature_2_title" :placeholder="$t('modern_design')" />
                             </el-form-item>
-                            <el-form-item label="وصف الميزة الثانية">
+                            <el-form-item :label="$t('description_of_the_second_feature')">
                                 <el-input
                                     type="textarea"
                                     :rows="3"
@@ -503,11 +503,11 @@
                                 />
                             </el-form-item>
 
-                            <el-divider content-position="left">الميزة الثالثة</el-divider>
-                            <el-form-item label="عنوان الميزة الثالثة">
-                                <el-input v-model="form.vision_feature_3_title" placeholder="شراكة موثوقة" />
+                            <el-divider content-position="left">{{ $t('the_third_advantage') }}</el-divider>
+                            <el-form-item :label="$t('title_of_the_third_feature')">
+                                <el-input v-model="form.vision_feature_3_title" :placeholder="$t('trusted_partnership')" />
                             </el-form-item>
-                            <el-form-item label="وصف الميزة الثالثة">
+                            <el-form-item :label="$t('description_of_the_third_feature')">
                                 <el-input
                                     type="textarea"
                                     :rows="3"
@@ -1125,10 +1125,13 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import currenciesApi from '@/api/currencies';
+
+const { t } = useI18n();
 
 const settingsStore = useSettingsStore();
 const activeTab = ref('general');
@@ -1857,15 +1860,15 @@ const onFileSelect = (event, field) => {
 const submitSettings = async () => {
     if (form.default_currency && form.default_currency !== initialBaseCurrency.value) {
         try {
-            const confirmMsg = String(window.t('base_currency_change_confirm') || '')
+            const confirmMsg = String(window.t('base_currency_change_confirm'))
                 .replace('{code}', form.default_currency);
             await ElMessageBox.confirm(
                 confirmMsg,
                 window.t('base_currency_change_title'),
                 {
                     type: 'warning',
-                    confirmButtonText: 'متابعة',
-                    cancelButtonText: window.t('cancel') || 'إلغاء',
+                    confirmButtonText: t('tracking'),
+                    cancelButtonText: window.t('cancel'),
                 },
             );
         } catch {

@@ -1,19 +1,19 @@
 <template>
     <div class="sales-page sales-invoices">
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-file-invoice-dollar"></i> {{ $t('invoices') || 'الفواتير' }}</h1>
-                <p>{{ $t('quickly_track_invoices_with_instant') || 'تابع الفواتير وحصّل المدفوعات وحدّث حالات التسليم.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-file-invoice-dollar"
+            :title="$t('invoices')"
+            :subtitle="$t('quickly_track_invoices_with_instant')"
+        >
+            <template #actions>
                 <el-input
                     v-model="searchQuery"
-                    :placeholder="$t('search_by_invoice_number_or') || 'ابحث برقم الفاتورة أو العميل...'"
+                    :placeholder="$t('search_by_invoice_number_or')"
                     clearable
                     class="search-input"
                     :prefix-icon="Search"
                 />
-                <el-select v-model="statusFilter" clearable class="status-filter" :placeholder="$t('status') || 'الحالة'">
+                <el-select v-model="statusFilter" clearable class="status-filter" :placeholder="$t('status')">
                     <el-option
                         v-for="status in ORDER_STATUSES"
                         :key="status"
@@ -23,36 +23,34 @@
                 </el-select>
                 <el-button :icon="Refresh" :loading="store.loading" @click="reload" />
                 <el-button type="primary" :icon="Plus" @click="goToCreate">
-                    {{ $t('create_invoice') || 'فاتورة جديدة' }}
+                    {{ $t('create_invoice') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col v-for="card in summaryCards" :key="card.key" :xs="12" :sm="12" :md="6">
-                <el-card
-                    shadow="hover"
-                    class="stat-card"
-                    :class="{ 'is-active': card.status !== null && statusFilter === card.status }"
-                    @click="card.status !== null && toggleFilter(card.status)"
-                >
-                    <div class="stat-inner">
-                        <div class="stat-icon" :class="card.tone">
-                            <i class="fas" :class="card.icon"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ card.value }}</h3>
-                            <p>{{ card.label }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card
+                shadow="hover"
+                class="stat-card"
+                :class="{ 'is-active': card.status !== null && statusFilter === card.status }"
+                @click="card.status !== null && toggleFilter(card.status)"
+            >
+                <div class="stat-inner">
+                    <div class="stat-icon" :class="card.tone">
+                        <i class="fas" :class="card.icon"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ card.value }}</h3>
+                        <p>{{ card.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list"></i> {{ $t('list_of_invoices') || 'قائمة الفواتير' }}</span>
+                    <span><i class="fas fa-list"></i> {{ $t('list_of_invoices') }}</span>
                     <span class="result-count">{{ filteredInvoices.length }} / {{ store.invoices.length }}</span>
                 </div>
             </template>
@@ -63,7 +61,7 @@
 
             <template v-else>
                 <el-table v-if="filteredInvoices.length" :data="filteredInvoices" style="width:100%" stripe highlight-current-row>
-                    <el-table-column :label="$t('invoice_number') || 'رقم الفاتورة'" width="150">
+                    <el-table-column :label="$t('invoice_number')" width="150">
                         <template #default="{ row }">
                             <button type="button" class="record-link" @click="editInvoice(row.id)">
                                 {{ row.invoice_number }}
@@ -71,7 +69,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('client') || 'العميل'" min-width="160">
+                    <el-table-column :label="$t('client')" min-width="160">
                         <template #default="{ row }">
                             <div class="customer-cell">
                                 <i class="fas fa-user-circle"></i>
@@ -80,7 +78,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('total') || 'الإجمالي'" width="140">
+                    <el-table-column :label="$t('total')" width="140">
                         <template #default="{ row }">
                             <strong class="amount">{{ formatCurrency(row.total) }}</strong>
                         </template>
@@ -88,7 +86,7 @@
 
                     <!-- Payment progress: the backend already tracks paid/due on
                          every invoice, but the UI never surfaced it. -->
-                    <el-table-column :label="$t('payment_status') || 'التحصيل'" width="190">
+                    <el-table-column :label="$t('payment_status')" width="190">
                         <template #default="{ row }">
                             <div class="payment-progress">
                                 <el-progress
@@ -106,7 +104,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('status') || 'الحالة'" width="175" align="center">
+                    <el-table-column :label="$t('status')" width="175" align="center">
                         <template #default="{ row }">
                             <el-dropdown
                                 v-if="transitionsFor(row.status).length > 1"
@@ -138,10 +136,10 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('actions') || 'الإجراءات'" width="190" align="center" fixed="right">
+                    <el-table-column :label="$t('actions')" width="190" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button-group>
-                                <el-tooltip :content="$t('edit') || 'تعديل'" placement="top">
+                                <el-tooltip :content="$t('edit')" placement="top">
                                     <el-button size="small" plain @click="editInvoice(row.id)">
                                         <i class="fas fa-pen"></i>
                                     </el-button>
@@ -161,7 +159,7 @@
                                     </span>
                                 </el-tooltip>
 
-                                <el-tooltip :content="$t('delete') || 'حذف'" placement="top">
+                                <el-tooltip :content="$t('delete')" placement="top">
                                     <el-button size="small" type="danger" plain @click="removeInvoice(row)">
                                         <i class="fas fa-trash"></i>
                                     </el-button>
@@ -174,8 +172,8 @@
                 <el-empty
                     v-else
                     :description="store.invoices.length
-                        ? ($t('there_are_no_invoices_matching') || 'لا توجد فواتير مطابقة للبحث')
-                        : ($t('no_invoices_yet') || 'لا توجد فواتير بعد')"
+                        ? ($t('there_are_no_invoices_matching'))
+                        : ($t('no_invoices_yet'))"
                 />
 
                 <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-bar">
@@ -199,12 +197,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Refresh, ArrowDown } from '@element-plus/icons-vue';
 import { useInvoicesStore } from '@/stores/invoices';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 import {
     ORDER_STATUSES,
     ORDER_TRANSITIONS,
@@ -244,9 +247,9 @@ const canRecordPayment = (invoice) =>
     !isInvoiceSettled(invoice) && normalizeStatus(invoice.status) !== 'cancelled';
 
 const recordPaymentHint = (invoice) => {
-    if (normalizeStatus(invoice.status) === 'cancelled') return 'الفاتورة ملغاة';
-    if (isInvoiceSettled(invoice)) return 'الفاتورة مسددة بالكامل';
-    return window.t?.('record_payment') || 'تسجيل دفعة';
+    if (normalizeStatus(invoice.status) === 'cancelled') return t('invoice_cancelled');
+    if (isInvoiceSettled(invoice)) return t('invoice_fully_paid');
+    return window.t?.('record_payment') || t('record_payment');
 };
 
 const outstandingTotal = computed(() =>
@@ -259,7 +262,7 @@ const summaryCards = computed(() => [
     {
         key: 'total',
         status: '',
-        label: window.t?.('total_bills') || 'إجمالي الفواتير',
+        label: window.t?.('total_bills') || t('total_bills'),
         value: store.invoices.length,
         icon: 'fa-file-invoice',
         tone: 'blue',
@@ -284,7 +287,7 @@ const summaryCards = computed(() => [
         // Not a status filter — a money figure, so it is not clickable.
         key: 'outstanding',
         status: null,
-        label: window.t?.('outstanding_amount') || 'المبالغ المستحقة',
+        label: window.t?.('outstanding_amount') || t('outstanding_amount'),
         value: formatCurrency(outstandingTotal.value),
         icon: 'fa-hand-holding-dollar',
         tone: 'red',
@@ -318,8 +321,8 @@ const changeStatus = async (invoice, status) => {
     try {
         await ElMessageBox.confirm(
             `تغيير حالة الفاتورة ${invoice.invoice_number} من "${statusLabel(invoice.status)}" إلى "${statusLabel(status)}"؟`,
-            'تغيير حالة الفاتورة',
-            { type: 'warning', confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }
+            t('change_invoice_status'),
+            { type: 'warning', confirmButtonText: t('confirm'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -327,9 +330,9 @@ const changeStatus = async (invoice, status) => {
 
     try {
         await store.updateInvoiceStatus(invoice.id, status);
-        ElMessage.success('تم تغيير حالة الفاتورة بنجاح.');
+        ElMessage.success(t('invoice_status_changed'));
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'فشل تغيير حالة الفاتورة.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_change_invoice_status')));
     }
 };
 
@@ -351,8 +354,8 @@ const removeInvoice = async (invoice) => {
     try {
         await ElMessageBox.confirm(
             `حذف الفاتورة ${invoice.invoice_number}؟ لا يمكن التراجع عن هذا الإجراء.`,
-            'تأكيد الحذف',
-            { type: 'warning', confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }
+            t('confirm_deletion'),
+            { type: 'warning', confirmButtonText: t('delete'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -360,9 +363,9 @@ const removeInvoice = async (invoice) => {
 
     try {
         await store.deleteInvoice(invoice.id);
-        ElMessage.success('تم حذف الفاتورة.');
+        ElMessage.success(t('invoice_deleted'));
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر حذف الفاتورة.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_delete_invoice')));
     }
 };
 

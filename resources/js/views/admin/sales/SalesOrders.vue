@@ -1,16 +1,16 @@
 <template>
     <div class="sales-page sales-orders">
         <!-- Modern Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-shopping-cart text-primary"></i> {{ $t('sales_orders') || 'طلبات البيع' }}</h1>
-                <p>{{ $t('view_current_orders_with_quick') || 'إدارة ومتابعة طلبات بيع العملاء وتحويلها إلى فواتير.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-shopping-cart text-primary"
+            :title="$t('sales_orders')"
+            :subtitle="$t('view_current_orders_with_quick')"
+        >
+            <template #actions>
                 <!-- Searching hits the API, so a match on any page is found. -->
                 <el-input
                     v-model="searchQuery"
-                    :placeholder="$t('search_by_order_number_or_customer_name') || 'ابحث برقم الطلب أو اسم العميل...'"
+                    :placeholder="$t('search_by_order_number_or_customer_name')"
                     clearable
                     class="search-input"
                     :prefix-icon="Search"
@@ -19,68 +19,60 @@
                     @clear="loadOrders(1)"
                 />
                 <el-button type="primary" class="create-btn" @click="openCreateDrawer">
-                    <i class="fas fa-plus"></i> {{ $t('new_sales_order') || 'طلب بيع جديد' }}
+                    <i class="fas fa-plus"></i> {{ $t('new_sales_order') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Metric Cards. Counted over the whole table by the API, not over the
              loaded page — the old figures came from store.orders, so they only
              ever described the twenty rows that happened to be on screen. -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box blue-grad"><i class="fas fa-shopping-cart"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ counts.all }}</h3>
-                            <p>{{ $t('total_orders') || 'إجمالي طلبات البيع' }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box blue-grad"><i class="fas fa-shopping-cart"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ counts.all }}</h3>
+                        <p>{{ $t('total_orders') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box orange-grad"><i class="fas fa-clock"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ counts.pending }}</h3>
-                            <p>بانتظار التأكيد</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box orange-grad"><i class="fas fa-clock"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ counts.pending }}</h3>
+                        <p>{{ $t('awaiting_confirmation') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box purple-grad"><i class="fas fa-truck-fast"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ counts.confirmed + counts.processing + counts.shipped }}</h3>
-                            <p>قيد التنفيذ</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box purple-grad"><i class="fas fa-truck-fast"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ counts.confirmed + counts.processing + counts.shipped }}</h3>
+                        <p>{{ $t('under_implementation') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <!-- The one card that is an instruction rather than a statistic. -->
-                <el-card
-                    shadow="hover"
-                    class="stat-card-wrapper"
-                    :class="{ 'attention-card': counts.overdue > 0, clickable: counts.overdue > 0 }"
-                    @click="counts.overdue > 0 && showOverdue()"
-                >
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box" :class="counts.overdue > 0 ? 'red-grad' : 'green-grad'">
-                            <i class="fas" :class="counts.overdue > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ counts.overdue }}</h3>
-                            <p>{{ counts.overdue > 0 ? 'متأخرة عن موعد التسليم' : 'لا توجد طلبات متأخرة' }}</p>
-                        </div>
+                </div>
+            </el-card>
+            <!-- The one card that is an instruction rather than a statistic. -->
+            <el-card
+                shadow="hover"
+                class="stat-card-wrapper"
+                :class="{ 'attention-card': counts.overdue > 0, clickable: counts.overdue > 0 }"
+                @click="counts.overdue > 0 && showOverdue()"
+            >
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box" :class="counts.overdue > 0 ? 'red-grad' : 'green-grad'">
+                        <i class="fas" :class="counts.overdue > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ counts.overdue }}</h3>
+                        <p>{{ counts.overdue > 0 ? $t('overdue_for_delivery') : $t('no_overdue_orders') }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- Stage tabs: the pipeline as a filter, with counts across the table -->
         <el-tabs v-model="activeStage" class="stage-tabs" @tab-change="onStageChange">
@@ -98,7 +90,7 @@
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list text-muted"></i> {{ $t('list_of_sales_orders') || 'جدول طلبات البيع' }}</span>
+                    <span><i class="fas fa-list text-muted"></i> {{ $t('list_of_sales_orders') }}</span>
                 </div>
             </template>
 
@@ -115,7 +107,7 @@
                     class="custom-table"
                     :row-class-name="rowClassName"
                 >
-                    <el-table-column prop="order_number" label="رقم الطلب" width="150">
+                    <el-table-column prop="order_number" :label="$t('order_number')" width="150">
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
                             <!-- Says why this row is flagged, rather than only that it is. -->
@@ -128,7 +120,7 @@
                             </el-tooltip>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="customer.name" :label="$t('client') || 'العميل'">
+                    <el-table-column prop="customer.name" :label="$t('client')">
                         <template #default="{ row }">
                             <div class="customer-info-cell">
                                 <i class="fas fa-user-circle text-muted"></i>
@@ -136,12 +128,12 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="total" :label="$t('total') || 'المبلغ الإجمالي'" width="160">
+                    <el-table-column prop="total" :label="$t('total')" width="160">
                         <template #default="{ row }">
                             <strong class="total-amount">{{ formatCurrency(row.total) }}</strong>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('status') || 'حالة الطلب'" width="150" align="center">
+                    <el-table-column :label="$t('status')" width="150" align="center">
                         <template #default="{ row }">
                             <el-tag :type="statusTagType(row.status)" effect="light" class="status-tag">
                                 <i class="fas status-dot-icon" :class="statusIconClass(row.status)"></i>
@@ -151,7 +143,7 @@
                     </el-table-column>
                     <!-- Where the order is being served from. Routing was previously
                          invisible on this screen even though it decides everything. -->
-                    <el-table-column label="التوجيه" width="180">
+                    <el-table-column :label="$t('routing')" width="180">
                         <template #default="{ row }">
                             <div class="routing-cell">
                                 <span><i class="fas fa-warehouse text-muted"></i> {{ row.fulfillment_warehouse?.name || '—' }}</span>
@@ -163,24 +155,24 @@
                     </el-table-column>
                     <!-- Status says where an order is; this says how long it has been
                          there, which is what makes a stall visible at all. -->
-                    <el-table-column label="المتابعة" width="150" align="center">
+                    <el-table-column :label="$t('follow_up')" width="150" align="center">
                         <template #default="{ row }">
                             <div class="follow-up-cell">
                                 <span :class="stageAgeClass(row.follow_up)">
                                     {{ stageAgeText(row.follow_up) }}
                                 </span>
                                 <span v-if="row.follow_up?.is_overdue" class="overdue-note">
-                                    متأخر {{ row.follow_up.days_overdue }} يوم
+                                    {{ $t('overdue_by_days', { days: row.follow_up.days_overdue }) }}
                                 </span>
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('order_date') || 'التاريخ'" width="130" align="center">
+                    <el-table-column :label="$t('order_date')" width="130" align="center">
                         <template #default="{ row }">{{ formatDate(row.order_date) }}</template>
                     </el-table-column>
 
                     <!-- Actions Column -->
-                    <el-table-column label="الإجراءات" width="240" align="center">
+                    <el-table-column :label="$t('actions')" width="240" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
                                 <el-button
@@ -188,11 +180,11 @@
                                     size="small"
                                     type="primary"
                                     @click="openDetailDrawer(row.id)"
-                                    title="تأكيد الطلب"
+                                    :title="$t('confirm_order')"
                                 >
                                     <i class="fas fa-circle-check"></i>
                                 </el-button>
-                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" title="عرض التفاصيل">
+                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
                                 </el-button>
                                 <el-button
@@ -201,7 +193,7 @@
                                     plain
                                     :disabled="normalizeStatus(row.status) !== 'pending'"
                                     @click="openEditDrawer(row.id)"
-                                    :title="normalizeStatus(row.status) === 'pending' ? 'تعديل' : 'لا يمكن تعديل طلب مؤكد'"
+                                    :title="normalizeStatus(row.status) === 'pending' ? $t('edit') : $t('cannot_edit_confirmed_order')"
                                 >
                                     <i class="fas fa-edit"></i>
                                 </el-button>
@@ -211,7 +203,7 @@
                                     plain
                                     :disabled="!['pending', 'cancelled'].includes(normalizeStatus(row.status))"
                                     @click="deleteOrder(row.id)"
-                                    :title="['pending', 'cancelled'].includes(normalizeStatus(row.status)) ? 'حذف' : 'ألغِ الطلب بدل حذفه'"
+                                    :title="['pending', 'cancelled'].includes(normalizeStatus(row.status)) ? $t('delete') : $t('cancel_instead_of_deleting')"
                                 >
                                     <i class="fas fa-trash"></i>
                                 </el-button>
@@ -223,9 +215,9 @@
                 <!-- Empty State -->
                 <div v-if="!store.orders.length" class="empty-state-box">
                     <i class="fas fa-shopping-cart empty-icon"></i>
-                    <p>{{ $t('there_are_no_requests_matching') || 'لا توجد طلبات بيع مطابقة حالياً.' }}</p>
+                    <p>{{ $t('there_are_no_requests_matching') }}</p>
                     <el-button type="primary" size="medium" @click="openCreateDrawer">
-                        <i class="fas fa-plus"></i> إنشاء طلب جديد
+                        <i class="fas fa-plus"></i> {{ $t('create_new_order') }}
                     </el-button>
                 </div>
 
@@ -255,7 +247,7 @@
             <template #header>
                 <div class="drawer-title">
                     <i class="fas fa-file-lines"></i>
-                    <span>تفاصيل طلب البيع</span>
+                    <span>{{ $t('sales_order_details') }}</span>
                     <strong v-if="selectedOrder">{{ selectedOrder.order_number }}</strong>
                 </div>
             </template>
@@ -265,26 +257,26 @@
                 <!-- Masthead: the four facts read first, before any detail -->
                 <div class="order-masthead">
                     <div class="masthead-cell">
-                        <span class="lbl">الحالة</span>
+                        <span class="lbl">{{ $t('status') }}</span>
                         <el-tag :type="statusTagType(selectedOrder.status)" effect="dark" class="status-tag">
                             <i class="fas" :class="statusIconClass(selectedOrder.status)"></i>
                             {{ getArabicStatus(selectedOrder.status) }}
                         </el-tag>
                     </div>
                     <div class="masthead-cell">
-                        <span class="lbl">العميل</span>
+                        <span class="lbl">{{ $t('customer') }}</span>
                         <strong>{{ selectedOrder.customer?.name || '—' }}</strong>
                     </div>
                     <div class="masthead-cell">
-                        <span class="lbl">الإجمالي</span>
+                        <span class="lbl">{{ $t('grand_total') }}</span>
                         <strong class="amount">{{ formatCurrency(selectedOrder.total) }}</strong>
                     </div>
                     <div class="masthead-cell">
-                        <span class="lbl">{{ invoice ? 'المتبقي على العميل' : 'الفاتورة' }}</span>
+                        <span class="lbl">{{ invoice ? $t('remaining_on_customer_label') : $t('invoice') }}</span>
                         <strong v-if="invoice" :class="invoiceDueAmount > 0.01 ? 'text-danger' : 'text-success'">
-                            {{ invoiceDueAmount > 0.01 ? formatCurrency(invoiceDueAmount) : 'مسددة بالكامل' }}
+                            {{ invoiceDueAmount > 0.01 ? formatCurrency(invoiceDueAmount) : $t('fully_paid') }}
                         </strong>
-                        <span v-else class="muted">لم تُنشأ بعد</span>
+                        <span v-else class="muted">{{ $t('not_created_yet') }}</span>
                     </div>
                 </div>
 
@@ -308,38 +300,38 @@
                 </div>
                 <div v-else class="diagnostics-clear">
                     <i class="fas fa-shield-check"></i>
-                    السجلات متطابقة: الفاتورة والقيود المحاسبية وحركات المخزون كلها متسقة مع حالة الطلب.
+                    {{ $t('records_consistent_notice') }}
                 </div>
 
                 <el-tabs v-model="detailTab" class="detail-tabs">
                     <!-- ---------------- Overview ---------------- -->
                     <el-tab-pane name="overview">
-                        <template #label><i class="fas fa-list-ul"></i> الأصناف والمبالغ</template>
+                        <template #label><i class="fas fa-list-ul"></i> {{ $t('items_and_amounts') }}</template>
 
                         <el-table :data="selectedOrder.items || []" stripe class="items-table" style="width: 100%">
-                            <el-table-column label="الصنف" min-width="200">
+                            <el-table-column :label="$t('item')" min-width="200">
                                 <template #default="{ row }">
                                     <strong>{{ row.product?.name_ar || row.product?.name_en || row.product?.name || '—' }}</strong>
                                     <p class="row-sub">{{ row.product?.sku || '—' }}</p>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="الكمية" width="80" align="center">
+                            <el-table-column :label="$t('quantity')" width="80" align="center">
                                 <template #default="{ row }">{{ row.quantity }}</template>
                             </el-table-column>
-                            <el-table-column label="سعر الوحدة" width="120" align="center">
+                            <el-table-column :label="$t('unit_price')" width="120" align="center">
                                 <template #default="{ row }">{{ formatCurrency(row.unit_price) }}</template>
                             </el-table-column>
-                            <el-table-column label="الخصم" width="100" align="center">
+                            <el-table-column :label="$t('discount')" width="100" align="center">
                                 <template #default="{ row }">
                                     <span :class="{ muted: !toNum(row.discount) }">{{ formatCurrency(row.discount) }}</span>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="الضريبة" width="100" align="center">
+                            <el-table-column :label="$t('tax')" width="100" align="center">
                                 <template #default="{ row }">
                                     <span :class="{ muted: !toNum(row.tax) }">{{ formatCurrency(row.tax) }}</span>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="الإجمالي" width="130" align="center">
+                            <el-table-column :label="$t('grand_total')" width="130" align="center">
                                 <template #default="{ row }"><strong>{{ formatCurrency(lineTotal(row)) }}</strong></template>
                             </el-table-column>
                         </el-table>
@@ -347,26 +339,26 @@
                         <!-- Amounts, in the order they build up to the total -->
                         <div class="amounts-block">
                             <div class="amount-row">
-                                <span>إجمالي الأصناف</span><span>{{ formatCurrency(selectedOrder.subtotal) }}</span>
+                                <span>{{ $t('items_subtotal') }}</span><span>{{ formatCurrency(selectedOrder.subtotal) }}</span>
                             </div>
                             <div class="amount-row" v-if="toNum(selectedOrder.discount)">
-                                <span>ناقصاً: الخصم</span><span class="text-danger">({{ formatCurrency(selectedOrder.discount) }})</span>
+                                <span>{{ $t('less_discount') }}</span><span class="text-danger">({{ formatCurrency(selectedOrder.discount) }})</span>
                             </div>
                             <div class="amount-row" v-if="toNum(selectedOrder.tax)">
-                                <span>زائداً: الضريبة</span><span>{{ formatCurrency(selectedOrder.tax) }}</span>
+                                <span>{{ $t('plus_tax') }}</span><span>{{ formatCurrency(selectedOrder.tax) }}</span>
                             </div>
                             <div class="amount-row" v-if="toNum(selectedOrder.shipping_cost)">
-                                <span>زائداً: تكلفة الشحن</span><span>{{ formatCurrency(selectedOrder.shipping_cost) }}</span>
+                                <span>{{ $t('plus_shipping_cost') }}</span><span>{{ formatCurrency(selectedOrder.shipping_cost) }}</span>
                             </div>
                             <div class="amount-row grand">
-                                <span>الإجمالي الكلي</span><span>{{ formatCurrency(selectedOrder.total) }}</span>
+                                <span>{{ $t('grand_total_amount') }}</span><span>{{ formatCurrency(selectedOrder.total) }}</span>
                             </div>
                             <template v-if="invoice">
                                 <div class="amount-row paid">
-                                    <span>المحصَّل</span><span>{{ formatCurrency(invoice.paid_amount) }}</span>
+                                    <span>{{ $t('collected') }}</span><span>{{ formatCurrency(invoice.paid_amount) }}</span>
                                 </div>
                                 <div class="amount-row due" :class="invoiceDueAmount > 0.01 ? 'unpaid' : 'settled'">
-                                    <span>المتبقي</span><span>{{ formatCurrency(invoiceDueAmount) }}</span>
+                                    <span>{{ $t('due_amount') }}</span><span>{{ formatCurrency(invoiceDueAmount) }}</span>
                                 </div>
                             </template>
                         </div>
@@ -374,38 +366,38 @@
                         <el-row :gutter="16" class="mt-4">
                             <el-col :xs="24" :md="12">
                                 <el-card shadow="never" class="info-card">
-                                    <template #header><span class="card-title-txt"><i class="fas fa-user-circle"></i> العميل</span></template>
+                                    <template #header><span class="card-title-txt"><i class="fas fa-user-circle"></i> {{ $t('customer') }}</span></template>
                                     <div class="info-list">
-                                        <div class="info-item"><span class="lbl">الاسم</span><strong>{{ selectedOrder.customer?.name || '—' }}</strong></div>
-                                        <div class="info-item" v-if="selectedOrder.customer?.company"><span class="lbl">الشركة</span><strong>{{ selectedOrder.customer.company }}</strong></div>
-                                        <div class="info-item" v-if="selectedOrder.customer?.phone"><span class="lbl">الهاتف</span><strong dir="ltr">{{ selectedOrder.customer.phone }}</strong></div>
-                                        <div class="info-item" v-if="selectedOrder.customer?.email"><span class="lbl">البريد</span><strong dir="ltr">{{ selectedOrder.customer.email }}</strong></div>
+                                        <div class="info-item"><span class="lbl">{{ $t('name') }}</span><strong>{{ selectedOrder.customer?.name || '—' }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.customer?.company"><span class="lbl">{{ $t('company') }}</span><strong>{{ selectedOrder.customer.company }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.customer?.phone"><span class="lbl">{{ $t('phone') }}</span><strong dir="ltr">{{ selectedOrder.customer.phone }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.customer?.email"><span class="lbl">{{ $t('mail') }}</span><strong dir="ltr">{{ selectedOrder.customer.email }}</strong></div>
                                     </div>
                                 </el-card>
                             </el-col>
                             <el-col :xs="24" :md="12">
                                 <el-card shadow="never" class="info-card">
-                                    <template #header><span class="card-title-txt"><i class="fas fa-truck"></i> التسليم</span></template>
+                                    <template #header><span class="card-title-txt"><i class="fas fa-truck"></i> {{ $t('delivery') }}</span></template>
                                     <div class="info-list">
-                                        <div class="info-item"><span class="lbl">العنوان</span><strong>{{ shippingAddressText || '—' }}</strong></div>
-                                        <div class="info-item"><span class="lbl">تاريخ الطلب</span><strong>{{ formatDate(selectedOrder.order_date) }}</strong></div>
-                                        <div class="info-item"><span class="lbl">التسليم المتوقع</span><strong>{{ formatDate(selectedOrder.expected_delivery) }}</strong></div>
-                                        <div class="info-item" v-if="selectedOrder.carrier"><span class="lbl">شركة الشحن</span><strong>{{ selectedOrder.carrier }}</strong></div>
-                                        <div class="info-item" v-if="selectedOrder.tracking_number"><span class="lbl">رقم التتبع</span><strong dir="ltr">{{ selectedOrder.tracking_number }}</strong></div>
+                                        <div class="info-item"><span class="lbl">{{ $t('address') }}</span><strong>{{ shippingAddressText || '—' }}</strong></div>
+                                        <div class="info-item"><span class="lbl">{{ $t('order_date') }}</span><strong>{{ formatDate(selectedOrder.order_date) }}</strong></div>
+                                        <div class="info-item"><span class="lbl">{{ $t('expected_delivery') }}</span><strong>{{ formatDate(selectedOrder.expected_delivery) }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.carrier"><span class="lbl">{{ $t('shipping_company') }}</span><strong>{{ selectedOrder.carrier }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.tracking_number"><span class="lbl">{{ $t('tracking_number') }}</span><strong dir="ltr">{{ selectedOrder.tracking_number }}</strong></div>
                                     </div>
                                 </el-card>
                             </el-col>
                         </el-row>
 
                         <el-card v-if="selectedOrder.notes" shadow="never" class="info-card mt-3">
-                            <template #header><span class="card-title-txt"><i class="fas fa-sticky-note"></i> ملاحظات</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-sticky-note"></i> {{ $t('notes') }}</span></template>
                             <p class="notes-txt-view">{{ selectedOrder.notes }}</p>
                         </el-card>
                     </el-tab-pane>
 
                     <!-- ---------------- Execution ---------------- -->
                     <el-tab-pane name="execution">
-                        <template #label><i class="fas fa-diagram-project"></i> التنفيذ والتوجيه</template>
+                        <template #label><i class="fas fa-diagram-project"></i> {{ $t('fulfilment_and_routing') }}</template>
 
                         <!-- Numbered stage tracker. The number is the point: it
                              says how far along the order is and how far is left,
@@ -424,7 +416,7 @@
                                 <div class="step-text">
                                     <strong>{{ step.label }}</strong>
                                     <span class="step-date">{{ step.at ? formatDate(step.at) : '—' }}</span>
-                                    <span v-if="step.current" class="step-now">المرحلة الحالية</span>
+                                    <span v-if="step.current" class="step-now">{{ $t('current_stage') }}</span>
                                 </div>
                                 <div v-if="i < timelineSteps.length - 1" class="step-connector" :class="{ filled: step.done }"></div>
                             </div>
@@ -433,30 +425,30 @@
                         <!-- What this stage produces, and what the next one needs -->
                         <div v-if="nextStage" class="next-stage-bar">
                             <div class="next-stage-head">
-                                <span class="next-badge">{{ currentStageNumber }} من {{ timelineSteps.length }}</span>
-                                <strong>التالي: {{ nextStage.label }}</strong>
+                                <span class="next-badge">{{ $t('stage_x_of_y', { current: currentStageNumber, total: timelineSteps.length }) }}</span>
+                                <strong>{{ $t('next_label', { stage: nextStage.label }) }}</strong>
                             </div>
                             <p class="next-stage-effect"><i class="fas fa-arrow-turn-down"></i> {{ nextStage.effect }}</p>
                         </div>
                         <el-alert v-if="isCancelled" type="info" show-icon :closable="false" class="mb-3"
-                            title="هذا الطلب ملغي — عُكست آثاره المخزنية والمحاسبية." />
+                            :title="$t('order_cancelled_effects_reversed')" />
 
                         <!-- Follow-up: how long the order has sat where it is -->
                         <div class="follow-up-bar" :class="followUpClass">
                             <i class="fas" :class="followUp.needs_attention ? 'fa-triangle-exclamation' : 'fa-hourglass-half'"></i>
                             <div>
                                 <strong v-if="followUp.attention_reasons?.length">{{ followUp.attention_reasons.join(' — ') }}</strong>
-                                <strong v-else-if="!followUp.is_open">اكتمل مسار هذا الطلب.</strong>
-                                <strong v-else>في هذه المرحلة {{ stageAgeText(followUp) }}.</strong>
+                                <strong v-else-if="!followUp.is_open">{{ $t('order_path_completed') }}</strong>
+                                <strong v-else>{{ $t('in_this_stage_for', { age: stageAgeText(followUp) }) }}</strong>
                                 <p v-if="followUp.is_open && followUp.stage_threshold_days">
-                                    الحد المعتاد لهذه المرحلة {{ followUp.stage_threshold_days }} يوم.
+                                    {{ $t('usual_stage_limit_days', { days: followUp.stage_threshold_days }) }}
                                 </p>
                             </div>
                         </div>
 
                         <!-- The append-only record of who moved this order and why -->
                         <el-card shadow="never" class="info-card mb-3">
-                            <template #header><span class="card-title-txt"><i class="fas fa-clock-rotate-left"></i> سجل المراحل</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-clock-rotate-left"></i> {{ $t('stage_history') }}</span></template>
                             <div v-if="history.length" class="history-list">
                                 <div v-for="entry in history" :key="entry.id" class="history-entry">
                                     <span class="history-dot" :class="`dot-${entry.to_status}`"></span>
@@ -471,13 +463,13 @@
                                             <span class="history-when">{{ formatDateTime(entry.created_at) }}</span>
                                         </div>
                                         <p class="history-meta">
-                                            <i class="fas fa-user"></i> {{ entry.user?.name || 'النظام' }}
+                                            <i class="fas fa-user"></i> {{ entry.user?.name || $t('the_system') }}
                                         </p>
                                         <p v-if="entry.note" class="history-note">{{ entry.note }}</p>
                                     </div>
                                 </div>
                             </div>
-                            <el-empty v-else description="لا يوجد سجل مراحل لهذا الطلب" :image-size="52" />
+                            <el-empty v-else :description="$t('no_stage_history')" :image-size="52" />
                         </el-card>
 
                         <el-row :gutter="16">
@@ -485,7 +477,7 @@
                                 <el-card shadow="never" class="info-card routing-card">
                                     <template #header>
                                         <div class="routing-header">
-                                            <span class="card-title-txt"><i class="fas fa-route"></i> توجيه الطلب</span>
+                                            <span class="card-title-txt"><i class="fas fa-route"></i> {{ $t('order_routing') }}</span>
                                             <el-button text size="small" :loading="routingLoading" @click="loadRouting(selectedOrder.id)">
                                                 <i class="fas fa-sync-alt"></i>
                                             </el-button>
@@ -493,20 +485,20 @@
                                     </template>
 
                                     <div class="routing-field">
-                                        <span class="lbl">نوع التنفيذ</span>
+                                        <span class="lbl">{{ $t('fulfilment_type') }}</span>
                                         <el-radio-group
                                             :model-value="selectedOrder.fulfillment_type || 'ship'"
                                             size="small"
                                             :disabled="!routing.can_change_fulfillment_type || store.saving"
                                             @change="handleFulfillmentTypeChange"
                                         >
-                                            <el-radio-button value="ship">شحن</el-radio-button>
-                                            <el-radio-button value="delivery">توصيل</el-radio-button>
-                                            <el-radio-button value="pickup">استلام من الفرع</el-radio-button>
+                                            <el-radio-button value="ship">{{ $t('shipping') }}</el-radio-button>
+                                            <el-radio-button value="delivery">{{ $t('courier_delivery') }}</el-radio-button>
+                                            <el-radio-button value="pickup">{{ $t('branch_pickup') }}</el-radio-button>
                                         </el-radio-group>
                                     </div>
                                     <p v-if="!routing.can_change_fulfillment_type" class="routing-locked-note">
-                                        <i class="fas fa-lock"></i> لا يمكن تغيير نوع التنفيذ بعد شحن الطلب.
+                                        <i class="fas fa-lock"></i> {{ $t('fulfilment_type_locked_after_shipping') }}
                                     </p>
 
                                     <el-divider />
@@ -516,16 +508,16 @@
                                          routed to both, and only those two can
                                          then source its lines. -->
                                     <div class="routing-select-head">
-                                        <span class="lbl">المستودعات المُوجَّه إليها</span>
+                                        <span class="lbl">{{ $t('routed_warehouses') }}</span>
                                         <el-button
                                             v-if="routingsDirty && sourcing.editable"
                                             type="primary" size="small" :loading="savingRoutings"
                                             @click="saveRoutings"
-                                        >حفظ التوجيهات</el-button>
+                                        >{{ $t('save_routing') }}</el-button>
                                     </div>
                                     <p class="routing-hint">
                                         <i class="fas fa-circle-info"></i>
-                                        اختر مستودعاً أو أكثر. مصدر البضاعة لكل صنف يُختار من هذه المستودعات فقط.
+                                        {{ $t('routing_hint') }}
                                     </p>
 
                                     <div v-loading="routingLoading" class="warehouse-options">
@@ -543,8 +535,8 @@
                                                         @change="(checked) => toggleRouting(wh.warehouse_id, checked)"
                                                     />
                                                     <strong>{{ wh.name }}</strong>
-                                                    <el-tag v-if="wh.is_current" size="small" type="primary" effect="dark">المسؤول</el-tag>
-                                                    <el-tag v-else-if="wh.is_recommended" size="small" type="success" effect="plain">مقترح</el-tag>
+                                                    <el-tag v-if="wh.is_current" size="small" type="primary" effect="dark">{{ $t('responsible') }}</el-tag>
+                                                    <el-tag v-else-if="wh.is_recommended" size="small" type="success" effect="plain">{{ $t('suggested') }}</el-tag>
                                                 </div>
                                                 <span class="wh-type">{{ wh.location_type_text }}</span>
                                             </div>
@@ -554,19 +546,19 @@
                                             <div class="wh-coverage">
                                                 <span :class="wh.covers_all ? 'text-success' : 'text-warning'">
                                                     <i class="fas" :class="wh.covers_all ? 'fa-check-circle' : 'fa-triangle-exclamation'"></i>
-                                                    يغطي {{ wh.covered_items }} من {{ wh.total_items }} صنف
+                                                    {{ $t('covers_items_of_total', { covered: wh.covered_items, total: wh.total_items }) }}
                                                 </span>
                                                 <el-button
                                                     v-if="!wh.is_current && routing.can_change_fulfillment_type"
                                                     size="small" text type="primary" :loading="store.saving"
                                                     @click="routeToWarehouse(wh.warehouse_id)"
-                                                >اجعله المسؤول</el-button>
+                                                >{{ $t('make_it_primary') }}</el-button>
                                             </div>
 
                                             <ul v-if="!wh.covers_all" class="shortfall-list">
                                                 <li v-for="item in wh.items.filter((i) => i.shortfall > 0)" :key="item.product_id">
-                                                    {{ item.product_name }} — ناقص {{ item.shortfall }}
-                                                    <span class="muted">(مطلوب {{ item.required }}، متاح {{ item.available }})</span>
+                                                    {{ item.product_name }} — {{ $t('short_by', { count: item.shortfall }) }}
+                                                    <span class="muted">{{ $t('required_available', { required: item.required, available: item.available }) }}</span>
                                                 </li>
                                             </ul>
                                         </div>
@@ -580,28 +572,28 @@
                                 <el-card shadow="never" class="info-card sourcing-card">
                                     <template #header>
                                         <div class="routing-header">
-                                            <span class="card-title-txt"><i class="fas fa-code-branch"></i> مصدر البضاعة لكل صنف</span>
+                                            <span class="card-title-txt"><i class="fas fa-code-branch"></i> {{ $t('source_per_item') }}</span>
                                             <el-button
                                                 v-if="sourcing.editable && sourcingDirty"
                                                 type="primary" size="small" :loading="savingSourcing"
                                                 @click="saveSourcing"
-                                            >حفظ المصادر</el-button>
+                                            >{{ $t('save_sources') }}</el-button>
                                         </div>
                                     </template>
 
                                     <p v-if="!sourcing.editable" class="routing-locked-note">
-                                        <i class="fas fa-lock"></i> لا يمكن تغيير المصدر بعد شحن الطلب.
+                                        <i class="fas fa-lock"></i> {{ $t('source_locked_after_shipping') }}
                                     </p>
                                     <!-- Says which list the operator is choosing
                                          from, so a warehouse missing here reads
                                          as "not routed" rather than "not found". -->
                                     <p v-else-if="sourcing.selected_warehouse_ids" class="routing-hint">
                                         <i class="fas fa-filter"></i>
-                                        المصادر المعروضة هي توجيهات الطلب ({{ sourcing.selected_warehouse_ids.length }} مستودع).
+                                        {{ $t('sources_are_order_routing', { count: sourcing.selected_warehouse_ids.length }) }}
                                     </p>
                                     <p v-else class="routing-hint">
                                         <i class="fas fa-circle-info"></i>
-                                        لم تُحدَّد توجيهات بعد، فكل المستودعات النشطة معروضة.
+                                        {{ $t('no_routing_yet_all_shown') }}
                                     </p>
 
                                     <div v-loading="sourcingLoading" class="sourcing-lines">
@@ -620,7 +612,7 @@
                                                 >
                                                     {{ l.allocated }} / {{ l.quantity }}
                                                     <template v-if="l.allocated !== l.quantity">
-                                                        — ناقص {{ l.quantity - l.allocated }}
+                                                        — {{ $t('short_by', { count: l.quantity - l.allocated }) }}
                                                     </template>
                                                 </el-tag>
                                             </div>
@@ -629,9 +621,9 @@
                                                 <div v-for="s in l.sources" :key="s.warehouse_id" class="sl-source">
                                                     <div class="sl-wh">
                                                         <span>{{ s.warehouse_name }}</span>
-                                                        <el-tag v-if="s.is_primary" size="small" effect="plain">رئيسي</el-tag>
+                                                        <el-tag v-if="s.is_primary" size="small" effect="plain">{{ $t('primary_label') }}</el-tag>
                                                         <span class="sl-avail" :class="{ 'text-danger': s.available <= 0 }">
-                                                            متاح {{ s.available }}
+                                                            {{ $t('available_count', { count: s.available }) }}
                                                         </span>
                                                     </div>
                                                     <el-input-number
@@ -647,14 +639,14 @@
                                             </div>
                                         </div>
 
-                                        <el-empty v-if="!sourcing.lines?.length" description="لا توجد أصناف" :image-size="46" />
+                                        <el-empty v-if="!sourcing.lines?.length" :description="$t('no_items')" :image-size="46" />
                                     </div>
                                 </el-card>
                             </el-col>
 
                             <el-col :xs="24" :md="10">
                                 <el-card shadow="never" class="info-card stage-card">
-                                    <template #header><span class="card-title-txt"><i class="fas fa-forward"></i> المرحلة التالية</span></template>
+                                    <template #header><span class="card-title-txt"><i class="fas fa-forward"></i> {{ $t('next_stage') }}</span></template>
                                     <p class="stage-explainer">{{ stageExplainer }}</p>
                                     <div class="stage-actions">
                                         <el-button
@@ -668,7 +660,7 @@
                                         >
                                             <i class="fas" :class="action.icon"></i> {{ action.label }}
                                         </el-button>
-                                        <el-empty v-if="!stageActions.length" description="لا توجد مراحل تالية" :image-size="46" />
+                                        <el-empty v-if="!stageActions.length" :description="$t('no_next_stages')" :image-size="46" />
                                     </div>
                                 </el-card>
                             </el-col>
@@ -678,13 +670,13 @@
                     <!-- ---------------- Documents ---------------- -->
                     <el-tab-pane name="documents">
                         <template #label>
-                            <i class="fas fa-file-invoice-dollar"></i> المستندات والقيود
+                            <i class="fas fa-file-invoice-dollar"></i> {{ $t('documents_and_entries') }}
                             <el-badge v-if="documentIssueCount" :value="documentIssueCount" type="danger" class="tab-badge" />
                         </template>
 
                         <!-- Invoice -->
                         <el-card shadow="never" class="info-card mb-3">
-                            <template #header><span class="card-title-txt"><i class="fas fa-file-invoice"></i> فاتورة المبيعات</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-file-invoice"></i> {{ $t('sales_invoice') }}</span></template>
                             <div v-if="invoice" class="doc-invoice">
                                 <div class="doc-line">
                                     <span class="doc-number">{{ invoice.invoice_number }}</span>
@@ -692,35 +684,35 @@
                                         {{ getArabicStatus(invoice.status) }}
                                     </el-tag>
                                     <el-tag :type="invoicePosted ? 'success' : 'danger'" size="small" effect="dark">
-                                        {{ invoicePosted ? 'مُرحَّلة محاسبياً' : 'غير مُرحَّلة' }}
+                                        {{ invoicePosted ? $t('posted_to_accounts') : $t('not_posted') }}
                                     </el-tag>
                                 </div>
                                 <div class="doc-figures">
-                                    <div><span>الإجمالي</span><strong>{{ formatCurrency(invoice.total) }}</strong></div>
-                                    <div><span>المحصَّل</span><strong>{{ formatCurrency(invoice.paid_amount) }}</strong></div>
-                                    <div><span>المتبقي</span><strong :class="invoiceDueAmount > 0.01 ? 'text-danger' : 'text-success'">{{ formatCurrency(invoiceDueAmount) }}</strong></div>
+                                    <div><span>{{ $t('grand_total') }}</span><strong>{{ formatCurrency(invoice.total) }}</strong></div>
+                                    <div><span>{{ $t('collected') }}</span><strong>{{ formatCurrency(invoice.paid_amount) }}</strong></div>
+                                    <div><span>{{ $t('due_amount') }}</span><strong :class="invoiceDueAmount > 0.01 ? 'text-danger' : 'text-success'">{{ formatCurrency(invoiceDueAmount) }}</strong></div>
                                 </div>
                                 <el-button type="success" plain class="mt-2" @click="goToInvoices">
-                                    <i class="fas fa-arrow-left"></i> فتح الفاتورة {{ invoice.invoice_number }}
+                                    <i class="fas fa-arrow-left"></i> {{ $t('open_invoice_number', { number: invoice.invoice_number }) }}
                                 </el-button>
                             </div>
-                            <el-empty v-else description="لم تُنشأ فاتورة لهذا الطلب بعد" :image-size="60" />
+                            <el-empty v-else :description="$t('no_invoice_yet')" :image-size="60" />
                         </el-card>
 
                         <!-- Payments -->
                         <el-card v-if="payments.length" shadow="never" class="info-card mb-3">
-                            <template #header><span class="card-title-txt"><i class="fas fa-hand-holding-dollar"></i> الدفعات</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-hand-holding-dollar"></i> {{ $t('payments_list') }}</span></template>
                             <el-table :data="payments" stripe size="small" style="width: 100%">
-                                <el-table-column label="الرقم" min-width="130">
+                                <el-table-column :label="$t('number')" min-width="130">
                                     <template #default="{ row }">{{ row.payment_number || '—' }}</template>
                                 </el-table-column>
-                                <el-table-column label="التاريخ" width="130" align="center">
+                                <el-table-column :label="$t('date')" width="130" align="center">
                                     <template #default="{ row }">{{ formatDate(row.payment_date) }}</template>
                                 </el-table-column>
-                                <el-table-column label="الطريقة" width="120" align="center">
+                                <el-table-column :label="$t('method')" width="120" align="center">
                                     <template #default="{ row }">{{ paymentMethodLabel(row.payment_method) }}</template>
                                 </el-table-column>
-                                <el-table-column label="المبلغ" width="130" align="center">
+                                <el-table-column :label="$t('amount')" width="130" align="center">
                                     <template #default="{ row }"><strong>{{ formatCurrency(row.amount) }}</strong></template>
                                 </el-table-column>
                             </el-table>
@@ -728,13 +720,13 @@
 
                         <!-- Journal entries -->
                         <el-card shadow="never" class="info-card mb-3">
-                            <template #header><span class="card-title-txt"><i class="fas fa-book"></i> القيود المحاسبية</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-book"></i> {{ $t('accounting_entries') }}</span></template>
                             <div v-if="journalEntries.length" class="entry-list">
                                 <div v-for="entry in journalEntries" :key="entry.id" class="entry" :class="{ reversed: entry.status === 'reversed' }">
                                     <div class="entry-head">
                                         <strong>{{ entry.entry_number }}</strong>
                                         <span class="entry-date">{{ formatDate(entry.entry_date) }}</span>
-                                        <el-tag v-if="entry.status === 'reversed'" size="small" type="info" effect="plain">معكوس</el-tag>
+                                        <el-tag v-if="entry.status === 'reversed'" size="small" type="info" effect="plain">{{ $t('reversed') }}</el-tag>
                                         <span class="entry-desc">{{ entry.description }}</span>
                                     </div>
                                     <table class="entry-lines">
@@ -747,37 +739,37 @@
                                     </table>
                                 </div>
                             </div>
-                            <el-empty v-else description="لم تُرحَّل أي قيود لهذا الطلب" :image-size="60" />
+                            <el-empty v-else :description="$t('no_entries_posted')" :image-size="60" />
                         </el-card>
 
                         <!-- Stock movements -->
                         <el-card shadow="never" class="info-card">
-                            <template #header><span class="card-title-txt"><i class="fas fa-dolly"></i> حركات المخزون</span></template>
+                            <template #header><span class="card-title-txt"><i class="fas fa-dolly"></i> {{ $t('stock_movements') }}</span></template>
                             <el-table v-if="stockMovements.length" :data="stockMovements" stripe size="small" style="width: 100%">
-                                <el-table-column label="الصنف" min-width="160">
+                                <el-table-column :label="$t('item')" min-width="160">
                                     <template #default="{ row }">{{ productName(row.product_id) }}</template>
                                 </el-table-column>
-                                <el-table-column label="المستودع" min-width="120">
+                                <el-table-column :label="$t('warehouse')" min-width="120">
                                     <template #default="{ row }">{{ row.warehouse?.name || '—' }}</template>
                                 </el-table-column>
-                                <el-table-column label="النوع" width="100" align="center">
+                                <el-table-column :label="$t('type')" width="100" align="center">
                                     <template #default="{ row }">
                                         <el-tag :type="row.movement_type === 'in' ? 'success' : 'danger'" size="small" effect="plain">
-                                            {{ row.movement_type === 'in' ? 'إرجاع' : 'إخراج' }}
+                                            {{ row.movement_type === 'in' ? $t('movement_return') : $t('movement_out') }}
                                         </el-tag>
                                     </template>
                                 </el-table-column>
-                                <el-table-column label="الكمية" width="80" align="center">
+                                <el-table-column :label="$t('quantity')" width="80" align="center">
                                     <template #default="{ row }">{{ row.quantity }}</template>
                                 </el-table-column>
-                                <el-table-column label="التكلفة" width="120" align="center">
+                                <el-table-column :label="$t('cost')" width="120" align="center">
                                     <template #default="{ row }">{{ formatCurrency(row.total_cost) }}</template>
                                 </el-table-column>
-                                <el-table-column label="التاريخ" width="130" align="center">
+                                <el-table-column :label="$t('date')" width="130" align="center">
                                     <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
                                 </el-table-column>
                             </el-table>
-                            <el-empty v-else description="لم تُسجَّل حركات مخزنية لهذا الطلب" :image-size="60" />
+                            <el-empty v-else :description="$t('no_stock_movements_recorded')" :image-size="60" />
                         </el-card>
                     </el-tab-pane>
                 </el-tabs>
@@ -785,30 +777,30 @@
         </el-drawer>
 
         <!-- Fulfilment type change: needs a delivery fee for ship/delivery -->
-        <el-dialog v-model="typeDialogVisible" title="تغيير نوع التنفيذ" width="440px" :close-on-click-modal="false">
+        <el-dialog v-model="typeDialogVisible" :title="$t('change_fulfilment_type')" width="440px" :close-on-click-modal="false">
             <p class="dialog-lead">
-                سيُعاد توجيه الطلب إلى أنسب مستودع، وتُعاد تسوية الفاتورة والقيد المحاسبي تلقائياً.
+                {{ $t('rerouting_notice') }}
             </p>
             <el-form label-position="top">
-                <el-form-item label="تكلفة الشحن المحملة على العميل">
+                <el-form-item :label="$t('shipping_cost_charged_to_customer')">
                     <el-input-number v-model="typeForm.shipping_cost" :min="0" :step="5" style="width: 100%" />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="typeDialogVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="store.saving" @click="submitFulfillmentType">تأكيد التغيير</el-button>
+                <el-button @click="typeDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="store.saving" @click="submitFulfillmentType">{{ $t('confirm_change') }}</el-button>
             </template>
         </el-dialog>
 
         <!-- Delivery: the goods arrive and, usually, the money comes back -->
-        <el-dialog v-model="deliverDialogVisible" title="تسليم الطلب وتسوية الفاتورة" width="480px" :close-on-click-modal="false">
+        <el-dialog v-model="deliverDialogVisible" :title="$t('deliver_and_settle')" width="480px" :close-on-click-modal="false">
             <div v-if="invoice" class="settle-summary">
-                <div><span>الفاتورة</span><strong>{{ invoice.invoice_number }}</strong></div>
-                <div><span>إجمالي الفاتورة</span><strong>{{ formatCurrency(invoice.total) }}</strong></div>
-                <div><span>المتبقي</span><strong :class="invoiceDueAmount > 0.01 ? 'text-danger' : 'text-success'">{{ formatCurrency(invoiceDueAmount) }}</strong></div>
+                <div><span>{{ $t('invoice') }}</span><strong>{{ invoice.invoice_number }}</strong></div>
+                <div><span>{{ $t('invoice_total') }}</span><strong>{{ formatCurrency(invoice.total) }}</strong></div>
+                <div><span>{{ $t('due_amount') }}</span><strong :class="invoiceDueAmount > 0.01 ? 'text-danger' : 'text-success'">{{ formatCurrency(invoiceDueAmount) }}</strong></div>
             </div>
             <el-alert v-else type="warning" :closable="false" show-icon class="mb-3"
-                title="لا توجد فاتورة على هذا الطلب — سيُختم التسليم دون تسوية مالية." />
+                :title="$t('no_invoice_delivery_only')" />
 
             <el-alert
                 v-if="invoice && invoiceDueAmount <= 0.01"
@@ -816,21 +808,21 @@
                 :closable="false"
                 show-icon
                 class="mb-3"
-                title="الفاتورة مسددة بالكامل مسبقاً — لن يُسجَّل تحصيل جديد."
+                :title="$t('invoice_already_paid')"
             />
 
             <el-form v-else-if="invoice" label-position="top" class="mt-3">
                 <el-form-item>
                     <el-checkbox v-model="deliverForm.settle">
-                        تحصيل المبلغ الآن عند التسليم
+                        {{ $t('collect_on_delivery') }}
                     </el-checkbox>
                     <p class="field-hint">
-                        اتركه فارغاً لعميل آجل — يبقى المبلغ على ذمته وتُحصَّل الفاتورة لاحقاً.
+                        {{ $t('leave_empty_for_credit_customer') }}
                     </p>
                 </el-form-item>
 
                 <template v-if="deliverForm.settle">
-                    <el-form-item label="المبلغ المُحصَّل">
+                    <el-form-item :label="$t('amount_collected')">
                         <el-input-number
                             v-model="deliverForm.settlement_amount"
                             :min="0.01"
@@ -839,56 +831,57 @@
                             :precision="2"
                             style="width: 100%"
                         />
-                        <p class="field-hint">لا يمكن أن يتجاوز المتبقي؛ المبلغ الأقل يُسجَّل كتحصيل جزئي.</p>
+                        <p class="field-hint">{{ $t('cannot_exceed_remaining') }}</p>
                     </el-form-item>
-                    <el-form-item label="طريقة الدفع">
+                    <el-form-item :label="$t('payment_method')">
                         <el-radio-group v-model="deliverForm.payment_method">
-                            <el-radio-button value="cash">نقداً</el-radio-button>
-                            <el-radio-button value="card">بطاقة</el-radio-button>
-                            <el-radio-button value="bank_transfer">حوالة</el-radio-button>
-                            <el-radio-button value="check">شيك</el-radio-button>
+                            <el-radio-button value="cash">{{ $t('payment_method_cash') }}</el-radio-button>
+                            <el-radio-button value="card">{{ $t('payment_method_card') }}</el-radio-button>
+                            <el-radio-button value="bank_transfer">{{ $t('payment_method_transfer') }}</el-radio-button>
+                            <el-radio-button value="check">{{ $t('payment_method_check') }}</el-radio-button>
                         </el-radio-group>
                     </el-form-item>
-                    <el-form-item label="مرجع الدفع">
-                        <el-input v-model="deliverForm.payment_reference" placeholder="رقم الإيصال أو الحوالة (اختياري)" />
+                    <el-form-item :label="$t('payment_reference')">
+                        <el-input v-model="deliverForm.payment_reference" :placeholder="$t('receipt_or_transfer_number_optional')" />
                     </el-form-item>
                 </template>
             </el-form>
 
             <template #footer>
-                <el-button @click="deliverDialogVisible = false">إلغاء</el-button>
+                <el-button @click="deliverDialogVisible = false">{{ $t('cancel') }}</el-button>
                 <el-button type="success" :loading="store.saving" @click="submitDelivery">
-                    {{ deliverForm.settle && invoice && invoiceDueAmount > 0.01 ? 'تسليم وتحصيل' : 'تأكيد التسليم' }}
+                    {{ deliverForm.settle && invoice && invoiceDueAmount > 0.01 ? $t('deliver_and_collect') : $t('confirm_delivery') }}
                 </el-button>
             </template>
         </el-dialog>
 
         <!-- Shipping: capture the tracking details as the goods leave -->
-        <el-dialog v-model="shipDialogVisible" title="تأكيد الشحن" width="440px" :close-on-click-modal="false">
+        <el-dialog v-model="shipDialogVisible" :title="$t('confirm_shipping')" width="440px" :close-on-click-modal="false">
             <el-alert
                 type="warning"
                 :closable="false"
                 show-icon
-                title="سيخرج المخزون فعلياً من المستودع ويُسجَّل قيد تكلفة البضاعة المباعة."
+                :title="$t('stock_leaves_and_cogs_posted')"
                 class="mb-3"
             />
             <el-form label-position="top">
-                <el-form-item label="شركة الشحن">
-                    <el-input v-model="shipForm.carrier" placeholder="مثال: أرامكس" />
+                <el-form-item :label="$t('shipping_company')">
+                    <el-input v-model="shipForm.carrier" :placeholder="$t('carrier_example')" />
                 </el-form-item>
-                <el-form-item label="رقم التتبع">
+                <el-form-item :label="$t('tracking_number')">
                     <el-input v-model="shipForm.tracking_number" placeholder="TRK-000000" />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="shipDialogVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="store.saving" @click="submitShipment">تأكيد الشحن</el-button>
+                <el-button @click="shipDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="store.saving" @click="submitShipment">{{ $t('confirm_shipping') }}</el-button>
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
@@ -897,6 +890,10 @@ import { useCustomersStore } from '@/stores/customers';
 import { useProductsStore } from '@/stores/products';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search } from '@element-plus/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 import {
     normalizeStatus,
     statusTagType,
@@ -925,8 +922,8 @@ const selectedOrder = ref(null);
 const statusIconClass = (status) => statusIcon(status);
 const getArabicStatus = (status) => statusLabel(status);
 
-const FULFILLMENT_LABELS = { ship: 'شحن', pickup: 'استلام من الفرع', delivery: 'توصيل' };
-const fulfillmentLabel = (type) => FULFILLMENT_LABELS[normalizeStatus(type)] || 'غير محدد';
+const FULFILLMENT_LABELS = { ship: t('shipping'), pickup: t('branch_pickup'), delivery: t('courier_delivery') };
+const fulfillmentLabel = (type) => FULFILLMENT_LABELS[normalizeStatus(type)] || t('not_specified');
 const fulfillmentTagType = (type) => ({ ship: 'primary', delivery: 'warning', pickup: 'success' }[normalizeStatus(type)] || 'info');
 
 // Timeline step mappings
@@ -953,7 +950,7 @@ const isStepCompleted = (currentStatus, step) => {
  *
  * Filtering, searching and counting all used to happen in the browser over
  * whatever page was loaded — so an order on page two could not be found, and
- * "إجمالي طلبات البيع" was really "orders currently on screen". All three are
+ * t('total_sales_orders') was really "orders currently on screen". All three are
  * now the server's answers over the whole table.
  * ------------------------------------------------------------------ */
 
@@ -961,14 +958,14 @@ const activeStage = ref('all');
 const counts = computed(() => store.statusCounts);
 
 const stageTabs = computed(() => [
-    { name: 'all', label: 'الكل', icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
-    { name: 'pending', label: 'معلق', icon: 'fa-clock', count: counts.value.pending, badge: 'warning' },
-    { name: 'confirmed', label: 'مؤكد', icon: 'fa-circle-check', count: counts.value.confirmed, badge: 'primary' },
-    { name: 'processing', label: 'قيد التجهيز', icon: 'fa-gears', count: counts.value.processing, badge: 'primary' },
-    { name: 'shipped', label: 'مشحون', icon: 'fa-truck-fast', count: counts.value.shipped, badge: 'primary' },
-    { name: 'delivered', label: 'مُسلَّم', icon: 'fa-box-open', count: counts.value.delivered, badge: 'success' },
-    { name: 'cancelled', label: 'ملغي', icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
-    { name: 'overdue', label: 'متأخرة', icon: 'fa-triangle-exclamation', count: counts.value.overdue, badge: 'danger' },
+    { name: 'all', label: t('all'), icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
+    { name: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', count: counts.value.pending, badge: 'warning' },
+    { name: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', count: counts.value.confirmed, badge: 'primary' },
+    { name: 'processing', label: t('being_prepared'), icon: 'fa-gears', count: counts.value.processing, badge: 'primary' },
+    { name: 'shipped', label: t('shipped_state'), icon: 'fa-truck-fast', count: counts.value.shipped, badge: 'primary' },
+    { name: 'delivered', label: t('delivered_state'), icon: 'fa-box-open', count: counts.value.delivered, badge: 'success' },
+    { name: 'cancelled', label: t('sales_status_cancelled'), icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
+    { name: 'overdue', label: t('overdue'), icon: 'fa-triangle-exclamation', count: counts.value.overdue, badge: 'danger' },
 ]);
 
 const loadOrders = (page = 1) => {
@@ -1005,13 +1002,13 @@ const showOverdue = () => {
 /** How long the order has sat where it is. */
 const stageAgeText = (followUp) => {
     if (!followUp) return '—';
-    if (!followUp.is_open) return 'مكتمل';
+    if (!followUp.is_open) return t('sales_status_completed');
 
     const days = followUp.days_in_stage;
-    if (days === 0) return 'اليوم';
-    if (days === 1) return 'منذ يوم';
-    if (days === 2) return 'منذ يومين';
-    return `منذ ${days} يوم`;
+    if (days === 0) return t('today');
+    if (days === 1) return t('a_day_ago');
+    if (days === 2) return t('two_days_ago');
+    return t('days_ago', { days });
 };
 
 const stageAgeClass = (followUp) => {
@@ -1102,7 +1099,7 @@ const toggleRouting = (warehouseId, checked) => {
 
 const saveRoutings = async () => {
     if (!selectedRoutingIds.value.length) {
-        ElMessage.warning('اختر مستودعاً واحداً على الأقل لتوجيه الطلب إليه.');
+        ElMessage.warning(t('select_at_least_one_warehouse'));
         return;
     }
 
@@ -1112,12 +1109,12 @@ const saveRoutings = async () => {
         sourcing.value = res.data?.data || sourcing.value;
         syncRoutingSelection();
         sourcingDirty.value = false;
-        ElMessage.success(res.data?.message || 'تم حفظ توجيهات الطلب.');
+        ElMessage.success(res.data?.message || t('routing_saved'));
         // The coverage panel and the order header both read the owning
         // warehouse, which may have moved with the selection.
         await Promise.all([loadRouting(selectedOrder.value.id), refreshDetail()]);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر حفظ توجيهات الطلب.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_save_routing')));
         // Put the boxes back to what the server actually holds, so the screen
         // never shows a selection that was refused.
         syncRoutingSelection();
@@ -1134,7 +1131,7 @@ const loadSourcing = async (id) => {
         sourcingDirty.value = false;
         syncRoutingSelection();
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر تحميل مصادر البضاعة.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_load_sources')));
     } finally {
         sourcingLoading.value = false;
     }
@@ -1153,7 +1150,7 @@ const saveSourcing = async () => {
     const incomplete = (sourcing.value.lines || []).find((l) => l.allocated !== l.quantity);
     if (incomplete) {
         ElMessage.warning(
-            `«${incomplete.product_name}»: مُسند ${incomplete.allocated} من ${incomplete.quantity}. أكمل المصادر قبل الحفظ.`
+            t('incomplete_sourcing_warning', { product: incomplete.product_name, allocated: incomplete.allocated, quantity: incomplete.quantity })
         );
         return;
     }
@@ -1172,10 +1169,10 @@ const saveSourcing = async () => {
         sourcing.value = res.data?.data || sourcing.value;
         sourcingDirty.value = false;
         syncRoutingSelection();
-        ElMessage.success(res.data?.message || 'تم حفظ مصادر البضاعة.');
+        ElMessage.success(res.data?.message || t('sources_saved'));
         await refreshDetail();
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر حفظ مصادر البضاعة.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_save_sources')));
     } finally {
         savingSourcing.value = false;
     }
@@ -1186,7 +1183,7 @@ const loadRouting = async (id) => {
     try {
         routing.value = await store.fetchRouting(id);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر تحميل بيانات توجيه الطلب.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_load_routing')));
     } finally {
         routingLoading.value = false;
     }
@@ -1194,17 +1191,17 @@ const loadRouting = async (id) => {
 
 /** What each stage move will actually do, said plainly before it is clicked. */
 const STAGE_ACTIONS = {
-    confirmed: { label: 'تأكيد الطلب', icon: 'fa-circle-check', type: 'primary', plain: false,
-        confirm: 'سيُحجز المخزون المطلوب، وتُنشأ فاتورة المبيعات، ويُرحَّل قيد الإيراد. متابعة؟' },
-    processing: { label: 'بدء التجهيز', icon: 'fa-gears', type: 'warning', plain: true,
-        confirm: 'نقل الطلب إلى مرحلة التجهيز؟ يبقى المخزون محجوزاً.' },
-    shipped: { label: 'تأكيد الشحن', icon: 'fa-truck-fast', type: 'success', plain: false, dialog: 'ship' },
+    confirmed: { label: t('confirm_order'), icon: 'fa-circle-check', type: 'primary', plain: false,
+        confirm: t('confirm_order_effects') },
+    processing: { label: t('start_preparation'), icon: 'fa-gears', type: 'warning', plain: true,
+        confirm: t('move_to_preparation_confirm') },
+    shipped: { label: t('confirm_shipping'), icon: 'fa-truck-fast', type: 'success', plain: false, dialog: 'ship' },
     // Delivery opens the settlement dialog rather than a plain confirm: the
     // money usually comes back at the door, and asking after the fact means it
     // gets recorded from memory or not at all.
-    delivered: { label: 'تسليم وتسوية', icon: 'fa-hand-holding-dollar', type: 'success', plain: false, dialog: 'deliver' },
-    cancelled: { label: 'إلغاء الطلب', icon: 'fa-ban', type: 'danger', plain: true,
-        confirm: 'سيُحرَّر حجز المخزون (أو تُرجَع البضاعة إن كانت شُحنت)، وتُلغى الفاتورة وتُعكس قيودها. متابعة؟' },
+    delivered: { label: t('deliver_and_settle_action'), icon: 'fa-hand-holding-dollar', type: 'success', plain: false, dialog: 'deliver' },
+    cancelled: { label: t('cancel_the_request'), icon: 'fa-ban', type: 'danger', plain: true,
+        confirm: t('cancel_order_effects') },
 };
 
 const stageActions = computed(() =>
@@ -1224,10 +1221,10 @@ const currentStageNumber = computed(() => {
  * than from `allowed_transitions`, because cancelling is an exit, not progress.
  */
 const NEXT_STAGE_EFFECT = {
-    confirmed: 'يُحجز المخزون، وتُنشأ الفاتورة، ويُرحَّل قيد الإيراد.',
-    processing: 'يبدأ التجهيز ويبقى المخزون محجوزاً — لا أثر مالي.',
-    shipped: 'تخرج البضاعة فعلياً من المستودع ويُرحَّل قيد تكلفة البضاعة المباعة.',
-    delivered: 'يُختم التسليم، ويمكن تحصيل المبلغ وتسوية الفاتورة في الخطوة نفسها.',
+    confirmed: t('stage_hint_confirm'),
+    processing: t('stage_hint_processing'),
+    shipped: t('stage_hint_shipping'),
+    delivered: t('stage_hint_delivery'),
 };
 
 const nextStage = computed(() => {
@@ -1243,14 +1240,14 @@ const nextStage = computed(() => {
 
 const stageExplainer = computed(() => {
     switch (normalizeStatus(selectedOrder.value?.status)) {
-        case 'pending': return 'الطلب لم يُؤكَّد بعد — لم يُحجز مخزون ولم تُنشأ فاتورة.';
-        case 'confirmed': return 'المخزون محجوز والفاتورة مُنشأة. البضاعة ما زالت في المستودع حتى الشحن.';
-        case 'processing': return 'جارٍ التجهيز. الحجز قائم والبضاعة لم تخرج بعد.';
-        case 'shipped': return 'خرجت البضاعة من المستودع وسُجِّل قيد تكلفة البضاعة المباعة.';
+        case 'pending': return t('state_hint_pending');
+        case 'confirmed': return t('state_hint_confirmed');
+        case 'processing': return t('state_hint_processing');
+        case 'shipped': return t('state_hint_shipped');
         case 'delivered': return invoiceDueAmount.value > 0.01
-            ? `اكتمل التسليم، وما زال على العميل ${formatCurrency(invoiceDueAmount.value)}.`
-            : 'اكتمل الطلب وسُوِّيت الفاتورة بالكامل.';
-        case 'cancelled': return 'الطلب ملغي وقد عُكست آثاره المخزنية والمحاسبية.';
+            ? t('delivered_with_outstanding', { amount: formatCurrency(invoiceDueAmount.value) })
+            : t('state_hint_delivered');
+        case 'cancelled': return t('state_hint_cancelled');
         default: return '';
     }
 });
@@ -1264,20 +1261,20 @@ const afterStageChange = async (result) => {
 
     const effects = result.effects || result.transition?.effects || {};
     const notes = [];
-    if (effects.invoice_number) notes.push(`الفاتورة ${effects.invoice_number}`);
-    if (effects.cost_of_goods_sold) notes.push(`تكلفة مبيعات ${effects.cost_of_goods_sold}`);
-    if (effects.stock_movements?.length) notes.push(`${effects.stock_movements.length} حركة مخزنية`);
-    if (effects.reservation_released) notes.push('تحرير الحجز');
-    if (effects.stock_returned) notes.push('إرجاع البضاعة للمخزون');
-    if (effects.invoice_cancelled) notes.push(`إلغاء الفاتورة ${effects.invoice_cancelled}`);
-    if (effects.invoice_restated) notes.push(`إعادة إثبات الفاتورة ${effects.invoice_restated}`);
+    if (effects.invoice_number) notes.push(t('effect_invoice', { number: effects.invoice_number }));
+    if (effects.cost_of_goods_sold) notes.push(t('effect_cost_of_goods', { amount: effects.cost_of_goods_sold }));
+    if (effects.stock_movements?.length) notes.push(t('effect_stock_movements', { count: effects.stock_movements.length }));
+    if (effects.reservation_released) notes.push(t('release_reservation'));
+    if (effects.stock_returned) notes.push(t('return_goods_to_stock'));
+    if (effects.invoice_cancelled) notes.push(t('effect_invoice_cancelled', { number: effects.invoice_cancelled }));
+    if (effects.invoice_restated) notes.push(t('effect_invoice_restated', { number: effects.invoice_restated }));
     if (effects.settlement?.payment_number) {
-        notes.push(`تحصيل ${formatCurrency(effects.settlement.amount)} (${effects.settlement.payment_number})`);
-        if (effects.settlement.remaining > 0.01) notes.push(`متبقٍّ ${formatCurrency(effects.settlement.remaining)}`);
+        notes.push(t('effect_collected', { amount: formatCurrency(effects.settlement.amount), number: effects.settlement.payment_number }));
+        if (effects.settlement.remaining > 0.01) notes.push(t('effect_remaining', { amount: formatCurrency(effects.settlement.remaining) }));
     }
 
     ElMessage.success({
-        message: notes.length ? `${result.message} (${notes.join('، ')})` : result.message,
+        message: notes.length ? `${result.message} (${notes.join(t('list_separator'))})` : result.message,
         duration: 5000,
     });
 };
@@ -1309,10 +1306,10 @@ const handleStageMove = async (action) => {
         // onto the stage history, so the record explains itself later.
         const prompted = await ElMessageBox.prompt(action.confirm, action.label, {
             type: 'warning',
-            confirmButtonText: 'إلغاء الطلب',
-            cancelButtonText: 'تراجع',
-            inputPlaceholder: 'سبب الإلغاء (إلزامي)',
-            inputValidator: (v) => (v && v.trim().length >= 3) || 'يرجى ذكر سبب الإلغاء',
+            confirmButtonText: t('cancel_the_request'),
+            cancelButtonText: t('undo'),
+            inputPlaceholder: t('cancellation_reason_required_label'),
+            inputValidator: (v) => (v && v.trim().length >= 3) || t('please_give_cancellation_reason'),
         }).catch(() => null);
 
         if (!prompted) return;
@@ -1322,7 +1319,7 @@ const handleStageMove = async (action) => {
             await ElMessageBox.confirm(action.confirm, action.label, {
                 type: 'info',
                 confirmButtonText: action.label,
-                cancelButtonText: 'إلغاء',
+                cancelButtonText: t('cancel'),
             });
         } catch {
             return;
@@ -1332,7 +1329,7 @@ const handleStageMove = async (action) => {
     try {
         await afterStageChange(await store.moveToStage(selectedOrder.value.id, action.status, note ? { note } : {}));
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر نقل الطلب إلى المرحلة المطلوبة.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_move_stage')));
     }
 };
 
@@ -1351,7 +1348,7 @@ const submitDelivery = async () => {
         deliverDialogVisible.value = false;
         await afterStageChange(result);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر تأكيد التسليم.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_confirm_delivery')));
     }
 };
 
@@ -1361,7 +1358,7 @@ const submitShipment = async () => {
         shipDialogVisible.value = false;
         await afterStageChange(result);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر تأكيد الشحن.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_confirm_shipping')));
     }
 };
 
@@ -1393,7 +1390,7 @@ const submitFulfillmentType = async () => {
         typeDialogVisible.value = false;
         await afterStageChange(result);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'تعذّر تغيير نوع التنفيذ.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_change_fulfilment_type')));
     }
 };
 
@@ -1477,11 +1474,11 @@ const timelineSteps = computed(() => {
     const t = detail.value.timeline || {};
 
     return [
-        { key: 'pending', label: 'معلق', icon: 'fa-clock', at: t.order_date },
-        { key: 'confirmed', label: 'مؤكد', icon: 'fa-circle-check', at: t.confirmed_at },
-        { key: 'processing', label: 'تجهيز', icon: 'fa-gears', at: null },
-        { key: 'shipped', label: 'شحن', icon: 'fa-truck-fast', at: t.shipped_at },
-        { key: 'delivered', label: 'تسليم', icon: 'fa-box-open', at: t.delivered_at },
+        { key: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', at: t.order_date },
+        { key: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', at: t.confirmed_at },
+        { key: 'processing', label: t('prepare'), icon: 'fa-gears', at: null },
+        { key: 'shipped', label: t('shipping'), icon: 'fa-truck-fast', at: t.shipped_at },
+        { key: 'delivered', label: t('deliver'), icon: 'fa-box-open', at: t.delivered_at },
     ].map((step, i) => ({
         ...step,
         done: reached >= i && reached !== -1,
@@ -1494,7 +1491,7 @@ const shippingAddressText = computed(() => {
     const value = selectedOrder.value?.shipping_address;
     if (!value) return '';
     if (typeof value === 'string') return value;
-    return [value.line1, value.city, value.country].filter(Boolean).join('، ');
+    return [value.line1, value.city, value.country].filter(Boolean).join(t('list_separator'));
 });
 
 const productName = (productId) =>
@@ -1529,7 +1526,7 @@ const openDetailDrawer = async (id) => {
         routing.value = detail.value.routing || routing.value;
         await loadSourcing(id);
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'خطأ أثناء تحميل تفاصيل الطلب.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_load_order_details_msg')));
     } finally {
         loadingDetail.value = false;
     }
@@ -1561,9 +1558,9 @@ const deleteOrder = async (id) => {
     // Was a native confirm(), which is unstyled, not RTL-aware and blocks the tab.
     try {
         await ElMessageBox.confirm(
-            'حذف طلب البيع؟ لا يمكن التراجع عن هذا الإجراء.',
-            'تأكيد الحذف',
-            { type: 'warning', confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }
+            t('confirm_delete_sales_order'),
+            t('confirm_deletion'),
+            { type: 'warning', confirmButtonText: t('delete'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -1571,19 +1568,19 @@ const deleteOrder = async (id) => {
 
     try {
         await store.deleteOrder(id);
-        ElMessage.success('تم حذف طلب البيع بنجاح.');
+        ElMessage.success(t('sales_order_deleted'));
         if (selectedOrder.value?.id === id) detailDrawerVisible.value = false;
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'خطأ أثناء حذف طلب البيع.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_delete_sales_order')));
     }
 };
 
 const handleConvertToInvoice = async (id) => {
     try {
         await ElMessageBox.confirm(
-            'تحويل طلب البيع إلى فاتورة مبيعات؟',
-            'تحويل إلى فاتورة',
-            { type: 'info', confirmButtonText: 'تحويل', cancelButtonText: 'إلغاء' }
+            t('confirm_convert_to_invoice'),
+            t('convert_to_invoice'),
+            { type: 'info', confirmButtonText: t('convert'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -1592,13 +1589,13 @@ const handleConvertToInvoice = async (id) => {
     try {
         const invoice = await store.convertToInvoice(id);
         detailDrawerVisible.value = false;
-        ElMessage.success(`تم إنشاء الفاتورة ${invoice?.invoice_number || ''}`);
+        ElMessage.success(t('invoice_created_number', { number: invoice?.invoice_number || '' }));
         // Send the user to the invoice so they can collect payment on it —
         // previously the conversion left them on the orders list with no clue
         // where the new invoice went.
         router.push('/admin/sales/invoices');
     } catch (e) {
-        ElMessage.error(apiErrorMessage(e, 'حدث خطأ أثناء تحويل الطلب إلى فاتورة.'));
+        ElMessage.error(apiErrorMessage(e, t('failed_to_convert_to_invoice')));
     }
 };
 

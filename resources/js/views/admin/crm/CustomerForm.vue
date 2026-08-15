@@ -8,11 +8,11 @@
         </div>
         <div>
           <h1 class="header-title">{{ formTitle }}</h1>
-          <p class="header-subtitle">إدخال وتحديث البيانات التفصيلية للعميل، الإعدادات المالية، وعناوين الفوترة والشحن</p>
+          <p class="header-subtitle">{{ $t('customer_form_subtitle') }}</p>
         </div>
       </div>
       <el-button @click="cancel" class="btn-back-premium">
-        <el-icon><Back /></el-icon> رجوع للسجلات
+        <el-icon><Back /></el-icon> {{ $t('back_to_records') }}
       </el-button>
     </div>
 
@@ -22,7 +22,7 @@
         <!-- Element Plus Tabs for Sectioning -->
         <el-tabs v-model="activeTab" class="premium-tabs">
           <!-- Tab 1: General Info -->
-          <el-tab-pane name="general" label="البيانات الأساسية">
+          <el-tab-pane name="general" :label="$t('basic_data')">
             <div class="tab-content-wrapper">
               <el-row :gutter="20">
                 <el-col :xs="24" :sm="12">
@@ -60,8 +60,8 @@
                   </el-form-item>
                 </el-col>
                 <el-col :xs="24" :sm="12">
-                  <el-form-item label="مصدر العميل (القناة)">
-                    <el-input v-model="form.source" placeholder="مثال: متجر إلكتروني، زيارة، ترشيح..." class="premium-input" />
+                  <el-form-item :label="$t('customer_source_channel')">
+                    <el-input v-model="form.source" :placeholder="$t('customer_source_example')" class="premium-input" />
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -69,28 +69,28 @@
           </el-tab-pane>
 
           <!-- Tab 2: Financial Settings -->
-          <el-tab-pane name="financial" label="الإعدادات المالية">
+          <el-tab-pane name="financial" :label="$t('financial_settings')">
             <div class="tab-content-wrapper">
               <el-row :gutter="20">
                 <el-col :xs="24" :sm="12">
-                  <el-form-item label="الحد الائتماني (SAR)" prop="credit_limit" :error="serverErrors.credit_limit && serverErrors.credit_limit[0]">
+                  <el-form-item :label="$t('credit_limit_sar')" prop="credit_limit" :error="serverErrors.credit_limit && serverErrors.credit_limit[0]">
                     <el-input-number v-model="form.credit_limit" :min="0" class="premium-number-input" />
                   </el-form-item>
                 </el-col>
                 <el-col :xs="24" :sm="12">
-                  <el-form-item label="الرقم الضريبي (VAT ID)" prop="tax_number" :error="serverErrors.tax_number && serverErrors.tax_number[0]">
-                    <el-input v-model="form.tax_number" placeholder="مثال: 300012345600003" class="premium-input" />
+                  <el-form-item :label="$t('vat_id')" prop="tax_number" :error="serverErrors.tax_number && serverErrors.tax_number[0]">
+                    <el-input v-model="form.tax_number" :placeholder="$t('tax_number_example')" class="premium-input" />
                   </el-form-item>
                 </el-col>
               </el-row>
 
               <el-row :gutter="20">
                 <el-col :xs="24" :sm="12">
-                  <el-form-item label="العملة الافتراضية">
+                  <el-form-item :label="$t('virtual_currency')">
                     <el-select v-model="form.currency" class="premium-select">
-                      <el-option value="SAR" label="ريال سعودي (SAR)" />
-                      <el-option value="USD" label="دولار أمريكي (USD)" />
-                      <el-option value="AED" label="درهم إماراتي (AED)" />
+                      <el-option value="SAR" :label="$t('saudi_riyal_sar')" />
+                      <el-option value="USD" :label="$t('us_dollar_usd')" />
+                      <el-option value="AED" :label="$t('uae_dirham_aed')" />
                     </el-select>
                   </el-form-item>
                 </el-col>
@@ -103,31 +103,31 @@
           </el-tab-pane>
 
           <!-- Tab 3: Detailed Address -->
-          <el-tab-pane name="address" label="العناوين والموقع">
+          <el-tab-pane name="address" :label="$t('addresses_and_location')">
             <div class="tab-content-wrapper">
               <el-form-item :label="$t('address')" prop="address" :error="serverErrors.address && serverErrors.address[0]">
-                <el-input v-model="form.address" placeholder="العنوان بالتفصيل (الحي، الشارع)" class="premium-input" />
+                <el-input v-model="form.address" :placeholder="$t('detailed_address')" class="premium-input" />
               </el-form-item>
 
               <el-row :gutter="20">
                 <el-col :xs="24" :sm="12" :md="6">
-                  <el-form-item label="المدينة">
-                    <el-input v-model="form.city" placeholder="المدينة" class="premium-input" />
+                  <el-form-item :label="$t('city')">
+                    <el-input v-model="form.city" :placeholder="$t('city')" class="premium-input" />
                   </el-form-item>
                 </el-col>
                 <el-col :xs="24" :sm="12" :md="6">
-                  <el-form-item label="المنطقة/الولاية">
-                    <el-input v-model="form.state" placeholder="المنطقة" class="premium-input" />
+                  <el-form-item :label="$t('region_state')">
+                    <el-input v-model="form.state" :placeholder="$t('region')" class="premium-input" />
                   </el-form-item>
                 </el-col>
                 <el-col :xs="24" :sm="12" :md="6">
-                  <el-form-item label="الدولة">
-                    <el-input v-model="form.country" placeholder="الدولة" class="premium-input" />
+                  <el-form-item :label="$t('country')">
+                    <el-input v-model="form.country" :placeholder="$t('country')" class="premium-input" />
                   </el-form-item>
                 </el-col>
                 <el-col :xs="24" :sm="12" :md="6">
-                  <el-form-item label="الرمز البريدي">
-                    <el-input v-model="form.postal_code" placeholder="الرمز البريدي" class="premium-input" />
+                  <el-form-item :label="$t('postal_code')">
+                    <el-input v-model="form.postal_code" :placeholder="$t('postal_code')" class="premium-input" />
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -148,11 +148,14 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { User, Back } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const route = useRoute();
@@ -172,28 +175,28 @@ const form = ref({
   tax_number: '',
   city: '',
   state: '',
-  country: 'المملكة العربية السعودية',
+  country: t('saudi_arabia'),
   postal_code: '',
   currency: 'SAR',
   source: ''
 });
 
 const rules = {
-  name: [{ required: true, message: 'اسم العميل مطلوب', trigger: 'blur' }],
-  email: [{ type: 'email', message: 'البريد الإلكتروني غير صالح', trigger: 'blur' }],
-  status: [{ required: true, message: 'الحالة مطلوبة', trigger: 'change' }]
+  name: [{ required: true, message: t('customer_name_required'), trigger: 'blur' }],
+  email: [{ type: 'email', message: t('email_is_invalid'), trigger: 'blur' }],
+  status: [{ required: true, message: t('status_is_required'), trigger: 'change' }]
 };
 
 const isEdit = computed(() => !!route.params.id);
-const formTitle = computed(() => (isEdit.value ? 'تعديل بيانات العميل' : 'إضافة عميل جديد'));
-const submitLabel = computed(() => (isEdit.value ? 'تحديث البيانات' : 'حفظ العميل'));
+const formTitle = computed(() => (isEdit.value ? t('edit_customer_data') : t('add_new_customer')));
+const submitLabel = computed(() => (isEdit.value ? t('update_data') : t('save_customer')));
 const serverErrors = computed(() => customersStore.validationErrors || {});
 
 const loadCustomer = async () => {
   if (!isEdit.value) return;
   const customer = await customersStore.fetchCustomer(route.params.id).catch(() => null);
   if (!customer) {
-    ElMessage.error('العميل غير موجود');
+    ElMessage.error(t('customer_not_found'));
     router.push({ name: 'admin.crm.customers' });
     return;
   }
@@ -209,7 +212,7 @@ const loadCustomer = async () => {
     tax_number: customer.tax_number || '',
     city: customer.city || '',
     state: customer.state || '',
-    country: customer.country || 'المملكة العربية السعودية',
+    country: customer.country || t('saudi_arabia'),
     postal_code: customer.postal_code || '',
     currency: customer.currency || 'SAR',
     source: customer.source || ''
@@ -219,21 +222,21 @@ const loadCustomer = async () => {
 const submitForm = () => {
   customerForm.value.validate(async (valid) => {
     if (!valid) {
-      ElMessage.warning('يرجى التحقق من الحقول المطلوبة');
+      ElMessage.warning(t('please_check_required_fields'));
       return;
     }
 
     try {
       if (isEdit.value) {
         await customersStore.updateCustomer(route.params.id, form.value);
-        ElMessage.success('تم تحديث بيانات العميل بنجاح');
+        ElMessage.success(t('customer_updated'));
       } else {
         await customersStore.createCustomer(form.value);
-        ElMessage.success('تم تسجيل العميل الجديد بنجاح');
+        ElMessage.success(t('customer_created'));
       }
       router.push({ name: 'admin.crm.customers' });
     } catch (err) {
-      ElMessage.error(err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ البيانات');
+      ElMessage.error(err.response?.data?.message || err.message || t('an_error_occurred_while_saving_data'));
     }
   });
 };

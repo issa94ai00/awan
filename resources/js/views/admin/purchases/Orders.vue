@@ -1,73 +1,67 @@
 <template>
     <div class="purchases-page purchases-orders">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-file-signature text-primary"></i> {{ $t('purchase_orders') || 'أوامر الشراء' }}</h1>
-                <p>{{ $t('follow_current_orders_and_use') || 'متابعة وإدارة طلبات المشتريات المصدرة للموردين وتتبع حالاتها.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-file-signature text-primary"
+            :title="$t('purchase_orders')"
+            :subtitle="$t('follow_current_orders_and_use')"
+        >
+            <template #actions>
                 <el-input 
                     v-model="searchQuery" 
-                    :placeholder="$t('search_by_order_number_or_supplier_name') || 'ابحث برقم الطلب أو المورد...'" 
+                    :placeholder="$t('search_by_order_number_or_supplier_name')" 
                     clearable 
                     class="search-input"
                     :prefix-icon="Search"
                 />
                 <el-button type="primary" class="create-btn" @click="openCreateDrawer">
-                    <i class="fas fa-plus"></i> أمر شراء جديد
+                    <i class="fas fa-plus"></i> {{ $t('new_purchase_order') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Metrics cards row -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box blue-grad">
-                            <i class="fas fa-file-signature"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ store.orders.length }}</h3>
-                            <p>{{ $t('total_orders') || 'إجمالي الأوامر' }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box blue-grad">
+                        <i class="fas fa-file-signature"></i>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box orange-grad">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ pendingCount }}</h3>
-                            <p>{{ $t('pending_orders') || 'أوامر معلقة' }}</p>
-                        </div>
+                    <div class="stat-details">
+                        <h3>{{ store.orders.length }}</h3>
+                        <p>{{ $t('total_orders') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box green-grad">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ completedCount }}</h3>
-                            <p>{{ $t('completed_orders') || 'أوامر مكتملة' }}</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box orange-grad">
+                        <i class="fas fa-clock"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ pendingCount }}</h3>
+                        <p>{{ $t('pending_orders') }}</p>
+                    </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box green-grad">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3>{{ completedCount }}</h3>
+                        <p>{{ $t('completed_orders') }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- Table Panel -->
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list text-muted"></i> {{ $t('purchase_order_list') || 'جدول أوامر الشراء' }}</span>
+                    <span><i class="fas fa-list text-muted"></i> {{ $t('purchase_order_list') }}</span>
                 </div>
             </template>
 
@@ -83,12 +77,12 @@
                     highlight-current-row
                     class="custom-table"
                 >
-                    <el-table-column prop="order_number" label="رقم الطلب" width="140">
+                    <el-table-column prop="order_number" :label="$t('order_number')" width="140">
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="supplier.name" :label="$t('supplier') || 'المورد'">
+                    <el-table-column prop="supplier.name" :label="$t('supplier')">
                         <template #default="{ row }">
                             <div class="supplier-cell">
                                 <i class="fas fa-user-tie text-muted"></i>
@@ -96,12 +90,12 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="total" :label="$t('total') || 'المبلغ الإجمالي'" width="160">
+                    <el-table-column prop="total" :label="$t('total')" width="160">
                         <template #default="{ row }">
                             <strong class="amount-txt">${{ parseFloat(row.total || 0).toFixed(2) }}</strong>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('status') || 'الحالة'" width="150" align="center">
+                    <el-table-column :label="$t('status')" width="150" align="center">
                         <template #default="{ row }">
                             <el-tag :type="statusTagType(row.status)" effect="light" class="status-tag">
                                 <i class="fas status-dot-icon" :class="statusIconClass(row.status)"></i>
@@ -109,19 +103,19 @@
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="due_date" :label="$t('due_date') || 'تاريخ الاستحقاق'" width="160" align="center" />
+                    <el-table-column prop="due_date" :label="$t('due_date')" width="160" align="center" />
                     
                     <!-- Actions Column -->
-                    <el-table-column label="الإجراءات" width="260" align="center">
+                    <el-table-column :label="$t('actions')" width="260" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
-                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" title="عرض التفاصيل">
+                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
                                 </el-button>
-                                <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" title="تعديل">
+                                <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
                                     <i class="fas fa-edit"></i>
                                 </el-button>
-                                <el-button size="small" type="danger" plain @click="deleteOrder(row.id)" title="حذف">
+                                <el-button size="small" type="danger" plain @click="deleteOrder(row.id)" :title="$t('delete')">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </el-button-group>
@@ -134,7 +128,7 @@
                                 style="margin-right: 0.5rem;"
                                 @click="receiveGoods(row.id)"
                             >
-                                <i class="fas fa-arrow-alt-circle-down"></i> تلقي
+                                <i class="fas fa-arrow-alt-circle-down"></i> {{ $t('receive') }}
                             </el-button>
                         </template>
                     </el-table-column>
@@ -143,9 +137,9 @@
                 <!-- Empty State -->
                 <div v-if="!filteredOrders.length" class="empty-state-box">
                     <i class="fas fa-file-signature empty-icon"></i>
-                    <p>{{ $t('there_are_no_requests_matching') || 'لا توجد أوامر شراء مطابقة.' }}</p>
+                    <p>{{ $t('there_are_no_requests_matching') }}</p>
                     <el-button type="primary" size="medium" @click="openCreateDrawer">
-                        <i class="fas fa-plus"></i> إنشاء أول أمر شراء
+                        <i class="fas fa-plus"></i> {{ $t('create_first_purchase_order') }}
                     </el-button>
                 </div>
             </div>
@@ -154,7 +148,7 @@
         <!-- Detail Drawer -->
         <el-drawer
             v-model="detailDrawerVisible"
-            title="تفاصيل أمر الشراء"
+            :title="$t('purchase_order_details')"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -171,19 +165,19 @@
                         <div class="timeline-nodes-wrapper">
                             <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'pending') }">
                                 <div class="node-icon"><i class="fas fa-clock"></i></div>
-                                <span>معلق</span>
+                                <span>{{ $t('sales_status_pending') }}</span>
                             </div>
                             <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'confirmed') }">
                                 <div class="node-icon"><i class="fas fa-check-circle"></i></div>
-                                <span>مؤكد</span>
+                                <span>{{ $t('sales_status_confirmed') }}</span>
                             </div>
                             <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'processing') }">
                                 <div class="node-icon"><i class="fas fa-sync-alt"></i></div>
-                                <span>معالجة</span>
+                                <span>{{ $t('process') }}</span>
                             </div>
                             <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'completed') }">
                                 <div class="node-icon"><i class="fas fa-check-double"></i></div>
-                                <span>مكتمل</span>
+                                <span>{{ $t('sales_status_completed') }}</span>
                             </div>
                         </div>
                     </div>
@@ -194,30 +188,30 @@
                     <el-col :xs="24" :lg="16">
                         <el-card shadow="never" class="mb-4">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-boxes text-muted mr-1"></i> الأصناف المطلوبة للشراء</span>
+                                <span class="card-title-txt"><i class="fas fa-boxes text-muted mr-1"></i> {{ $t('items_requested_for_purchase') }}</span>
                             </template>
                             <el-table :data="selectedOrder.items || []" style="width: 100%" stripe>
-                                <el-table-column prop="product.name_ar" label="الصنف / المنتج" />
-                                <el-table-column prop="quantity" label="الكمية المطلوبة" width="130" align="center" />
-                                <el-table-column prop="unit_price" label="سعر الوحدة" width="120">
+                                <el-table-column prop="product.name_ar" :label="$t('item_product')" />
+                                <el-table-column prop="quantity" :label="$t('quantity_ordered')" width="130" align="center" />
+                                <el-table-column prop="unit_price" :label="$t('unit_price')" width="120">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
                                 </el-table-column>
-                                <el-table-column label="الإجمالي" width="120">
+                                <el-table-column :label="$t('grand_total')" width="120">
                                     <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
                                 </el-table-column>
                             </el-table>
 
                             <div class="financial-summary-block mt-4">
                                 <div class="financial-row">
-                                    <span>الخصم:</span>
+                                    <span>{{ $t('discount_label') }}</span>
                                     <span>${{ parseFloat(selectedOrder.discount || 0).toFixed(2) }}</span>
                                 </div>
                                 <div class="financial-row">
-                                    <span>الضريبة:</span>
+                                    <span>{{ $t('tax_label') }}</span>
                                     <span>${{ parseFloat(selectedOrder.tax || 0).toFixed(2) }}</span>
                                 </div>
                                 <div class="financial-row grand-total">
-                                    <span>الإجمالي الكلي:</span>
+                                    <span>{{ $t('grand_total_label') }}</span>
                                     <span>${{ parseFloat(selectedOrder.total || 0).toFixed(2) }}</span>
                                 </div>
                             </div>
@@ -226,7 +220,7 @@
                         <!-- Notes card -->
                         <el-card v-if="selectedOrder.notes" shadow="never" class="mb-4">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-sticky-note text-muted mr-1"></i> ملاحظات</span>
+                                <span class="card-title-txt"><i class="fas fa-sticky-note text-muted mr-1"></i> {{ $t('notes') }}</span>
                             </template>
                             <p class="notes-txt-view">{{ selectedOrder.notes }}</p>
                         </el-card>
@@ -236,19 +230,19 @@
                     <el-col :xs="24" :lg="8">
                         <el-card shadow="never" class="mb-3">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-user-tie text-muted mr-1"></i> بيانات المورد</span>
+                                <span class="card-title-txt"><i class="fas fa-user-tie text-muted mr-1"></i> {{ $t('supplier_details') }}</span>
                             </template>
                             <div class="info-list">
                                 <div class="info-item">
-                                    <span class="lbl">اسم المورد:</span>
+                                    <span class="lbl">{{ $t('supplier_name_label') }}</span>
                                     <strong>{{ selectedOrder.supplier?.name || '-' }}</strong>
                                 </div>
                                 <div class="info-item" v-if="selectedOrder.supplier?.company">
-                                    <span class="lbl">الشركة:</span>
+                                    <span class="lbl">{{ $t('company_label') }}</span>
                                     <strong>{{ selectedOrder.supplier.company }}</strong>
                                 </div>
                                 <div class="info-item" v-if="selectedOrder.supplier?.phone">
-                                    <span class="lbl">الهاتف:</span>
+                                    <span class="lbl">{{ $t('phone_label') }}</span>
                                     <strong>{{ selectedOrder.supplier.phone }}</strong>
                                 </div>
                             </div>
@@ -256,15 +250,15 @@
 
                         <el-card shadow="never" class="mb-3">
                             <template #header>
-                                <span class="card-title-txt"><i class="fas fa-calendar-alt text-muted mr-1"></i> التواريخ الهامة</span>
+                                <span class="card-title-txt"><i class="fas fa-calendar-alt text-muted mr-1"></i> {{ $t('key_dates') }}</span>
                             </template>
                             <div class="info-list">
                                 <div class="info-item">
-                                    <span class="lbl">تاريخ الطلب:</span>
+                                    <span class="lbl">{{ $t('order_date_label') }}</span>
                                     <strong>{{ selectedOrder.order_date || '-' }}</strong>
                                 </div>
                                 <div class="info-item">
-                                    <span class="lbl">تاريخ الاستحقاق:</span>
+                                    <span class="lbl">{{ $t('due_date_label') }}</span>
                                     <strong>{{ selectedOrder.due_date || '-' }}</strong>
                                 </div>
                             </div>
@@ -272,9 +266,9 @@
 
                         <!-- Receive button inside drawer -->
                         <div v-if="['confirmed', 'processing'].includes(normalizeStatus(selectedOrder.status))" class="receive-card-box">
-                            <p class="receive-tip">يمكن استلام هذه البضائع وتوثيق إدخالها للمستودع الآن.</p>
+                            <p class="receive-tip">{{ $t('goods_can_be_received_now') }}</p>
                             <el-button type="success" style="width: 100%; font-weight: 700;" @click="receiveGoods(selectedOrder.id)">
-                                <i class="fas fa-arrow-alt-circle-down"></i> تسجيل إيصال الاستلام
+                                <i class="fas fa-arrow-alt-circle-down"></i> {{ $t('record_goods_receipt') }}
                             </el-button>
                         </div>
                     </el-col>
@@ -285,7 +279,7 @@
         <!-- Form Drawer (Create / Edit) -->
         <el-drawer
             v-model="formDrawerVisible"
-            :title="isEditMode ? 'تعديل أمر شراء' : 'إنشاء أمر شراء جديد'"
+            :title="isEditMode ? ('edit_purchase_order') : ('create_purchase_order')"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -294,8 +288,8 @@
             <el-form :model="form" label-position="top">
                 <el-row :gutter="20">
                     <el-col :span="12">
-                        <el-form-item label="المورد" required>
-                            <el-select v-model="form.supplier_id" placeholder="اختر المورد" style="width: 100%" filterable>
+                        <el-form-item :label="$t('supplier')" required>
+                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable>
                                 <el-option 
                                     v-for="s in suppliersStore.suppliers" 
                                     :key="s.id" 
@@ -306,13 +300,13 @@
                         </el-form-item>
                     </el-col>
                     <el-col :span="12" v-if="isEditMode">
-                        <el-form-item label="حالة أمر الشراء" required>
-                            <el-select v-model="form.status" placeholder="اختر حالة الطلب" style="width: 100%">
-                                <option value="pending" label="معلق" />
-                                <option value="confirmed" label="مؤكد" />
-                                <option value="processing" label="قيد المعالجة" />
-                                <option value="completed" label="مكتمل" />
-                                <option value="cancelled" label="ملغي" />
+                        <el-form-item :label="$t('purchase_order_status')" required>
+                            <el-select v-model="form.status" :placeholder="$t('select_order_status')" style="width: 100%">
+                                <option value="pending" :label="$t('sales_status_pending')" />
+                                <option value="confirmed" :label="$t('sales_status_confirmed')" />
+                                <option value="processing" :label="$t('sales_status_processing')" />
+                                <option value="completed" :label="$t('sales_status_completed')" />
+                                <option value="cancelled" :label="$t('sales_status_cancelled')" />
                             </el-select>
                         </el-form-item>
                     </el-col>
@@ -320,50 +314,50 @@
 
                 <el-row :gutter="20" class="mt-3">
                     <el-col :span="12">
-                        <el-form-item label="تاريخ أمر الشراء">
-                            <el-date-picker v-model="form.order_date" type="date" placeholder="تاريخ الطلب" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        <el-form-item :label="$t('purchase_order_date')">
+                            <el-date-picker v-model="form.order_date" type="date" :placeholder="$t('order_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                        <el-form-item label="تاريخ الاستحقاق">
-                            <el-date-picker v-model="form.due_date" type="date" placeholder="تاريخ الاستحقاق" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                        <el-form-item :label="$t('due_date')">
+                            <el-date-picker v-model="form.due_date" type="date" :placeholder="$t('due_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                 </el-row>
 
                 <el-row :gutter="20" class="mt-3">
                     <el-col :span="12">
-                        <el-form-item label="الخصم">
-                            <el-input v-model="form.discount" type="number" placeholder="قيمة الخصم..." style="width: 100%">
+                        <el-form-item :label="$t('discount')">
+                            <el-input v-model="form.discount" type="number" :placeholder="$t('discount_amount_placeholder')" style="width: 100%">
                                 <template #suffix>$</template>
                             </el-input>
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                        <el-form-item label="الضريبة">
-                            <el-input v-model="form.tax" type="number" placeholder="قيمة الضريبة..." style="width: 100%">
+                        <el-form-item :label="$t('tax')">
+                            <el-input v-model="form.tax" type="number" :placeholder="$t('tax_amount_placeholder')" style="width: 100%">
                                 <template #suffix>$</template>
                             </el-input>
                         </el-form-item>
                     </el-col>
                 </el-row>
 
-                <el-form-item label="ملاحظات" class="mt-3">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="أضف أي ملاحظات خاصة بأمر الشراء هنا..." />
+                <el-form-item :label="$t('notes')" class="mt-3">
+                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('purchase_order_notes_placeholder')" />
                 </el-form-item>
 
                 <!-- Dynamic items grid -->
                 <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> الأصناف والكميات</h3>
+                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> {{ $t('items_and_quantities') }}</h3>
                         <el-button type="primary" size="small" plain @click="addItemRow">
-                            <i class="fas fa-plus"></i> إضافة صنف
+                            <i class="fas fa-plus"></i> {{ $t('add_item') }}
                         </el-button>
                     </div>
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" placeholder="اختر الصنف" filterable style="flex: 2.5;" @change="(val) => updateItemPrice(val, idx)">
+                            <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" @change="(val) => updateItemPrice(val, idx)">
                                 <el-option 
                                     v-for="p in productsStore.products" 
                                     :key="p.id" 
@@ -371,8 +365,8 @@
                                     :value="p.id" 
                                 />
                             </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" placeholder="الكمية" style="flex: 1;" />
-                            <el-input v-model="item.unit_price" placeholder="السعر" style="flex: 1;">
+                            <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" />
+                            <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;">
                                 <template #suffix>$</template>
                             </el-input>
                             <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
@@ -383,8 +377,8 @@
                 </div>
 
                 <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <el-button @click="formDrawerVisible = false">إلغاء</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveOrder">حفظ أمر الشراء</el-button>
+                    <el-button @click="formDrawerVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :loading="submittingForm" @click="saveOrder">{{ $t('save_purchase_order') }}</el-button>
                 </div>
             </el-form>
         </el-drawer>
@@ -392,6 +386,7 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
@@ -400,6 +395,10 @@ import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const store = usePurchaseOrdersStore();
@@ -462,14 +461,14 @@ const statusIconClass = (status) => {
 const getArabicStatus = (status) => {
     const value = normalizeStatus(status);
     const mapping = {
-        'pending': 'معلق',
-        'confirmed': 'مؤكد',
-        'processing': 'قيد المعالجة',
-        'shipped': 'تم الشحن',
-        'delivered': 'تم التسليم',
-        'completed': 'مكتمل',
-        'cancelled': 'ملغي',
-        'canceled': 'ملغي'
+        'pending': t('sales_status_pending'),
+        'confirmed': t('sales_status_confirmed'),
+        'processing': t('sales_status_processing'),
+        'shipped': t('sales_status_shipped'),
+        'delivered': t('sales_status_delivered'),
+        'completed': t('sales_status_completed'),
+        'cancelled': t('sales_status_cancelled'),
+        'canceled': t('sales_status_cancelled')
     };
     return mapping[value] || status;
 };
@@ -523,7 +522,7 @@ const openDetailDrawer = async (id) => {
         const res = await purchaseOrdersApi.getById(id);
         selectedOrder.value = res.data.data;
     } catch (e) {
-        ElMessage.error('خطأ أثناء تحميل تفاصيل الطلب.');
+        ElMessage.error(t('failed_to_load_order_details_msg'));
     } finally {
         loadingDetail.value = false;
     }
@@ -557,7 +556,7 @@ const openEditDrawer = async (id) => {
             unit_price: item.unit_price
         }));
     } catch (e) {
-        ElMessage.error('خطأ أثناء تحميل بيانات الطلب للتعديل.');
+        ElMessage.error(t('failed_to_load_order_for_edit'));
         formDrawerVisible.value = false;
     } finally {
         submittingForm.value = false;
@@ -582,11 +581,11 @@ const updateItemPrice = (productId, idx) => {
 
 const saveOrder = async () => {
     if (!form.supplier_id) {
-        ElMessage.warning('يرجى تحديد المورد أولاً.');
+        ElMessage.warning(t('please_select_supplier_first'));
         return;
     }
     if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
-        ElMessage.warning('يرجى تعبئة كافة حقول الأصناف المضافة.');
+        ElMessage.warning(t('please_fill_all_item_fields'));
         return;
     }
     
@@ -594,28 +593,28 @@ const saveOrder = async () => {
     try {
         if (isEditMode.value) {
             await purchaseOrdersApi.update(editingOrderId.value, form);
-            ElMessage.success('تم تحديث أمر الشراء بنجاح.');
+            ElMessage.success(t('purchase_order_updated'));
         } else {
             await purchaseOrdersApi.create(form);
-            ElMessage.success('تم حفظ أمر الشراء بنجاح.');
+            ElMessage.success(t('purchase_order_saved'));
         }
         formDrawerVisible.value = false;
         await store.fetchOrders();
     } catch (e) {
-        ElMessage.error('خطأ أثناء حفظ أمر الشراء.');
+        ElMessage.error(t('failed_to_save_purchase_order'));
     } finally {
         submittingForm.value = false;
     }
 };
 
 const deleteOrder = async (id) => {
-    if (confirm('هل أنت متأكد من حذف أمر الشراء هذا؟')) {
+    if (confirm(t('confirm_delete_purchase_order'))) {
         try {
             await purchaseOrdersApi.delete(id);
-            ElMessage.success('تم حذف أمر الشراء بنجاح.');
+            ElMessage.success(t('purchase_order_deleted'));
             await store.fetchOrders();
         } catch (error) {
-            ElMessage.error('خطأ أثناء حذف أمر الشراء.');
+            ElMessage.error(t('failed_to_delete_purchase_order'));
         }
     }
 };

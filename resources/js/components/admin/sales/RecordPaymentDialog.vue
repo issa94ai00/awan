@@ -1,7 +1,7 @@
 <template>
     <el-dialog
         :model-value="modelValue"
-        :title="$t('record_payment') || 'تسجيل دفعة'"
+        :title="$t('record_payment')"
         width="520px"
         :close-on-click-modal="false"
         @update:model-value="$emit('update:modelValue', $event)"
@@ -12,30 +12,30 @@
                  context rather than an editable field. -->
             <div v-if="invoice" class="invoice-context">
                 <div class="context-row">
-                    <span>{{ $t('invoice') || 'الفاتورة' }}</span>
+                    <span>{{ $t('invoice') }}</span>
                     <strong>{{ invoice.invoice_number }}</strong>
                 </div>
                 <div class="context-row">
-                    <span>{{ $t('total') || 'الإجمالي' }}</span>
+                    <span>{{ $t('total') }}</span>
                     <strong>{{ formatCurrency(invoice.total) }}</strong>
                 </div>
                 <div class="context-row">
-                    <span>{{ $t('paid_amount') || 'المدفوع' }}</span>
+                    <span>{{ $t('paid_amount') }}</span>
                     <strong class="paid">{{ formatCurrency(invoice.paid_amount) }}</strong>
                 </div>
                 <div class="context-row highlight">
-                    <span>{{ $t('due_amount') || 'المتبقي' }}</span>
+                    <span>{{ $t('due_amount') }}</span>
                     <strong class="due">{{ formatCurrency(dueAmount) }}</strong>
                 </div>
             </div>
 
-            <el-form-item v-if="!invoice" :label="$t('client') || 'العميل'" prop="customer_id">
+            <el-form-item v-if="!invoice" :label="$t('client')" prop="customer_id">
                 <el-select
                     v-model="form.customer_id"
                     filterable
                     clearable
                     style="width: 100%"
-                    :placeholder="$t('select_customer') || 'اختر العميل'"
+                    :placeholder="$t('select_customer')"
                     :loading="customersStore.loading"
                 >
                     <el-option
@@ -47,13 +47,13 @@
                 </el-select>
             </el-form-item>
 
-            <el-form-item v-if="!invoice" :label="$t('invoice') || 'الفاتورة'">
+            <el-form-item v-if="!invoice" :label="$t('invoice')">
                 <el-select
                     v-model="form.invoice_id"
                     filterable
                     clearable
                     style="width: 100%"
-                    :placeholder="$t('optional_link_to_invoice') || 'اختياري — اربط الدفعة بفاتورة'"
+                    :placeholder="$t('optional_link_to_invoice')"
                 >
                     <el-option
                         v-for="option in linkableInvoices"
@@ -64,7 +64,7 @@
                 </el-select>
             </el-form-item>
 
-            <el-form-item :label="$t('amount') || 'المبلغ'" prop="amount">
+            <el-form-item :label="$t('amount')" prop="amount">
                 <el-input-number
                     v-model="form.amount"
                     :min="0.01"
@@ -74,11 +74,11 @@
                     style="width: 100%"
                 />
                 <div v-if="invoice && form.amount > dueAmount" class="field-hint warning">
-                    {{ $t('amount_exceeds_due') || 'المبلغ أكبر من المتبقي على الفاتورة.' }}
+                    {{ $t('amount_exceeds_due') }}
                 </div>
             </el-form-item>
 
-            <el-form-item :label="$t('payment_method') || 'طريقة الدفع'" prop="payment_method">
+            <el-form-item :label="$t('payment_method')" prop="payment_method">
                 <el-select v-model="form.payment_method" style="width: 100%">
                     <el-option
                         v-for="method in PAYMENT_METHODS"
@@ -89,7 +89,7 @@
                 </el-select>
             </el-form-item>
 
-            <el-form-item :label="$t('payment_date') || 'تاريخ الدفع'">
+            <el-form-item :label="$t('payment_date')">
                 <el-date-picker
                     v-model="form.payment_date"
                     type="date"
@@ -98,30 +98,33 @@
                 />
             </el-form-item>
 
-            <el-form-item :label="$t('reference') || 'المرجع'">
+            <el-form-item :label="$t('reference')">
                 <el-input v-model="form.reference" maxlength="100" show-word-limit />
             </el-form-item>
 
-            <el-form-item :label="$t('notes') || 'ملاحظات'">
+            <el-form-item :label="$t('notes')">
                 <el-input v-model="form.notes" type="textarea" :rows="2" maxlength="1000" />
             </el-form-item>
         </el-form>
 
         <template #footer>
-            <el-button @click="$emit('update:modelValue', false)">{{ $t('cancel') || 'إلغاء' }}</el-button>
+            <el-button @click="$emit('update:modelValue', false)">{{ $t('cancel') }}</el-button>
             <el-button type="primary" :loading="paymentsStore.saving" @click="submit">
-                {{ $t('save') || 'حفظ' }}
+                {{ $t('save') }}
             </el-button>
         </template>
     </el-dialog>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { usePaymentsStore } from '@/stores/payments';
 import { useCustomersStore } from '@/stores/customers';
 import { useInvoicesStore } from '@/stores/invoices';
+
+const { t } = useI18n();
 import {
     formatCurrency,
     paymentMethodLabel,
@@ -173,9 +176,9 @@ const linkableInvoices = computed(() => {
 });
 
 const rules = {
-    customer_id: [{ required: true, message: 'اختر العميل', trigger: 'change' }],
-    amount: [{ required: true, message: 'أدخل المبلغ', trigger: 'blur' }],
-    payment_method: [{ required: true, message: 'اختر طريقة الدفع', trigger: 'change' }],
+    customer_id: [{ required: true, message: t('select_customer'), trigger: 'change' }],
+    amount: [{ required: true, message: t('enter_the_amount'), trigger: 'blur' }],
+    payment_method: [{ required: true, message: t('choose_payment_method'), trigger: 'change' }],
 };
 
 const onOpen = () => {
@@ -200,11 +203,11 @@ const onOpen = () => {
 const submit = async () => {
     // The API requires customer_id even when an invoice is supplied.
     if (!form.customer_id) {
-        ElMessage.warning('لا يمكن تحديد العميل لهذه الدفعة.');
+        ElMessage.warning(t('cannot_determine_payment_customer'));
         return;
     }
     if (!form.amount || form.amount <= 0) {
-        ElMessage.warning('أدخل مبلغاً أكبر من صفر.');
+        ElMessage.warning(t('enter_amount_above_zero'));
         return;
     }
 
@@ -219,11 +222,11 @@ const submit = async () => {
             notes: form.notes || null,
         });
 
-        ElMessage.success('تم تسجيل الدفعة بنجاح.');
+        ElMessage.success(t('payment_recorded'));
         emit('update:modelValue', false);
         emit('saved');
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر تسجيل الدفعة.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_record_payment')));
     }
 };
 </script>

@@ -9,7 +9,7 @@
             <div class="page-header-actions">
                 <el-button type="success" size="default" @click="paymentDialogVisible = true">
                     <el-icon class="mr-1"><Checked /></el-icon>
-                    {{ $t('quick_payment') || 'استلام دفعة' }}
+                    {{ $t('quick_payment') }}
                 </el-button>
             </div>
         </div>
@@ -726,6 +726,8 @@ import { useSettingsStore } from '@/stores/settings';
 import DashboardSkeleton from '@/components/admin/DashboardSkeleton.vue';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 
+const { t } = useI18n();
+
 const { locale } = useI18n();
 const settingsStore = useSettingsStore();
 
@@ -843,13 +845,13 @@ const auditActionCounts = computed(() => {
 const getStatusType = (status) => {
     if (!status) return 'info';
     const s = String(status).toLowerCase();
-    if (s.includes('paid') || s.includes('مكتمل') || s.includes('complete') || s.includes('نجاح') || s.includes('success') || s.includes('processed') || s.includes('delivered') || s.includes('approved') || s.includes('موافق') || s.includes('نشط') || s.includes('active')) {
+    if (s.includes('paid') || s.includes(t('sales_status_completed')) || s.includes('complete') || s.includes(t('success')) || s.includes('success') || s.includes('processed') || s.includes('delivered') || s.includes('approved') || s.includes(t('ok_agreed')) || s.includes(t('active')) || s.includes('active')) {
         return 'success';
     }
-    if (s.includes('pending') || s.includes('قيد المعالجة') || s.includes('معلق') || s.includes('under') || s.includes('progress') || s.includes('انتظار') || s.includes('suspended')) {
+    if (s.includes('pending') || s.includes(t('sales_status_processing')) || s.includes(t('sales_status_pending')) || s.includes('under') || s.includes('progress') || s.includes('انتظار') || s.includes('suspended')) {
         return 'warning';
     }
-    if (s.includes('cancelled') || s.includes('ملغي') || s.includes('failed') || s.includes('failing') || s.includes('rejected') || s.includes('مرفوض') || s.includes('danger') || s.includes('error')) {
+    if (s.includes('cancelled') || s.includes(t('sales_status_cancelled')) || s.includes('failed') || s.includes('failing') || s.includes('rejected') || s.includes(t('sales_status_rejected')) || s.includes('danger') || s.includes('error')) {
         return 'danger';
     }
     return 'info';

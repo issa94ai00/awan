@@ -1,29 +1,29 @@
 <template>
   <div class="picking-lists-page">
-    <div class="page-header">
-      <div class="page-title">
-        <h1><i class="fas fa-clipboard-list"></i> {{ $t('picking_lists') }}</h1>
-        <p>{{ $t('picking_lists_subtitle') }}</p>
-      </div>
-      <div class="header-actions">
-        <el-input
-          v-model="filters.search"
-          :placeholder="$t('search_list_or_order_number')"
-          clearable
-          class="search-input"
-          @input="onSearch"
-          @clear="load(1)"
-        >
-          <template #prefix><i class="fas fa-search"></i></template>
-        </el-input>
-        <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 180px" @change="load(1)">
-          <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
-        </el-select>
-        <el-button type="primary" @click="showCreateDialog = true">
-          <i class="fas fa-plus"></i> {{ $t('manual_list') }}
-        </el-button>
-      </div>
-    </div>
+    <AdminPageHeader
+        icon="fas fa-clipboard-list"
+        :title="$t('picking_lists')"
+        :subtitle="$t('picking_lists_subtitle')"
+    >
+        <template #actions>
+            <el-input
+              v-model="filters.search"
+              :placeholder="$t('search_list_or_order_number')"
+              clearable
+              class="search-input"
+              @input="onSearch"
+              @clear="load(1)"
+            >
+              <template #prefix><i class="fas fa-search"></i></template>
+            </el-input>
+            <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 180px" @change="load(1)">
+              <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
+            </el-select>
+            <el-button type="primary" @click="showCreateDialog = true">
+              <i class="fas fa-plus"></i> {{ $t('manual_list') }}
+            </el-button>
+        </template>
+    </AdminPageHeader>
 
     <!-- Stage tabs with counts across the whole queue, not the page -->
     <el-tabs v-model="activeStatus" class="status-tabs" @tab-change="load(1)">
@@ -163,6 +163,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
 import { salesOrdersApi } from '@/api/salesOrders';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
 

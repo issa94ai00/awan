@@ -7,12 +7,12 @@
           <el-icon><RefreshLeft /></el-icon>
         </div>
         <div>
-          <h1 class="header-title">{{ isEdit ? 'تعديل طلب المرتجع' : 'إنشاء طلب ترخيص مرتجع جديد' }}</h1>
-          <p class="header-subtitle">قم بتعبئة بيانات العميل، الفاتورة الأصلية، والمنتجات المراد إرجاعها أو استبدالها</p>
+          <h1 class="header-title">{{ isEdit ? $t('edit_return_request') : $t('create_return_request') }}</h1>
+          <p class="header-subtitle">{{ $t('rma_form_subtitle') }}</p>
         </div>
       </div>
       <el-button @click="goBack" class="btn-back-premium">
-        <el-icon><Back /></el-icon> رجوع للرئيسية
+        <el-icon><Back /></el-icon> {{ $t('back_to_home') }}
       </el-button>
     </div>
 
@@ -24,15 +24,15 @@
             <template #header>
               <div class="section-card-header">
                 <span class="dot"></span>
-                <h3>معلومات الطلب الأساسية</h3>
+                <h3>{{ $t('basic_request_details') }}</h3>
               </div>
             </template>
 
             <!-- Select Customer -->
-            <el-form-item label="العميل المسترجع" prop="customer_id">
+            <el-form-item :label="$t('returning_customer')" prop="customer_id">
               <el-select
                 v-model="form.customer_id"
-                placeholder="ابحث عن العميل بالاسم أو الهاتف"
+                :placeholder="$t('search_customer_by_name_or_phone')"
                 filterable
                 remote
                 reserve-keyword
@@ -77,20 +77,20 @@
                 </div>
                 <div class="customer-info">
                   <h4>{{ selectedCustomer.name }}</h4>
-                  <p class="customer-meta">رقم العميل: #{{ selectedCustomer.id }}</p>
+                  <p class="customer-meta">{{ $t('customer_number_label') }}: #{{ selectedCustomer.id }}</p>
                 </div>
                 <div class="customer-stats">
                   <div class="stat-item">
                     <span class="stat-value">{{ customerStats.totalOrders }}</span>
-                    <span class="stat-label">إجمالي الطلبات</span>
+                    <span class="stat-label">{{ $t('total_orders') }}</span>
                   </div>
                   <div class="stat-item">
                     <span class="stat-value">{{ customerStats.totalReturns }}</span>
-                    <span class="stat-label">المرتجعات</span>
+                    <span class="stat-label">{{ $t('rma') }}</span>
                   </div>
                   <div class="stat-item">
                     <span class="stat-value">{{ customerStats.availableOrders }}</span>
-                    <span class="stat-label">طلبات قابلة للإرجاع</span>
+                    <span class="stat-label">{{ $t('returnable_orders') }}</span>
                   </div>
                 </div>
               </div>
@@ -105,10 +105,10 @@
             </div>
 
             <!-- Select Sales Order -->
-            <el-form-item label="الفاتورة الأصلية المرتبطة" prop="order_id">
+            <el-form-item :label="$t('linked_original_invoice')" prop="order_id">
               <el-select
                 v-model="form.order_id"
-                placeholder="اختر الفاتورة الأصلية للعميل"
+                :placeholder="$t('select_original_invoice')"
                 filterable
                 clearable
                 @change="loadOrderItems"
@@ -123,64 +123,64 @@
                   :label="order.order_number"
                 />
               </el-select>
-              <span class="input-helper-text" v-if="!form.customer_id">يرجى اختيار العميل أولاً لعرض طلبات البيع المسلَّمة الخاصة به.</span>
+              <span class="input-helper-text" v-if="!form.customer_id">{{ $t('select_customer_to_see_orders') }}</span>
               <span class="input-helper-text" v-else-if="!ordersLoading && !filteredOrders.length">
-                لا توجد طلبات بيع مسلَّمة لهذا العميل — لا يمكن إنشاء مرتجع إلا لطلب تم تسليمه.
+                {{ $t('no_delivered_orders_for_customer') }}
               </span>
             </el-form-item>
 
             <!-- Return Type (Resolution) -->
-            <el-form-item label="نوع ومعالجة التسوية العامة" prop="return_type">
-              <el-select v-model="form.return_type" placeholder="اختر المعالجة الافتراضية" class="premium-input-field">
-                <el-option value="refund" label="استرداد مالي (تعويض)" />
-                <el-option value="exchange" label="استبدال منتج بآخر" />
-                <el-option value="store_credit" label="رصيد متجر (إضافة للمحفظة)" />
+            <el-form-item :label="$t('settlement_type_and_handling')" prop="return_type">
+              <el-select v-model="form.return_type" :placeholder="$t('select_default_handling')" class="premium-input-field">
+                <el-option value="refund" :label="$t('refund_compensation')" />
+                <el-option value="exchange" :label="$t('exchange_for_another_product')" />
+                <el-option value="store_credit" :label="$t('store_credit_to_wallet')" />
               </el-select>
             </el-form-item>
 
             <!-- Return Cause Reason -->
-            <el-form-item label="سبب الإرجاع الرئيسي" prop="reason">
-              <el-select v-model="form.reason" placeholder="اختر سبب الإرجاع الرئيسي" class="premium-input-field">
-                <el-option value="defective" label="منتج معيب أو به خلل مصنعي" />
-                <el-option value="damaged" label="منتج تالف أو مكسور" />
-                <el-option value="wrong_item" label="منتج خاطئ أو غير المطلوب" />
-                <el-option value="not_as_described" label="منتج يختلف عن الوصف المعروض" />
-                <el-option value="changed_mind" label="تغيير رأي العميل" />
-                <el-option value="other" label="أسباب أخرى مخصصة" />
+            <el-form-item :label="$t('main_return_reason')" prop="reason">
+              <el-select v-model="form.reason" :placeholder="$t('select_main_return_reason')" class="premium-input-field">
+                <el-option value="defective" :label="$t('reason_defective')" />
+                <el-option value="damaged" :label="$t('reason_damaged')" />
+                <el-option value="wrong_item" :label="$t('reason_wrong_item')" />
+                <el-option value="not_as_described" :label="$t('reason_not_as_described')" />
+                <el-option value="changed_mind" :label="$t('reason_changed_mind')" />
+                <el-option value="other" :label="$t('reason_other')" />
               </el-select>
             </el-form-item>
 
             <!-- Reason Description -->
-            <el-form-item label="تفاصيل إضافية عن سبب الإرجاع">
-              <el-input v-model="form.reason_description" type="textarea" :rows="3" placeholder="اكتب تفاصيل إضافية لشرح سبب الإرجاع..." />
+            <el-form-item :label="$t('additional_return_details')">
+              <el-input v-model="form.reason_description" type="textarea" :rows="3" :placeholder="$t('additional_return_details_placeholder')" />
             </el-form-item>
 
             <!-- Return Address -->
             <div class="address-section">
               <div class="address-header">
                 <el-icon><Location /></el-icon>
-                <span>عنوان الاسترجاع (اختياري)</span>
+                <span>{{ $t('pickup_address_optional') }}</span>
               </div>
-              <el-form-item label="العنوان الرئيسي">
-                <el-input v-model="form.return_address.address_line1" placeholder="مثال: الشارع، الحي، رقم المبنى" />
+              <el-form-item :label="$t('main_address')">
+                <el-input v-model="form.return_address.address_line1" :placeholder="$t('address_line_placeholder')" />
               </el-form-item>
               <el-row :gutter="10">
                 <el-col :span="12">
-                  <el-form-item label="المدينة">
-                    <el-input v-model="form.return_address.city" placeholder="المدينة" />
+                  <el-form-item :label="$t('city')">
+                    <el-input v-model="form.return_address.city" :placeholder="$t('city')" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="الدولة">
-                    <el-input v-model="form.return_address.country" placeholder="الدولة" />
+                  <el-form-item :label="$t('country')">
+                    <el-input v-model="form.return_address.country" :placeholder="$t('country')" />
                   </el-form-item>
                 </el-col>
               </el-row>
             </div>
 
             <!-- Notes -->
-            <el-form-item label="ملاحظات المعالجة والمتابعة (داخلية)">
-              <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="ملاحظات تظهر لمسؤولي النظام فقط..." />
+            <el-form-item :label="$t('handling_and_follow_up_notes')">
+              <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('internal_notes_placeholder')" />
             </el-form-item>
           </el-card>
         </el-col>
@@ -192,8 +192,8 @@
               <div class="section-card-header items-header">
                 <div class="title-with-count">
                   <span class="dot"></span>
-                  <h3>المنتجات المرتجعة</h3>
-                  <span class="items-count-badge" v-if="orderItems.length">{{ selectedItemsCount }} من {{ orderItems.length }}</span>
+                  <h3>{{ $t('returned_products') }}</h3>
+                  <span class="items-count-badge" v-if="orderItems.length">{{ $t('selected_of_total', { selected: selectedItemsCount, total: orderItems.length }) }}</span>
                 </div>
               </div>
             </template>
@@ -201,7 +201,7 @@
             <!-- Empty State -->
             <div v-if="orderItems.length === 0" class="items-empty-state">
               <el-icon><ShoppingCart /></el-icon>
-              <p>يرجى اختيار العميل وفاتورة مبيعات صالحة لعرض بنود المنتجات وتحديد المرتجع منها.</p>
+              <p>{{ $t('select_customer_and_invoice_for_items') }}</p>
             </div>
 
             <!-- Table of Items -->
@@ -215,20 +215,20 @@
                 </el-table-column>
 
                 <!-- Product Details -->
-                <el-table-column label="المنتج الأصلي">
+                <el-table-column :label="$t('original_product')">
                   <template #default="{ row }">
                     <div class="item-product-cell">
                       <span class="item-product-name">{{ row.product_name }}</span>
                       <div class="item-product-meta">
                         <span class="price-badge">{{ formatCurrency(row.unit_price) }}</span>
-                        <span class="qty-badge">الكمية بالفاتورة: {{ row.original_quantity }}</span>
+                        <span class="qty-badge">{{ $t('invoice_quantity_label', { count: row.original_quantity }) }}</span>
                       </div>
                     </div>
                   </template>
                 </el-table-column>
 
                 <!-- Return Qty -->
-                <el-table-column label="كمية الإرجاع" width="130">
+                <el-table-column :label="$t('return_quantity')" width="130">
                   <template #default="{ row }">
                     <el-input-number
                       v-model="row.quantity"
@@ -243,36 +243,36 @@
                 </el-table-column>
 
                 <!-- Condition -->
-                <el-table-column label="حالة المستلم" width="130">
+                <el-table-column :label="$t('received_condition')" width="130">
                   <template #default="{ row }">
                     <el-select v-model="row.condition" size="small" :disabled="!row.selected" @change="calculateRefundSummary" class="condition-select">
-                      <el-option value="new" label="جديد (سليم)" />
-                      <el-option value="used" label="مستعمل" />
-                      <el-option value="damaged" label="تالف" />
-                      <el-option value="missing" label="مفقود" />
+                      <el-option value="new" :label="$t('condition_new')" />
+                      <el-option value="used" :label="$t('condition_used')" />
+                      <el-option value="damaged" :label="$t('condition_damaged')" />
+                      <el-option value="missing" :label="$t('condition_missing')" />
                     </el-select>
                   </template>
                 </el-table-column>
 
                 <!-- Resolution -->
-                <el-table-column label="طريقة التسوية" width="130">
+                <el-table-column :label="$t('settlement_method')" width="130">
                   <template #default="{ row }">
                     <el-select v-model="row.resolution" size="small" :disabled="!row.selected" class="resolution-select">
-                      <el-option value="refund" label="استرداد مالي" />
-                      <el-option value="exchange" label="استبدال" />
-                      <el-option value="repair" label="إصلاح" />
-                      <el-option value="discard" label="إتلاف" />
+                      <el-option value="refund" :label="$t('refund')" />
+                      <el-option value="exchange" :label="$t('exchange')" />
+                      <el-option value="repair" :label="$t('repair')" />
+                      <el-option value="discard" :label="$t('scrap')" />
                     </el-select>
                   </template>
                 </el-table-column>
 
                 <!-- Exchange Product Selector (Shown only when resolution is exchange) -->
-                <el-table-column label="المنتج البديل" min-width="180">
+                <el-table-column :label="$t('replacement_product')" min-width="180">
                   <template #default="{ row }">
                     <div v-if="row.resolution === 'exchange'" class="exchange-selector-cell">
                       <el-select
                         v-model="row.exchange_product_id"
-                        placeholder="ابحث عن منتج بديل"
+                        :placeholder="$t('search_replacement_product')"
                         filterable
                         remote
                         reserve-keyword
@@ -299,21 +299,21 @@
             <!-- Refund Summary Section -->
             <div class="refund-summary-panel" v-if="orderItems.some(i => i.selected)">
               <div class="summary-row title">
-                <span>ملخص التعويض المالي المقدر</span>
+                <span>{{ $t('estimated_compensation_summary') }}</span>
                 <span class="value">{{ formatCurrency(estimatedRefundTotal) }}</span>
               </div>
               <div class="summary-row desc">
-                <p>ملاحظة: تحتسب القيمة بناءً على حالة المنتج المستلم (جديد: 100٪، مستعمل: 70٪، تالف: 50٪، مفقود: 0٪) من سعر الشراء الأصلي.</p>
+                <p>{{ $t('compensation_rate_note') }}</p>
               </div>
             </div>
 
             <!-- Actions buttons -->
             <div class="form-actions-panel">
               <el-button type="primary" @click="submitForm" :loading="saving" class="btn-save-premium">
-                {{ isEdit ? 'تحديث وحفظ التغييرات' : 'إنشاء طلب الإرجاع' }}
+                {{ isEdit ? $t('update_and_save_changes') : $t('create_the_return_request') }}
               </el-button>
               <el-button @click="router.back()" class="btn-cancel-premium">
-                إلغاء
+                {{ $t('cancel') }}
               </el-button>
             </div>
           </el-card>
@@ -375,21 +375,21 @@ const form = ref({
 })
 
 const rules = {
-  customer_id: [{ required: true, message: 'يرجى اختيار العميل المسترجع', trigger: 'change' }],
-  order_id: [{ required: true, message: 'يرجى اختيار الفاتورة الأصلية', trigger: 'change' }],
-  reason: [{ required: true, message: 'سبب الإرجاع مطلوب', trigger: 'change' }],
-  return_type: [{ required: true, message: 'نوع التسوية مطلوب', trigger: 'change' }],
+  customer_id: [{ required: true, message: t('please_select_returning_customer'), trigger: 'change' }],
+  order_id: [{ required: true, message: t('please_select_original_invoice'), trigger: 'change' }],
+  reason: [{ required: true, message: t('return_reason_required'), trigger: 'change' }],
+  return_type: [{ required: true, message: t('settlement_type_required'), trigger: 'change' }],
   reason_description: [
-    { max: 1000, message: 'الوصف لا يمكن أن يتجاوز 1000 حرف', trigger: 'blur' }
+    { max: 1000, message: t('description_max_1000'), trigger: 'blur' }
   ],
   'return_address.address_line1': [
-    { required: true, message: 'العنوان مطلوب عند تحديد عنوان الاسترجاع', trigger: 'blur' }
+    { required: true, message: t('address_required_for_pickup'), trigger: 'blur' }
   ],
   'return_address.city': [
-    { required: true, message: 'المدينة مطلوبة عند تحديد عنوان الاسترجاع', trigger: 'blur' }
+    { required: true, message: t('city_required_for_pickup'), trigger: 'blur' }
   ],
   'return_address.country': [
-    { required: true, message: 'الدولة مطلوبة عند تحديد عنوان الاسترجاع', trigger: 'blur' }
+    { required: true, message: t('country_required_for_pickup'), trigger: 'blur' }
   ]
 }
 
@@ -469,7 +469,7 @@ const loadOrders = async (customerId = null) => {
     orders.value = Array.isArray(ordersData) ? ordersData : []
   } catch (error) {
     console.error('Failed to load sales orders:', error)
-    ElMessage.error('خطأ في تحميل طلبات البيع')
+    ElMessage.error(t('failed_to_load_sales_orders'))
     orders.value = []
   } finally {
     ordersLoading.value = false
@@ -548,7 +548,7 @@ const loadCustomerStats = async (customerId) => {
 
 const validateOrderItems = () => {
   if (orderItems.value.length === 0) {
-    ElMessage.warning('لا توجد منتجات في الفاتورة المحددة')
+    ElMessage.warning(t('no_products_in_selected_invoice'))
     return false
   }
   
@@ -559,7 +559,7 @@ const validateOrderItems = () => {
   })
   
   if (availableItems.length === 0) {
-    ElMessage.warning('جميع منتجات هذه الفاتورة تم إرجاعها بالفعل')
+    ElMessage.warning(t('all_invoice_products_already_returned'))
     return false
   }
   
@@ -578,7 +578,7 @@ const loadOrderItems = async () => {
     if (order && order.items) {
       // Check if order is delivered
       if (order.status !== 'delivered') {
-        ElMessage.warning('يجب أن تكون الفاتورة في حالة "تم التسليم" لإنشاء طلب إرجاع')
+        ElMessage.warning(t('invoice_must_be_delivered'))
         orderItems.value = []
         loading.value = false
         return
@@ -601,11 +601,11 @@ const loadOrderItems = async () => {
       validateOrderItems()
     } else {
       orderItems.value = []
-      ElMessage.warning('لا توجد منتجات في هذه الفاتورة')
+      ElMessage.warning(t('no_products_in_invoice'))
     }
   } catch (error) {
     console.error('Failed to load order items:', error)
-    ElMessage.error('خطأ في تحميل منتجات الفاتورة')
+    ElMessage.error(t('failed_to_load_invoice_products'))
     orderItems.value = []
   } finally {
     loading.value = false
@@ -706,7 +706,7 @@ const loadRma = async () => {
     }
   } catch (error) {
     console.error('Failed to load RMA data:', error)
-    ElMessage.error('خطأ في تحميل بيانات طلب الإرجاع')
+    ElMessage.error(t('failed_to_load_return_request'))
     router.back()
   } finally {
     loading.value = false
@@ -716,20 +716,20 @@ const loadRma = async () => {
 const submitForm = async () => {
   const selectedItems = orderItems.value.filter(i => i.selected)
   if (selectedItems.length === 0) {
-    ElMessage.warning('يرجى تحديد منتج واحد على الأقل لإرجاعه')
+    ElMessage.warning(t('select_at_least_one_product_to_return'))
     return
   }
 
   // Validate exchange items have exchange_product_id
   for (const item of selectedItems) {
     if (item.resolution === 'exchange' && !item.exchange_product_id) {
-      ElMessage.error(`يرجى تحديد المنتج البديل لمنتج: ${item.product_name}`)
+      ElMessage.error(t('select_replacement_for_product', { product: item.product_name }))
       return
     }
     
     // Validate quantity doesn't exceed original
     if (item.quantity > item.original_quantity) {
-      ElMessage.error(`الكمية المطلوبة (${item.quantity}) تتجاوز الكمية الأصلية (${item.original_quantity}) لمنتج: ${item.product_name}`)
+      ElMessage.error(t('return_quantity_exceeds_original', { quantity: item.quantity, original: item.original_quantity, product: item.product_name }))
       return
     }
   }
@@ -737,15 +737,15 @@ const submitForm = async () => {
   // Validate return address if provided
   if (form.value.return_address && (form.value.return_address.address_line1 || form.value.return_address.city || form.value.return_address.country)) {
     if (!form.value.return_address.address_line1) {
-      ElMessage.error('يرجى إدخال العنوان الرئيسي')
+      ElMessage.error(t('please_enter_street_address'))
       return
     }
     if (!form.value.return_address.city) {
-      ElMessage.error('يرجى إدخال المدينة')
+      ElMessage.error(t('please_enter_city'))
       return
     }
     if (!form.value.return_address.country) {
-      ElMessage.error('يرجى إدخال الدولة')
+      ElMessage.error(t('please_enter_country'))
       return
     }
   }
@@ -775,10 +775,10 @@ const submitForm = async () => {
 
     if (isEdit.value) {
       await rmaService.updateRmaRequest(rmaId.value, data)
-      ElMessage.success('تم تحديث طلب الإرجاع بنجاح')
+      ElMessage.success(t('return_request_updated'))
     } else {
       await rmaService.createRmaRequest(data)
-      ElMessage.success('تم إنشاء طلب الإرجاع بنجاح')
+      ElMessage.success(t('return_request_created'))
     }
     router.push('/admin/rma')
   } catch (error) {
@@ -786,9 +786,9 @@ const submitForm = async () => {
     if (error.response?.data?.errors) {
       const errors = error.response.data.errors
       const errorMessages = Object.values(errors).flat()
-      ElMessage.error(errorMessages[0] || 'خطأ أثناء حفظ طلب الإرجاع')
+      ElMessage.error(errorMessages[0] || t('failed_to_save_return_request'))
     } else {
-      ElMessage.error(error.response?.data?.message || 'خطأ أثناء حفظ طلب الإرجاع')
+      ElMessage.error(error.response?.data?.message || t('failed_to_save_return_request'))
     }
   } finally {
     saving.value = false

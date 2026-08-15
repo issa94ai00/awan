@@ -7,16 +7,16 @@
           <el-icon><RefreshLeft /></el-icon>
         </div>
         <div>
-          <h1 class="header-title">تفاصيل طلب المرتجع: {{ rma.rma_number }}</h1>
-          <p class="header-subtitle">استعراض تفاصيل طلب الاسترجاع وحالة معالجة المنتجات وتعديل الحسابات والمخازن</p>
+          <h1 class="header-title">{{ $t('return_request_details_title', { number: rma.rma_number }) }}</h1>
+          <p class="header-subtitle">{{ $t('rma_show_subtitle') }}</p>
         </div>
       </div>
       <div class="header-actions">
         <el-button @click="goBack" class="btn-back-premium">
-          <el-icon><Back /></el-icon> رجوع
+          <el-icon><Back /></el-icon> {{ $t('back') }}
         </el-button>
         <el-button @click="router.push(`/admin/rma/${rma.id}/edit`)" :disabled="rma.status !== 'pending'" class="btn-edit-premium">
-          <el-icon><Edit /></el-icon> تعديل
+          <el-icon><Edit /></el-icon> {{ $t('edit') }}
         </el-button>
       </div>
     </div>
@@ -29,7 +29,7 @@
             <el-icon><DocumentAdd /></el-icon>
           </template>
           <template #title>
-            <span class="step-title">تم تقديم الطلب</span>
+            <span class="step-title">{{ $t('request_submitted') }}</span>
           </template>
           <template #description>
             <span class="step-desc">{{ formatDate(rma.created_at) }}</span>
@@ -40,11 +40,11 @@
             <el-icon><Select /></el-icon>
           </template>
           <template #title>
-            <span class="step-title">تمت الموافقة</span>
+            <span class="step-title">{{ $t('approved') }}</span>
           </template>
           <template #description>
             <span class="step-desc" v-if="rma.approved_at">{{ formatDate(rma.approved_at) }}</span>
-            <span class="step-desc" v-else>في انتظار الموافقة</span>
+            <span class="step-desc" v-else>{{ $t('awaiting_approval_state') }}</span>
           </template>
         </el-step>
         <el-step>
@@ -52,12 +52,12 @@
             <el-icon><Box /></el-icon>
           </template>
           <template #title>
-            <span class="step-title">استلام المنتجات</span>
+            <span class="step-title">{{ $t('receive_products') }}</span>
           </template>
           <template #description>
             <span class="step-desc" v-if="rma.received_at">{{ formatDate(rma.received_at) }}</span>
-            <span class="step-desc" v-else-if="receivedUnits > 0">{{ receivedUnits }} وحدة مستلمة</span>
-            <span class="step-desc" v-else>في انتظار الاستلام</span>
+            <span class="step-desc" v-else-if="receivedUnits > 0">{{ $t('units_received_count', { count: receivedUnits }) }}</span>
+            <span class="step-desc" v-else>{{ $t('awaiting_receipt') }}</span>
           </template>
         </el-step>
         <el-step>
@@ -65,11 +65,11 @@
             <el-icon><CircleCheck /></el-icon>
           </template>
           <template #title>
-            <span class="step-title">اكتمال التسوية</span>
+            <span class="step-title">{{ $t('settlement_completed') }}</span>
           </template>
           <template #description>
             <span class="step-desc" v-if="rma.completed_at">{{ formatDate(rma.completed_at) }}</span>
-            <span class="step-desc" v-else>في انتظار الإكمال</span>
+            <span class="step-desc" v-else>{{ $t('awaiting_completion') }}</span>
           </template>
         </el-step>
       </el-steps>
@@ -79,9 +79,9 @@
     <div class="alert-banner" :class="rma.status" v-else>
       <el-icon><Warning /></el-icon>
       <div>
-        <h4>طلب إرجاع {{ rma.status === 'rejected' ? 'مرفوض' : 'ملغي' }}</h4>
-        <p v-if="rma.status === 'rejected'">سبب الرفض: {{ rma.notes || 'لم يتم كتابة سبب الرفض' }}</p>
-        <p v-else>تم إلغاء هذا الطلب من قبل النظام أو العميل.</p>
+        <h4>{{ rma.status === 'rejected' ? $t('return_request_rejected_heading') : $t('return_request_cancelled_heading') }}</h4>
+        <p v-if="rma.status === 'rejected'">{{ $t('rejection_reason_label') }}: {{ rma.notes || $t('no_rejection_reason_given') }}</p>
+        <p v-else>{{ $t('request_cancelled_notice') }}</p>
       </div>
     </div>
 
@@ -94,37 +94,37 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot"></span>
-              <h3>المنتجات المدرجة في طلب الإرجاع</h3>
+              <h3>{{ $t('products_in_return_request') }}</h3>
             </div>
           </template>
 
           <el-table :data="rma.items" stripe class="items-table-premium">
-            <el-table-column prop="product" label="المنتج" min-width="200" />
-            <el-table-column prop="quantity_requested" label="الكمية المطلوبة" width="130" align="center" />
-            <el-table-column prop="quantity_received" label="الكمية المستلمة" width="130" align="center">
+            <el-table-column prop="product" :label="$t('product')" min-width="200" />
+            <el-table-column prop="quantity_requested" :label="$t('quantity_ordered')" width="130" align="center" />
+            <el-table-column prop="quantity_received" :label="$t('quantity_received')" width="130" align="center">
               <template #default="{ row }">
                 <span :class="{'qty-warning': row.quantity_received < row.quantity_requested, 'qty-success': row.quantity_received === row.quantity_requested}">
                   {{ row.quantity_received }} / {{ row.quantity_requested }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="condition" label="حالة المنتج المستلم" width="140">
+            <el-table-column prop="condition" :label="$t('received_product_condition')" width="140">
               <template #default="{ row }">
                 <el-tag :type="getConditionTagType(row.condition)" class="premium-tag">
                   {{ getConditionLabel(row.condition) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="resolution" label="نوع التسوية البند" width="130">
+            <el-table-column prop="resolution" :label="$t('line_settlement_type')" width="130">
               <template #default="{ row }">
                 <el-tag :type="getResolutionTagType(row.resolution)" class="premium-tag">
                   {{ getResolutionLabel(row.resolution) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="exchange_product" label="المنتج البديل" min-width="160" v-if="rma.items.some(i => i.resolution === 'exchange')">
+            <el-table-column prop="exchange_product" :label="$t('replacement_product')" min-width="160" v-if="rma.items.some(i => i.resolution === 'exchange')">
               <template #default="{ row }">
-                <span class="exchange-product-text" v-if="row.resolution === 'exchange'">{{ row.exchange_product || 'لم يحدد بعد' }}</span>
+                <span class="exchange-product-text" v-if="row.resolution === 'exchange'">{{ row.exchange_product || $t('not_chosen_yet') }}</span>
                 <span class="text-placeholder" v-else>-</span>
               </template>
             </el-table-column>
@@ -136,7 +136,7 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot"></span>
-              <h3>سجل الحركات والتتبع (النشاطات)</h3>
+              <h3>{{ $t('activity_and_tracking_log') }}</h3>
             </div>
           </template>
 
@@ -167,28 +167,28 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot orange"></span>
-              <h3>العمليات والإجراءات</h3>
+              <h3>{{ $t('operations_and_actions') }}</h3>
             </div>
           </template>
 
           <div class="operations-buttons-grid">
             <el-button type="success" class="op-btn approve" :disabled="rma.status !== 'pending'" @click="approveRma">
-              <el-icon><Check /></el-icon> الموافقة على الطلب
+              <el-icon><Check /></el-icon> {{ $t('approve_the_request') }}
             </el-button>
             <el-button type="danger" class="op-btn reject" :disabled="rma.status !== 'pending'" @click="rejectRma">
-              <el-icon><Close /></el-icon> رفض طلب الإرجاع
+              <el-icon><Close /></el-icon> {{ $t('reject_the_return') }}
             </el-button>
             <!-- Receiving stays available while `received` so a miscounted
                  receipt can be corrected; the server books only the difference. -->
             <el-button type="warning" class="op-btn receive" :disabled="!canReceive" @click="openReceiveDialog">
               <el-icon><Location /></el-icon>
-              {{ rma.status === 'received' ? 'تعديل كميات الاستلام' : 'استلام وفحص المنتجات' }}
+              {{ rma.status === 'received' ? $t('edit_received_quantities') : $t('receive_and_inspect_products') }}
             </el-button>
             <el-button type="primary" class="op-btn complete" :disabled="!canComplete" @click="openCompleteDialog">
-              <el-icon><Finished /></el-icon> إكمال تسوية الطلب
+              <el-icon><Finished /></el-icon> {{ $t('complete_the_settlement') }}
             </el-button>
             <el-button type="info" class="op-btn cancel" :disabled="rma.status === 'completed' || rma.status === 'rejected' || rma.status === 'cancelled'" @click="cancelRma">
-              <el-icon><Warning /></el-icon> إلغاء الطلب
+              <el-icon><Warning /></el-icon> {{ $t('cancel_the_request') }}
             </el-button>
           </div>
         </el-card>
@@ -198,35 +198,35 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot blue"></span>
-              <h3>معلومات العميل والفاتورة</h3>
+              <h3>{{ $t('customer_and_invoice_details') }}</h3>
             </div>
           </template>
 
           <el-descriptions :column="1" border class="premium-descriptions">
-            <el-descriptions-item label="العميل">
+            <el-descriptions-item :label="$t('customer')">
               <div class="customer-info-box">
                 <span class="name">{{ rma.customer }}</span>
                 <span class="phone" v-if="rma.customer_phone">{{ rma.customer_phone }}</span>
               </div>
             </el-descriptions-item>
-            <el-descriptions-item label="فاتورة المبيعات الأصلية">
+            <el-descriptions-item :label="$t('original_sales_invoice')">
               <span class="invoice-number">#{{ rma.order_number }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="نوع التسوية">
+            <el-descriptions-item :label="$t('settlement_type')">
               <el-tag :type="getReturnTypeClass(rma.return_type)" class="premium-tag">
                 {{ getReturnTypeLabel(rma.return_type) }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="سبب الإرجاع">
+            <el-descriptions-item :label="$t('return_reason')">
               {{ getReasonLabel(rma.reason) }}
             </el-descriptions-item>
-            <el-descriptions-item label="تاريخ التقديم">
+            <el-descriptions-item :label="$t('submitted_on')">
               {{ formatDate(rma.created_at) }}
             </el-descriptions-item>
-            <el-descriptions-item label="قيمة التعويض المعتمدة" v-if="rma.status === 'completed'">
+            <el-descriptions-item :label="$t('approved_compensation_value')" v-if="rma.status === 'completed'">
               <span class="final-refund-amount">{{ formatCurrency(rma.refund_amount) }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="طريقة التسوية المالية" v-if="rma.status === 'completed'">
+            <el-descriptions-item :label="$t('financial_settlement_method')" v-if="rma.status === 'completed'">
               <el-tag type="info" class="premium-tag">{{ getRefundMethodLabel(rma.refund_method) }}</el-tag>
             </el-descriptions-item>
           </el-descriptions>
@@ -238,7 +238,7 @@
           <template #header>
             <div class="section-card-header">
               <span class="dot purple"></span>
-              <h3>الإشعارات الدائنة</h3>
+              <h3>{{ $t('credit_notes') }}</h3>
             </div>
           </template>
 
@@ -249,23 +249,23 @@
             </div>
             <div class="credit-note-rows">
               <div class="credit-note-row">
-                <span>القيمة</span>
+                <span>{{ $t('value') }}</span>
                 <strong>{{ formatCurrency(note.total) }}</strong>
               </div>
               <div class="credit-note-row" v-if="Number(note.applied_to_invoice) > 0">
-                <span>خُصم من الفاتورة</span>
+                <span>{{ $t('deducted_from_invoice') }}</span>
                 <strong>{{ formatCurrency(note.applied_to_invoice) }}</strong>
               </div>
               <div class="credit-note-row" v-if="Number(note.refunded_amount) > 0">
-                <span>مسترد نقداً</span>
+                <span>{{ $t('refunded_in_cash') }}</span>
                 <strong>{{ formatCurrency(note.refunded_amount) }}</strong>
               </div>
               <div class="credit-note-row" v-if="Number(note.store_credit_amount) > 0">
-                <span>رصيد للعميل</span>
+                <span>{{ $t('credited_to_customer') }}</span>
                 <strong>{{ formatCurrency(note.store_credit_amount) }}</strong>
               </div>
               <div class="credit-note-row open" v-if="Number(note.open_amount) > 0">
-                <span>غير مسوّى بعد</span>
+                <span>{{ $t('not_settled_yet') }}</span>
                 <strong>{{ formatCurrency(note.open_amount) }}</strong>
               </div>
             </div>
@@ -275,54 +275,54 @@
     </el-row>
 
     <!-- Receive Items Dialog -->
-    <el-dialog v-model="showReceiveDialog" title="استلام وفحص المنتجات المسترجعة" width="600px" class="premium-dialog">
-      <p class="dialog-desc">قم بتسجيل الكميات التي تم فحصها واستلامها بالفعل في مخزن البضائع لتعديل الكميات الإجمالية.</p>
+    <el-dialog v-model="showReceiveDialog" :title="$t('receive_and_inspect_returns')" width="600px" class="premium-dialog">
+      <p class="dialog-desc">{{ $t('record_inspected_quantities_hint') }}</p>
       <el-table :data="receiveForm.items" stripe class="mini-table">
-        <el-table-column prop="product" label="المنتج" />
-        <el-table-column prop="quantity_requested" label="المطلوب إرجاعه" width="130" align="center" />
-        <el-table-column label="الكمية المستلمة" width="150" align="center">
+        <el-table-column prop="product" :label="$t('product')" />
+        <el-table-column prop="quantity_requested" :label="$t('requested_for_return')" width="130" align="center" />
+        <el-table-column :label="$t('quantity_received')" width="150" align="center">
           <template #default="{ row }">
             <el-input-number v-model="row.quantity_received" :min="0" :max="row.quantity_requested" size="small" />
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="showReceiveDialog = false">إلغاء</el-button>
-        <el-button type="primary" @click="submitReceive" :loading="receiveLoading">تأكيد الاستلام</el-button>
+        <el-button @click="showReceiveDialog = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" @click="submitReceive" :loading="receiveLoading">{{ $t('confirm_receipt') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- Complete RMA Dialog -->
-    <el-dialog v-model="showCompleteDialog" title="إكمال وتسوية طلب الإرجاع" width="550px" class="premium-dialog">
+    <el-dialog v-model="showCompleteDialog" :title="$t('complete_and_settle_return')" width="550px" class="premium-dialog">
       <!-- Breakdown so the operator can see how the return splits before
            committing: cash back vs. credit consumed by a replacement. -->
       <div class="settlement-summary">
         <div class="settlement-row">
-          <span>قيمة البنود القابلة للاسترداد</span>
+          <span>{{ $t('refundable_lines_value') }}</span>
           <strong>{{ formatCurrency(refundableTotal) }}</strong>
         </div>
         <div class="settlement-row" v-if="hasExchangeItems">
-          <span>رصيد يُخصم من طلب الاستبدال</span>
+          <span>{{ $t('credit_against_exchange_order') }}</span>
           <strong class="exchange">{{ formatCurrency(exchangeCredit) }}</strong>
         </div>
         <p class="settlement-hint" v-if="hasExchangeItems">
-          بنود الاستبدال لا تُسترد نقداً — سيُنشأ طلب بيع بديل تلقائياً ويُخصم منه هذا الرصيد.
+          {{ $t('exchange_lines_not_refunded_notice') }}
         </p>
       </div>
 
       <el-form :model="completeForm" label-position="top">
-        <el-form-item label="طريقة التسوية المالية للتعويض" prop="refund_method">
-          <el-select v-model="completeForm.refund_method" placeholder="اختر طريقة التعويض" class="premium-select-field">
-            <el-option value="original" label="استرداد للحساب الأصلي (كاش/بنكي)" />
-            <el-option value="store_credit" label="رصيد متجر (إضافة لمحفظة العميل)" />
-            <el-option value="bank_transfer" label="تحويل بنكي مخصص" />
-            <el-option value="check" label="شيك بنكي ورقي" />
+        <el-form-item :label="$t('compensation_settlement_method')" prop="refund_method">
+          <el-select v-model="completeForm.refund_method" :placeholder="$t('select_compensation_method')" class="premium-select-field">
+            <el-option value="original" :label="$t('refund_to_original_account')" />
+            <el-option value="store_credit" :label="$t('store_credit_to_customer_wallet')" />
+            <el-option value="bank_transfer" :label="$t('custom_bank_transfer')" />
+            <el-option value="check" :label="$t('paper_bank_cheque')" />
           </el-select>
         </el-form-item>
-        <el-form-item label="قيمة الاسترداد المالي" prop="refund_amount">
+        <el-form-item :label="$t('refund_amount')" prop="refund_amount">
           <el-input-number v-model="completeForm.refund_amount" :min="0" :precision="2" class="premium-select-field" />
           <span class="input-helper-text">
-            محسوبة من حالة كل بند مُستلم، وتشمل بنود الاسترداد والتخلص فقط. يمكنك تعديلها يدوياً.
+            {{ $t('compensation_calculation_hint') }}
           </span>
         </el-form-item>
 
@@ -334,19 +334,19 @@
           class="settlement-effect"
         >
           <template v-if="completeForm.refund_method === 'store_credit'">
-            سيُخصم المبلغ من رصيد العميل المستحق دون أي حركة نقدية.
+            {{ $t('amount_deducted_from_balance_notice') }}
           </template>
           <template v-else>
-            ستُسجَّل دفعة استرداد بقيمة سالبة مرتبطة بالفاتورة الأصلية، وسيُخفَّض المبلغ المحصَّل عليها.
+            {{ $t('negative_payment_notice') }}
           </template>
         </el-alert>
-        <el-form-item label="ملاحظات التسوية النهائية" prop="admin_notes">
-          <el-input v-model="completeForm.admin_notes" type="textarea" :rows="3" placeholder="ملاحظات تظهر للعميل أو كمرجع للمحاسبة..." />
+        <el-form-item :label="$t('final_settlement_notes')" prop="admin_notes">
+          <el-input v-model="completeForm.admin_notes" type="textarea" :rows="3" :placeholder="$t('settlement_notes_placeholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCompleteDialog = false">إلغاء</el-button>
-        <el-button type="primary" @click="submitComplete" :loading="completeLoading">تأكيد وإغلاق الطلب</el-button>
+        <el-button @click="showCompleteDialog = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" @click="submitComplete" :loading="completeLoading">{{ $t('confirm_and_close_request') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -512,7 +512,7 @@ const loadRma = async () => {
     await loadActivities()
   } catch (error) {
     console.error('Failed to load RMA details:', error)
-    ElMessage.error('خطأ في تحميل تفاصيل المرتجع')
+    ElMessage.error(t('failed_to_load_return_details'))
     goBack()
   } finally {
     loading.value = false
@@ -531,53 +531,53 @@ const loadActivities = async () => {
 
 const approveRma = async () => {
   try {
-    const { value } = await ElMessageBox.prompt('هل أنت متأكد من الموافقة على طلب الإرجاع؟ يمكنك إضافة ملاحظات إدارية هنا:', 'الموافقة على الطلب', {
-      confirmButtonText: 'موافق',
-      cancelButtonText: 'إلغاء',
-      inputPlaceholder: 'أدخل ملاحظات إضافية (اختياري)...'
+    const { value } = await ElMessageBox.prompt(t('confirm_approve_return_with_notes'), t('approve_the_request'), {
+      confirmButtonText: t('ok_agreed'),
+      cancelButtonText: t('cancel'),
+      inputPlaceholder: t('enter_optional_notes')
     })
     await rmaService.approveRma(rma.value.id, { admin_notes: value })
-    ElMessage.success('تمت الموافقة على طلب الإرجاع بنجاح')
+    ElMessage.success(t('return_approved'))
     loadRma()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت عملية الموافقة')
+      ElMessage.error(error.response?.data?.message || t('approval_failed'))
     }
   }
 }
 
 const rejectRma = async () => {
   try {
-    const { value } = await ElMessageBox.prompt('يرجى إدخال سبب رفض طلب الإرجاع:', 'رفض الطلب', {
+    const { value } = await ElMessageBox.prompt(t('enter_rejection_reason'), t('reject_request'), {
       type: 'warning',
-      confirmButtonText: 'رفض الطلب',
-      cancelButtonText: 'إلغاء',
+      confirmButtonText: t('reject_request'),
+      cancelButtonText: t('cancel'),
       inputPattern: /.+/,
-      inputErrorMessage: 'يجب كتابة سبب الرفض'
+      inputErrorMessage: t('rejection_reason_required')
     })
     await rmaService.rejectRma(rma.value.id, { reason: value })
-    ElMessage.success('تم رفض طلب الإرجاع بنجاح')
+    ElMessage.success(t('return_rejected'))
     loadRma()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت عملية الرفض')
+      ElMessage.error(error.response?.data?.message || t('rejection_failed'))
     }
   }
 }
 
 const cancelRma = async () => {
   try {
-    await ElMessageBox.confirm('هل أنت متأكد من إلغاء طلب الإرجاع هذا بالكامل؟', 'إلغاء الطلب', {
+    await ElMessageBox.confirm(t('confirm_cancel_return'), t('cancel_the_request'), {
       type: 'warning',
-      confirmButtonText: 'إلغاء الطلب',
-      cancelButtonText: 'تراجع'
+      confirmButtonText: t('cancel_the_request'),
+      cancelButtonText: t('undo')
     })
     await rmaService.cancelRma(rma.value.id)
-    ElMessage.success('تم إلغاء طلب الإرجاع بنجاح')
+    ElMessage.success(t('return_cancelled'))
     loadRma()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت عملية إلغاء الطلب')
+      ElMessage.error(error.response?.data?.message || t('cancellation_failed'))
     }
   }
 }
@@ -604,13 +604,13 @@ const submitReceive = async () => {
     // Goes through the service like every other RMA action, instead of a raw
     // api.post that bypassed it.
     await rmaService.receiveRma(rma.value.id, data)
-    ElMessage.success('تم تسجيل استلام المنتجات وتحديث المخزون بنجاح')
+    ElMessage.success(t('receipt_recorded_stock_updated'))
     showReceiveDialog.value = false
     loadRma()
     loadActivities()
   } catch (error) {
     console.error('Failed to receive items:', error)
-    ElMessage.error(error.response?.data?.message || 'فشل تسجيل استلام المنتجات')
+    ElMessage.error(error.response?.data?.message || t('failed_to_record_receipt'))
   } finally {
     receiveLoading.value = false
   }
@@ -639,28 +639,28 @@ const submitComplete = async () => {
     // "done" — the operator needs the refund and replacement references.
     const notes = []
     if (settlement?.credit_note) {
-      notes.push(`إشعار دائن ${settlement.credit_note.credit_note_number}`)
+      notes.push(t('credit_note_note', { number: settlement.credit_note.credit_note_number }))
     }
     if (settlement?.applied_to_invoice > 0) {
-      notes.push(`خُصم ${formatCurrency(settlement.applied_to_invoice)} من الفاتورة`)
+      notes.push(t('deducted_from_invoice_note', { amount: formatCurrency(settlement.applied_to_invoice) }))
     }
     if (settlement?.refund_payment) {
-      notes.push(`دفعة استرداد ${settlement.refund_payment.payment_number}`)
+      notes.push(t('refund_payment_note', { number: settlement.refund_payment.payment_number }))
     }
     if (settlement?.store_credit_applied > 0) {
-      notes.push(`رصيد للعميل ${formatCurrency(settlement.store_credit_applied)}`)
+      notes.push(t('customer_credit_note', { amount: formatCurrency(settlement.store_credit_applied) }))
     }
     if (settlement?.replacement_order) {
-      notes.push(`طلب بديل ${settlement.replacement_order.order_number}`)
+      notes.push(t('replacement_order_note', { number: settlement.replacement_order.order_number }))
     }
     if (settlement?.unused_exchange_credit > 0) {
-      notes.push(`رصيد متبقٍ للعميل ${formatCurrency(settlement.unused_exchange_credit)}`)
+      notes.push(t('unused_credit_note', { amount: formatCurrency(settlement.unused_exchange_credit) }))
     }
 
     ElMessage.success({
       message: notes.length
-        ? `تمت التسوية: ${notes.join(' • ')}`
-        : 'تمت تسوية وإكمال طلب الإرجاع بنجاح',
+        ? t('settled_summary', { details: notes.join(' • ') })
+        : t('return_settled_and_completed'),
       duration: 5000
     })
 
@@ -669,7 +669,7 @@ const submitComplete = async () => {
     loadActivities()
   } catch (error) {
     console.error('Failed to complete RMA:', error)
-    ElMessage.error(error.response?.data?.message || 'فشل إكمال تسوية طلب الإرجاع')
+    ElMessage.error(error.response?.data?.message || t('failed_to_complete_settlement'))
   } finally {
     completeLoading.value = false
   }
@@ -677,21 +677,21 @@ const submitComplete = async () => {
 
 const getStatusLabel = (status) => {
   const labels = {
-    pending: 'بانتظار الموافقة',
-    approved: 'تمت الموافقة',
-    received: 'تم استلام البضاعة',
-    rejected: 'مرفوض',
-    completed: 'مكتمل',
-    cancelled: 'ملغي'
+    pending: t('awaiting_approval'),
+    approved: t('approved'),
+    received: t('goods_received'),
+    rejected: t('sales_status_rejected'),
+    completed: t('sales_status_completed'),
+    cancelled: t('sales_status_cancelled')
   }
   return labels[status] || status
 }
 
 const getReturnTypeLabel = (type) => {
   const labels = {
-    refund: 'استرداد نقدي',
-    exchange: 'استبدال المنتج',
-    store_credit: 'رصيد متجر'
+    refund: t('cash_refund'),
+    exchange: t('product_exchange'),
+    store_credit: t('store_credit')
   }
   return labels[type] || type
 }
@@ -707,22 +707,22 @@ const getReturnTypeClass = (type) => {
 
 const getReasonLabel = (reason) => {
   const labels = {
-    defective: 'منتج معيب (خلل مصنعي)',
-    damaged: 'منتج تالف أو مكسور',
-    wrong_item: 'منتج خاطئ أو غير المطلوب',
-    not_as_described: 'لا يطابق الوصف المعروض',
-    changed_mind: 'تغيير رأي العميل',
-    other: 'أسباب أخرى'
+    defective: t('reason_defective'),
+    damaged: t('reason_damaged'),
+    wrong_item: t('reason_wrong_item'),
+    not_as_described: t('reason_not_as_described'),
+    changed_mind: t('reason_changed_mind'),
+    other: t('reason_other')
   }
   return labels[reason] || reason
 }
 
 const getConditionLabel = (condition) => {
   const labels = {
-    new: 'جديد (سليم)',
-    used: 'مستعمل',
-    damaged: 'تالف',
-    missing: 'مفقود'
+    new: t('condition_new'),
+    used: t('condition_used'),
+    damaged: t('condition_damaged'),
+    missing: t('condition_missing')
   }
   return labels[condition] || condition
 }
@@ -739,10 +739,10 @@ const getConditionTagType = (condition) => {
 
 const getResolutionLabel = (resolution) => {
   const labels = {
-    refund: 'استرداد مالي',
-    exchange: 'استبدال',
-    repair: 'إصلاح وصيانة',
-    discard: 'إتلاف'
+    refund: t('refund'),
+    exchange: t('exchange'),
+    repair: t('repair_and_maintenance'),
+    discard: t('scrap')
   }
   return labels[resolution] || resolution
 }
@@ -759,10 +759,10 @@ const getResolutionTagType = (resolution) => {
 
 const getRefundMethodLabel = (method) => {
   const labels = {
-    original: 'استرداد للحساب الأصلي',
-    store_credit: 'رصيد متجر (إضافة للمحفظة)',
-    bank_transfer: 'تحويل بنكي مخصص',
-    check: 'شيك بنكي'
+    original: t('refund_to_original_account_short'),
+    store_credit: t('store_credit_to_wallet'),
+    bank_transfer: t('custom_bank_transfer'),
+    check: t('bank_cheque')
   }
   return labels[method] || method || '-'
 }

@@ -1,15 +1,15 @@
 <template>
     <div class="accounting-page accounting-balance-sheet">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-scale-balanced text-primary"></i> {{ $t('balance_sheet') || 'الميزانية العمومية' }}</h1>
-                <p>الأصول = الخصوم + حقوق الملكية، كما في تاريخ اليوم.</p>
-            </div>
-            <div class="header-actions">
-                <el-button type="success" plain @click="printReport"><i class="fas fa-print"></i> طباعة</el-button>
-            </div>
-        </div>
+        <AdminPageHeader
+            icon="fas fa-scale-balanced text-primary"
+            :title="$t('balance_sheet')"
+            :subtitle="$t('balance_sheet_subtitle')"
+        >
+            <template #actions>
+                <el-button type="success" plain @click="printReport"><i class="fas fa-print"></i> {{ $t('print') }}</el-button>
+            </template>
+        </AdminPageHeader>
 
         <!-- Verification status indicator -->
         <div class="verification-status-box mb-4" :class="isBalanced ? 'balanced-status' : 'out-of-balance-status'">
@@ -17,9 +17,9 @@
                 <i class="fas" :class="isBalanced ? 'fa-check-circle' : 'fa-exclamation-triangle'"></i>
             </div>
             <div class="status-details">
-                <h4 v-if="isBalanced">الميزانية متوازنة</h4>
-                <h4 v-else>الميزانية غير متوازنة! يوجد فروقات محاسبية</h4>
-                <p>الأصول: <strong>${{ totalAssets.toFixed(2) }}</strong> — الخصوم + حقوق الملكية: <strong>${{ (totalLiabilities + totalEquity).toFixed(2) }}</strong></p>
+                <h4 v-if="isBalanced">{{ $t('balance_sheet_balanced') }}</h4>
+                <h4 v-else>{{ $t('balance_sheet_unbalanced') }}</h4>
+                <p>{{ $t('assets_label') }} <strong>${{ totalAssets.toFixed(2) }}</strong> {{ $t('liabilities_plus_equity_label') }} <strong>${{ (totalLiabilities + totalEquity).toFixed(2) }}</strong></p>
             </div>
         </div>
 
@@ -27,58 +27,58 @@
             <el-col :xs="24" :lg="8">
                 <el-card shadow="hover" class="table-panel">
                     <template #header>
-                        <div class="card-header"><span><i class="fas fa-building-columns text-muted"></i> الأصول</span></div>
+                        <div class="card-header"><span><i class="fas fa-building-columns text-muted"></i> {{ $t('assets') }}</span></div>
                     </template>
                     <div v-if="store.loading" class="loading-state"><el-skeleton :rows="4" animated /></div>
                     <el-table v-else :data="assetAccounts" style="width: 100%" stripe class="custom-table print-table">
-                        <el-table-column prop="code" label="الرمز" width="100" align="center">
+                        <el-table-column prop="code" :label="$t('code')" width="100" align="center">
                             <template #default="{ row }"><span class="code-badge">{{ row.code }}</span></template>
                         </el-table-column>
-                        <el-table-column prop="name" label="الحساب" min-width="140" />
-                        <el-table-column prop="balance" label="الرصيد" width="120" align="right">
+                        <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
+                        <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
                             <template #default="{ row }"><strong class="text-success">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
                         </el-table-column>
                     </el-table>
-                    <div class="section-total">الإجمالي: <strong>${{ totalAssets.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalAssets.toFixed(2) }}</strong></div>
                 </el-card>
             </el-col>
             <el-col :xs="24" :lg="8">
                 <el-card shadow="hover" class="table-panel">
                     <template #header>
-                        <div class="card-header"><span><i class="fas fa-hand-holding-dollar text-muted"></i> الخصوم</span></div>
+                        <div class="card-header"><span><i class="fas fa-hand-holding-dollar text-muted"></i> {{ $t('liabilities') }}</span></div>
                     </template>
                     <div v-if="store.loading" class="loading-state"><el-skeleton :rows="4" animated /></div>
                     <el-table v-else :data="liabilityAccounts" style="width: 100%" stripe class="custom-table print-table">
-                        <el-table-column prop="code" label="الرمز" width="100" align="center">
+                        <el-table-column prop="code" :label="$t('code')" width="100" align="center">
                             <template #default="{ row }"><span class="code-badge">{{ row.code }}</span></template>
                         </el-table-column>
-                        <el-table-column prop="name" label="الحساب" min-width="140" />
-                        <el-table-column prop="balance" label="الرصيد" width="120" align="right">
+                        <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
+                        <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
                             <template #default="{ row }"><strong class="text-warning">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
                         </el-table-column>
                     </el-table>
-                    <div class="section-total">الإجمالي: <strong>${{ totalLiabilities.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalLiabilities.toFixed(2) }}</strong></div>
                 </el-card>
             </el-col>
             <el-col :xs="24" :lg="8">
                 <el-card shadow="hover" class="table-panel">
                     <template #header>
-                        <div class="card-header"><span><i class="fas fa-shield-halved text-muted"></i> حقوق الملكية</span></div>
+                        <div class="card-header"><span><i class="fas fa-shield-halved text-muted"></i> {{ $t('equity') }}</span></div>
                     </template>
                     <div v-if="store.loading" class="loading-state"><el-skeleton :rows="4" animated /></div>
                     <el-table v-else :data="equityAccounts" style="width: 100%" stripe class="custom-table print-table">
-                        <el-table-column prop="code" label="الرمز" width="100" align="center">
+                        <el-table-column prop="code" :label="$t('code')" width="100" align="center">
                             <template #default="{ row }"><span class="code-badge">{{ row.code }}</span></template>
                         </el-table-column>
-                        <el-table-column prop="name" label="الحساب" min-width="140" />
-                        <el-table-column prop="balance" label="الرصيد" width="120" align="right">
+                        <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
+                        <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
                             <template #default="{ row }"><strong class="text-info">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
                         </el-table-column>
                     </el-table>
                     <div v-if="!store.loading && !equityAccounts.length" class="empty-state-box">
-                        لا توجد حسابات حقوق ملكية مسجلة بعد.
+                        {{ $t('no_equity_accounts_yet') }}
                     </div>
-                    <div class="section-total">الإجمالي: <strong>${{ totalEquity.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalEquity.toFixed(2) }}</strong></div>
                 </el-card>
             </el-col>
         </el-row>
@@ -86,15 +86,15 @@
         <!-- Summary footer -->
         <div class="totals-summary-footer mt-4">
             <div class="summary-col">
-                <span>إجمالي الأصول</span>
+                <span>{{ $t('total_assets') }}</span>
                 <h3 class="text-success">${{ totalAssets.toFixed(2) }}</h3>
             </div>
             <div class="summary-col">
-                <span>إجمالي الخصوم + حقوق الملكية</span>
+                <span>{{ $t('total_liabilities_and_equity') }}</span>
                 <h3 class="text-warning">${{ (totalLiabilities + totalEquity).toFixed(2) }}</h3>
             </div>
             <div class="summary-col status-col">
-                <span>حالة التوازن</span>
+                <span>{{ $t('balance_state') }}</span>
                 <el-tag :type="isBalanced ? 'success' : 'danger'" effect="dark" style="font-size: 1rem; font-weight: 700; height: 38px; border-radius: 8px;">
                     {{ isBalanced ? 'متوازن' : 'غير متوازن' }}
                 </el-tag>
@@ -106,6 +106,7 @@
 <script setup>
 import { computed, onMounted } from 'vue';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const store = useAccountingReportsStore();
 

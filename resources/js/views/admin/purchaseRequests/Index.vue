@@ -1,11 +1,10 @@
 <template>
     <div class="purchase-requests-page">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ $t('purchase_orders') }}</h1>
-                <p>{{ $t('managing_purchase_orders_received_from') }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            :title="$t('purchase_orders')"
+            :subtitle="$t('managing_purchase_orders_received_from')"
+        >
+            <template #actions>
                 <el-select v-model="filterStatus" :placeholder="$t('status')" clearable @change="handleFilter" style="width: 160px">
                     <el-option :label="$t('hanging')" value="pending" />
                     <el-option :label="$t('certain')" value="confirmed" />
@@ -15,35 +14,27 @@
                     <el-option :label="$t('canceled')" value="cancelled" />
                 </el-select>
                 <el-input v-model="searchQuery" :placeholder="$t('search_by_order_number_or_customer_name')" clearable @input="handleSearch" class="search-input" />
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="12" :sm="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('total_orders') }}</p>
-                    <h3>{{ store.pagination.total }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('on_hold') }}</p>
-                    <h3>{{ statusCount('pending') }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('in_process') }}</p>
-                    <h3>{{ statusCount('processing') + statusCount('confirmed') }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('complete') }}</p>
-                    <h3>{{ statusCount('delivered') }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('total_orders') }}</p>
+                <h3>{{ store.pagination.total }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('on_hold') }}</p>
+                <h3>{{ statusCount('pending') }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('in_process') }}</p>
+                <h3>{{ statusCount('processing') + statusCount('confirmed') }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('complete') }}</p>
+                <h3>{{ statusCount('delivered') }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
@@ -158,6 +149,8 @@ import { useRouter } from 'vue-router';
 import { usePurchaseRequestsStore } from '@/stores/purchaseRequests';
 import { ElMessage } from 'element-plus';
 import { ArrowDown, Refresh, Loading, Folder } from '@element-plus/icons-vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const router = useRouter();
 const store = usePurchaseRequestsStore();

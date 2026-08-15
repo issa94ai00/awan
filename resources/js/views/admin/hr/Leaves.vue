@@ -8,26 +8,20 @@
             <el-input v-model="searchQuery" :placeholder="$t('search_by_employee_name_or_status')" clearable class="search-input" />
         </div>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('pending_orders') }}</p>
-                    <h3>{{ pendingCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('approved') }}</p>
-                    <h3>{{ approvedCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('rejected') }}</p>
-                    <h3>{{ rejectedCount }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('pending_orders') }}</p>
+                <h3>{{ pendingCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('approved') }}</p>
+                <h3>{{ approvedCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('rejected') }}</p>
+                <h3>{{ rejectedCount }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-card">
             <template #header>
@@ -68,6 +62,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLeaveRequestsStore } from '@/stores/leaveRequests';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const router = useRouter();
 const leaveStore = useLeaveRequestsStore();

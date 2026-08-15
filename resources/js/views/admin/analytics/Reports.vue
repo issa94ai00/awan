@@ -1,12 +1,12 @@
 <template>
   <div class="p-6">
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">تقارير وتحليلات WMS</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ $t('wms_reports_and_analytics') }}</h1>
       <button 
         @click="refreshData"
         class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
       >
-        تحديث البيانات
+        {{ $t('data_update') }}
       </button>
     </div>
 
@@ -14,21 +14,21 @@
     <div class="bg-white p-6 rounded-lg shadow-lg mb-6">
       <div class="grid grid-cols-4 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">نوع التقرير</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('report_type') }}</label>
           <select 
             v-model="selectedReportType"
             @change="loadReportData"
             class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500"
           >
-            <option value="inventory">تقرير المخزون</option>
-            <option value="movements">تقرير الحركات</option>
-            <option value="low_stock">المنتجات منخفضة المخزون</option>
-            <option value="warehouse">توزيع المستودعات</option>
+            <option value="inventory">{{ $t('inventory_report') }}</option>
+            <option value="movements">{{ $t('movements_report') }}</option>
+            <option value="low_stock">{{ $t('low_stock_products') }}</option>
+            <option value="warehouse">{{ $t('warehouse_distribution') }}</option>
           </select>
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">من تاريخ</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('date_from') }}</label>
           <input 
             v-model="dateFrom"
             type="date"
@@ -38,7 +38,7 @@
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">إلى تاريخ</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('date_to') }}</label>
           <input 
             v-model="dateTo"
             type="date"
@@ -48,13 +48,13 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">المستودع</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('warehouse') }}</label>
           <select 
             v-model="selectedWarehouse"
             @change="loadReportData"
             class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">جميع المستودعات</option>
+            <option value="">{{ $t('all_warehouses') }}</option>
             <option v-for="wh in warehouses" :key="wh.id" :value="wh.id">
               {{ wh.name }}
             </option>
@@ -68,7 +68,7 @@
       <div class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-medium text-gray-600 mb-1">إجمالي المخزون</h3>
+            <h3 class="text-sm font-medium text-gray-600 mb-1">{{ $t('total_stock') }}</h3>
             <p class="text-3xl font-bold text-gray-800">{{ stats.totalStock }}</p>
           </div>
           <div class="text-3xl">📦</div>
@@ -78,7 +78,7 @@
       <div class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-green-500">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-medium text-gray-600 mb-1">قيمة المخزون</h3>
+            <h3 class="text-sm font-medium text-gray-600 mb-1">{{ $t('stock_value') }}</h3>
             <p class="text-3xl font-bold text-gray-800">{{ stats.totalValue }}</p>
           </div>
           <div class="text-3xl">💰</div>
@@ -88,7 +88,7 @@
       <div class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-red-500">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-medium text-gray-600 mb-1">منتجات منخفضة</h3>
+            <h3 class="text-sm font-medium text-gray-600 mb-1">{{ $t('low_products') }}</h3>
             <p class="text-3xl font-bold text-gray-800">{{ stats.lowStockCount }}</p>
           </div>
           <div class="text-3xl">⚠</div>
@@ -98,7 +98,7 @@
       <div class="bg-white p-6 rounded-lg shadow-lg border-l-4 border-purple-500">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-medium text-gray-600 mb-1">الحركات اليوم</h3>
+            <h3 class="text-sm font-medium text-gray-600 mb-1">{{ $t('movements_today') }}</h3>
             <p class="text-3xl font-bold text-gray-800">{{ stats.todayMovements }}</p>
           </div>
           <div class="text-3xl">🔄</div>
@@ -111,12 +111,12 @@
       <!-- تقرير المخزون حسب الفئة -->
       <div class="bg-white p-6 rounded-lg shadow-lg">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-bold text-gray-800">توزيع المخزون حسب الفئة</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ $t('stock_by_category') }}</h3>
           <button 
             @click="exportChart('inventory')"
             class="text-blue-600 hover:text-blue-700 text-sm"
           >
-            تصدير
+            {{ $t('export') }}
           </button>
         </div>
         <div v-if="inventoryByCategory.length > 0" class="space-y-4">
@@ -143,19 +143,19 @@
           </div>
         </div>
         <div v-else class="text-center text-gray-500 py-8">
-          لا توجد بيانات
+          {{ $t('no_data') }}
         </div>
       </div>
 
       <!-- الحركات حسب النوع -->
       <div class="bg-white p-6 rounded-lg shadow-lg">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-bold text-gray-800">الحركات حسب النوع</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ $t('movements_by_type') }}</h3>
           <button 
             @click="exportChart('movements')"
             class="text-blue-600 hover:text-blue-700 text-sm"
           >
-            تصدير
+            {{ $t('export') }}
           </button>
         </div>
         <div v-if="movementsByType.length > 0" class="space-y-4">
@@ -195,7 +195,7 @@
           </div>
         </div>
         <div v-else class="text-center text-gray-500 py-8">
-          لا توجد بيانات
+          {{ $t('no_data') }}
         </div>
       </div>
     </div>
@@ -213,7 +213,7 @@
           @click="exportTable"
           class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-2"
         >
-          <span>📥</span> تصدير CSV
+          <span>📥</span> {{ $t('export_csv') }}
         </button>
       </div>
 
@@ -221,12 +221,12 @@
         <table class="w-full">
           <thead>
             <tr class="border-b bg-gray-50">
-              <th class="text-right p-3 font-medium text-gray-700">المنتج</th>
-              <th class="text-right p-3 font-medium text-gray-700">الكود</th>
-              <th class="text-right p-3 font-medium text-gray-700">المستودع</th>
-              <th class="text-right p-3 font-medium text-gray-700">الرصيد</th>
-              <th class="text-right p-3 font-medium text-gray-700">القيمة</th>
-              <th class="text-right p-3 font-medium text-gray-700">الحالة</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('product') }}</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('code') }}</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('warehouse') }}</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('balance') }}</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('value') }}</th>
+              <th class="text-right p-3 font-medium text-gray-700">{{ $t('status') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -239,7 +239,7 @@
             </tr>
             <tr v-else-if="reportData.length === 0">
               <td colspan="6" class="p-4 text-center text-gray-500">
-                لا توجد بيانات
+                {{ $t('no_data') }}
               </td>
             </tr>
             <tr 
@@ -273,8 +273,11 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
+
+const { t } = useI18n();
 
 const loading = ref(false);
 const selectedReportType = ref('inventory');
@@ -338,11 +341,11 @@ function loadMockData() {
   };
 
   inventoryByCategory.value = [
-    { category: 'إلكترونيات', quantity: 5200 },
+    { category: t('electronics'), quantity: 5200 },
     { category: 'أجهزة منزلية', quantity: 3800 },
-    { category: 'ملابس', quantity: 2900 },
+    { category: t('clothing'), quantity: 2900 },
     { category: 'مواد غذائية', quantity: 2100 },
-    { category: 'أخرى', quantity: 1420 },
+    { category: t('subject_other'), quantity: 1420 },
   ];
 
   movementsByType.value = [
@@ -370,19 +373,19 @@ function exportChart(type) {
 
 function exportTable() {
   if (reportData.value.length === 0) {
-    alert('لا توجد بيانات للتصدير');
+    alert(t('no_data_to_export'));
     return;
   }
   
   const csv = [
-    ['المنتج', 'الكود', 'المستودع', 'الرصيد', 'القيمة', 'الحالة'],
+    [t('product'), t('code'), t('warehouse'), t('balance'), t('value'), t('status')],
     ...reportData.value.map(item => [
       item.product_name,
       item.product_code,
       item.warehouse_name,
       item.quantity,
       item.value,
-      item.status === 'ok' ? 'جيد' : item.status === 'low' ? 'منخفض' : 'حرج'
+      item.status === 'ok' ? 'جيد' : item.status === 'low' ? 'منخفض' : t('critical')
     ])
   ].map(row => row.join(',')).join('\n');
   

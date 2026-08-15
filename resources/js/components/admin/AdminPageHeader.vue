@@ -2,7 +2,10 @@
     <header class="admin-page-header">
         <div class="page-title">
             <span v-if="badge" class="title-badge">{{ badge }}</span>
-            <h1>{{ title }}</h1>
+            <h1>
+                <i v-if="icon" :class="icon" aria-hidden="true"></i>
+                {{ title }}
+            </h1>
             <p v-if="subtitle">{{ subtitle }}</p>
         </div>
 
@@ -30,6 +33,8 @@ defineProps({
     badge: { type: String, default: '' },
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
+    /** Icon classes for the title, e.g. "fas fa-file-signature". */
+    icon: { type: String, default: '' },
 });
 </script>
 

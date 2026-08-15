@@ -1,31 +1,31 @@
 <template>
   <div class="audit-page">
     <div class="page-header">
-      <h1><el-icon><Document /></el-icon> مراقبة التدقيق والمخاطر</h1>
+      <h1><el-icon><Document /></el-icon> {{ $t('audit_and_risk_monitoring') }}</h1>
     </div>
 
     <el-row :gutter="20" class="summary-row">
       <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="hover" class="metric-card critical">
-          <div class="metric-label">إجمالي المشكلات</div>
+          <div class="metric-label">{{ $t('total_issues') }}</div>
           <div class="metric-value">{{ summary.total_issues }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="hover" class="metric-card warning">
-          <div class="metric-label">حرجة</div>
+          <div class="metric-label">{{ $t('critical_female') }}</div>
           <div class="metric-value">{{ summary.critical_issues }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="hover" class="metric-card info">
-          <div class="metric-label">تحذيرية</div>
+          <div class="metric-label">{{ $t('warnings') }}</div>
           <div class="metric-value">{{ summary.warning_issues }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="hover" class="metric-card neutral">
-          <div class="metric-label">آخر فحص</div>
+          <div class="metric-label">{{ $t('last_scan') }}</div>
           <div class="metric-value small">{{ summary.last_scan }}</div>
         </el-card>
       </el-col>
@@ -34,24 +34,24 @@
     <el-card class="panel-card">
       <template #header>
         <div class="card-header">
-          <span>نتائج فحص المخاطر اليدوية</span>
+          <span>{{ $t('manual_risk_scan_results') }}</span>
           <div class="header-actions">
-            <el-button type="success" :loading="loading" @click="exportRiskScan">تصدير CSV</el-button>
-            <el-button type="primary" :loading="loading" @click="loadRiskScan">إعادة الفحص</el-button>
+            <el-button type="success" :loading="loading" @click="exportRiskScan">{{ $t('export_csv') }}</el-button>
+            <el-button type="primary" :loading="loading" @click="loadRiskScan">{{ $t('run_checks_again') }}</el-button>
           </div>
         </div>
       </template>
 
-      <el-table :data="riskIssues" v-loading="loading" stripe empty-text="لا توجد مشكلات في هذه اللحظة">
-        <el-table-column prop="type" label="النوع" width="220" />
-        <el-table-column prop="severity" label="الأهمية" width="120">
+      <el-table :data="riskIssues" v-loading="loading" stripe :empty-text="$t('no_issues_right_now')">
+        <el-table-column prop="type" :label="$t('type')" width="220" />
+        <el-table-column prop="severity" :label="$t('severity')" width="120">
           <template #default="{ row }">
             <el-tag :type="row.severity === 'critical' ? 'danger' : 'warning'">{{ row.severity }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="reference" label="المؤشر" width="180" />
-        <el-table-column prop="message" label="الوصف" show-overflow-tooltip />
-        <el-table-column label="التفاصيل" width="220">
+        <el-table-column prop="reference" :label="$t('indicator')" width="180" />
+        <el-table-column prop="message" :label="$t('description')" show-overflow-tooltip />
+        <el-table-column :label="$t('details')" width="220">
           <template #default="{ row }">
             <pre class="detail-box">{{ formatDetails(row.details) }}</pre>
           </template>
@@ -62,6 +62,9 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 import { ref, onMounted } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -99,7 +102,7 @@ const loadRiskScan = async () => {
       last_scan: '—'
     }
   } catch (error) {
-    ElMessage.error('فشل في تحميل فحص المخاطر')
+    ElMessage.error(t('failed_to_load_risk_scan'))
     console.error(error)
   } finally {
     loading.value = false
@@ -121,9 +124,9 @@ const exportRiskScan = async () => {
     link.remove()
     window.URL.revokeObjectURL(url)
 
-    ElMessage.success('تم تصدير ملف CSV بنجاح')
+    ElMessage.success(t('csv_exported'))
   } catch (error) {
-    ElMessage.error('فشل في تصدير ملف CSV')
+    ElMessage.error(t('failed_to_export_csv'))
     console.error(error)
   }
 }

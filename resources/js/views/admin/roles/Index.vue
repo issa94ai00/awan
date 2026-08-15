@@ -2,11 +2,11 @@
     <div class="roles-page">
         <div class="page-header">
             <div>
-                <p class="eyebrow">إدارة النظام</p>
-                <h2>الأدوار</h2>
+                <p class="eyebrow">{{ $t('system_management') }}</p>
+                <h2>{{ $t('nav_roles') }}</h2>
             </div>
             <el-button type="primary" :icon="Plus" class="primary-btn" @click="openCreateRoleDialog">
-                إضافة دور جديد
+                {{ $t('add_new_role') }}
             </el-button>
         </div>
 
@@ -14,28 +14,28 @@
             <div class="stat-card accent">
                 <div class="icon-wrap"><el-icon><UserFilled /></el-icon></div>
                 <div>
-                    <span class="stat-label">إجمالي الأدوار</span>
+                    <span class="stat-label">{{ $t('total_roles') }}</span>
                     <strong>{{ roles.length }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><Key /></el-icon></div>
                 <div>
-                    <span class="stat-label">الصلاحيات المخصصة</span>
+                    <span class="stat-label">{{ $t('assigned_permissions') }}</span>
                     <strong>{{ totalPermissions }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><User /></el-icon></div>
                 <div>
-                    <span class="stat-label">عدد المستخدمين</span>
+                    <span class="stat-label">{{ $t('users_count') }}</span>
                     <strong>{{ totalUsers }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><Checked /></el-icon></div>
                 <div>
-                    <span class="stat-label">الأدوار النشطة</span>
+                    <span class="stat-label">{{ $t('active_roles') }}</span>
                     <strong>{{ activeRoles }}</strong>
                 </div>
             </div>
@@ -43,10 +43,10 @@
 
         <el-card shadow="never" class="toolbar-card">
             <div class="toolbar">
-                <el-input v-model="search" placeholder="البحث عن الدور..." clearable :prefix-icon="Search" />
-                <el-select v-model="statusFilter" placeholder="حالة الدور" clearable style="width: 180px">
-                    <el-option label="نشط" :value="true" />
-                    <el-option label="غير نشط" :value="false" />
+                <el-input v-model="search" :placeholder="$t('search_role')" clearable :prefix-icon="Search" />
+                <el-select v-model="statusFilter" :placeholder="$t('role_status')" clearable style="width: 180px">
+                    <el-option :label="$t('active')" :value="true" />
+                    <el-option :label="$t('inactive')" :value="false" />
                 </el-select>
             </div>
         </el-card>
@@ -54,13 +54,13 @@
         <el-card shadow="never" class="table-card">
             <template #header>
                 <div class="card-head">
-                    <span>قائمة الأدوار</span>
+                    <span>{{ $t('roles_list') }}</span>
                     <el-tag type="success" effect="light">{{ filteredRoles.length }} نتيجة</el-tag>
                 </div>
             </template>
 
             <el-table :data="filteredRoles" stripe border style="width: 100%">
-                <el-table-column prop="display_name" label="اسم الدور" min-width="180">
+                <el-table-column prop="display_name" :label="$t('role_name')" min-width="180">
                     <template #default="scope">
                         <div class="role-cell">
                             <div class="role-badge" :class="scope.row.color">
@@ -74,25 +74,25 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column prop="description" label="الوصف" min-width="220">
+                <el-table-column prop="description" :label="$t('description')" min-width="220">
                     <template #default="scope">
                         <span class="description-text">{{ scope.row.description }}</span>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="المستخدمين" width="120" align="center">
+                <el-table-column :label="$t('users_label')" width="120" align="center">
                     <template #default="scope">
                         <el-tag effect="plain" type="info">{{ scope.row.users_count }}</el-tag>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="الصلاحيات" width="130" align="center">
+                <el-table-column :label="$t('nav_permissions')" width="130" align="center">
                     <template #default="scope">
                         <el-tag effect="plain" type="warning">{{ scope.row.permissions.length }}</el-tag>
                     </template>
                 </el-table-column>
 
-                <el-table-column label="الحالة" width="120" align="center">
+                <el-table-column :label="$t('status')" width="120" align="center">
                     <template #default="scope">
                         <el-tag :type="scope.row.is_active ? 'success' : 'info'" effect="light">
                             {{ scope.row.is_active ? 'نشط' : 'غير نشط' }}
@@ -100,11 +100,11 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column label="الإجراءات" width="220" align="center">
+                <el-table-column :label="$t('actions')" width="220" align="center">
                     <template #default="scope">
                         <div class="actions">
-                            <el-button size="small" type="primary" plain @click="editRole(scope.row)">تعديل</el-button>
-                            <el-button size="small" type="danger" plain @click="deleteRole(scope.row.id)">حذف</el-button>
+                            <el-button size="small" type="primary" plain @click="editRole(scope.row)">{{ $t('edit') }}</el-button>
+                            <el-button size="small" type="danger" plain @click="deleteRole(scope.row.id)">{{ $t('delete') }}</el-button>
                         </div>
                     </template>
                 </el-table-column>
@@ -114,25 +114,25 @@
         <el-dialog v-model="roleDialogVisible" :title="isEditingRole ? 'تعديل الدور' : 'إضافة دور جديد'" width="760px">
             <el-form :model="roleForm" label-position="top" class="role-form">
                 <div class="form-grid">
-                    <el-form-item label="اسم الدور">
+                    <el-form-item :label="$t('role_name')">
                         <el-input v-model="roleForm.name" placeholder="مثل: sales" />
                     </el-form-item>
-                    <el-form-item label="اسم العرض">
-                        <el-input v-model="roleForm.display_name" placeholder="مثل: فريق المبيعات" />
+                    <el-form-item :label="$t('display_name')">
+                        <el-input v-model="roleForm.display_name" :placeholder="$t('role_display_name_example')" />
                     </el-form-item>
                 </div>
 
-                <el-form-item label="الوصف">
-                    <el-input v-model="roleForm.description" type="textarea" :rows="3" placeholder="وصف مختصر عن الدور" />
+                <el-form-item :label="$t('description')">
+                    <el-input v-model="roleForm.description" type="textarea" :rows="3" :placeholder="$t('role_short_description')" />
                 </el-form-item>
 
-                <el-form-item label="الحالة">
-                    <el-switch v-model="roleForm.is_active" active-text="نشط" inactive-text="غير نشط" />
+                <el-form-item :label="$t('status')">
+                    <el-switch v-model="roleForm.is_active" :active-text="$t('active')" :inactive-text="$t('inactive')" />
                 </el-form-item>
 
                 <div class="permissions-box">
                     <div class="permissions-head">
-                        <strong>الصلاحيات</strong>
+                        <strong>{{ $t('nav_permissions') }}</strong>
                         <el-tag type="info" effect="light">{{ selectedPermissionsCount }} محددة</el-tag>
                     </div>
 
@@ -157,8 +157,8 @@
 
             <template #footer>
                 <span class="dialog-footer">
-                    <el-button @click="roleDialogVisible = false">إلغاء</el-button>
-                    <el-button type="primary" @click="saveRole">حفظ الدور</el-button>
+                    <el-button @click="roleDialogVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" @click="saveRole">{{ $t('save_role') }}</el-button>
                 </span>
             </template>
         </el-dialog>
@@ -166,7 +166,10 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { computed, ref } from 'vue';
+
+const { t } = useI18n();
 import {
     UserFilled,
     Key,
@@ -177,23 +180,23 @@ import {
 } from '@element-plus/icons-vue';
 
 const permissionCatalog = ref([
-    { label: 'لوحة التحكم', permissions: ['dashboard.view'] },
-    { label: 'المستخدمون', permissions: ['users.manage', 'users.view', 'roles.assign'] },
-    { label: 'المبيعات', permissions: ['sales.view', 'sales.create', 'sales.edit'] },
-    { label: 'المخزون', permissions: ['inventory.view', 'inventory.manage'] },
-    { label: 'المشتريات', permissions: ['purchases.view', 'purchases.create'] },
-    { label: 'التقارير', permissions: ['reports.view'] },
-    { label: 'التسويق', permissions: ['marketing.view', 'marketing.campaigns'] },
-    { label: 'الموارد البشرية', permissions: ['hr.view', 'hr.manage'] },
-    { label: 'الإعدادات', permissions: ['settings.view', 'settings.edit'] },
+    { label: t('dashboard'), permissions: ['dashboard.view'] },
+    { label: t('users'), permissions: ['users.manage', 'users.view', 'roles.assign'] },
+    { label: t('nav_sales'), permissions: ['sales.view', 'sales.create', 'sales.edit'] },
+    { label: t('nav_inventory'), permissions: ['inventory.view', 'inventory.manage'] },
+    { label: t('nav_purchases'), permissions: ['purchases.view', 'purchases.create'] },
+    { label: t('nav_reports'), permissions: ['reports.view'] },
+    { label: t('marketing'), permissions: ['marketing.view', 'marketing.campaigns'] },
+    { label: t('nav_hr'), permissions: ['hr.view', 'hr.manage'] },
+    { label: t('settings'), permissions: ['settings.view', 'settings.edit'] },
 ]);
 
 const roles = ref([
     {
         id: 1,
         name: 'admin',
-        display_name: 'مدير النظام',
-        description: 'صلاحيات كاملة على النظام وإدارة جميع أقسام المؤسسة.',
+        display_name: t('role_system_admin'),
+        description: t('role_system_admin_desc'),
         users_count: 2,
         is_active: true,
         color: 'teal',
@@ -202,8 +205,8 @@ const roles = ref([
     {
         id: 2,
         name: 'manager',
-        display_name: 'مدير',
-        description: 'إدارة العمليات الإدارية والتشغيلية الأساسية.',
+        display_name: t('role_manager'),
+        description: t('role_manager_desc'),
         users_count: 3,
         is_active: true,
         color: 'blue',
@@ -212,8 +215,8 @@ const roles = ref([
     {
         id: 3,
         name: 'employee',
-        display_name: 'موظف',
-        description: 'صلاحيات التشغيل اليومية مع وصول محدود.',
+        display_name: t('employee'),
+        description: t('role_employee_desc'),
         users_count: 8,
         is_active: true,
         color: 'purple',
@@ -222,8 +225,8 @@ const roles = ref([
     {
         id: 4,
         name: 'sells',
-        display_name: 'مبيعات',
-        description: 'إدارة المبيعات والعملاء والعروض.',
+        display_name: t('role_sales'),
+        description: t('role_sales_desc'),
         users_count: 5,
         is_active: true,
         color: 'amber',
@@ -232,8 +235,8 @@ const roles = ref([
     {
         id: 5,
         name: 'accountant',
-        display_name: 'محاسب',
-        description: 'متابعة الحسابات والتقارير المالية.',
+        display_name: t('role_accountant'),
+        description: t('role_accountant_desc'),
         users_count: 2,
         is_active: true,
         color: 'green',
@@ -242,8 +245,8 @@ const roles = ref([
     {
         id: 6,
         name: 'marketer',
-        display_name: 'مسوق',
-        description: 'إدارة الحملات والعروض الرقمية.',
+        display_name: t('role_marketer'),
+        description: t('role_marketer_desc'),
         users_count: 1,
         is_active: false,
         color: 'rose',

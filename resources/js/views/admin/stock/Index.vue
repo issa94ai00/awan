@@ -1,94 +1,86 @@
 <template>
     <div class="stock-page">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-warehouse"></i> إدارة التعيينات المخزنية</h1>
-                <p>ربط المنتجات بالمستودعات وتحديد حدود الطلب ومستويات الأمان لكل صنف.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-warehouse"
+            :title="$t('stock_assignments_management')"
+            :subtitle="$t('stock_assignments_subtitle')"
+        >
+            <template #actions>
                 <router-link to="/admin/inventory">
-                    <el-button><i class="fas fa-chart-pie mr-1"></i> لوحة المخزون</el-button>
+                    <el-button><i class="fas fa-chart-pie mr-1"></i> {{ $t('inventory_board') }}</el-button>
                 </router-link>
                 <el-button type="info" plain @click="refreshData" :loading="refreshing">
-                    <i class="fas fa-sync-alt mr-1"></i> تحديث
+                    <i class="fas fa-sync-alt mr-1"></i> {{ $t('update') }}
                 </el-button>
                 <el-button type="primary" @click="openAssignModal">
-                    <i class="fas fa-plus mr-1"></i> إضافة تعيين
+                    <i class="fas fa-plus mr-1"></i> {{ $t('add_assignment') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Error Banner -->
         <el-alert v-if="error" type="error" :title="'خطأ في جلب البيانات'" :description="error" show-icon :closable="false" class="mb-4">
             <template #default>
-                <el-button size="small" type="danger" plain @click="fetchData" class="mt-1">إعادة المحاولة</el-button>
+                <el-button size="small" type="danger" plain @click="fetchData" class="mt-1">{{ $t('retry') }}</el-button>
             </template>
         </el-alert>
 
         <!-- Stats Cards -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box blue-grad"><i class="fas fa-link"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(stats.totalAssignments) }}</h3>
-                            <p>إجمالي التعيينات</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box blue-grad"><i class="fas fa-link"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(stats.totalAssignments) }}</h3>
+                        <p>{{ $t('total_assignments') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box green-grad"><i class="fas fa-cubes"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(stats.totalQuantity) }}</h3>
-                            <p>إجمالي الكمية</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box green-grad"><i class="fas fa-cubes"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(stats.totalQuantity) }}</h3>
+                        <p>{{ $t('total_quantity') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box gold-grad"><i class="fas fa-coins"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatPrice(stats.totalValue) }}</h3>
-                            <p>إجمالي القيمة</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box gold-grad"><i class="fas fa-coins"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatPrice(stats.totalValue) }}</h3>
+                        <p>{{ $t('total_value') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box" :class="stats.lowStock > 0 ? 'red-grad' : 'green-grad'">
-                            <i class="fas" :class="stats.lowStock > 0 ? 'fa-exclamation-triangle' : 'fa-check'"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(stats.lowStock) }}</h3>
-                            <p>مخزون منخفض</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box" :class="stats.lowStock > 0 ? 'red-grad' : 'green-grad'">
+                        <i class="fas" :class="stats.lowStock > 0 ? 'fa-exclamation-triangle' : 'fa-check'"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(stats.lowStock) }}</h3>
+                        <p>{{ $t('low_stock') }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- Filters -->
         <el-card shadow="never" class="panel">
             <div class="filters-row">
-                <el-input v-model="searchQuery" placeholder="بحث بالمنتج أو المستودع..." clearable style="width: 260px;">
+                <el-input v-model="searchQuery" :placeholder="$t('search_by_product_or_warehouse')" clearable style="width: 260px;">
                     <template #prefix><i class="fas fa-search"></i></template>
                 </el-input>
-                <el-select v-model="selectedProductFilter" placeholder="جميع المنتجات" clearable filterable style="width: 220px;">
+                <el-select v-model="selectedProductFilter" :placeholder="$t('all_products')" clearable filterable style="width: 220px;">
                     <el-option v-for="p in products" :key="p.id" :label="`${p.name_ar || p.name_en || p.name} (SKU: ${p.sku})`" :value="p.id" />
                 </el-select>
-                <el-select v-model="selectedWarehouseFilter" placeholder="جميع المستودعات" clearable style="width: 200px;">
+                <el-select v-model="selectedWarehouseFilter" :placeholder="$t('all_warehouses')" clearable style="width: 200px;">
                     <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                 </el-select>
-                <el-button type="info" plain @click="resetFilters">إعادة تعيين</el-button>
+                <el-button type="info" plain @click="resetFilters">{{ $t('reset') }}</el-button>
             </div>
         </el-card>
 
@@ -96,49 +88,49 @@
         <el-card shadow="never" class="panel mt-4">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-table"></i> التعيينات الحالية</span>
+                    <span><i class="fas fa-table"></i> {{ $t('current_assignments') }}</span>
                     <el-tag type="info" effect="plain">{{ filteredAssignments.length }} تعيين</el-tag>
                 </div>
             </template>
 
             <div v-loading="loading">
-                <el-table :data="filteredAssignments" stripe empty-text="لا توجد تعيينات مطابقة">
-                    <el-table-column label="المنتج" min-width="200">
+                <el-table :data="filteredAssignments" stripe :empty-text="$t('no_matching_assignments')">
+                    <el-table-column :label="$t('product')" min-width="200">
                         <template #default="{ row }">
                             <strong style="color: var(--text-dark);">{{ row.product?.name || '-' }}</strong>
                             <p class="table-sub">{{ row.product?.code || row.product?.sku || '' }}</p>
                         </template>
                     </el-table-column>
-                    <el-table-column label="المستودع" min-width="150">
+                    <el-table-column :label="$t('warehouse')" min-width="150">
                         <template #default="{ row }">
                             {{ row.warehouse?.name || '-' }}
                             <p class="table-sub">{{ row.warehouse?.code || '' }}</p>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الكمية" width="110" align="center">
+                    <el-table-column :label="$t('quantity')" width="110" align="center">
                         <template #default="{ row }">
                             <strong>{{ formatNumber(row.quantity) }}</strong>
                             <p class="table-sub">متاح: {{ formatNumber(row.available_quantity) }}</p>
                         </template>
                     </el-table-column>
-                    <el-table-column label="القيمة" width="120" align="center">
+                    <el-table-column :label="$t('value')" width="120" align="center">
                         <template #default="{ row }">{{ formatPrice(Number(row.quantity) * Number(row.cost_price || 0)) }}</template>
                     </el-table-column>
-                    <el-table-column label="الحد الأدنى" width="100" align="center">
+                    <el-table-column :label="$t('minimum')" width="100" align="center">
                         <template #default="{ row }">{{ formatNumber(row.min_stock_level) }}</template>
                     </el-table-column>
-                    <el-table-column label="الحد الأقصى" width="100" align="center">
+                    <el-table-column :label="$t('maximum')" width="100" align="center">
                         <template #default="{ row }">{{ formatNumber(row.max_stock_level) }}</template>
                     </el-table-column>
-                    <el-table-column label="مخزون الأمان" width="110" align="center">
+                    <el-table-column :label="$t('safety_stock')" width="110" align="center">
                         <template #default="{ row }">{{ formatNumber(row.safety_stock) }}</template>
                     </el-table-column>
-                    <el-table-column label="الحالة" width="100" align="center">
+                    <el-table-column :label="$t('status')" width="100" align="center">
                         <template #default="{ row }">
                             <el-tag :type="assignmentStatus(row).type" effect="light" size="small">{{ assignmentStatus(row).label }}</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column label="الإجراءات" width="160" align="center" fixed="right">
+                    <el-table-column :label="$t('actions')" width="160" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button size="small" text type="primary" @click="openEditModal(row)">
                                 <i class="fas fa-edit"></i>
@@ -173,8 +165,8 @@
             <el-form :model="form" label-position="top">
                 <el-row :gutter="16">
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="المنتج" required>
-                            <el-select v-model="form.product_id" placeholder="اختر المنتج..." style="width: 100%" filterable :disabled="!!form.id">
+                        <el-form-item :label="$t('product')" required>
+                            <el-select v-model="form.product_id" :placeholder="$t('choose_product_placeholder')" style="width: 100%" filterable :disabled="!!form.id">
                                 <el-option
                                     v-for="p in products"
                                     :key="p.id"
@@ -186,109 +178,109 @@
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="المستودع" required>
-                            <el-select v-model="form.warehouse_id" placeholder="اختر المستودع..." style="width: 100%" filterable :disabled="!!form.id">
+                        <el-form-item :label="$t('warehouse')" required>
+                            <el-select v-model="form.warehouse_id" :placeholder="$t('choose_warehouse_placeholder')" style="width: 100%" filterable :disabled="!!form.id">
                                 <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                             </el-select>
                             <p v-if="errors.warehouse_id" class="field-error">{{ errors.warehouse_id }}</p>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="طريقة التعبئة">
+                        <el-form-item :label="$t('replenishment_method')">
                             <el-select v-model="form.replenishment_method" style="width: 100%">
-                                <el-option label="شراء" value="purchase" />
-                                <el-option label="تصنيع" value="manufacture" />
-                                <el-option label="توزيع داخلي" value="internal_distribution" />
-                                <el-option label="نقل مخزني" value="warehouse_transfer" />
+                                <el-option :label="$t('purchase_supply')" value="purchase" />
+                                <el-option :label="$t('manufacture_supply')" value="manufacture" />
+                                <el-option :label="$t('internal_distribution')" value="internal_distribution" />
+                                <el-option :label="$t('stock_transfer')" value="warehouse_transfer" />
                             </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="طريقة التخطيط">
+                        <el-form-item :label="$t('planning_method')">
                             <el-select v-model="form.planning_method" style="width: 100%">
-                                <el-option label="نقطة إعادة طلب" value="rop" />
-                                <el-option label="تخطيط متطلبات المواد" value="mrp" />
+                                <el-option :label="$t('reorder_point_method')" value="rop" />
+                                <el-option :label="$t('material_requirements_planning')" value="mrp" />
                             </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="الحد الأدنى">
+                        <el-form-item :label="$t('minimum')">
                             <el-input-number v-model="form.min_stock_level" :min="0" style="width: 100%" />
                             <p v-if="errors.min_stock_level" class="field-error">{{ errors.min_stock_level }}</p>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="الحد الأقصى">
+                        <el-form-item :label="$t('maximum')">
                             <el-input-number v-model="form.max_stock_level" :min="0" style="width: 100%" />
                             <p v-if="errors.max_stock_level" class="field-error">{{ errors.max_stock_level }}</p>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="مخزون الأمان">
+                        <el-form-item :label="$t('safety_stock')">
                             <el-input-number v-model="form.safety_stock" :min="0" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="زمن التسليم (أيام)">
+                        <el-form-item :label="$t('lead_time_days_label')">
                             <el-input-number v-model="form.lead_time_days" :min="1" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12" v-if="form.id">
-                        <el-form-item label="الكمية الفعلية">
+                        <el-form-item :label="$t('actual_quantity')">
                             <el-input-number v-model="form.quantity" :min="0" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12" v-if="form.id">
-                        <el-form-item label="سعر التكلفة">
+                        <el-form-item :label="$t('cost_price')">
                             <el-input-number v-model="form.cost_price" :min="0" :step="0.01" style="width: 100%" />
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="استراتيجية التخزين">
+                        <el-form-item :label="$t('storage_strategy')">
                             <el-select v-model="form.putaway_strategy" style="width: 100%">
-                                <el-option label="FIFO (أول ما يدخل أولاً)" value="fifo" />
-                                <el-option label="FEFO (أول ما ينتهي أولاً)" value="fefo" />
-                                <el-option label="التشابه" value="similarity" />
-                                <el-option label="بالوزن" value="weight_based" />
-                                <el-option label="بالحجم" value="volume_based" />
+                                <el-option :label="$t('strategy_fifo')" value="fifo" />
+                                <el-option :label="$t('strategy_fefo')" value="fefo" />
+                                <el-option :label="$t('strategy_similarity')" value="similarity" />
+                                <el-option :label="$t('strategy_by_weight')" value="weight_based" />
+                                <el-option :label="$t('strategy_by_volume')" value="volume_based" />
                             </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
-                        <el-form-item label="التواريخ">
+                        <el-form-item :label="$t('dates')">
                             <el-date-picker
                                 v-model="effectiveRange"
                                 type="daterange"
-                                range-separator="إلى"
-                                start-placeholder="تاريخ البدء"
-                                end-placeholder="تاريخ الانتهاء"
+                                :range-separator="$t('to')"
+                                :start-placeholder="$t('start_date_label')"
+                                :end-placeholder="$t('end_date_label')"
                                 value-format="YYYY-MM-DD"
                                 style="width: 100%"
                             />
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24">
-                        <el-form-item label="إعدادات متقدمة">
+                        <el-form-item :label="$t('advanced_settings')">
                             <div class="check-row">
                                 <el-switch v-model="form.auto_reorder_enabled" />
-                                <span>تفعيل إعادة الطلب التلقائي</span>
+                                <span>{{ $t('enable_auto_reorder') }}</span>
                             </div>
                             <div class="check-row" v-if="form.id">
                                 <el-switch v-model="form.is_active" />
-                                <span>التعيين نشط</span>
+                                <span>{{ $t('assignment_active') }}</span>
                             </div>
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24">
-                        <el-form-item label="ملاحظات">
-                            <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="ملاحظات حول التعيين..." />
+                        <el-form-item :label="$t('notes')">
+                            <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('assignment_notes_placeholder')" />
                         </el-form-item>
                     </el-col>
                 </el-row>
             </el-form>
 
             <template #footer>
-                <el-button @click="dialogVisible = false">إلغاء</el-button>
+                <el-button @click="dialogVisible = false">{{ $t('cancel') }}</el-button>
                 <el-button type="primary" :loading="submitting" @click="submitAssignment">
                     {{ form.id ? 'تحديث' : 'حفظ' }}
                 </el-button>
@@ -298,11 +290,16 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api/index';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const productsStore = useProductsStore();
 const inventoryStore = useInventoryStore();
@@ -360,8 +357,8 @@ const stats = computed(() => ({
 const filteredAssignments = computed(() => assignments.value);
 
 const assignmentStatus = (row) => {
-    if (Number(row.available_quantity) <= Number(row.min_stock_level)) return { label: 'منخفض', type: 'danger' };
-    return { label: 'متاح', type: 'success' };
+    if (Number(row.available_quantity) <= Number(row.min_stock_level)) return { label: t('low'), type: 'danger' };
+    return { label: t('available'), type: 'success' };
 };
 
 const fetchData = async () => {
@@ -385,7 +382,7 @@ const fetchData = async () => {
             last_page: response.data?.last_page || 1,
         };
     } catch (err) {
-        error.value = err.response?.data?.message || err.message || 'فشل في جلب البيانات';
+        error.value = err.response?.data?.message || err.message || t('failed_to_fetch_data_short');
         ElMessage.error(error.value);
     } finally {
         loading.value = false;
@@ -396,7 +393,7 @@ const refreshData = async () => {
     refreshing.value = true;
     await fetchData();
     refreshing.value = false;
-    ElMessage.success('تم تحديث البيانات بنجاح');
+    ElMessage.success(t('data_updated_successfully'));
 };
 
 const resetFilters = () => {
@@ -430,9 +427,9 @@ const openEditModal = (assignment) => {
 
 const validateForm = () => {
     errors.value = {};
-    if (!form.product_id) errors.value.product_id = 'يرجى اختيار المنتج';
-    if (!form.warehouse_id) errors.value.warehouse_id = 'يرجى اختيار المستودع';
-    if (Number(form.max_stock_level) <= Number(form.min_stock_level)) errors.value.max_stock_level = 'الحد الأقصى يجب أن يكون أكبر من الحد الأدنى';
+    if (!form.product_id) errors.value.product_id = t('please_select_product');
+    if (!form.warehouse_id) errors.value.warehouse_id = t('please_select_warehouse');
+    if (Number(form.max_stock_level) <= Number(form.min_stock_level)) errors.value.max_stock_level = t('max_must_exceed_min');
     return Object.keys(errors.value).length === 0;
 };
 
@@ -463,16 +460,16 @@ const submitAssignment = async () => {
                 cost_price: form.cost_price ?? undefined,
                 is_active: form.is_active,
             });
-            ElMessage.success('تم تحديث التعيين بنجاح');
+            ElMessage.success(t('assignment_updated'));
         } else {
             await api.post('/admin/wms/assignments', payload);
-            ElMessage.success('تم إضافة التعيين بنجاح');
+            ElMessage.success(t('assignment_added'));
         }
         dialogVisible.value = false;
         await fetchData();
     } catch (err) {
         if (err.response?.data?.errors) errors.value = err.response.data.errors;
-        ElMessage.error(err.response?.data?.message || err.message || 'فشل في الحفظ');
+        ElMessage.error(err.response?.data?.message || err.message || t('failed_to_save'));
     } finally {
         submitting.value = false;
     }
@@ -480,16 +477,16 @@ const submitAssignment = async () => {
 
 const deleteAssignment = async (id) => {
     try {
-        await ElMessageBox.confirm('هل أنت متأكد من حذف هذا التعيين؟', 'تأكيد الحذف', {
-            confirmButtonText: 'نعم، احذف',
-            cancelButtonText: 'إلغاء',
+        await ElMessageBox.confirm(t('confirm_delete_assignment'), t('confirm_deletion'), {
+            confirmButtonText: t('yes_delete'),
+            cancelButtonText: t('cancel'),
             type: 'warning',
         });
         await api.delete(`/admin/wms/assignments/${id}`);
-        ElMessage.success('تم حذف التعيين بنجاح');
+        ElMessage.success(t('assignment_deleted'));
         await fetchData();
     } catch (err) {
-        if (err !== 'cancel') ElMessage.error(err.response?.data?.message || 'فشل في حذف التعيين');
+        if (err !== 'cancel') ElMessage.error(err.response?.data?.message || t('failed_to_delete_assignment'));
     }
 };
 

@@ -1,37 +1,31 @@
 <template>
     <div class="hr-page hr-employee-customers">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ $t('employee_customer_relationship') }}</h1>
-                <p>{{ $t('manage_employee_customer_relationships') }}</p>
-            </div>
-            <div class="page-actions">
+        <AdminPageHeader
+            :title="$t('employee_customer_relationship')"
+            :subtitle="$t('manage_employee_customer_relationships')"
+        >
+            <template #actions>
                 <el-button :icon="ArrowLeft" @click="goBack">
                     {{ $t('back') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-card shadow="hover" class="filter-panel">
-            <el-row :gutter="20">
-                <el-col :xs="24" :sm="12" :md="8">
-                    <el-select 
-                        v-model="selectedEmployeeId" 
-                        :placeholder="$t('select_employee')" 
-                        clearable
-                        @change="handleEmployeeChange"
-                        style="width: 100%"
-                    >
-                        <el-option
-                            v-for="employee in employees"
-                            :key="employee.id"
-                            :label="employee.name"
-                            :value="employee.id"
-                        />
-                    </el-select>
-                </el-col>
-            </el-row>
-        </el-card>
+        <AdminFilterBar>
+            <el-select 
+                v-model="selectedEmployeeId" 
+                :placeholder="$t('select_employee')" 
+                clearable
+                @change="handleEmployeeChange"
+            >
+                <el-option
+                    v-for="employee in employees"
+                    :key="employee.id"
+                    :label="employee.name"
+                    :value="employee.id"
+                />
+            </el-select>
+        </AdminFilterBar>
 
         <el-card v-if="selectedEmployeeId" shadow="hover" class="table-card">
             <template #header>
@@ -149,6 +143,8 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ArrowLeft, Plus, Search, Link } from '@element-plus/icons-vue';
 import api from '@/api';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 
 const router = useRouter();
 const selectedEmployeeId = ref(null);

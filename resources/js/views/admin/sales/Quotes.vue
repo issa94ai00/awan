@@ -1,19 +1,19 @@
 <template>
     <div class="sales-page sales-quotes">
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-file-signature"></i> {{ $t('quotes') || 'عروض الأسعار' }}</h1>
-                <p>{{ $t('manage_quotes_quickly_with_instant') || 'أنشئ عروض الأسعار وتابعها وحوّل المقبول منها إلى طلبات بيع.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-file-signature"
+            :title="$t('quotes')"
+            :subtitle="$t('manage_quotes_quickly_with_instant')"
+        >
+            <template #actions>
                 <el-input
                     v-model="searchQuery"
-                    :placeholder="$t('search_by_offer_number_or_customer_name') || 'ابحث برقم العرض أو اسم العميل...'"
+                    :placeholder="$t('search_by_offer_number_or_customer_name')"
                     clearable
                     class="search-input"
                     :prefix-icon="Search"
                 />
-                <el-select v-model="statusFilter" clearable class="status-filter" :placeholder="$t('status') || 'الحالة'">
+                <el-select v-model="statusFilter" clearable class="status-filter" :placeholder="$t('status')">
                     <el-option
                         v-for="status in QUOTE_STATUSES"
                         :key="status"
@@ -22,35 +22,33 @@
                     />
                 </el-select>
                 <el-button :icon="Refresh" :loading="store.loading" @click="reload" />
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Pipeline summary. Clicking a card filters the table below. -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col v-for="card in summaryCards" :key="card.key" :xs="12" :sm="12" :md="6">
-                <el-card
-                    shadow="hover"
-                    class="stat-card"
-                    :class="{ 'is-active': statusFilter === card.status }"
-                    @click="toggleFilter(card.status)"
-                >
-                    <div class="stat-inner">
-                        <div class="stat-icon" :class="card.tone">
-                            <i class="fas" :class="card.icon"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ card.value }}</h3>
-                            <p>{{ card.label }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card
+                shadow="hover"
+                class="stat-card"
+                :class="{ 'is-active': statusFilter === card.status }"
+                @click="toggleFilter(card.status)"
+            >
+                <div class="stat-inner">
+                    <div class="stat-icon" :class="card.tone">
+                        <i class="fas" :class="card.icon"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ card.value }}</h3>
+                        <p>{{ card.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-list"></i> {{ $t('list_of_quotations') || 'قائمة عروض الأسعار' }}</span>
+                    <span><i class="fas fa-list"></i> {{ $t('list_of_quotations') }}</span>
                     <span class="result-count">{{ filteredQuotes.length }} / {{ store.quotes.length }}</span>
                 </div>
             </template>
@@ -73,7 +71,7 @@
                     stripe
                     highlight-current-row
                 >
-                    <el-table-column prop="quote_number" :label="$t('quote_number') || 'رقم العرض'" width="150">
+                    <el-table-column prop="quote_number" :label="$t('quote_number')" width="150">
                         <template #default="{ row }">
                             <button type="button" class="record-link" @click="openDetail(row)">
                                 {{ row.quote_number }}
@@ -81,7 +79,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('client') || 'العميل'" min-width="180">
+                    <el-table-column :label="$t('client')" min-width="180">
                         <template #default="{ row }">
                             <div class="customer-cell">
                                 <i class="fas fa-user-circle"></i>
@@ -90,13 +88,13 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('total') || 'الإجمالي'" width="160" align="left">
+                    <el-table-column :label="$t('total')" width="160" align="left">
                         <template #default="{ row }">
                             <strong class="amount">{{ formatCurrency(row.total) }}</strong>
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('status') || 'الحالة'" width="170" align="center">
+                    <el-table-column :label="$t('status')" width="170" align="center">
                         <template #default="{ row }">
                             <el-dropdown
                                 v-if="transitionsFor(row.status).length > 1"
@@ -130,7 +128,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('valid_until') || 'صالح حتى'" width="150" align="center">
+                    <el-table-column :label="$t('valid_until')" width="150" align="center">
                         <template #default="{ row }">
                             <span :class="{ 'is-expired': isExpired(row) }">
                                 {{ formatDate(row.valid_until) }}
@@ -138,10 +136,10 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('actions') || 'الإجراءات'" width="190" align="center" fixed="right">
+                    <el-table-column :label="$t('actions')" width="190" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button-group>
-                                <el-tooltip :content="$t('view_details') || 'عرض التفاصيل'" placement="top">
+                                <el-tooltip :content="$t('view_details')" placement="top">
                                     <el-button size="small" plain @click="openDetail(row)">
                                         <i class="fas fa-eye"></i>
                                     </el-button>
@@ -164,7 +162,7 @@
                                     </span>
                                 </el-tooltip>
 
-                                <el-tooltip :content="$t('delete') || 'حذف'" placement="top">
+                                <el-tooltip :content="$t('delete')" placement="top">
                                     <el-button size="small" type="danger" plain @click="removeQuote(row)">
                                         <i class="fas fa-trash"></i>
                                     </el-button>
@@ -177,8 +175,8 @@
                 <el-empty
                     v-else
                     :description="store.quotes.length
-                        ? ($t('there_are_no_offers_matching_your_search') || 'لا توجد عروض مطابقة للبحث')
-                        : ($t('no_quotes_yet') || 'لا توجد عروض أسعار بعد')"
+                        ? ($t('there_are_no_offers_matching_your_search'))
+                        : ($t('no_quotes_yet'))"
                 />
 
                 <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-bar">
@@ -204,52 +202,52 @@
                 </div>
 
                 <el-descriptions :column="1" border class="detail-descriptions">
-                    <el-descriptions-item :label="$t('client') || 'العميل'">
+                    <el-descriptions-item :label="$t('client')">
                         {{ customerName(selected) }}
                     </el-descriptions-item>
-                    <el-descriptions-item :label="$t('valid_until') || 'صالح حتى'">
+                    <el-descriptions-item :label="$t('valid_until')">
                         {{ formatDate(selected.valid_until) }}
                     </el-descriptions-item>
-                    <el-descriptions-item :label="$t('notes') || 'ملاحظات'">
+                    <el-descriptions-item :label="$t('notes')">
                         {{ selected.notes || '—' }}
                     </el-descriptions-item>
                 </el-descriptions>
 
-                <h4 class="detail-heading">{{ $t('items') || 'البنود' }}</h4>
+                <h4 class="detail-heading">{{ $t('items') }}</h4>
                 <el-table :data="selected.items || []" size="small" border>
-                    <el-table-column :label="$t('product') || 'المنتج'" min-width="150">
+                    <el-table-column :label="$t('product')" min-width="150">
                         <template #default="{ row }">
                             {{ row.description || row.product?.name_ar || row.product?.name || '—' }}
                         </template>
                     </el-table-column>
-                    <el-table-column prop="quantity" :label="$t('quantity') || 'الكمية'" width="80" align="center" />
-                    <el-table-column :label="$t('unit_price') || 'السعر'" width="120" align="left">
+                    <el-table-column prop="quantity" :label="$t('quantity')" width="80" align="center" />
+                    <el-table-column :label="$t('unit_price')" width="120" align="left">
                         <template #default="{ row }">{{ formatCurrency(row.unit_price) }}</template>
                     </el-table-column>
                 </el-table>
 
                 <div class="totals-box">
                     <div class="totals-row">
-                        <span>{{ $t('subtotal') || 'المجموع الفرعي' }}</span>
+                        <span>{{ $t('subtotal') }}</span>
                         <span>{{ formatCurrency(selected.subtotal) }}</span>
                     </div>
                     <div class="totals-row">
-                        <span>{{ $t('tax') || 'الضريبة' }}</span>
+                        <span>{{ $t('tax') }}</span>
                         <span>{{ formatCurrency(selected.tax) }}</span>
                     </div>
                     <div class="totals-row">
-                        <span>{{ $t('discount') || 'الخصم' }}</span>
+                        <span>{{ $t('discount') }}</span>
                         <span>-{{ formatCurrency(selected.discount) }}</span>
                     </div>
                     <div class="totals-row grand">
-                        <span>{{ $t('total') || 'الإجمالي' }}</span>
+                        <span>{{ $t('total') }}</span>
                         <span>{{ formatCurrency(selected.total) }}</span>
                     </div>
                 </div>
             </div>
 
             <template #footer>
-                <el-button @click="detailVisible = false">{{ $t('close') || 'إغلاق' }}</el-button>
+                <el-button @click="detailVisible = false">{{ $t('close') }}</el-button>
                 <el-button
                     type="success"
                     :disabled="!canConvert(selected)"
@@ -257,7 +255,7 @@
                     @click="convertToOrder(selected)"
                 >
                     <i class="fas fa-right-left"></i>
-                    {{ $t('convert_to_sales_order') || 'تحويل إلى طلب بيع' }}
+                    {{ $t('convert_to_sales_order') }}
                 </el-button>
             </template>
         </el-drawer>
@@ -265,11 +263,16 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Refresh, ArrowDown } from '@element-plus/icons-vue';
 import { useQuotesStore } from '@/stores/quotes';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 import {
     QUOTE_STATUSES,
     QUOTE_TRANSITIONS,
@@ -298,7 +301,7 @@ const summaryCards = computed(() => [
     {
         key: 'all',
         status: '',
-        label: window.t?.('total_offers') || 'إجمالي العروض',
+        label: window.t?.('total_offers') || t('total_offers'),
         value: store.quotes.length,
         icon: 'fa-file-signature',
         tone: 'blue',
@@ -353,8 +356,8 @@ const canConvert = (quote) => !!quote && normalizeStatus(quote.status) === 'acce
 
 const convertHint = (quote) =>
     canConvert(quote)
-        ? (window.t?.('convert_to_sales_order') || 'تحويل إلى طلب بيع')
-        : 'يجب قبول عرض السعر أولاً قبل تحويله إلى طلب بيع';
+        ? (window.t?.('convert_to_sales_order') || t('convert_to_sales_order'))
+        : t('quote_must_be_accepted_first');
 
 const toggleFilter = (status) => {
     statusFilter.value = statusFilter.value === status ? '' : status;
@@ -380,8 +383,8 @@ const changeStatus = async (quote, status) => {
     try {
         await ElMessageBox.confirm(
             `تغيير حالة العرض ${quote.quote_number} إلى "${statusLabel(status)}"؟`,
-            'تأكيد',
-            { type: 'warning', confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }
+            t('confirm'),
+            { type: 'warning', confirmButtonText: t('confirm'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -389,10 +392,10 @@ const changeStatus = async (quote, status) => {
 
     try {
         await store.updateQuoteStatus(quote, status);
-        ElMessage.success('تم تحديث حالة عرض السعر.');
+        ElMessage.success(t('quote_status_updated'));
         if (selected.value?.id === quote.id) selected.value = { ...selected.value, status };
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر تحديث حالة عرض السعر.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_update_quote_status')));
     }
 };
 
@@ -401,8 +404,8 @@ const convertToOrder = async (quote) => {
     try {
         await ElMessageBox.confirm(
             `تحويل عرض السعر ${quote.quote_number} إلى طلب بيع؟`,
-            'تحويل إلى طلب بيع',
-            { type: 'info', confirmButtonText: 'تحويل', cancelButtonText: 'إلغاء' }
+            t('convert_to_sales_order'),
+            { type: 'info', confirmButtonText: t('convert'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -419,7 +422,7 @@ const convertToOrder = async (quote) => {
         // only useful if they can act on the result.
         router.push('/admin/sales/sales-orders');
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر تحويل عرض السعر.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_convert_quote')));
     }
 };
 
@@ -427,8 +430,8 @@ const removeQuote = async (quote) => {
     try {
         await ElMessageBox.confirm(
             `حذف عرض السعر ${quote.quote_number}؟ لا يمكن التراجع عن هذا الإجراء.`,
-            'تأكيد الحذف',
-            { type: 'warning', confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }
+            t('confirm_deletion'),
+            { type: 'warning', confirmButtonText: t('delete'), cancelButtonText: t('cancel') }
         );
     } catch {
         return;
@@ -436,10 +439,10 @@ const removeQuote = async (quote) => {
 
     try {
         await store.deleteQuote(quote.id);
-        ElMessage.success('تم حذف عرض السعر.');
+        ElMessage.success(t('quote_deleted'));
         if (selected.value?.id === quote.id) detailVisible.value = false;
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر حذف عرض السعر.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_delete_quote')));
     }
 };
 

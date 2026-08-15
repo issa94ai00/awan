@@ -1,82 +1,74 @@
 <template>
     <div class="inventory-page inventory-index">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-warehouse"></i> لوحة إدارة المخزون</h1>
-                <p>مستويات المخزون الفعلية لكل مستودع، التنبيهات، وقيمة الأصناف — من مصدر واحد موحد.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-warehouse"
+            :title="$t('inventory_dashboard')"
+            :subtitle="$t('inventory_dashboard_subtitle')"
+        >
+            <template #actions>
                 <el-button type="info" plain @click="openAdjustmentDrawer">
-                    <i class="fas fa-sliders-h mr-1"></i> تسوية مخزنية
+                    <i class="fas fa-sliders-h mr-1"></i> {{ $t('stock_adjustment') }}
                 </el-button>
                 <router-link to="/admin/inventory/movements">
                     <el-button>
-                        <i class="fas fa-history mr-1"></i> سجل الحركات
+                        <i class="fas fa-history mr-1"></i> {{ $t('movement_log') }}
                     </el-button>
                 </router-link>
                 <el-button type="success" @click="exportStock" :loading="exporting" plain>
-                    تصدير الرصيد
+                    {{ $t('export_balances') }}
                 </el-button>
                 <el-button type="warning" @click="triggerInventoryImport" :loading="importing" plain>
-                    استيراد الرصيد
+                    {{ $t('import_balances') }}
                 </el-button>
                 <el-button type="primary" @click="refreshAll">
-                    <i class="fas fa-sync-alt mr-1" :class="{ 'fa-spin': loading }"></i> تحديث
+                    <i class="fas fa-sync-alt mr-1" :class="{ 'fa-spin': loading }"></i> {{ $t('update') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
         <input ref="inventoryFileInput" type="file" accept=".xlsx" style="display:none" @change="onInventoryFileSelected" />
 
         <!-- Metric Cards -->
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box blue-grad"><i class="fas fa-boxes"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(summary?.products_with_stock) }}</h3>
-                            <p>أصناف لها رصيد بالمخازن</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box blue-grad"><i class="fas fa-boxes"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(summary?.products_with_stock) }}</h3>
+                        <p>{{ $t('items_with_stock') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box green-grad"><i class="fas fa-cubes"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(summary?.total_available) }}</h3>
-                            <p>الوحدات المتاحة للبيع</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box green-grad"><i class="fas fa-cubes"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(summary?.total_available) }}</h3>
+                        <p>{{ $t('units_available_for_sale') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box gold-grad"><i class="fas fa-coins"></i></div>
-                        <div class="stat-details">
-                            <h3>{{ formatMoney(summary?.total_value) }}</h3>
-                            <p>قيمة المخزون الإجمالية</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box gold-grad"><i class="fas fa-coins"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatMoney(summary?.total_value) }}</h3>
+                        <p>{{ $t('total_stock_value') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="never" class="stat-card-wrapper">
-                    <div class="stat-card-inner">
-                        <div class="stat-icon-box" :class="(summary?.low_stock_rows || 0) > 0 ? 'red-grad' : 'green-grad'">
-                            <i class="fas" :class="(summary?.low_stock_rows || 0) > 0 ? 'fa-exclamation-triangle' : 'fa-check'"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ formatNumber(summary?.low_stock_rows) }}</h3>
-                            <p>أصناف عند حد إعادة الطلب</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="never" class="stat-card-wrapper">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box" :class="(summary?.low_stock_rows || 0) > 0 ? 'red-grad' : 'green-grad'">
+                        <i class="fas" :class="(summary?.low_stock_rows || 0) > 0 ? 'fa-exclamation-triangle' : 'fa-check'"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ formatNumber(summary?.low_stock_rows) }}</h3>
+                        <p>{{ $t('items_at_reorder_point') }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <!-- Warehouse Distribution + Today Activity -->
         <el-row :gutter="16" class="mt-4">
@@ -84,7 +76,7 @@
                 <el-card shadow="never" class="panel">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-warehouse"></i> توزيع المخزون على المستودعات</span>
+                            <span><i class="fas fa-warehouse"></i> {{ $t('stock_across_warehouses') }}</span>
                         </div>
                     </template>
 
@@ -94,7 +86,7 @@
                                 <div>
                                     <strong>{{ w.name }}</strong>
                                     <span class="wh-code">{{ w.code }}</span>
-                                    <el-tag v-if="!w.is_active" type="info" size="small">غير نشط</el-tag>
+                                    <el-tag v-if="!w.is_active" type="info" size="small">{{ $t('inactive') }}</el-tag>
                                 </div>
                                 <span class="wh-qty">
                                     {{ formatNumber(w.total_available) }} متاح
@@ -108,7 +100,7 @@
                                 :show-text="false"
                             />
                         </div>
-                        <el-empty v-if="!warehouses.length && !loading" description="لا توجد مستودعات" :image-size="70" />
+                        <el-empty v-if="!warehouses.length && !loading" :description="$t('no_warehouses')" :image-size="70" />
                     </div>
                 </el-card>
             </el-col>
@@ -117,7 +109,7 @@
                 <el-card shadow="never" class="panel">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-chart-line"></i> نشاط اليوم</span>
+                            <span><i class="fas fa-chart-line"></i> {{ $t('today_s_activity') }}</span>
                         </div>
                     </template>
                     <div class="today-stats">
@@ -125,26 +117,26 @@
                             <div class="today-icon blue-grad"><i class="fas fa-exchange-alt"></i></div>
                             <div>
                                 <h3>{{ formatNumber(today?.movements) }}</h3>
-                                <p>إجمالي الحركات</p>
+                                <p>{{ $t('total_movements') }}</p>
                             </div>
                         </div>
                         <div class="today-item">
                             <div class="today-icon green-grad"><i class="fas fa-arrow-down"></i></div>
                             <div>
                                 <h3>{{ formatNumber(today?.received) }}</h3>
-                                <p>وارد (استلام)</p>
+                                <p>{{ $t('inbound_receipt') }}</p>
                             </div>
                         </div>
                         <div class="today-item">
                             <div class="today-icon red-grad"><i class="fas fa-arrow-up"></i></div>
                             <div>
                                 <h3>{{ formatNumber(today?.issued) }}</h3>
-                                <p>صادر (صرف)</p>
+                                <p>{{ $t('outbound_issue') }}</p>
                             </div>
                         </div>
                     </div>
 
-                    <el-divider content-position="right">تنبيهات النواقص</el-divider>
+                    <el-divider content-position="right">{{ $t('shortage_alerts') }}</el-divider>
                     <div v-if="lowStockRows.length" class="alert-list">
                         <div v-for="row in lowStockRows" :key="row.id" class="alert-item">
                             <i class="fas fa-exclamation-triangle alert-icon"></i>
@@ -154,7 +146,7 @@
                             </div>
                         </div>
                     </div>
-                    <el-empty v-else description="لا توجد أصناف منخفضة حالياً" :image-size="70" />
+                    <el-empty v-else :description="$t('no_low_stock_items')" :image-size="70" />
                 </el-card>
             </el-col>
         </el-row>
@@ -163,25 +155,25 @@
         <el-card shadow="never" class="panel mt-4">
             <template #header>
                 <div class="card-header card-header-split">
-                    <span><i class="fas fa-table"></i> رصيد الأصناف في المستودعات</span>
+                    <span><i class="fas fa-table"></i> {{ $t('item_balances_by_warehouse') }}</span>
                     <div class="table-actions">
-                        <el-select v-model="filters.warehouse_id" placeholder="كل المستودعات" clearable style="width: 180px;" @change="() => loadStock(true)">
+                        <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 180px;" @change="() => loadStock(true)">
                             <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                         </el-select>
-                        <el-select v-model="filters.status" placeholder="كل الحالات" clearable style="width: 150px;" @change="() => loadStock(true)">
-                            <el-option label="متاح" value="ok" />
-                            <el-option label="منخفض" value="low" />
-                            <el-option label="نافد" value="out" />
+                        <el-select v-model="filters.status" :placeholder="$t('all_statuses')" clearable style="width: 150px;" @change="() => loadStock(true)">
+                            <el-option :label="$t('available')" value="ok" />
+                            <el-option :label="$t('low')" value="low" />
+                            <el-option :label="$t('out_of_stock_short')" value="out" />
                         </el-select>
-                        <el-input v-model="filters.search" placeholder="بحث بالاسم أو SKU..." clearable style="width: 220px;" @keyup.enter="() => loadStock(true)" @clear="() => loadStock(true)">
+                        <el-input v-model="filters.search" :placeholder="$t('search_by_name_or_sku')" clearable style="width: 220px;" @keyup.enter="() => loadStock(true)" @clear="() => loadStock(true)">
                             <template #prefix><i class="fas fa-search"></i></template>
                         </el-input>
                     </div>
                 </div>
             </template>
 
-            <el-table :data="store.stock" v-loading="loading" stripe size="default" empty-text="لا توجد بيانات مخزون">
-                <el-table-column label="المنتج" min-width="200">
+            <el-table :data="store.stock" v-loading="loading" stripe size="default" :empty-text="$t('no_stock_data')">
+                <el-table-column :label="$t('product')" min-width="200">
                     <template #default="{ row }">
                         <div class="product-name-cell">
                             <strong>{{ row.product?.name_ar || row.product?.name || '-' }}</strong>
@@ -192,13 +184,13 @@
                                 @click="openQuickEdit(row)"
                                 v-if="row.product?.id"
                             >
-                                <i class="fas fa-edit"></i> تعديل سريع
+                                <i class="fas fa-edit"></i> {{ $t('quick_edit') }}
                             </el-button>
                         </div>
                         <p class="table-sub">{{ row.product?.sku || '-' }}</p>
                     </template>
                 </el-table-column>
-                <el-table-column label="المستودع" min-width="140">
+                <el-table-column :label="$t('warehouse')" min-width="140">
                     <template #default="{ row }">
                         {{ row.warehouse?.name || '-' }}
                         <p class="table-sub">{{ row.bin?.code || '' }}</p>
@@ -207,12 +199,12 @@
                 <!-- The three figures side by side: without them a balance that
                      dropped because another order reserved it looks like stock
                      that went missing. -->
-                <el-table-column label="الإجمالي" width="100" align="center">
+                <el-table-column :label="$t('grand_total')" width="100" align="center">
                     <template #default="{ row }">
                         <span class="table-sub">{{ formatNumber(row.quantity) }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="المحجوز" width="100" align="center">
+                <el-table-column :label="$t('reserved')" width="100" align="center">
                     <template #default="{ row }">
                         <span v-if="Number(row.reserved_quantity) > 0" class="text-warning">
                             {{ formatNumber(row.reserved_quantity) }}
@@ -220,7 +212,7 @@
                         <span v-else class="table-sub">—</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="المتاح" width="110" align="center">
+                <el-table-column :label="$t('available_amount')" width="110" align="center">
                     <template #default="{ row }">
                         <strong :class="availableClass(row)">{{ formatNumber(row.available) }}</strong>
                         <p v-if="unsellable(row) > 0" class="table-sub">
@@ -228,27 +220,27 @@
                         </p>
                     </template>
                 </el-table-column>
-                <el-table-column label="التكلفة" width="120" align="center">
+                <el-table-column :label="$t('cost')" width="120" align="center">
                     <template #default="{ row }">
                         <span v-if="row.product?.cost_price > 0">{{ formatMoney(row.product.cost_price) }}</span>
                         <span v-else class="table-sub">—</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="سعر البيع" width="120" align="center">
+                <el-table-column :label="$t('selling_price')" width="120" align="center">
                     <template #default="{ row }">
                         <span v-if="row.product?.price > 0">{{ formatMoney(row.product.price) }}</span>
                         <span v-else class="table-sub">—</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="القيمة" width="130" align="center">
+                <el-table-column :label="$t('value')" width="130" align="center">
                     <template #default="{ row }">{{ formatMoney(row.available * (row.product?.cost_price || 0)) }}</template>
                 </el-table-column>
-                <el-table-column label="الحالة" width="110" align="center">
+                <el-table-column :label="$t('status')" width="110" align="center">
                     <template #default="{ row }">
                         <el-tag :type="stockStatus(row).type" effect="light" size="small">{{ stockStatus(row).label }}</el-tag>
                     </template>
                 </el-table-column>
-                <el-table-column label="آخر تحديث" width="140" align="center">
+                <el-table-column :label="$t('latest_update')" width="140" align="center">
                     <template #default="{ row }">{{ formatDate(row.updated_at) }}</template>
                 </el-table-column>
             </el-table>
@@ -268,15 +260,15 @@
         <!-- Adjustment Drawer -->
         <el-drawer
             v-model="adjustmentDrawerVisible"
-            title="تسجيل حركة مخزنية وتسوية"
+            :title="$t('record_movement_and_adjustment')"
             size="42%"
             direction="rtl"
             destroy-on-close
             class="form-drawer"
         >
             <el-form :model="form" label-position="top">
-                <el-form-item label="المنتج" required>
-                    <el-select v-model="form.product_id" placeholder="اختر المنتج" style="width: 100%" filterable>
+                <el-form-item :label="$t('product')" required>
+                    <el-select v-model="form.product_id" :placeholder="$t('select_product')" style="width: 100%" filterable>
                         <el-option
                             v-for="p in products"
                             :key="p.id"
@@ -286,35 +278,35 @@
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="المستودع">
-                    <el-select v-model="form.warehouse_id" placeholder="المستودع الافتراضي" clearable style="width: 100%">
+                <el-form-item :label="$t('warehouse')">
+                    <el-select v-model="form.warehouse_id" :placeholder="$t('default_warehouse')" clearable style="width: 100%">
                         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                     </el-select>
                 </el-form-item>
 
-                <el-form-item label="نوع الحركة" required>
+                <el-form-item :label="$t('movement_type')" required>
                     <el-radio-group v-model="form.movement_type" class="w-100">
-                        <el-radio-button value="in">وارد</el-radio-button>
-                        <el-radio-button value="out">صادر</el-radio-button>
-                        <el-radio-button value="adjustment">تسوية</el-radio-button>
+                        <el-radio-button value="in">{{ $t('inbound') }}</el-radio-button>
+                        <el-radio-button value="out">{{ $t('outbound') }}</el-radio-button>
+                        <el-radio-button value="adjustment">{{ $t('adjustment') }}</el-radio-button>
                     </el-radio-group>
                 </el-form-item>
 
-                <el-form-item label="الكمية" required>
+                <el-form-item :label="$t('quantity')" required>
                     <el-input-number v-model="form.quantity" :min="1" style="width: 100%" />
                 </el-form-item>
 
-                <el-form-item label="رمز المرجع">
-                    <el-input v-model="form.reference" placeholder="مثال: ADJ-2026-09" />
+                <el-form-item :label="$t('reference_code')">
+                    <el-input v-model="form.reference" :placeholder="$t('reference_example')" />
                 </el-form-item>
 
-                <el-form-item label="ملاحظات">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="سبب الحركة أو التسوية..." />
+                <el-form-item :label="$t('notes')">
+                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('movement_reason_placeholder')" />
                 </el-form-item>
 
                 <div class="drawer-footer">
-                    <el-button @click="adjustmentDrawerVisible = false">إلغاء</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">تأكيد الحركة</el-button>
+                    <el-button @click="adjustmentDrawerVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">{{ $t('confirm_movement') }}</el-button>
                 </div>
             </el-form>
         </el-drawer>
@@ -322,31 +314,31 @@
         <!-- Quick Edit Dialog -->
         <el-dialog
             v-model="quickEditDialogVisible"
-            title="تعديل سريع للمنتج"
+            :title="$t('quick_edit_product')"
             width="600px"
             :close-on-click-modal="false"
         >
             <el-form :model="quickEditForm" label-width="120px" label-position="right">
-                <el-form-item label="الاسم بالعربية">
+                <el-form-item :label="$t('name_arabic')">
                     <el-input v-model="quickEditForm.name_ar" />
                 </el-form-item>
-                <el-form-item label="الاسم بالإنجليزية">
+                <el-form-item :label="$t('name_english')">
                     <el-input v-model="quickEditForm.name_en" />
                 </el-form-item>
-                <el-form-item label="السعر">
+                <el-form-item :label="$t('price')">
                     <el-input-number v-model="quickEditForm.price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="سعر التخفيض">
+                <el-form-item :label="$t('discounted_price')">
                     <el-input-number v-model="quickEditForm.sale_price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="سعر التكلفة">
+                <el-form-item :label="$t('cost_price')">
                     <el-input-number v-model="quickEditForm.cost_price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="الكمية">
+                <el-form-item :label="$t('quantity')">
                     <el-input-number v-model="quickEditForm.stock_quantity" :min="0" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="التصنيف">
-                    <el-select v-model="quickEditForm.category_id" placeholder="اختر التصنيف" style="width: 100%">
+                <el-form-item :label="$t('the_category')">
+                    <el-select v-model="quickEditForm.category_id" :placeholder="$t('select_category')" style="width: 100%">
                         <el-option
                             v-for="cat in categories"
                             :key="cat.id"
@@ -355,28 +347,33 @@
                         />
                     </el-select>
                 </el-form-item>
-                <el-form-item label="الحالة">
+                <el-form-item :label="$t('status')">
                     <el-switch v-model="quickEditForm.is_active" />
                 </el-form-item>
-                <el-form-item label="مميز">
+                <el-form-item :label="$t('featured')">
                     <el-switch v-model="quickEditForm.is_featured" />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="quickEditDialogVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">حفظ</el-button>
+                <el-button @click="quickEditDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">{{ $t('save') }}</el-button>
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useInventoryStore } from '@/stores/inventory';
 import { useProductsStore } from '@/stores/products';
 import { inventoryApi } from '@/api/inventory';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const store = useInventoryStore();
@@ -400,9 +397,9 @@ const lowStockRows = computed(() => store.stock.filter((r) => stockStatus(r).typ
 const stockStatus = (row) => {
     const available = Number(row.available ?? 0);
     const reorder = Number(row.reorder_point ?? 0);
-    if (available <= 0) return { label: 'نافد', type: 'danger' };
-    if (available <= reorder) return { label: 'منخفض', type: 'warning' };
-    return { label: 'متاح', type: 'success' };
+    if (available <= 0) return { label: t('out_of_stock_short'), type: 'danger' };
+    if (available <= reorder) return { label: t('low'), type: 'warning' };
+    return { label: t('available'), type: 'success' };
 };
 
 const warehousePercentage = (qty) => {
@@ -442,7 +439,7 @@ const onInventoryFileSelected = async (event) => {
     if (!file) return;
 
     if (!/\.xlsx$/i.test(file.name)) {
-        ElMessage.error('يرجى اختيار ملف xlsx');
+        ElMessage.error(t('please_choose_xlsx_file'));
         return;
     }
 
@@ -468,18 +465,18 @@ const onInventoryFileSelected = async (event) => {
         }
 
         ElMessage[errors.length ? 'warning' : 'success']({
-            message: messages.join('، '),
+            message: messages.join(t('list_separator')),
             duration: 6000,
         });
 
         // Computed columns the sheet carried but the importer does not apply.
-        // Said out loud, because an operator who edited "المحجوز" and saw a
+        // Said out loud, because an operator who edited t('reserved') and saw a
         // success message would otherwise assume it took.
         const ignored = data.ignored_columns || [];
         if (ignored.length) {
             ElMessage({
                 type: 'info',
-                message: `أعمدة محسوبة لم تُستورد: ${ignored.join('، ')} — تُشتق من الحركات والطلبات ولا يُغيّرها ملف الجرد.`,
+                message: t('computed_columns_not_imported', { columns: ignored.join(t('list_separator')) }),
                 duration: 9000,
                 showClose: true,
             });
@@ -495,14 +492,14 @@ const onInventoryFileSelected = async (event) => {
                     .map((e) => `صف ${e.row}: ${e.message}`)
                     .join('<br>') +
                     (errors.length > 20 ? `<br>… و${errors.length - 20} صفاً آخر` : ''),
-                'صفوف لم تُستورد',
-                { dangerouslyUseHTMLString: true, confirmButtonText: 'حسناً' },
+                t('rows_not_imported'),
+                { dangerouslyUseHTMLString: true, confirmButtonText: t('ok_button') },
             );
         }
 
         await loadStock(true);
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'فشل في استيراد الرصيد');
+        ElMessage.error(e.response?.data?.message || t('failed_to_import_balances'));
     } finally {
         importing.value = false;
     }
@@ -528,9 +525,9 @@ const exportStock = async () => {
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
-        ElMessage.success('تم تصدير رصيد الأصناف بنجاح');
+        ElMessage.success(t('balances_exported'));
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'فشل في تصدير رصيد الأصناف');
+        ElMessage.error(e.response?.data?.message || t('failed_to_export_balances'));
     } finally {
         exporting.value = false;
     }
@@ -572,11 +569,11 @@ const submitQuickEdit = async () => {
             is_active: quickEditForm.value.is_active,
             is_featured: quickEditForm.value.is_featured,
         });
-        ElMessage.success('تم تحديث المنتج بنجاح');
+        ElMessage.success(t('the_product_has_been_updated'));
         quickEditDialogVisible.value = false;
         await refreshAll();
     } catch (error) {
-        ElMessage.error(error.response?.data?.message || 'فشل في تحديث المنتج');
+        ElMessage.error(error.response?.data?.message || t('failed_to_update_product'));
     } finally {
         quickEditSubmitting.value = false;
     }
@@ -597,7 +594,7 @@ const loadStock = async (resetPage = false) => {
     try {
         await store.fetchStock(params);
     } catch (e) {
-        ElMessage.error('فشل في تحميل بيانات المخزون.');
+        ElMessage.error(t('failed_to_load_stock_data'));
     }
 };
 
@@ -609,9 +606,9 @@ const onPageChange = (page) => {
 const refreshAll = async () => {
     try {
         await Promise.all([store.fetchSummary(), loadStock()]);
-        ElMessage.success('تم تحديث البيانات بنجاح.');
+        ElMessage.success(t('data_updated_successfully'));
     } catch (e) {
-        ElMessage.error('فشل في تحديث البيانات.');
+        ElMessage.error(t('failed_to_update_data'));
     }
 };
 
@@ -659,11 +656,11 @@ const openAdjustmentDrawer = () => {
 
 const saveAdjustment = async () => {
     if (!form.product_id) {
-        ElMessage.warning('يرجى اختيار المنتج أولاً.');
+        ElMessage.warning(t('please_select_product_first'));
         return;
     }
     if (!form.quantity || form.quantity < 1) {
-        ElMessage.warning('يرجى تحديد الكمية.');
+        ElMessage.warning(t('please_set_quantity'));
         return;
     }
 
@@ -678,11 +675,11 @@ const saveAdjustment = async () => {
             notes: form.notes,
             movement_key: form.reference ? `manual:${form.reference}` : null,
         });
-        ElMessage.success('تم تسجيل الحركة المخزنية بنجاح.');
+        ElMessage.success(t('stock_movement_recorded'));
         adjustmentDrawerVisible.value = false;
         await refreshAll();
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'حدث خطأ أثناء حفظ الحركة المخزنية.');
+        ElMessage.error(e.response?.data?.message || t('failed_to_save_stock_movement'));
     } finally {
         submittingForm.value = false;
     }

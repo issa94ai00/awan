@@ -258,12 +258,12 @@
                             <label for="inquiry_subject">{{ t('inquiry_subject') || 'موضوع الاستفسار' }} <span class="required">*</span></label>
                             <select id="inquiry_subject" v-model="inquiryState.subject" required>
                                 <option value="">{{ t('inquiry_subject') }}</option>
-                                <option value="product_details">{{ t('inquiry_subject_options.details') || 'تفاصيل أكثر عن المنتج' }}</option>
-                                <option value="availability">{{ t('inquiry_subject_options.availability') || 'التوفر والكمية' }}</option>
-                                <option value="price_inquiry">{{ t('inquiry_subject_options.price') || 'استفسار عن السعر' }}</option>
-                                <option value="delivery">{{ t('inquiry_subject_options.delivery') || 'التوصيل والشحن' }}</option>
-                                <option value="installation">{{ t('inquiry_subject_options.installation') || 'التركيب والصيانة' }}</option>
-                                <option value="other">{{ t('inquiry_subject_options.other') || 'أخرى' }}</option>
+                                <option value="product_details">{{ t('inquiry_subject_details') }}</option>
+                                <option value="availability">{{ t('inquiry_subject_availability') }}</option>
+                                <option value="price_inquiry">{{ t('inquiry_subject_price') }}</option>
+                                <option value="delivery">{{ t('inquiry_subject_delivery') }}</option>
+                                <option value="installation">{{ t('inquiry_subject_installation') }}</option>
+                                <option value="other">{{ t('subject_other') }}</option>
                             </select>
                         </div>
 

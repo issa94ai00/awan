@@ -1,7 +1,7 @@
 <template>
     <el-dialog
         :model-value="modelValue"
-        :title="$t('record_payment') || 'تسجيل دفعة'"
+        :title="$t('record_payment')"
         width="540px"
         :close-on-click-modal="false"
         @update:model-value="$emit('update:modelValue', $event)"
@@ -9,40 +9,40 @@
         @closed="onClosed"
     >
         <div class="payment-number" v-if="nextPaymentNumber">
-            <span class="label">{{ $t('payment_number') || 'رقم الدفعة' }}</span>
+            <span class="label">{{ $t('payment_number') }}</span>
             <strong class="value">{{ nextPaymentNumber }}</strong>
         </div>
 
         <!-- Fixed invoice context -->
         <div v-if="invoice" class="invoice-context">
             <div class="context-row">
-                <span>{{ $t('invoice') || 'الفاتورة' }}</span>
+                <span>{{ $t('invoice') }}</span>
                 <strong>{{ invoice.invoice_number }}</strong>
             </div>
             <div class="context-row">
-                <span>{{ $t('total') || 'الإجمالي' }}</span>
+                <span>{{ $t('total') }}</span>
                 <strong>{{ formatCurrency(invoice.total) }}</strong>
             </div>
             <div class="context-row">
-                <span>{{ $t('paid_amount') || 'المدفوع' }}</span>
+                <span>{{ $t('paid_amount') }}</span>
                 <strong class="paid">{{ formatCurrency(invoice.paid_amount) }}</strong>
             </div>
             <div class="context-row highlight">
-                <span>{{ $t('due_amount') || 'المتبقي' }}</span>
+                <span>{{ $t('due_amount') }}</span>
                 <strong class="due">{{ formatCurrency(dueAmount) }}</strong>
             </div>
         </div>
 
         <el-form ref="formRef" :model="form" label-position="top">
             <!-- Customer quick search -->
-            <el-form-item v-if="!invoice" :label="$t('client') || 'العميل'" prop="customer_id">
+            <el-form-item v-if="!invoice" :label="$t('client')" prop="customer_id">
                 <el-select
                     v-model="form.customer_id"
                     filterable
                     remote
                     clearable
                     style="width: 100%"
-                    :placeholder="$t('search_customer') || 'ابحث بالاسم أو الهاتف...'"
+                    :placeholder="$t('search_customer')"
                     :remote-method="searchCustomers"
                     :loading="customersStore.loading"
                     @change="onCustomerChange"
@@ -64,12 +64,12 @@
             <!-- Outstanding invoices quick picker -->
             <div v-if="!invoice && form.customer_id" class="outstanding-block">
                 <div class="block-title">
-                    <span>{{ $t('unpaid_invoices') || 'فواتير غير مسددة' }}</span>
+                    <span>{{ $t('unpaid_invoices') }}</span>
                     <span v-if="outstandingInvoices.length" class="block-sum">
                         {{ formatCurrency(totalOutstanding) }}
                     </span>
                 </div>
-                <div v-if="outstandingLoading" class="block-empty">{{ $t('loading') || 'جاري التحميل...' }}</div>
+                <div v-if="outstandingLoading" class="block-empty">{{ $t('loading') }}</div>
                 <template v-else>
                     <div
                         v-for="inv in outstandingInvoices"
@@ -82,12 +82,12 @@
                         <span class="chip-due">{{ formatCurrency(invoiceDue(inv)) }}</span>
                     </div>
                     <div v-if="!outstandingInvoices.length" class="block-empty">
-                        {{ $t('no_outstanding_invoices') || 'لا توجد فواتير مستحقة — سيتم تسجيلها كدفعة على الحساب' }}
+                        {{ $t('no_outstanding_invoices') }}
                     </div>
                 </template>
             </div>
 
-            <el-form-item :label="$t('amount') || 'المبلغ'" prop="amount">
+            <el-form-item :label="$t('amount')" prop="amount">
                 <el-input-number
                     v-model="form.amount"
                     :min="0.01"
@@ -100,7 +100,7 @@
             </el-form-item>
 
             <!-- POS-style method buttons -->
-            <div class="method-label">{{ $t('payment_method') || 'طريقة الدفع' }}</div>
+            <div class="method-label">{{ $t('payment_method') }}</div>
             <div class="method-grid">
                 <button
                     v-for="method in PAYMENT_METHODS"
@@ -115,7 +115,7 @@
                 </button>
             </div>
 
-            <el-form-item :label="$t('payment_date') || 'تاريخ الدفع'" class="mt-3">
+            <el-form-item :label="$t('payment_date')" class="mt-3">
                 <el-date-picker
                     v-model="form.payment_date"
                     type="date"
@@ -125,11 +125,11 @@
             </el-form-item>
 
             <el-collapse v-if="!invoice" class="advanced-collapse">
-                <el-collapse-item :title="$t('advanced_options') || 'خيارات إضافية'">
-                    <el-form-item :label="$t('reference') || 'المرجع'">
+                <el-collapse-item :title="$t('advanced_options')">
+                    <el-form-item :label="$t('reference')">
                         <el-input v-model="form.reference" maxlength="100" />
                     </el-form-item>
-                    <el-form-item :label="$t('notes') || 'ملاحظات'">
+                    <el-form-item :label="$t('notes')">
                         <el-input v-model="form.notes" type="textarea" :rows="2" maxlength="1000" />
                     </el-form-item>
                 </el-collapse-item>
@@ -137,7 +137,7 @@
         </el-form>
 
         <template #footer>
-            <el-button @click="$emit('update:modelValue', false)">{{ $t('cancel') || 'إلغاء' }}</el-button>
+            <el-button @click="$emit('update:modelValue', false)">{{ $t('cancel') }}</el-button>
             <el-button
                 v-if="dueAmount > 0"
                 type="success"
@@ -145,22 +145,25 @@
                 @click="submit(true)"
             >
                 <el-icon class="mr-1"><Checked /></el-icon>
-                {{ $t('collect_full_amount') || 'استلام المبلغ كاملاً' }}
+                {{ $t('collect_full_amount') }}
             </el-button>
             <el-button type="primary" :loading="paymentsStore.saving" @click="submit(false)">
-                {{ $t('save') || 'حفظ' }}
+                {{ $t('save') }}
             </el-button>
         </template>
     </el-dialog>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Checked } from '@element-plus/icons-vue';
 import { usePaymentsStore } from '@/stores/payments';
 import { useCustomersStore } from '@/stores/customers';
 import { invoicesApi } from '@/api/invoices';
+
+const { t } = useI18n();
 import {
     formatCurrency,
     paymentMethodLabel,
@@ -292,7 +295,7 @@ const onClosed = () => {
 
 const submit = async (full) => {
     if (!form.customer_id) {
-        ElMessage.warning('لا يمكن تحديد العميل لهذه الدفعة.');
+        ElMessage.warning(t('cannot_determine_payment_customer'));
         return;
     }
 
@@ -301,7 +304,7 @@ const submit = async (full) => {
         amount = Number(dueAmount.value.toFixed(2));
     }
     if (!amount || amount <= 0) {
-        ElMessage.warning('أدخل مبلغاً أكبر من صفر.');
+        ElMessage.warning(t('enter_amount_above_zero'));
         return;
     }
 
@@ -316,11 +319,11 @@ const submit = async (full) => {
             notes: form.notes || null,
         });
 
-        ElMessage.success('تم تسجيل الدفعة بنجاح.');
+        ElMessage.success(t('payment_recorded'));
         emit('update:modelValue', false);
         emit('saved');
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, 'تعذّر تسجيل الدفعة.'));
+        ElMessage.error(apiErrorMessage(error, t('failed_to_record_payment')));
     }
 };
 </script>

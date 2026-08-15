@@ -1,25 +1,25 @@
 <template>
     <div class="accounting-page accounting-index">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-calculator text-primary"></i> {{ $t('accounting_overview') || 'لوحة التحكم المحاسبية' }}</h1>
-                <p>متابعة أداء الدورة الدفترية، وتوازن الأستاذ، وإحصائيات الحسابات والقيود اليومية.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-calculator text-primary"
+            :title="$t('accounting_overview')"
+            :subtitle="$t('accounting_index_subtitle')"
+        >
+            <template #actions>
                 <el-button-group>
                     <router-link to="/admin/accounting/journal">
-                        <el-button type="primary" plain><i class="fas fa-book mr-1"></i> اليومية العامة</el-button>
+                        <el-button type="primary" plain><i class="fas fa-book mr-1"></i> {{ $t('general_journal') }}</el-button>
                     </router-link>
                     <router-link to="/admin/accounting/ledger">
-                        <el-button type="success" plain><i class="fas fa-list-ol mr-1"></i> دليل الحسابات</el-button>
+                        <el-button type="success" plain><i class="fas fa-list-ol mr-1"></i> {{ $t('chart_of_accounts') }}</el-button>
                     </router-link>
                     <router-link to="/admin/accounting/trial-balance">
-                        <el-button type="warning" plain><i class="fas fa-balance-scale mr-1"></i> ميزان المراجعة</el-button>
+                        <el-button type="warning" plain><i class="fas fa-balance-scale mr-1"></i> {{ $t('trial_balance') }}</el-button>
                     </router-link>
                 </el-button-group>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Cross-module consistency. Each module could already answer for
              itself; nothing asked the question across the system, so a single
@@ -29,12 +29,12 @@
             <template #header>
                 <div class="health-header">
                     <span class="card-title-txt">
-                        <i class="fas fa-heart-pulse"></i> سلامة النظام والتكامل بين الوحدات
+                        <i class="fas fa-heart-pulse"></i> {{ $t('system_integrity_checks') }}
                     </span>
                     <div class="health-header-right">
                         <span v-if="health.checked_at" class="health-time">آخر فحص {{ health.checked_at }}</span>
                         <el-button text size="small" :loading="healthLoading" @click="loadHealth">
-                            <i class="fas fa-sync-alt"></i> إعادة الفحص
+                            <i class="fas fa-sync-alt"></i> {{ $t('run_checks_again') }}
                         </el-button>
                     </div>
                 </div>
@@ -42,14 +42,13 @@
 
             <div v-if="health.is_healthy" class="health-clear">
                 <i class="fas fa-circle-check"></i>
-                جميع الفحوصات سليمة — الدفاتر متطابقة مع السجلات التشغيلية.
+                {{ $t('all_checks_passed') }}
             </div>
 
             <div v-else class="health-summary">
                 <i class="fas fa-triangle-exclamation"></i>
                 <span>
-                    <strong>{{ health.issue_count }}</strong> فحص يحتاج معالجة،
-                    يشمل <strong>{{ health.affected_records }}</strong> سجلاً.
+                    <strong>{{ health.issue_count }}</strong> {{ $t('checks_needing_attention') }} <strong>{{ health.affected_records }}</strong> {{ $t('records_suffix') }}
                 </span>
             </div>
 
@@ -74,9 +73,8 @@
         </el-card>
 
         <!-- Metric Indicators Row -->
-        <el-row :gutter="16" class="overview-cards">
+        <AdminStatGrid>
             <!-- Assets Card -->
-            <el-col :xs="24" :sm="12" :md="6">
                 <el-card shadow="hover" class="stat-card-wrapper">
                     <div class="stat-card-inner">
                         <div class="stat-icon-box blue-grad">
@@ -84,13 +82,11 @@
                         </div>
                         <div class="stat-details">
                             <h3>${{ parseFloat(assetsSum).toFixed(2) }}</h3>
-                            <p>إجمالي الأصول (Assets)</p>
+                            <p>{{ $t('total_assets_label') }}</p>
                         </div>
                     </div>
                 </el-card>
-            </el-col>
             <!-- Liabilities Card -->
-            <el-col :xs="24" :sm="12" :md="6">
                 <el-card shadow="hover" class="stat-card-wrapper">
                     <div class="stat-card-inner">
                         <div class="stat-icon-box orange-grad">
@@ -98,13 +94,11 @@
                         </div>
                         <div class="stat-details">
                             <h3>${{ parseFloat(liabilitiesSum).toFixed(2) }}</h3>
-                            <p>إجمالي الخصوم (Liabilities)</p>
+                            <p>{{ $t('total_liabilities_label') }}</p>
                         </div>
                     </div>
                 </el-card>
-            </el-col>
             <!-- Equity Card -->
-            <el-col :xs="24" :sm="12" :md="6">
                 <el-card shadow="hover" class="stat-card-wrapper">
                     <div class="stat-card-inner">
                         <div class="stat-icon-box green-grad">
@@ -112,13 +106,11 @@
                         </div>
                         <div class="stat-details">
                             <h3>${{ parseFloat(equitySum).toFixed(2) }}</h3>
-                            <p>حقوق الملكية (Equity)</p>
+                            <p>{{ $t('type_equity') }}</p>
                         </div>
                     </div>
                 </el-card>
-            </el-col>
             <!-- Balance Check Card -->
-            <el-col :xs="24" :sm="12" :md="6">
                 <el-card shadow="hover" class="stat-card-wrapper">
                     <div class="stat-card-inner">
                         <div class="stat-icon-boxpurple-grad" :class="isBalanced ? 'purple-grad' : 'red-grad'">
@@ -126,12 +118,11 @@
                         </div>
                         <div class="stat-details">
                             <h3>{{ isBalanced ? 'متوازن' : 'غير متوازن' }}</h3>
-                            <p>حالة الدورة الدفترية</p>
+                            <p>{{ $t('bookkeeping_cycle_state') }}</p>
                         </div>
                     </div>
                 </el-card>
-            </el-col>
-        </el-row>
+        </AdminStatGrid>
 
         <el-row :gutter="20" class="mt-4">
             <!-- Left: Structure & Distribution -->
@@ -139,24 +130,24 @@
                 <el-card shadow="hover" class="mb-4">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-chart-pie text-muted"></i> هيكل الحسابات وتوزيع الأرصـدة</span>
+                            <span><i class="fas fa-chart-pie text-muted"></i> {{ $t('account_structure_and_balances') }}</span>
                         </div>
                     </template>
                     <div class="distribution-block">
                         <div class="dist-row">
-                            <div class="dist-label"><span>الأصول (Assets)</span><span>${{ parseFloat(assetsSum).toFixed(2) }}</span></div>
+                            <div class="dist-label"><span>{{ $t('assets_group') }}</span><span>${{ parseFloat(assetsSum).toFixed(2) }}</span></div>
                             <el-progress :percentage="calculatePercentage(assetsSum)" status="success" />
                         </div>
                         <div class="dist-row">
-                            <div class="dist-label"><span>الخصوم (Liabilities)</span><span>${{ parseFloat(liabilitiesSum).toFixed(2) }}</span></div>
+                            <div class="dist-label"><span>{{ $t('liabilities_group') }}</span><span>${{ parseFloat(liabilitiesSum).toFixed(2) }}</span></div>
                             <el-progress :percentage="calculatePercentage(liabilitiesSum)" status="warning" />
                         </div>
                         <div class="dist-row">
-                            <div class="dist-label"><span>حقوق الملكية (Equity)</span><span>${{ parseFloat(equitySum).toFixed(2) }}</span></div>
+                            <div class="dist-label"><span>{{ $t('type_equity') }}</span><span>${{ parseFloat(equitySum).toFixed(2) }}</span></div>
                             <el-progress :percentage="calculatePercentage(equitySum)" />
                         </div>
                         <div class="dist-row">
-                            <div class="dist-label"><span>الإيرادات (Revenue)</span><span>${{ parseFloat(revenueSum).toFixed(2) }}</span></div>
+                            <div class="dist-label"><span>{{ $t('revenue_group') }}</span><span>${{ parseFloat(revenueSum).toFixed(2) }}</span></div>
                             <el-progress :percentage="calculatePercentage(revenueSum)" status="exception" />
                         </div>
                     </div>
@@ -166,16 +157,16 @@
                 <el-card shadow="hover">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-info-circle text-muted"></i> ملخص دليل الحسابات</span>
+                            <span><i class="fas fa-info-circle text-muted"></i> {{ $t('chart_of_accounts_summary') }}</span>
                         </div>
                     </template>
                     <div class="summary-list">
                         <div class="summary-item">
-                            <span>عدد حسابات دفتر الأستاذ:</span>
+                            <span>{{ $t('ledger_accounts_count_label') }}</span>
                             <strong>{{ accountsStore.accounts.length }} حساب</strong>
                         </div>
                         <div class="summary-item">
-                            <span>إجمالي الحركات المحاسبية الموثقة:</span>
+                            <span>{{ $t('posted_entries_count_label') }}</span>
                             <strong>{{ journalStore.entries.length }} قيد</strong>
                         </div>
                     </div>
@@ -187,7 +178,7 @@
                 <el-card shadow="hover" class="table-panel">
                     <template #header>
                         <div class="card-header">
-                            <span><i class="fas fa-history text-muted"></i> آخر القيود المحاسبية المسجلة</span>
+                            <span><i class="fas fa-history text-muted"></i> {{ $t('latest_journal_entries') }}</span>
                         </div>
                     </template>
 
@@ -196,15 +187,15 @@
                     </div>
                     <div v-else>
                         <el-table :data="recentEntries" style="width: 100%" stripe size="small">
-                            <el-table-column prop="entry_number" label="رقم القيد" width="110" />
-                            <el-table-column prop="entry_date" label="التاريخ" width="110" />
-                            <el-table-column prop="description" label="البيان/الوصف" min-width="150" show-overflow-tooltip />
-                            <el-table-column prop="total_debit" label="إجمالي المدين" width="120">
+                            <el-table-column prop="entry_number" :label="$t('entry_number')" width="110" />
+                            <el-table-column prop="entry_date" :label="$t('date')" width="110" />
+                            <el-table-column prop="description" :label="$t('narration_description')" min-width="150" show-overflow-tooltip />
+                            <el-table-column prop="total_debit" :label="$t('total_debit_amount')" width="120">
                                 <template #default="{ row }">
                                     <span class="text-success">${{ parseFloat(row.total_debit).toFixed(2) }}</span>
                                 </template>
                             </el-table-column>
-                            <el-table-column prop="total_credit" label="إجمالي الدائن" width="120">
+                            <el-table-column prop="total_credit" :label="$t('total_credit_amount')" width="120">
                                 <template #default="{ row }">
                                     <span class="text-warning">${{ parseFloat(row.total_credit).toFixed(2) }}</span>
                                 </template>
@@ -212,7 +203,7 @@
                         </el-table>
 
                         <div v-if="!recentEntries.length" class="empty-state" style="padding: 2rem; text-align: center; color: var(--text-muted);">
-                            لا توجد قيود يومية مسجلة حالياً.
+                            {{ $t('no_journal_entries_yet') }}
                         </div>
                     </div>
                 </el-card>
@@ -226,6 +217,8 @@ import { ref, onMounted, computed } from 'vue';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { useJournalEntriesStore } from '@/stores/journalEntries';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const accountsStore = useLedgerAccountsStore();
 const journalStore = useJournalEntriesStore();

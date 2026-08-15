@@ -1,45 +1,43 @@
 <template>
     <div class="sales-page sales-customers">
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-users"></i> {{ $t('customers') || 'العملاء' }}</h1>
-                <p>{{ $t('customer_database_with_clear_font') || 'قاعدة عملاء المبيعات مع الأرصدة وإجراءات سريعة.' }}</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            icon="fas fa-users"
+            :title="$t('customers')"
+            :subtitle="$t('customer_database_with_clear_font')"
+        >
+            <template #actions>
                 <el-input
                     v-model="searchQuery"
-                    :placeholder="$t('search_by_customer_name_email_or_phone') || 'ابحث بالاسم أو البريد أو الهاتف...'"
+                    :placeholder="$t('search_by_customer_name_email_or_phone')"
                     clearable
                     class="search-input"
                     :prefix-icon="Search"
                 />
                 <el-button :icon="Refresh" :loading="store.loading" @click="reload" />
                 <el-button type="primary" :icon="Plus" @click="router.push('/admin/crm/customers/create')">
-                    {{ $t('add_customer') || 'عميل جديد' }}
+                    {{ $t('add_customer') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col v-for="card in summaryCards" :key="card.key" :xs="12" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card">
-                    <div class="stat-inner">
-                        <div class="stat-icon" :class="card.tone">
-                            <i class="fas" :class="card.icon"></i>
-                        </div>
-                        <div class="stat-details">
-                            <h3>{{ card.value }}</h3>
-                            <p>{{ card.label }}</p>
-                        </div>
+        <AdminStatGrid>
+            <el-card v-for="card in summaryCards" :key="card.key" shadow="hover" class="stat-card">
+                <div class="stat-inner">
+                    <div class="stat-icon" :class="card.tone">
+                        <i class="fas" :class="card.icon"></i>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-details">
+                        <h3>{{ card.value }}</h3>
+                        <p>{{ card.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
                 <div class="card-header">
-                    <span><i class="fas fa-address-book"></i> {{ $t('customer_list') || 'قائمة العملاء' }}</span>
+                    <span><i class="fas fa-address-book"></i> {{ $t('customer_list') }}</span>
                     <span class="result-count">{{ filteredCustomers.length }} / {{ store.customers.length }}</span>
                 </div>
             </template>
@@ -49,23 +47,23 @@
 
             <template v-else>
                 <el-table v-if="filteredCustomers.length" :data="filteredCustomers" style="width:100%" stripe>
-                    <el-table-column :label="$t('name') || 'الاسم'" min-width="170">
+                    <el-table-column :label="$t('name')" min-width="170">
                         <template #default="{ row }">
                             <button type="button" class="record-link" @click="viewCustomer(row)">
                                 {{ row.name }}
                             </button>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="company" :label="$t('company') || 'الشركة'" min-width="150">
+                    <el-table-column prop="company" :label="$t('company')" min-width="150">
                         <template #default="{ row }">{{ row.company || '—' }}</template>
                     </el-table-column>
-                    <el-table-column :label="$t('email') || 'البريد'" min-width="200">
+                    <el-table-column :label="$t('email')" min-width="200">
                         <template #default="{ row }">
                             <a v-if="row.email" :href="`mailto:${row.email}`" class="contact-link">{{ row.email }}</a>
                             <span v-else class="muted">—</span>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('phone') || 'الهاتف'" width="160">
+                    <el-table-column :label="$t('phone')" width="160">
                         <template #default="{ row }">
                             <a v-if="row.phone" :href="`tel:${row.phone}`" class="contact-link" dir="ltr">{{ row.phone }}</a>
                             <span v-else class="muted">—</span>
@@ -74,7 +72,7 @@
 
                     <!-- Balance is what makes this a sales screen rather than a
                          contact list: it shows who owes money. -->
-                    <el-table-column :label="$t('balance') || 'الرصيد'" width="150">
+                    <el-table-column :label="$t('balance')" width="150">
                         <template #default="{ row }">
                             <strong class="amount" :class="balanceTone(row)">
                                 {{ formatCurrency(row.balance) }}
@@ -82,15 +80,15 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('actions') || 'الإجراءات'" width="150" align="center" fixed="right">
+                    <el-table-column :label="$t('actions')" width="150" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button-group>
-                                <el-tooltip :content="$t('view_details') || 'عرض الملف'" placement="top">
+                                <el-tooltip :content="$t('view_details')" placement="top">
                                     <el-button size="small" plain @click="viewCustomer(row)">
                                         <i class="fas fa-eye"></i>
                                     </el-button>
                                 </el-tooltip>
-                                <el-tooltip :content="$t('record_payment') || 'تسجيل دفعة'" placement="top">
+                                <el-tooltip :content="$t('record_payment')" placement="top">
                                     <el-button size="small" type="success" plain @click="openPaymentFor(row)">
                                         <i class="fas fa-money-bill-wave"></i>
                                     </el-button>
@@ -103,8 +101,8 @@
                 <el-empty
                     v-else
                     :description="store.customers.length
-                        ? ($t('there_are_no_clients_matching') || 'لا يوجد عملاء مطابقون للبحث')
-                        : ($t('no_customers_yet') || 'لا يوجد عملاء بعد')"
+                        ? ($t('there_are_no_clients_matching'))
+                        : ($t('no_customers_yet'))"
                 />
 
                 <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-bar">
@@ -135,6 +133,8 @@ import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import { formatCurrency, sumBy } from '@/utils/sales';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const { t } = useI18n();
 

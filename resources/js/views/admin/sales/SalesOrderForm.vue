@@ -1,33 +1,18 @@
 <template>
     <div class="sales-order-form-page">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1>
-                    <el-icon><Document /></el-icon>
-                    {{ isEdit ? 'تعديل طلب البيع' : 'إنشاء طلب بيع جديد' }}
-                    <!-- Editing has a subject; the page used to name only the verb. -->
-                    <span v-if="isEdit && loadedOrder" class="header-order-no">{{ loadedOrder.order_number }}</span>
-                    <el-tag v-if="isEdit && loadedOrder" :type="statusTagType(loadedOrder.status)" effect="dark">
-                        {{ statusLabel(loadedOrder.status) }}
-                    </el-tag>
-                </h1>
-                <p v-if="isEdit && loadedOrder">
-                    {{ loadedOrder.customer?.name || 'بلا عميل' }}
-                    · أُنشئ {{ formatDate(loadedOrder.order_date) }}
-                    · {{ formatCurrency(loadedOrder.total) }}
-                </p>
-                <p v-else>تجهيز طلب بيع متكامل على مراحل متسلسلة لضمان دقة العمليات وحسابات المخازن والعملاء.</p>
-            </div>
-            <div class="header-actions">
+        <AdminPageHeader
+            :title="isEdit ? $t('edit_sales_order') : $t('create_sales_order')"
+        >
+            <template #actions>
                 <el-button v-if="!isLocked" @click="showShortcutsHelp = true" :icon="Key" class="shortcuts-btn">
-                    اختصارات لوحة المفاتيح
+                    {{ $t('keyboard_shortcuts') }}
                 </el-button>
                 <el-button @click="goBack" :icon="ArrowRight" class="back-btn">
-                    الرجوع لطلبات البيع
+                    {{ $t('back_to_sales_orders') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
         <!-- Loading the order being edited -->
         <el-skeleton v-if="isEdit && loadingOrder" :rows="8" animated class="mb-4" />
@@ -41,73 +26,72 @@
         -->
         <div v-else-if="isLocked" class="locked-panel">
             <div class="locked-icon"><i class="fas fa-lock"></i></div>
-            <h2>الطلب محمي من التعديل بعد التأكيد</h2>
+            <h2>{{ $t('order_locked_after_confirmation') }}</h2>
             <p class="locked-reason">{{ lockedReason }}</p>
 
             <div class="locked-facts" v-if="loadedOrder">
-                <div><span>الحالة</span><strong>{{ statusLabel(loadedOrder.status) }}</strong></div>
-                <div><span>العميل</span><strong>{{ loadedOrder.customer?.name || '—' }}</strong></div>
-                <div><span>الإجمالي</span><strong>{{ formatCurrency(loadedOrder.total) }}</strong></div>
+                <div><span>{{ $t('status') }}</span><strong>{{ statusLabel(loadedOrder.status) }}</strong></div>
+                <div><span>{{ $t('customer') }}</span><strong>{{ loadedOrder.customer?.name || '—' }}</strong></div>
+                <div><span>{{ $t('grand_total') }}</span><strong>{{ formatCurrency(loadedOrder.total) }}</strong></div>
             </div>
 
-            <p class="locked-hint">ما يمكنك فعله بدلاً من ذلك:</p>
+            <p class="locked-hint">{{ $t('what_you_can_do_instead') }}</p>
             <div class="locked-actions">
                 <el-button type="primary" @click="goBack">
-                    <i class="fas fa-eye"></i> فتح الطلب لمتابعة مراحله
+                    <i class="fas fa-eye"></i> {{ $t('open_order_to_follow_stages') }}
                 </el-button>
                 <el-button v-if="loadedOrder?.status !== 'cancelled'" type="danger" plain @click="goBack">
-                    <i class="fas fa-ban"></i> إلغاء الطلب وعكس آثاره
+                    <i class="fas fa-ban"></i> {{ $t('cancel_order_and_reverse') }}
                 </el-button>
             </div>
             <p class="locked-note">
-                بعد التأكيد يُحجز المخزون وتُنشأ الفاتورة وتُرحَّل القيود. لذلك يُمنع تعديل البنود هنا
-                لتجنّب أخطاء محاسبية — الإلغاء يعكس الآثار ثم يمكن إنشاء طلب جديد بالبنود الصحيحة.
+                {{ $t('why_items_are_locked') }}
             </p>
         </div>
 
         <template v-else>
 
         <!-- Keyboard Shortcuts Help Dialog -->
-        <el-dialog v-model="showShortcutsHelp" title="اختصارات لوحة المفاتيح" width="600px" class="shortcuts-dialog">
+        <el-dialog v-model="showShortcutsHelp" :title="$t('keyboard_shortcuts')" width="600px" class="shortcuts-dialog">
             <div class="shortcuts-grid">
                 <div class="shortcut-item">
                     <div class="shortcut-key">Ctrl + B</div>
-                    <div class="shortcut-desc">التركيز على البحث عن المنتجات</div>
+                    <div class="shortcut-desc">{{ $t('focus_product_search') }}</div>
                 </div>
                 <div class="shortcut-item">
                     <div class="shortcut-key">Ctrl + Enter</div>
-                    <div class="shortcut-desc">التالي / تأكيد الطلب</div>
+                    <div class="shortcut-desc">{{ $t('next_or_confirm_order') }}</div>
                 </div>
                 <div class="shortcut-item">
                     <div class="shortcut-key">Escape</div>
-                    <div class="shortcut-desc">إغلاق قائمة البحث</div>
+                    <div class="shortcut-desc">{{ $t('close_search_list') }}</div>
                 </div>
                 <div class="shortcut-item">
                     <div class="shortcut-key">Ctrl + N</div>
-                    <div class="shortcut-desc">تفريغ النموذج</div>
+                    <div class="shortcut-desc">{{ $t('clear_the_form') }}</div>
                 </div>
                 <div class="shortcut-item">
                     <div class="shortcut-key">↑ / ↓</div>
-                    <div class="shortcut-desc">التنقل في نتائج البحث</div>
+                    <div class="shortcut-desc">{{ $t('move_through_results') }}</div>
                 </div>
                 <div class="shortcut-item">
                     <div class="shortcut-key">Enter</div>
-                    <div class="shortcut-desc">إضافة المنتج المحدد</div>
+                    <div class="shortcut-desc">{{ $t('add_selected_product') }}</div>
                 </div>
             </div>
         </el-dialog>
 
         <!-- Steps Indicator -->
         <el-steps :active="activeStep" finish-status="success" align-center class="mb-4 sales-steps">
-            <el-step title="اختيار المنتجات" description="تحديد المنتجات والوحدات والكميات" />
-            <el-step title="بيانات العميل والشحن" description="تخصيص العميل وتفاصيل التسليم والمالية" />
-            <el-step title="معاينة وتأكيد" description="مراجعة الحسابات وتأكيد حفظ طلب البيع" />
+            <el-step :title="$t('choose_products')" :description="$t('set_products_units_quantities')" />
+            <el-step :title="$t('customer_and_shipping_data')" :description="$t('assign_customer_delivery_finance')" />
+            <el-step :title="$t('preview_and_confirm')" :description="$t('review_totals_and_save')" />
         </el-steps>
 
         <!-- Validation Errors -->
         <el-alert
             v-if="formErrors.length"
-            title="يرجى إصلاح الأخطاء التالية:"
+            :title="$t('please_fix_these_errors')"
             type="error"
             :closable="true"
             show-icon
@@ -128,24 +112,24 @@
                     <div class="search-container">
                         <div class="search-header">
                             <el-icon><Search /></el-icon>
-                            <span>البحث عن المنتجات وتجهيز الأصناف</span>
+                            <span>{{ $t('search_products_and_build_items') }}</span>
                             <div class="search-filters">
-                                <el-select v-model="searchCategory" placeholder="الفئة" size="small" clearable @change="onSearchInput" class="filter-select">
-                                    <el-option label="جميع الفئات" :value="null" />
+                                <el-select v-model="searchCategory" :placeholder="$t('category')" size="small" clearable @change="onSearchInput" class="filter-select">
+                                    <el-option :label="$t('all_categories')" :value="null" />
                                     <el-option v-for="cat in categories" :key="cat.id" :label="cat.name_ar || cat.name" :value="cat.id" />
                                 </el-select>
-                                <el-select v-model="searchStockFilter" placeholder="المخزون" size="small" clearable @change="onSearchInput" class="filter-select">
-                                    <el-option label="الكل" :value="null" />
-                                    <el-option label="متوفر" value="available" />
-                                    <el-option label="منخفض" value="low" />
-                                    <el-option label="نفذ" value="out" />
+                                <el-select v-model="searchStockFilter" :placeholder="$t('nav_inventory')" size="small" clearable @change="onSearchInput" class="filter-select">
+                                    <el-option :label="$t('all')" :value="null" />
+                                    <el-option :label="$t('in_stock')" value="available" />
+                                    <el-option :label="$t('low')" value="low" />
+                                    <el-option :label="$t('out_of_stock_short')" value="out" />
                                 </el-select>
                             </div>
                         </div>
                         <div class="product-search-wrapper">
                             <el-input
                                 v-model="searchQuery"
-                                placeholder="ابحث عن منتج بالاسم، الرمز SKU أو الباركود..."
+                                :placeholder="$t('search_product_by_name_sku_barcode')"
                                 size="large"
                                 clearable
                                 @input="onSearchInput"
@@ -161,7 +145,7 @@
                                     <el-icon><Search /></el-icon>
                                 </template>
                                 <template #suffix>
-                                    <el-tooltip content="تفعيل محاكي الباركود" placement="top">
+                                    <el-tooltip :content="$t('enable_barcode_simulator')" placement="top">
                                         <el-button
                                             :icon="Ticket"
                                             circle
@@ -178,7 +162,7 @@
                                 <div v-if="showResults && (searchResults.length || searchLoading)" class="search-dropdown">
                                     <div v-if="searchLoading" class="search-loading">
                                         <el-icon class="is-loading"><Loading /></el-icon>
-                                        <span>جاري البحث عن المنتجات...</span>
+                                        <span>{{ $t('searching_products') }}</span>
                                     </div>
                                     <div v-else-if="searchResults.length" class="search-results-list">
                                         <div
@@ -201,9 +185,9 @@
                                                 <div class="product-meta">
                                                     <span class="stock-indicator" :class="{ 'low-stock': product.stock_quantity <= 5, 'out-of-stock': product.stock_quantity === 0 }">
                                                         <el-icon><Box /></el-icon> 
-                                                        <span>{{ product.stock_quantity }} وحدة متوفرة</span>
-                                                        <el-tag v-if="product.stock_quantity <= 5 && product.stock_quantity > 0" type="warning" size="small" round>مخزون منخفض</el-tag>
-                                                        <el-tag v-if="product.stock_quantity === 0" type="danger" size="small" round>نفذ من المخزن</el-tag>
+                                                        <span>{{ $t('units_available', { count: product.stock_quantity }) }}</span>
+                                                        <el-tag v-if="product.stock_quantity <= 5 && product.stock_quantity > 0" type="warning" size="small" round>{{ $t('low_stock') }}</el-tag>
+                                                        <el-tag v-if="product.stock_quantity === 0" type="danger" size="small" round>{{ $t('out_of_stock') }}</el-tag>
                                                     </span>
                                                 </div>
                                             </div>
@@ -225,8 +209,8 @@
                                     <div v-else class="no-results">
                                         <div class="no-results-content">
                                             <el-icon :size="48"><WarningFilled /></el-icon>
-                                            <h4>لا توجد نتائج مطابقة</h4>
-                                            <p>يرجى تجربة كلمات بحث أخرى أو التأكد من تهجئة اسم المنتج.</p>
+                                            <h4>{{ $t('no_matching_results') }}</h4>
+                                            <p>{{ $t('try_other_search_terms') }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -240,22 +224,22 @@
                             <div class="card-header">
                                 <div class="header-left">
                                     <el-icon><ShoppingCart /></el-icon>
-                                    <span>أصناف طلب البيع المختارة</span>
+                                    <span>{{ $t('selected_order_items') }}</span>
                                 </div>
                                 <div class="header-right">
-                                    <el-tag type="primary" round>{{ items.length }} أصناف</el-tag>
+                                    <el-tag type="primary" round>{{ $t('items_count_label', { count: items.length }) }}</el-tag>
                                     <el-dropdown @command="handleQuickAction" trigger="click" class="quick-actions-dropdown">
                                         <el-button size="small" :icon="MoreFilled" circle />
                                         <template #dropdown>
                                             <el-dropdown-menu>
                                                 <el-dropdown-item command="duplicate-last" :disabled="items.length === 0">
-                                                    <el-icon><CopyDocument /></el-icon> تكرار آخر صنف
+                                                    <el-icon><CopyDocument /></el-icon> {{ $t('duplicate_last_item') }}
                                                 </el-dropdown-item>
                                                 <el-dropdown-item command="clear-all" :disabled="items.length === 0">
-                                                    <el-icon><Delete /></el-icon> تفريغ الكل
+                                                    <el-icon><Delete /></el-icon> {{ $t('clear_all') }}
                                                 </el-dropdown-item>
                                                 <el-dropdown-item command="save-draft">
-                                                    <el-icon><DocumentCopy /></el-icon> حفظ كمسودة
+                                                    <el-icon><DocumentCopy /></el-icon> {{ $t('save_as_draft') }}
                                                 </el-dropdown-item>
                                             </el-dropdown-menu>
                                         </template>
@@ -266,32 +250,32 @@
 
                         <div v-if="items.length === 0" class="empty-items">
                             <el-icon :size="48"><ShoppingCart /></el-icon>
-                            <p>لم يتم إضافة أي منتج للطلب بعد.</p>
-                            <p class="hint">استخدم خانة البحث لإضافة المنتجات وتحديد الكميات والوحدات.</p>
+                            <p>{{ $t('no_products_added_yet') }}</p>
+                            <p class="hint">{{ $t('use_search_to_add_items') }}</p>
                         </div>
 
                         <div v-else class="items-table-wrapper">
                             <table class="items-table">
                                 <thead>
                                     <tr>
-                                        <th>المنتج / الصنف</th>
-                                        <th>الوحدة</th>
-                                        <th>الكمية</th>
-                                        <th>سعر الوحدة</th>
-                                        <th>الإجمالي</th>
+                                        <th>{{ $t('product_item') }}</th>
+                                        <th>{{ $t('unity') }}</th>
+                                        <th>{{ $t('quantity') }}</th>
+                                        <th>{{ $t('unit_price') }}</th>
+                                        <th>{{ $t('grand_total') }}</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="(item, index) in items" :key="item.product_id" class="item-table-row">
-                                        <td class="product-cell" data-label="المنتج">
+                                        <td class="product-cell" :data-label="$t('product')">
                                             <div class="product-name">{{ item.name }}</div>
                                             <div class="product-sku" v-if="item.sku">SKU: {{ item.sku }}</div>
                                         </td>
-                                        <td class="unit-cell" data-label="الوحدة">
+                                        <td class="unit-cell" :data-label="$t('unity')">
                                             <el-select
                                                 v-model="item.selectedUnit"
-                                                placeholder="اختر الوحدة"
+                                                :placeholder="$t('select_unit')"
                                                 size="small"
                                                 @change="onUnitChange(index)"
                                                 value-key="id"
@@ -308,7 +292,7 @@
                                                 <el-icon><Ticket /></el-icon> {{ item.selectedUnit.barcode }}
                                             </div>
                                         </td>
-                                        <td class="qty-cell" data-label="الكمية">
+                                        <td class="qty-cell" :data-label="$t('quantity')">
                                             <div class="qty-control">
                                                 <el-button
                                                     :icon="Minus"
@@ -333,7 +317,7 @@
                                                 />
                                             </div>
                                         </td>
-                                        <td class="price-cell" data-label="سعر الوحدة">
+                                        <td class="price-cell" :data-label="$t('unit_price')">
                                             <el-input-number
                                                 v-model="item.price"
                                                 :min="0"
@@ -346,7 +330,7 @@
                                                  the configured currency shown everywhere else on the row. -->
                                             <span class="currency">{{ currencyCode }}</span>
                                         </td>
-                                        <td class="total-cell" data-label="الإجمالي">
+                                        <td class="total-cell" :data-label="$t('grand_total')">
                                             {{ formatCurrency(item.price * item.quantity) }}
                                         </td>
                                         <td class="action-cell" data-label="">
@@ -371,17 +355,17 @@
                         <template #header>
                             <div class="card-header">
                                 <el-icon><Wallet /></el-icon>
-                                <span>خلاصة الأصناف</span>
+                                <span>{{ $t('items_summary') }}</span>
                             </div>
                         </template>
                         <div class="summary-body">
                             <div class="summary-row">
-                                <span class="label">المجموع الفرعي للأصناف</span>
+                                <span class="label">{{ $t('items_subtotal_amount') }}</span>
                                 <span class="value">{{ formatCurrency(subtotal) }}</span>
                             </div>
                             <div class="summary-row">
-                                <span class="label">إجمالي عدد السلع</span>
-                                <span class="value">{{ totalItemsQuantity }} قطعة</span>
+                                <span class="label">{{ $t('total_goods_count') }}</span>
+                                <span class="value">{{ $t('pieces_count', { count: totalItemsQuantity }) }}</span>
                             </div>
                             <el-divider />
                             <el-button
@@ -393,7 +377,7 @@
                                 :loading="submitting"
                                 @click="submitSalesOrder({ itemsOnly: true })"
                             >
-                                حفظ تعديلات البنود
+                                {{ $t('save_item_changes') }}
                             </el-button>
                             <el-button
                                 type="primary"
@@ -402,7 +386,7 @@
                                 :disabled="items.length === 0"
                                 @click="goToStep(1)"
                             >
-                                {{ isEdit ? 'التالي: بيانات العميل والشحن' : 'التالي: بيانات العميل والشحن' }}
+                                {{ $t('next_customer_and_shipping') }}
                                 <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
                             </el-button>
                         </div>
@@ -418,13 +402,13 @@
                         <template #header>
                             <div class="card-header">
                                 <el-icon><User /></el-icon>
-                                <span>اختيار العميل المشتري للطلب</span>
+                                <span>{{ $t('choose_the_buying_customer') }}</span>
                             </div>
                         </template>
 
                         <el-select
                             v-model="form.customer_id"
-                            placeholder="ابحث واختر العميل المشتري..."
+                            :placeholder="$t('search_and_choose_customer')"
                             filterable
                             clearable
                             size="large"
@@ -471,18 +455,18 @@
                         <template #header>
                             <div class="card-header">
                                 <el-icon><Notebook /></el-icon>
-                                <span>جدولة الشحن وعناوين التسليم</span>
+                                <span>{{ $t('shipping_schedule_and_addresses') }}</span>
                             </div>
                         </template>
                         <div class="delivery-card-body">
                             <el-row :gutter="20">
                                 <el-col :span="12">
                                     <div class="summary-input-row mb-3">
-                                        <label>تاريخ الطلب</label>
+                                        <label>{{ $t('order_date') }}</label>
                                         <el-date-picker
                                             v-model="form.order_date"
                                             type="date"
-                                            placeholder="تاريخ الطلب"
+                                            :placeholder="$t('order_date')"
                                             format="YYYY-MM-DD"
                                             value-format="YYYY-MM-DD"
                                             class="w-full"
@@ -491,11 +475,11 @@
                                 </el-col>
                                 <el-col :span="12">
                                     <div class="summary-input-row mb-3">
-                                        <label>التسليم المتوقع</label>
+                                        <label>{{ $t('expected_delivery') }}</label>
                                         <el-date-picker
                                             v-model="form.expected_delivery"
                                             type="date"
-                                            placeholder="تاريخ التسليم المتوقع"
+                                            :placeholder="$t('expected_delivery_date')"
                                             format="YYYY-MM-DD"
                                             value-format="YYYY-MM-DD"
                                             class="w-full"
@@ -504,12 +488,12 @@
                                 </el-col>
                             </el-row>
                             <div class="summary-input-row">
-                                <label>عنوان التسليم والشحن</label>
+                                <label>{{ $t('delivery_and_shipping_address') }}</label>
                                 <el-input
                                     v-model="form.shipping_address"
                                     type="textarea"
                                     :rows="3"
-                                    placeholder="أدخل تفاصيل ومكان شحن البضاعة للعميل..."
+                                    :placeholder="$t('enter_shipping_details')"
                                 />
                             </div>
                         </div>
@@ -520,32 +504,32 @@
                         <template #header>
                             <div class="card-header">
                                 <el-icon><Plus /></el-icon>
-                                <span>مصاريف شحن وتوصيل إضافية للطلب</span>
+                                <span>{{ $t('extra_shipping_charges') }}</span>
                             </div>
                         </template>
                         <div class="expenses-section">
                             <div class="expenses-header">
-                                <span>قائمة بنود المصاريف الإدارية والشحن</span>
+                                <span>{{ $t('charges_line_list') }}</span>
                                 <el-button type="primary" size="small" @click="addExpense">
-                                    <el-icon><Plus /></el-icon> إضافة مصاريف
+                                    <el-icon><Plus /></el-icon> {{ $t('add_charge') }}
                                 </el-button>
                             </div>
                             <div v-if="form.expenses.length === 0" class="empty-expenses-box">
-                                لا توجد أي مصاريف إضافية مضافة على هذا الطلب حالياً.
+                                {{ $t('no_extra_charges_yet') }}
                             </div>
                             <div v-else class="expenses-list">
                                 <div v-for="(expense, index) in form.expenses" :key="index" class="expense-item">
                                     <el-input
                                         v-model="expense.description"
-                                        placeholder="الوصف / البيان (مثال: شحن سريع)"
+                                        :placeholder="$t('charge_description_placeholder')"
                                         size="small"
                                         class="expense-description"
                                     />
                                     <el-select v-model="expense.category" size="small" class="expense-category">
-                                        <el-option value="shipping" label="شحن وتوصيل" />
-                                        <el-option value="packaging" label="تغليف وتحضير" />
-                                        <el-option value="handling" label="نقل وتداول" />
-                                        <el-option value="other" label="أخرى" />
+                                        <el-option value="shipping" :label="$t('shipping_and_delivery')" />
+                                        <el-option value="packaging" :label="$t('packing_and_preparation')" />
+                                        <el-option value="handling" :label="$t('transport_and_handling')" />
+                                        <el-option value="other" :label="$t('subject_other')" />
                                     </el-select>
                                     <el-input-number
                                         v-model="expense.amount"
@@ -574,18 +558,18 @@
                         <template #header>
                             <div class="card-header">
                                 <el-icon><Wallet /></el-icon>
-                                <span>الحسابات والمالية</span>
+                                <span>{{ $t('accounts_and_finance') }}</span>
                             </div>
                         </template>
                         <div class="summary-body">
                             <div class="summary-row">
-                                <span class="label">المجموع الفرعي للأصناف</span>
+                                <span class="label">{{ $t('items_subtotal_amount') }}</span>
                                 <span class="value">{{ formatCurrency(subtotal) }}</span>
                             </div>
                             
                             <div class="summary-inputs">
                                 <div class="summary-input-row">
-                                    <label>حالة الطلب</label>
+                                    <label>{{ $t('order_status') }}</label>
                                     <el-select v-model="form.status" size="small" class="status-select">
                                         <el-option
                                             v-for="status in availableStatuses"
@@ -600,7 +584,7 @@
                                     </el-select>
                                 </div>
                                 <div class="summary-input-row">
-                                    <label>خصم إضافي</label>
+                                    <label>{{ $t('extra_discount') }}</label>
                                     <el-input-number
                                         v-model="form.discount"
                                         :min="0"
@@ -610,7 +594,7 @@
                                     />
                                 </div>
                                 <div class="summary-input-row">
-                                    <label>ضريبة إضافية</label>
+                                    <label>{{ $t('extra_tax') }}</label>
                                     <el-input-number
                                         v-model="form.tax"
                                         :min="0"
@@ -620,11 +604,11 @@
                                     />
                                 </div>
                                 <div class="summary-input-row">
-                                    <label>طريقة الدفع</label>
+                                    <label>{{ $t('payment_method') }}</label>
                                     <el-select v-model="form.payment_method" size="small">
-                                        <el-option label="نقداً" value="cash" />
-                                        <el-option label="بطاقة ائتمانية" value="card" />
-                                        <el-option label="تحويل بنكي" value="transfer" />
+                                        <el-option :label="$t('payment_method_cash')" value="cash" />
+                                        <el-option :label="$t('credit_card')" value="card" />
+                                        <el-option :label="$t('bank_transfer')" value="transfer" />
                                     </el-select>
                                 </div>
                             </div>
@@ -632,22 +616,22 @@
                             <el-divider />
 
                             <div class="summary-row discount">
-                                <span class="label">إجمالي الخصم</span>
+                                <span class="label">{{ $t('total_discount') }}</span>
                                 <span class="value negative">-{{ formatCurrency(form.discount) }}</span>
                             </div>
                             <div class="summary-row tax">
-                                <span class="label">إجمالي الضريبة</span>
+                                <span class="label">{{ $t('total_tax') }}</span>
                                 <span class="value positive">+{{ formatCurrency(form.tax) }}</span>
                             </div>
                             <div class="summary-row expenses" v-if="totalExpenses > 0">
-                                <span class="label">مصاريف إضافية</span>
+                                <span class="label">{{ $t('additional_expenses') }}</span>
                                 <span class="value positive">+{{ formatCurrency(totalExpenses) }}</span>
                             </div>
 
                             <el-divider />
 
                             <div class="summary-row total">
-                                <span class="label">المبلغ النهائي</span>
+                                <span class="label">{{ $t('final_amount') }}</span>
                                 <span class="value total-value">{{ formatCurrency(total) }}</span>
                             </div>
 
@@ -655,7 +639,7 @@
 
                             <div class="step-nav-buttons">
                                 <el-button @click="goToStep(0)" size="large" class="w-full mb-2 step-back-btn">
-                                    <el-icon class="el-icon--left"><ArrowRight /></el-icon> السابق: المنتجات
+                                    <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_products') }}
                                 </el-button>
                                 <el-button
                                     type="primary"
@@ -664,7 +648,7 @@
                                     :disabled="!form.customer_id"
                                     @click="goToStep(2)"
                                 >
-                                    التالي: مراجعة وتأكيد <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                                    {{ $t('next_review_and_confirm') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
                                 </el-button>
                             </div>
                         </div>
@@ -678,7 +662,7 @@
                     <template #header>
                         <div class="card-header">
                             <el-icon><Check /></el-icon>
-                            <span>مراجعة ومعاينة كافة تفاصيل طلب البيع</span>
+                            <span>{{ $t('review_all_order_details') }}</span>
                         </div>
                     </template>
 
@@ -690,13 +674,13 @@
                                     <el-icon :size="24"><ShoppingCart /></el-icon>
                                 </div>
                                 <div class="logo-text">
-                                    <h2>مؤسسة أوان التجارية</h2>
-                                    <span>نظام إدارة موارد المؤسسات ERP</span>
+                                    <h2>{{ $t('company_legal_name') }}</h2>
+                                    <span>{{ $t('erp_system_label') }}</span>
                                 </div>
                             </div>
                             <div class="preview-document-tag">
-                                <h3>طلب مبيعات معلق</h3>
-                                <span>تاريخ السند: {{ form.order_date }}</span>
+                                <h3>{{ $t('pending_sales_order') }}</h3>
+                                <span>{{ $t('document_date', { date: form.order_date }) }}</span>
                             </div>
                         </div>
 
@@ -705,58 +689,58 @@
                         <div class="preview-section-grid">
                             <!-- Left Grid Column: Customer & Delivery Info -->
                             <div class="preview-info-box">
-                                <h3 class="preview-sub-title">العميل ومعلومات الشحن والتسليم</h3>
+                                <h3 class="preview-sub-title">{{ $t('customer_and_shipping_info') }}</h3>
                                 <div class="preview-details-list">
                                     <div class="preview-detail-row">
-                                        <span class="lbl">العميل المشتري:</span>
+                                        <span class="lbl">{{ $t('buying_customer_label') }}</span>
                                         <strong>{{ selectedCustomerName }}</strong>
                                     </div>
                                     <div class="preview-detail-row">
-                                        <span class="lbl">تاريخ الطلب:</span>
+                                        <span class="lbl">{{ $t('order_date_label') }}</span>
                                         <strong>{{ form.order_date }}</strong>
                                     </div>
                                     <div class="preview-detail-row">
-                                        <span class="lbl">التسليم المتوقع:</span>
-                                        <strong>{{ form.expected_delivery || 'غير محدد' }}</strong>
+                                        <span class="lbl">{{ $t('expected_delivery_label') }}</span>
+                                        <strong>{{ form.expected_delivery || $t('not_specified') }}</strong>
                                     </div>
                                     <div class="preview-detail-row">
-                                        <span class="lbl">طريقة الدفع:</span>
+                                        <span class="lbl">{{ $t('payment_method_label') }}</span>
                                         <el-tag size="small" type="info">{{ paymentMethodLabel }}</el-tag>
                                     </div>
                                     <div class="preview-detail-row">
-                                        <span class="lbl">حالة الطلب:</span>
+                                        <span class="lbl">{{ $t('order_status_label') }}</span>
                                         <el-tag size="small" :type="statusColors[form.status]">{{ statusLabels[form.status] }}</el-tag>
                                     </div>
                                     <div class="preview-detail-row full-width-row">
-                                        <span class="lbl">عنوان الشحن والتسليم:</span>
-                                        <span class="address-txt">{{ form.shipping_address || 'لا يوجد عنوان تسليم مضاف.' }}</span>
+                                        <span class="lbl">{{ $t('shipping_address_label') }}</span>
+                                        <span class="address-txt">{{ form.shipping_address || $t('no_delivery_address') }}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Right Grid Column: Financial Summary Details -->
                             <div class="preview-financial-box">
-                                <h3 class="preview-sub-title">الفاتورة والحسابات المالية</h3>
+                                <h3 class="preview-sub-title">{{ $t('invoice_and_finance') }}</h3>
                                 <div class="preview-financial-summary">
                                     <div class="preview-fin-row">
-                                        <span>المجموع الفرعي للأصناف</span>
+                                        <span>{{ $t('items_subtotal_amount') }}</span>
                                         <strong>{{ formatCurrency(subtotal) }}</strong>
                                     </div>
                                     <div class="preview-fin-row discount text-danger">
-                                        <span>الخصومات الإضافية (-)</span>
+                                        <span>{{ $t('extra_discounts_minus') }}</span>
                                         <strong>-{{ formatCurrency(form.discount) }}</strong>
                                     </div>
                                     <div class="preview-fin-row tax text-success">
-                                        <span>الضرائب المضافة (+)</span>
+                                        <span>{{ $t('added_taxes_plus') }}</span>
                                         <strong>+{{ formatCurrency(form.tax) }}</strong>
                                     </div>
                                     <div class="preview-fin-row expenses text-success" v-if="totalExpenses > 0">
-                                        <span>مصاريف الشحن والتسليم (+)</span>
+                                        <span>{{ $t('shipping_charges_plus') }}</span>
                                         <strong>+{{ formatCurrency(totalExpenses) }}</strong>
                                     </div>
                                     <el-divider class="my-2" />
                                     <div class="preview-fin-row total-row">
-                                        <span>المبلغ النهائي المستحق</span>
+                                        <span>{{ $t('final_amount_due') }}</span>
                                         <span class="total-price">{{ formatCurrency(total) }}</span>
                                     </div>
                                 </div>
@@ -765,15 +749,15 @@
 
                         <!-- Preview Items Grid List -->
                         <div class="preview-items-list-container mt-4">
-                            <h3 class="preview-sub-title mb-2">قائمة السلع والمنتجات المطلوبة</h3>
+                            <h3 class="preview-sub-title mb-2">{{ $t('ordered_goods_list') }}</h3>
                             <table class="preview-items-table">
                                 <thead>
                                     <tr>
-                                        <th>اسم المنتج / الصنف</th>
-                                        <th>الوحدة المختارة</th>
-                                        <th>الكمية المطلوبة</th>
-                                        <th>سعر Unit</th>
-                                        <th>الإجمالي الفرعي</th>
+                                        <th>{{ $t('product_item_name') }}</th>
+                                        <th>{{ $t('chosen_unit') }}</th>
+                                        <th>{{ $t('quantity_ordered') }}</th>
+                                        <th>{{ $t('unit_price') }}</th>
+                                        <th>{{ $t('line_subtotal') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -783,7 +767,7 @@
                                             <span class="sku-block" v-if="item.sku">SKU: {{ item.sku }}</span>
                                         </td>
                                         <td>{{ item.selectedUnit?.name_ar || item.selectedUnit?.name }}</td>
-                                        <td>{{ item.quantity }} قطعة</td>
+                                        <td>{{ $t('pieces_count', { count: item.quantity }) }}</td>
                                         <td>{{ formatCurrency(item.price) }}</td>
                                         <td class="total-txt">{{ formatCurrency(item.price * item.quantity) }}</td>
                                     </tr>
@@ -793,12 +777,12 @@
 
                         <!-- Administration Notes -->
                         <div class="preview-notes-box mt-4">
-                            <h3 class="preview-sub-title mb-1">ملاحظات إدارية وتوجيهات للطلب</h3>
+                            <h3 class="preview-sub-title mb-1">{{ $t('administrative_notes_for_order') }}</h3>
                             <el-input
                                 v-model="form.notes"
                                 type="textarea"
                                 :rows="2"
-                                placeholder="أدخل أي ملاحظات خاصة بالطلب أو شروط إدارية إضافية للتوثيق..."
+                                :placeholder="$t('order_notes_placeholder')"
                             />
                         </div>
                     </div>
@@ -806,7 +790,7 @@
                     <!-- Step 3 Action Navigation -->
                     <div class="step-3-nav-bar mt-4">
                         <el-button @click="goToStep(1)" size="large" class="step-back-btn">
-                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> السابق: تعديل البيانات
+                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_edit_data') }}
                         </el-button>
                         <el-button
                             type="success"
@@ -816,12 +800,11 @@
                             class="confirm-order-btn"
                         >
                             <el-icon class="el-icon--left"><Check /></el-icon>
-                            {{ isEdit ? 'حفظ تعديلات الطلب' : 'حفظ طلب البيع (مسودة)' }}
+                            {{ isEdit ? $t('save_order_changes') : $t('save_sales_order_draft') }}
                         </el-button>
                     </div>
                     <p class="create-hint">
-                        الحفظ ينشئ طلباً معلّقاً فقط — بلا حجز مخزون ولا فاتورة ولا قيود محاسبية.
-                        التأكيد المحاسبي يتم لاحقاً من قائمة طلبات البيع.
+                        {{ $t('saving_creates_pending_order') }}
                     </p>
                 </el-card>
             </div>
@@ -831,6 +814,7 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useCustomersStore } from '@/stores/customers';
@@ -841,6 +825,9 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 // Status wording, tag colours and money formatting are shared across the sales
 // module so this page cannot drift from the list and detail screens.
 import { statusLabel, statusTagType, formatCurrency, formatDate } from '@/utils/sales';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+
+const { t } = useI18n();
 import {
     Document, Search, ShoppingCart, User, Wallet, Notebook,
     ArrowRight, ArrowLeft, Plus, Minus, Delete, Check, Loading,
@@ -874,17 +861,17 @@ const isLocked = computed(() => isEdit.value && loadedOrder.value && loadedOrder
 const lockedReason = computed(() => {
     switch (loadedOrder.value?.status) {
         case 'confirmed':
-            return 'الطلب مؤكد: المخزون محجوز باسمه، وفاتورته صادرة، وقيدها مُرحَّل إلى دفتر الأستاذ. تعديل البنود هنا كان سيترك الثلاثة تصف كميات ومبالغ لم يعد الطلب يحملها.';
+            return t('lock_reason_confirmed');
         case 'processing':
-            return 'الطلب قيد التجهيز: صدر أمر سحب الأصناف من الرفوف، وتغيير البنود الآن يجعل ما يُجهَّز مخالفاً لما يُطلب.';
+            return t('lock_reason_processing');
         case 'shipped':
-            return 'الطلب مشحون: غادرت البضاعة المستودع ورُحّل قيد تكلفتها. ما شُحن واقعة لا تُعدَّل بتحرير نموذج.';
+            return t('lock_reason_shipped');
         case 'delivered':
-            return 'الطلب مُسلَّم للعميل واكتملت دورته.';
+            return t('order_delivered_cycle_complete');
         case 'cancelled':
-            return 'الطلب ملغي وقد عُكست آثاره المخزنية والمحاسبية.';
+            return t('state_hint_cancelled');
         default:
-            return 'حالة الطلب لا تسمح بتعديل بنوده.';
+            return t('status_forbids_item_edits');
     }
 });
 
@@ -922,12 +909,12 @@ const statusTransitions = {
 };
 
 const statusLabels = {
-    pending: 'معلق',
-    confirmed: 'مؤكد',
-    processing: 'قيد المعالجة',
-    shipped: 'تم الشحن',
-    delivered: 'تم التسليم',
-    cancelled: 'ملغي'
+    pending: t('sales_status_pending'),
+    confirmed: t('sales_status_confirmed'),
+    processing: t('sales_status_processing'),
+    shipped: t('sales_status_shipped'),
+    delivered: t('sales_status_delivered'),
+    cancelled: t('sales_status_cancelled')
 };
 
 const statusColors = {
@@ -989,15 +976,15 @@ const selectedCustomer = computed(() => {
 // Customer name for preview step
 const selectedCustomerName = computed(() => {
     const cust = selectedCustomer.value;
-    return cust ? `${cust.name} (${cust.phone || cust.email || ''})` : 'غير محدد';
+    return cust ? `${cust.name} (${cust.phone || cust.email || ''})` : t('not_specified');
 });
 
 // Payment method labels for preview
 const paymentMethodLabel = computed(() => {
     const methods = {
-        cash: 'نقداً',
-        card: 'بطاقة ائتمانية',
-        transfer: 'تحويل بنكي'
+        cash: t('payment_method_cash'),
+        card: t('credit_card'),
+        transfer: t('bank_transfer')
     };
     return methods[form.payment_method] || form.payment_method;
 });
@@ -1063,8 +1050,8 @@ const addProduct = (product) => {
     } else {
         const defaultUnit = {
             id: null,
-            name: product.unit || 'قطعة',
-            name_ar: product.unit || 'قطعة',
+            name: product.unit || t('piece'),
+            name_ar: product.unit || t('piece'),
             base_unit_multiplier: 1,
             price_multiplier: 1,
             barcode: product.barcode || ''
@@ -1214,11 +1201,11 @@ const handleQuickAction = (command) => {
                 const lastItem = { ...items.value[items.value.length - 1] };
                 items.value.push(lastItem);
                 updateTotals();
-                ElMessage.success('تم تكرار آخر صنف');
+                ElMessage.success(t('last_item_duplicated'));
             }
             break;
         case 'clear-all':
-            if (items.value.length > 0 && confirm('هل أنت متأكد من تفريغ كافة الأصناف المضافة؟')) {
+            if (items.value.length > 0 && confirm(t('confirm_clear_all_items'))) {
                 items.value = [];
                 form.customer_id = null;
                 form.discount = 0;
@@ -1226,7 +1213,7 @@ const handleQuickAction = (command) => {
                 form.notes = '';
                 form.expenses = [];
                 updateTotals();
-                ElMessage.success('تم تفريغ النموذج');
+                ElMessage.success(t('form_cleared'));
             }
             break;
         case 'save-draft':
@@ -1234,7 +1221,7 @@ const handleQuickAction = (command) => {
                 form: form.value,
                 items: items.value
             }));
-            ElMessage.success('تم حفظ المسودة');
+            ElMessage.success(t('draft_saved'));
             break;
     }
 };
@@ -1243,11 +1230,11 @@ const handleQuickAction = (command) => {
 const goToStep = (step) => {
     formErrors.value = [];
     if (step === 1 && items.value.length === 0) {
-        ElMessage.warning('يرجى إضافة صنف منتج واحد على الأقل للطلب قبل الانتقال للمرحلة التالية.');
+        ElMessage.warning(t('add_item_before_next_step'));
         return;
     }
     if (step === 2 && !form.customer_id) {
-        ElMessage.warning('يرجى تحديد العميل المشتري أولاً قبل الانتقال للمرحلة النهائية.');
+        ElMessage.warning(t('choose_customer_before_final_step'));
         return;
     }
     activeStep.value = step;
@@ -1265,17 +1252,17 @@ const submitSalesOrder = async (options = {}) => {
     formErrors.value = [];
 
     if (!itemsOnly && !form.customer_id) {
-        formErrors.value.push('الرجاء اختيار العميل المشتري للطلب.');
+        formErrors.value.push(t('please_choose_buying_customer'));
         return;
     }
 
     if (isEdit.value && itemsOnly && !form.customer_id && !loadedOrder.value?.customer_id) {
-        formErrors.value.push('الطلب بلا عميل؛ اختر عميلاً قبل الحفظ أو أكمل بيانات الطلب.');
+        formErrors.value.push(t('order_has_no_customer'));
         return;
     }
 
     if (items.value.length === 0) {
-        formErrors.value.push('يرجى إضافة صنف منتج واحد على الأقل للطلب.');
+        formErrors.value.push(t('add_at_least_one_product'));
         return;
     }
 
@@ -1311,10 +1298,10 @@ const submitSalesOrder = async (options = {}) => {
 
         if (isEdit.value) {
             await salesOrdersApi.update(route.params.id, payload);
-            ElMessage.success(itemsOnly ? 'تم حفظ تعديلات البنود.' : 'تم تحديث طلب البيع بنجاح.');
+            ElMessage.success(itemsOnly ? t('item_changes_saved') : t('sales_order_updated'));
         } else {
             await salesOrdersApi.create(payload);
-            ElMessage.success('تم إنشاء طلب البيع بنجاح.');
+            ElMessage.success(t('sales_order_created'));
         }
 
         isDirty.value = false;
@@ -1325,7 +1312,7 @@ const submitSalesOrder = async (options = {}) => {
             const errors = error.response.data.errors;
             formErrors.value = Object.values(errors).flat();
         } else {
-            formErrors.value = [error.response?.data?.message || error.message || 'فشل في حفظ طلب البيع.'];
+            formErrors.value = [error.response?.data?.message || error.message || t('failed_to_save_sales_order')];
         }
     } finally {
         submitting.value = false;
@@ -1346,9 +1333,9 @@ onBeforeRouteLeave(async () => {
 
     try {
         await ElMessageBox.confirm(
-            'لديك بيانات غير محفوظة في هذا الطلب. مغادرة الصفحة ستفقدها.',
-            'مغادرة دون حفظ؟',
-            { type: 'warning', confirmButtonText: 'مغادرة', cancelButtonText: 'البقاء' }
+            t('unsaved_order_warning'),
+            t('leave_without_saving'),
+            { type: 'warning', confirmButtonText: t('leave'), cancelButtonText: t('stay') }
         );
 
         return true;
@@ -1397,7 +1384,7 @@ const handleKeyboardShortcuts = (e) => {
     // Ctrl/Cmd + N: Clear items
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
-        if (items.value.length > 0 && confirm('هل أنت متأكد من تفريغ كافة الأصناف المضافة؟')) {
+        if (items.value.length > 0 && confirm(t('confirm_clear_all_items'))) {
             items.value = [];
             form.customer_id = null;
             form.discount = 0;
@@ -1466,7 +1453,7 @@ onMounted(async () => {
 
                 if (order.items) {
                     items.value = order.items.map(item => {
-                        const unitName = item.unit_name || item.product?.unit || 'قطعة';
+                        const unitName = item.unit_name || item.product?.unit || t('piece');
                         const defaultUnit = {
                             id: item.product_unit_id || null,
                             name: unitName,
@@ -1479,7 +1466,7 @@ onMounted(async () => {
                         return {
                             product_id: item.product_id,
                             product_unit_id: item.product_unit_id || null,
-                            name: item.product?.name_ar || item.product?.name_en || 'منتج غير معروف',
+                            name: item.product?.name_ar || item.product?.name_en || t('unknown_product'),
                             sku: item.product?.sku || '',
                             price: parseFloat(item.unit_price) || 0,
                             quantity: item.quantity || 1,
@@ -1499,7 +1486,7 @@ onMounted(async () => {
             }
         } catch (error) {
             console.error('Failed to load sales order:', error);
-            ElMessage.error('فشل في تحميل تفاصيل طلب البيع للتعديل.');
+            ElMessage.error(t('failed_to_load_sales_order_for_edit'));
         } finally {
             loadingOrder.value = false;
         }

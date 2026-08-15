@@ -4,25 +4,15 @@
 
         <div v-else-if="list">
             <!-- Header: what is being picked, and for whom -->
-            <div class="page-header">
-                <div class="page-title">
-                    <el-button text @click="goBack"><i class="fas fa-arrow-right"></i></el-button>
-                    <div>
-                        <h1><i class="fas fa-clipboard-list"></i> {{ list.list_number }}</h1>
-                        <p>
-                            <span v-if="list.order_number">
-                                {{ $t('order_short') }} <strong class="order-link" @click="goToOrder">{{ list.order_number }}</strong>
-                            </span>
-                            <span v-if="list.customer_name"> — {{ list.customer_name }}</span>
-                            <span> · {{ list.warehouse_name }}</span>
-                        </p>
-                    </div>
-                </div>
-                <div class="header-actions">
+            <AdminPageHeader
+                icon="fas fa-clipboard-list"
+                :title="list.list_number"
+            >
+                <template #actions>
                     <el-tag :type="statusType(list.status)" effect="dark" size="large">{{ list.status_text }}</el-tag>
                     <el-tag :type="priorityType(list.priority)" effect="plain" size="large">{{ list.priority_text }}</el-tag>
-                </div>
-            </div>
+                </template>
+            </AdminPageHeader>
 
             <!-- Progress: the one number a picker checks -->
             <el-card shadow="never" class="progress-card">
@@ -152,6 +142,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
 

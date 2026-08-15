@@ -1,17 +1,17 @@
 <template>
     <div class="accounting-page accounting-income-statement">
         <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1><i class="fas fa-chart-line text-primary"></i> {{ $t('income_statement') || 'قائمة الدخل (الأرباح والخسائر)' }}</h1>
-                <p>الأداء عن فترة محددة: الإيرادات، تكلفة المبيعات، مجمل الربح، ثم المصروفات التشغيلية وصافي الدخل.</p>
-            </div>
-            <div class="header-actions">
-                <el-date-picker v-model="dateFrom" type="date" placeholder="من تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 150px;" @change="load" />
-                <el-date-picker v-model="dateTo" type="date" placeholder="إلى تاريخ" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 150px;" @change="load" />
-                <el-button type="success" plain @click="printReport"><i class="fas fa-print"></i> طباعة</el-button>
-            </div>
-        </div>
+        <AdminPageHeader
+            icon="fas fa-chart-line text-primary"
+            :title="$t('income_statement')"
+            :subtitle="$t('income_statement_subtitle')"
+        >
+            <template #actions>
+                <el-date-picker v-model="dateFrom" type="date" :placeholder="$t('date_from')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 150px;" @change="load" />
+                <el-date-picker v-model="dateTo" type="date" :placeholder="$t('date_to')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 150px;" @change="load" />
+                <el-button type="success" plain @click="printReport"><i class="fas fa-print"></i> {{ $t('print') }}</el-button>
+            </template>
+        </AdminPageHeader>
 
         <!-- Conditions that make the numbers below misleading even when they add up -->
         <el-alert
@@ -61,37 +61,37 @@
         <!-- The statement itself, in stepped form -->
         <el-card shadow="hover" class="table-panel mb-4">
             <template #header>
-                <div class="card-header"><span><i class="fas fa-list-ol text-muted"></i> قائمة الدخل</span></div>
+                <div class="card-header"><span><i class="fas fa-list-ol text-muted"></i> {{ $t('income_statement') }}</span></div>
             </template>
 
             <div v-if="store.loading" class="loading-state"><el-skeleton :rows="7" animated /></div>
             <table v-else class="statement-table print-table">
                 <tbody>
                     <tr>
-                        <td>إجمالي الإيرادات</td>
+                        <td>{{ $t('total_revenue') }}</td>
                         <td class="num">{{ money(s.gross_revenue?.total) }}</td>
                         <td class="cmp"></td>
                     </tr>
                     <tr v-if="Math.abs(s.contra_revenue?.total || 0) > 0.005" class="deduction">
-                        <td>ناقصاً: مردودات وخصومات المبيعات</td>
+                        <td>{{ $t('less_sales_returns_and_discounts') }}</td>
                         <td class="num">({{ money(s.contra_revenue?.total) }})</td>
                         <td class="cmp"></td>
                     </tr>
                     <tr class="subtotal">
-                        <td>صافي الإيرادات</td>
+                        <td>{{ $t('net_revenue') }}</td>
                         <td class="num">{{ money(s.net_revenue) }}</td>
                         <td class="cmp" :class="deltaClass(s.net_revenue, comparison?.net_revenue)">
                             {{ deltaLabel(s.net_revenue, comparison?.net_revenue) }}
                         </td>
                     </tr>
                     <tr class="deduction">
-                        <td>ناقصاً: تكلفة البضاعة المباعة</td>
+                        <td>{{ $t('less_cost_of_goods_sold') }}</td>
                         <td class="num">({{ money(s.cost_of_sales?.total) }})</td>
                         <td class="cmp"></td>
                     </tr>
                     <tr class="subtotal highlight">
                         <td>
-                            مجمل الربح
+                            {{ $t('gross_profit_amount') }}
                             <el-tag v-if="grossMarginPct !== null" size="small" effect="plain" :type="grossMarginPct >= 0 ? 'success' : 'danger'">
                                 هامش {{ grossMarginPct }}٪
                             </el-tag>
@@ -102,14 +102,14 @@
                         </td>
                     </tr>
                     <tr class="deduction">
-                        <td>ناقصاً: المصروفات التشغيلية</td>
+                        <td>{{ $t('less_operating_expenses') }}</td>
                         <td class="num">({{ money(s.operating_expenses?.total) }})</td>
                         <td class="cmp" :class="deltaClass(comparison?.operating_expenses, s.operating_expenses?.total)">
                             {{ deltaLabel(s.operating_expenses?.total, comparison?.operating_expenses) }}
                         </td>
                     </tr>
                     <tr class="grand-total" :class="isProfit ? 'profit' : 'loss'">
-                        <td>صافي الدخل</td>
+                        <td>{{ $t('net_income') }}</td>
                         <td class="num">{{ money(netIncome) }}</td>
                         <td class="cmp" :class="deltaClass(netIncome, comparison?.net_income)">
                             {{ deltaLabel(netIncome, comparison?.net_income) }}
@@ -128,11 +128,11 @@
                     </template>
                     <div v-if="store.loading" class="loading-state"><el-skeleton :rows="3" animated /></div>
                     <el-table v-else-if="section.rows.length" :data="section.rows" stripe class="custom-table print-table" style="width: 100%">
-                        <el-table-column prop="code" label="الرمز" width="90" align="center">
+                        <el-table-column prop="code" :label="$t('code')" width="90" align="center">
                             <template #default="{ row }"><span class="code-badge">{{ row.code }}</span></template>
                         </el-table-column>
-                        <el-table-column prop="name" label="الحساب" min-width="130" />
-                        <el-table-column prop="amount" label="المبلغ" width="140" align="right">
+                        <el-table-column prop="name" :label="$t('the_account')" min-width="130" />
+                        <el-table-column prop="amount" :label="$t('amount')" width="140" align="right">
                             <template #default="{ row }"><strong :class="`text-${section.tone}`">{{ money(row.amount) }}</strong></template>
                         </el-table-column>
                     </el-table>
@@ -144,9 +144,13 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import { formatCurrency } from '@/utils/sales';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+
+const { t } = useI18n();
 
 const store = useAccountingReportsStore();
 
@@ -189,7 +193,7 @@ const revenueRows = computed(() => [
 const deltaLabel = (current, previous) => {
     if (previous === null || previous === undefined) return '';
     const diff = num(current) - num(previous);
-    if (Math.abs(diff) < 0.005) return '— بلا تغيير';
+    if (Math.abs(diff) < 0.005) return t('no_change');
 
     const base = Math.abs(num(previous));
     const pct = base > 0.005 ? ` (${Math.abs((diff / base) * 100).toFixed(1)}٪)` : '';
@@ -206,25 +210,25 @@ const deltaClass = (current, previous) => {
 /** The three detail tables under the statement, in the order they are stepped. */
 const breakdownSections = computed(() => [
     {
-        title: 'الإيرادات',
+        title: t('revenue'),
         icon: 'fa-money-bill-wave',
         tone: 'success',
         rows: revenueRows.value,
-        empty: 'لا توجد إيرادات في هذه الفترة.',
+        empty: t('no_revenue_this_period'),
     },
     {
-        title: 'تكلفة المبيعات',
+        title: t('cost_of_sales'),
         icon: 'fa-boxes-stacked',
         tone: 'danger',
         rows: s.value.cost_of_sales?.accounts || [],
-        empty: 'لم تُسجَّل تكلفة بضاعة مباعة.',
+        empty: t('no_cogs_recorded'),
     },
     {
-        title: 'المصروفات التشغيلية',
+        title: t('operating_expenses'),
         icon: 'fa-receipt',
         tone: 'warning',
         rows: s.value.operating_expenses?.accounts || [],
-        empty: 'لا توجد مصروفات تشغيلية.',
+        empty: t('no_operating_expenses'),
     },
 ]);
 

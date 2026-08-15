@@ -8,7 +8,7 @@
         </div>
         <div>
           <h1 class="header-title">{{ $t('customers') }}</h1>
-          <p class="header-subtitle">إدارة سجلات وبيانات العملاء، حدود الائتمان، والأرصدة المستحقة وحالة الحسابات</p>
+          <p class="header-subtitle">{{ $t('customers_list_subtitle') }}</p>
         </div>
       </div>
       <div class="header-actions">
@@ -25,7 +25,7 @@
           <div class="stat-card-glow"></div>
           <div class="stat-card-content">
             <div class="stat-info">
-              <span class="stat-label">إجمالي العملاء</span>
+              <span class="stat-label">{{ $t('total_customers') }}</span>
               <span class="stat-value">{{ store.pagination.total }}</span>
             </div>
             <div class="stat-icon-wrapper">
@@ -40,7 +40,7 @@
           <div class="stat-card-glow"></div>
           <div class="stat-card-content">
             <div class="stat-info">
-              <span class="stat-label">إجمالي الأرصدة المستحقة</span>
+              <span class="stat-label">{{ $t('total_outstanding_balances') }}</span>
               <span class="stat-value">{{ formatCurrency(totalOutstandingBalance) }}</span>
             </div>
             <div class="stat-icon-wrapper">
@@ -55,7 +55,7 @@
           <div class="stat-card-glow"></div>
           <div class="stat-card-content">
             <div class="stat-info">
-              <span class="stat-label">إجمالي الحدود الائتمانية</span>
+              <span class="stat-label">{{ $t('total_credit_limits') }}</span>
               <span class="stat-value">{{ formatCurrency(totalCreditLimits) }}</span>
             </div>
             <div class="stat-icon-wrapper">
@@ -70,7 +70,7 @@
           <div class="stat-card-glow"></div>
           <div class="stat-card-content">
             <div class="stat-info">
-              <span class="stat-label">عملاء نشطين</span>
+              <span class="stat-label">{{ $t('active_customers') }}</span>
               <span class="stat-value">{{ activeCustomersCount }}</span>
             </div>
             <div class="stat-icon-wrapper">
@@ -85,7 +85,7 @@
     <el-card shadow="never" class="table-card-premium">
       <div class="filter-bar-premium">
         <el-form :inline="true" class="premium-filter-form">
-          <el-form-item label="بحث سريع">
+          <el-form-item :label="$t('quick_search')">
             <el-input
               v-model="searchQuery"
               :placeholder="$t('search_by_customer_name_email_or_phone')"
@@ -97,10 +97,10 @@
               </template>
             </el-input>
           </el-form-item>
-          <el-form-item label="حالة الحساب">
-            <el-select v-model="statusFilter" placeholder="كل الحالات" clearable class="status-select">
-              <el-option value="active" label="نشط" />
-              <el-option value="inactive" label="غير نشط" />
+          <el-form-item :label="$t('account_status')">
+            <el-select v-model="statusFilter" :placeholder="$t('all_statuses')" clearable class="status-select">
+              <el-option value="active" :label="$t('active')" />
+              <el-option value="inactive" :label="$t('inactive')" />
             </el-select>
           </el-form-item>
         </el-form>
@@ -124,7 +124,7 @@
           </el-table-column>
 
           <!-- Customer info (Name, Company) -->
-          <el-table-column prop="name" label="العميل والشركة" min-width="200">
+          <el-table-column prop="name" :label="$t('customer_and_company')" min-width="200">
             <template #default="{ row }">
               <div class="customer-info-cell">
                 <span class="customer-name" @click="viewCustomer(row)">{{ row.name }}</span>
@@ -134,7 +134,7 @@
           </el-table-column>
 
           <!-- Contacts (Email, Phone) -->
-          <el-table-column label="الاتصال" min-width="180">
+          <el-table-column :label="$t('contact')" min-width="180">
             <template #default="{ row }">
               <div class="customer-contact-cell">
                 <span class="email" v-if="row.email">{{ row.email }}</span>
@@ -144,7 +144,7 @@
           </el-table-column>
 
           <!-- VAT Number -->
-          <el-table-column prop="tax_number" label="الرقم الضريبي" width="130">
+          <el-table-column prop="tax_number" :label="$t('tax_number')" width="130">
             <template #default="{ row }">
               <span class="vat-badge" v-if="row.tax_number">{{ row.tax_number }}</span>
               <span class="text-placeholder" v-else>-</span>
@@ -152,7 +152,7 @@
           </el-table-column>
 
           <!-- Balance / Debt -->
-          <el-table-column prop="balance" label="الرصيد القائم" width="130">
+          <el-table-column prop="balance" :label="$t('outstanding_balance')" width="130">
             <template #default="{ row }">
               <span class="balance-value" :class="{ 'has-debt': row.balance > 0 }">
                 {{ formatCurrency(row.balance) }}
@@ -161,7 +161,7 @@
           </el-table-column>
 
           <!-- Credit Limit -->
-          <el-table-column prop="credit_limit" label="الحد الائتماني" width="130">
+          <el-table-column prop="credit_limit" :label="$t('credit_limit')" width="130">
             <template #default="{ row }">
               <span>{{ formatCurrency(row.credit_limit || 0) }}</span>
             </template>
@@ -181,17 +181,17 @@
           <el-table-column :label="$t('procedures')" width="160" align="center" fixed="right">
             <template #default="{ row }">
               <div class="actions-wrapper">
-                <el-tooltip content="الملف الشخصي للعميل" placement="top" :enterable="false">
+                <el-tooltip :content="$t('customer_profile')" placement="top" :enterable="false">
                   <el-button class="action-btn view" size="small" circle @click="viewCustomer(row)">
                     <el-icon><View /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="تعديل البيانات" placement="top" :enterable="false">
+                <el-tooltip :content="$t('edit_data')" placement="top" :enterable="false">
                   <el-button class="action-btn edit" size="small" circle @click="editCustomer(row)">
                     <el-icon><Edit /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="حذف العميل" placement="top" :enterable="false">
+                <el-tooltip :content="$t('delete_customer')" placement="top" :enterable="false">
                   <el-button class="action-btn delete" size="small" circle @click="deleteCustomer(row)">
                     <el-icon><Delete /></el-icon>
                   </el-button>
@@ -216,11 +216,14 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { User, Plus, Search, View, Edit, Delete, Money, CreditCard, CircleCheck } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useCustomersStore } from '@/stores/customers';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const store = useCustomersStore();
@@ -294,20 +297,20 @@ const deleteCustomer = async (customer) => {
 
   try {
     await ElMessageBox.confirm(
-      'هل أنت متأكد من رغبتك في حذف هذا العميل نهائياً؟ سيؤدي ذلك لإزالة بيانات جهة الاتصال والحدود الائتمانية.',
-      'تأكيد الحذف',
+      t('confirm_delete_customer'),
+      t('confirm_deletion'),
       {
-        confirmButtonText: 'نعم، احذف',
-        cancelButtonText: 'إلغاء',
+        confirmButtonText: t('yes_delete'),
+        cancelButtonText: t('cancel'),
         type: 'warning'
       }
     );
 
     await store.deleteCustomer(customer.id);
-    ElMessage.success('تم حذف العميل بنجاح');
+    ElMessage.success(t('the_client_has_been_deleted_successfully'));
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('فشل عملية الحذف');
+      ElMessage.error(t('delete_failed'));
     }
   }
 };

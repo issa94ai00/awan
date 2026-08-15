@@ -1,12 +1,10 @@
 ﻿<template>
     <div class="inquiries-page">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ $t('inquiries') }}</h1>
-                <p>{{ $t('the_inquiry_management_panel_gives') }}</p>
-            </div>
-
-            <div class="page-actions">
+        <AdminPageHeader
+            :title="$t('inquiries')"
+            :subtitle="$t('the_inquiry_management_panel_gives')"
+        >
+            <template #actions>
                 <el-input
                     v-model="searchQuery"
                     @input="onSearchInput"
@@ -42,35 +40,27 @@
                         :value="priority.value"
                     />
                 </el-select>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-row :gutter="20" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('total_inquiries') }}</p>
-                    <h3>{{ pagination.total || inquiriesStore.items.length }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('new') }}</p>
-                    <h3>{{ statusSummary.new }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('readable') }}</p>
-                    <h3>{{ statusSummary.read }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('answered') }}</p>
-                    <h3>{{ statusSummary.replied }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('total_inquiries') }}</p>
+                <h3>{{ pagination.total || inquiriesStore.items.length }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('new') }}</p>
+                <h3>{{ statusSummary.new }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('readable') }}</p>
+                <h3>{{ statusSummary.read }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('answered') }}</p>
+                <h3>{{ statusSummary.replied }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
@@ -164,6 +154,8 @@ import { computed, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useInquiriesStore } from '@/stores/inquiries';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const router = useRouter();
 const inquiriesStore = useInquiriesStore();

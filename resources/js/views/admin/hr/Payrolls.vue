@@ -8,26 +8,20 @@
             <el-input v-model="searchQuery" :placeholder="$t('search_by_job_number_or_employee_name')" clearable class="search-input" />
         </div>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('total_marches') }}</p>
-                    <h3>{{ store.payrolls.length }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('completed_marches') }}</p>
-                    <h3>{{ completedCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('hanging_marches') }}</p>
-                    <h3>{{ pendingCount }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('total_marches') }}</p>
+                <h3>{{ store.payrolls.length }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('completed_marches') }}</p>
+                <h3>{{ completedCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('hanging_marches') }}</p>
+                <h3>{{ pendingCount }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
@@ -57,6 +51,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { usePayrollsStore } from '@/stores/payrolls';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const store = usePayrollsStore();
 const searchQuery = ref('');

@@ -135,7 +135,7 @@
                 stripe
                 @selection-change="onSelectionChange"
                 class="products-table"
-                empty-text="لا توجد منتجات"
+                :empty-text="$t('there_are_no_products')"
             >
                 <el-table-column type="selection" width="45" />
                 <el-table-column :label="$t('image')" width="100">
@@ -233,16 +233,16 @@
                 <el-table-column :label="$t('procedures')" width="180" fixed="right">
                     <template #default="{ row }">
                         <div class="actions-cell">
-                            <el-tooltip content="تعديل سريع" placement="top">
+                            <el-tooltip :content="$t('quick_edit')" placement="top">
                                 <el-button :icon="Edit" size="small" text type="warning" @click="quickEdit(row)" />
                             </el-tooltip>
-                            <el-tooltip content="عرض" placement="top">
+                            <el-tooltip :content="$t('view')" placement="top">
                                 <el-button :icon="View" size="small" text @click="viewProduct(row)" />
                             </el-tooltip>
-                            <el-tooltip content="تعديل كامل" placement="top">
+                            <el-tooltip :content="$t('full_edit')" placement="top">
                                 <el-button :icon="Edit" size="small" text type="primary" @click="editProduct(row)" />
                             </el-tooltip>
-                            <el-tooltip content="حذف" placement="top">
+                            <el-tooltip :content="$t('delete')" placement="top">
                                 <el-popconfirm
                                     :title="$t('confirm_deletion')"
                                     :confirm-button-text="$t('yes')"
@@ -276,31 +276,31 @@
         <!-- Quick Edit Dialog -->
         <el-dialog
             v-model="quickEditDialogVisible"
-            title="تعديل سريع"
+            :title="$t('quick_edit')"
             width="600px"
             :close-on-click-modal="false"
         >
             <el-form :model="quickEditForm" label-width="120px" label-position="right">
-                <el-form-item label="الاسم بالعربية">
+                <el-form-item :label="$t('name_arabic')">
                     <el-input v-model="quickEditForm.name_ar" />
                 </el-form-item>
-                <el-form-item label="الاسم بالإنجليزية">
+                <el-form-item :label="$t('name_english')">
                     <el-input v-model="quickEditForm.name_en" />
                 </el-form-item>
-                <el-form-item label="السعر">
+                <el-form-item :label="$t('price')">
                     <el-input-number v-model="quickEditForm.price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="سعر التخفيض">
+                <el-form-item :label="$t('discounted_price')">
                     <el-input-number v-model="quickEditForm.sale_price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="سعر التكلفة">
+                <el-form-item :label="$t('cost_price')">
                     <el-input-number v-model="quickEditForm.cost_price" :min="0" :step="0.01" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="الكمية">
+                <el-form-item :label="$t('quantity')">
                     <el-input-number v-model="quickEditForm.stock_quantity" :min="0" style="width: 100%" />
                 </el-form-item>
-                <el-form-item label="التصنيف">
-                    <el-select v-model="quickEditForm.category_id" placeholder="اختر التصنيف" style="width: 100%">
+                <el-form-item :label="$t('the_category')">
+                    <el-select v-model="quickEditForm.category_id" :placeholder="$t('select_category')" style="width: 100%">
                         <el-option
                             v-for="cat in categories"
                             :key="cat.id"
@@ -309,26 +309,29 @@
                         />
                     </el-select>
                 </el-form-item>
-                <el-form-item label="الحالة">
+                <el-form-item :label="$t('status')">
                     <el-switch v-model="quickEditForm.is_active" />
                 </el-form-item>
-                <el-form-item label="مميز">
+                <el-form-item :label="$t('featured')">
                     <el-switch v-model="quickEditForm.is_featured" />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="quickEditDialogVisible = false">إلغاء</el-button>
-                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">حفظ</el-button>
+                <el-button @click="quickEditDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">{{ $t('save') }}</el-button>
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+
+const { t } = useI18n();
 import {
     Plus, Search, Refresh, View, Edit, Delete,
     Star, StarFilled, Check, Close, Picture, Box, WarningFilled,
@@ -558,11 +561,11 @@ const submitQuickEdit = async () => {
             is_active: quickEditForm.value.is_active,
             is_featured: quickEditForm.value.is_featured,
         });
-        ElMessage.success('تم تحديث المنتج بنجاح');
+        ElMessage.success(t('the_product_has_been_updated'));
         quickEditDialogVisible.value = false;
         fetchProducts();
     } catch (error) {
-        ElMessage.error(error.response?.data?.message || 'فشل في تحديث المنتج');
+        ElMessage.error(error.response?.data?.message || t('failed_to_update_product'));
     } finally {
         quickEditSubmitting.value = false;
     }

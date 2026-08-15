@@ -1,36 +1,29 @@
 <template>
     <div class="crm-page crm-tickets">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ $t('tickets') }}</h1>
-                <p>{{ $t('manage_support_requests_with_easy') }}</p>
-            </div>
-            <div class="page-actions">
+        <AdminPageHeader
+            :title="$t('tickets')"
+            :subtitle="$t('manage_support_requests_with_easy')"
+        >
+            <template #actions>
                 <el-input v-model="searchQuery" :placeholder="$t('search_by_ticket_subject_or')" clearable class="search-input" />
                 <el-button type="primary" @click="createTicket">{{ $t('new_ticket') }}</el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('total_tickets') }}</p>
-                    <h3>{{ totalTickets }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('open') }}</p>
-                    <h3>{{ openCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('on_hold') }}</p>
-                    <h3>{{ pendingCount }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('total_tickets') }}</p>
+                <h3>{{ totalTickets }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('open') }}</p>
+                <h3>{{ openCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('on_hold') }}</p>
+                <h3>{{ pendingCount }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-panel">
             <template #header>
@@ -72,6 +65,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useTicketsStore } from '@/stores/tickets';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const router = useRouter();
 const ticketsStore = useTicketsStore();

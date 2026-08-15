@@ -8,26 +8,20 @@
             <el-input v-model="searchQuery" :placeholder="$t('search_by_employee_or_case')" clearable class="search-input" />
         </div>
 
-        <el-row :gutter="16" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('attendance_today') }}</p>
-                    <h3>{{ presentCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('latecomers') }}</p>
-                    <h3>{{ lateCount }}</h3>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-                <el-card shadow="hover" class="summary-card">
-                    <p>{{ $t('absence') }}</p>
-                    <h3>{{ absentCount }}</h3>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('attendance_today') }}</p>
+                <h3>{{ presentCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('latecomers') }}</p>
+                <h3>{{ lateCount }}</h3>
+            </el-card>
+            <el-card shadow="hover" class="summary-card">
+                <p>{{ $t('absence') }}</p>
+                <h3>{{ absentCount }}</h3>
+            </el-card>
+        </AdminStatGrid>
 
         <el-card shadow="hover" class="table-card">
             <template #header>
@@ -68,6 +62,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAttendanceStore } from '@/stores/attendance';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const router = useRouter();
 const attendanceStore = useAttendanceStore();

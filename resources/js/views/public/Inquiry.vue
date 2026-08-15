@@ -105,7 +105,7 @@
                                     <option value="delivery">{{ t('delivery_shipping_reason') || 'التوصيل والشحن' }}</option>
                                     <option value="technical_support">{{ t('tech_support_reason') || 'الدعم الفني' }}</option>
                                     <option value="partnership">{{ t('business_partnership') || 'شراكة تجارية' }}</option>
-                                    <option value="other">{{ t('inquiry_subject_options.other') || 'أخرى' }}</option>
+                                    <option value="other">{{ t('subject_other') }}</option>
                                 </select>
                             </div>
 

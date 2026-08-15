@@ -11,16 +11,14 @@
             </div>
         </div>
 
-        <el-row :gutter="20" class="overview-cards">
-            <el-col :xs="24" :sm="12" :md="6" v-for="item in stats" :key="item.title">
-                <el-card shadow="hover" class="overview-card">
-                    <div class="card-meta">
-                        <span>{{ item.title }}</span>
-                    </div>
-                    <h2>{{ item.value }}</h2>
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid>
+            <el-card v-for="item in stats" :key="item.title" shadow="hover" class="overview-card">
+                <div class="card-meta">
+                    <span>{{ item.title }}</span>
+                </div>
+                <h2>{{ item.value }}</h2>
+            </el-card>
+        </AdminStatGrid>
 
         <el-row :gutter="20" class="mt-4">
             <el-col :xs="24" :lg="16">
@@ -65,6 +63,7 @@
 import { computed, onMounted } from 'vue';
 import { useCustomersStore } from '@/stores/customers';
 import { useTicketsStore } from '@/stores/tickets';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const customersStore = useCustomersStore();
 const ticketsStore = useTicketsStore();

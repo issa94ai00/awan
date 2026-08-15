@@ -8,7 +8,7 @@
         </div>
         <div>
           <h1 class="header-title">{{ $t('rma.title') }}</h1>
-          <p class="header-subtitle">إدارة ومتابعة طلبات المرتجعات والاستبدال وحسابات التعويض المالي للعملاء</p>
+          <p class="header-subtitle">{{ $t('rma_index_subtitle') }}</p>
         </div>
       </div>
       <el-button type="primary" class="btn-create-premium" @click="createRma">
@@ -38,10 +38,10 @@
     <el-card class="table-card-premium" shadow="never">
       <div class="filter-bar-premium">
         <el-form :inline="true" :model="filters" class="premium-filter-form">
-          <el-form-item label="بحث">
+          <el-form-item :label="$t('search')">
             <el-input 
               v-model="filters.search" 
-              placeholder="رقم المرتجع، العميل، رقم الطلب" 
+              :placeholder="$t('rma_search_placeholder')" 
               clearable 
               @keyup.enter="loadRmaRequests"
               class="premium-search-input"
@@ -52,38 +52,38 @@
             </el-input>
           </el-form-item>
           <el-form-item :label="$t('rma.status')">
-            <el-select v-model="filters.status" placeholder="كل الحالات" clearable @change="loadRmaRequests" class="premium-select">
-              <el-option value="pending" label="قيد الانتظار" />
-              <el-option value="approved" label="تمت الموافقة" />
-              <el-option value="received" label="تم استلام البضاعة" />
-              <el-option value="rejected" label="مرفوض" />
-              <el-option value="completed" label="مكتمل" />
-              <el-option value="cancelled" label="ملغي" />
+            <el-select v-model="filters.status" :placeholder="$t('all_statuses')" clearable @change="loadRmaRequests" class="premium-select">
+              <el-option value="pending" :label="$t('on_hold')" />
+              <el-option value="approved" :label="$t('approved')" />
+              <el-option value="received" :label="$t('goods_received')" />
+              <el-option value="rejected" :label="$t('sales_status_rejected')" />
+              <el-option value="completed" :label="$t('sales_status_completed')" />
+              <el-option value="cancelled" :label="$t('sales_status_cancelled')" />
             </el-select>
           </el-form-item>
           <el-form-item :label="$t('rma.return_type')">
-            <el-select v-model="filters.return_type" placeholder="كل الأنواع" clearable @change="loadRmaRequests" class="premium-select">
-              <el-option value="refund" label="استرداد نقدي" />
-              <el-option value="exchange" label="استبدال" />
-              <el-option value="store_credit" label="رصيد متجر" />
+            <el-select v-model="filters.return_type" :placeholder="$t('all_types')" clearable @change="loadRmaRequests" class="premium-select">
+              <el-option value="refund" :label="$t('cash_refund')" />
+              <el-option value="exchange" :label="$t('exchange')" />
+              <el-option value="store_credit" :label="$t('store_credit')" />
             </el-select>
           </el-form-item>
-          <el-form-item label="من تاريخ">
+          <el-form-item :label="$t('date_from')">
             <el-date-picker 
               v-model="filters.from_date" 
               type="date" 
-              placeholder="اختر التاريخ"
+              :placeholder="$t('choose_the_date')"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
               @change="loadRmaRequests"
               class="premium-date-picker"
             />
           </el-form-item>
-          <el-form-item label="إلى تاريخ">
+          <el-form-item :label="$t('date_to')">
             <el-date-picker 
               v-model="filters.to_date" 
               type="date" 
-              placeholder="اختر التاريخ"
+              :placeholder="$t('choose_the_date')"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
               @change="loadRmaRequests"
@@ -92,26 +92,26 @@
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="loadRmaRequests" class="btn-search-premium">
-              <el-icon><Search /></el-icon> بحث
+              <el-icon><Search /></el-icon> {{ $t('search') }}
             </el-button>
-            <el-button @click="resetFilters" class="btn-reset-premium">إعادة تعيين</el-button>
+            <el-button @click="resetFilters" class="btn-reset-premium">{{ $t('reset') }}</el-button>
           </el-form-item>
           <el-form-item v-if="selectedRows.length > 0">
             <el-dropdown @command="handleBulkAction" class="bulk-actions-dropdown">
               <el-button type="warning" class="btn-bulk-premium">
-                <el-icon><Operation /></el-icon> إجراءات جماعية ({{ selectedRows.length }})
+                <el-icon><Operation /></el-icon> {{ $t('bulk_actions_count', { count: selectedRows.length }) }}
                 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="approve" :disabled="!canBulkApprove">
-                    <el-icon><Check /></el-icon> موافقة جماعية
+                    <el-icon><Check /></el-icon> {{ $t('bulk_approve') }}
                   </el-dropdown-item>
                   <el-dropdown-item command="reject" :disabled="!canBulkReject">
-                    <el-icon><Close /></el-icon> رفض جماعي
+                    <el-icon><Close /></el-icon> {{ $t('bulk_reject') }}
                   </el-dropdown-item>
                   <el-dropdown-item command="cancel" :disabled="!canBulkCancel">
-                    <el-icon><Delete /></el-icon> إلغاء جماعي
+                    <el-icon><Delete /></el-icon> {{ $t('bulk_cancel') }}
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -119,7 +119,7 @@
           </el-form-item>
           <el-form-item>
             <el-button @click="exportData" class="btn-export-premium">
-              <el-icon><Download /></el-icon> تصدير
+              <el-icon><Download /></el-icon> {{ $t('export') }}
             </el-button>
           </el-form-item>
         </el-form>
@@ -136,13 +136,13 @@
           @selection-change="handleSelectionChange"
         >
           <el-table-column type="selection" width="55" align="center" />
-          <el-table-column prop="rma_number" label="رقم المرتجع" width="130">
+          <el-table-column prop="rma_number" :label="$t('rma_number')" width="130">
             <template #default="{ row }">
               <span class="rma-number-badge" @click="viewRma(row)">{{ row.rma_number }}</span>
             </template>
           </el-table-column>
           
-          <el-table-column prop="customer" label="العميل" min-width="180">
+          <el-table-column prop="customer" :label="$t('customer')" min-width="180">
             <template #default="{ row }">
               <div class="customer-info-cell">
                 <span class="customer-name">{{ row.customer?.name || row.customer || 'N/A' }}</span>
@@ -151,7 +151,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="order_number" label="طلب البيع الأصلي" min-width="150">
+          <el-table-column prop="order_number" :label="$t('original_sales_order')" min-width="150">
             <template #default="{ row }">
               <div class="order-info-cell">
                 <span class="order-number">#{{ row.sales_order?.order_number || row.order_number || 'N/A' }}</span>
@@ -160,7 +160,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="return_type" label="نوع التسوية" width="120">
+          <el-table-column prop="return_type" :label="$t('settlement_type')" width="120">
             <template #default="{ row }">
               <el-tag :type="getReturnTypeClass(row.type || row.return_type)" class="premium-tag">
                 {{ getReturnTypeLabel(row.type || row.return_type) }}
@@ -168,14 +168,14 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="refund_amount" label="قيمة التعويض" width="130">
+          <el-table-column prop="refund_amount" :label="$t('compensation_value')" width="130">
             <template #default="{ row }">
               <span class="amount-value" v-if="row.refund_amount > 0">{{ formatCurrency(row.refund_amount) }}</span>
               <span class="amount-none" v-else>-</span>
             </template>
           </el-table-column>
 
-          <el-table-column prop="status" label="حالة الطلب" width="120">
+          <el-table-column prop="status" :label="$t('order_status')" width="120">
             <template #default="{ row }">
               <span class="status-dot-badge" :class="row.status">
                 <span class="dot"></span>
@@ -184,31 +184,31 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="requested_at" label="تاريخ التقديم" width="160">
+          <el-table-column prop="requested_at" :label="$t('submitted_on')" width="160">
             <template #default="{ row }">
               {{ formatDate(row.requested_at || row.created_at) }}
             </template>
           </el-table-column>
 
-          <el-table-column label="العمليات" width="180" align="center" fixed="right">
+          <el-table-column :label="$t('operations')" width="180" align="center" fixed="right">
             <template #default="{ row }">
               <div class="actions-wrapper">
-                <el-tooltip content="عرض التفاصيل" placement="top" :enterable="false">
+                <el-tooltip :content="$t('view_details')" placement="top" :enterable="false">
                   <el-button class="action-btn view" size="small" circle @click="viewRma(row)">
                     <el-icon><View /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="تعديل الطلب" placement="top" :enterable="false" v-if="row.status === 'pending'">
+                <el-tooltip :content="$t('edit_request')" placement="top" :enterable="false" v-if="row.status === 'pending'">
                   <el-button class="action-btn edit" size="small" circle @click="editRma(row)">
                     <el-icon><Edit /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="موافقة" placement="top" :enterable="false" v-if="row.status === 'pending'">
+                <el-tooltip :content="$t('approve')" placement="top" :enterable="false" v-if="row.status === 'pending'">
                   <el-button class="action-btn approve" size="small" circle @click="approveRma(row)">
                     <el-icon><Check /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="رفض" placement="top" :enterable="false" v-if="row.status === 'pending'">
+                <el-tooltip :content="$t('to_reject')" placement="top" :enterable="false" v-if="row.status === 'pending'">
                   <el-button class="action-btn reject" size="small" circle @click="rejectRma(row)">
                     <el-icon><Close /></el-icon>
                   </el-button>
@@ -277,10 +277,10 @@ const pagination = ref({
 })
 
 const statCards = computed(() => [
-  { key: 'total', title: 'إجمالي الطلبات', value: statistics.value.total_requests, icon: Tickets },
-  { key: 'pending', title: 'بانتظار الموافقة', value: statistics.value.pending, icon: Warning },
-  { key: 'completed', title: 'طلبات مكتملة', value: statistics.value.completed, icon: Finished },
-  { key: 'refund', title: 'مبالغ مستردة', value: formatCurrency(statistics.value.total_refund_amount), icon: Files }
+  { key: 'total', title: t('total_orders'), value: statistics.value.total_requests, icon: Tickets },
+  { key: 'pending', title: t('awaiting_approval'), value: statistics.value.pending, icon: Warning },
+  { key: 'completed', title: t('completed_requests'), value: statistics.value.completed, icon: Finished },
+  { key: 'refund', title: t('refunded_amounts'), value: formatCurrency(statistics.value.total_refund_amount), icon: Files }
 ])
 
 const loadStatistics = async () => {
@@ -315,7 +315,7 @@ const loadRmaRequests = async () => {
     }
   } catch (error) {
     console.error('Failed to load RMA requests:', error)
-    ElMessage.error('خطأ في تحميل طلبات الإرجاع')
+    ElMessage.error(t('failed_to_load_returns'))
   } finally {
     loading.value = false
   }
@@ -353,31 +353,31 @@ const handleBulkAction = async (action) => {
   
   try {
     if (action === 'approve') {
-      await ElMessageBox.confirm(`هل أنت متأكد من الموافقة على ${ids.length} طلب؟`, 'تأكيد الموافقة الجماعية', {
+      await ElMessageBox.confirm(t('confirm_bulk_approve_count', { count: ids.length }), t('confirm_bulk_approve'), {
         type: 'warning',
-        confirmButtonText: 'موافق',
-        cancelButtonText: 'إلغاء'
+        confirmButtonText: t('ok_agreed'),
+        cancelButtonText: t('cancel')
       })
       await Promise.all(ids.map(id => rmaService.approveRma(id)))
-      ElMessage.success(`تمت الموافقة على ${ids.length} طلب بنجاح`)
+      ElMessage.success(t('bulk_approved_count', { count: ids.length }))
     } else if (action === 'reject') {
-      const { value } = await ElMessageBox.prompt('يرجى كتابة سبب رفض الطلبات:', 'رفض جماعي', {
+      const { value } = await ElMessageBox.prompt(t('enter_bulk_rejection_reason'), t('bulk_reject'), {
         type: 'warning',
         inputPattern: /.+/,
-        inputErrorMessage: 'سبب الرفض مطلوب',
-        confirmButtonText: 'رفض',
-        cancelButtonText: 'إلغاء'
+        inputErrorMessage: t('rejection_reason_required'),
+        confirmButtonText: t('to_reject'),
+        cancelButtonText: t('cancel')
       })
       await Promise.all(ids.map(id => rmaService.rejectRma(id, { reason: value })))
-      ElMessage.success(`تم رفض ${ids.length} طلب بنجاح`)
+      ElMessage.success(t('bulk_rejected_count', { count: ids.length }))
     } else if (action === 'cancel') {
-      await ElMessageBox.confirm(`هل أنت متأكد من إلغاء ${ids.length} طلب؟`, 'تأكيد الإلغاء الجماعي', {
+      await ElMessageBox.confirm(t('confirm_bulk_cancel_count', { count: ids.length }), t('confirm_bulk_cancel'), {
         type: 'warning',
-        confirmButtonText: 'موافق',
-        cancelButtonText: 'إلغاء'
+        confirmButtonText: t('ok_agreed'),
+        cancelButtonText: t('cancel')
       })
       await Promise.all(ids.map(id => rmaService.cancelRma(id)))
-      ElMessage.success(`تم إلغاء ${ids.length} طلب بنجاح`)
+      ElMessage.success(t('bulk_cancelled_count', { count: ids.length }))
     }
     
     selectedRows.value = []
@@ -385,7 +385,7 @@ const handleBulkAction = async (action) => {
     loadStatistics()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت العملية')
+      ElMessage.error(error.response?.data?.message || t('operation_failed'))
     }
   }
 }
@@ -410,10 +410,10 @@ const exportData = async () => {
     link.click()
     document.body.removeChild(link)
     
-    ElMessage.success('تم تصدير البيانات بنجاح')
+    ElMessage.success(t('data_exported_successfully'))
   } catch (error) {
     console.error('Export failed:', error)
-    ElMessage.error('فشل تصدير البيانات')
+    ElMessage.error(t('failed_to_export_data'))
   }
 }
 
@@ -427,59 +427,59 @@ const editRma = (row) => {
 
 const approveRma = async (row) => {
   try {
-    await ElMessageBox.confirm('هل أنت متأكد من الموافقة على طلب الإرجاع هذا؟ سيتمكن المندوب من استلام البضائع بعد ذلك.', 'تأكيد الموافقة', {
+    await ElMessageBox.confirm(t('confirm_approve_return'), t('confirm_approval'), {
       type: 'warning',
-      confirmButtonText: 'موافق',
-      cancelButtonText: 'إلغاء'
+      confirmButtonText: t('ok_agreed'),
+      cancelButtonText: t('cancel')
     })
     await rmaService.approveRma(row.id)
-    ElMessage.success('تمت الموافقة على طلب الإرجاع بنجاح')
+    ElMessage.success(t('return_approved'))
     loadRmaRequests()
     loadStatistics()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت عملية الموافقة')
+      ElMessage.error(error.response?.data?.message || t('approval_failed'))
     }
   }
 }
 
 const rejectRma = async (row) => {
   try {
-    const { value } = await ElMessageBox.prompt('يرجى كتابة سبب رفض طلب الإرجاع:', 'رفض الطلب', {
+    const { value } = await ElMessageBox.prompt(t('enter_rejection_reason'), t('reject_request'), {
       type: 'warning',
       inputPattern: /.+/,
-      inputErrorMessage: 'سبب الرفض مطلوب',
-      confirmButtonText: 'رفض',
-      cancelButtonText: 'إلغاء'
+      inputErrorMessage: t('rejection_reason_required'),
+      confirmButtonText: t('to_reject'),
+      cancelButtonText: t('cancel')
     })
     await rmaService.rejectRma(row.id, { reason: value })
-    ElMessage.success('تم رفض طلب الإرجاع بنجاح')
+    ElMessage.success(t('return_rejected'))
     loadRmaRequests()
     loadStatistics()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || 'فشلت عملية الرفض')
+      ElMessage.error(error.response?.data?.message || t('rejection_failed'))
     }
   }
 }
 
 const getStatusLabel = (status) => {
   const labels = {
-    pending: 'بانتظار الموافقة',
-    approved: 'تمت الموافقة',
-    received: 'تم استلام البضاعة',
-    rejected: 'مرفوض',
-    completed: 'مكتمل',
-    cancelled: 'ملغي'
+    pending: t('awaiting_approval'),
+    approved: t('approved'),
+    received: t('goods_received'),
+    rejected: t('sales_status_rejected'),
+    completed: t('sales_status_completed'),
+    cancelled: t('sales_status_cancelled')
   }
   return labels[status] || status
 }
 
 const getReturnTypeLabel = (type) => {
   const labels = {
-    refund: 'استرداد نقدي',
-    exchange: 'استبدال',
-    store_credit: 'رصيد متجر'
+    refund: t('cash_refund'),
+    exchange: t('exchange'),
+    store_credit: t('store_credit')
   }
   return labels[type] || type
 }

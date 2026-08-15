@@ -2,11 +2,11 @@
     <div class="permissions-page">
         <div class="page-header">
             <div>
-                <p class="eyebrow">إدارة الأمان</p>
-                <h2>الصلاحيات</h2>
+                <p class="eyebrow">{{ $t('security_management') }}</p>
+                <h2>{{ $t('nav_permissions') }}</h2>
             </div>
             <el-button type="primary" :icon="Plus" class="primary-btn" @click="openCreatePermissionDialog">
-                إضافة صلاحية
+                {{ $t('add_permission') }}
             </el-button>
         </div>
 
@@ -14,28 +14,28 @@
             <div class="stat-card accent">
                 <div class="icon-wrap"><el-icon><Lock /></el-icon></div>
                 <div>
-                    <span class="stat-label">إجمالي الصلاحيات</span>
+                    <span class="stat-label">{{ $t('total_permissions') }}</span>
                     <strong>{{ permissions.length }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><DataAnalysis /></el-icon></div>
                 <div>
-                    <span class="stat-label">المجموعات النشطة</span>
+                    <span class="stat-label">{{ $t('active_groups') }}</span>
                     <strong>{{ moduleCount }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><Checked /></el-icon></div>
                 <div>
-                    <span class="stat-label">مفعلة حاليًا</span>
+                    <span class="stat-label">{{ $t('currently_enabled') }}</span>
                     <strong>{{ activePermissions }}</strong>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="icon-wrap"><el-icon><Setting /></el-icon></div>
                 <div>
-                    <span class="stat-label">المجموعات</span>
+                    <span class="stat-label">{{ $t('groups') }}</span>
                     <strong>{{ moduleOptions.length }}</strong>
                 </div>
             </div>
@@ -43,8 +43,8 @@
 
         <el-card shadow="never" class="toolbar-card">
             <div class="toolbar">
-                <el-input v-model="search" placeholder="بحث عن صلاحية أو وحدة..." clearable :prefix-icon="Search" />
-                <el-select v-model="moduleFilter" placeholder="تصفية حسب الوحدة" clearable style="width: 200px">
+                <el-input v-model="search" :placeholder="$t('search_permission_or_module')" clearable :prefix-icon="Search" />
+                <el-select v-model="moduleFilter" :placeholder="$t('filter_by_module')" clearable style="width: 200px">
                     <el-option v-for="module in moduleOptions" :key="module" :label="module" :value="module" />
                 </el-select>
             </div>
@@ -69,8 +69,8 @@
                             <el-tag :type="permission.status === 'active' ? 'success' : 'info'" size="small">
                                 {{ permission.status === 'active' ? 'مفعلة' : 'غير مفعلة' }}
                             </el-tag>
-                            <el-button size="small" text @click="editPermission(permission)">تعديل</el-button>
-                            <el-button size="small" text type="danger" @click="deletePermission(permission.id)">حذف</el-button>
+                            <el-button size="small" text @click="editPermission(permission)">{{ $t('edit') }}</el-button>
+                            <el-button size="small" text type="danger" @click="deletePermission(permission.id)">{{ $t('delete') }}</el-button>
                         </div>
                     </div>
                 </div>
@@ -80,29 +80,29 @@
         <el-dialog v-model="permissionDialogVisible" :title="isEditingPermission ? 'تعديل الصلاحية' : 'إضافة صلاحية جديدة'" width="620px">
             <el-form :model="permissionForm" label-position="top">
                 <div class="form-grid">
-                    <el-form-item label="اسم الصلاحية">
+                    <el-form-item :label="$t('permission_name')">
                         <el-input v-model="permissionForm.name" placeholder="مثل: sales.create" />
                     </el-form-item>
-                    <el-form-item label="الوحدة">
-                        <el-select v-model="permissionForm.module" placeholder="اختر الوحدة" style="width: 100%">
+                    <el-form-item :label="$t('unity')">
+                        <el-select v-model="permissionForm.module" :placeholder="$t('select_unit')" style="width: 100%">
                             <el-option v-for="module in moduleOptions" :key="module" :label="module" :value="module" />
                         </el-select>
                     </el-form-item>
                 </div>
 
-                <el-form-item label="الوصف">
-                    <el-input v-model="permissionForm.description" type="textarea" :rows="3" placeholder="وصف مختصر للصلاحية" />
+                <el-form-item :label="$t('description')">
+                    <el-input v-model="permissionForm.description" type="textarea" :rows="3" :placeholder="$t('permission_short_description')" />
                 </el-form-item>
 
-                <el-form-item label="الحالة">
-                    <el-switch v-model="permissionForm.status" active-value="active" inactive-value="inactive" active-text="مفعلة" inactive-text="غير مفعلة" />
+                <el-form-item :label="$t('status')">
+                    <el-switch v-model="permissionForm.status" active-value="active" inactive-value="inactive" :active-text="$t('enabled')" :inactive-text="$t('not_enabled')" />
                 </el-form-item>
             </el-form>
 
             <template #footer>
                 <span class="dialog-footer">
-                    <el-button @click="permissionDialogVisible = false">إلغاء</el-button>
-                    <el-button type="primary" @click="savePermission">حفظ</el-button>
+                    <el-button @click="permissionDialogVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" @click="savePermission">{{ $t('save') }}</el-button>
                 </span>
             </template>
         </el-dialog>
@@ -110,7 +110,10 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { computed, ref } from 'vue';
+
+const { t } = useI18n();
 import {
     Lock,
     DataAnalysis,
@@ -121,22 +124,22 @@ import {
 } from '@element-plus/icons-vue';
 
 const permissions = ref([
-    { id: 1, name: 'dashboard.view', description: 'إدارة عرض لوحة التحكم', module: 'dashboard', status: 'active' },
-    { id: 2, name: 'sales.view', description: 'عرض قسم المبيعات', module: 'sales', status: 'active' },
-    { id: 3, name: 'sales.create', description: 'إنشاء الفاتورة والتسعير', module: 'sales', status: 'active' },
-    { id: 4, name: 'sales.edit', description: 'تعديل بيانات المبيعات', module: 'sales', status: 'active' },
-    { id: 5, name: 'inventory.view', description: 'عرض المخزون', module: 'inventory', status: 'active' },
-    { id: 6, name: 'inventory.manage', description: 'إدارة حركة المخزون', module: 'inventory', status: 'active' },
-    { id: 7, name: 'purchases.view', description: 'عرض المشتريات', module: 'purchases', status: 'active' },
-    { id: 8, name: 'purchases.create', description: 'إنشاء طلبات الشراء', module: 'purchases', status: 'active' },
-    { id: 9, name: 'reports.view', description: 'عرض التقارير التحليلية', module: 'reports', status: 'active' },
-    { id: 10, name: 'settings.view', description: 'عرض الإعدادات العامة', module: 'settings', status: 'active' },
-    { id: 11, name: 'users.manage', description: 'إدارة المستخدمين والأدوار', module: 'users', status: 'active' },
-    { id: 12, name: 'roles.assign', description: 'تعيين أدوار للمستخدمين', module: 'users', status: 'active' },
-    { id: 13, name: 'marketing.view', description: 'عرض الحملات التسويقية', module: 'marketing', status: 'active' },
-    { id: 14, name: 'marketing.campaigns', description: 'إنشاء وتعديل الحملات', module: 'marketing', status: 'inactive' },
-    { id: 15, name: 'hr.view', description: 'عرض الموارد البشرية', module: 'hr', status: 'active' },
-    { id: 16, name: 'hr.manage', description: 'إدارة بيانات الموظفين', module: 'hr', status: 'inactive' },
+    { id: 1, name: 'dashboard.view', description: t('perm_dashboard_view'), module: 'dashboard', status: 'active' },
+    { id: 2, name: 'sales.view', description: t('perm_sales_view'), module: 'sales', status: 'active' },
+    { id: 3, name: 'sales.create', description: t('perm_invoice_create'), module: 'sales', status: 'active' },
+    { id: 4, name: 'sales.edit', description: t('perm_sales_edit'), module: 'sales', status: 'active' },
+    { id: 5, name: 'inventory.view', description: t('perm_inventory_view'), module: 'inventory', status: 'active' },
+    { id: 6, name: 'inventory.manage', description: t('perm_inventory_manage'), module: 'inventory', status: 'active' },
+    { id: 7, name: 'purchases.view', description: t('perm_purchases_view'), module: 'purchases', status: 'active' },
+    { id: 8, name: 'purchases.create', description: t('perm_purchase_create'), module: 'purchases', status: 'active' },
+    { id: 9, name: 'reports.view', description: t('perm_reports_view'), module: 'reports', status: 'active' },
+    { id: 10, name: 'settings.view', description: t('perm_settings_view'), module: 'settings', status: 'active' },
+    { id: 11, name: 'users.manage', description: t('perm_users_manage'), module: 'users', status: 'active' },
+    { id: 12, name: 'roles.assign', description: t('perm_roles_assign'), module: 'users', status: 'active' },
+    { id: 13, name: 'marketing.view', description: t('perm_campaigns_view'), module: 'marketing', status: 'active' },
+    { id: 14, name: 'marketing.campaigns', description: t('perm_campaigns_manage'), module: 'marketing', status: 'inactive' },
+    { id: 15, name: 'hr.view', description: t('perm_hr_view'), module: 'hr', status: 'active' },
+    { id: 16, name: 'hr.manage', description: t('perm_employees_manage'), module: 'hr', status: 'inactive' },
 ]);
 
 const search = ref('');
@@ -152,15 +155,15 @@ const permissionForm = ref({
 });
 
 const moduleMap = {
-    dashboard: 'لوحة التحكم',
-    sales: 'المبيعات',
-    inventory: 'المخزون',
-    purchases: 'المشتريات',
-    reports: 'التقارير',
-    settings: 'الإعدادات',
-    users: 'المستخدمون',
-    marketing: 'التسويق',
-    hr: 'الموارد البشرية',
+    dashboard: t('dashboard'),
+    sales: t('nav_sales'),
+    inventory: t('nav_inventory'),
+    purchases: t('nav_purchases'),
+    reports: t('nav_reports'),
+    settings: t('settings'),
+    users: t('users'),
+    marketing: t('marketing'),
+    hr: t('nav_hr'),
 };
 
 const moduleOptions = computed(() => Object.keys(moduleMap));
