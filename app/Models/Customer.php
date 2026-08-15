@@ -96,6 +96,78 @@ class Customer extends Model
         return $this->credit_limit - $this->balance;
     }
 
+    public function employees()
+    {
+        return $this->belongsToMany(Employee::class, 'customer_employee')
+            ->withTimestamps()
+            ->withPivot(['id', 'is_primary']);
+    }
+
+    public function customerEmployees()
+    {
+        return $this->belongsToMany(Employee::class, 'customer_employee')
+            ->withTimestamps()
+            ->withPivot(['id', 'is_primary']);
+    }
+
+    public function primaryEmployee()
+    {
+        return $this->belongsToMany(Employee::class, 'customer_employee')
+            ->withTimestamps()
+            ->withPivot(['id', 'is_primary'])
+            ->wherePivot('is_primary', true);
+    }
+
+    public function syncPrimaryEmployee(int $employeeId): void
+    {
+        $this->customerEmployees()->sync(
+            $this->customerEmployees()->pluck('employees.id')->mapWithKeys(fn ($id) => [
+                (int) $id => ['is_primary' => (int) $id === (int) $employeeId],
+            ])->all()
+        );
+
+        $this->employee_id = $employeeId;
+        $this->saveQuietly();
+    }
+
+    /**
+     * Records that an employee now serves this customer.
+     *
+     * Called whenever a rep raises an order for someone: taking the sale is
+     * what makes the customer theirs. It is deliberately additive — an
+     * existing link is left exactly as it is, so a second rep serving the
+     * same customer never demotes the one who already owns the relationship.
+     * The first employee to arrive becomes the primary contact.
+     */
+    public function assignEmployee(int $employeeId): void
+    {
+        $alreadyLinked = $this->customerEmployees()
+            ->where('employees.id', $employeeId)
+            ->exists();
+
+        if (! $alreadyLinked) {
+            $hasPrimary = $this->customerEmployees()
+                ->wherePivot('is_primary', true)
+                ->exists();
+
+            $this->customerEmployees()->attach($employeeId, [
+                'is_primary' => ! $hasPrimary,
+            ]);
+        }
+
+        // The legacy single-employee column still drives the rep's customer
+        // list, so it is filled in when nobody owns the customer yet.
+        if ($this->employee_id === null) {
+            $this->employee_id = $employeeId;
+            $this->saveQuietly();
+        }
+
+        $this->unsetRelation('customerEmployees')
+            ->unsetRelation('employees')
+            ->unsetRelation('primaryEmployee');
+    }
+
+    // Keep the old relationship for backward compatibility
     public function employee()
     {
         return $this->belongsTo(Employee::class);

@@ -106,11 +106,11 @@ return new class extends Migration
      */
     private function seedBaseCurrency(): void
     {
-        $code = 'SAR';
+        $code = 'SYP';
 
         if (Schema::hasTable('settings')) {
             $configured = DB::table('settings')->where('key', 'default_currency')->value('value');
-            $code = strtoupper(trim((string) $configured)) ?: 'SAR';
+            $code = strtoupper(trim((string) $configured)) ?: 'SYP';
         }
 
         $known = [
@@ -122,26 +122,37 @@ return new class extends Migration
             'SYP' => ['ليرة سورية', 'Syrian Pound', 'ل.س', 0],
         ];
 
-        [$nameAr, $nameEn, $symbol, $decimals] = $known[$code] ?? [$code, $code, $code, 2];
+        $baseCode = strtoupper(trim((string) $code));
+        $initialCodes = [$baseCode, 'USD', 'SAR'];
 
-        $currencyId = DB::table('currencies')->insertGetId([
-            'code' => $code,
-            'name_ar' => $nameAr,
-            'name_en' => $nameEn,
-            'symbol' => $symbol,
-            'decimal_places' => $decimals,
-            'rounding_step' => 0,
-            'is_base' => true,
-            'is_active' => true,
-            'sort_order' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $currencyIds = [];
+        foreach ($initialCodes as $index => $currencyCode) {
+            $metadata = $known[$currencyCode] ?? [$currencyCode, $currencyCode, $currencyCode, 2];
+            [$nameAr, $nameEn, $symbol, $decimals] = $metadata;
 
-        // The base is worth exactly one of itself. Stored rather than special
-        // cased so a lookup for any currency, base included, finds a row.
+            $isBase = $currencyCode === $baseCode;
+            $currencyId = DB::table('currencies')->insertGetId([
+                'code' => $currencyCode,
+                'name_ar' => $nameAr,
+                'name_en' => $nameEn,
+                'symbol' => $symbol,
+                'decimal_places' => $decimals,
+                'rounding_step' => $isBase ? 500 : 0,
+                'is_base' => $isBase,
+                'is_active' => true,
+                'sort_order' => $index,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $currencyIds[$currencyCode] = $currencyId;
+        }
+
+        // The base is worth exactly one of itself. Additional default currencies are
+        // kept in the catalog for display and conversion setup, but their rate is
+        // entered explicitly later when the admin records market quotes.
         DB::table('currency_rates')->insert([
-            'currency_id' => $currencyId,
+            'currency_id' => $currencyIds[$baseCode],
             'rate' => 1,
             'effective_at' => now(),
             'note' => 'Base currency',

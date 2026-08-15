@@ -9,6 +9,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\PublicPageController;
+use App\Http\Controllers\Admin\AdminPagesController;
 use Illuminate\Support\Facades\Route;
 
 // robots.txt is served by the app (instead of a static public/robots.txt) so the

@@ -194,6 +194,12 @@
                                     <span>{{ __('messages.employees') }}</span>
                                 </a>
                             </li>
+                            <li class="{{ request()->routeIs('admin.hr.employee-customers') ? 'active' : '' }}">
+                                <a href="/admin/hr/employee-customers">
+                                    <i class="fas fa-user-friends"></i>
+                                    <span>علاقة الموظف بالعملاء</span>
+                                </a>
+                            </li>
                             <li class="{{ request()->routeIs('admin.hr.attendance') ? 'active' : '' }}">
                                 <a href="/admin/hr/attendance">
                                     <i class="fas fa-clock"></i>
@@ -314,6 +320,12 @@
                                 <a href="/admin/reports/sales">
                                     <i class="fas fa-shopping-cart"></i>
                                     <span>{{ __('messages.sales_report') }}</span>
+                                </a>
+                            </li>
+                            <li class="{{ request()->routeIs('admin.reports.professional-sales') ? 'active' : '' }}">
+                                <a href="/admin/reports/professional-sales">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span>تقارير المبيعات الاحترافية</span>
                                 </a>
                             </li>
                             <li class="{{ request()->routeIs('admin.reports.inventory') ? 'active' : '' }}">

@@ -188,4 +188,47 @@ class EmployeeController extends Controller
             ]),
         ]);
     }
+
+    public function customers(Employee $employee)
+    {
+        $customers = $employee->customers()->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customers retrieved successfully',
+            'data' => $customers
+        ]);
+    }
+
+    public function attachCustomers(Request $request, Employee $employee)
+    {
+        $validated = $request->validate([
+            'customer_ids' => 'required|array',
+            'customer_ids.*' => 'exists:customers,id'
+        ]);
+
+        $employee->customers()->syncWithoutDetaching($validated['customer_ids']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customers attached successfully',
+            'data' => $employee->customers()->get()
+        ]);
+    }
+
+    public function detachCustomers(Request $request, Employee $employee)
+    {
+        $validated = $request->validate([
+            'customer_ids' => 'required|array',
+            'customer_ids.*' => 'exists:customers,id'
+        ]);
+
+        $employee->customers()->detach($validated['customer_ids']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customers detached successfully',
+            'data' => $employee->customers()->get()
+        ]);
+    }
 }

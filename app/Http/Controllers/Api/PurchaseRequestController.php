@@ -32,6 +32,9 @@ class PurchaseRequestController extends Controller
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:2000',
+            // The rep who raised the order from the mobile app. Optional: a
+            // walk-in shopper checking out on their own sends no employee.
+            'employee_id' => 'nullable|integer|exists:employees,id',
             'items' => 'nullable|array',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
             'items.*.product_name' => 'required_without:items.*.product_id|nullable|string|max:255',
@@ -44,6 +47,7 @@ class PurchaseRequestController extends Controller
             'name.required' => 'الاسم مطلوب',
             'phone.required' => 'رقم الهاتف مطلوب',
             'email.email' => 'البريد الإلكتروني غير صحيح',
+            'employee_id.exists' => 'الموظف المحدد غير موجود',
             'items.*.product_id.exists' => 'أحد المنتجات المحددة غير موجود',
             'items.*.product_name.required_without' => 'اسم المنتج مطلوب',
             'items.*.quantity.required_with' => 'الكمية مطلوبة',
@@ -73,6 +77,15 @@ class PurchaseRequestController extends Controller
                 'source' => 'purchase_request',
                 'status' => 'active',
             ]);
+        }
+
+        // The rep who took the sale owns both the order and, from now on, the
+        // customer: the order used to arrive with nobody named on it, so it
+        // never showed up under anyone's work and the customer stayed
+        // unassigned no matter how many orders that rep placed for them.
+        $employeeId = $validated['employee_id'] ?? null;
+        if ($employeeId !== null) {
+            $customer->assignEmployee($employeeId);
         }
 
         $subtotal = 0;
@@ -139,6 +152,7 @@ class PurchaseRequestController extends Controller
             'shipping_address' => $validated['address'] ?? null,
             'notes' => $validated['notes'] ?? null,
             'created_by' => null,
+            'assigned_employee_id' => $employeeId,
         ]);
 
         $this->createOrderItemsWithAllocations($salesOrder, $itemsData);
@@ -165,6 +179,7 @@ class PurchaseRequestController extends Controller
                 'order_number' => $salesOrder->order_number,
                 'status' => $salesOrder->status,
                 'total' => $subtotal,
+                'assigned_employee_id' => $salesOrder->assigned_employee_id,
             ],
         ], 201);
     }
@@ -347,6 +362,12 @@ class PurchaseRequestController extends Controller
                     'assigned_employee_id' => $validated['assigned_employee_id']
                         ?? Employee::where('user_id', auth()->id())->value('id'),
                 ]);
+
+                // Serving the customer is what makes them the rep's own: the
+                // link is what the customer picker reads back on the next order.
+                if ($salesOrder->assigned_employee_id !== null) {
+                    $customer->assignEmployee($salesOrder->assigned_employee_id);
+                }
 
                 $this->createOrderItemsWithAllocations($salesOrder, $itemsData);
 

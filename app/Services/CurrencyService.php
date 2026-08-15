@@ -35,10 +35,10 @@ class CurrencyService
 
     /** Fallback used before the migration has run, or if the table is empty. */
     private const FALLBACK = [
-        'code' => 'SAR',
-        'symbol' => 'ر.س',
-        'decimal_places' => 2,
-        'rounding_step' => 0,
+        'code' => 'SYP',
+        'symbol' => 'ل.س',
+        'decimal_places' => 0,
+        'rounding_step' => 500,
     ];
 
     /**

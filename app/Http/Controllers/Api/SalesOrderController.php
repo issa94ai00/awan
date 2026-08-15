@@ -294,13 +294,16 @@ class SalesOrderController extends Controller
         // is covering the round. A request that leaves the field out keeps the
         // current owner rather than clearing it, so editing a delivery address
         // cannot silently orphan the order.
-        if ($validated['assigned_employee_id'] === null) {
+        $hasAssignedEmployeeInput = $request->has('assigned_employee_id');
+        if (! $hasAssignedEmployeeInput) {
             $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
         }
 
         if ($validated['customer_id'] === null) {
             $validated['customer_id'] = $salesOrder->customer_id;
         }
+
+        $hasWarehouseInput = $request->has('fulfillment_warehouse_id');
 
         $lineItems = $this->buildLineItems($request->items);
         $subtotal = collect($lineItems)->sum(
@@ -316,8 +319,12 @@ class SalesOrderController extends Controller
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than
         // staying with the person who happened to raise it.
-        if (empty($validated['fulfillment_warehouse_id']) && ! empty($validated['assigned_employee_id'])) {
-            $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id;
+        if (! $hasWarehouseInput && ! empty($validated['assigned_employee_id']) && (int) $validated['assigned_employee_id'] !== (int) $salesOrder->assigned_employee_id) {
+            $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id ?? $salesOrder->fulfillment_warehouse_id;
+        }
+
+        if (! $hasWarehouseInput && empty($validated['fulfillment_warehouse_id']) && ! empty($salesOrder->fulfillment_warehouse_id)) {
+            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
         }
 
         DB::transaction(function () use ($salesOrder, $validated, $lineItems) {

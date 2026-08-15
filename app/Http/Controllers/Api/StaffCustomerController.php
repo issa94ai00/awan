@@ -28,9 +28,9 @@ class StaffCustomerController extends Controller
             ], 404);
         }
 
-        $customers = Customer::where('employee_id', $employee->id)
+        $customers = $this->customersOf($employee)
             ->orderBy('name')
-            ->get(['id', 'name', 'phone', 'email', 'company', 'address']);
+            ->get(['customers.id', 'customers.name', 'customers.phone', 'customers.email', 'customers.company', 'customers.address']);
 
         return response()->json([
             'success' => true,
@@ -92,6 +92,10 @@ class StaffCustomerController extends Controller
             'status' => 'active',
         ]);
 
+        // Also record the link in customer_employee, which is what the admin
+        // reports and the reassignment screens read.
+        $customer->assignEmployee($employee->id);
+
         return response()->json([
             'success' => true,
             'message' => 'تم إضافة العميل بنجاح',
@@ -122,8 +126,8 @@ class StaffCustomerController extends Controller
             ], 404);
         }
 
-        $customer = Customer::where('id', $id)
-            ->where('employee_id', $employee->id)
+        $customer = $this->customersOf($employee)
+            ->where('customers.id', $id)
             ->first();
 
         if (!$customer) {
@@ -154,8 +158,8 @@ class StaffCustomerController extends Controller
             ], 404);
         }
 
-        $customer = Customer::where('id', $id)
-            ->where('employee_id', $employee->id)
+        $customer = $this->customersOf($employee)
+            ->where('customers.id', $id)
             ->first();
 
         if (!$customer) {
@@ -198,5 +202,24 @@ class StaffCustomerController extends Controller
             'message' => 'تم تحديث العميل بنجاح',
             'data' => $customer,
         ]);
+    }
+
+    /**
+     * The customers this employee is responsible for.
+     *
+     * Ownership is read from both places it can be recorded: the legacy
+     * `customers.employee_id` column and the `customer_employee` link written
+     * when the rep raises an order. Reading only the column hid every customer
+     * a rep had actually served.
+     */
+    private function customersOf(Employee $employee)
+    {
+        return Customer::query()
+            ->where(function ($query) use ($employee) {
+                $query->where('customers.employee_id', $employee->id)
+                    ->orWhereHas('customerEmployees', function ($linked) use ($employee) {
+                        $linked->where('employees.id', $employee->id);
+                    });
+            });
     }
 }

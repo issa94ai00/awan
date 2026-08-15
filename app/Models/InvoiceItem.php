@@ -12,6 +12,7 @@ class InvoiceItem extends Model
 
     protected $fillable = [
         'invoice_id',
+        'warehouse_id',
         'product_id',
         'product_name',
         'quantity',
@@ -49,6 +50,11 @@ class InvoiceItem extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(ProductUnit::class, 'product_unit_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     protected static function booted(): void

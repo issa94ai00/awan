@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\PurchaseRequestController;
 use App\Http\Controllers\Api\OrderAllocationController;
 use App\Http\Controllers\Api\QuoteController;
 use App\Http\Controllers\Api\SalesOrderController;
+use App\Http\Controllers\Api\SalesReportController;
 use App\Http\Controllers\Api\Field\FieldInventoryController;
 use App\Http\Controllers\Api\Field\FieldOrderController;
 use App\Http\Controllers\Api\Field\FieldReplenishmentController;
@@ -93,6 +94,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/cart/clear', [\App\Http\Controllers\CartController::class, 'clear'])->name('api.cart.clear');
         Route::get('/cart/count', [\App\Http\Controllers\CartController::class, 'getCartCount'])->name('api.cart.count');
     });
+
+    // Sales, inventory and invoice reporting lives under the authenticated
+    // admin prefix only (see `api.admin.reports.*` below): the payloads carry
+    // customer names, margins and full CSV exports, so there is no public alias.
 
     // Flutter Cart API (Token-based for mobile app)
     Route::middleware('auth:sanctum')->group(function () {
@@ -219,6 +224,22 @@ Route::prefix('v1')->middleware('web')->group(function () {
     
     // Protected Routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {
+
+        // Role-scoped admin areas
+        Route::middleware('role:sells')->prefix('sales')->group(function () {
+            Route::get('/dashboard', fn () => response()->json(['ok' => true, 'module' => 'sales']));
+            Route::get('/orders', fn () => response()->json(['ok' => true, 'module' => 'sales-orders']));
+        });
+
+        Route::middleware('role:accountant')->prefix('accounting')->group(function () {
+            Route::get('/dashboard', fn () => response()->json(['ok' => true, 'module' => 'accounting']));
+            Route::get('/reports', fn () => response()->json(['ok' => true, 'module' => 'financial-reports']));
+        });
+
+        Route::middleware('role:marketer')->prefix('marketing')->group(function () {
+            Route::get('/dashboard', fn () => response()->json(['ok' => true, 'module' => 'marketing']));
+            Route::get('/campaigns', fn () => response()->json(['ok' => true, 'module' => 'campaigns']));
+        });
 
         // File Upload
         Route::post('/upload', [UploadController::class, 'upload'])->name('api.upload');
@@ -364,6 +385,24 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
             Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
             Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
+
+            // Employee Customers API
+            Route::get('/employees/{employee}/customers', [EmployeeController::class, 'customers'])->name('api.admin.employees.customers');
+            Route::post('/employees/{employee}/customers/attach', [EmployeeController::class, 'attachCustomers'])->name('api.admin.employees.customers.attach');
+            Route::post('/employees/{employee}/customers/detach', [EmployeeController::class, 'detachCustomers'])->name('api.admin.employees.customers.detach');
+
+            // Sales Reports API
+            Route::get('/reports/sales', [SalesReportController::class, 'salesReport'])->name('api.admin.reports.sales');
+            Route::get('/reports/sales/summary', [SalesReportController::class, 'salesSummary'])->name('api.admin.reports.sales.summary');
+            Route::get('/reports/sales/dimensions', [SalesReportController::class, 'salesDimensions'])->name('api.admin.reports.sales.dimensions');
+            Route::get('/reports/sales/performance', [SalesReportController::class, 'salesPerformance'])->name('api.admin.reports.sales.performance');
+            Route::get('/reports/sales/product-profitability', [SalesReportController::class, 'productProfitability'])->name('api.admin.reports.sales.product-profitability');
+            Route::get('/reports/sales/top-performers', [SalesReportController::class, 'topPerformers'])->name('api.admin.reports.sales.top-performers');
+            Route::get('/reports/sales/export', [SalesReportController::class, 'export'])->name('api.admin.reports.sales.export');
+            Route::get('/reports/inventory/dimensions', [SalesReportController::class, 'inventoryDimensions'])->name('api.admin.reports.inventory.dimensions');
+            Route::get('/reports/inventory/export', [SalesReportController::class, 'inventoryExport'])->name('api.admin.reports.inventory.export');
+            Route::get('/reports/invoices/dimensions', [SalesReportController::class, 'invoiceDimensions'])->name('api.admin.reports.invoices.dimensions');
+            Route::get('/reports/invoices/export', [SalesReportController::class, 'invoiceExport'])->name('api.admin.reports.invoices.export');
 
             // Admin Attendance API
             Route::get('/attendance', [AttendanceController::class, 'index'])->name('api.admin.attendance.index');
@@ -847,17 +886,20 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
         // Audit Logs (سجلات التدقيق)
         Route::prefix('audit')->group(function () {
-            Route::get('/', [AuditController::class, 'index'])->name('api.audit.index');
-            Route::get('/{id}', [AuditController::class, 'show'])->name('api.audit.show');
+            Route::get('/risk-scan', [AuditController::class, 'riskScan'])->name('api.audit.risk-scan');
+            Route::get('/risk-scan/export', [AuditController::class, 'exportRiskScan'])->name('api.audit.risk-scan.export');
+            Route::get('/reconciliation', [AuditController::class, 'reconciliationSummary'])->name('api.audit.reconciliation');
+            Route::get('/statistics', [AuditController::class, 'getStatistics'])->name('api.audit.statistics');
+            Route::get('/recent', [AuditController::class, 'getRecentLogs'])->name('api.audit.recent');
+            Route::get('/today', [AuditController::class, 'getTodayLogs'])->name('api.audit.today');
             Route::get('/entity-logs', [AuditController::class, 'getEntityLogs'])->name('api.audit.entity-logs');
             Route::get('/user-logs/{userId}', [AuditController::class, 'getUserLogs'])->name('api.audit.user-logs');
             Route::get('/module-logs/{module}', [AuditController::class, 'getModuleLogs'])->name('api.audit.module-logs');
-            Route::get('/recent', [AuditController::class, 'getRecentLogs'])->name('api.audit.recent');
-            Route::get('/today', [AuditController::class, 'getTodayLogs'])->name('api.audit.today');
-            Route::get('/statistics', [AuditController::class, 'getStatistics'])->name('api.audit.statistics');
             Route::get('/activity-timeline', [AuditController::class, 'getActivityTimeline'])->name('api.audit.timeline');
             Route::get('/user-summary/{userId}', [AuditController::class, 'getUserActivitySummary'])->name('api.audit.user-summary');
             Route::get('/my-summary', [AuditController::class, 'getMyActivitySummary'])->name('api.audit.my-summary');
+            Route::get('/', [AuditController::class, 'index'])->name('api.audit.index');
+            Route::get('/{id}', [AuditController::class, 'show'])->whereNumber('id')->name('api.audit.show');
             Route::post('/cleanup', [AuditController::class, 'cleanupOldLogs'])->name('api.audit.cleanup');
         });
 

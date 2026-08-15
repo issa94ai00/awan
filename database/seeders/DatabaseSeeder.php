@@ -97,6 +97,8 @@ class DatabaseSeeder extends Seeder
             // Re-seed settings to insert any newly added default configurations
             $this->call([
                 SettingSeeder::class,
+                RoleSeeder::class,
+                UserSeeder::class,
                 RmaSeeder::class,
                 WarehouseSeeder::class,
                 CatalogSeeder::class,
@@ -139,9 +141,19 @@ class DatabaseSeeder extends Seeder
 
     protected function cleanupLegacyCategoriesAndProducts(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF;');
+        } else {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        }
+
         DB::table('products')->whereIn('category_id', range(1, 12))->delete();
         DB::table('categories')->whereIn('id', range(1, 12))->delete();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON;');
+        } else {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        }
     }
 }

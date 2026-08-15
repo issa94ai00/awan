@@ -249,6 +249,11 @@ const routes = [
                 component: () => import('@/views/admin/hr/Attendance.vue')
             },
             {
+                path: 'hr/employee-customers',
+                name: 'admin.hr.employee-customers',
+                component: () => import('@/views/admin/hr/EmployeeCustomers.vue')
+            },
+            {
                 path: 'hr/attendance/create',
                 name: 'admin.hr.attendance.create',
                 component: () => import('@/views/admin/hr/AttendanceForm.vue')
@@ -329,6 +334,16 @@ const routes = [
                 path: 'reports/sales',
                 name: 'admin.reports.sales',
                 component: () => import('@/views/admin/reports/Sales.vue')
+            },
+            {
+                path: 'reports/professional-sales',
+                name: 'admin.reports.professional-sales',
+                component: () => import('@/views/admin/reports/ProfessionalSales.vue')
+            },
+            {
+                path: 'reports/product-kpi',
+                name: 'admin.reports.product-kpi',
+                component: () => import('@/views/admin/reports/ProductKpi.vue')
             },
             {
                 path: 'reports/inventory',
@@ -659,6 +674,32 @@ const router = createRouter({
     routes
 });
 
+const adminRolePolicy = (role, path) => {
+    const normalizedRole = String(role || '').toLowerCase();
+
+    if (!normalizedRole || normalizedRole === 'admin') {
+        return true;
+    }
+
+    const restrictedSalesPaths = ['/admin/sales', '/admin/sales/', '/admin/sales/invoices', '/admin/sales/customers', '/admin/sales/quotes', '/admin/sales/sales-orders', '/admin/sales/payments', '/admin/purchase-requests', '/admin/purchases', '/admin/purchases/', '/admin/invoices', '/admin/quotes'];
+    const restrictedAccountantPaths = ['/admin/accounting', '/admin/accounting/', '/admin/reports', '/admin/reports/', '/admin/analytics', '/admin/analytics/'];
+    const restrictedMarketerPaths = ['/admin/accounting', '/admin/accounting/', '/admin/purchases', '/admin/purchases/', '/admin/wms', '/admin/wms/', '/admin/stock'];
+
+    if (normalizedRole === 'sells') {
+        return !restrictedSalesPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
+    }
+
+    if (normalizedRole === 'accountant') {
+        return !restrictedAccountantPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
+    }
+
+    if (normalizedRole === 'marketer') {
+        return !restrictedMarketerPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
+    }
+
+    return true;
+};
+
 // Navigation guard for authentication
 router.beforeEach((to, from) => {
     const requiresAuth = to.matched.some(record => record.meta && record.meta.requiresAuth);
@@ -679,6 +720,11 @@ router.beforeEach((to, from) => {
             }
             return true;
         }).catch(() => ({ path: '/login', query: { redirect: to.fullPath } }));
+    }
+
+    const userRole = auth.user?.role?.name || auth.user?.role_name || '';
+    if (to.path.startsWith('/admin/') && !adminRolePolicy(userRole, to.path)) {
+        return { path: '/admin/dashboard' };
     }
 
     return true;

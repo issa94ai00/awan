@@ -15,6 +15,7 @@ class Invoice extends Model
         'invoice_number',
         'customer_id',
         'sales_order_id',
+        'warehouse_id',
         'subtotal',
         'tax',
         'discount',
@@ -238,6 +239,11 @@ class Invoice extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     /** Credits raised against this invoice, typically from returns. */

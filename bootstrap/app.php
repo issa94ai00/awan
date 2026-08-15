@@ -9,6 +9,7 @@ use App\Http\Middleware\LoadSettings;
 use App\Http\Middleware\TrackVisitors;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureCanManageOrders;
+use App\Http\Middleware\RequireRole;
 use App\Http\Middleware\SetLocale;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => IsAdmin::class,
             'permission' => CheckPermission::class,
             'manage_orders' => EnsureCanManageOrders::class,
+            'role' => RequireRole::class,
         ]);
         $middleware->web(append: [
             SetLocale::class,

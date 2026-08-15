@@ -43,7 +43,7 @@ if (! function_exists('base_currency_code')) {
             // ignore
         }
 
-        return (string) (get_setting('default_currency') ?: 'SAR');
+        return (string) (get_setting('default_currency') ?: 'SYP');
     }
 }
 

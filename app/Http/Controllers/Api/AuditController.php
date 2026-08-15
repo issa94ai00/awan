@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Services\AuditService;
+use App\Services\ManualRiskAuditService;
 use Illuminate\Http\Request;
 
 class AuditController extends Controller
@@ -100,6 +101,45 @@ class AuditController extends Controller
         $statistics = $this->auditService->getStatistics($days);
 
         return response()->json($statistics);
+    }
+
+    public function riskScan(ManualRiskAuditService $manualRiskAuditService)
+    {
+        $result = $manualRiskAuditService->scan();
+
+        return response()->json($result);
+    }
+
+    public function exportRiskScan(ManualRiskAuditService $manualRiskAuditService)
+    {
+        $result = $manualRiskAuditService->scan();
+        $issues = $result['issues'] ?? [];
+
+        $csv = fopen('php://temp', 'r+');
+        fputcsv($csv, ['type', 'severity', 'reference', 'message', 'details']);
+
+        foreach ($issues as $issue) {
+            fputcsv($csv, [
+                $issue['type'] ?? '',
+                $issue['severity'] ?? '',
+                $issue['reference'] ?? '',
+                $issue['message'] ?? '',
+                json_encode($issue['details'] ?? [], JSON_UNESCAPED_UNICODE),
+            ]);
+        }
+
+        rewind($csv);
+        $content = stream_get_contents($csv);
+        fclose($csv);
+
+        return response($content, 200)
+            ->header('Content-Type', 'text/csv; charset=UTF-8')
+            ->header('Content-Disposition', 'attachment; filename="manual-risk-audit.csv"');
+    }
+
+    public function reconciliationSummary(ManualRiskAuditService $manualRiskAuditService)
+    {
+        return response()->json($manualRiskAuditService->reconciliationSummary());
     }
 
     public function getActivityTimeline(Request $request)

@@ -84,7 +84,7 @@
                 </li>
 
                 <li class="nav-section-label">{{ t('nav_label_commerce') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('sales') }">
+                <li v-if="canAccessGroup('sales')" class="nav-group" :class="{ open: isGroupOpen('sales') }">
                     <div class="nav-group-header" @click="toggleGroup('sales')">
                         <el-icon class="nav-ic"><ShoppingCart /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('sales') }}</span>
@@ -158,7 +158,7 @@
                     </ul>
                 </li>
 
-                <li class="nav-group" :class="{ open: isGroupOpen('purchases') }">
+                <li v-if="canAccessGroup('purchases')" class="nav-group" :class="{ open: isGroupOpen('purchases') }">
                     <div class="nav-group-header" @click="toggleGroup('purchases')">
                         <el-icon class="nav-ic"><ShoppingBag /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('purchases') }}</span>
@@ -192,7 +192,7 @@
                     </ul>
                 </li>
 
-                <li class="nav-group" :class="{ open: isGroupOpen('accounting') }">
+                <li v-if="canAccessGroup('accounting')" class="nav-group" :class="{ open: isGroupOpen('accounting') }">
                     <div class="nav-group-header" @click="toggleGroup('accounting')">
                         <el-icon class="nav-ic"><Coin /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('accounting') }}</span>
@@ -239,7 +239,7 @@
                 </li>
 
                 <li class="nav-section-label">{{ t('nav_label_inventory') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('inventory') }">
+                <li v-if="canAccessGroup('inventory')" class="nav-group" :class="{ open: isGroupOpen('inventory') }">
                     <div class="nav-group-header" @click="toggleGroup('inventory')">
                         <el-icon class="nav-ic"><Box /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('inventory') }}</span>
@@ -267,7 +267,7 @@
                     </ul>
                 </li>
 
-                <li class="nav-group" :class="{ open: isGroupOpen('wms') }">
+                <li v-if="canAccessGroup('wms')" class="nav-group" :class="{ open: isGroupOpen('wms') }">
                     <div class="nav-group-header" @click="toggleGroup('wms')">
                         <el-icon class="nav-ic"><Location /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('wms') }}</span>
@@ -340,6 +340,12 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/hr/employee-customers" class="nav-link" :class="{ active: isActive('/admin/hr/employee-customers') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">علاقة الموظف بالعملاء</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/hr/attendance" class="nav-link" :class="{ active: isActive('/admin/hr/attendance') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('attendance') }}</span>
@@ -360,7 +366,7 @@
                     </ul>
                 </li>
 
-                <li class="nav-group" :class="{ open: isGroupOpen('crm') }">
+                <li v-if="canAccessGroup('crm')" class="nav-group" :class="{ open: isGroupOpen('crm') }">
                     <div class="nav-group-header" @click="toggleGroup('crm')">
                         <el-icon class="nav-ic"><ChatDotRound /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('crm') }}</span>
@@ -405,7 +411,7 @@
                 </li>
 
                 <li class="nav-section-label">{{ t('nav_label_reports') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('reports') }">
+                <li v-if="canAccessGroup('reports')" class="nav-group" :class="{ open: isGroupOpen('reports') }">
                     <div class="nav-group-header" @click="toggleGroup('reports')">
                         <el-icon class="nav-ic"><DataAnalysis /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('reports') }}</span>
@@ -422,6 +428,12 @@
                             <router-link to="/admin/reports/sales" class="nav-link" :class="{ active: isActive('/admin/reports/sales') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('sales_report') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/reports/professional-sales" class="nav-link" :class="{ active: isActive('/admin/reports/professional-sales') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">تقارير المبيعات الاحترافية</span>
                             </router-link>
                         </li>
                         <li>
@@ -445,7 +457,7 @@
                     </ul>
                 </li>
 
-                <li class="nav-group" :class="{ open: isGroupOpen('bi_analytics') }">
+                <li v-if="canAccessGroup('bi_analytics')" class="nav-group" :class="{ open: isGroupOpen('bi_analytics') }">
                     <div class="nav-group-header" @click="toggleGroup('bi_analytics')">
                         <el-icon class="nav-ic"><DataAnalysis /></el-icon>
                         <span v-if="!collapsed" class="nav-text">{{ t('bi_analytics') }}</span>
@@ -571,6 +583,12 @@
                             <router-link to="/admin/audit/entity-logs" class="nav-link" :class="{ active: isActive('/admin/audit/entity-logs') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('entity_logs') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/audit" class="nav-link" :class="{ active: isActive('/admin/audit') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">مراقبة المخاطر</span>
                             </router-link>
                         </li>
                         <li>
@@ -757,6 +775,34 @@ watch(() => props.collapsed, (newVal) => {
         openGroups.value = [];
     }
 });
+
+const userRole = computed(() => (authStore.user?.role?.name || authStore.user?.role_name || '').toLowerCase());
+const canAccessGroup = (group) => {
+    if (!userRole.value || userRole.value === 'admin') {
+        return true;
+    }
+
+    const allowedGroups = {
+        content: ['admin', 'sells', 'marketer'],
+        sales: ['admin', 'sells'],
+        rma: ['admin', 'sells'],
+        purchases: ['admin'],
+        accounting: ['admin', 'accountant'],
+        inventory: ['admin', 'sells'],
+        wms: ['admin'],
+        hr: ['admin'],
+        crm: ['admin', 'marketer'],
+        production: ['admin'],
+        reports: ['admin', 'sells', 'accountant', 'marketer'],
+        bi_analytics: ['admin', 'accountant'],
+        workflows: ['admin'],
+        notifications_management: ['admin'],
+        audit_logs: ['admin'],
+        system: ['admin'],
+    };
+
+    return (allowedGroups[group] || ['admin']).includes(userRole.value);
+};
 
 const userName = computed(() => authStore.user?.name || 'مسؤول النظام');
 const userEmail = computed(() => authStore.user?.email || '');

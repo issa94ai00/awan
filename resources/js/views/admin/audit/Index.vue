@@ -1,207 +1,149 @@
 <template>
   <div class="audit-page">
     <div class="page-header">
-      <h1><el-icon><Document /></el-icon> {{ $t('audit.title') }}</h1>
+      <h1><el-icon><Document /></el-icon> مراقبة التدقيق والمخاطر</h1>
     </div>
 
-    <el-card>
-      <el-form :inline="true" class="filter-form">
-        <el-form-item :label="$t('audit.module')">
-          <el-select v-model="filters.module" :placeholder="$t('audit.select_module')" clearable @change="loadAuditLogs">
-            <el-option value="products" :label="$t('audit.products')" />
-            <el-option value="orders" :label="$t('audit.orders')" />
-            <el-option value="inventory" :label="$t('audit.inventory')" />
-            <el-option value="users" :label="$t('audit.users')" />
-            <el-option value="workflows" :label="$t('audit.workflows')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('audit.action')">
-          <el-select v-model="filters.action" :placeholder="$t('audit.select_action')" clearable @change="loadAuditLogs">
-            <el-option value="create" :label="$t('audit.create')" />
-            <el-option value="update" :label="$t('audit.update')" />
-            <el-option value="delete" :label="$t('audit.delete')" />
-            <el-option value="login" :label="$t('audit.login')" />
-            <el-option value="logout" :label="$t('audit.logout')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('audit.user')">
-          <el-select v-model="filters.user_id" :placeholder="$t('audit.select_user')" clearable filterable @change="loadAuditLogs">
-            <el-option v-for="user in users" :key="user.id" :value="user.id" :label="user.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('common.date_range')">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            :range-separator="$t('common.to')"
-            :start-placeholder="$t('common.start_date')"
-            :end-placeholder="$t('common.end_date')"
-            @change="loadAuditLogs"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadAuditLogs">
-            <el-icon><Search /></el-icon> {{ $t('common.search') }}
-          </el-button>
-        </el-form-item>
-      </el-form>
+    <el-row :gutter="20" class="summary-row">
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card shadow="hover" class="metric-card critical">
+          <div class="metric-label">إجمالي المشكلات</div>
+          <div class="metric-value">{{ summary.total_issues }}</div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card shadow="hover" class="metric-card warning">
+          <div class="metric-label">حرجة</div>
+          <div class="metric-value">{{ summary.critical_issues }}</div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card shadow="hover" class="metric-card info">
+          <div class="metric-label">تحذيرية</div>
+          <div class="metric-value">{{ summary.warning_issues }}</div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card shadow="hover" class="metric-card neutral">
+          <div class="metric-label">آخر فحص</div>
+          <div class="metric-value small">{{ summary.last_scan }}</div>
+        </el-card>
+      </el-col>
+    </el-row>
 
-      <el-table :data="auditLogs" v-loading="loading" stripe>
-        <el-table-column prop="id" :label="$t('audit.id')" width="80" />
-        <el-table-column prop="user" :label="$t('audit.user')" width="150" />
-        <el-table-column prop="module" :label="$t('audit.module')" width="120">
+    <el-card class="panel-card">
+      <template #header>
+        <div class="card-header">
+          <span>نتائج فحص المخاطر اليدوية</span>
+          <div class="header-actions">
+            <el-button type="success" :loading="loading" @click="exportRiskScan">تصدير CSV</el-button>
+            <el-button type="primary" :loading="loading" @click="loadRiskScan">إعادة الفحص</el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-table :data="riskIssues" v-loading="loading" stripe empty-text="لا توجد مشكلات في هذه اللحظة">
+        <el-table-column prop="type" label="النوع" width="220" />
+        <el-table-column prop="severity" label="الأهمية" width="120">
           <template #default="{ row }">
-            <el-tag>{{ row.module }}</el-tag>
+            <el-tag :type="row.severity === 'critical' ? 'danger' : 'warning'">{{ row.severity }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="action" :label="$t('audit.action')" width="100">
+        <el-table-column prop="reference" label="المؤشر" width="180" />
+        <el-table-column prop="message" label="الوصف" show-overflow-tooltip />
+        <el-table-column label="التفاصيل" width="220">
           <template #default="{ row }">
-            <el-tag :type="getActionType(row.action)">{{ row.action }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" :label="$t('audit.description')" show-overflow-tooltip />
-        <el-table-column prop="ip_address" :label="$t('audit.ip_address')" width="120" />
-        <el-table-column prop="created_at" :label="$t('common.created_at')" width="180" />
-        <el-table-column :label="$t('common.actions')" width="100">
-          <template #default="{ row }">
-            <el-button size="small" @click="viewDetails(row)">
-              <el-icon><View /></el-icon>
-            </el-button>
+            <pre class="detail-box">{{ formatDetails(row.details) }}</pre>
           </template>
         </el-table-column>
       </el-table>
-
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.per_page"
-        :total="pagination.total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
-        @size-change="loadAuditLogs"
-        @current-change="loadAuditLogs"
-        style="margin-top: 20px"
-      />
     </el-card>
-
-    <!-- Details Dialog -->
-    <el-dialog v-model="showDetailsDialog" :title="$t('audit.audit_details')" width="800px">
-      <el-descriptions :column="1" border>
-        <el-descriptions-item :label="$t('audit.id')">{{ selectedLog.id }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.user')">{{ selectedLog.user }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.module')">{{ selectedLog.module }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.action')">{{ selectedLog.action }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.description')">{{ selectedLog.description }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.ip_address')">{{ selectedLog.ip_address }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('audit.user_agent')">{{ selectedLog.user_agent }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('common.created_at')">{{ selectedLog.created_at }}</el-descriptions-item>
-      </el-descriptions>
-      <el-divider />
-      <h4>{{ $t('audit.changes') }}</h4>
-      <el-table :data="selectedLog.changes || []" max-height="300">
-        <el-table-column prop="field" :label="$t('audit.field')" />
-        <el-table-column prop="old_value" :label="$t('audit.old_value')" />
-        <el-table-column prop="new_value" :label="$t('audit.new_value')" />
-      </el-table>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Document, Search, View } from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
+import axios from 'axios'
 
-const { t } = useI18n()
 const loading = ref(false)
-const showDetailsDialog = ref(false)
-const auditLogs = ref([])
-const users = ref([])
-const selectedLog = ref({})
-const filters = ref({
-  module: '',
-  action: '',
-  user_id: null
-})
-const dateRange = ref([])
-const pagination = ref({
-  page: 1,
-  per_page: 20,
-  total: 0
+const riskIssues = ref([])
+const summary = ref({
+  total_issues: 0,
+  critical_issues: 0,
+  warning_issues: 0,
+  last_scan: '—'
 })
 
-const getActionType = (action) => {
-  const types = {
-    create: 'success',
-    update: 'warning',
-    delete: 'danger',
-    login: 'info',
-    logout: 'info'
+const formatDetails = (details) => {
+  if (!details) {
+    return ''
   }
-  return types[action] || 'info'
+
+  return JSON.stringify(details, null, 2)
 }
 
-const loadUsers = async () => {
-  try {
-    // await api.get('/api/v1/users')
-    users.value = [
-      { id: 1, name: 'Admin User' },
-      { id: 2, name: 'Warehouse Manager' }
-    ]
-  } catch (error) {
-    console.error('Failed to load users:', error)
-  }
-}
-
-const loadAuditLogs = async () => {
+const loadRiskScan = async () => {
   loading.value = true
+
   try {
-    // const response = await api.get('/api/v1/audit', {
-    //   params: { ...filters.value, start_date: dateRange.value[0], end_date: dateRange.value[1], ...pagination.value }
-    // })
-    auditLogs.value = [
-      { id: 1, user: 'Admin User', module: 'products', action: 'create', description: 'Created product A', ip_address: '192.168.1.1', user_agent: 'Chrome', created_at: '2026-06-23 10:30' },
-      { id: 2, user: 'Warehouse Manager', module: 'inventory', action: 'update', description: 'Updated stock for product B', ip_address: '192.168.1.2', user_agent: 'Firefox', created_at: '2026-06-23 09:45' }
-    ]
-    pagination.value.total = 500
+    const response = await axios.get('/api/v1/audit/risk-scan')
+    const result = response.data || {}
+
+    riskIssues.value = result.issues || []
+    summary.value = result.summary || {
+      total_issues: 0,
+      critical_issues: 0,
+      warning_issues: 0,
+      last_scan: '—'
+    }
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('فشل في تحميل فحص المخاطر')
+    console.error(error)
   } finally {
     loading.value = false
   }
 }
 
-const viewDetails = async (log) => {
+const exportRiskScan = async () => {
   try {
-    // const response = await api.get(`/api/v1/audit/${log.id}`)
-    selectedLog.value = {
-      ...log,
-      changes: [
-        { field: 'name', old_value: 'Old Name', new_value: 'New Name' },
-        { field: 'price', old_value: '100', new_value: '150' }
-      ]
-    }
-    showDetailsDialog.value = true
+    const response = await axios.get('/api/v1/audit/risk-scan/export', {
+      responseType: 'blob'
+    })
+
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8;' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'manual-risk-audit.csv')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+
+    ElMessage.success('تم تصدير ملف CSV بنجاح')
   } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    ElMessage.error('فشل في تصدير ملف CSV')
+    console.error(error)
   }
 }
 
 onMounted(() => {
-  loadUsers()
-  loadAuditLogs()
+  loadRiskScan()
 })
 </script>
 
 <style scoped>
 .audit-page {
-  padding: 20px;
+  padding: 24px;
+  background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+  min-height: 100%;
 }
 
 .page-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 20px;
 }
 
@@ -210,11 +152,73 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: 24px;
-  color: #333;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
 }
 
-.filter-form {
-  margin-bottom: 20px;
+.summary-row {
+  margin-bottom: 22px;
+}
+
+.metric-card {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.metric-card.critical {
+  border-top: 4px solid #ef4444;
+}
+
+.metric-card.warning {
+  border-top: 4px solid #f59e0b;
+}
+
+.metric-card.info {
+  border-top: 4px solid #3b82f6;
+}
+
+.metric-card.neutral {
+  border-top: 4px solid #64748b;
+}
+
+.metric-label {
+  color: #6b7280;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #111827;
+}
+
+.metric-value.small {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.panel-card {
+  border-radius: 18px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+}
+
+.detail-box {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

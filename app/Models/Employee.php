@@ -88,6 +88,18 @@ class Employee extends Model
 
     public function customers()
     {
-        return $this->hasMany(Customer::class);
+        return $this->belongsToMany(Customer::class, 'customer_employee')
+            ->withTimestamps()
+            ->withPivot('id');
+    }
+
+    public function salesOrders()
+    {
+        return $this->hasMany(SalesOrder::class, 'assigned_employee_id');
+    }
+
+    public function invoices()
+    {
+        return $this->hasManyThrough(Invoice::class, SalesOrder::class, 'assigned_employee_id', 'sales_order_id');
     }
 }

@@ -10,6 +10,12 @@
                     <router-link :to="{ name: 'admin.reports.sales' }">
                         <el-button type="primary">{{ $t('sales_report') }}</el-button>
                     </router-link>
+                    <router-link :to="{ name: 'admin.reports.professional-sales' }">
+                        <el-button type="primary">تقرير المبيعات الاحترافي</el-button>
+                    </router-link>
+                    <router-link :to="{ name: 'admin.reports.product-kpi' }">
+                        <el-button type="success">لوحة KPI المنتجات</el-button>
+                    </router-link>
                     <router-link :to="{ name: 'admin.reports.inventory' }">
                         <el-button type="success">{{ $t('inventory_report') }}</el-button>
                     </router-link>

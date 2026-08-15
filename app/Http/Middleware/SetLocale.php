@@ -38,6 +38,16 @@ class SetLocale
             config(['app.direction' => 'ltr']);
         }
 
-        return $next($request)->withCookie(cookie()->forever('locale', $locale));
+        $response = $next($request);
+
+        if (method_exists($response, 'withCookie')) {
+            return $response->withCookie(cookie()->forever('locale', $locale));
+        }
+
+        if (method_exists($response, 'headers')) {
+            $response->headers->setCookie(cookie()->forever('locale', $locale));
+        }
+
+        return $response;
     }
 }

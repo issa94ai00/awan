@@ -25,6 +25,14 @@
             class="dashboard-alert"
         >
         </el-alert>
+
+        <div class="executive-strip" v-if="!loading">
+            <div v-for="item in executiveHighlights" :key="item.label" class="executive-card">
+                <span class="executive-label">{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+            </div>
+        </div>
+
         <!-- ERP Features Dashboard Tabs -->
         <el-tabs v-model="activeTab" class="dashboard-tabs mt-4">
 
@@ -809,6 +817,12 @@ const revenueMetrics = ref([
 const recentSales = ref([]);
 const topProducts = ref([]);
 const lowStockProducts = ref([]);
+const executiveHighlights = computed(() => [
+    { label: window.t('revenue'), value: stats.value[3]?.value || window.t('0_sar') },
+    { label: window.t('low_inventory'), value: formatCount((stats.value[0]?.value || '0').replace(/[^0-9]/g, '')) },
+    { label: window.t('customers'), value: stats.value[2]?.value || '0' },
+    { label: window.t('invoices'), value: stats.value[1]?.value || '0' }
+]);
 const loading = ref(false);
 const error = ref(null);
 
@@ -1499,6 +1513,35 @@ onUnmounted(() => {
     margin-bottom: 1.5rem;
 }
 
+.executive-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.executive-card {
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.96));
+    border: 1px solid #edf2f7;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.executive-label {
+    font-size: 0.78rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.executive-card strong {
+    font-size: 1.1rem;
+    color: #1f2d3d;
+}
+
 .low-stock-card {
     border: 1px solid #f56c6c;
     border-radius: 12px;
@@ -1518,6 +1561,10 @@ onUnmounted(() => {
 @media (max-width: 992px) {
     .page-header {
         padding: 1rem 1.25rem;
+    }
+
+    .executive-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .page-header h1 {
@@ -1554,6 +1601,10 @@ onUnmounted(() => {
 
     .page-header h1 {
         font-size: 1.15rem;
+    }
+
+    .executive-strip {
+        grid-template-columns: 1fr;
     }
 
     .stat-icon {

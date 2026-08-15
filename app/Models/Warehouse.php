@@ -45,6 +45,17 @@ class Warehouse extends Model
         return $this->belongsToMany(Product::class, 'stock_movements');
     }
 
+    public function employees(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Employee::class);
+    }
+
+    public function routedSalesOrders(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(SalesOrder::class, 'sales_order_routings')
+            ->withTimestamps();
+    }
+
     public function manager(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'manager_id');
@@ -108,6 +119,16 @@ class Warehouse extends Model
     public function fulfillmentOrders(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(SalesOrder::class, 'fulfillment_warehouse_id');
+    }
+
+    public function salesOrders(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SalesOrder::class, 'fulfillment_warehouse_id');
+    }
+
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
+    {
+        return $this->hasManyThrough(Invoice::class, SalesOrder::class, 'fulfillment_warehouse_id', 'sales_order_id');
     }
 
     public function productAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany

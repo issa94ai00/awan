@@ -262,12 +262,22 @@ class SeedCatalogFromDaily extends Command
         // warehouse_inventory and stock_movements cascade from products; the
         // invoice_items link is SET NULL, so existing invoices survive with
         // their product reference cleared rather than disappearing.
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        } else {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
+
         DB::table('warehouse_inventory')->delete();
         DB::table('stock_movements')->delete();
         DB::table('products')->delete();
         DB::table('categories')->delete();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON');
+        } else {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
     }
 
     /** @return array<string,int> category name => id */

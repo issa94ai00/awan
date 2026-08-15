@@ -1145,6 +1145,7 @@ class SalesOrderWorkflowService
             'invoice_number' => $this->nextInvoiceNumber(),
             'customer_id' => $order->customer_id,
             'sales_order_id' => $order->id,
+            'warehouse_id' => $order->fulfillment_warehouse_id,
             'subtotal' => $order->subtotal,
             'tax' => $order->tax,
             'discount' => $order->discount,
@@ -1155,16 +1156,20 @@ class SalesOrderWorkflowService
             'status' => Invoice::STATUS_CONFIRMED,
             'notes' => $order->notes,
             'created_by' => auth()->id(),
-            'currency' => $order->currency ?: 'SAR',
+            'currency' => $order->currency ?: 'SYP',
         ]);
 
         foreach ($order->items as $item) {
+            $warehouseId = $item->allocations()->orderByDesc('quantity')->value('warehouse_id')
+                ?? $order->fulfillment_warehouse_id;
+
             // `invoice_items` stores `product_name` (NOT NULL), `tax_amount` and
             // `total_price`. The previous code wrote `description`, `tax` and
             // `total` — none of which are columns on this table — so the insert
             // failed on the missing product_name and took the whole confirmation
             // down with it. That is why no order had ever reached the ledger.
             $invoice->items()->create([
+                'warehouse_id' => $warehouseId,
                 'product_id' => $item->product_id,
                 'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
                 'quantity' => $item->quantity,
