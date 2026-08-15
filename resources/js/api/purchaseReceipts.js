@@ -9,6 +9,10 @@ export const purchaseReceiptsApi = {
         return api.get(`/purchase-receipts/${id}`);
     },
 
+    getPurchaseOrderDetails(purchaseOrderId) {
+        return api.get(`/purchase-receipts/purchase-order/${purchaseOrderId}`);
+    },
+
     create(data) {
         return api.post('/purchase-receipts', data);
     },

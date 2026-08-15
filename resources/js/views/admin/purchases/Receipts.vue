@@ -266,7 +266,7 @@
                     </el-col>
                     <el-col :span="12">
                         <el-form-item label="أمر الشراء المرتبط">
-                            <el-select v-model="form.purchase_order_id" placeholder="اختر أمر الشراء (شراء مباشر إذا كان خالياً)" style="width: 100%" filterable clearable>
+                            <el-select v-model="form.purchase_order_id" placeholder="اختر أمر الشراء (شراء مباشر إذا كان خالياً)" style="width: 100%" filterable clearable @change="handlePurchaseOrderChange">
                                 <el-option 
                                     v-for="o in purchaseOrdersStore.orders" 
                                     :key="o.id" 
@@ -475,6 +475,40 @@ const updateItemPrice = (productId, idx) => {
     const prod = productsStore.products.find(p => p.id === productId);
     if (prod) {
         form.items[idx].unit_price = prod.price;
+    }
+};
+
+const handlePurchaseOrderChange = async (purchaseOrderId) => {
+    if (!purchaseOrderId) {
+        // If cleared, reset items to empty
+        form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+        return;
+    }
+
+    try {
+        const response = await purchaseReceiptsApi.getPurchaseOrderDetails(purchaseOrderId);
+        if (response.data.success) {
+            const data = response.data.data;
+            
+            // Auto-fill supplier_id if not set
+            if (data.supplier_id && !form.supplier_id) {
+                form.supplier_id = data.supplier_id;
+            }
+            
+            // Auto-fill items from purchase order
+            if (data.items && data.items.length > 0) {
+                form.items = data.items.map(item => ({
+                    product_id: item.product_id,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price
+                }));
+                
+                ElMessage.success('تم تعبئة الأصناف والكميات تلقائياً من أمر الشراء');
+            }
+        }
+    } catch (error) {
+        ElMessage.error('خطأ أثناء جلب بيانات أمر الشراء');
+        console.error('Error fetching purchase order details:', error);
     }
 };
 

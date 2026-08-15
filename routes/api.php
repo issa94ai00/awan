@@ -584,6 +584,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'show'])->name('api.purchase-receipts.show');
         Route::put('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'update'])->name('api.purchase-receipts.update');
         Route::delete('/purchase-receipts/{receipt}', [PurchaseReceiptController::class, 'destroy'])->name('api.purchase-receipts.destroy');
+        Route::get('/purchase-receipts/purchase-order/{purchaseOrderId}', [PurchaseReceiptController::class, 'getPurchaseOrderDetails'])->name('api.purchase-receipts.purchase-order-details');
 
         // ERP Retail & WMS Upgrades
         Route::post('/purchase-receipts/{id}/landed-costs', [ErpUpgradeController::class, 'allocateLandedCost'])->name('api.purchase-receipts.landed-costs');

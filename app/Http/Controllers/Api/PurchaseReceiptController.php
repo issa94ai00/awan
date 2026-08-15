@@ -151,6 +151,41 @@ class PurchaseReceiptController extends Controller
     }
 
     /**
+     * Get purchase order details for auto-filling receipt items
+     */
+    public function getPurchaseOrderDetails($purchaseOrderId)
+    {
+        $purchaseOrder = PurchaseOrder::with(['items.product', 'supplier'])->find($purchaseOrderId);
+
+        if (!$purchaseOrder) {
+            return response()->json([
+                'success' => false,
+                'message' => 'أمر الشراء المحدد غير موجود',
+                'data' => null
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم جلب بيانات أمر الشراء بنجاح',
+            'data' => [
+                'purchase_order' => $purchaseOrder,
+                'supplier_id' => $purchaseOrder->supplier_id,
+                'items' => $purchaseOrder->items->map(function ($item) {
+                    return [
+                        'product_id' => $item->product_id,
+                        'product_name' => $item->product_name,
+                        'quantity' => $item->quantity,
+                        'unit_price' => $item->unit_price,
+                        'total_price' => $item->total_price,
+                        'product' => $item->product,
+                    ];
+                }),
+            ]
+        ]);
+    }
+
+    /**
      * A receipt records goods that physically arrived, so its lines are not
      * freely editable: the stock was already taken in against them and the cost
      * posted to the ledger. Rewriting the lines here changed neither, leaving
