@@ -38,6 +38,30 @@ class WarehouseSeeder extends Seeder
         Warehouse::where('id', '!=', $warehouse->id)->update(['is_primary' => false]);
 
         $this->command?->info("المستودع الرئيسي: #{$warehouse->id} {$warehouse->name} ({$warehouse->code})");
+
+        // Create personal warehouses for users
+        $personalWarehouses = [
+            ['name' => 'wh-anas', 'code' => 'wh-anas'],
+            ['name' => 'wh-ahmad', 'code' => 'wh-ahmad'],
+            ['name' => 'wh-ayoub', 'code' => 'wh-ayoub'],
+            ['name' => 'wh-hasan', 'code' => 'wh-hasan'],
+            ['name' => 'wh-ayad', 'code' => 'wh-ayad'],
+        ];
+
+        foreach ($personalWarehouses as $warehouseData) {
+            Warehouse::updateOrCreate(
+                ['code' => $warehouseData['code']],
+                [
+                    'name' => $warehouseData['name'],
+                    'code' => $warehouseData['code'],
+                    'location_type' => 'warehouse',
+                    'is_active' => true,
+                    'is_primary' => false,
+                ]
+            );
+        }
+
+        $this->command?->info("تم إنشاء المستودعات الشخصية");
     }
 
     /**
