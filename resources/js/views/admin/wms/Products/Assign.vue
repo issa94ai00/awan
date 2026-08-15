@@ -1,9 +1,12 @@
 <!-- resources/js/views/admin/wms/Products/Assign.vue -->
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from 'axios';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const route = useRoute();
@@ -101,7 +104,7 @@ async function fetchData() {
         }
     } catch (err) {
         console.error('Error fetching data:', err);
-        error.value = err.response?.data?.message || err.message || 'فشل في جلب البيانات';
+        error.value = err.response?.data?.message || err.message || t('failed_to_fetch_data_short');
         ElMessage.error(error.value);
     } finally {
         loading.value = false;
@@ -116,7 +119,7 @@ onMounted(() => {
 function nextStep() {
     if (currentStep.value < totalSteps) {
         if (!isStepValid.value) {
-            ElMessage.warning('يرجى إكمال جميع الحقول المطلوبة بشكل صحيح');
+            ElMessage.warning(t('please_complete_required_fields'));
             return;
         }
         currentStep.value++;
@@ -132,7 +135,7 @@ function previousStep() {
 // اقتراح تلقائي للقيم مع معالجة أخطاء
 async function suggestStockLevels() {
     if (!form.value.product_id || !form.value.warehouse_id) {
-        ElMessage.warning('يرجى اختيار المنتج والمستودع أولاً');
+        ElMessage.warning(t('choose_product_and_warehouse_first'));
         return;
     }
     
@@ -153,10 +156,10 @@ async function suggestStockLevels() {
         form.value.max_stock = response.data.max_stock || 0;
         form.value.safety_stock = response.data.safety_stock || 0;
         
-        ElMessage.success('تم اقتراح القيم بنجاح');
+        ElMessage.success(t('values_suggested'));
     } catch (err) {
         console.error('Error suggesting stock levels:', err);
-        ElMessage.error('فشل في اقتراح القيم');
+        ElMessage.error(t('failed_to_suggest_values'));
     } finally {
         suggesting.value = false;
     }
@@ -169,11 +172,11 @@ async function submit() {
     
     try {
         await ElMessageBox.confirm(
-            'هل أنت متأكد من حفظ هذا الربط؟',
-            'تأكيد الحفظ',
+            t('confirm_save_assignment'),
+            t('confirm_save_title'),
             {
-                confirmButtonText: 'نعم، احفظ',
-                cancelButtonText: 'إلغاء',
+                confirmButtonText: t('yes_save'),
+                cancelButtonText: t('cancel'),
                 type: 'warning',
             }
         );
@@ -184,7 +187,7 @@ async function submit() {
             throw new Error('Invalid response from server');
         }
         
-        ElMessage.success('تم حفظ الربط بنجاح');
+        ElMessage.success(t('assignment_saved'));
         router.push('/admin/wms/products');
     } catch (err) {
         if (err !== 'cancel') {
@@ -192,9 +195,9 @@ async function submit() {
             
             if (err.response?.data?.errors) {
                 errors.value = err.response.data.errors;
-                ElMessage.error('يوجد أخطاء في النموذج');
+                ElMessage.error(t('form_has_errors_short'));
             } else {
-                const errorMsg = err.response?.data?.message || err.message || 'فشل في الحفظ';
+                const errorMsg = err.response?.data?.message || err.message || t('failed_to_save');
                 ElMessage.error(errorMsg);
             }
         }
@@ -205,11 +208,11 @@ async function submit() {
 
 function handleCancel() {
     ElMessageBox.confirm(
-        'هل أنت متأكد من إلغاء العملية؟ سيتم فقدان البيانات غير المحفوظة.',
-        'تأكيد الإلغاء',
+        t('confirm_cancel_operation'),
+        t('confirm_cancel_title'),
         {
-            confirmButtonText: 'نعم، ألغِ',
-            cancelButtonText: 'لا، استمر',
+            confirmButtonText: t('yes_cancel'),
+            cancelButtonText: t('no_continue'),
             type: 'warning',
         }
     ).then(() => {
@@ -246,7 +249,7 @@ function formatNumber(num) {
         <div v-if="loading" class="text-center py-12">
             <div class="flex flex-col items-center">
                 <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-                <p class="mt-4 text-gray-600">جاري تحميل البيانات...</p>
+                <p class="mt-4 text-gray-600">{{ $t('loading_data') }}</p>
             </div>
         </div>
         
@@ -255,11 +258,11 @@ function formatNumber(num) {
             <div class="flex items-center gap-3">
                 <span class="text-2xl">❌</span>
                 <div>
-                    <p class="font-medium text-red-800">خطأ في جلب البيانات</p>
+                    <p class="font-medium text-red-800">{{ $t('failed_to_fetch_data') }}</p>
                     <p class="text-sm text-red-600">{{ error }}</p>
                 </div>
                 <button @click="fetchData" class="mr-auto text-red-600 hover:text-red-700 text-sm font-medium">
-                    إعادة المحاولة
+                    {{ $t('retry') }}
                 </button>
             </div>
         </div>
@@ -271,14 +274,14 @@ function formatNumber(num) {
                     @click="handleCancel"
                     class="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2 transition-colors"
                 >
-                    ← العودة للمنتجات
+                    {{ $t('back_to_products') }}
                 </button>
             </div>
 
             <div class="bg-white rounded-lg shadow-lg p-8">
-                <h1 class="text-2xl font-bold mb-2 text-gray-900">ربط المنتج بالمستودع</h1>
+                <h1 class="text-2xl font-bold mb-2 text-gray-900">{{ $t('link_product_to_warehouse') }}</h1>
                 <p class="text-gray-600 mb-8">
-                    اتبع الخطوات الثلاث لإعداد ربط المنتج بالمستودع مع بيانات التخطيط
+                    {{ $t('assign_wizard_subtitle') }}
                 </p>
 
                 <!-- Progress Bar -->
@@ -298,26 +301,26 @@ function formatNumber(num) {
                         </div>
                     </div>
                     <div class="flex justify-between mt-2 text-sm text-gray-600">
-                        <span>اختيار المنتج والمستودع</span>
-                        <span>بيانات التخطيط</span>
-                        <span>المواقع الدقيقة</span>
+                        <span>{{ $t('choose_product_and_warehouse_step') }}</span>
+                        <span>{{ $t('planning_data') }}</span>
+                        <span>{{ $t('exact_locations') }}</span>
                     </div>
                 </div>
 
                 <!-- Step 1: Product & Warehouse Selection -->
                 <div v-if="currentStep === 1" class="space-y-6">
-                    <h2 class="text-xl font-bold text-gray-900">الخطوة 1: اختيار المنتج والمستودع</h2>
+                    <h2 class="text-xl font-bold text-gray-900">{{ $t('step_1_choose_product_warehouse') }}</h2>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                المنتج <span class="text-red-500">*</span>
+                                {{ $t('product') }} <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.product_id"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option :value="null">اختر المنتج...</option>
+                                <option :value="null">{{ $t('choose_product_placeholder') }}</option>
                                 <option v-for="product in products" :key="product.id" :value="product.id">
                                     {{ product.code || 'N/A' }} - {{ product.name }}
                                 </option>
@@ -329,13 +332,13 @@ function formatNumber(num) {
                         
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                المستودع <span class="text-red-500">*</span>
+                                {{ $t('warehouse') }} <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.warehouse_id"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option :value="null">اختر المستودع...</option>
+                                <option :value="null">{{ $t('choose_warehouse_placeholder') }}</option>
                                 <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
                                     {{ warehouse.name }} ({{ warehouse.code || 'N/A' }})
                                 </option>
@@ -349,20 +352,20 @@ function formatNumber(num) {
 
                 <!-- Step 2: Planning Data -->
                 <div v-if="currentStep === 2" class="space-y-6">
-                    <h2 class="text-xl font-bold text-gray-900">الخطوة 2: بيانات التخطيط</h2>
+                    <h2 class="text-xl font-bold text-gray-900">{{ $t('step_2_planning_data') }}</h2>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                طريقة التزويد <span class="text-red-500">*</span>
+                                {{ $t('supply_method') }} <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.replenishment_method"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option value="purchase">شراء</option>
-                                <option value="manufacturing">تصنيع</option>
-                                <option value="internal_transfer">نقل داخلي</option>
+                                <option value="purchase">{{ $t('purchase_supply') }}</option>
+                                <option value="manufacturing">{{ $t('manufacture_supply') }}</option>
+                                <option value="internal_transfer">{{ $t('internal_transfer') }}</option>
                             </select>
                             <div v-if="errors.replenishment_method" class="text-red-600 text-sm mt-1">
                                 {{ errors.replenishment_method }}
@@ -371,13 +374,13 @@ function formatNumber(num) {
 
                         <div v-if="form.replenishment_method === 'internal_transfer'">
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                المستودع المصدر <span class="text-red-500">*</span>
+                                {{ $t('source_warehouse') }} <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.source_warehouse_id"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option :value="null">اختر المستودع المصدر...</option>
+                                <option :value="null">{{ $t('choose_source_warehouse') }}</option>
                                 <option v-for="wh in warehouses" :key="wh.id" :value="wh.id" v-if="wh.id !== form.warehouse_id">
                                     {{ wh.name }}
                                 </option>
@@ -389,14 +392,14 @@ function formatNumber(num) {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                طريقة التخطيط <span class="text-red-500">*</span>
+                                {{ $t('planning_method') }} <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.planning_method"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option value="rop">ROP (نقطة إعادة الطلب)</option>
-                                <option value="mrp">MRP (تخطيط متطلبات المواد)</option>
+                                <option value="rop">{{ $t('planning_rop') }}</option>
+                                <option value="mrp">{{ $t('planning_mrp') }}</option>
                             </select>
                             <div v-if="errors.planning_method" class="text-red-600 text-sm mt-1">
                                 {{ errors.planning_method }}
@@ -405,7 +408,7 @@ function formatNumber(num) {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                المهلة الزمنية (أيام) <span class="text-red-500">*</span>
+                                {{ $t('lead_time_days') }} <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 v-model.number="form.lead_time_days"
@@ -420,7 +423,7 @@ function formatNumber(num) {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                الحد الأدنى <span class="text-red-500">*</span>
+                                {{ $t('minimum') }} <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 v-model.number="form.min_stock"
@@ -435,7 +438,7 @@ function formatNumber(num) {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                الحد الأقصى <span class="text-red-500">*</span>
+                                {{ $t('maximum') }} <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 v-model.number="form.max_stock"
@@ -450,7 +453,7 @@ function formatNumber(num) {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                مخزون الأمان <span class="text-red-500">*</span>
+                                {{ $t('safety_stock') }} <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 v-model.number="form.safety_stock"
@@ -465,13 +468,13 @@ function formatNumber(num) {
 
                         <div v-if="form.replenishment_method === 'purchase'">
                             <label class="block text-sm font-medium text-gray-700 mb-2">
-                                المورد الأساسي
+                                {{ $t('primary_supplier') }}
                             </label>
                             <select 
                                 v-model="form.supplier_id"
                                 class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             >
-                                <option :value="null">اختر المورد...</option>
+                                <option :value="null">{{ $t('choose_supplier') }}</option>
                                 <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">
                                     {{ supplier.name }}
                                 </option>
@@ -487,26 +490,26 @@ function formatNumber(num) {
                     >
                         <span v-if="suggesting" class="animate-spin">⟳</span>
                         <span v-else>🔄</span> 
-                        {{ suggesting ? 'جاري الاقتراح...' : 'اقتراح تلقائي بناءً على الاستهلاك السابق' }}
+                        {{ suggesting ? $t('suggesting_now') : $t('auto_suggest_from_history') }}
                     </button>
                 </div>
 
                 <!-- Step 3: Exact Locations -->
                 <div v-if="currentStep === 3" class="space-y-6">
-                    <h2 class="text-xl font-bold text-gray-900">الخطوة 3: المواقع الدقيقة</h2>
+                    <h2 class="text-xl font-bold text-gray-900">{{ $t('step_3_exact_locations') }}</h2>
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            الموقع الرئيسي (Primary Bin)
+                            {{ $t('primary_bin') }}
                         </label>
                         <input 
                             v-model="form.primary_bin_code"
                             type="text"
                             class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                            placeholder="مثال: RUH-A3-12"
+                            :placeholder="$t('example_bin_code')"
                         />
                         <p class="text-sm text-gray-500 mt-1">
-                            الاقتراح التلقائي: WH-{{ form.warehouse_id }}-Aisle{{ Math.floor(Math.random() * 10) }}
+                            {{ $t('auto_suggestion_label') }} WH-{{ form.warehouse_id }}-Aisle{{ Math.floor(Math.random() * 10) }}
                         </p>
                         <div v-if="errors.primary_bin_code" class="text-red-600 text-sm mt-1">
                             {{ errors.primary_bin_code }}
@@ -515,13 +518,13 @@ function formatNumber(num) {
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            منطقة التخزين
+                            {{ $t('storage_zone') }}
                         </label>
                         <input 
                             v-model="form.storage_zone"
                             type="text"
                             class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                            placeholder="مثال: المنطقة الباردة، المنطقة الجافة، إلخ."
+                            :placeholder="$t('example_storage_zone')"
                         />
                         <div v-if="errors.storage_zone" class="text-red-600 text-sm mt-1">
                             {{ errors.storage_zone }}
@@ -529,14 +532,14 @@ function formatNumber(num) {
                     </div>
 
                     <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                        <h3 class="font-medium text-blue-800 mb-2">ملخص الربط</h3>
+                        <h3 class="font-medium text-blue-800 mb-2">{{ $t('assignment_summary') }}</h3>
                         <div class="text-sm text-blue-700 space-y-1">
-                            <p><strong>المنتج:</strong> {{ getProductName(form.product_id) }}</p>
-                            <p><strong>المستودع:</strong> {{ getWarehouseName(form.warehouse_id) }}</p>
-                            <p><strong>طريقة التزويد:</strong> {{ form.replenishment_method }}</p>
-                            <p><strong>الحد الأدنى:</strong> {{ formatNumber(form.min_stock) }}</p>
-                            <p><strong>الحد الأقصى:</strong> {{ formatNumber(form.max_stock) }}</p>
-                            <p><strong>مخزون الأمان:</strong> {{ formatNumber(form.safety_stock) }}</p>
+                            <p><strong>{{ $t('product_label') }}</strong> {{ getProductName(form.product_id) }}</p>
+                            <p><strong>{{ $t('warehouse_label') }}</strong> {{ getWarehouseName(form.warehouse_id) }}</p>
+                            <p><strong>{{ $t('supply_method_label') }}</strong> {{ form.replenishment_method }}</p>
+                            <p><strong>{{ $t('minimum_label') }}</strong> {{ formatNumber(form.min_stock) }}</p>
+                            <p><strong>{{ $t('maximum_label') }}</strong> {{ formatNumber(form.max_stock) }}</p>
+                            <p><strong>{{ $t('safety_stock_label') }}</strong> {{ formatNumber(form.safety_stock) }}</p>
                         </div>
                     </div>
                 </div>
@@ -549,7 +552,7 @@ function formatNumber(num) {
                         v-if="currentStep > 1" 
                         class="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
                     >
-                        السابق
+                        {{ $t('previous') }}
                     </button>
                     
                     <button 
@@ -559,7 +562,7 @@ function formatNumber(num) {
                         :disabled="!isStepValid"
                         class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                        التالي
+                        {{ $t('next') }}
                     </button>
                     
                     <button 
@@ -570,13 +573,13 @@ function formatNumber(num) {
                         class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
                     >
                         <span v-if="submitting" class="animate-spin">⟳</span>
-                        {{ submitting ? 'جاري الحفظ...' : 'حفظ الربط' }}
+                        {{ submitting ? $t('saving_now') : $t('save_assignment') }}
                     </button>
                 </div>
 
                 <!-- Form Errors Display -->
                 <div v-if="Object.keys(errors).length > 0" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p class="text-red-600 font-bold mb-2">يوجد أخطاء في النموذج:</p>
+                    <p class="text-red-600 font-bold mb-2">{{ $t('form_has_errors') }}</p>
                     <ul class="list-disc list-inside text-red-600 text-sm">
                         <li v-for="(error, field) in errors" :key="field">{{ error }}</li>
                     </ul>

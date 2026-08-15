@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -42,54 +43,80 @@ class PurchaseOrderController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier_id' => 'required|exists:suppliers,id',
-            'status' => 'nullable|string|in:pending,confirmed,ordered,received,cancelled',
-            'due_date' => 'nullable|date',
-            'discount' => 'nullable|numeric|min:0',
-            'tax' => 'nullable|numeric|min:0',
-            'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|integer|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.notes' => 'nullable|string|max:500',
-        ]);
-
-        $orderNumber = 'PO-' . str_pad(PurchaseOrder::count() + 1, 6, '0', STR_PAD_LEFT);
-        $validated['order_number'] = $orderNumber;
-        $validated['status'] = $validated['status'] ?? 'pending';
-        $validated['created_by'] = auth()->id();
-
-        $subtotal = 0;
-        foreach ($validated['items'] as $item) {
-            $subtotal += $item['unit_price'] * $item['quantity'];
-        }
-
-        $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
-
-        $order = PurchaseOrder::create($validated);
-
-        foreach ($validated['items'] as $item) {
-            PurchaseOrderItem::create([
-                'purchase_order_id' => $order->id,
-                'product_id' => $item['product_id'],
-                'product_name' => $item['product_name'] ?? null,
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total_price' => $item['unit_price'] * $item['quantity'],
-                'notes' => $item['notes'] ?? null,
+        try {
+            $validated = $request->validate([
+                'supplier_id' => 'required|exists:suppliers,id',
+                'status' => 'nullable|string|in:pending,confirmed,ordered,received,cancelled',
+                'due_date' => 'nullable|date',
+                'discount' => 'nullable|numeric|min:0',
+                'tax' => 'nullable|numeric|min:0',
+                'notes' => 'nullable|string|max:1000',
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required|integer|exists:products,id',
+                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.unit_price' => 'required|numeric|min:0',
+                'items.*.notes' => 'nullable|string|max:500',
+            ], [
+                'supplier_id.required' => 'يجب اختيار المورد',
+                'supplier_id.exists' => 'المورد المحدد غير موجود',
+                'items.required' => 'يجب إضافة منتج واحد على الأقل',
+                'items.*.product_id.required' => 'يجب تحديد المنتج',
+                'items.*.product_id.exists' => 'المنتج المحدد غير موجود',
+                'items.*.quantity.required' => 'يجب تحديد الكمية',
+                'items.*.quantity.min' => 'الكمية يجب أن تكون 1 على الأقل',
+                'items.*.unit_price.required' => 'يجب تحديد سعر الوحدة',
+                'items.*.unit_price.min' => 'سعر الوحدة يجب أن يكون 0 على الأقل',
             ]);
+
+            $orderNumber = 'PO-' . str_pad(PurchaseOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+            $validated['order_number'] = $orderNumber;
+            $validated['status'] = $validated['status'] ?? 'pending';
+            $validated['created_by'] = auth()->id();
+
+            $subtotal = 0;
+            foreach ($validated['items'] as $item) {
+                $subtotal += $item['unit_price'] * $item['quantity'];
+            }
+
+            $validated['subtotal'] = $subtotal;
+            $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
+
+            $order = PurchaseOrder::create($validated);
+
+            foreach ($validated['items'] as $item) {
+                $product = Product::find($item['product_id']);
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total_price' => $item['unit_price'] * $item['quantity'],
+                    'notes' => $item['notes'] ?? null,
+                ]);
+            }
+
+            $order->load(['supplier', 'items.product']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم إنشاء أمر الشراء بنجاح',
+                'data' => $order,
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ في التحقق من البيانات',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء إنشاء أمر الشراء',
+                'error' => $e->getMessage(),
+            ], 500);
         }
-
-        $order->load(['supplier', 'items.product']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Purchase order created successfully',
-            'data' => $order,
-        ], 201);
     }
 
     public function show(PurchaseOrder $order): JsonResponse
@@ -131,10 +158,11 @@ class PurchaseOrderController extends Controller
         $order->items()->delete();
 
         foreach ($validated['items'] as $item) {
+            $product = Product::find($item['product_id']);
             PurchaseOrderItem::create([
                 'purchase_order_id' => $order->id,
                 'product_id' => $item['product_id'],
-                'product_name' => $item['product_name'] ?? null,
+                'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
                 'total_price' => $item['unit_price'] * $item['quantity'],

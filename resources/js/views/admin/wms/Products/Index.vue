@@ -405,7 +405,7 @@ function formatPrice(price) {
                                     }"
                                     class="px-3 py-1 rounded-full text-xs font-medium"
                                 >
-                                    {{ getProductStatus(product) === 'ok' ? 'جيد' : getProductStatus(product) === 'low_stock' ? 'منخفض' : 'غير مرتبط' }}
+                                    {{ getProductStatus(product) === 'ok' ? $t('good') : getProductStatus(product) === 'low_stock' ? $t('low') : $t('not_linked') }}
                                 </span>
                             </td>
                             <td class="p-4 font-mono text-sm">{{ product.code }}</td>
@@ -481,7 +481,7 @@ function formatPrice(price) {
             <div class="relative bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xl font-bold text-gray-900">
-                        {{ selectedProduct ? 'تعديل منتج' : 'إضافة منتج جديد' }}
+                        {{ selectedProduct ? $t('edit_product') : $t('add_a_new_product') }}
                     </h2>
                     <button @click="handleCancel" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>

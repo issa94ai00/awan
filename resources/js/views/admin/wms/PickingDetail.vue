@@ -11,7 +11,7 @@
                         <h1><i class="fas fa-clipboard-list"></i> {{ list.list_number }}</h1>
                         <p>
                             <span v-if="list.order_number">
-                                طلب <strong class="order-link" @click="goToOrder">{{ list.order_number }}</strong>
+                                {{ $t('order_short') }} <strong class="order-link" @click="goToOrder">{{ list.order_number }}</strong>
                             </span>
                             <span v-if="list.customer_name"> — {{ list.customer_name }}</span>
                             <span> · {{ list.warehouse_name }}</span>
@@ -28,12 +28,12 @@
             <el-card shadow="never" class="progress-card">
                 <div class="progress-head">
                     <div>
-                        <strong>{{ list.picked_items }} من {{ list.total_items }} صنف</strong>
+                        <strong>{{ $t('picked_of_total', { picked: list.picked_items, total: list.total_items }) }}</strong>
                         <span v-if="shortCount" class="short-note">
-                            <i class="fas fa-triangle-exclamation"></i> {{ shortCount }} صنف نقص عن المطلوب
+                            <i class="fas fa-triangle-exclamation"></i> {{ $t('items_short_of_required', { count: shortCount }) }}
                         </span>
                     </div>
-                    <span class="progress-pct">{{ list.progress }}٪</span>
+                    <span class="progress-pct">{{ list.progress }}%</span>
                 </div>
                 <el-progress
                     :percentage="list.progress"
@@ -44,16 +44,16 @@
 
                 <div class="progress-actions">
                     <el-button v-if="list.can_start" type="primary" :loading="saving" @click="start">
-                        <i class="fas fa-play"></i> بدء السحب
+                        <i class="fas fa-play"></i> {{ $t('start_picking') }}
                     </el-button>
                     <el-button v-if="list.can_complete" type="success" :loading="saving" @click="complete">
-                        <i class="fas fa-check"></i> إنهاء التجهيز
+                        <i class="fas fa-check"></i> {{ $t('complete_picking') }}
                     </el-button>
                     <el-button v-if="list.can_cancel" type="danger" plain :loading="saving" @click="cancel">
-                        <i class="fas fa-ban"></i> إلغاء القائمة
+                        <i class="fas fa-ban"></i> {{ $t('cancel_list') }}
                     </el-button>
                     <span v-if="list.picker_name" class="picker-note">
-                        <i class="fas fa-user"></i> المُجهِّز: {{ list.picker_name }}
+                        <i class="fas fa-user"></i> {{ $t('picker_label') }} {{ list.picker_name }}
                     </span>
                 </div>
 
@@ -63,7 +63,7 @@
                     :closable="false"
                     show-icon
                     class="mt-3"
-                    title="ابدأ السحب أولاً لتفعيل تسجيل الكميات — القائمة تُسند إليك عند البدء."
+                    :title="$t('start_picking_first_hint')"
                 />
             </el-card>
 
@@ -71,10 +71,10 @@
             <el-card shadow="never" class="mt-3">
                 <template #header>
                     <div class="card-header">
-                        <span><i class="fas fa-boxes-stacked"></i> أصناف السحب</span>
+                        <span><i class="fas fa-boxes-stacked"></i> {{ $t('picking_items') }}</span>
                         <el-input
                             v-model="scan"
-                            placeholder="امسح الباركود أو اكتبه…"
+                            :placeholder="$t('scan_or_type_barcode')"
                             clearable
                             :disabled="!isPicking"
                             class="scan-input"
@@ -90,22 +90,22 @@
                         <template #default="{ $index }">{{ $index + 1 }}</template>
                     </el-table-column>
 
-                    <el-table-column label="الصنف" min-width="220">
+                    <el-table-column :label="$t('item')" min-width="220">
                         <template #default="{ row }">
                             <strong>{{ row.product_name || '—' }}</strong>
                             <p class="row-sub">
                                 {{ row.sku || '—' }}
-                                <span v-if="row.bin_code"> · رف {{ row.bin_code }}</span>
+                                <span v-if="row.bin_code"> · {{ $t('bin_prefix') }} {{ row.bin_code }}</span>
                                 <span v-if="row.bin_location"> ({{ row.bin_location }})</span>
                             </p>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="المطلوب" width="90" align="center">
+                    <el-table-column :label="$t('required_quantity')" width="90" align="center">
                         <template #default="{ row }"><strong>{{ row.quantity_to_pick }}</strong></template>
                     </el-table-column>
 
-                    <el-table-column label="المسحوب" width="90" align="center">
+                    <el-table-column :label="$t('picked_quantity')" width="90" align="center">
                         <template #default="{ row }">
                             <span :class="{ 'text-success': row.quantity_picked >= row.quantity_to_pick, 'text-warning': row.quantity_picked > 0 && row.quantity_picked < row.quantity_to_pick }">
                                 {{ row.quantity_picked }}
@@ -113,13 +113,13 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="الحالة" width="120" align="center">
+                    <el-table-column :label="$t('status')" width="120" align="center">
                         <template #default="{ row }">
                             <el-tag :type="itemStatusType(row.status)" size="small" effect="light">{{ row.status_text }}</el-tag>
                         </template>
                     </el-table-column>
 
-                    <el-table-column label="تسجيل السحب" width="230" align="center">
+                    <el-table-column :label="$t('record_pick')" width="230" align="center">
                         <template #default="{ row }">
                             <div v-if="row.status === 'pending' && isPicking" class="pick-cell">
                                 <el-input-number
@@ -131,10 +131,10 @@
                                     style="width: 110px"
                                 />
                                 <el-button size="small" type="primary" :loading="saving" @click="pick(row)">
-                                    سحب
+                                    {{ $t('pick') }}
                                 </el-button>
                             </div>
-                            <span v-else-if="row.status === 'pending'" class="muted">ابدأ السحب أولاً</span>
+                            <span v-else-if="row.status === 'pending'" class="muted">{{ $t('start_picking_first') }}</span>
                             <span v-else class="muted">{{ row.picked_at || '—' }}</span>
                         </template>
                     </el-table-column>
@@ -142,15 +142,18 @@
             </el-card>
         </div>
 
-        <el-empty v-else description="قائمة التجهيز غير موجودة" />
+        <el-empty v-else :description="$t('picking_list_not_found')" />
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
+
+const { t } = useI18n();
 
 const route = useRoute();
 const router = useRouter();
@@ -194,7 +197,7 @@ const load = async () => {
         list.value = res.data?.data?.list || null;
         seedDrafts();
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'تعذّر تحميل قائمة التجهيز.');
+        ElMessage.error(e.response?.data?.message || t('failed_to_load_picking_list'));
     } finally {
         loading.value = false;
     }
@@ -206,7 +209,7 @@ const run = async (fn, message) => {
         const res = await fn();
         apply(res.data?.data?.list, res.data?.message || message);
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || 'تعذّر تنفيذ العملية.');
+        ElMessage.error(e.response?.data?.message || t('operation_failed'));
     } finally {
         saving.value = false;
     }
@@ -222,17 +225,17 @@ const pick = (row) => {
 const complete = async () => {
     const pending = (list.value.items || []).filter((i) => i.status === 'pending').length;
     if (pending) {
-        ElMessage.warning(`ما زال ${pending} صنف بانتظار السحب.`);
+        ElMessage.warning(t('items_still_awaiting_pick', { count: pending }));
         return;
     }
 
     try {
         await ElMessageBox.confirm(
             shortCount.value
-                ? `${shortCount.value} صنف سُحب ناقصاً عن المطلوب. إنهاء التجهيز بالكميات المسحوبة فعلاً؟`
-                : 'إنهاء التجهيز؟ الأصناف تصبح جاهزة للشحن.',
-            'إنهاء التجهيز',
-            { type: shortCount.value ? 'warning' : 'info', confirmButtonText: 'إنهاء', cancelButtonText: 'رجوع' }
+                ? t('confirm_complete_with_short_picks', { count: shortCount.value })
+                : t('confirm_complete_picking'),
+            t('complete_picking'),
+            { type: shortCount.value ? 'warning' : 'info', confirmButtonText: t('finish'), cancelButtonText: t('back') }
         );
     } catch {
         return;
@@ -244,9 +247,9 @@ const complete = async () => {
 const cancel = async () => {
     try {
         await ElMessageBox.confirm(
-            'إلغاء قائمة التجهيز؟ لن يُطلب من أحد سحب هذه الأصناف.',
-            'إلغاء القائمة',
-            { type: 'warning', confirmButtonText: 'إلغاء القائمة', cancelButtonText: 'رجوع' }
+            t('confirm_cancel_picking_list'),
+            t('cancel_list'),
+            { type: 'warning', confirmButtonText: t('cancel_list'), cancelButtonText: t('back') }
         );
     } catch {
         return;
@@ -268,7 +271,7 @@ const onScan = () => {
     );
 
     if (!match) {
-        ElMessage.warning('لا يوجد صنف مطابق بانتظار السحب.');
+        ElMessage.warning(t('no_matching_item_to_pick'));
         return;
     }
 
