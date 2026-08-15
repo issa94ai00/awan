@@ -363,6 +363,7 @@
 </template>
 
 <script setup>
+import { formatMoney as formatBaseMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -419,9 +420,8 @@ const availableClass = (row) => {
     return 'text-success';
 };
 
-const formatNumber = (n) => (n === null || n === undefined ? '0' : Number(n).toLocaleString('en-US'));
-const formatMoney = (n) =>
-    (n === null || n === undefined ? '0' : Number(n)).toLocaleString('en-US', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 });
+const formatNumber = (n) => formatCount(n);
+const formatMoney = (n) => formatBaseMoney(n);
 
 const formatDate = (d) => (d ? String(d).replace('T', ' ').substring(0, 16) : '-');
 

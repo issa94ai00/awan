@@ -216,6 +216,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
@@ -335,9 +336,7 @@ const getAvatarColor = (name) => {
   return colors[index];
 };
 
-const formatCurrency = (val) => {
-  return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(val || 0);
-};
+const formatCurrency = (val) => formatMoney(val);
 
 onMounted(() => {
   loadCustomersData();

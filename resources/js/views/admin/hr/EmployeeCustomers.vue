@@ -138,6 +138,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -299,12 +300,7 @@ const detachCustomer = async (customer) => {
     }
 };
 
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SA', { 
-        style: 'currency', 
-        currency: 'SAR' 
-    }).format(value);
-};
+const formatCurrency = (value) => formatMoney(value);
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';

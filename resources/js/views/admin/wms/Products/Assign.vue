@@ -1,5 +1,6 @@
 <!-- resources/js/views/admin/wms/Products/Assign.vue -->
 <script setup>
+import { formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
@@ -239,7 +240,7 @@ function getWarehouseName(warehouseId) {
 // تنسيق الأرقام
 function formatNumber(num) {
     if (num === null || num === undefined) return '-';
-    return Number(num).toLocaleString('ar-SA');
+    return formatCount(num);
 }
 </script>
 

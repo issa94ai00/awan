@@ -825,6 +825,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 // Status wording, tag colours and money formatting are shared across the sales
 // module so this page cannot drift from the list and detail screens.
 import { statusLabel, statusTagType, formatCurrency, formatDate } from '@/utils/sales';
+import { baseCurrencyCode } from '@/utils/currency';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
@@ -879,7 +880,7 @@ const lockedReason = computed(() => {
 const isDirty = ref(false);
 
 /** The configured currency, for labels that sit beside an input rather than a formatted amount. */
-const currencyCode = computed(() => window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR');
+const currencyCode = computed(() => baseCurrencyCode());
 
 // Wizard Active Step
 const activeStep = ref(0);

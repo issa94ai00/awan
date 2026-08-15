@@ -48,7 +48,7 @@
             >
                 <el-table-column :label="$t('photo')" width="90">
                     <template #default="{ row }">
-                        <el-avatar :src="row.avatar || '/placeholder.jpg'" size="40" />
+                        <EntityImage :src="row.avatar" type="employee" :size="40" shape="circle" />
                     </template>
                 </el-table-column>
                 <el-table-column prop="name" :label="$t('employee')" />
@@ -105,6 +105,7 @@
 </template>
 
 <script setup>
+import EntityImage from '@/components/admin/EntityImage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';

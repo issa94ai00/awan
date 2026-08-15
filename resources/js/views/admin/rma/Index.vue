@@ -235,6 +235,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { ref, onMounted, computed } from 'vue'
 import { RefreshLeft, Plus, Search, View, Check, Close, Edit, Files, Finished, Warning, Tickets, Operation, ArrowDown, Download, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -493,9 +494,7 @@ const getReturnTypeClass = (type) => {
   return classes[type] || 'info'
 }
 
-const formatCurrency = (val) => {
-  return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(val)
-}
+const formatCurrency = (val) => formatMoney(val)
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'

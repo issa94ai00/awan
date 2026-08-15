@@ -347,6 +347,7 @@
 </template>
 
 <script setup>
+import { baseCurrencyCode } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, h, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -383,7 +384,7 @@ const data = ref({
   tickets: [],
 });
 
-const currency = computed(() => customer.value.currency || 'SAR');
+const currency = computed(() => customer.value.currency || baseCurrencyCode());
 
 // Money is shown in the customer's own currency rather than the system default.
 const money = (value) => formatCurrency(value, currency.value);

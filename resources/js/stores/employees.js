@@ -13,7 +13,7 @@ const sampleEmployees = [
         email: 'ahmed.ali@example.com',
         phone: '+966 50 000 0001',
         hire_date: '2022-04-15',
-        avatar: '/placeholder.jpg'
+        avatar: ''
     },
     {
         id: 2,
@@ -24,7 +24,7 @@ const sampleEmployees = [
         email: 'sara.mohamed@example.com',
         phone: '+966 50 000 0002',
         hire_date: '2023-01-09',
-        avatar: '/placeholder.jpg'
+        avatar: ''
     },
     {
         id: 3,
@@ -35,7 +35,7 @@ const sampleEmployees = [
         email: 'khaled.hassan@example.com',
         phone: '+966 50 000 0003',
         hire_date: '2021-09-12',
-        avatar: '/placeholder.jpg'
+        avatar: ''
     }
 ];
 
@@ -143,7 +143,7 @@ export const useEmployeesStore = defineStore('employees', {
 
                 if (err.response?.status === 404 || err.code === 'ERR_NETWORK') {
                     const id = Math.max(0, ...this.employees.map((item) => item.id || 0)) + 1;
-                    const employee = { id, status: 'نشط', avatar: '/placeholder.jpg', ...payload };
+                    const employee = { id, status: 'نشط', avatar: '', ...payload };
                     this.employees.unshift(employee);
                     this.pagination.total += 1;
                     return employee;

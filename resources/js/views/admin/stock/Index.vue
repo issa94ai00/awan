@@ -290,6 +290,7 @@
 </template>
 
 <script setup>
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -495,10 +496,7 @@ const formatNumber = (num) => {
     return Number(num).toLocaleString('en-US');
 };
 
-const formatPrice = (price) => {
-    if (price === null || price === undefined) return '0';
-    return Number(price).toLocaleString('en-US', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 });
-};
+const formatPrice = (price) => formatMoney(price);
 
 onMounted(async () => {
     await Promise.all([

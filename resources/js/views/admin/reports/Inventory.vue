@@ -209,6 +209,7 @@
 </template>
 
 <script setup>
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { Box, Goods, Warning, Coin, TrendCharts, Download, RefreshRight } from '@element-plus/icons-vue';
@@ -290,11 +291,10 @@ const summaryStats = computed(() => ({
 const getInventoryValue = () =>
     topProducts.value.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.stock_quantity || 0)), 0);
 
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(value || 0);
-};
+// Report figures are quoted whole; cents on a stock valuation are noise.
+const formatCurrency = (value) => formatMoney(value, { decimals: 0 });
 
-const formatNumber = (value) => new Intl.NumberFormat('ar-SA').format(Number(value || 0));
+const formatNumber = (value) => formatCount(value);
 
 const exportInventoryReport = async () => {
     try {

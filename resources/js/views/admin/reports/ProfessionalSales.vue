@@ -417,6 +417,7 @@
 </template>
 
 <script setup>
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
@@ -971,20 +972,13 @@ const formatValue = (value, format) => {
     return formatNumber(value);
 };
 
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SA', {
-        style: 'currency',
-        currency: 'SAR'
-    }).format(Number(value || 0));
-};
+const formatCurrency = (value) => formatMoney(value);
 
 const formatPercentage = (value) => {
     return `${Number(value || 0).toFixed(2)}%`;
 };
 
-const formatNumber = (value) => {
-    return new Intl.NumberFormat('ar-SA').format(value);
-};
+const formatNumber = (value) => formatCount(value);
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';

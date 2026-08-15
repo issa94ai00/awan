@@ -10,6 +10,7 @@
  */
 
 import i18n from '@/i18n';
+import { formatMoney } from '@/utils/currency';
 
 const t = (key, fallback) => {
     const translated = i18n.global.t(key);
@@ -155,24 +156,11 @@ const toNumber = (value) => {
 };
 
 /**
- * Currency formatter. Amounts are stored in the base currency; that code is
- * the single source of truth (mirrored as settings.default_currency).
+ * Currency formatter. Amounts are stored in the base currency; `utils/currency`
+ * is the single place that knows which one that is and how it is written.
+ * Re-exported here because the sales views already reach for it by this name.
  */
-export const formatCurrency = (value, currency) => {
-    const amount = toNumber(value);
-    const code = currency
-        || window.systemData?.currencies?.base
-        || window.systemData?.settings?.default_currency
-        || 'SAR';
-    const locale = i18n.global.locale.value === 'en' ? 'en-US' : 'ar-SY';
-
-    const formatted = new Intl.NumberFormat(locale, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(amount);
-
-    return `${formatted} ${code}`;
-};
+export const formatCurrency = (value, currency) => formatMoney(value, { code: currency });
 
 export const formatDate = (value) => {
     if (!value) return '—';

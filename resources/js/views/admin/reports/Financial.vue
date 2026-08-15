@@ -187,6 +187,7 @@
 </template>
 
 <script setup>
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { Coin, Wallet, TrendingUp, CircleCheck, Document, Ticket, Download, RefreshRight } from '@element-plus/icons-vue';
@@ -255,8 +256,9 @@ const cashFlowList = computed(() => [
     { label: t('revenue_this_month'), caption: t('current_month'), value: formatCurrency(overview.value.invoices?.revenue?.month || 0) }
 ]);
 
-const formatCurrency = (value) => new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(Number(value || 0));
-const formatNumber = (value) => new Intl.NumberFormat('ar-SA').format(Number(value || 0));
+// Report figures are quoted whole; cents on a year's revenue are noise.
+const formatCurrency = (value) => formatMoney(value, { decimals: 0 });
+const formatNumber = (value) => formatCount(value);
 
 const resetFinancialFilters = () => {
     filters.value = { customer_id: null, warehouse_id: null, date_filter_type: 'all', start_date: null, end_date: null };

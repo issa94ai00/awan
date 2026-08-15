@@ -141,20 +141,12 @@
                 <el-table-column :label="$t('image')" width="100">
                     <template #default="{ row }">
                         <div class="product-img-cell">
-                            <el-image
-                                :src="row.image_main || '/placeholder.jpg'"
-                                fit="cover"
-                                class="product-thumb"
+                            <EntityImage
+                                :src="row.image_main"
+                                type="product"
+                                :size="70"
                                 :preview-src-list="getPreviewList(row)"
-                                :preview-teleported="true"
-                                lazy
-                            >
-                                <template #error>
-                                    <div class="image-placeholder">
-                                        <el-icon :size="22"><Picture /></el-icon>
-                                    </div>
-                                </template>
-                            </el-image>
+                            />
                             <div class="img-badges">
                                 <span v-if="row.sale_price" class="badge badge-sale">Sale</span>
                                 <span v-if="row.is_featured" class="badge badge-star">
@@ -188,7 +180,7 @@
                         <div class="price-cell">
                             <span class="current-price">{{ formatPrice(row.price) }}</span>
                             <span v-if="row.sale_price" class="sale-price">{{ formatPrice(row.sale_price) }}</span>
-                            <span class="currency">{{ row.currency || 'SAR' }}</span>
+                            <span class="currency">{{ row.currency || baseCurrencyCode() }}</span>
                         </div>
                     </template>
                 </el-table-column>
@@ -325,6 +317,8 @@
 </template>
 
 <script setup>
+import EntityImage from '@/components/admin/EntityImage.vue';
+import { baseCurrencyCode } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -743,35 +737,21 @@ onMounted(init);
     font-size: 0.9rem;
 }
 
-.image-placeholder {
-    width: 70px;
-    height: 70px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f5f7fa;
-    border-radius: 10px;
-    color: #c0c4cc;
-}
-
 .product-img-cell {
     position: relative;
     width: 70px;
     height: 70px;
 }
 
-.product-thumb {
-    width: 70px;
-    height: 70px;
-    border-radius: 10px;
-    overflow: hidden;
+/* The thumbnail's zoom-on-hover, kept now that EntityImage draws the cell. */
+.product-img-cell :deep(.entity-image) {
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.product-thumb:hover {
+.product-img-cell :deep(.entity-image:hover) {
     transform: scale(1.08);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 .img-badges {

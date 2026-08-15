@@ -206,6 +206,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
@@ -499,9 +500,7 @@ const resetFilters = () => {
     loadProductKpi();
 };
 
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(safeNumber(value));
-};
+const formatCurrency = (value) => formatMoney(safeNumber(value));
 
 const formatPercentage = (value) => {
     return `${safeNumber(value).toFixed(2)}%`;

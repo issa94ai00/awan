@@ -43,7 +43,9 @@ if (! function_exists('base_currency_code')) {
             // ignore
         }
 
-        return (string) (get_setting('default_currency') ?: 'SYP');
+        // Matches CurrencyService::FALLBACK — the two are read as the same answer
+        // by the boot payload and the API, so they must not name different money.
+        return (string) (get_setting('default_currency') ?: 'USD');
     }
 }
 

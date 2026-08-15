@@ -1,5 +1,6 @@
 <!-- resources/js/views/admin/wms/Stock/Organization.vue -->
 <script setup>
+import { formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -189,7 +190,7 @@ function goToAssignment(productId) {
 // تنسيق الأرقام
 function formatNumber(num) {
     if (num === null || num === undefined) return '-';
-    return Number(num).toLocaleString('ar-SA');
+    return formatCount(num);
 }
 
 onMounted(() => {

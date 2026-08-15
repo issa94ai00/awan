@@ -32,15 +32,13 @@
             >
                 <el-table-column :label="$t('photo')" width="130" align="center">
                     <template #default="{ row }">
-                        <el-image
-                            v-if="row.image"
-                            :src="`/storage/${row.image}`"
-                            fit="cover"
-                            style="width: 80px; height: 50px; border-radius: 8px; border: 1px solid #e2e8f0;"
-                            :preview-src-list="[`/storage/${row.image}`]"
-                            preview-teleported
+                        <EntityImage
+                            :src="row.image ? `/storage/${row.image}` : ''"
+                            type="offer"
+                            :size="80"
+                            :height="50"
+                            :preview-src-list="row.image ? [`/storage/${row.image}`] : []"
                         />
-                        <div v-else class="image-placeholder-small">{{ $t('there_is_no_picture') }}</div>
                     </template>
                 </el-table-column>
 
@@ -232,6 +230,7 @@
 </template>
 
 <script setup>
+import EntityImage from '@/components/admin/EntityImage.vue';
 import { ref, reactive, onMounted } from 'vue';
 import { Plus, Edit, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -490,17 +489,7 @@ onMounted(() => {
     font-weight: 600;
 }
 
-.image-placeholder-small {
-    background-color: #f1f5f9;
-    color: #94a3b8;
-    height: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    border: 1px dashed #cbd5e1;
-}
+/* The offer thumbnail and its icon fallback are drawn by EntityImage. */
 
 .d-block {
     display: block;

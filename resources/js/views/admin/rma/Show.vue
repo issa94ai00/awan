@@ -353,6 +353,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { ref, onMounted, computed } from 'vue'
 import { RefreshLeft, Back, Edit, Check, Close, Location, Finished, Warning, User, DocumentAdd, Select, Box, CircleCheck } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -767,9 +768,7 @@ const getRefundMethodLabel = (method) => {
   return labels[method] || method || '-'
 }
 
-const formatCurrency = (val) => {
-  return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(val)
-}
+const formatCurrency = (val) => formatMoney(val)
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'

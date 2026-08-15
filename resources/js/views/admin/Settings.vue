@@ -1128,6 +1128,8 @@
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+// Aliased: `baseCurrencyCode` is already the name of this screen's own ref.
+import { baseCurrencyCode as resolveBaseCurrency } from '@/utils/currency';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import currenciesApi from '@/api/currencies';
 
@@ -1144,7 +1146,7 @@ const submitting = ref(false);
 const formRef = ref(null);
 const currenciesLoading = ref(false);
 const managedCurrencies = ref([]);
-const baseCurrencyCode = ref(window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR');
+const baseCurrencyCode = ref(resolveBaseCurrency());
 const initialBaseCurrency = ref(baseCurrencyCode.value);
 
 const form = reactive({
@@ -1156,7 +1158,7 @@ const form = reactive({
     site_description_en: '',
     show_site_name: true,
     show_product_price: true,
-    default_currency: window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR',
+    default_currency: resolveBaseCurrency(),
     default_language: 'ar',
     timezone: 'Asia/Riyadh',
     contact_phone: '',
@@ -1683,7 +1685,7 @@ const loadSettings = (settings) => {
     form.site_description_en = settings.site_description_en ?? '';
     form.show_site_name = normalizeBoolean(settings.show_site_name ?? '1');
     form.show_product_price = normalizeBoolean(settings.show_product_price ?? '1');
-    form.default_currency = settings.default_currency || baseCurrencyCode.value || 'SAR';
+    form.default_currency = settings.default_currency || baseCurrencyCode.value || resolveBaseCurrency();
     form.default_language = settings.default_language || 'ar';
     form.timezone = settings.timezone || 'Asia/Riyadh';
     initialBaseCurrency.value = form.default_currency;

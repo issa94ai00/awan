@@ -324,6 +324,7 @@
 </template>
 
 <script setup>
+import { formatMoney } from '@/utils/currency';
 import { ref, onMounted, computed } from 'vue'
 import { RefreshLeft, Back, Location, ShoppingCart, User, Phone, Message } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -795,9 +796,7 @@ const submitForm = async () => {
   }
 }
 
-const formatCurrency = (val) => {
-  return new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR' }).format(val)
-}
+const formatCurrency = (val) => formatMoney(val)
 
 onMounted(async () => {
   await loadCustomers()

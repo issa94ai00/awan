@@ -87,10 +87,15 @@
               <el-row :gutter="20">
                 <el-col :xs="24" :sm="12">
                   <el-form-item :label="$t('virtual_currency')">
+                    <!-- Driven by the currencies the platform actually defines,
+                         rather than a fixed three that may have no rate behind them. -->
                     <el-select v-model="form.currency" class="premium-select">
-                      <el-option value="SAR" :label="$t('saudi_riyal_sar')" />
-                      <el-option value="USD" :label="$t('us_dollar_usd')" />
-                      <el-option value="AED" :label="$t('uae_dirham_aed')" />
+                      <el-option
+                        v-for="option in currencyOptions"
+                        :key="option.code"
+                        :value="option.code"
+                        :label="option.label"
+                      />
                     </el-select>
                   </el-form-item>
                 </el-col>
@@ -148,6 +153,7 @@
 </template>
 
 <script setup>
+import { baseCurrencyCode, currencyOptions as buildCurrencyOptions } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
@@ -177,9 +183,12 @@ const form = ref({
   state: '',
   country: t('saudi_arabia'),
   postal_code: '',
-  currency: 'SAR',
+  // A new customer is billed in the currency the books are kept in.
+  currency: baseCurrencyCode(),
   source: ''
 });
+
+const currencyOptions = computed(() => buildCurrencyOptions());
 
 const rules = {
   name: [{ required: true, message: t('customer_name_required'), trigger: 'blur' }],
@@ -214,7 +223,7 @@ const loadCustomer = async () => {
     state: customer.state || '',
     country: customer.country || t('saudi_arabia'),
     postal_code: customer.postal_code || '',
-    currency: customer.currency || 'SAR',
+    currency: customer.currency || baseCurrencyCode(),
     source: customer.source || ''
   };
 };

@@ -30,6 +30,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { invoicesApi } from '@/api/invoices';
+import { formatMoney } from '@/utils/currency';
 
 const loading = ref(true);
 const summary = ref({ revenue: {}, count: {} });
@@ -44,7 +45,7 @@ function formatLabel(key) {
 }
 
 function formatCurrency(value) {
-    return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP' }).format(value);
+    return formatMoney(value);
 }
 
 async function loadSummary() {

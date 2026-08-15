@@ -21,19 +21,13 @@
                 <el-row :gutter="24">
                     <el-col :xs="24" :md="7">
                         <el-card shadow="never" class="image-card">
-                            <el-image
-                                style="width: 100%; height: 300px; object-fit: cover; border-radius: 8px;"
-                                :src="product.image_main || '/placeholder.jpg'"
-                                fit="cover"
-                                lazy
-                            >
-                                <template #error>
-                                    <div class="no-image">
-                                        <el-icon :size="48"><Picture /></el-icon>
-                                        <span>{{ $t('there_is_no_photo') }}</span>
-                                    </div>
-                                </template>
-                            </el-image>
+                            <EntityImage
+                                :src="product.image_main"
+                                type="product"
+                                size="100%"
+                                :height="300"
+                                show-label
+                            />
 
                             <div v-if="galleryImages.length" class="gallery-thumbs">
                                 <el-image
@@ -120,7 +114,7 @@
                                 </el-descriptions-item>
                                 <el-descriptions-item :label="$t('the_price')">
                                     <span class="price-value">{{ formatPrice(product.price) }}</span>
-                                    <small class="currency-label">{{ product.currency || 'SAR' }}</small>
+                                    <small class="currency-label">{{ product.currency || baseCurrencyCode() }}</small>
                                 </el-descriptions-item>
                                 <el-descriptions-item :label="$t('cost_price')">
                                     <span>{{ product.cost_price ? formatPrice(product.cost_price) : '—' }}</span>
@@ -215,7 +209,7 @@
                             <el-alert
                                 :title="`خصم ${product.discount_percentage}% على هذا المنتج!`"
                                 type="success"
-                                :description="`السعر الأصلي: ${formatPrice(product.price)} → سعر العرض: ${formatPrice(product.sale_price)} ${product.currency || 'SAR'}`"
+                                :description="`السعر الأصلي: ${formatPrice(product.price)} → سعر العرض: ${formatPrice(product.sale_price)} ${product.currency || baseCurrencyCode()}`"
                                 show-icon
                                 :closable="false"
                             />
@@ -228,11 +222,13 @@
 </template>
 
 <script setup>
+import EntityImage from '@/components/admin/EntityImage.vue';
+import { baseCurrencyCode } from '@/utils/currency';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
-import { Edit, ArrowRight, Picture } from '@element-plus/icons-vue';
+import { Edit, ArrowRight } from '@element-plus/icons-vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -336,19 +332,6 @@ onMounted(loadProduct);
 
 .image-card {
     margin-bottom: 1rem;
-}
-
-.no-image {
-    width: 100%;
-    height: 300px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: #f5f7fa;
-    border-radius: 8px;
-    color: #c0c4cc;
-    gap: 12px;
 }
 
 .gallery-thumbs {

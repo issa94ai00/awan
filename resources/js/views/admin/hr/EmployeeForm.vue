@@ -191,7 +191,7 @@ const form = ref({
     email: '',
     phone: '',
     hire_date: '',
-    avatar: '/placeholder.jpg',
+    avatar: '',
     warehouse_id: null,
     password: '',
     confirm_password: ''
@@ -282,7 +282,7 @@ const loadEmployee = async () => {
         email: employee.email || '',
         phone: employee.phone || '',
         hire_date: employee.hire_date || '',
-        avatar: employee.avatar || '/placeholder.jpg',
+        avatar: employee.avatar || '',
         warehouse_id: employee.warehouse_id ?? null,
         password: '',
         confirm_password: ''

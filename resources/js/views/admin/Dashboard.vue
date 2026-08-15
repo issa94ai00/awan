@@ -1,12 +1,26 @@
 <template>
-    <div class="dashboard">
+    <div class="dashboard" ref="dashboardRef">
         <div class="page-header">
             <div class="page-header-icon"><i class="fas fa-tachometer-alt"></i></div>
             <div class="page-header-text">
                 <h1>{{ $t('control_panel_var', { value: siteName }) }}</h1>
                 <p>{{ tagline }}</p>
+                <!-- Says out loud which currency the figures below are in, so a
+                     total is never read as a number in the wrong money. -->
+                <span class="page-header-meta">
+                    <el-tag size="small" type="info" effect="plain">
+                        {{ $t('amounts_in_base_currency', { currency: baseCode }) }}
+                    </el-tag>
+                    <span v-if="lastUpdatedLabel" class="small-text">
+                        {{ $t('last_updated_at', { time: lastUpdatedLabel }) }}
+                    </span>
+                </span>
             </div>
             <div class="page-header-actions">
+                <el-button size="default" :loading="refreshing" @click="refresh">
+                    <el-icon class="mr-1"><Refresh /></el-icon>
+                    {{ $t('refresh') }}
+                </el-button>
                 <el-button type="success" size="default" @click="paymentDialogVisible = true">
                     <el-icon class="mr-1"><Checked /></el-icon>
                     {{ $t('quick_payment') }}
@@ -78,8 +92,12 @@
                             <el-table :data="lowStockProducts" style="width: 100%" :stripe="true">
                                 <el-table-column prop="name" :label="$t('product')"></el-table-column>
                                 <el-table-column prop="sku" label="SKU" width="120"></el-table-column>
-                                <el-table-column prop="stock_quantity" :label="$t('current_stock')" width="120"></el-table-column>
-                                <el-table-column prop="min_stock" :label="$t('minimum')" width="120"></el-table-column>
+                                <el-table-column prop="stock_quantity" :label="$t('current_stock')" width="120">
+                                    <template #default="{ row }">{{ formatNumber(row.stock_quantity) }}</template>
+                                </el-table-column>
+                                <el-table-column prop="min_stock" :label="$t('minimum')" width="120">
+                                    <template #default="{ row }">{{ formatNumber(row.min_stock) }}</template>
+                                </el-table-column>
                                 <el-table-column :label="$t('status')" width="120">
                                     <template #default>
                                         <el-tag type="danger">{{ $t('low') }}</el-tag>
@@ -127,13 +145,16 @@
                                     <template #header>
                                         <div class="status-header">
                                             <span>{{ $t('revenue_trend_title') }}</span>
-                                            <span class="small-text">{{ $t('latest_update_automatically') }}</span>
+                                            <span class="small-text" v-if="lastUpdatedLabel">
+                                                {{ $t('last_updated_at', { time: lastUpdatedLabel }) }}
+                                            </span>
                                         </div>
                                     </template>
                                     <div class="revenue-summary">
                                         <div class="revenue-value">
                                             <span>{{ $t('total_revenue') }}</span>
-                                            <strong>{{ stats[3] ? stats[3].value : '' }}</strong>
+                                            <!-- Reads the figure, not the fourth stat card. -->
+                                            <strong>{{ formatMoney(totalRevenue) }}</strong>
                                         </div>
                                         <div class="revenue-metrics">
                                             <div class="metric-item" v-for="metric in revenueMetrics" :key="metric.label">
@@ -177,7 +198,7 @@
                                                 <span>{{ item.label }}</span>
                                                 <div class="status-description">{{ item.description }}</div>
                                             </div>
-                                            <strong>{{ formatCount(item.value) }}</strong>
+                                            <strong>{{ formatNumber(item.value) }}</strong>
                                         </div>
                                     </div>
                                 </el-card>
@@ -199,8 +220,11 @@
                                     <el-table-column prop="amount" :label="$t('amount')"></el-table-column>
                                     <el-table-column prop="status" :label="$t('status')">
                                         <template #default="{ row }">
-                                            <el-tag :type="getStatusType(row.status)">
-                                                {{ row.status }}
+                                            <!-- Status is matched as the model identifier the API sent
+                                                 and translated only for display, so the colour no longer
+                                                 depends on an English word appearing in an Arabic label. -->
+                                            <el-tag :type="statusTagType(row.status)">
+                                                {{ statusLabel(row.status) }}
                                             </el-tag>
                                         </template>
                                     </el-table-column>
@@ -215,10 +239,10 @@
                                 </template>
                                 <div class="top-products">
                                     <div v-for="product in topProducts" :key="product.id" class="product-item">
-                                        <el-avatar :size="40" :src="product.image"></el-avatar>
+                                        <EntityImage :src="product.image" type="product" :size="40" shape="circle" />
                                         <div class="product-info">
                                             <h4>{{ product.name }}</h4>
-                                            <span>{{ product.sales }} {{ $t('lonliness') }}</span>
+                                            <span>{{ formatNumber(product.sales) }} {{ $t('lonliness') }}</span>
                                         </div>
                                         <span class="product-price">{{ product.price }}</span>
                                     </div>
@@ -248,7 +272,7 @@
                                         <el-icon :size="28" color="white"><Location /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(wmsStats.warehouses_count) }}</h3>
+                                        <h3>{{ formatNumber(wmsStats.warehouses_count) }}</h3>
                                         <p>{{ $t('warehouses') }}</p>
                                     </div>
                                 </div>
@@ -261,7 +285,7 @@
                                         <el-icon :size="28" color="white"><List /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(wmsStats.bins_count) }}</h3>
+                                        <h3>{{ formatNumber(wmsStats.bins_count) }}</h3>
                                         <p>{{ $t('bins') }}</p>
                                     </div>
                                 </div>
@@ -274,7 +298,7 @@
                                         <el-icon :size="28" color="white"><Checked /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(wmsStats.picking_pending + wmsStats.picking_in_progress) }}</h3>
+                                        <h3>{{ formatNumber(activePickingCount) }}</h3>
                                         <p>{{ $t('picking_packing') }} ({{ $t('common.active') }})</p>
                                     </div>
                                 </div>
@@ -287,7 +311,7 @@
                                         <el-icon :size="28" color="white"><Calendar /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(wmsStats.cycle_counts_count) }}</h3>
+                                        <h3>{{ formatNumber(wmsStats.cycle_counts_count) }}</h3>
                                         <p>{{ $t('cycle_counts') }}</p>
                                     </div>
                                 </div>
@@ -312,8 +336,8 @@
                                 </template>
                                 <div ref="wmsAccuracyChartRef" class="chart-box"></div>
                                 <div class="mt-2 gauge-legend">
-                                    <p>{{ $t('total_cycle_counts') }}: <strong>{{ formatCount(wmsStats.cycle_counts_count) }}</strong></p>
-                                    <p>{{ $t('completed_cycle_counts') }}: <strong>{{ formatCount(wmsStats.cycle_counts_completed) }}</strong></p>
+                                    <p>{{ $t('total_cycle_counts') }}: <strong>{{ formatNumber(wmsStats.cycle_counts_count) }}</strong></p>
+                                    <p>{{ $t('completed_cycle_counts') }}: <strong>{{ formatNumber(wmsStats.cycle_counts_completed) }}</strong></p>
                                 </div>
                             </el-card>
                         </el-col>
@@ -356,7 +380,7 @@
                                         <el-icon :size="28" color="white"><Refresh /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(rmaStats.total) }}</h3>
+                                        <h3>{{ formatNumber(rmaStats.total) }}</h3>
                                         <p>{{ $t('rma_requests') }}</p>
                                     </div>
                                 </div>
@@ -369,7 +393,7 @@
                                         <el-icon :size="28" color="white"><Clock /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(rmaStats.pending) }}</h3>
+                                        <h3>{{ formatNumber(rmaStats.pending) }}</h3>
                                         <p>{{ $t('pending_rma') }}</p>
                                     </div>
                                 </div>
@@ -382,7 +406,7 @@
                                         <el-icon :size="28" color="white"><Wallet /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatAmount(rmaStats.refunded_amount) }}</h3>
+                                        <h3>{{ formatMoney(rmaStats.refunded_amount) }}</h3>
                                         <p>{{ $t('returned_amount') }}</p>
                                     </div>
                                 </div>
@@ -399,19 +423,19 @@
                                 <div style="padding: 10px 0;">
                                     <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                         <span>{{ $t('rma_pending_approval') }}</span>
-                                        <el-tag type="warning">{{ formatCount(rmaStats.pending) }}</el-tag>
+                                        <el-tag type="warning">{{ formatNumber(rmaStats.pending) }}</el-tag>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                         <span>{{ $t('rma_approved') }}</span>
-                                        <el-tag type="primary">{{ formatCount(rmaStats.approved) }}</el-tag>
+                                        <el-tag type="primary">{{ formatNumber(rmaStats.approved) }}</el-tag>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                         <span>{{ $t('rma_rejected') }}</span>
-                                        <el-tag type="danger">{{ formatCount(rmaStats.rejected) }}</el-tag>
+                                        <el-tag type="danger">{{ formatNumber(rmaStats.rejected) }}</el-tag>
                                     </div>
                                     <div style="display: flex; justify-content: space-between;">
                                         <span>{{ $t('rma_completed') }}</span>
-                                        <el-tag type="success">{{ formatCount(rmaStats.completed) }}</el-tag>
+                                        <el-tag type="success">{{ formatNumber(rmaStats.completed) }}</el-tag>
                                     </div>
                                 </div>
                             </el-card>
@@ -464,7 +488,7 @@
                                         <el-icon :size="28" color="white"><Cpu /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(workflowStats.total) }}</h3>
+                                        <h3>{{ formatNumber(workflowStats.total) }}</h3>
                                         <p>{{ $t('workflows') }}</p>
                                     </div>
                                 </div>
@@ -477,7 +501,7 @@
                                         <el-icon :size="28" color="white"><Checked /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(workflowStats.active) }}</h3>
+                                        <h3>{{ formatNumber(workflowStats.active) }}</h3>
                                         <p>{{ $t('active_workflows') }}</p>
                                     </div>
                                 </div>
@@ -490,7 +514,7 @@
                                         <el-icon :size="28" color="white"><Connection /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(workflowStats.executions_total) }}</h3>
+                                        <h3>{{ formatNumber(workflowStats.executions_total) }}</h3>
                                         <p>{{ $t('automation_executions') }}</p>
                                     </div>
                                 </div>
@@ -503,7 +527,7 @@
                                         <el-icon :size="28" color="white"><TrendCharts /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ workflowStats.executions_total ? Math.round((workflowStats.executions_completed / workflowStats.executions_total) * 100) : 100 }}%</h3>
+                                        <h3>{{ automationSuccessRate }}</h3>
                                         <p>{{ $t('automation_success_rate') }}</p>
                                     </div>
                                 </div>
@@ -520,11 +544,11 @@
                                 <div style="padding: 10px 0;">
                                     <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
                                         <span>{{ $t('successfully_executed') }}</span>
-                                        <el-tag type="success">{{ formatCount(workflowStats.executions_completed) }}</el-tag>
+                                        <el-tag type="success">{{ formatNumber(workflowStats.executions_completed) }}</el-tag>
                                     </div>
                                     <div style="display: flex; justify-content: space-between;">
                                         <span>{{ $t('failed_executions') }}</span>
-                                        <el-tag type="danger">{{ formatCount(workflowStats.executions_failed) }}</el-tag>
+                                        <el-tag type="danger">{{ formatNumber(workflowStats.executions_failed) }}</el-tag>
                                     </div>
                                 </div>
                             </el-card>
@@ -561,7 +585,7 @@
                                         <el-icon :size="28" color="white"><View /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(auditStats.total) }}</h3>
+                                        <h3>{{ formatNumber(auditStats.total) }}</h3>
                                         <p>{{ $t('total_audited_operations') }}</p>
                                     </div>
                                 </div>
@@ -574,7 +598,7 @@
                                         <el-icon :size="28" color="white"><Clock /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(auditStats.today) }}</h3>
+                                        <h3>{{ formatNumber(auditStats.today) }}</h3>
                                         <p>{{ $t('todays_operations') }}</p>
                                     </div>
                                 </div>
@@ -639,7 +663,7 @@
                                         <el-icon :size="28" color="white"><DataAnalysis /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(analyticsStats.dashboards) }}</h3>
+                                        <h3>{{ formatNumber(analyticsStats.dashboards) }}</h3>
                                         <p>{{ $t('analytics_dashboards') }}</p>
                                     </div>
                                 </div>
@@ -652,7 +676,7 @@
                                         <el-icon :size="28" color="white"><Document /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(analyticsStats.reports) }}</h3>
+                                        <h3>{{ formatNumber(analyticsStats.reports) }}</h3>
                                         <p>{{ $t('analytics_reports') }}</p>
                                     </div>
                                 </div>
@@ -665,7 +689,7 @@
                                         <el-icon :size="28" color="white"><Odometer /></el-icon>
                                     </div>
                                     <div class="stat-info">
-                                        <h3>{{ formatCount(analyticsStats.metrics) }}</h3>
+                                        <h3>{{ formatNumber(analyticsStats.metrics) }}</h3>
                                         <p>{{ $t('analytics_metrics') }}</p>
                                     </div>
                                 </div>
@@ -715,45 +739,81 @@
 </template>
 
 <script setup>
+import EntityImage from '@/components/admin/EntityImage.vue';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import * as echarts from 'echarts';
-import {
-    Box, ShoppingCart, User, TrendCharts, Location, Checked, Calendar, Cpu, Bell, Connection, View, Setting, Memo, Collection, UserFilled, DataAnalysis
-} from '@element-plus/icons-vue';
+// Only the icons bound as values (`:is="stat.icon"`) need importing; the ones
+// written as tags resolve through the global registration in app.js.
+import { Box, ShoppingCart, User, TrendCharts } from '@element-plus/icons-vue';
 import { dashboardApi } from '@/api/dashboard';
 import { useSettingsStore } from '@/stores/settings';
+import { useCurrency } from '@/Composables/useCurrency';
+import { statusTagType, statusLabel } from '@/utils/sales';
 import DashboardSkeleton from '@/components/admin/DashboardSkeleton.vue';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 
-const { t } = useI18n();
-
-const { locale } = useI18n();
+const { t, locale } = useI18n();
 const settingsStore = useSettingsStore();
+
+// Amounts here are ledger figures, so they are written in the currency the
+// ledger keeps them in rather than a code baked into this file.
+const { baseCode, formatMoney, formatNumber } = useCurrency();
 
 const paymentDialogVisible = ref(false);
 
 const siteName = computed(() => {
-    if (!settingsStore.data) return window.t('site_name');
-    return locale.value === 'en'
-        ? (settingsStore.data.site_name_en || settingsStore.data.site_name)
-        : (settingsStore.data.site_name_ar || settingsStore.data.site_name);
+    const settings = settingsStore.data || {};
+    const name = locale.value === 'en'
+        ? (settings.site_name_en || settings.site_name)
+        : (settings.site_name_ar || settings.site_name);
+
+    return name || t('site_name');
 });
 
 const tagline = computed(() => {
-    if (!settingsStore.data) return window.t('system_performance_overview_and_statistics');
-    return locale.value === 'en'
-        ? (settingsStore.data.site_tagline_en || settingsStore.data.site_tagline || 'System performance overview and statistics')
-        : (settingsStore.data.site_tagline_ar || settingsStore.data.site_tagline || window.t('system_performance_overview_and_statistics'));
+    const settings = settingsStore.data || {};
+    const line = locale.value === 'en'
+        ? (settings.site_tagline_en || settings.site_tagline)
+        : (settings.site_tagline_ar || settings.site_tagline);
+
+    return line || t('system_performance_overview_and_statistics');
 });
 
+// Re-runs on a language switch too, because `siteName` is itself locale-derived.
 watch(siteName, (value) => {
-    document.title = window.t('control_panel_var').replace('{value}', value);
+    document.title = t('control_panel_var', { value });
 }, { immediate: true });
 
 const activeTab = ref('overview');
 
-const wmsStats = ref({
+const loading = ref(false);
+const refreshing = ref(false);
+const error = ref(null);
+const lastUpdatedAt = ref(null);
+
+/**
+ * The `/dashboard/stats` payload, held raw.
+ *
+ * Every label and every formatted total used to be built inside the loader and
+ * parked in a ref, which froze the whole screen at the language and currency in
+ * force when the request returned: switching to English relabelled the tabs and
+ * left the figures, their headings and their status text in Arabic until a
+ * reload. Keeping the response and deriving the display below it makes the page
+ * a function of (data, locale, base currency), so a change in any of the three
+ * re-renders what depends on it and nothing else.
+ */
+const overview = ref({});
+const salesTrend = ref([]);
+
+/* ---- Slices of the payload, each defaulted so the template never branches ---- */
+
+const products = computed(() => overview.value.products || {});
+const invoices = computed(() => overview.value.invoices || {});
+const erp = computed(() => overview.value.erp || {});
+const revenueBreakdown = computed(() => invoices.value.revenue || {});
+
+const wmsStats = computed(() => ({
     warehouses_count: 0,
     bins_count: 0,
     picking_pending: 0,
@@ -763,73 +823,180 @@ const wmsStats = ref({
     packing_in_progress: 0,
     packing_completed: 0,
     cycle_counts_count: 0,
-    cycle_counts_completed: 0
-});
+    cycle_counts_completed: 0,
+    ...(overview.value.wms || {}),
+}));
 
-const rmaStats = ref({
+const rmaStats = computed(() => ({
     total: 0,
     pending: 0,
     approved: 0,
     rejected: 0,
     completed: 0,
-    refunded_amount: 0
-});
+    refunded_amount: 0,
+    ...(overview.value.rma || {}),
+}));
 
-const workflowStats = ref({
+const workflowStats = computed(() => ({
     total: 0,
     active: 0,
     inactive: 0,
     executions_total: 0,
     executions_completed: 0,
-    executions_failed: 0
-});
+    executions_failed: 0,
+    ...(overview.value.workflows || {}),
+}));
 
-const notificationStats = ref({
+const auditStats = computed(() => ({
     total: 0,
-    templates: 0
-});
+    today: 0,
+    ...(overview.value.audit || {}),
+}));
 
-const auditStats = ref({
-    total: 0,
-    today: 0
-});
-
-const recentAuditLogs = ref([]);
-
-const analyticsStats = ref({
+const analyticsStats = computed(() => ({
     dashboards: 0,
     reports: 0,
-    metrics: 0
+    metrics: 0,
+    ...(overview.value.analytics || {}),
+}));
+
+const recentAuditLogs = computed(() => overview.value.recent_audit_logs || []);
+
+/** Summed rather than added in the template, where a string count would concatenate. */
+const activePickingCount = computed(() => (
+    toNumber(wmsStats.value.picking_pending) + toNumber(wmsStats.value.picking_in_progress)
+));
+
+/**
+ * Reads as a dash until something has actually run: a fresh install with no
+ * executions was being congratulated with a 100% success rate.
+ */
+const automationSuccessRate = computed(() => {
+    const total = toNumber(workflowStats.value.executions_total);
+    if (total <= 0) return '—';
+
+    const rate = Math.round((toNumber(workflowStats.value.executions_completed) / total) * 100);
+    return `${formatNumber(rate)}%`;
 });
 
-const stats = ref([
-    { title: window.t('total_products'), value: '...', icon: Box, color: '#409eff', route: '/admin/products' },
-    { title: window.t('invoices'), value: '...', icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/invoices' },
-    { title: window.t('customers'), value: '...', icon: User, color: '#e6a23c', route: '/admin/sales/customers' },
-    { title: window.t('revenue'), value: '...', icon: TrendCharts, color: '#f56c6c', route: '/admin/analytics/financial' }
+/* ---- Headline figures, kept numeric so both the cards and the strip read them ---- */
+
+const toNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const productsTotal = computed(() => toNumber(products.value.total));
+const lowStockCount = computed(() => toNumber(products.value.low_stock));
+const invoicesTotal = computed(() => toNumber(invoices.value.total));
+const customersTotal = computed(() => toNumber(erp.value.active_customers ?? overview.value.customers?.total));
+const totalRevenue = computed(() => toNumber(erp.value.total_revenue ?? revenueBreakdown.value.total));
+
+const localizedName = (row) => {
+    const name = locale.value === 'en'
+        ? (row?.name_en || row?.name_ar)
+        : (row?.name_ar || row?.name_en);
+
+    return name || t('undefined');
+};
+
+const stats = computed(() => [
+    { title: t('total_products'), value: formatNumber(productsTotal.value), icon: Box, color: '#409eff', route: '/admin/products' },
+    { title: t('invoices'), value: formatNumber(invoicesTotal.value), icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/invoices' },
+    { title: t('customers'), value: formatNumber(customersTotal.value), icon: User, color: '#e6a23c', route: '/admin/sales/customers' },
+    { title: t('revenue'), value: formatMoney(totalRevenue.value), icon: TrendCharts, color: '#f56c6c', route: '/admin/analytics/financial' },
 ]);
 
-const detailStats = ref([]);
-const statusGroups = ref([]);
-const revenueMetrics = ref([
-    { label: window.t('today'), value: window.t('0_sar'), percent: 0 },
-    { label: window.t('this_week'), value: window.t('0_sar'), percent: 0 },
-    { label: window.t('this_month'), value: window.t('0_sar'), percent: 0 }
-]);
-const recentSales = ref([]);
-const topProducts = ref([]);
-const lowStockProducts = ref([]);
+/**
+ * The executive strip reads the same figures the cards do.
+ *
+ * It used to re-read the rendered card strings â€” taking the *product* count for
+ * the low-stock tile, then stripping non-ASCII digits from it, which erases an
+ * Arabic-Indic number completely and left the tile blank. Reading the numbers
+ * instead of their own formatting removes both faults at once.
+ */
 const executiveHighlights = computed(() => [
-    { label: window.t('revenue'), value: stats.value[3]?.value || window.t('0_sar') },
-    { label: window.t('low_inventory'), value: formatCount((stats.value[0]?.value || '0').replace(/[^0-9]/g, '')) },
-    { label: window.t('customers'), value: stats.value[2]?.value || '0' },
-    { label: window.t('invoices'), value: stats.value[1]?.value || '0' }
+    { label: t('revenue'), value: formatMoney(totalRevenue.value) },
+    { label: t('low_inventory'), value: formatNumber(lowStockCount.value) },
+    { label: t('customers'), value: formatNumber(customersTotal.value) },
+    { label: t('invoices'), value: formatNumber(invoicesTotal.value) },
 ]);
-const loading = ref(false);
-const error = ref(null);
 
-const invoiceStatusCounts = ref({ paid: 0, pending: 0, cancelled: 0 });
-const salesTrend = ref([]);
+const detailStats = computed(() => [
+    { title: t('monthly_sales'), value: formatMoney(erp.value.monthly_sales), icon: TrendCharts, color: '#67c23a', route: '/admin/reports/sales' },
+    { title: t('expenses'), value: formatMoney(erp.value.total_expenses), icon: ShoppingCart, color: '#f56c6c', route: '/admin/accounting' },
+    { title: t('pending_invoices'), value: formatNumber(erp.value.pending_invoices), icon: Box, color: '#e6a23c', route: '/admin/sales/invoices' },
+    { title: t('low_inventory'), value: formatNumber(lowStockCount.value), icon: Box, color: '#f56c6c', route: '/admin/inventory' },
+    { title: t('quotes'), value: formatNumber(overview.value.quotes?.total), icon: TrendCharts, color: '#8c6dfd', route: '/admin/sales/quotes' },
+    { title: t('sales_orders'), value: formatNumber(overview.value.sales_orders?.total), icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/sales-orders' },
+    { title: t('production_orders'), value: formatNumber(overview.value.production?.total), icon: Box, color: '#f56c6c', route: '/admin/production' },
+    { title: t('salaries'), value: formatNumber(overview.value.payrolls?.total), icon: User, color: '#409eff', route: '/admin/hr/payrolls' },
+]);
+
+const revenueMetrics = computed(() => [
+    { label: t('today'), value: formatMoney(revenueBreakdown.value.today), percent: getPercent(revenueBreakdown.value.today, totalRevenue.value) },
+    { label: t('this_week'), value: formatMoney(revenueBreakdown.value.week), percent: getPercent(revenueBreakdown.value.week, totalRevenue.value) },
+    { label: t('this_month'), value: formatMoney(revenueBreakdown.value.month), percent: getPercent(revenueBreakdown.value.month, totalRevenue.value) },
+]);
+
+const statusGroups = computed(() => [
+    {
+        title: t('billing_status'),
+        items: [
+            { label: t('paid'), value: invoices.value.paid, description: t('successfully_completed_invoices') },
+            { label: t('suspended'), value: invoices.value.pending, description: t('invoices_that_need_follow_up') },
+            { label: t('canceled'), value: invoices.value.cancelled, description: t('canceled_or_refunded_invoices') },
+        ],
+    },
+    {
+        title: t('status_of_payments'),
+        items: [
+            { label: t('complete'), value: overview.value.payments?.completed, description: t('completed_payment_from_customers') },
+            { label: t('suspended'), value: overview.value.payments?.pending, description: t('payment_is_waiting_for_processing') },
+            { label: t('refundable'), value: overview.value.payments?.refunded, description: t('refunds_payments_to_customers') },
+        ],
+    },
+    {
+        title: t('production_status'),
+        items: [
+            { label: t('suspended'), value: overview.value.production?.pending, description: t('uninitiated_production_orders') },
+            { label: t('under_implementation'), value: overview.value.production?.in_progress, description: t('current_production_orders') },
+            { label: t('complete'), value: overview.value.production?.completed, description: t('orders_ready_for_delivery') },
+        ],
+    },
+]);
+
+const recentSales = computed(() => (overview.value.recent_invoices || []).map((invoice) => ({
+    id: invoice.invoice_number || invoice.id || '#',
+    customer: invoice.customer_name || t('client'),
+    amount: formatMoney(invoice.total),
+    // Kept as the raw identifier; the table translates it for display, so the
+    // tag colour is decided by what the model returned rather than by matching
+    // an English word against an already-translated label.
+    status: invoice.status,
+})));
+
+const topProducts = computed(() => (overview.value.top_products || []).map((product) => ({
+    id: product.id,
+    name: localizedName(product),
+    sales: toNumber(product.stock_quantity),
+    price: formatMoney(product.price),
+    image: product.image || '',
+})));
+
+const lowStockProducts = computed(() => (overview.value.low_stock_products || []).map((product) => ({
+    name: localizedName(product),
+    sku: product.sku || '-',
+    stock_quantity: toNumber(product.stock_quantity),
+    min_stock: toNumber(product.min_stock),
+})));
+
+const invoiceStatusCounts = computed(() => ({
+    paid: toNumber(invoices.value.paid),
+    pending: toNumber(invoices.value.pending),
+    cancelled: toNumber(invoices.value.cancelled),
+}));
+
 const auditActionCounts = computed(() => {
     const counts = { create: 0, update: 0, delete: 0, other: 0 };
     recentAuditLogs.value.forEach((log) => {
@@ -842,40 +1009,15 @@ const auditActionCounts = computed(() => {
     return counts;
 });
 
-const getStatusType = (status) => {
-    if (!status) return 'info';
-    const s = String(status).toLowerCase();
-    if (s.includes('paid') || s.includes(t('sales_status_completed')) || s.includes('complete') || s.includes(t('success')) || s.includes('success') || s.includes('processed') || s.includes('delivered') || s.includes('approved') || s.includes(t('ok_agreed')) || s.includes(t('active')) || s.includes('active')) {
-        return 'success';
-    }
-    if (s.includes('pending') || s.includes(t('sales_status_processing')) || s.includes(t('sales_status_pending')) || s.includes('under') || s.includes('progress') || s.includes('انتظار') || s.includes('suspended')) {
-        return 'warning';
-    }
-    if (s.includes('cancelled') || s.includes(t('sales_status_cancelled')) || s.includes('failed') || s.includes('failing') || s.includes('rejected') || s.includes(t('sales_status_rejected')) || s.includes('danger') || s.includes('error')) {
-        return 'danger';
-    }
-    return 'info';
-};
+/** The moment the figures on screen were fetched, so "last update" means something. */
+const lastUpdatedLabel = computed(() => {
+    if (!lastUpdatedAt.value) return '';
 
-
-const formatAmount = (value) => {
-    if (value === null || value === undefined || Number.isNaN(Number(value))) {
-        return window.t('0_sar');
-    }
-    const currentLocale = locale.value === 'ar' ? 'ar-SA' : 'en-US';
-    return new Intl.NumberFormat(currentLocale, {
-        style: 'currency',
-        currency: 'SAR',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2
-    }).format(value);
-};
-
-
-const formatCount = (value) => {
-    const currentLocale = locale.value === 'ar' ? 'ar-SA' : 'en-US';
-    return (value ?? 0).toLocaleString(currentLocale);
-};
+    return new Intl.DateTimeFormat(locale.value === 'en' ? 'en-GB' : 'ar-SY', {
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(lastUpdatedAt.value);
+});
 
 
 const getPercent = (value, total) => {
@@ -897,14 +1039,29 @@ const workflowChartRef = ref(null);
 const auditActionChartRef = ref(null);
 
 const chartInstances = {};
-const initializedTabs = new Set();
 
 const renderChart = (chartRef, key, option) => {
-    if (!chartRef.value) return;
-    if (!chartInstances[key]) {
-        chartInstances[key] = echarts.init(chartRef.value);
+    const element = chartRef.value;
+    if (!element) return;
+
+    const existing = chartInstances[key];
+
+    // A tab pane that was torn down and rebuilt leaves the cached instance bound
+    // to a node no longer in the document, where `setOption` paints into nothing
+    // and the card shows an empty box.
+    if (existing && existing.getDom() !== element) {
+        existing.dispose();
+        delete chartInstances[key];
     }
+
+    if (!chartInstances[key]) {
+        chartInstances[key] = echarts.init(element);
+    }
+
     chartInstances[key].setOption(option, true);
+    // The pane is measured only once it is visible; a chart drawn on the tick a
+    // tab opened would otherwise keep the zero width it was initialised at.
+    chartInstances[key].resize();
 };
 
 const donutOption = (items) => ({
@@ -927,16 +1084,16 @@ const renderRevenueTrend = () => {
 
     renderChart(revenueTrendChartRef, 'revenueTrend', {
         tooltip: { trigger: 'axis' },
-        legend: { data: [window.t('revenue'), window.t('sales_orders')], top: 0 },
+        legend: { data: [t('revenue'), t('sales_orders')], top: 0 },
         grid: { left: 10, right: 10, top: 40, bottom: 10, containLabel: true },
         xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#cbd5e1' } } },
         yAxis: [
-            { type: 'value', name: window.t('revenue'), splitLine: { lineStyle: { color: '#f1f5f9' } } },
-            { type: 'value', name: window.t('sales_orders'), splitLine: { show: false } }
+            { type: 'value', name: t('revenue'), splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            { type: 'value', name: t('sales_orders'), splitLine: { show: false } }
         ],
         series: [
             {
-                name: window.t('revenue'),
+                name: t('revenue'),
                 type: 'line',
                 smooth: true,
                 yAxisIndex: 0,
@@ -946,7 +1103,7 @@ const renderRevenueTrend = () => {
                 itemStyle: { color: '#667eea' }
             },
             {
-                name: window.t('sales_orders'),
+                name: t('sales_orders'),
                 type: 'bar',
                 yAxisIndex: 1,
                 data: orders,
@@ -959,9 +1116,9 @@ const renderRevenueTrend = () => {
 
 const renderInvoiceStatusChart = () => {
     renderChart(invoiceStatusChartRef, 'invoiceStatus', donutOption([
-        { name: window.t('chart_paid'), value: invoiceStatusCounts.value.paid || 0, color: '#67c23a' },
-        { name: window.t('chart_pending'), value: invoiceStatusCounts.value.pending || 0, color: '#e6a23c' },
-        { name: window.t('chart_cancelled'), value: invoiceStatusCounts.value.cancelled || 0, color: '#f56c6c' }
+        { name: t('chart_paid'), value: invoiceStatusCounts.value.paid || 0, color: '#67c23a' },
+        { name: t('chart_pending'), value: invoiceStatusCounts.value.pending || 0, color: '#e6a23c' },
+        { name: t('chart_cancelled'), value: invoiceStatusCounts.value.cancelled || 0, color: '#f56c6c' }
     ]));
 };
 
@@ -971,24 +1128,24 @@ const renderWmsStatusChart = () => {
         legend: { bottom: 0 },
         grid: { left: 10, right: 20, top: 20, bottom: 40, containLabel: true },
         xAxis: { type: 'value' },
-        yAxis: { type: 'category', data: [window.t('wms.picking_lists'), window.t('wms.packing_lists')] },
+        yAxis: { type: 'category', data: [t('wms.picking_lists'), t('wms.packing_lists')] },
         series: [
             {
-                name: window.t('chart_pending'),
+                name: t('chart_pending'),
                 type: 'bar',
                 stack: 'total',
                 data: [wmsStats.value.picking_pending, wmsStats.value.packing_pending],
                 itemStyle: { color: '#e6a23c' }
             },
             {
-                name: window.t('chart_in_progress'),
+                name: t('chart_in_progress'),
                 type: 'bar',
                 stack: 'total',
                 data: [wmsStats.value.picking_in_progress, wmsStats.value.packing_in_progress],
                 itemStyle: { color: '#409eff' }
             },
             {
-                name: window.t('chart_completed'),
+                name: t('chart_completed'),
                 type: 'bar',
                 stack: 'total',
                 data: [wmsStats.value.picking_completed, wmsStats.value.packing_completed],
@@ -1021,34 +1178,34 @@ const renderWmsAccuracyGauge = () => {
                 formatter: '{value}%',
                 offsetCenter: [0, '5%']
             },
-            data: [{ value: percent, name: window.t('completion_rate') }]
+            data: [{ value: percent, name: t('completion_rate') }]
         }]
     });
 };
 
 const renderRmaStatusChart = () => {
     renderChart(rmaStatusChartRef, 'rmaStatus', donutOption([
-        { name: window.t('chart_pending'), value: rmaStats.value.pending || 0, color: '#e6a23c' },
-        { name: window.t('chart_approved'), value: rmaStats.value.approved || 0, color: '#409eff' },
-        { name: window.t('chart_rejected'), value: rmaStats.value.rejected || 0, color: '#f56c6c' },
-        { name: window.t('chart_completed'), value: rmaStats.value.completed || 0, color: '#67c23a' }
+        { name: t('chart_pending'), value: rmaStats.value.pending || 0, color: '#e6a23c' },
+        { name: t('chart_approved'), value: rmaStats.value.approved || 0, color: '#409eff' },
+        { name: t('chart_rejected'), value: rmaStats.value.rejected || 0, color: '#f56c6c' },
+        { name: t('chart_completed'), value: rmaStats.value.completed || 0, color: '#67c23a' }
     ]));
 };
 
 const renderWorkflowChart = () => {
     renderChart(workflowChartRef, 'workflow', donutOption([
-        { name: window.t('chart_completed'), value: workflowStats.value.executions_completed || 0, color: '#67c23a' },
-        { name: window.t('chart_failed'), value: workflowStats.value.executions_failed || 0, color: '#f56c6c' }
+        { name: t('chart_completed'), value: workflowStats.value.executions_completed || 0, color: '#67c23a' },
+        { name: t('chart_failed'), value: workflowStats.value.executions_failed || 0, color: '#f56c6c' }
     ]));
 };
 
 const renderAuditActionChart = () => {
     const counts = auditActionCounts.value;
     renderChart(auditActionChartRef, 'auditAction', donutOption([
-        { name: window.t('chart_create'), value: counts.create, color: '#67c23a' },
-        { name: window.t('chart_update'), value: counts.update, color: '#409eff' },
-        { name: window.t('chart_delete'), value: counts.delete, color: '#f56c6c' },
-        { name: window.t('chart_other'), value: counts.other, color: '#909399' }
+        { name: t('chart_create'), value: counts.create, color: '#67c23a' },
+        { name: t('chart_update'), value: counts.update, color: '#409eff' },
+        { name: t('chart_delete'), value: counts.delete, color: '#f56c6c' },
+        { name: t('chart_other'), value: counts.other, color: '#909399' }
     ]));
 };
 
@@ -1067,7 +1224,6 @@ const renderTabCharts = async (tab) => {
     if (!renderer) return;
     await nextTick();
     renderer();
-    initializedTabs.add(tab);
 };
 
 const resizeCharts = () => {
@@ -1078,6 +1234,30 @@ watch(activeTab, (tab) => {
     renderTabCharts(tab);
 });
 
+// Series names, axis titles and legends are baked into the option object when a
+// chart is drawn, so a language switch has to redraw it. Only the open tab is
+// redrawn â€” the others are rebuilt from scratch the moment they are selected.
+watch(locale, () => {
+    renderTabCharts(activeTab.value);
+});
+
+/**
+ * Charts also have to follow the *width* they are given, and the sidebar
+ * collapsing is not a window resize. Observing the page element catches both,
+ * and the frame guard keeps a drag from queueing a redraw per pixel.
+ */
+const dashboardRef = ref(null);
+let resizeObserver = null;
+let resizeFrame = null;
+
+const scheduleResize = () => {
+    if (resizeFrame) cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        resizeCharts();
+    });
+};
+
 const loadSalesTrend = async () => {
     try {
         const response = await dashboardApi.getSalesTrend({ days: 30, group_by: 'day' });
@@ -1087,129 +1267,69 @@ const loadSalesTrend = async () => {
     }
 };
 
-const loadDashboard = async () => {
-    loading.value = true;
+/**
+ * Fetches the whole screen.
+ *
+ * `silent` is what the refresh button uses: replacing a populated dashboard with
+ * skeletons on every manual refresh loses the figures the user was reading and
+ * makes a two-second request feel like a page load. The button carries its own
+ * spinner instead, and the numbers stay put until new ones arrive.
+ */
+const loadDashboard = async ({ silent = false } = {}) => {
+    if (silent) {
+        refreshing.value = true;
+    } else {
+        loading.value = true;
+    }
     error.value = null;
 
     try {
         const [overviewResponse] = await Promise.all([
             dashboardApi.getOverviewStats(),
-            loadSalesTrend()
+            loadSalesTrend(),
         ]);
-        const overview = overviewResponse.data?.data || {};
 
-        stats.value = [
-            { title: window.t('total_products'), value: formatCount(overview.products?.total), icon: Box, color: '#409eff', route: '/admin/products' },
-            { title: window.t('invoices'), value: formatCount(overview.invoices?.total), icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/invoices' },
-            { title: window.t('customers'), value: formatCount(overview.erp?.active_customers ?? overview.customers?.total), icon: User, color: '#e6a23c', route: '/admin/sales/customers' },
-            { title: window.t('revenue'), value: formatAmount(overview.erp?.total_revenue ?? overview.invoices?.revenue?.total), icon: TrendCharts, color: '#f56c6c', route: '/admin/analytics/financial' }
-        ];
-
-        detailStats.value = [
-            { title: window.t('monthly_sales'), value: formatAmount(overview.erp?.monthly_sales ?? 0), icon: TrendCharts, color: '#67c23a', route: '/admin/reports/sales' },
-            { title: window.t('expenses'), value: formatAmount(overview.erp?.total_expenses ?? 0), icon: ShoppingCart, color: '#f56c6c', route: '/admin/accounting' },
-            { title: window.t('pending_invoices'), value: formatCount(overview.erp?.pending_invoices ?? 0), icon: Box, color: '#e6a23c', route: '/admin/sales/invoices' },
-            { title: window.t('low_inventory'), value: formatCount(overview.products?.low_stock ?? 0), icon: Box, color: '#f56c6c', route: '/admin/inventory' },
-            { title: window.t('quotes'), value: formatCount(overview.quotes?.total), icon: TrendCharts, color: '#8c6dfd', route: '/admin/sales/quotes' },
-            { title: window.t('sales_orders'), value: formatCount(overview.sales_orders?.total), icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/sales-orders' },
-            { title: window.t('production_orders'), value: formatCount(overview.production?.total), icon: Box, color: '#f56c6c', route: '/admin/production' },
-            { title: window.t('salaries'), value: formatCount(overview.payrolls?.total), icon: User, color: '#409eff', route: '/admin/hr/payrolls' }
-        ];
-
-        lowStockProducts.value = (overview.low_stock_products ?? []).map((product) => ({
-            name: locale.value === 'en'
-                ? (product.name_en || product.name_ar || window.t('project'))
-                : (product.name_ar || product.name_en || window.t('project')),
-            sku: product.sku || '-',
-            stock_quantity: product.stock_quantity ?? 0,
-            min_stock: product.min_stock ?? 0
-        }));
-
-        const totalRevenue = overview.invoices?.revenue?.total || 0;
-        revenueMetrics.value = [
-            { label: window.t('today'), value: formatAmount(overview.invoices?.revenue?.today ?? 0), percent: getPercent(overview.invoices?.revenue?.today, totalRevenue) },
-            { label: window.t('this_week'), value: formatAmount(overview.invoices?.revenue?.week ?? 0), percent: getPercent(overview.invoices?.revenue?.week, totalRevenue) },
-            { label: window.t('this_month'), value: formatAmount(overview.invoices?.revenue?.month ?? 0), percent: getPercent(overview.invoices?.revenue?.month, totalRevenue) }
-        ];
-
-        invoiceStatusCounts.value = {
-            paid: overview.invoices?.paid ?? 0,
-            pending: overview.invoices?.pending ?? 0,
-            cancelled: overview.invoices?.cancelled ?? 0
-        };
-
-        statusGroups.value = [
-            {
-                title: window.t('billing_status'),
-                items: [
-                    { label: window.t('paid'), value: overview.invoices?.paid, description: window.t('successfully_completed_invoices')},
-                    { label: window.t('suspended'), value: overview.invoices?.pending, description: window.t('invoices_that_need_follow_up')},
-                    { label: window.t('canceled'), value: overview.invoices?.cancelled, description: window.t('canceled_or_refunded_invoices')}
-                ]
-            },
-            {
-                title: window.t('status_of_payments'),
-                items: [
-                    { label: window.t('complete'), value: overview.payments?.completed, description: window.t('completed_payment_from_customers')},
-                    { label: window.t('suspended'), value: overview.payments?.pending, description: window.t('payment_is_waiting_for_processing')},
-                    { label: window.t('refundable'), value: overview.payments?.refunded, description: window.t('refunds_payments_to_customers')}
-                ]
-            },
-            {
-                title: window.t('production_status'),
-                items: [
-                    { label: window.t('suspended'), value: overview.production?.pending, description: window.t('uninitiated_production_orders')},
-                    { label: window.t('under_implementation'), value: overview.production?.in_progress, description: window.t('current_production_orders')},
-                    { label: window.t('complete'), value: overview.production?.completed, description: window.t('orders_ready_for_delivery')}
-                ]
-            }
-        ];
-
-        recentSales.value = (overview.recent_invoices ?? []).map((invoice) => ({
-            id: invoice.invoice_number || invoice.id || '#',
-            customer: invoice.customer_name || window.t('client'),
-            amount: formatAmount(invoice.total),
-            status: invoice.status
-        }));
-
-        topProducts.value = (overview.top_products ?? []).map((product) => ({
-            id: product.id,
-            name: locale.value === 'en'
-                ? (product.name_en || product.name_ar || window.t('project'))
-                : (product.name_ar || product.name_en || window.t('project')),
-            sales: product.stock_quantity ?? 0,
-            price: formatAmount(product.price),
-            image: product.image || ''
-        }));
-
-        // Assignments from step140.txt
-        wmsStats.value = overview.wms || wmsStats.value;
-        rmaStats.value = overview.rma || rmaStats.value;
-        workflowStats.value = overview.workflows || workflowStats.value;
-        notificationStats.value = overview.notifications || notificationStats.value;
-        auditStats.value = overview.audit || auditStats.value;
-        recentAuditLogs.value = overview.recent_audit_logs || [];
-        analyticsStats.value = overview.analytics || analyticsStats.value;
-
+        overview.value = overviewResponse.data?.data || {};
+        lastUpdatedAt.value = new Date();
     } catch (err) {
-        error.value = err.response?.data?.message || err.message || window.t('failed_to_load_dashboard_data');
+        error.value = err.response?.data?.message || err.message || t('failed_to_load_dashboard_data');
         console.error('Dashboard load error:', err);
     } finally {
         loading.value = false;
+        refreshing.value = false;
         await renderTabCharts(activeTab.value);
     }
 };
 
+const refresh = () => loadDashboard({ silent: true });
+
 onMounted(async () => {
-    await loadDashboard();
+    // Settings carry the base currency every amount below is written in, so this
+    // is started alongside the figures rather than after them.
     if (Object.keys(settingsStore.data).length === 0) {
         settingsStore.fetch().catch(() => {});
     }
-    window.addEventListener('resize', resizeCharts);
+
+    await loadDashboard();
+
+    if (typeof ResizeObserver !== 'undefined' && dashboardRef.value) {
+        resizeObserver = new ResizeObserver(scheduleResize);
+        resizeObserver.observe(dashboardRef.value);
+    } else {
+        window.addEventListener('resize', scheduleResize);
+    }
 });
 
 onUnmounted(() => {
-    window.removeEventListener('resize', resizeCharts);
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    } else {
+        window.removeEventListener('resize', scheduleResize);
+    }
+
+    if (resizeFrame) cancelAnimationFrame(resizeFrame);
+
     Object.values(chartInstances).forEach((chart) => chart && chart.dispose());
 });
 
@@ -1252,6 +1372,21 @@ onUnmounted(() => {
     margin-inline-start: auto;
     display: flex;
     align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.page-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.small-text {
+    font-size: 0.8rem;
+    color: #8b96a7;
 }
 
 .page-header h1 {

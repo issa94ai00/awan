@@ -344,6 +344,7 @@
 </template>
 
 <script setup>
+import { baseCurrencyCode, currencyOptions as buildCurrencyOptions } from '@/utils/currency';
 import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -367,19 +368,7 @@ const uploadHeaders = reactive({
     'Accept': 'application/json'
 });
 
-const currencyOptions = computed(() => {
-    const locale = window.systemData?.locale || 'ar';
-    const list = window.systemData?.currencies?.list || [];
-    if (list.length) {
-        return list.map((c) => ({
-            code: c.code,
-            label: `${locale === 'en' ? (c.name_en || c.name || c.code) : (c.name_ar || c.name || c.code)} (${c.code})`,
-        }));
-    }
-
-    const base = window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR';
-    return [{ code: base, label: base }];
-});
+const currencyOptions = computed(() => buildCurrencyOptions());
 
 const form = reactive({
     name_ar: '',
@@ -391,7 +380,7 @@ const form = reactive({
     price: 0,
     cost_price: 0,
     sale_price: null,
-    currency: window.systemData?.currencies?.base || window.systemData?.settings?.default_currency || 'SAR',
+    currency: baseCurrencyCode(),
     show_price: true,
     tax_rate: 0,
     taxable: true,
@@ -595,7 +584,7 @@ const loadProduct = async () => {
             price: p.price ?? 0,
             cost_price: p.cost_price ?? 0,
             sale_price: p.sale_price ?? null,
-            currency: p.currency || window.systemData?.currencies?.base || 'SAR',
+            currency: p.currency || baseCurrencyCode(),
             show_price: p.show_price ?? true,
             tax_rate: p.tax_rate ?? 0,
             taxable: p.taxable ?? true,
