@@ -1,9 +1,12 @@
 <!-- resources/js/views/admin/wms/Stock/Organization.vue -->
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from 'axios';
+
+const { t } = useI18n();
 
 const router = useRouter();
 
@@ -58,7 +61,7 @@ async function fetchData() {
         categorizeProducts();
     } catch (err) {
         console.error('Error fetching data:', err);
-        error.value = err.response?.data?.message || err.message || 'فشل في جلب البيانات';
+        error.value = err.response?.data?.message || err.message || t('failed_to_fetch_data_short');
         ElMessage.error(error.value);
     } finally {
         loading.value = false;
@@ -106,13 +109,13 @@ async function refreshData() {
     refreshing.value = true;
     await fetchData();
     refreshing.value = false;
-    ElMessage.success('تم تحديث البيانات بنجاح');
+    ElMessage.success(t('data_updated_successfully'));
 }
 
 // فتح Modal ربط مع التحقق
 function openAssignModal(product) {
     if (!product || !product.id) {
-        ElMessage.error('بيانات المنتج غير صالحة');
+        ElMessage.error(t('invalid_product_data'));
         return;
     }
     
@@ -130,12 +133,12 @@ function closeAssignModal() {
 // ربط المنتج بالمستودع مع معالجة أخطاء محسنة
 async function assignToWarehouse() {
     if (!selectedProduct.value || !selectedProduct.value.id) {
-        ElMessage.error('بيانات المنتج غير صالحة');
+        ElMessage.error(t('invalid_product_data'));
         return;
     }
     
     if (!selectedWarehouse.value) {
-        ElMessage.warning('يرجى اختيار مستودع');
+        ElMessage.warning(t('please_choose_warehouse'));
         return;
     }
     
@@ -154,12 +157,12 @@ async function assignToWarehouse() {
             throw new Error('Invalid response from server');
         }
         
-        ElMessage.success('تم ربط المنتج بالمستودع بنجاح');
+        ElMessage.success(t('product_linked_to_warehouse'));
         closeAssignModal();
         await fetchData();
     } catch (err) {
         console.error('Error assigning product:', err);
-        const errorMsg = err.response?.data?.message || err.message || 'فشل في ربط المنتج';
+        const errorMsg = err.response?.data?.message || err.message || t('failed_to_link_product');
         ElMessage.error(errorMsg);
     } finally {
         assigning.value = false;
@@ -169,7 +172,7 @@ async function assignToWarehouse() {
 // التنقل مع التحقق
 function goToProductDetails(productId) {
     if (!productId) {
-        ElMessage.error('معرف المنتج غير صالح');
+        ElMessage.error(t('invalid_product_id'));
         return;
     }
     router.push(`/admin/wms/products/${productId}`);
@@ -177,7 +180,7 @@ function goToProductDetails(productId) {
 
 function goToAssignment(productId) {
     if (!productId) {
-        ElMessage.error('معرف المنتج غير صالح');
+        ElMessage.error(t('invalid_product_id'));
         return;
     }
     router.push(`/admin/wms/products/${productId}/assign`);
@@ -199,8 +202,8 @@ onMounted(() => {
         <!-- Header -->
         <div class="flex justify-between items-center mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">تنظيم المخزون</h1>
-                <p class="text-gray-600 mt-1">فرز المنتجات إلى المستودعات وإدارة تفاصيل التخزين</p>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $t('stock_organization') }}</h1>
+                <p class="text-gray-600 mt-1">{{ $t('stock_organization_subtitle') }}</p>
             </div>
             <button 
                 @click="refreshData"
@@ -209,7 +212,7 @@ onMounted(() => {
             >
                 <span v-if="refreshing" class="animate-spin">⟳</span>
                 <span v-else>↻</span>
-                تحديث
+                {{ $t('update') }}
             </button>
         </div>
 
@@ -218,11 +221,11 @@ onMounted(() => {
             <div class="flex items-center gap-3">
                 <span class="text-2xl">❌</span>
                 <div>
-                    <p class="font-medium text-red-800">خطأ في جلب البيانات</p>
+                    <p class="font-medium text-red-800">{{ $t('failed_to_fetch_data') }}</p>
                     <p class="text-sm text-red-600">{{ error }}</p>
                 </div>
                 <button @click="fetchData" class="mr-auto text-red-600 hover:text-red-700 text-sm font-medium">
-                    إعادة المحاولة
+                    {{ $t('retry') }}
                 </button>
             </div>
         </div>
@@ -232,7 +235,7 @@ onMounted(() => {
             <input
                 v-model="searchQuery"
                 type="text"
-                placeholder="بحث بالاسم أو الكود..."
+                :placeholder="$t('search_by_name_or_code')"
                 class="w-full md:w-96 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             />
         </div>
@@ -242,7 +245,7 @@ onMounted(() => {
             <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">إجمالي المنتجات</p>
+                        <p class="text-sm text-gray-600">{{ $t('total_products') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.total) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -253,7 +256,7 @@ onMounted(() => {
             <div class="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">المنتجات المرتبطة</p>
+                        <p class="text-sm text-gray-600">{{ $t('linked_products') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.assigned) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -264,7 +267,7 @@ onMounted(() => {
             <div class="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">المنتجات غير المرتبطة</p>
+                        <p class="text-sm text-gray-600">{{ $t('unlinked_products') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.unassigned) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
@@ -278,7 +281,7 @@ onMounted(() => {
         <div v-if="loading" class="flex justify-center py-12">
             <div class="flex flex-col items-center">
                 <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-                <p class="mt-4 text-gray-600">جاري تحميل البيانات...</p>
+                <p class="mt-4 text-gray-600">{{ $t('loading_data') }}</p>
             </div>
         </div>
 
@@ -287,13 +290,13 @@ onMounted(() => {
             <!-- Unassigned Products -->
             <div class="bg-white rounded-lg shadow-lg">
                 <div class="p-4 border-b bg-yellow-50">
-                    <h2 class="text-lg font-bold text-gray-800">المنتجات غير المرتبطة</h2>
+                    <h2 class="text-lg font-bold text-gray-800">{{ $t('unlinked_products') }}</h2>
                     <p class="text-sm text-gray-600">{{ formatNumber(filteredUnassigned.length) }} منتج</p>
                 </div>
                 <div class="p-4 max-h-96 overflow-y-auto">
                     <div v-if="filteredUnassigned.length === 0" class="text-center py-8">
                         <span class="text-4xl mb-2">📭</span>
-                        <p class="text-gray-500">لا توجد منتجات غير مرتبطة</p>
+                        <p class="text-gray-500">{{ $t('no_unlinked_products') }}</p>
                     </div>
                     <div 
                         v-for="product in filteredUnassigned" 
@@ -311,13 +314,13 @@ onMounted(() => {
                                     @click="openAssignModal(product)"
                                     class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
                                 >
-                                    🔗 ربط
+                                    {{ $t('link_action') }}
                                 </button>
                                 <button
                                     @click="goToAssignment(product.id)"
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium transition-colors"
                                 >
-                                    تفاصيل
+                                    {{ $t('details') }}
                                 </button>
                             </div>
                         </div>
@@ -328,13 +331,13 @@ onMounted(() => {
             <!-- Assigned Products -->
             <div class="bg-white rounded-lg shadow-lg">
                 <div class="p-4 border-b bg-green-50">
-                    <h2 class="text-lg font-bold text-gray-800">المنتجات المرتبطة</h2>
+                    <h2 class="text-lg font-bold text-gray-800">{{ $t('linked_products') }}</h2>
                     <p class="text-sm text-gray-600">{{ formatNumber(filteredAssigned.length) }} منتج</p>
                 </div>
                 <div class="p-4 max-h-96 overflow-y-auto">
                     <div v-if="filteredAssigned.length === 0" class="text-center py-8">
                         <span class="text-4xl mb-2">📭</span>
-                        <p class="text-gray-500">لا توجد منتجات مرتبطة</p>
+                        <p class="text-gray-500">{{ $t('no_linked_products') }}</p>
                     </div>
                     <div 
                         v-for="product in filteredAssigned" 
@@ -354,7 +357,7 @@ onMounted(() => {
                                     @click.stop="goToAssignment(product.id)"
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium transition-colors"
                                 >
-                                    ✎ تعديل
+                                    {{ $t('edit_action') }}
                                 </button>
                             </div>
                         </div>
@@ -369,22 +372,22 @@ onMounted(() => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-900">ربط المنتج بالمستودع</h3>
+                    <h3 class="text-lg font-bold text-gray-900">{{ $t('link_product_to_warehouse') }}</h3>
                     <button @click="closeAssignModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
                 
                 <div v-if="selectedProduct" class="mb-4 p-3 bg-gray-50 rounded-lg">
-                    <p class="text-sm text-gray-700"><span class="font-medium">المنتج:</span> {{ selectedProduct.name }}</p>
-                    <p class="text-sm text-gray-700"><span class="font-medium">الكود:</span> {{ selectedProduct.code }}</p>
+                    <p class="text-sm text-gray-700"><span class="font-medium">{{ $t('product_label') }}</span> {{ selectedProduct.name }}</p>
+                    <p class="text-sm text-gray-700"><span class="font-medium">{{ $t('code_label') }}</span> {{ selectedProduct.code }}</p>
                 </div>
                 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">اختر المستودع</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('choose_warehouse') }}</label>
                     <select
                         v-model="selectedWarehouse"
                         class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     >
-                        <option value="">اختر مستودع...</option>
+                        <option value="">{{ $t('choose_warehouse_placeholder') }}</option>
                         <option 
                             v-for="warehouse in warehouses" 
                             :key="warehouse.id" 
@@ -401,7 +404,7 @@ onMounted(() => {
                         class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
                         :disabled="assigning"
                     >
-                        إلغاء
+                        {{ $t('cancel') }}
                     </button>
                     <button
                         @click="assignToWarehouse"

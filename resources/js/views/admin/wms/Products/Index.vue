@@ -1,9 +1,12 @@
 <!-- resources/js/views/admin/wms/Products/Index.vue -->
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from 'axios';
+
+const { t } = useI18n();
 
 const router = useRouter();
 
@@ -49,7 +52,7 @@ async function fetchProducts() {
         products.value = response.data.data;
     } catch (err) {
         console.error('Error fetching products:', err);
-        error.value = err.response?.data?.message || err.message || 'فشل في جلب البيانات';
+        error.value = err.response?.data?.message || err.message || t('failed_to_fetch_data_short');
         ElMessage.error(error.value);
     } finally {
         loading.value = false;
@@ -67,7 +70,7 @@ async function fetchCategories() {
         categories.value = response.data.data;
     } catch (err) {
         console.error('Error fetching categories:', err);
-        ElMessage.warning('فشل في جلب الفئات');
+        ElMessage.warning(t('failed_to_fetch_categories_short'));
     }
 }
 
@@ -76,7 +79,7 @@ async function refreshData() {
     refreshing.value = true;
     await Promise.all([fetchProducts(), fetchCategories()]);
     refreshing.value = false;
-    ElMessage.success('تم تحديث البيانات بنجاح');
+    ElMessage.success(t('data_updated_successfully'));
 }
 
 onMounted(() => {
@@ -143,7 +146,7 @@ function openAddModal() {
 // فتح Modal تعديل منتج
 function openEditModal(product) {
     if (!product || !product.id) {
-        ElMessage.error('بيانات المنتج غير صالحة');
+        ElMessage.error(t('invalid_product_data'));
         return;
     }
     selectedProduct.value = product;
@@ -153,7 +156,7 @@ function openEditModal(product) {
 // الانتقال لشاشة الربط مع التحقق
 function goToAssignment(productId) {
     if (!productId) {
-        ElMessage.error('معرف المنتج غير صالح');
+        ElMessage.error(t('invalid_product_id'));
         return;
     }
     router.push(`/admin/wms/products/${productId}/assign`);
@@ -162,7 +165,7 @@ function goToAssignment(productId) {
 // الانتقال لشاشة العرض مع التحقق
 function goToProduct(productId) {
     if (!productId) {
-        ElMessage.error('معرف المنتج غير صالح');
+        ElMessage.error(t('invalid_product_id'));
         return;
     }
     router.push(`/admin/wms/products/${productId}`);
@@ -171,29 +174,29 @@ function goToProduct(productId) {
 // حذف منتج مع تأكيد محسن
 async function deleteProduct(productId) {
     if (!productId) {
-        ElMessage.error('معرف المنتج غير صالح');
+        ElMessage.error(t('invalid_product_id'));
         return;
     }
 
     try {
         await ElMessageBox.confirm(
-            'هل أنت متأكد من حذف هذا المنتج؟ لا يمكن التراجع عن هذا الإجراء.',
-            'تأكيد الحذف',
+            t('confirm_delete_product'),
+            t('confirm_deletion'),
             {
-                confirmButtonText: 'نعم، احذف',
-                cancelButtonText: 'إلغاء',
+                confirmButtonText: t('yes_delete'),
+                cancelButtonText: t('cancel'),
                 type: 'warning',
                 confirmButtonClass: 'el-button--danger'
             }
         );
 
         await axios.delete(`/api/v1/admin/wms/products/${productId}`);
-        ElMessage.success('تم حذف المنتج بنجاح');
+        ElMessage.success(t('product_deleted'));
         fetchProducts();
     } catch (err) {
         if (err !== 'cancel') {
             console.error('Error deleting product:', err);
-            const errorMsg = err.response?.data?.message || err.message || 'فشل في حذف المنتج';
+            const errorMsg = err.response?.data?.message || err.message || t('failed_to_delete_product');
             ElMessage.error(errorMsg);
         }
     }
@@ -203,7 +206,7 @@ async function deleteProduct(productId) {
 function handleSuccess() {
     showAddModal.value = false;
     fetchProducts();
-    ElMessage.success('تم الحفظ بنجاح');
+    ElMessage.success(t('saved_successfully'));
 }
 
 // الإلغاء
@@ -230,8 +233,8 @@ function formatPrice(price) {
         <!-- Header -->
         <div class="flex justify-between items-center mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">إدارة المنتجات</h1>
-                <p class="text-gray-600 mt-1">إدارة المنتجات وربطها بالمستودعات</p>
+                <h1 class="text-2xl font-bold text-gray-900">{{ $t('product_management') }}</h1>
+                <p class="text-gray-600 mt-1">{{ $t('wms_products_subtitle') }}</p>
             </div>
             <div class="flex gap-3">
                 <button 
@@ -241,14 +244,14 @@ function formatPrice(price) {
                 >
                     <span v-if="refreshing" class="animate-spin">⟳</span>
                     <span v-else>↻</span>
-                    تحديث
+                    {{ $t('update') }}
                 </button>
                 <button 
                     @click="openAddModal"
                     class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all"
                 >
                     <span>+</span>
-                    إضافة منتج جديد
+                    {{ $t('add_a_new_product') }}
                 </button>
             </div>
         </div>
@@ -258,7 +261,7 @@ function formatPrice(price) {
             <div class="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">إجمالي المنتجات</p>
+                        <p class="text-sm text-gray-600">{{ $t('total_products') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.total) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -269,7 +272,7 @@ function formatPrice(price) {
             <div class="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">مرتبطة بمستودع</p>
+                        <p class="text-sm text-gray-600">{{ $t('linked_to_warehouse') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.linked) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -280,7 +283,7 @@ function formatPrice(price) {
             <div class="bg-white rounded-lg shadow p-4 border-l-4 border-gray-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">غير مرتبطة</p>
+                        <p class="text-sm text-gray-600">{{ $t('unlinked_products') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.unlinked) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
@@ -291,7 +294,7 @@ function formatPrice(price) {
             <div class="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm text-gray-600">مخزون منخفض</p>
+                        <p class="text-sm text-gray-600">{{ $t('low_stock') }}</p>
                         <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.lowStock) }}</p>
                     </div>
                     <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
@@ -305,39 +308,39 @@ function formatPrice(price) {
         <div class="bg-white p-4 rounded-lg shadow mb-6">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">بحث</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('search') }}</label>
                     <input 
                         v-model="searchQuery"
                         @input="handleSearch"
                         type="text"
-                        placeholder="بحث بالكود أو الاسم..."
+                        :placeholder="$t('search_by_code_or_name')"
                         class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('category') }}</label>
                     <select 
                         v-model="categoryFilter"
                         @change="handleCategoryChange"
                         class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     >
-                        <option value="">جميع الفئات</option>
+                        <option value="">{{ $t('all_categories') }}</option>
                         <option v-for="cat in categories" :key="cat.id" :value="cat.id">
                             {{ cat.name }}
                         </option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('status') }}</label>
                     <select 
                         v-model="statusFilter"
                         @change="handleStatusChange"
                         class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     >
-                        <option value="">جميع الحالات</option>
-                        <option value="linked">مرتبط بمستودع</option>
-                        <option value="unlinked">غير مرتبط</option>
-                        <option value="low_stock">مخزون منخفض</option>
+                        <option value="">{{ $t('all_statuses') }}</option>
+                        <option value="linked">{{ $t('linked_to_warehouse') }}</option>
+                        <option value="unlinked">{{ $t('not_linked') }}</option>
+                        <option value="low_stock">{{ $t('low_stock') }}</option>
                     </select>
                 </div>
             </div>
@@ -349,15 +352,15 @@ function formatPrice(price) {
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gray-50 border-b">
-                            <th class="text-right p-4 font-medium text-gray-700">الحالة</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الكود</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الاسم</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الفئة</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الوحدة</th>
-                            <th class="text-right p-4 font-medium text-gray-700">المستودعات</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الرصيد</th>
-                            <th class="text-right p-4 font-medium text-gray-700">السعر</th>
-                            <th class="text-right p-4 font-medium text-gray-700">الإجراءات</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('status') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('code') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('name') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('category') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('unit') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('warehouses') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('balance') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('price') }}</th>
+                            <th class="text-right p-4 font-medium text-gray-700">{{ $t('actions') }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -365,7 +368,7 @@ function formatPrice(price) {
                             <td colspan="9" class="p-8 text-center">
                                 <div class="flex flex-col items-center justify-center">
                                     <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-                                    <p class="mt-4 text-gray-600">جاري تحميل البيانات...</p>
+                                    <p class="mt-4 text-gray-600">{{ $t('loading_data') }}</p>
                                 </div>
                             </td>
                         </tr>
@@ -375,7 +378,7 @@ function formatPrice(price) {
                                     <span class="text-4xl mb-2">❌</span>
                                     <p class="text-red-600 font-medium">{{ error }}</p>
                                     <button @click="fetchProducts" class="mt-4 text-blue-600 hover:text-blue-700">
-                                        إعادة المحاولة
+                                        {{ $t('retry') }}
                                     </button>
                                 </div>
                             </td>
@@ -384,7 +387,7 @@ function formatPrice(price) {
                             <td colspan="9" class="p-8 text-center">
                                 <div class="flex flex-col items-center justify-center">
                                     <span class="text-4xl mb-2">📭</span>
-                                    <p class="text-gray-500">لا توجد منتجات</p>
+                                    <p class="text-gray-500">{{ $t('no_products') }}</p>
                                 </div>
                             </td>
                         </tr>
@@ -439,30 +442,30 @@ function formatPrice(price) {
                                     <button 
                                         @click="goToProduct(product.id)"
                                         class="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
-                                        title="عرض التفاصيل"
+                                        :title="$t('view_details')"
                                     >
-                                        👁 عرض
+                                        {{ $t('view_action') }}
                                     </button>
                                     <button 
                                         @click="openEditModal(product)"
                                         class="text-green-600 hover:text-green-700 text-sm font-medium transition-colors"
-                                        title="تعديل"
+                                        :title="$t('edit')"
                                     >
-                                        ✎ تعديل
+                                        {{ $t('edit_action') }}
                                     </button>
                                     <button 
                                         @click="goToAssignment(product.id)"
                                         class="text-purple-600 hover:text-purple-700 text-sm font-medium transition-colors"
-                                        title="ربط بمستودع"
+                                        :title="$t('link_to_warehouse')"
                                     >
-                                        🔗 ربط
+                                        {{ $t('link_action') }}
                                     </button>
                                     <button 
                                         @click="deleteProduct(product.id)"
                                         class="text-red-600 hover:text-red-700 text-sm font-medium transition-colors"
-                                        title="حذف"
+                                        :title="$t('delete')"
                                     >
-                                        🗑 حذف
+                                        {{ $t('delete_action') }}
                                     </button>
                                 </div>
                             </td>
@@ -482,13 +485,13 @@ function formatPrice(price) {
                     </h2>
                     <button @click="handleCancel" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
-                <p class="text-gray-600 mb-4">استخدم نموذج المنتج الموجود في صفحة المنتجات الرئيسية</p>
+                <p class="text-gray-600 mb-4">{{ $t('use_main_product_form_hint') }}</p>
                 <div class="flex justify-end gap-4">
                     <button 
                         @click="handleCancel"
                         class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-all"
                     >
-                        إلغاء
+                        {{ $t('cancel') }}
                     </button>
                 </div>
             </div>

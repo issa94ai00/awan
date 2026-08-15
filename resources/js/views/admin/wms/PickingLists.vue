@@ -2,13 +2,13 @@
   <div class="picking-lists-page">
     <div class="page-header">
       <div class="page-title">
-        <h1><i class="fas fa-clipboard-list"></i> قوائم التجهيز</h1>
-        <p>أوامر سحب الأصناف من الرفوف — تُنشأ تلقائياً عند تأكيد طلب البيع.</p>
+        <h1><i class="fas fa-clipboard-list"></i> {{ $t('picking_lists') }}</h1>
+        <p>{{ $t('picking_lists_subtitle') }}</p>
       </div>
       <div class="header-actions">
         <el-input
           v-model="filters.search"
-          placeholder="رقم القائمة أو رقم الطلب…"
+          :placeholder="$t('search_list_or_order_number')"
           clearable
           class="search-input"
           @input="onSearch"
@@ -16,11 +16,11 @@
         >
           <template #prefix><i class="fas fa-search"></i></template>
         </el-input>
-        <el-select v-model="filters.warehouse_id" placeholder="كل المستودعات" clearable style="width: 180px" @change="load(1)">
+        <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 180px" @change="load(1)">
           <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
         </el-select>
         <el-button type="primary" @click="showCreateDialog = true">
-          <i class="fas fa-plus"></i> قائمة يدوية
+          <i class="fas fa-plus"></i> {{ $t('manual_list') }}
         </el-button>
       </div>
     </div>
@@ -42,30 +42,30 @@
 
       <template v-else>
         <el-table v-if="lists.length" :data="lists" stripe class="custom-table">
-          <el-table-column label="رقم القائمة" width="140">
+          <el-table-column :label="$t('list_number')" width="140">
             <template #default="{ row }">
               <span class="list-link" @click="open(row)">{{ row.list_number }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="طلب البيع" min-width="150">
+          <el-table-column :label="$t('sales_order')" min-width="150">
             <template #default="{ row }">
               <strong>{{ row.order_number || '—' }}</strong>
               <p class="row-sub">{{ row.customer_name || '' }}</p>
             </template>
           </el-table-column>
 
-          <el-table-column label="المستودع" min-width="130">
+          <el-table-column :label="$t('warehouse')" min-width="130">
             <template #default="{ row }">{{ row.warehouse_name || '—' }}</template>
           </el-table-column>
 
-          <el-table-column label="الأولوية" width="110" align="center">
+          <el-table-column :label="$t('priority')" width="110" align="center">
             <template #default="{ row }">
               <el-tag :type="priorityType(row.priority)" size="small" effect="plain">{{ row.priority_text }}</el-tag>
             </template>
           </el-table-column>
 
-          <el-table-column label="التقدّم" width="170">
+          <el-table-column :label="$t('progress')" width="170">
             <template #default="{ row }">
               <el-progress
                 :percentage="row.progress"
@@ -73,33 +73,33 @@
                 :status="row.progress === 100 ? 'success' : undefined"
                 :show-text="false"
               />
-              <span class="progress-note">{{ row.picked_items }} / {{ row.total_items }} صنف</span>
+              <span class="progress-note">{{ row.picked_items }} / {{ row.total_items }} {{ $t('items_unit') }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="الحالة" width="120" align="center">
+          <el-table-column :label="$t('status')" width="120" align="center">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)" size="small">{{ row.status_text }}</el-tag>
             </template>
           </el-table-column>
 
-          <el-table-column label="المُجهِّز" width="120">
+          <el-table-column :label="$t('picker')" width="120">
             <template #default="{ row }">{{ row.picker_name || '—' }}</template>
           </el-table-column>
 
-          <el-table-column label="الإجراءات" width="200" align="center">
+          <el-table-column :label="$t('actions')" width="200" align="center">
             <template #default="{ row }">
               <el-button-group>
-                <el-button size="small" type="info" plain title="فتح القائمة" @click="open(row)">
+                <el-button size="small" type="info" plain :title="$t('open_list')" @click="open(row)">
                   <i class="fas fa-eye"></i>
                 </el-button>
-                <el-button size="small" type="success" :disabled="!row.can_start" title="بدء السحب" @click="act(row, 'start')">
+                <el-button size="small" type="success" :disabled="!row.can_start" :title="$t('start_picking')" @click="act(row, 'start')">
                   <i class="fas fa-play"></i>
                 </el-button>
-                <el-button size="small" type="primary" :disabled="!row.can_complete" title="إنهاء التجهيز" @click="act(row, 'complete')">
+                <el-button size="small" type="primary" :disabled="!row.can_complete" :title="$t('complete_picking')" @click="act(row, 'complete')">
                   <i class="fas fa-check"></i>
                 </el-button>
-                <el-button size="small" type="danger" plain :disabled="!row.can_cancel" title="إلغاء" @click="act(row, 'cancel')">
+                <el-button size="small" type="danger" plain :disabled="!row.can_cancel" :title="$t('cancel')" @click="act(row, 'cancel')">
                   <i class="fas fa-ban"></i>
                 </el-button>
               </el-button-group>
@@ -107,7 +107,7 @@
           </el-table-column>
         </el-table>
 
-        <el-empty v-else description="لا توجد قوائم تجهيز في هذه الحالة" />
+        <el-empty v-else :description="$t('no_picking_lists_in_status')" />
 
         <div v-if="pagination.total > pagination.per_page" class="pagination-row">
           <el-pagination
@@ -123,17 +123,17 @@
     </el-card>
 
     <!-- Manual creation. Normally the list arrives with the order's confirmation. -->
-    <el-dialog v-model="showCreateDialog" title="إنشاء قائمة تجهيز يدوياً" width="520px">
+    <el-dialog v-model="showCreateDialog" :title="$t('create_picking_list_manually')" width="520px">
       <el-alert
         type="info"
         :closable="false"
         show-icon
         class="mb-3"
-        title="قوائم التجهيز تُنشأ تلقائياً عند تأكيد طلب البيع. استخدم هذا فقط إن لم تُنشأ لسبب ما."
+        :title="$t('manual_picking_list_hint')"
       />
       <el-form :model="form" label-position="top">
-        <el-form-item label="طلب البيع" required>
-          <el-select v-model="form.sales_order_id" filterable placeholder="اختر الطلب" style="width: 100%">
+        <el-form-item :label="$t('sales_order')" required>
+          <el-select v-model="form.sales_order_id" filterable :placeholder="$t('choose_the_order')" style="width: 100%">
             <el-option
               v-for="o in orders"
               :key="o.id"
@@ -142,26 +142,29 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="المستودع">
-          <el-select v-model="form.warehouse_id" clearable placeholder="مستودع تنفيذ الطلب" style="width: 100%">
+        <el-form-item :label="$t('warehouse')">
+          <el-select v-model="form.warehouse_id" clearable :placeholder="$t('fulfillment_warehouse')" style="width: 100%">
             <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreateDialog = false">إلغاء</el-button>
-        <el-button type="primary" :loading="saving" @click="create">إنشاء</el-button>
+        <el-button @click="showCreateDialog = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="create">{{ $t('create') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
 import { salesOrdersApi } from '@/api/salesOrders';
+
+const { t } = useI18n();
 
 const router = useRouter();
 
@@ -181,12 +184,12 @@ const form = reactive({ sales_order_id: null, warehouse_id: null });
 
 // "Open" leads because it is the work still to be done; the rest are history.
 const statusTabs = computed(() => [
-  { name: 'open', label: 'قيد العمل', icon: 'fa-hourglass-half', count: counts.value.pending + counts.value.in_progress, badge: 'warning' },
-  { name: 'pending', label: 'بانتظار البدء', icon: 'fa-clock', count: counts.value.pending, badge: 'warning' },
-  { name: 'in_progress', label: 'جارٍ السحب', icon: 'fa-person-walking', count: counts.value.in_progress, badge: 'primary' },
-  { name: 'completed', label: 'مكتملة', icon: 'fa-check', count: counts.value.completed, badge: 'success' },
-  { name: 'cancelled', label: 'ملغاة', icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
-  { name: 'all', label: 'الكل', icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
+  { name: 'open', label: t('in_progress_status'), icon: 'fa-hourglass-half', count: counts.value.pending + counts.value.in_progress, badge: 'warning' },
+  { name: 'pending', label: t('awaiting_start'), icon: 'fa-clock', count: counts.value.pending, badge: 'warning' },
+  { name: 'in_progress', label: t('picking_in_progress'), icon: 'fa-person-walking', count: counts.value.in_progress, badge: 'primary' },
+  { name: 'completed', label: t('completed_female'), icon: 'fa-check', count: counts.value.completed, badge: 'success' },
+  { name: 'cancelled', label: t('invoice_status_cancelled'), icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
+  { name: 'all', label: t('all'), icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
 ]);
 
 const statusType = (s) => ({ pending: 'warning', in_progress: 'primary', completed: 'success', cancelled: 'danger' }[s] || 'info');
@@ -209,7 +212,7 @@ const load = async (page = 1) => {
     counts.value = data.status_counts || counts.value;
     pagination.value = data.pagination || pagination.value;
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || 'تعذّر تحميل قوائم التجهيز.');
+    ElMessage.error(e.response?.data?.message || t('failed_to_load_picking_lists'));
   } finally {
     loading.value = false;
   }
@@ -223,8 +226,8 @@ const onSearch = () => {
 
 const ACTIONS = {
   start: { fn: (id) => wmsService.startPicking(id), confirm: null },
-  complete: { fn: (id) => wmsService.completePicking(id), confirm: 'إنهاء التجهيز؟ الأصناف تصبح جاهزة للشحن.' },
-  cancel: { fn: (id) => wmsService.cancelPicking(id), confirm: 'إلغاء قائمة التجهيز؟ لن يُطلب من أحد سحب هذه الأصناف.' },
+  complete: { fn: (id) => wmsService.completePicking(id), confirm: t('confirm_complete_picking') },
+  cancel: { fn: (id) => wmsService.cancelPicking(id), confirm: t('confirm_cancel_picking_list') },
 };
 
 const act = async (row, action) => {
@@ -232,10 +235,10 @@ const act = async (row, action) => {
 
   if (cfg.confirm) {
     try {
-      await ElMessageBox.confirm(cfg.confirm, 'تأكيد', {
+      await ElMessageBox.confirm(cfg.confirm, t('confirm'), {
         type: action === 'cancel' ? 'warning' : 'info',
-        confirmButtonText: 'متابعة',
-        cancelButtonText: 'رجوع',
+        confirmButtonText: t('proceed'),
+        cancelButtonText: t('back'),
       });
     } catch {
       return;
@@ -244,31 +247,31 @@ const act = async (row, action) => {
 
   try {
     const res = await cfg.fn(row.id);
-    ElMessage.success(res.data?.message || 'تم تنفيذ العملية.');
+    ElMessage.success(res.data?.message || t('operation_completed'));
     await load(pagination.value.current_page);
   } catch (e) {
     // The API explains precisely why (unpicked items, wrong state); a generic
     // message here would hide the reason and the way forward.
-    ElMessage.error(e.response?.data?.message || 'تعذّر تنفيذ العملية.');
+    ElMessage.error(e.response?.data?.message || t('operation_failed'));
   }
 };
 
 const create = async () => {
   if (!form.sales_order_id) {
-    ElMessage.warning('اختر طلب البيع أولاً.');
+    ElMessage.warning(t('choose_sales_order_first'));
     return;
   }
 
   saving.value = true;
   try {
     await wmsService.createPickingList({ ...form });
-    ElMessage.success('تم إنشاء قائمة التجهيز.');
+    ElMessage.success(t('picking_list_created'));
     showCreateDialog.value = false;
     form.sales_order_id = null;
     form.warehouse_id = null;
     await load(1);
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || 'تعذّر إنشاء قائمة التجهيز.');
+    ElMessage.error(e.response?.data?.message || t('failed_to_create_picking_list'));
   } finally {
     saving.value = false;
   }

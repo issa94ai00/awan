@@ -89,7 +89,7 @@ function navigateTo(path) {
 <template>
     <div class="p-6">
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold">لوحة تحكم WMS</h1>
+            <h1 class="text-2xl font-bold">{{ $t('wms_dashboard') }}</h1>
             
             <!-- قائمة التنبيهات -->
             <div class="relative alerts-dropdown">
@@ -98,7 +98,7 @@ function navigateTo(path) {
                     class="relative bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
                 >
                     <span class="flex items-center gap-2">
-                        🔔 التنبيهات
+                        {{ $t('alerts_with_icon') }}
                         <span 
                             v-if="alerts.length > 0"
                             class="bg-white text-red-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"
@@ -113,7 +113,7 @@ function navigateTo(path) {
                     class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg z-10"
                 >
                     <div class="p-4 border-b">
-                        <h3 class="font-bold">التنبيهات الحديثة</h3>
+                        <h3 class="font-bold">{{ $t('recent_alerts') }}</h3>
                     </div>
                     <div class="max-h-96 overflow-y-auto">
                         <div 
@@ -131,7 +131,7 @@ function navigateTo(path) {
                             </div>
                         </div>
                         <div v-if="alerts.length === 0" class="p-4 text-gray-500 text-center">
-                            لا توجد تنبيهات
+                            {{ $t('no_alerts') }}
                         </div>
                     </div>
                 </div>
@@ -140,7 +140,7 @@ function navigateTo(path) {
 
         <div v-if="loading" class="flex justify-center py-12">
             <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p class="mt-4 text-gray-600">جاري التحميل...</p>
+            <p class="mt-4 text-gray-600">{{ $t('loading') }}</p>
         </div>
 
         <div v-else>
@@ -149,7 +149,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">المنتجات المرتبطة</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('linked_products') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.linked_products }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">📦</div>
@@ -158,7 +158,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">المستودعات النشطة</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('active_warehouses') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.active_warehouses }} / {{ stats.total_warehouses }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">🏭</div>
@@ -167,7 +167,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-yellow-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">منتجات تحتاج إعادة طلب</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('products_needing_reorder') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.reorder_products }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">⚠️</div>
@@ -176,7 +176,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-purple-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">إجمالي المخزون</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('total_stock') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.total_stock }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">📊</div>
@@ -188,7 +188,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-orange-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">قيمة المخزون</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('stock_value') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ formatCurrency(stats.total_value) }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">💰</div>
@@ -197,7 +197,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-red-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">حركات اليوم</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('movements_today') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.today_movements }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">🔄</div>
@@ -206,7 +206,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">المستخدمين النشطين</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('active_users') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.active_users }}</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">👥</div>
@@ -215,7 +215,7 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">نسبة التعبئة</h3>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('fill_rate') }}</h3>
                             <p class="text-2xl sm:text-3xl font-bold text-gray-800">87%</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">📈</div>
@@ -226,7 +226,7 @@ function navigateTo(path) {
             <!-- الرسوم البيانية -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h3 class="text-lg font-bold mb-4 text-gray-800">أكثر 5 منتجات استهلاكاً (آخر 30 يوماً)</h3>
+                    <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('top_five_consumed_products') }}</h3>
                     <div v-if="topProducts.length > 0" class="space-y-4">
                         <div 
                             v-for="(product, index) in topProducts" 
@@ -251,12 +251,12 @@ function navigateTo(path) {
                         </div>
                     </div>
                     <div v-else class="text-center text-gray-500 py-8">
-                        لا توجد بيانات
+                        {{ $t('no_data') }}
                     </div>
                 </div>
 
                 <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h3 class="text-lg font-bold mb-4 text-gray-800">توزيع المخزون بين المستودعات</h3>
+                    <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('stock_distribution_across_warehouses') }}</h3>
                     <div v-if="warehouseDistribution.length > 0" class="space-y-4">
                         <div 
                             v-for="(warehouse, index) in warehouseDistribution" 
@@ -281,7 +281,7 @@ function navigateTo(path) {
                         </div>
                     </div>
                     <div v-else class="text-center text-gray-500 py-8">
-                        لا توجد بيانات
+                        {{ $t('no_data') }}
                     </div>
                 </div>
             </div>
@@ -289,36 +289,36 @@ function navigateTo(path) {
             <!-- آخر الحركات -->
             <div class="bg-white p-6 rounded-lg shadow-lg">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-800">آخر الحركات المخزنية</h3>
+                    <h3 class="text-lg font-bold text-gray-800">{{ $t('latest_stock_movements') }}</h3>
                     <button 
                         @click="navigateTo('/admin/wms/stock/balances')"
                         class="text-blue-600 hover:text-blue-700 text-sm font-medium"
                     >
-                        عرض الكل
+                        {{ $t('view_all') }}
                     </button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="border-b bg-gray-50">
-                                <th class="text-right p-3 font-medium text-gray-700">التاريخ</th>
-                                <th class="text-right p-3 font-medium text-gray-700">المنتج</th>
-                                <th class="text-right p-3 font-medium text-gray-700">المستودع</th>
-                                <th class="text-right p-3 font-medium text-gray-700">النوع</th>
-                                <th class="text-right p-3 font-medium text-gray-700">الكمية</th>
+                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('date') }}</th>
+                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('product') }}</th>
+                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('warehouse') }}</th>
+                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('type') }}</th>
+                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('quantity') }}</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-if="stats.today_movements === 0">
-                                <td colspan="5" class="p-4 text-center text-gray-500">لا توجد حركات اليوم</td>
+                                <td colspan="5" class="p-4 text-center text-gray-500">{{ $t('no_movements_today') }}</td>
                             </tr>
                             <tr v-else class="border-b hover:bg-gray-50">
-                                <td class="p-3 text-sm">اليوم</td>
+                                <td class="p-3 text-sm">{{ $t('today') }}</td>
                                 <td class="p-3 text-sm">-</td>
                                 <td class="p-3 text-sm">-</td>
                                 <td class="p-3">
                                     <span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                        إيداع
+                                        {{ $t('deposit') }}
                                     </span>
                                 </td>
                                 <td class="p-3 text-sm font-medium">-</td>
@@ -330,14 +330,14 @@ function navigateTo(path) {
 
             <!-- روابط سريعة -->
             <div class="mt-6">
-                <h3 class="text-lg font-bold mb-4 text-gray-800">روابط سريعة</h3>
+                <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('quick_links') }}</h3>
                 <div class="grid grid-cols-4 gap-4">
                     <button 
                         @click="navigateTo('/admin/wms/products')"
                         class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
                     >
                         <div class="text-2xl mb-2">📦</div>
-                        <div class="font-medium">المنتجات</div>
+                        <div class="font-medium">{{ $t('nav_products') }}</div>
                     </button>
                     
                     <button 
@@ -345,7 +345,7 @@ function navigateTo(path) {
                         class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
                     >
                         <div class="text-2xl mb-2">🏭</div>
-                        <div class="font-medium">المستودعات</div>
+                        <div class="font-medium">{{ $t('warehouses') }}</div>
                     </button>
                     
                     <button 
@@ -353,7 +353,7 @@ function navigateTo(path) {
                         class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
                     >
                         <div class="text-2xl mb-2">⚖</div>
-                        <div class="font-medium">الأرصدة</div>
+                        <div class="font-medium">{{ $t('balances') }}</div>
                     </button>
                     
                     <button 
@@ -361,7 +361,7 @@ function navigateTo(path) {
                         class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
                     >
                         <div class="text-2xl mb-2">📊</div>
-                        <div class="font-medium">التقارير</div>
+                        <div class="font-medium">{{ $t('nav_reports') }}</div>
                     </button>
                 </div>
             </div>
