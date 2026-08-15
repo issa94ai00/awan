@@ -65,6 +65,12 @@ return new class extends Migration
             $table->id();
             $table->foreignId('currency_id')->constrained()->cascadeOnDelete();
 
+            // Which base the quote was made against. "The dollar is 13,000"
+            // only means anything once you know 13,000 of what; without this
+            // column, changing the base silently reinterpreted every stored
+            // rate as being per one unit of the new base.
+            $table->string('base_code', 8)->nullable();
+
             // Units of this currency per one unit of the base currency.
             //
             // Quoted this way round because that is how the rate is spoken in
@@ -83,11 +89,11 @@ return new class extends Migration
             $table->timestamps();
 
             // The lookup this table exists for: the newest rate for a currency
-            // at or before a given moment.
-            $table->index(['currency_id', 'effective_at']);
+            // at or before a given moment, quoted against today's base.
+            $table->index(['currency_id', 'base_code', 'effective_at']);
         });
 
-        $this->seedBaseCurrency();
+        $this->seedInitialCurrencies();
     }
 
     public function down(): void
@@ -97,47 +103,70 @@ return new class extends Migration
     }
 
     /**
-     * Creates the base currency from whatever the platform is already using.
+     * Seeds the currencies this platform trades in: the Syrian pound it keeps
+     * its books in, plus the riyal and the dollar prices are quoted against.
      *
      * Without this the first request after migrating would find no base
      * currency and have nothing to price against. The existing `default_currency`
-     * setting is the honest source: it is what every hardcoded 'SAR' was
-     * pretending to honour.
+     * setting is the honest source of which one is the base: it is what every
+     * hardcoded 'SAR' was pretending to honour.
+     *
+     * Only the base gets a rate. The other two are catalogued but rateless
+     * until someone enters a market quote — a made-up rate would silently
+     * price a pound at a riyal, which is worse than showing base prices.
      */
-    private function seedBaseCurrency(): void
+    private function seedInitialCurrencies(): void
     {
-        $code = 'SYP';
+        $baseCode = 'SYP';
 
         if (Schema::hasTable('settings')) {
             $configured = DB::table('settings')->where('key', 'default_currency')->value('value');
-            $code = strtoupper(trim((string) $configured)) ?: 'SYP';
+            $baseCode = strtoupper(trim((string) $configured)) ?: 'SYP';
         }
 
+        // name_ar, name_en, symbol, decimal_places, rounding_step.
+        //
+        // The step belongs to the currency, not to being the base: the pound is
+        // quoted to the nearest 500 because that is its smallest useful note,
+        // and a dollar never is. Tying it to `is_base` made every base currency
+        // round to 500 of itself.
         $known = [
-            'SAR' => ['ريال سعودي', 'Saudi Riyal', 'ر.س', 2],
-            'USD' => ['دولار أمريكي', 'US Dollar', '$', 2],
-            'EUR' => ['يورو', 'Euro', '€', 2],
-            'AED' => ['درهم إماراتي', 'UAE Dirham', 'د.إ', 2],
-            'EGP' => ['جنيه مصري', 'Egyptian Pound', 'ج.م', 2],
-            'SYP' => ['ليرة سورية', 'Syrian Pound', 'ل.س', 0],
+            'SYP' => ['ليرة سورية', 'Syrian Pound', 'ل.س', 0, 500],
+            'SAR' => ['ريال سعودي', 'Saudi Riyal', 'ر.س', 2, 0],
+            'USD' => ['دولار أمريكي', 'US Dollar', '$', 2, 0],
+            'EUR' => ['يورو', 'Euro', '€', 2, 0],
+            'AED' => ['درهم إماراتي', 'UAE Dirham', 'د.إ', 2, 0],
+            'EGP' => ['جنيه مصري', 'Egyptian Pound', 'ج.م', 2, 0],
         ];
 
-        $baseCode = strtoupper(trim((string) $code));
-        $initialCodes = [$baseCode, 'USD', 'SAR'];
+        // Deduplicated, base first. Listing the base alongside a fixed list
+        // inserted it twice whenever the platform was already on the riyal or
+        // the dollar, and the unique index turned that into a failed migration.
+        $initialCodes = array_values(array_unique([$baseCode, 'SYP', 'SAR', 'USD']));
 
-        $currencyIds = [];
-        foreach ($initialCodes as $index => $currencyCode) {
-            $metadata = $known[$currencyCode] ?? [$currencyCode, $currencyCode, $currencyCode, 2];
-            [$nameAr, $nameEn, $symbol, $decimals] = $metadata;
+        $baseId = null;
+        foreach ($initialCodes as $index => $code) {
+            [$nameAr, $nameEn, $symbol, $decimals, $step] =
+                $known[$code] ?? [$code, $code, $code, 2, 0];
 
-            $isBase = $currencyCode === $baseCode;
-            $currencyId = DB::table('currencies')->insertGetId([
-                'code' => $currencyCode,
+            $isBase = $code === $baseCode;
+
+            $existingId = DB::table('currencies')->where('code', $code)->value('id');
+            if ($existingId !== null) {
+                if ($isBase) {
+                    $baseId = $existingId;
+                }
+
+                continue;
+            }
+
+            $id = DB::table('currencies')->insertGetId([
+                'code' => $code,
                 'name_ar' => $nameAr,
                 'name_en' => $nameEn,
                 'symbol' => $symbol,
                 'decimal_places' => $decimals,
-                'rounding_step' => $isBase ? 500 : 0,
+                'rounding_step' => $step,
                 'is_base' => $isBase,
                 'is_active' => true,
                 'sort_order' => $index,
@@ -145,14 +174,19 @@ return new class extends Migration
                 'updated_at' => now(),
             ]);
 
-            $currencyIds[$currencyCode] = $currencyId;
+            if ($isBase) {
+                $baseId = $id;
+            }
         }
 
-        // The base is worth exactly one of itself. Additional default currencies are
-        // kept in the catalog for display and conversion setup, but their rate is
-        // entered explicitly later when the admin records market quotes.
+        if ($baseId === null) {
+            return;
+        }
+
+        // The base is worth exactly one of itself.
         DB::table('currency_rates')->insert([
-            'currency_id' => $currencyIds[$baseCode],
+            'currency_id' => $baseId,
+            'base_code' => $baseCode,
             'rate' => 1,
             'effective_at' => now(),
             'note' => 'Base currency',

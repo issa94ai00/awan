@@ -1,160 +1,131 @@
 <template>
     <div class="product-kpi-page">
-        <div class="page-header">
-            <div class="page-title">
-                <div class="title-badge">KPI</div>
-                <h1>لوحة KPI المنتجات</h1>
-                <p>تحليل الربحية والإيراد والتكلفة لكل منتج حسب المستودع</p>
-            </div>
-            <div class="toolbar-actions">
+        <AdminPageHeader
+            badge="KPI"
+            :title="$t('product_kpi_dashboard')"
+            :subtitle="$t('product_kpi_subtitle')"
+        >
+            <template #actions>
                 <el-button :icon="Refresh" @click="resetFilters" class="secondary-action">
-                    إعادة تعيين
+                    {{ $t('reset') }}
                 </el-button>
                 <el-button :icon="ArrowLeft" @click="goBack">
-                    رجوع
+                    {{ $t('back') }}
                 </el-button>
-            </div>
-        </div>
-
-        <el-card shadow="hover" class="filter-panel">
-            <template #header>
-                <div class="card-header">
-                    <span>خيارات التصفية</span>
-                    <el-button type="primary" :icon="Search" @click="applyFilters">
-                        تطبيق
-                    </el-button>
-                </div>
             </template>
+        </AdminPageHeader>
 
-            <el-row :gutter="20">
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>الموظف</label>
-                        <el-select v-model="filters.employee_id" placeholder="الكل" clearable style="width: 100%">
-                            <el-option v-for="employee in employees" :key="employee.id" :label="employee.name" :value="employee.id" />
-                        </el-select>
-                    </div>
-                </el-col>
+        <AdminFilterBar>
+            <div class="filter-field">
+                <label>{{ $t('employee') }}</label>
+                <el-select v-model="filters.employee_id" :placeholder="$t('all')" clearable>
+                    <el-option v-for="employee in employees" :key="employee.id" :label="employee.name" :value="employee.id" />
+                </el-select>
+            </div>
 
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>العميل</label>
-                        <el-select v-model="filters.customer_id" placeholder="الكل" clearable style="width: 100%">
-                            <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id" />
-                        </el-select>
-                    </div>
-                </el-col>
+            <div class="filter-field">
+                <label>{{ $t('customer') }}</label>
+                <el-select v-model="filters.customer_id" :placeholder="$t('all')" clearable>
+                    <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id" />
+                </el-select>
+            </div>
 
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>المستودع</label>
-                        <el-select v-model="filters.warehouse_id" placeholder="الكل" clearable style="width: 100%">
-                            <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
-                        </el-select>
-                    </div>
-                </el-col>
+            <div class="filter-field">
+                <label>{{ $t('warehouse') }}</label>
+                <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable>
+                    <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
+                </el-select>
+            </div>
 
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>المنتج</label>
-                        <el-select v-model="filters.product_id" placeholder="الكل" clearable style="width: 100%">
-                            <el-option v-for="product in products" :key="product.id" :label="product.name || product.name_en || product.name_ar" :value="product.id" />
-                        </el-select>
-                    </div>
-                </el-col>
+            <div class="filter-field">
+                <label>{{ $t('product') }}</label>
+                <el-select v-model="filters.product_id" :placeholder="$t('all')" clearable>
+                    <el-option v-for="product in products" :key="product.id" :label="product.name || product.name_en || product.name_ar" :value="product.id" />
+                </el-select>
+            </div>
 
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>نوع التاريخ</label>
-                        <el-select v-model="filters.date_filter_type" style="width: 100%">
-                            <el-option label="الكل" value="all" />
-                            <el-option label="اليوم" value="today" />
-                            <el-option label="أمس" value="yesterday" />
-                            <el-option label="هذا الأسبوع" value="this_week" />
-                            <el-option label="هذا الشهر" value="this_month" />
-                            <el-option label="الشهر الماضي" value="last_month" />
-                            <el-option label="مخصص" value="custom" />
-                        </el-select>
-                    </div>
-                </el-col>
-            </el-row>
+            <div class="filter-field">
+                <label>{{ $t('date_filter_type') }}</label>
+                <el-select v-model="filters.date_filter_type">
+                    <el-option :label="$t('all')" value="all" />
+                    <el-option :label="$t('today')" value="today" />
+                    <el-option :label="$t('yesterday')" value="yesterday" />
+                    <el-option :label="$t('this_week')" value="this_week" />
+                    <el-option :label="$t('this_month')" value="this_month" />
+                    <el-option :label="$t('last_month')" value="last_month" />
+                    <el-option :label="$t('custom')" value="custom" />
+                </el-select>
+            </div>
 
-            <el-row v-if="filters.date_filter_type === 'custom'" :gutter="20" style="margin-top: 15px">
-                <el-col :xs="24" :sm="12">
-                    <div class="form-group">
-                        <label>من</label>
-                        <el-date-picker v-model="filters.start_date" type="date" style="width: 100%" />
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12">
-                    <div class="form-group">
-                        <label>إلى</label>
-                        <el-date-picker v-model="filters.end_date" type="date" style="width: 100%" />
-                    </div>
-                </el-col>
-            </el-row>
-        </el-card>
+            <!-- Only meaningful for a custom range, so it takes a cell in the
+                 same grid instead of opening a second half-empty row. -->
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
+                <label>{{ $t('from') }}</label>
+                <el-date-picker v-model="filters.start_date" type="date" />
+            </div>
 
-        <el-row v-if="loading" :gutter="20" class="summary-cards">
-            <el-col v-for="n in 4" :key="n" :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card skeleton-card">
-                    <el-skeleton :rows="2" animated />
-                </el-card>
-            </el-col>
-        </el-row>
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
+                <label>{{ $t('to') }}</label>
+                <el-date-picker v-model="filters.end_date" type="date" />
+            </div>
 
-        <el-row v-else :gutter="20" class="summary-cards">
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card stat-card-revenue">
-                    <div class="stat-content">
-                        <div class="stat-icon"><component :is="Coin" /></div>
-                        <div class="stat-info">
-                            <h3>{{ formatCurrency(summary.total_revenue || 0) }}</h3>
-                            <p>إجمالي الإيراد</p>
-                        </div>
+            <template #actions>
+                <el-button type="primary" :icon="Search" @click="applyFilters">
+                    {{ $t('apply') }}
+                </el-button>
+            </template>
+        </AdminFilterBar>
+
+        <AdminStatGrid v-if="loading">
+            <el-card v-for="n in 4" :key="n" shadow="hover" class="stat-card skeleton-card">
+                <el-skeleton :rows="2" animated />
+            </el-card>
+        </AdminStatGrid>
+
+        <AdminStatGrid v-else>
+            <el-card shadow="hover" class="stat-card stat-card-revenue">
+                <div class="stat-content">
+                    <div class="stat-icon"><component :is="Coin" /></div>
+                    <div class="stat-info">
+                        <h3>{{ formatCurrency(summary.total_revenue || 0) }}</h3>
+                        <p>{{ $t('total_revenue') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card stat-card-cost">
-                    <div class="stat-content">
-                        <div class="stat-icon"><component :is="PriceTag" /></div>
-                        <div class="stat-info">
-                            <h3>{{ formatCurrency(summary.total_cost || 0) }}</h3>
-                            <p>إجمالي التكلفة</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card stat-card-cost">
+                <div class="stat-content">
+                    <div class="stat-icon"><component :is="PriceTag" /></div>
+                    <div class="stat-info">
+                        <h3>{{ formatCurrency(summary.total_cost || 0) }}</h3>
+                        <p>{{ $t('total_cost') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card stat-card-profit">
-                    <div class="stat-content">
-                        <div class="stat-icon"><component :is="TrendCharts" /></div>
-                        <div class="stat-info">
-                            <h3>{{ formatCurrency(summary.gross_profit || 0) }}</h3>
-                            <p>إجمالي الربح</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card stat-card-profit">
+                <div class="stat-content">
+                    <div class="stat-icon"><component :is="TrendCharts" /></div>
+                    <div class="stat-info">
+                        <h3>{{ formatCurrency(summary.gross_profit || 0) }}</h3>
+                        <p>{{ $t('total_profit') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-                <el-card shadow="hover" class="stat-card stat-card-margin">
-                    <div class="stat-content">
-                        <div class="stat-icon"><component :is="PieChart" /></div>
-                        <div class="stat-info">
-                            <h3>{{ formatPercentage(summary.gross_margin || 0) }}</h3>
-                            <p>هامش الربح</p>
-                        </div>
+                </div>
+            </el-card>
+            <el-card shadow="hover" class="stat-card stat-card-margin">
+                <div class="stat-content">
+                    <div class="stat-icon"><component :is="PieChart" /></div>
+                    <div class="stat-info">
+                        <h3>{{ formatPercentage(summary.gross_margin || 0) }}</h3>
+                        <p>{{ $t('profit_margin') }}</p>
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <el-row :gutter="20" style="margin-top: 20px; margin-bottom: 10px;">
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>أعلى منتج ربحًا</span>
+                        <span>{{ $t('most_profitable_product') }}</span>
                         <strong>{{ summary.top_product?.product_name || '-' }}</strong>
                         <small>{{ formatCurrency(summary.top_product?.gross_profit || 0) }}</small>
                     </div>
@@ -163,7 +134,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>أقل منتج ربحًا</span>
+                        <span>{{ $t('least_profitable_product') }}</span>
                         <strong>{{ summary.lowest_product?.product_name || '-' }}</strong>
                         <small>{{ formatCurrency(summary.lowest_product?.gross_profit || 0) }}</small>
                     </div>
@@ -172,7 +143,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>عدد المنتجات</span>
+                        <span>{{ $t('items_count') }}</span>
                         <strong>{{ summary.product_count || 0 }}</strong>
                     </div>
                 </el-card>
@@ -180,7 +151,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>المستودعات المساهمة</span>
+                        <span>{{ $t('contributing_warehouses') }}</span>
                         <strong>{{ uniqueWarehouses.length }}</strong>
                     </div>
                 </el-card>
@@ -190,56 +161,62 @@
         <el-card v-if="!loading && hasRows" shadow="hover" class="chart-card">
             <template #header>
                 <div class="card-header">
-                    <span>مخطط الربح حسب المنتج</span>
+                    <span>{{ $t('profit_by_product_chart') }}</span>
                 </div>
             </template>
             <div ref="productChartRef" class="profit-chart" />
         </el-card>
 
         <el-card v-else-if="!loading" shadow="hover" class="chart-card empty-state-card">
-            <el-empty :description="'لا توجد بيانات للربح حسب المنتج في النطاق الحالي'" />
+            <el-empty :description="$t('no_profit_data_in_range')" />
         </el-card>
 
         <el-card shadow="hover" class="table-card">
             <template #header>
                 <div class="card-header">
-                    <span>تفاصيل ربحية المنتجات</span>
+                    <span>{{ $t('product_profitability_details') }}</span>
                 </div>
             </template>
 
             <el-table v-if="hasRows" :data="sortedRows" stripe style="width: 100%" v-loading="loading">
-                <el-table-column prop="product_name" label="المنتج" />
-                <el-table-column prop="warehouse_name" label="المستودع" />
-                <el-table-column prop="quantity" label="الكمية" />
-                <el-table-column label="الإيراد">
+                <el-table-column prop="product_name" :label="$t('product')" />
+                <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                <el-table-column prop="quantity" :label="$t('quantity')" />
+                <el-table-column :label="$t('revenue')">
                     <template #default="{ row }">{{ formatCurrency(row.total_revenue) }}</template>
                 </el-table-column>
-                <el-table-column label="التكلفة">
+                <el-table-column :label="$t('cost')">
                     <template #default="{ row }">{{ formatCurrency(row.total_cost) }}</template>
                 </el-table-column>
-                <el-table-column label="الربح">
+                <el-table-column :label="$t('profit')">
                     <template #default="{ row }">
                         <strong :class="row.gross_profit >= 0 ? 'profit-positive' : 'profit-negative'">
                             {{ formatCurrency(row.gross_profit) }}
                         </strong>
                     </template>
                 </el-table-column>
-                <el-table-column label="الهامش">
+                <el-table-column :label="$t('margin')">
                     <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
                 </el-table-column>
             </el-table>
 
-            <el-empty v-else :description="'لا توجد منتجات في هذا النطاق'" />
+            <el-empty v-else :description="$t('no_products_in_range')" />
         </el-card>
     </div>
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowLeft, Refresh, Search, Coin, PriceTag, TrendCharts, PieChart } from '@element-plus/icons-vue';
 import api from '@/api';
 import * as echarts from 'echarts';
+
+const { t } = useI18n();
 
 const DEFAULT_SUMMARY = Object.freeze({
     total_revenue: 0,
@@ -274,7 +251,7 @@ const filters = ref({
 
 const normalizeArray = (value) => Array.isArray(value) ? value : [];
 const safeNumber = (value) => Number(value ?? 0);
-const getProductName = (product) => product?.name || product?.name_en || product?.name_ar || 'غير محدد';
+const getProductName = (product) => product?.name || product?.name_en || product?.name_ar || t('not_specified');
 const buildEmptySummary = () => ({ ...DEFAULT_SUMMARY });
 
 const uniqueWarehouses = computed(() => {
@@ -326,7 +303,7 @@ const updateProductProfitChart = async () => {
             axisPointer: { type: 'shadow' },
             formatter: (params) => {
                 const point = params[0];
-                return `${point.axisValue}<br/>الربح: ${formatCurrency(point.value)}`;
+                return `${point.axisValue}<br/>${t('profit')}: ${formatCurrency(point.value)}`;
             }
         },
         grid: {
@@ -368,7 +345,7 @@ const updateProductProfitChart = async () => {
         }],
         noDataOption: {
             title: {
-                text: 'لا توجد بيانات',
+                text: t('no_data'),
                 left: 'center',
                 top: 'center'
             }

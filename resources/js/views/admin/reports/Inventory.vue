@@ -1,71 +1,58 @@
 <template>
     <div class="reports-inventory">
-        <div class="page-header">
-            <div class="page-title">
-                <div class="title-badge">WMS</div>
-                <h1>{{ $t('inventory_report') }}</h1>
-                <p>{{ $t('inventory_report') }} - {{ $t('summary_of_reports') }}</p>
-            </div>
-            <div class="toolbar-actions">
+        <AdminPageHeader
+            badge="WMS"
+            :title="$t('inventory_report')"
+            :subtitle="`${$t('inventory_report')} — ${$t('summary_of_reports')}`"
+        >
+            <template #actions>
                 <el-button :icon="RefreshRight" @click="resetInventoryFilters" class="secondary-action">
-                    إعادة الضبط
+                    {{ $t('reset') }}
                 </el-button>
                 <el-button type="primary" :icon="Download" @click="exportInventoryReport">
-                    تصدير
+                    {{ $t('export') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-card shadow="hover" class="filter-card">
-            <el-row :gutter="20" align="middle">
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>المستودع</label>
-                        <el-select v-model="filters.warehouse_id" placeholder="الكل" clearable style="width: 100%" @change="loadInventoryDimensions">
-                            <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>المنتج</label>
-                        <el-select v-model="filters.product_id" placeholder="الكل" clearable style="width: 100%" @change="loadInventoryDimensions">
-                            <el-option v-for="product in products" :key="product.id" :label="product.name || product.name_ar || product.name_en" :value="product.id" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>الفترة</label>
-                        <el-select v-model="filters.date_filter_type" placeholder="الكل" clearable style="width: 100%" @change="loadInventoryDimensions">
-                            <el-option label="الكل" :value="'all'" />
-                            <el-option label="اليوم" :value="'today'" />
-                            <el-option label="الأمس" :value="'yesterday'" />
-                            <el-option label="هذا الأسبوع" :value="'this_week'" />
-                            <el-option label="هذا الشهر" :value="'this_month'" />
-                            <el-option label="الشهر الماضي" :value="'last_month'" />
-                            <el-option label="مخصص" :value="'custom'" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>التاريخ من</label>
-                        <el-date-picker v-model="filters.start_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" @change="loadInventoryDimensions" />
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6" style="margin-top: 18px;">
-                    <div class="form-group">
-                        <label>إلى</label>
-                        <el-date-picker v-model="filters.end_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" @change="loadInventoryDimensions" />
-                    </div>
-                </el-col>
-            </el-row>
-        </el-card>
+        <AdminFilterBar>
+            <div class="filter-field">
+                <label>{{ $t('warehouse') }}</label>
+                <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable @change="loadInventoryDimensions">
+                    <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('product') }}</label>
+                <el-select v-model="filters.product_id" :placeholder="$t('all')" clearable @change="loadInventoryDimensions">
+                    <el-option v-for="product in products" :key="product.id" :label="product.name || product.name_ar || product.name_en" :value="product.id" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('period') }}</label>
+                <el-select v-model="filters.date_filter_type" :placeholder="$t('all')" clearable @change="loadInventoryDimensions">
+                    <el-option :label="$t('all')" :value="'all'" />
+                    <el-option :label="$t('today')" :value="'today'" />
+                    <el-option :label="$t('yesterday')" :value="'yesterday'" />
+                    <el-option :label="$t('this_week')" :value="'this_week'" />
+                    <el-option :label="$t('this_month')" :value="'this_month'" />
+                    <el-option :label="$t('last_month')" :value="'last_month'" />
+                    <el-option :label="$t('custom')" :value="'custom'" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('date_from') }}</label>
+                <el-date-picker v-model="filters.start_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="loadInventoryDimensions" />
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('to') }}</label>
+                <el-date-picker v-model="filters.end_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="loadInventoryDimensions" />
+            </div>
+        </AdminFilterBar>
 
         <el-alert
             v-if="hasInventoryData === false"
-            title="لا توجد بيانات في الفلاتر الحالية"
+            :title="$t('no_data_for_current_filters')"
             type="info"
             :closable="false"
             show-icon
@@ -77,21 +64,19 @@
         </div>
 
         <template v-else>
-            <el-row :gutter="20" class="summary-cards">
-                <el-col v-for="(stat, key) in summaryStats" :key="key" :xs="24" :sm="12" :md="6">
-                    <el-card shadow="hover" class="stat-card" :class="'stat-card-' + key">
-                        <div class="stat-content">
-                            <div class="stat-icon">
-                                <component :is="stat.icon" />
-                            </div>
-                            <div class="stat-info">
-                                <h3>{{ stat.value }}</h3>
-                                <p>{{ stat.label }}</p>
-                            </div>
+            <AdminStatGrid>
+                <el-card v-for="(stat, key) in summaryStats" :key="key" shadow="hover" class="stat-card" :class="'stat-card-' + key">
+                    <div class="stat-content">
+                        <div class="stat-icon">
+                            <component :is="stat.icon" />
                         </div>
-                    </el-card>
-                </el-col>
-            </el-row>
+                        <div class="stat-info">
+                            <h3>{{ stat.value }}</h3>
+                            <p>{{ stat.label }}</p>
+                        </div>
+                    </div>
+                </el-card>
+            </AdminStatGrid>
 
             <el-row :gutter="20" class="charts-section">
                 <el-col :xs="24" :lg="14">
@@ -123,19 +108,19 @@
                     <el-card shadow="hover" class="table-card">
                         <template #header>
                             <div class="card-header">
-                                <span>ملخص المستودعات</span>
+                                <span>{{ $t('warehouse_summary') }}</span>
                             </div>
                         </template>
 
                         <el-table :data="dimensionData.warehouse_summary || []" stripe style="width: 100%">
-                            <el-table-column prop="warehouse_name" label="المستودع" />
-                            <el-table-column prop="total_quantity" label="الكمية">
+                            <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                            <el-table-column prop="total_quantity" :label="$t('quantity')">
                                 <template #default="{ row }">{{ formatNumber(row.total_quantity) }}</template>
                             </el-table-column>
-                            <el-table-column prop="total_available" label="المتاح">
+                            <el-table-column prop="total_available" :label="$t('available')">
                                 <template #default="{ row }">{{ formatNumber(row.total_available) }}</template>
                             </el-table-column>
-                            <el-table-column prop="total_value" label="القيمة">
+                            <el-table-column prop="total_value" :label="$t('value')">
                                 <template #default="{ row }">{{ formatCurrency(row.total_value) }}</template>
                             </el-table-column>
                         </el-table>
@@ -146,26 +131,26 @@
                     <el-card shadow="hover" class="table-card">
                         <template #header>
                             <div class="card-header">
-                                <span>الإجمالي</span>
+                                <span>{{ $t('grand_total') }}</span>
                             </div>
                         </template>
 
                         <div class="status-list">
                             <div class="status-item">
                                 <div>
-                                    <span>إجمالي الكمية</span>
+                                    <span>{{ $t('total_quantity') }}</span>
                                 </div>
                                 <strong>{{ formatNumber(dimensionData.overall?.total_quantity || 0) }}</strong>
                             </div>
                             <div class="status-item">
                                 <div>
-                                    <span>إجمالي المتاح</span>
+                                    <span>{{ $t('total_available') }}</span>
                                 </div>
                                 <strong>{{ formatNumber(dimensionData.overall?.total_available || 0) }}</strong>
                             </div>
                             <div class="status-item">
                                 <div>
-                                    <span>قيمة المخزون</span>
+                                    <span>{{ $t('stock_value') }}</span>
                                 </div>
                                 <strong>{{ formatCurrency(dimensionData.overall?.total_value || 0) }}</strong>
                             </div>
@@ -224,11 +209,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { Box, Goods, Warning, Coin, TrendCharts, Download, RefreshRight } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
 import api from '@/api';
 import { dashboardApi } from '@/api/dashboard';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const loading = ref(true);
 const overview = ref({
@@ -275,22 +266,22 @@ const hasInventoryData = computed(() => {
 
 const summaryStats = computed(() => ({
     total_products: {
-        label: 'إجمالي المنتجات',
+        label: t('total_products'),
         value: formatNumber(overview.value.products?.total || 0),
         icon: Box
     },
     in_stock: {
-        label: 'متوفر في المخزن',
+        label: t('in_stock_at_warehouse'),
         value: formatNumber(overview.value.products?.in_stock || 0),
         icon: Goods
     },
     low_stock: {
-        label: 'منخفض المخزون',
+        label: t('low_stock'),
         value: formatNumber(overview.value.products?.low_stock || overview.value.low_stock_products?.length || 0),
         icon: Warning
     },
     inventory_value: {
-        label: 'قيمة المخزون',
+        label: t('stock_value'),
         value: formatCurrency(getInventoryValue()),
         icon: Coin
     }
@@ -438,9 +429,9 @@ const renderStockHealthChart = async () => {
             radius: ['55%', '75%'],
             center: ['50%', '42%'],
             data: [
-                { value: inStock, name: 'متوفر', itemStyle: { color: '#22c55e' } },
-                { value: lowStock, name: 'منخفض', itemStyle: { color: '#f59e0b' } },
-                { value: remaining, name: 'أخرى', itemStyle: { color: '#94a3b8' } }
+                { value: inStock, name: t('in_stock'), itemStyle: { color: '#22c55e' } },
+                { value: lowStock, name: t('low'), itemStyle: { color: '#f59e0b' } },
+                { value: remaining, name: t('subject_other'), itemStyle: { color: '#94a3b8' } }
             ],
             label: { show: false }
         }]

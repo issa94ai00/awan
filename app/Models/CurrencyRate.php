@@ -18,6 +18,9 @@ class CurrencyRate extends Model
 
     protected $fillable = [
         'currency_id',
+        // The base this quote was made against. A rate without it is a number
+        // without a unit — see the migration that added the column.
+        'base_code',
         'rate',
         'effective_at',
         'created_by',

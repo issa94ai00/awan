@@ -4,7 +4,7 @@
             <template #header>
                 <span>{{ $t('visitors') }}</span>
             </template>
-            <el-empty description="صفحة الزوار قيد التطوير" />
+            <el-empty :description="$t('visitors_page_under_development')" />
         </el-card>
     </div>
 </template>

@@ -76,17 +76,17 @@
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
           <el-button type="success" @click="$router.push('/admin/wms/products')" block>
-            <el-icon><Box /></el-icon> المنتجات
+            <el-icon><Box /></el-icon> {{ $t('nav_products') }}
           </el-button>
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
           <el-button type="warning" @click="$router.push('/admin/wms/stock/balances')" block>
-            <el-icon><List /></el-icon> الأرصدة
+            <el-icon><List /></el-icon> {{ $t('balances') }}
           </el-button>
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
           <el-button type="info" @click="$router.push('/admin/wms/stock/organization')" block>
-            <el-icon><Open /></el-icon> تنظيم المخزون
+            <el-icon><Open /></el-icon> {{ $t('stock_organization') }}
           </el-button>
         </el-col>
       </el-row>
@@ -109,7 +109,7 @@
         </el-col>
         <el-col :xs="12" :sm="8" :md="6">
           <el-button type="info" plain @click="$router.push('/admin/wms/performance')" block>
-            <el-icon><TrendCharts /></el-icon> الأداء
+            <el-icon><TrendCharts /></el-icon> {{ $t('performance') }}
           </el-button>
         </el-col>
       </el-row>

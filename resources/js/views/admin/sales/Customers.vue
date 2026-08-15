@@ -128,12 +128,15 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import { formatCurrency, sumBy } from '@/utils/sales';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const store = useCustomersStore();
@@ -151,14 +154,14 @@ const withBalance = computed(() => store.customers.filter((c) => toNumber(c.bala
 const summaryCards = computed(() => [
     {
         key: 'total',
-        label: window.t?.('total_customers') || 'إجمالي العملاء',
+        label: window.t?.('total_customers') || t('total_customers'),
         value: store.customers.length,
         icon: 'fa-users',
         tone: 'blue',
     },
     {
         key: 'active',
-        label: window.t?.('active_customers') || 'عملاء نشطون',
+        label: window.t?.('active_customers') || t('active_customers'),
         value: store.customers.filter((c) => c.is_active !== false && c.status !== 'inactive').length,
         icon: 'fa-user-check',
         tone: 'green',
@@ -166,14 +169,14 @@ const summaryCards = computed(() => [
     {
         // Replaces a placeholder that always displayed Math.min(count, 5).
         key: 'indebted',
-        label: window.t?.('customers_with_balance') || 'عملاء عليهم رصيد',
+        label: window.t?.('customers_with_balance') || t('customers_with_balance'),
         value: withBalance.value.length,
         icon: 'fa-user-clock',
         tone: 'orange',
     },
     {
         key: 'balance',
-        label: window.t?.('total_balance') || 'إجمالي الأرصدة',
+        label: window.t?.('total_balance') || t('total_balance'),
         value: formatCurrency(sumBy(withBalance.value, 'balance')),
         icon: 'fa-scale-balanced',
         tone: 'red',

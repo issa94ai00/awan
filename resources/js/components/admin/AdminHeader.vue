@@ -58,7 +58,7 @@
                 </span>
                 <template #dropdown>
                     <el-dropdown-menu>
-                        <el-dropdown-item command="ar" :class="{ 'active-lang': currentLocale === 'ar' }">العربية</el-dropdown-item>
+                        <el-dropdown-item command="ar" :class="{ 'active-lang': currentLocale === 'ar' }">{{ $t('arabic') }}</el-dropdown-item>
                         <el-dropdown-item command="en" :class="{ 'active-lang': currentLocale === 'en' }">English</el-dropdown-item>
                     </el-dropdown-menu>
                 </template>

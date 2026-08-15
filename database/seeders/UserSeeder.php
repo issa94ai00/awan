@@ -111,7 +111,7 @@ class UserSeeder extends Seeder
                 ]
             );
 
-            if (in_array($user['name'], ['anas', 'ahmad', 'ayoub'], true)) {
+            if (in_array($user['name'], ['anas', 'ahmad', 'ayoub', 'hasan', 'ayad'], true)) {
                 $warehouseName = 'wh-' . strtolower($user['name']);
                 $warehouse = Warehouse::updateOrCreate(
                     ['code' => $warehouseName],
@@ -125,15 +125,27 @@ class UserSeeder extends Seeder
                     ]
                 );
 
+                $position = match($user['name']) {
+                    'hasan' => 'accountant',
+                    'ayad' => 'marketer',
+                    default => 'sales',
+                };
+
+                $department = match($user['name']) {
+                    'hasan' => 'accounting',
+                    'ayad' => 'marketing',
+                    default => 'sales',
+                };
+
                 Employee::updateOrCreate(
                     ['user_id' => $userModel->id],
                     [
                         'warehouse_id' => $warehouse->id,
                         'first_name' => $user['name'],
-                        'last_name' => 'Sales',
+                        'last_name' => ucfirst($position),
                         'email' => $userModel->email,
-                        'position' => 'sales',
-                        'department' => 'sales',
+                        'position' => $position,
+                        'department' => $department,
                         'status' => 'active',
                     ]
                 );

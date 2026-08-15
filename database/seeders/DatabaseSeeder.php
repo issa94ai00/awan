@@ -40,6 +40,9 @@ class DatabaseSeeder extends Seeder
 
             $this->call([
                 SettingSeeder::class,
+                // Straight after the settings: which currency is the base is
+                // read from `default_currency`, so that key has to exist first.
+                CurrencySeeder::class,
                 RoleSeeder::class,
                 UserSeeder::class,
                 CategorySeeder::class,
@@ -97,6 +100,9 @@ class DatabaseSeeder extends Seeder
             // Re-seed settings to insert any newly added default configurations
             $this->call([
                 SettingSeeder::class,
+                // Straight after the settings: which currency is the base is
+                // read from `default_currency`, so that key has to exist first.
+                CurrencySeeder::class,
                 RoleSeeder::class,
                 UserSeeder::class,
                 RmaSeeder::class,
@@ -119,6 +125,9 @@ class DatabaseSeeder extends Seeder
 
             $this->call([
                 SettingSeeder::class,
+                // Straight after the settings: which currency is the base is
+                // read from `default_currency`, so that key has to exist first.
+                CurrencySeeder::class,
                 RoleSeeder::class,
                 UserSeeder::class,
                 CategorySeeder::class,

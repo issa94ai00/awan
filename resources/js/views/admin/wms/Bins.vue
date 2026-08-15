@@ -146,7 +146,7 @@ const loadBins = async () => {
     bins.value = data.data || data || []
     pagination.value.total = data.total || bins.value.length
   } catch (error) {
-    ElMessage.error('خطأ في تحميل مواقع التخزين')
+    ElMessage.error(t('failed_to_load_bins'))
   } finally {
     loading.value = false
   }
@@ -177,16 +177,16 @@ const saveBin = async () => {
     
     if (editingBin.value) {
       await wmsService.updateBin(editingBin.value.id, payload)
-      ElMessage.success('تم تحديث موقع التخزين بنجاح')
+      ElMessage.success(t('bin_updated_successfully'))
     } else {
       await wmsService.createBin(payload)
-      ElMessage.success('تم إنشاء موقع التخزين بنجاح')
+      ElMessage.success(t('bin_created_successfully'))
     }
     showCreateDialog.value = false
     editingBin.value = null
     await loadBins()
   } catch (error) {
-    ElMessage.error('خطأ أثناء حفظ موقع التخزين')
+    ElMessage.error(t('failed_to_save_bin'))
   } finally {
     saving.value = false
   }
@@ -194,15 +194,15 @@ const saveBin = async () => {
 
 const deleteBin = async (bin) => {
   try {
-    await ElMessageBox.confirm('هل أنت متأكد من حذف موقع التخزين هذا؟', 'تنبيه', {
+    await ElMessageBox.confirm(t('confirm_delete_bin'), t('warning_title'), {
       type: 'warning'
     })
     await wmsService.deleteBin(bin.id)
-    ElMessage.success('تم الحذف بنجاح')
+    ElMessage.success(t('delete_success'))
     await loadBins()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('خطأ في حذف موقع التخزين')
+      ElMessage.error(t('failed_to_delete_bin'))
     }
   }
 }

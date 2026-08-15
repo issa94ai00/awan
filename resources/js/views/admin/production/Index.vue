@@ -4,7 +4,7 @@
             <template #header>
                 <span>{{ $t('production') }}</span>
             </template>
-            <el-empty description="صفحة الإنتاج قيد التطوير" />
+            <el-empty :description="$t('production_page_under_development')" />
         </el-card>
     </div>
 </template>

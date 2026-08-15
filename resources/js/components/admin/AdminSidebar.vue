@@ -255,7 +255,7 @@
                         <li>
                             <router-link to="/admin/stock" class="nav-link" :class="{ active: isActive('/admin/stock') }">
                                 <span class="sub-dot"></span>
-                                <span v-if="!collapsed" class="nav-text">إدارة المخزون</span>
+                                <span v-if="!collapsed" class="nav-text">{{ $t('inventory_management') }}</span>
                             </router-link>
                         </li>
                         <li>
@@ -342,7 +342,7 @@
                         <li>
                             <router-link to="/admin/hr/employee-customers" class="nav-link" :class="{ active: isActive('/admin/hr/employee-customers') }">
                                 <span class="sub-dot"></span>
-                                <span v-if="!collapsed" class="nav-text">علاقة الموظف بالعملاء</span>
+                                <span v-if="!collapsed" class="nav-text">{{ $t('employee_customer_relationship') }}</span>
                             </router-link>
                         </li>
                         <li>
@@ -433,7 +433,7 @@
                         <li>
                             <router-link to="/admin/reports/professional-sales" class="nav-link" :class="{ active: isActive('/admin/reports/professional-sales') }">
                                 <span class="sub-dot"></span>
-                                <span v-if="!collapsed" class="nav-text">تقارير المبيعات الاحترافية</span>
+                                <span v-if="!collapsed" class="nav-text">{{ $t('professional_sales_reports') }}</span>
                             </router-link>
                         </li>
                         <li>
@@ -588,7 +588,7 @@
                         <li>
                             <router-link to="/admin/audit" class="nav-link" :class="{ active: isActive('/admin/audit') }">
                                 <span class="sub-dot"></span>
-                                <span v-if="!collapsed" class="nav-text">مراقبة المخاطر</span>
+                                <span v-if="!collapsed" class="nav-text">{{ $t('risk_monitoring') }}</span>
                             </router-link>
                         </li>
                         <li>
@@ -690,7 +690,7 @@ import {
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
-const siteName = computed(() => settingsStore.data?.site_name || 'أوان التقدم');
+const siteName = computed(() => settingsStore.data?.site_name || t('site_fallback_name'));
 
 const props = defineProps({
     collapsed: {
@@ -804,10 +804,10 @@ const canAccessGroup = (group) => {
     return (allowedGroups[group] || ['admin']).includes(userRole.value);
 };
 
-const userName = computed(() => authStore.user?.name || 'مسؤول النظام');
+const userName = computed(() => authStore.user?.name || t('system_administrator'));
 const userEmail = computed(() => authStore.user?.email || '');
 const userInitials = computed(() => {
-    const name = (authStore.user?.name || 'مسؤول النظام').trim();
+    const name = (authStore.user?.name || t('system_administrator')).trim();
     const parts = name.split(/\s+/).filter(Boolean);
     const first = (parts[0] || '')[0] || '';
     const second = parts[1]?.[0] || (parts[0] || '')[1] || '';

@@ -1,12 +1,11 @@
 <template>
     <div class="reports-page professional-sales">
-        <div class="page-header">
-            <div class="page-title">
-                <div class="title-badge">CRM</div>
-                <h1>{{ $t('professional_sales_reports') }}</h1>
-                <p>{{ $t('advanced_sales_filtering_and_analytics') }}</p>
-            </div>
-            <div class="toolbar-actions">
+        <AdminPageHeader
+            badge="CRM"
+            :title="$t('professional_sales_reports')"
+            :subtitle="$t('advanced_sales_filtering_and_analytics')"
+        >
+            <template #actions>
                 <el-button :icon="Refresh" @click="resetFilters" class="secondary-action">
                     {{ $t('reset') }}
                 </el-button>
@@ -16,168 +15,136 @@
                 <el-button :icon="ArrowLeft" @click="goBack">
                     {{ $t('back') }}
                 </el-button>
-            </div>
-        </div>
-
-        <el-card shadow="hover" class="filter-panel">
-            <template #header>
-                <div class="card-header">
-                    <span>{{ $t('filter_options') }}</span>
-                    <div class="filter-actions">
-                        <el-button type="primary" :icon="Search" @click="applyFilters">
-                            {{ $t('apply_filters') }}
-                        </el-button>
-                    </div>
-                </div>
             </template>
+        </AdminPageHeader>
 
-            <el-row :gutter="20" align="middle">
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('employee') }}</label>
-                        <el-select v-model="filters.employee_id" :placeholder="$t('all_employees')" clearable style="width: 100%">
-                            <el-option
-                                v-for="employee in employees"
-                                :key="employee.id"
-                                :label="employee.name"
-                                :value="employee.id"
-                            />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('customer') }}</label>
-                        <el-select v-model="filters.customer_id" :placeholder="$t('all_customers')" clearable style="width: 100%">
-                            <el-option
-                                v-for="customer in customers"
-                                :key="customer.id"
-                                :label="customer.name"
-                                :value="customer.id"
-                            />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('warehouse') }}</label>
-                        <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 100%">
-                            <el-option
-                                v-for="warehouse in warehouses"
-                                :key="warehouse.id"
-                                :label="warehouse.name"
-                                :value="warehouse.id"
-                            />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('order_status') }}</label>
-                        <el-select v-model="filters.status" :placeholder="$t('all_statuses')" clearable style="width: 100%">
-                            <el-option :label="$t('pending')" value="pending" />
-                            <el-option :label="$t('confirmed')" value="confirmed" />
-                            <el-option :label="$t('processing')" value="processing" />
-                            <el-option :label="$t('shipped')" value="shipped" />
-                            <el-option :label="$t('delivered')" value="delivered" />
-                            <el-option :label="$t('cancelled')" value="cancelled" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('date_filter_type') }}</label>
-                        <el-select v-model="filters.date_filter_type" style="width: 100%">
-                            <el-option :label="$t('all')" value="all" />
-                            <el-option :label="$t('today')" value="today" />
-                            <el-option :label="$t('yesterday')" value="yesterday" />
-                            <el-option :label="$t('this_week')" value="this_week" />
-                            <el-option :label="$t('this_month')" value="this_month" />
-                            <el-option :label="$t('last_month')" value="last_month" />
-                            <el-option :label="$t('custom')" value="custom" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>{{ $t('group_by') }}</label>
-                        <el-select v-model="filters.group_by" style="width: 100%">
-                            <el-option :label="$t('daily')" value="day" />
-                            <el-option :label="$t('weekly')" value="week" />
-                            <el-option :label="$t('monthly')" value="month" />
-                            <el-option :label="$t('by_employee')" value="employee" />
-                            <el-option :label="$t('by_customer')" value="customer" />
-                            <el-option :label="$t('by_warehouse')" value="warehouse" />
-                            <el-option :label="$t('by_status')" value="status" />
-                        </el-select>
-                    </div>
-                </el-col>
-            </el-row>
+        <AdminFilterBar>
+            <div class="filter-field">
+                <label>{{ $t('employee') }}</label>
+                <el-select v-model="filters.employee_id" :placeholder="$t('all_employees')" clearable>
+                    <el-option
+                        v-for="employee in employees"
+                        :key="employee.id"
+                        :label="employee.name"
+                        :value="employee.id"
+                    />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('customer') }}</label>
+                <el-select v-model="filters.customer_id" :placeholder="$t('all_customers')" clearable>
+                    <el-option
+                        v-for="customer in customers"
+                        :key="customer.id"
+                        :label="customer.name"
+                        :value="customer.id"
+                    />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('warehouse') }}</label>
+                <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable>
+                    <el-option
+                        v-for="warehouse in warehouses"
+                        :key="warehouse.id"
+                        :label="warehouse.name"
+                        :value="warehouse.id"
+                    />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('order_status') }}</label>
+                <el-select v-model="filters.status" :placeholder="$t('all_statuses')" clearable>
+                    <el-option :label="$t('pending')" value="pending" />
+                    <el-option :label="$t('confirmed')" value="confirmed" />
+                    <el-option :label="$t('processing')" value="processing" />
+                    <el-option :label="$t('shipped')" value="shipped" />
+                    <el-option :label="$t('delivered')" value="delivered" />
+                    <el-option :label="$t('cancelled')" value="cancelled" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('date_filter_type') }}</label>
+                <el-select v-model="filters.date_filter_type">
+                    <el-option :label="$t('all')" value="all" />
+                    <el-option :label="$t('today')" value="today" />
+                    <el-option :label="$t('yesterday')" value="yesterday" />
+                    <el-option :label="$t('this_week')" value="this_week" />
+                    <el-option :label="$t('this_month')" value="this_month" />
+                    <el-option :label="$t('last_month')" value="last_month" />
+                    <el-option :label="$t('custom')" value="custom" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('group_by') }}</label>
+                <el-select v-model="filters.group_by">
+                    <el-option :label="$t('daily')" value="day" />
+                    <el-option :label="$t('weekly')" value="week" />
+                    <el-option :label="$t('monthly')" value="month" />
+                    <el-option :label="$t('by_employee')" value="employee" />
+                    <el-option :label="$t('by_customer')" value="customer" />
+                    <el-option :label="$t('by_warehouse')" value="warehouse" />
+                    <el-option :label="$t('by_status')" value="status" />
+                </el-select>
+            </div>
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
+                <label>{{ $t('start_date') }}</label>
+                <el-date-picker
+                    v-model="filters.start_date"
+                    type="date"
+                    :placeholder="$t('start_date')"
+                />
+            </div>
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
+                <label>{{ $t('end_date') }}</label>
+                <el-date-picker
+                    v-model="filters.end_date"
+                    type="date"
+                    :placeholder="$t('end_date')"
+                />
+            </div>
 
-            <el-row v-if="filters.date_filter_type === 'custom'" :gutter="20" style="margin-top: 15px">
-                <el-col :xs="24" :sm="12">
-                    <div class="form-group">
-                        <label>{{ $t('start_date') }}</label>
-                        <el-date-picker
-                            v-model="filters.start_date"
-                            type="date"
-                            :placeholder="$t('start_date')"
-                            style="width: 100%"
-                        />
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12">
-                    <div class="form-group">
-                        <label>{{ $t('end_date') }}</label>
-                        <el-date-picker
-                            v-model="filters.end_date"
-                            type="date"
-                            :placeholder="$t('end_date')"
-                            style="width: 100%"
-                        />
-                    </div>
-                </el-col>
-            </el-row>
-        </el-card>
+            <template #actions>
+                <el-button type="primary" :icon="Search" @click="applyFilters">
+                {{ $t('apply_filters') }}
+                </el-button>
+            </template>
+        </AdminFilterBar>
 
         <el-alert
             v-if="hasSalesData === false && !loading"
-            title="لا توجد بيانات في الفلاتر الحالية"
+            :title="$t('no_data_for_current_filters')"
             type="info"
             :closable="false"
             show-icon
             class="empty-alert"
         />
 
-        <el-row v-if="loading" :gutter="20" class="summary-cards">
-            <el-col :xs="24" :sm="12" :md="4" v-for="n in 6" :key="n">
-                <el-card shadow="hover" class="stat-card skeleton-card">
-                    <el-skeleton :rows="2" animated />
-                </el-card>
-            </el-col>
-        </el-row>
+        <AdminStatGrid v-if="loading">
+            <el-card v-for="n in 6" :key="n" shadow="hover" class="stat-card skeleton-card">
+                <el-skeleton :rows="2" animated />
+            </el-card>
+        </AdminStatGrid>
 
-        <el-row v-else :gutter="20" class="summary-cards">
-            <el-col :xs="24" :sm="12" :md="4" v-for="(stat, key) in summaryStats" :key="key">
-                <el-card shadow="hover" class="stat-card" :class="'stat-card-' + key">
-                    <div class="stat-content">
-                        <div class="stat-icon">
-                            <component :is="stat.icon" />
-                        </div>
-                        <div class="stat-info">
-                            <h3>{{ formatValue(stat.value, stat.format) }}</h3>
-                            <p>{{ stat.label }}</p>
-                        </div>
+        <AdminStatGrid v-else>
+            <el-card v-for="(stat, key) in summaryStats" :key="key" shadow="hover" class="stat-card" :class="'stat-card-' + key">
+                <div class="stat-content">
+                    <div class="stat-icon">
+                        <component :is="stat.icon" />
                     </div>
-                </el-card>
-            </el-col>
-        </el-row>
+                    <div class="stat-info">
+                        <h3>{{ formatValue(stat.value, stat.format) }}</h3>
+                        <p>{{ stat.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
 
         <el-row v-if="!loading && performanceData.summary" :gutter="20" style="margin-top: 20px; margin-bottom: 10px;">
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>إيراد المبيعات</span>
+                        <span>{{ $t('sales_revenue') }}</span>
                         <strong>{{ formatCurrency(performanceData.summary.total_revenue || 0) }}</strong>
                     </div>
                 </el-card>
@@ -185,7 +152,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>تكلفة البضاعة</span>
+                        <span>{{ $t('cost_of_goods') }}</span>
                         <strong>{{ formatCurrency(performanceData.summary.total_cost || 0) }}</strong>
                     </div>
                 </el-card>
@@ -193,7 +160,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>الربح الإجمالي</span>
+                        <span>{{ $t('gross_profit') }}</span>
                         <strong>{{ formatCurrency(performanceData.summary.gross_profit || 0) }}</strong>
                     </div>
                 </el-card>
@@ -201,7 +168,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>هامش الربح</span>
+                        <span>{{ $t('profit_margin') }}</span>
                         <strong>{{ formatPercentage(performanceData.summary.gross_margin || 0) }}</strong>
                     </div>
                 </el-card>
@@ -232,11 +199,11 @@
             <el-col :xs="24" :md="8">
                 <el-card shadow="hover">
                     <template #header>
-                        <span>الموظفين</span>
+                        <span>{{ $t('employees') }}</span>
                     </template>
                     <el-table :data="dimensionData.employee_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="employee_name" label="الموظف" />
-                        <el-table-column prop="total_sales" label="إجمالي المبيعات">
+                        <el-table-column prop="employee_name" :label="$t('employee')" />
+                        <el-table-column prop="total_sales" :label="$t('total_sales')">
                             <template #default="{ row }">{{ formatCurrency(row.total_sales) }}</template>
                         </el-table-column>
                     </el-table>
@@ -245,11 +212,11 @@
             <el-col :xs="24" :md="8">
                 <el-card shadow="hover">
                     <template #header>
-                        <span>العملاء</span>
+                        <span>{{ $t('customers') }}</span>
                     </template>
                     <el-table :data="dimensionData.customer_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="customer_name" label="العميل" />
-                        <el-table-column prop="total_sales" label="إجمالي المبيعات">
+                        <el-table-column prop="customer_name" :label="$t('customer')" />
+                        <el-table-column prop="total_sales" :label="$t('total_sales')">
                             <template #default="{ row }">{{ formatCurrency(row.total_sales) }}</template>
                         </el-table-column>
                     </el-table>
@@ -258,11 +225,11 @@
             <el-col :xs="24" :md="8">
                 <el-card shadow="hover">
                     <template #header>
-                        <span>المستودعات</span>
+                        <span>{{ $t('warehouses') }}</span>
                     </template>
                     <el-table :data="dimensionData.warehouse_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="warehouse_name" label="المستودع" />
-                        <el-table-column prop="total_sales" label="إجمالي المبيعات">
+                        <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                        <el-table-column prop="total_sales" :label="$t('total_sales')">
                             <template #default="{ row }">{{ formatCurrency(row.total_sales) }}</template>
                         </el-table-column>
                     </el-table>
@@ -274,7 +241,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>أعلى منتج ربحًا</span>
+                        <span>{{ $t('most_profitable_product') }}</span>
                         <strong>{{ productProfitabilityData.summary.top_product?.product_name || '-' }}</strong>
                         <small>{{ formatCurrency(productProfitabilityData.summary.top_product?.gross_profit || 0) }}</small>
                     </div>
@@ -283,7 +250,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>أقل منتج ربحًا</span>
+                        <span>{{ $t('least_profitable_product') }}</span>
                         <strong>{{ productProfitabilityData.summary.lowest_product?.product_name || '-' }}</strong>
                         <small>{{ formatCurrency(productProfitabilityData.summary.lowest_product?.gross_profit || 0) }}</small>
                     </div>
@@ -292,7 +259,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>إجمالي الربح</span>
+                        <span>{{ $t('total_profit') }}</span>
                         <strong>{{ formatCurrency(productProfitabilityData.summary.gross_profit || 0) }}</strong>
                     </div>
                 </el-card>
@@ -300,7 +267,7 @@
             <el-col :xs="24" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
-                        <span>عدد المنتجات</span>
+                        <span>{{ $t('items_count') }}</span>
                         <strong>{{ productProfitabilityData.summary.product_count || 0 }}</strong>
                     </div>
                 </el-card>
@@ -310,28 +277,28 @@
         <el-card shadow="hover" class="profitability-table-card" style="margin-bottom: 20px;">
             <template #header>
                 <div class="card-header">
-                    <span>ربحية المنتجات حسب المستودع</span>
+                    <span>{{ $t('product_profitability_by_warehouse') }}</span>
                 </div>
             </template>
 
             <el-table :data="productProfitabilityData.product_summary || []" stripe style="width: 100%">
-                <el-table-column prop="product_name" label="المنتج" />
-                <el-table-column prop="warehouse_name" label="المستودع" />
-                <el-table-column prop="quantity" label="الكمية" />
-                <el-table-column label="الإيراد">
+                <el-table-column prop="product_name" :label="$t('product')" />
+                <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                <el-table-column prop="quantity" :label="$t('quantity')" />
+                <el-table-column :label="$t('revenue')">
                     <template #default="{ row }">{{ formatCurrency(row.total_revenue) }}</template>
                 </el-table-column>
-                <el-table-column label="التكلفة">
+                <el-table-column :label="$t('cost')">
                     <template #default="{ row }">{{ formatCurrency(row.total_cost) }}</template>
                 </el-table-column>
-                <el-table-column label="الربح">
+                <el-table-column :label="$t('profit')">
                     <template #default="{ row }">
                         <strong :class="row.gross_profit >= 0 ? 'profit-positive' : 'profit-negative'">
                             {{ formatCurrency(row.gross_profit) }}
                         </strong>
                     </template>
                 </el-table-column>
-                <el-table-column label="الهامش">
+                <el-table-column :label="$t('margin')">
                     <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
                 </el-table-column>
             </el-table>
@@ -450,12 +417,18 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ArrowLeft, Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts } from '@element-plus/icons-vue';
 import api from '@/api';
 import * as echarts from 'echarts';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const loading = ref(false);
@@ -511,43 +484,43 @@ const hasSalesData = computed(() => {
 
 const summaryStats = computed(() => ({
     total_orders: {
-        label: 'إجمالي الطلبات',
+        label: t('total_orders'),
         value: summary.value.total_orders || 0,
         icon: ShoppingCart,
         format: 'number'
     },
     total_revenue: {
-        label: 'إجمالي الإيراد',
+        label: t('total_revenue'),
         value: performanceData.value.summary?.total_revenue ?? summary.value.total_sales ?? 0,
         icon: Coin,
         format: 'currency'
     },
     total_cost: {
-        label: 'تكلفة البضاعة',
+        label: t('cost_of_goods'),
         value: performanceData.value.summary?.total_cost ?? 0,
         icon: PriceTag,
         format: 'currency'
     },
     gross_profit: {
-        label: 'الربح الإجمالي',
+        label: t('gross_profit'),
         value: performanceData.value.summary?.gross_profit ?? 0,
         icon: TrendCharts,
         format: 'currency'
     },
     gross_margin: {
-        label: 'هامش الربح',
+        label: t('profit_margin'),
         value: performanceData.value.summary?.gross_margin ?? 0,
         icon: PieChart,
         format: 'percent'
     },
     total_subtotal: {
-        label: 'إجمالي المجموع',
+        label: t('total_subtotal'),
         value: summary.value.total_subtotal || 0,
         icon: Coin,
         format: 'currency'
     },
     average_order_value: {
-        label: 'متوسط قيمة الطلب',
+        label: t('average_order_value'),
         value: summary.value.average_order_value || 0,
         icon: TrendCharts,
         format: 'currency'
@@ -711,7 +684,7 @@ const loadReport = async () => {
         }
     } catch (error) {
         console.error('Failed to load report:', error);
-        ElMessage.error('Failed to load report');
+        ElMessage.error(t('failed_to_load_report'));
         reportData.value = [];
         summary.value = {};
         pagination.value = { current_page: 1, per_page: 20, total: 0 };
@@ -856,7 +829,7 @@ const updateCharts = (summaryData, groupBy) => {
                 trigger: 'axis'
             },
             legend: {
-                data: ['المبيعات', 'عدد الطلبات']
+                data: [t('nav_sales'), t('orders_count')]
             },
             xAxis: {
                 type: 'category',
@@ -867,7 +840,7 @@ const updateCharts = (summaryData, groupBy) => {
             },
             series: [
                 {
-                    name: 'المبيعات',
+                    name: t('nav_sales'),
                     type: 'line',
                     data: salesData,
                     smooth: true,
@@ -879,7 +852,7 @@ const updateCharts = (summaryData, groupBy) => {
                     }
                 },
                 {
-                    name: 'عدد الطلبات',
+                    name: t('orders_count'),
                     type: 'line',
                     data: ordersData,
                     smooth: true,
@@ -909,7 +882,7 @@ const updateCharts = (summaryData, groupBy) => {
             },
             series: [
                 {
-                    name: 'المبيعات',
+                    name: t('nav_sales'),
                     type: 'pie',
                     radius: '50%',
                     data: labels.map((label, index) => ({
@@ -946,7 +919,7 @@ const loadTopPerformers = async () => {
         }
     } catch (error) {
         console.error('Failed to load top performers:', error);
-        ElMessage.error('Failed to load top performers');
+        ElMessage.error(t('failed_to_load_top_performers'));
         topPerformers.value = [];
     } finally {
         loadingTopPerformers.value = false;
@@ -984,7 +957,7 @@ const exportReport = async () => {
         window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Failed to export report:', error);
-        ElMessage.error('Failed to export report');
+        ElMessage.error(t('failed_to_export_report'));
     }
 };
 
@@ -1032,12 +1005,12 @@ const getStatusType = (status) => {
 
 const getStatusText = (status) => {
     const texts = {
-        pending: 'معلق',
-        confirmed: 'مؤكد',
-        processing: 'قيد المعالجة',
-        shipped: 'تم الشحن',
-        delivered: 'تم التسليم',
-        cancelled: 'ملغي'
+        pending: t('sales_status_pending'),
+        confirmed: t('sales_status_confirmed'),
+        processing: t('sales_status_processing'),
+        shipped: t('sales_status_shipped'),
+        delivered: t('sales_status_delivered'),
+        cancelled: t('sales_status_cancelled')
     };
     return texts[status] || status;
 };

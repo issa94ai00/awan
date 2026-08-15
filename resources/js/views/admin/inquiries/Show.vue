@@ -62,7 +62,7 @@
                             </el-timeline-item>
                         </el-timeline>
                     </div>
-                    <el-empty v-else description="لا توجد ردود بعد"/>
+                    <el-empty v-else :description="$t('no_replies_yet')"/>
                 </div>
 
                 <div style="margin-top:1.5rem; padding:1.5rem; background:#f3f4f6; border-radius:8px;">

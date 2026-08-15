@@ -198,6 +198,9 @@ class CurrencyService
         }
 
         $record = $currency->rates()->create([
+            // Stamped with the base it is quoted against, so it keeps its
+            // meaning if the base ever moves.
+            'base_code' => $this->baseCode(),
             'rate' => $rate,
             'effective_at' => $effectiveAt ?? now(),
             'created_by' => auth()->id(),
@@ -217,15 +220,23 @@ class CurrencyService
      * the new one would restate every historical order and journal entry by the
      * rate between them. Switching base is an accounting event, and the screen
      * says so rather than this method pretending otherwise.
+     *
+     * The rates quoted against the old base are left where they are and stop
+     * being read: every other currency reads as rateless until it is quoted
+     * again, which is the only honest state until someone enters the new
+     * numbers. Inverting the old quotes automatically would be arithmetic the
+     * admin never agreed to.
      */
     public function setBase(Currency $currency): void
     {
         Currency::query()->where('id', '!=', $currency->id)->update(['is_base' => false]);
         $currency->forceFill(['is_base' => true, 'is_active' => true])->save();
 
-        // The base is worth one of itself; make sure a row says so.
-        if (! $currency->rateAt()) {
+        // The base is worth one of itself; make sure a row says so, quoted
+        // against the base it has just become.
+        if (! $currency->rateAt(null, $currency->code)) {
             $currency->rates()->create([
+                'base_code' => $currency->code,
                 'rate' => 1,
                 'effective_at' => now(),
                 'created_by' => auth()->id(),
@@ -253,7 +264,10 @@ class CurrencyService
             return $codes;
         }
 
-        return [self::FALLBACK['code'], 'USD', 'EUR', 'AED', 'EGP', 'SYP'];
+        // The three the platform ships with. The old fallback also offered the
+        // euro, the dirham and the Egyptian pound, so settings accepted a
+        // currency that had no row, no symbol and no rate behind it.
+        return [self::FALLBACK['code'], 'SAR', 'USD'];
     }
 
     /**

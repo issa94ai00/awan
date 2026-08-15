@@ -1,71 +1,58 @@
 <template>
     <div class="reports-financial">
-        <div class="page-header">
-            <div class="page-title">
-                <div class="title-badge">Finance</div>
-                <h1>{{ $t('financial_report') }}</h1>
-                <p>{{ $t('financial_report') }} - {{ $t('summary_of_reports') }}</p>
-            </div>
-            <div class="toolbar-actions">
+        <AdminPageHeader
+            badge="Finance"
+            :title="$t('financial_report')"
+            :subtitle="`${$t('financial_report')} — ${$t('summary_of_reports')}`"
+        >
+            <template #actions>
                 <el-button :icon="RefreshRight" @click="resetFinancialFilters" class="secondary-action">
-                    إعادة الضبط
+                    {{ $t('reset') }}
                 </el-button>
                 <el-button type="primary" :icon="Download" @click="exportFinancialReport">
-                    تصدير
+                    {{ $t('export') }}
                 </el-button>
-            </div>
-        </div>
+            </template>
+        </AdminPageHeader>
 
-        <el-card shadow="hover" class="filter-card">
-            <el-row :gutter="20" align="middle">
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>العميل</label>
-                        <el-select v-model="filters.customer_id" placeholder="الكل" clearable style="width: 100%" @change="loadInvoiceDimensions">
-                            <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>المستودع</label>
-                        <el-select v-model="filters.warehouse_id" placeholder="الكل" clearable style="width: 100%" @change="loadInvoiceDimensions">
-                            <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>الفترة</label>
-                        <el-select v-model="filters.date_filter_type" placeholder="الكل" clearable style="width: 100%" @change="loadInvoiceDimensions">
-                            <el-option label="الكل" :value="'all'" />
-                            <el-option label="اليوم" :value="'today'" />
-                            <el-option label="الأمس" :value="'yesterday'" />
-                            <el-option label="هذا الأسبوع" :value="'this_week'" />
-                            <el-option label="هذا الشهر" :value="'this_month'" />
-                            <el-option label="الشهر الماضي" :value="'last_month'" />
-                            <el-option label="مخصص" :value="'custom'" />
-                        </el-select>
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6">
-                    <div class="form-group">
-                        <label>التاريخ من</label>
-                        <el-date-picker v-model="filters.start_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" @change="loadInvoiceDimensions" />
-                    </div>
-                </el-col>
-                <el-col :xs="24" :sm="12" :md="6" style="margin-top: 18px;">
-                    <div class="form-group">
-                        <label>إلى</label>
-                        <el-date-picker v-model="filters.end_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" @change="loadInvoiceDimensions" />
-                    </div>
-                </el-col>
-            </el-row>
-        </el-card>
+        <AdminFilterBar>
+            <div class="filter-field">
+                <label>{{ $t('customer') }}</label>
+                <el-select v-model="filters.customer_id" :placeholder="$t('all')" clearable @change="loadInvoiceDimensions">
+                    <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('warehouse') }}</label>
+                <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable @change="loadInvoiceDimensions">
+                    <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('period') }}</label>
+                <el-select v-model="filters.date_filter_type" :placeholder="$t('all')" clearable @change="loadInvoiceDimensions">
+                    <el-option :label="$t('all')" :value="'all'" />
+                    <el-option :label="$t('today')" :value="'today'" />
+                    <el-option :label="$t('yesterday')" :value="'yesterday'" />
+                    <el-option :label="$t('this_week')" :value="'this_week'" />
+                    <el-option :label="$t('this_month')" :value="'this_month'" />
+                    <el-option :label="$t('last_month')" :value="'last_month'" />
+                    <el-option :label="$t('custom')" :value="'custom'" />
+                </el-select>
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('date_from') }}</label>
+                <el-date-picker v-model="filters.start_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="loadInvoiceDimensions" />
+            </div>
+            <div class="filter-field">
+                <label>{{ $t('to') }}</label>
+                <el-date-picker v-model="filters.end_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="loadInvoiceDimensions" />
+            </div>
+        </AdminFilterBar>
 
         <el-alert
             v-if="hasFinancialData === false"
-            title="لا توجد بيانات في الفلاتر الحالية"
+            :title="$t('no_data_for_current_filters')"
             type="info"
             :closable="false"
             show-icon
@@ -77,21 +64,19 @@
         </div>
 
         <template v-else>
-            <el-row :gutter="20" class="summary-cards">
-                <el-col v-for="(stat, key) in summaryStats" :key="key" :xs="24" :sm="12" :md="6">
-                    <el-card shadow="hover" class="stat-card" :class="'stat-card-' + key">
-                        <div class="stat-content">
-                            <div class="stat-icon">
-                                <component :is="stat.icon" />
-                            </div>
-                            <div class="stat-info">
-                                <h3>{{ stat.value }}</h3>
-                                <p>{{ stat.label }}</p>
-                            </div>
+            <AdminStatGrid>
+                <el-card v-for="(stat, key) in summaryStats" :key="key" shadow="hover" class="stat-card" :class="'stat-card-' + key">
+                    <div class="stat-content">
+                        <div class="stat-icon">
+                            <component :is="stat.icon" />
                         </div>
-                    </el-card>
-                </el-col>
-            </el-row>
+                        <div class="stat-info">
+                            <h3>{{ stat.value }}</h3>
+                            <p>{{ stat.label }}</p>
+                        </div>
+                    </div>
+                </el-card>
+            </AdminStatGrid>
 
             <el-row :gutter="20" class="charts-section">
                 <el-col :xs="24" :lg="16">
@@ -123,15 +108,15 @@
                     <el-card shadow="hover" class="table-card">
                         <template #header>
                             <div class="card-header">
-                                <span>ملخص العملاء</span>
+                                <span>{{ $t('customer_summary') }}</span>
                             </div>
                         </template>
                         <el-table :data="dimensionData.customer_summary || []" stripe style="width: 100%">
-                            <el-table-column prop="customer_name" label="العميل" />
-                            <el-table-column prop="total_invoices" label="عدد الفواتير">
+                            <el-table-column prop="customer_name" :label="$t('customer')" />
+                            <el-table-column prop="total_invoices" :label="$t('invoices_count')">
                                 <template #default="{ row }">{{ formatNumber(row.total_invoices) }}</template>
                             </el-table-column>
-                            <el-table-column prop="total_invoiced" label="الإجمالي">
+                            <el-table-column prop="total_invoiced" :label="$t('grand_total')">
                                 <template #default="{ row }">{{ formatCurrency(row.total_invoiced) }}</template>
                             </el-table-column>
                         </el-table>
@@ -142,15 +127,15 @@
                     <el-card shadow="hover" class="table-card">
                         <template #header>
                             <div class="card-header">
-                                <span>ملخص المستودعات</span>
+                                <span>{{ $t('warehouse_summary') }}</span>
                             </div>
                         </template>
                         <el-table :data="dimensionData.warehouse_summary || []" stripe style="width: 100%">
-                            <el-table-column prop="warehouse_name" label="المستودع" />
-                            <el-table-column prop="total_invoices" label="عدد الفواتير">
+                            <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                            <el-table-column prop="total_invoices" :label="$t('invoices_count')">
                                 <template #default="{ row }">{{ formatNumber(row.total_invoices) }}</template>
                             </el-table-column>
-                            <el-table-column prop="total_invoiced" label="الإجمالي">
+                            <el-table-column prop="total_invoiced" :label="$t('grand_total')">
                                 <template #default="{ row }">{{ formatCurrency(row.total_invoiced) }}</template>
                             </el-table-column>
                         </el-table>
@@ -202,11 +187,17 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { Coin, Wallet, TrendingUp, CircleCheck, Document, Ticket, Download, RefreshRight } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
 import api from '@/api';
 import { dashboardApi } from '@/api/dashboard';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const loading = ref(true);
 const overview = ref({
@@ -231,37 +222,37 @@ const hasFinancialData = computed(() => {
 
 const summaryStats = computed(() => ({
     total_revenue: {
-        label: 'إجمالي الإيرادات',
+        label: t('total_revenue'),
         value: formatCurrency(overview.value.erp?.total_revenue || overview.value.invoices?.revenue?.total || 0),
         icon: Coin
     },
     payments_completed: {
-        label: 'المدفوعات المكتملة',
+        label: t('completed_payments'),
         value: formatCurrency(overview.value.payments?.amounts?.completed || overview.value.payments?.completed || 0),
         icon: CircleCheck
     },
     pending_amount: {
-        label: 'المبالغ المعلقة',
+        label: t('pending_amounts'),
         value: formatCurrency(overview.value.payments?.amounts?.pending || overview.value.payments?.pending || 0),
         icon: Wallet
     },
     invoice_count: {
-        label: 'عدد الفواتير',
+        label: t('invoices_count'),
         value: formatNumber(overview.value.invoices?.total || 0),
         icon: Document
     }
 }));
 
 const invoiceStatusList = computed(() => [
-    { label: 'مدفوعة', caption: 'الفواتير المكتملة', value: formatNumber(overview.value.invoices?.paid || 0) },
-    { label: 'معلّقة', caption: 'قيد المتابعة', value: formatNumber(overview.value.invoices?.pending || 0) },
-    { label: 'ملغاة', caption: 'تمت إلغاؤها', value: formatNumber(overview.value.invoices?.cancelled || 0) }
+    { label: t('invoice_status_paid'), caption: t('completed_invoices'), value: formatNumber(overview.value.invoices?.paid || 0) },
+    { label: t('invoice_status_pending'), caption: t('under_follow_up'), value: formatNumber(overview.value.invoices?.pending || 0) },
+    { label: t('invoice_status_cancelled'), caption: t('have_been_cancelled'), value: formatNumber(overview.value.invoices?.cancelled || 0) }
 ]);
 
 const cashFlowList = computed(() => [
-    { label: 'إيراد اليوم', caption: 'أحدث الإيرادات', value: formatCurrency(overview.value.invoices?.revenue?.today || 0) },
-    { label: 'إيراد الأسبوع', caption: 'التراكم الحالي', value: formatCurrency(overview.value.invoices?.revenue?.week || 0) },
-    { label: 'إيراد الشهر', caption: 'الشهر الحالي', value: formatCurrency(overview.value.invoices?.revenue?.month || 0) }
+    { label: t('revenue_today'), caption: t('latest_revenue'), value: formatCurrency(overview.value.invoices?.revenue?.today || 0) },
+    { label: t('revenue_this_week'), caption: t('running_total'), value: formatCurrency(overview.value.invoices?.revenue?.week || 0) },
+    { label: t('revenue_this_month'), caption: t('current_month'), value: formatCurrency(overview.value.invoices?.revenue?.month || 0) }
 ]);
 
 const formatCurrency = (value) => new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -400,9 +391,9 @@ const renderPaymentChart = async () => {
             radius: ['55%', '75%'],
             center: ['50%', '42%'],
             data: [
-                { value: completed, name: 'مكتمل', itemStyle: { color: '#22c55e' } },
-                { value: pending, name: 'معلق', itemStyle: { color: '#f59e0b' } },
-                { value: refunded, name: 'مسترد', itemStyle: { color: '#ef4444' } }
+                { value: completed, name: t('sales_status_completed'), itemStyle: { color: '#22c55e' } },
+                { value: pending, name: t('sales_status_pending'), itemStyle: { color: '#f59e0b' } },
+                { value: refunded, name: t('refunded'), itemStyle: { color: '#ef4444' } }
             ],
             label: { show: false }
         }]
