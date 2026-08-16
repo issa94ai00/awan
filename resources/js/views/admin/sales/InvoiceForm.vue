@@ -152,6 +152,7 @@
                             <thead>
                                 <tr>
                                     <th>{{ t('product') }}</th>
+                                    <th>{{ t('sales.source_warehouse') }}</th>
                                     <th>{{ t('unit') }}</th>
                                     <th>{{ t('quantity') }}</th>
                                     <th>{{ t('unit_price') }}</th>
@@ -160,10 +161,56 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(item, index) in items" :key="item.product_id">
+                                <tr
+                                    v-for="(item, index) in items"
+                                    :key="item.product_id"
+                                    :class="{ 'row-short': isLineShort(item) }"
+                                >
                                     <td class="product-cell" data-label="{{ t('product') }}">
                                         <div class="product-name">{{ item.name }}</div>
                                         <div class="product-sku" v-if="item.sku">SKU: {{ item.sku }}</div>
+                                    </td>
+
+                                    <!--
+                                        Where this line comes off the shelf.
+                                        Each option carries its own free quantity,
+                                        so the choice is made against what is
+                                        actually there rather than discovered on
+                                        submit — the moment when being told is
+                                        least useful.
+                                    -->
+                                    <td class="source-cell" :data-label="t('sales.source_warehouse')">
+                                        <el-select
+                                            v-model="item.warehouse_id"
+                                            size="small"
+                                            class="source-select"
+                                            :loading="item.loadingStock"
+                                            :placeholder="t('sales.choose_source')"
+                                            @change="onSourceChange(index)"
+                                        >
+                                            <el-option
+                                                v-for="row in item.sources || []"
+                                                :key="row.warehouse_id"
+                                                :value="row.warehouse_id"
+                                                :label="row.warehouse_name"
+                                                :disabled="row.available <= 0"
+                                            >
+                                                <span class="source-option">
+                                                    <span>{{ row.warehouse_name }}</span>
+                                                    <span
+                                                        class="source-available"
+                                                        :class="{ 'is-empty': row.available <= 0 }"
+                                                    >{{ formatNumber(row.available) }}</span>
+                                                </span>
+                                            </el-option>
+                                        </el-select>
+
+                                        <div v-if="isLineShort(item)" class="source-warning">
+                                            {{ t('sales.only_available', { count: formatNumber(availableFor(item)) }) }}
+                                        </div>
+                                        <div v-else-if="item.warehouse_id" class="source-hint">
+                                            {{ t('sales.available_here', { count: formatNumber(availableFor(item)) }) }}
+                                        </div>
                                     </td>
                                     <td class="unit-cell" data-label="{{ t('unit') }}">
                                         <el-select
@@ -266,6 +313,33 @@
                             :value="customer.id"
                         />
                     </el-select>
+
+                    <!--
+                        Who to credit the sale to. Optional on purpose: a counter
+                        sale has no rep, and forcing one on would only invent an
+                        attribution the commission report then treats as real.
+                    -->
+                    <div class="field-block">
+                        <label class="field-label">
+                            {{ t('sales.sold_by') }}
+                            <span class="field-optional">{{ t('sales.optional') }}</span>
+                        </label>
+                        <el-select
+                            v-model="form.assigned_employee_id"
+                            :placeholder="t('sales.select_rep_optional')"
+                            filterable
+                            clearable
+                            size="large"
+                            class="w-full"
+                        >
+                            <el-option
+                                v-for="employee in salesEmployees"
+                                :key="employee.id"
+                                :label="employee.name"
+                                :value="employee.id"
+                            />
+                        </el-select>
+                    </div>
                 </el-card>
 
                 <!-- Summary Card -->
@@ -478,6 +552,14 @@ import { useI18n } from 'vue-i18n';
 import { useInvoicesStore } from '@/stores/invoices';
 import { useCustomersStore } from '@/stores/customers';
 import { posApi } from '@/api/pos';
+import api from '@/api';
+import { formatNumber } from '@/utils/currency';
+import {
+    summariseSources,
+    availableAt,
+    isLineShort as lineIsShort,
+    preferredSource,
+} from '@/utils/stockSources';
 import { ElMessage } from 'element-plus';
 import {
     Document, Search, ShoppingCart, User, Wallet, Notebook,
@@ -497,6 +579,8 @@ const searchInputRef = ref(null);
 // Form data
 const form = reactive({
     customer_id: null,
+    // The rep credited with the sale. Null is a valid answer.
+    assigned_employee_id: null,
     payment_method: 'cash',
     discount: 0,
     tax: 0,
@@ -551,6 +635,68 @@ let searchTimeout = null;
 
 // Customers
 const customers = ref([]);
+const salesEmployees = ref([]);
+
+/* ------------------------------------------------------------------ *
+ * Where each line comes from
+ *
+ * A sale has to say which shelf it empties. The server refuses a line it
+ * cannot cover, but discovering that on submit is the least useful moment
+ * to be told — so the choice is made here against live figures, and a line
+ * that does not fit is marked before anyone presses save.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Free quantity at the warehouse this line is drawing from, and whether the
+ * line overdraws it. Both rules live in `@/utils/stockSources` so they can be
+ * tested on their own and stated once.
+ */
+const availableFor = (item) => availableAt(item);
+
+const isLineShort = (item) => lineIsShort(items.value, item);
+
+/** Every short line, for the banner and to block submission. */
+const shortLines = computed(() => items.value.filter(isLineShort));
+
+const missingSource = computed(() => items.value.filter((item) => !item.warehouse_id));
+
+/**
+ * Reads what each warehouse holds of a product, newest figures first.
+ *
+ * Called when a product joins the sale rather than up front: loading every
+ * warehouse's stock for the whole catalogue to fill one dropdown would be a
+ * large query for information mostly nobody looks at.
+ */
+const loadSourcesFor = async (item) => {
+    item.loadingStock = true;
+
+    try {
+        const { data } = await api.get('/admin/inventory/stock', {
+            params: { product_id: item.product_id, per_page: 100 },
+        });
+
+        // Rows are summed per warehouse (a product can occupy several bins in
+        // one) and ordered by what is free.
+        item.sources = summariseSources(data?.data?.stock ?? []);
+
+        if (!item.warehouse_id) {
+            item.warehouse_id = preferredSource(item.sources, item.quantity);
+        }
+    } catch (error) {
+        item.sources = [];
+    } finally {
+        item.loadingStock = false;
+    }
+};
+
+const onSourceChange = (index) => {
+    // Nothing to fetch — the figures are already loaded. The handler exists so
+    // the shortage marker recomputes the moment the source changes.
+    const item = items.value[index];
+    if (item && !item.sources?.length) {
+        loadSourcesFor(item);
+    }
+};
 
 // Computed
 const subtotal = computed(() => {
@@ -639,7 +785,7 @@ const addProduct = (product) => {
             barcode: product.barcode || ''
         };
 
-        items.value.push({
+        const line = reactive({
             product_id: product.id,
             name: product.name_ar || product.name_en,
             sku: product.sku || '',
@@ -650,8 +796,15 @@ const addProduct = (product) => {
             // Unit selection
             selectedUnit: defaultUnit,
             units: [defaultUnit],
-            base_price: parseFloat(product.price) || 0
+            base_price: parseFloat(product.price) || 0,
+            // Where this line is taken from, and what each warehouse holds.
+            warehouse_id: null,
+            sources: [],
+            loadingStock: false,
         });
+
+        items.value.push(line);
+        loadSourcesFor(line);
 
         // Load product units
         loadProductUnits(product.id, items.value.length - 1);
@@ -810,11 +963,29 @@ const submitInvoice = async () => {
         return;
     }
 
+    // Caught here as well as on the server. The server is the authority — it
+    // holds the lock and refuses the write — but letting the request go and
+    // reporting the refusal afterwards wastes the seller's time in front of a
+    // waiting customer.
+    if (missingSource.value.length > 0) {
+        formErrors.value.push(t('sales.choose_source_for_every_line'));
+        return;
+    }
+
+    if (shortLines.value.length > 0) {
+        formErrors.value = shortLines.value.map((item) => t('sales.line_exceeds_stock', {
+            product: item.name,
+            available: formatNumber(availableFor(item)),
+        }));
+        return;
+    }
+
     submitting.value = true;
 
     try {
         const payload = {
             customer_id: form.customer_id,
+            assigned_employee_id: form.assigned_employee_id,
             payment_method: form.payment_method,
             discount: form.discount || 0,
             tax: form.tax || 0,
@@ -825,6 +996,7 @@ const submitInvoice = async () => {
                 product_id: item.product_id,
                 quantity: item.quantity,
                 unit_price: item.price,
+                warehouse_id: item.warehouse_id,
                 product_unit_id: item.selectedUnit?.id || null
             })),
             expenses: form.expenses.filter(exp => exp.description && exp.amount > 0)
@@ -853,11 +1025,30 @@ const submitInvoice = async () => {
         router.push('/admin/sales/invoices');
     } catch (error) {
         console.error('Submit error:', error);
-        if (error.response?.data?.errors) {
+
+        // The server refused because a shelf could not cover a line — most
+        // often because someone else sold the same stock while this sale was
+        // being rung up. Named per product and warehouse, and the fresh figures
+        // are pulled back in so the screen stops showing the numbers that were
+        // true a minute ago.
+        const shortages = error.response?.data?.data?.shortages;
+
+        if (Array.isArray(shortages) && shortages.length > 0) {
+            formErrors.value = shortages.map((row) => t('sales.line_short_at_warehouse', {
+                product: row.product_name,
+                warehouse: row.warehouse_name,
+                available: formatNumber(row.available),
+                required: formatNumber(row.required),
+            }));
+
+            await Promise.all(items.value.map(loadSourcesFor));
+        } else if (error.response?.data?.errors) {
             const errors = error.response.data.errors;
             formErrors.value = Object.values(errors).flat();
         } else {
-            formErrors.value = [error.message || t('failed_to_save_invoice')];
+            formErrors.value = [
+                error.response?.data?.message || error.message || t('failed_to_save_invoice'),
+            ];
         }
     } finally {
         submitting.value = false;
@@ -900,6 +1091,17 @@ onMounted(async () => {
         customers.value = customersStore.customers;
     } catch (error) {
         console.error('Failed to load customers:', error);
+    }
+
+    // The reps a sale can be credited to. A failure here leaves the field
+    // empty rather than blocking the sale — attribution is optional, and a
+    // counter sale must still be possible when the list will not load.
+    try {
+        const { data } = await api.get('/sales-employees');
+        salesEmployees.value = data?.data ?? data ?? [];
+    } catch (error) {
+        console.error('Failed to load sales employees:', error);
+        salesEmployees.value = [];
     }
 
     // Load invoice for edit mode
@@ -1315,6 +1517,85 @@ onUnmounted(() => {
 .items-table {
     width: 100%;
     border-collapse: collapse;
+}
+
+/* ---------- Source warehouse per line ---------- */
+
+.source-cell {
+    min-width: 11rem;
+}
+
+.source-select {
+    width: 100%;
+}
+
+/* Name on one side, free quantity on the other, so the eye can scan the
+   column for the warehouse that can actually fill the line. */
+.source-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.source-available {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.source-available.is-empty {
+    color: #94a3b8;
+}
+
+.source-hint {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+}
+
+.source-warning {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #dc2626;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The whole row is tinted, not just the cell: the seller is looking at the
+   quantity they just typed, not at the source column. */
+.items-table tbody tr.row-short {
+    background: #fef2f2;
+}
+
+.items-table tbody tr.row-short:hover {
+    background: #fee2e2;
+}
+
+/* ---------- Optional field labelling ---------- */
+
+.field-block {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.field-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.field-optional {
+    font-weight: 400;
+    font-size: 0.78rem;
+    color: #94a3b8;
 }
 
 .items-table thead th {
