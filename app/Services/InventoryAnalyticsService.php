@@ -79,7 +79,7 @@ class InventoryAnalyticsService
         
         $query = WarehouseInventory::with('product')
             ->whereHas('product', function ($q) {
-                $q->where('status', 'active');
+                $q->where('is_active', 1);
             });
 
         if ($warehouseId) {
