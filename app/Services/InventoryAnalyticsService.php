@@ -27,9 +27,9 @@ class InventoryAnalyticsService
 
         return [
             'total_products' => $inventory->pluck('product_id')->unique()->count(),
-            'total_stock' => $inventory->sum('stock_quantity'),
+            'total_stock' => $inventory->sum('quantity'),
             'total_value' => $inventory->sum(function ($item) {
-                return $item->stock_quantity * ($item->product?->cost_price ?? 0);
+                return $item->quantity * ($item->product?->cost_price ?? 0);
             }),
             'low_stock_items' => $inventory->where('available_stock', '<=', 0)->count(),
             'overstock_items' => $inventory->where('available_stock', '>', function ($item) {
@@ -57,7 +57,7 @@ class InventoryAnalyticsService
         $totalSold = $outboundMovements->sum('quantity');
         $averageInventory = WarehouseInventory::when($warehouseId, function ($q) use ($warehouseId) {
             return $q->where('warehouse_id', $warehouseId);
-        })->avg('stock_quantity') ?? 0;
+        })->avg('quantity') ?? 0;
 
         $turnoverRate = $averageInventory > 0 ? ($totalSold / $averageInventory) : 0;
 
@@ -95,7 +95,7 @@ class InventoryAnalyticsService
                 ->where('movement_type', StockMovement::TYPE_OUT)
                 ->exists();
 
-            return !$lastMovement && $item->stock_quantity > 0;
+            return !$lastMovement && $item->quantity > 0;
         });
 
         return $slowMoving->map(function ($item) {
@@ -103,8 +103,8 @@ class InventoryAnalyticsService
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->name,
                 'sku' => $item->product?->sku,
-                'stock_quantity' => $item->stock_quantity,
-                'value' => $item->stock_quantity * ($item->product?->cost_price ?? 0),
+                'stock_quantity' => $item->quantity,
+                'value' => $item->quantity * ($item->product?->cost_price ?? 0),
                 'days_in_stock' => $item->created_at?->diffInDays(now()) ?? 0,
             ];
         })->sortByDesc('value')->values();
@@ -155,8 +155,8 @@ class InventoryAnalyticsService
         $categories = [];
 
         foreach ($inventory as $item) {
-            $value = $item->stock_quantity * ($item->product?->price ?? 0);
-            $cost = $item->stock_quantity * ($item->product?->cost_price ?? 0);
+            $value = $item->quantity * ($item->product?->price ?? 0);
+            $cost = $item->quantity * ($item->product?->cost_price ?? 0);
             
             $totalValue += $value;
             $totalCost += $cost;
@@ -204,7 +204,7 @@ class InventoryAnalyticsService
                 'product_name' => $item->product?->name,
                 'annual_usage' => $recentMovements,
                 'annual_value' => $annualValue,
-                'stock_quantity' => $item->stock_quantity,
+                'stock_quantity' => $item->quantity,
             ];
         })->sortByDesc('annual_value');
 
