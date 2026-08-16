@@ -5,7 +5,15 @@ import vue from '@vitejs/plugin-vue';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/admin-mount.js'],
+            // `admin-mount.js` was a second entry point that hydrated Vue
+            // components into blade pages under admin/{analytics,wms,workflows,
+            // rma,notifications,audit}. No route ever rendered those pages — the
+            // SPA catch-all owns `/admin/*` — and they loaded the entry through
+            // a hardcoded `asset('build/assets/admin-mount.js')`, which stopped
+            // resolving once the build started hashing filenames. So it was an
+            // entry point, 42 eagerly imported components and 41 templates
+            // serving pages nobody could reach.
+            input: ['resources/css/app.css', 'resources/js/app.js'],
             refresh: true,
         }),
         vue(),
