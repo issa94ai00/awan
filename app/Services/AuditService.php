@@ -290,7 +290,13 @@ class AuditService
      */
     public function getStatistics($days = 30): array
     {
-        $logs = AuditLog::recent($days);
+        // `recent()` is a scope, so it hands back a query builder. The rows have
+        // to be fetched before they can be grouped in PHP: calling `groupBy()`
+        // on the builder added a SQL GROUP BY instead, and the `->map` that
+        // followed does not exist there — so this endpoint answered 500 every
+        // time it was called, which is to say the audit statistics screen has
+        // never once loaded.
+        $logs = AuditLog::recent($days)->get();
 
         return [
             'total_logs' => $logs->count(),

@@ -2,6 +2,7 @@ import { h } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElMessageBox } from 'element-plus';
+import { useAuthStore } from '@/stores/auth';
 
 /**
  * Turning a refused confirmation into the purchase order that would fix it.
@@ -19,6 +20,24 @@ import { ElMessageBox } from 'element-plus';
 export function useStockShortage() {
     const router = useRouter();
     const { t } = useI18n();
+    const authStore = useAuthStore();
+
+    /**
+     * Whether this user can actually raise a purchase order.
+     *
+     * Purchasing is an admin area — both in the sidebar and, since the
+     * authorisation pass, on the API. Offering the button to a sales account
+     * would send them to a screen that refuses them, which is a worse answer
+     * than not offering it: they would read the refusal as the system being
+     * broken rather than as the task belonging to someone else.
+     */
+    const canRaisePurchaseOrder = () => {
+        const user = authStore.user;
+        if (!user) return false;
+
+        const role = (user.role?.name || user.role_name || '').toLowerCase();
+        return Boolean(user.is_admin) || role === 'admin';
+    };
 
     /**
      * Handles an error from a confirm attempt.
@@ -35,13 +54,18 @@ export function useStockShortage() {
             return false;
         }
 
+        const mayPurchase = canRaisePurchaseOrder();
+
         try {
             await ElMessageBox.confirm(
-                buildShortageBody(shortages, t),
+                buildShortageBody(shortages, t, mayPurchase),
                 t('sales.stock_shortage_title'),
                 {
                     type: 'warning',
-                    confirmButtonText: t('sales.create_purchase_order'),
+                    // Without the rights to buy, the dialog is purely
+                    // informative: it names the shortfall and closes.
+                    confirmButtonText: mayPurchase ? t('sales.create_purchase_order') : t('close'),
+                    showCancelButton: mayPurchase,
                     cancelButtonText: t('close'),
                     // The body is a VNode table, not text.
                     dangerouslyUseHTMLString: false,
@@ -54,7 +78,9 @@ export function useStockShortage() {
             return true;
         }
 
-        router.push(`/admin/purchases/orders?shortage_for_order=${orderId}`);
+        if (mayPurchase) {
+            router.push(`/admin/purchases/orders?shortage_for_order=${orderId}`);
+        }
 
         return true;
     };
@@ -68,7 +94,7 @@ export function useStockShortage() {
  * Built as VNodes rather than an HTML string so product names coming from the
  * database cannot inject markup into the dialog.
  */
-function buildShortageBody(shortages, t) {
+function buildShortageBody(shortages, t, mayPurchase = true) {
     const header = h('div', { class: 'shortage-row shortage-row--head' }, [
         h('span', t('product')),
         h('span', t('sales.required')),
@@ -86,6 +112,9 @@ function buildShortageBody(shortages, t) {
     return h('div', { class: 'shortage-body' }, [
         h('p', { class: 'shortage-lead' }, t('sales.stock_shortage_lead')),
         h('div', { class: 'shortage-table' }, [header, ...rows]),
-        h('p', { class: 'shortage-foot' }, t('sales.stock_shortage_prompt')),
+        // Offer the next step to whoever can take it; tell everyone else who can.
+        h('p', { class: 'shortage-foot' }, mayPurchase
+            ? t('sales.stock_shortage_prompt')
+            : t('sales.stock_shortage_notify_purchasing')),
     ]);
 }

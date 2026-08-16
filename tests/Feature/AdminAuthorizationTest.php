@@ -130,6 +130,32 @@ it('keeps the profit and cash-flow analytics to the accountant', function () {
         ->assertOk();
 });
 
+dataset('admin-only groups', [
+    'purchase orders' => ['/api/v1/admin/purchase-orders'],
+    'suppliers' => ['/api/v1/admin/suppliers'],
+    'workflows' => ['/api/v1/workflows'],
+    'audit statistics' => ['/api/v1/audit/statistics'],
+    'notification templates' => ['/api/v1/notifications/templates'],
+]);
+
+it('keeps the admin-only groups to admins', function (string $uri) {
+    $this->actingAs(userWithRole('sells'))->getJson($uri)->assertForbidden();
+    $this->actingAs(userWithRole('accountant'))->getJson($uri)->assertForbidden();
+    $this->actingAs(userWithRole('admin', isAdmin: true))->getJson($uri)->assertOk();
+})->with('admin-only groups');
+
+/**
+ * Personal notification endpoints stay open. The header polls the unread count
+ * on every page for every role, so gating the whole notifications prefix would
+ * have broken the chrome of the entire admin.
+ */
+it('leaves personal notification endpoints open to every role', function () {
+    $sales = userWithRole('sells');
+
+    $this->actingAs($sales)->getJson('/api/v1/notifications/unread-count')->assertOk();
+    $this->actingAs($sales)->getJson('/api/v1/notifications/preferences')->assertOk();
+});
+
 it('leaves operational work open to the staff who do it', function () {
     $sales = userWithRole('sells');
 

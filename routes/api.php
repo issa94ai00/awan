@@ -372,12 +372,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/categories/{category:id}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
             Route::delete('/categories/{category:id}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
 
-            // Admin Suppliers and Purchase Orders
-            Route::get('/suppliers', [SupplierController::class, 'index'])->name('api.admin.suppliers.index');
-            Route::post('/suppliers', [SupplierController::class, 'store'])->name('api.admin.suppliers.store');
-            Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->name('api.admin.suppliers.show');
-            Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
-            Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
+            // Admin Suppliers — purchasing is an admin group in the sidebar,
+            // and supplier records carry the prices the business buys at.
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/suppliers', [SupplierController::class, 'index'])->name('api.admin.suppliers.index');
+                Route::post('/suppliers', [SupplierController::class, 'store'])->name('api.admin.suppliers.store');
+                Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->name('api.admin.suppliers.show');
+                Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
+                Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
+            });
 
             // Admin Employees API
             // Staff records — admin only. They carry salary and contact details
@@ -423,11 +426,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'update'])->name('api.admin.leave-requests.update');
             Route::delete('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'destroy'])->name('api.admin.leave-requests.destroy');
 
-            Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
-            Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
-            Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
-            Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->name('api.admin.purchase-orders.update');
-            Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->name('api.admin.purchase-orders.destroy');
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
+                Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
+                Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
+                Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->name('api.admin.purchase-orders.update');
+                Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->name('api.admin.purchase-orders.destroy');
+            });
 
             // Admin Inventory Movements
             Route::get('/inventory/movements', [StockMovementController::class, 'index'])->name('api.admin.inventory.movements.index');
@@ -689,6 +694,27 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
             // WMS - Warehouse Management System (نظام إدارة المستودعات)
             Route::prefix('wms')->middleware('web')->group(function () {
+                /*
+                 * The warehouse list is a shared lookup, not a WMS screen.
+                 *
+                 * Six screens outside this module — the sales, inventory,
+                 * financial and product reports, and the warehouse analytics —
+                 * read it to populate a filter, and those screens are open to
+                 * roles that have no business managing warehouses. Gating the
+                 * read along with the rest of WMS would empty those filters and
+                 * make the reports look broken to the people who use them.
+                 *
+                 * Reading which warehouses exist is not sensitive; creating,
+                 * editing and deleting them is, and stays behind the gate below.
+                 */
+                Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
+                Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
+
+                // Everything else here is warehouse administration. The sidebar
+                // already shows the WMS group to admins only; this makes the
+                // API agree instead of relying on the menu to hide it.
+                Route::middleware('role:admin')->group(function () {
+
                 // Dashboard (لوحة التحكم)
                 Route::get('/dashboard', [WmsController::class, 'dashboard'])->name('api.admin.wms.dashboard');
 
@@ -711,9 +737,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // Stats (إحصائيات)
                 Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
 
-                // Warehouses (المستودعات)
-                Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
-                Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
+                // Warehouses (المستودعات) — reads are declared above, outside
+                // this gate, because other modules use them as a lookup.
                 Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
                 Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
                 Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
@@ -734,37 +759,28 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.admin.wms.picking.complete');
                 Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.admin.wms.picking.cancel');
                 Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
+                });
             });
         });
 
         // WMS - Warehouse Management System (نظام إدارة المستودعات) - Public Routes
-        Route::prefix('admin/wms')->group(function () {
+        /*
+         * The rest of WMS: packing, shipping and cycle counts.
+         *
+         * This block used to re-register the warehouse, bin and picking routes
+         * that the guarded group above already declares. Laravel keeps only the
+         * last route for a given method and URI, so those copies silently
+         * replaced the guarded ones — putting `role:admin` on the first block
+         * had no effect on any URI this one repeated. Verified: with the gate in
+         * place, `/wms/dashboard` (declared once) answered 403 to a sales
+         * account while `/wms/bins` (declared twice) still answered 200.
+         *
+         * The duplicates are gone, so each URI is registered once and carries
+         * the gate it is supposed to.
+         */
+        Route::prefix('admin/wms')->middleware('role:admin')->group(function () {
             // Stats (إحصائيات)
             Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
-
-            // Warehouses (المستودعات)
-            Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
-            Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
-            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
-            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
-            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
-
-            // Warehouse Bins (أماكن التخزين)
-            Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');
-            Route::get('/bins/{id}', [WmsController::class, 'showBin'])->name('api.admin.wms.bins.show');
-            Route::post('/bins', [WmsController::class, 'storeBin'])->name('api.admin.wms.bins.store');
-            Route::put('/bins/{id}', [WmsController::class, 'updateBin'])->name('api.admin.wms.bins.update');
-            Route::delete('/bins/{id}', [WmsController::class, 'destroyBin'])->name('api.admin.wms.bins.destroy');
-
-            // Picking Lists (قوائم الاختيار)
-            Route::get('/picking-lists', [WmsController::class, 'indexPickingLists'])->name('api.admin.wms.picking.index');
-            Route::get('/picking-lists/{id}', [WmsController::class, 'showPickingList'])->name('api.admin.wms.picking.show');
-            Route::post('/picking-lists', [WmsController::class, 'createPickingList'])->name('api.admin.wms.picking.create');
-            Route::post('/picking-lists/{id}/start', [WmsController::class, 'startPicking'])->name('api.admin.wms.picking.start');
-            Route::post('/picking-items/{itemId}', [WmsController::class, 'pickItem'])->name('api.admin.wms.picking.pick');
-            Route::post('/picking-lists/{id}/complete', [WmsController::class, 'completePicking'])->name('api.admin.wms.picking.complete');
-            Route::post('/picking-lists/{id}/cancel', [WmsController::class, 'cancelPicking'])->name('api.admin.wms.picking.cancel');
-            Route::get('/picking/statistics', [WmsController::class, 'getPickingStatistics'])->name('api.admin.wms.picking.statistics');
 
             // Packing Lists (قوائم التعبئة)
             Route::get('/packing-lists', [WmsController::class, 'indexPackingLists'])->name('api.admin.wms.packing.index');
@@ -891,21 +907,33 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('api.notifications.read-all');
             Route::get('/preferences', [NotificationController::class, 'getPreferences'])->name('api.notifications.preferences');
             Route::put('/preferences', [NotificationController::class, 'updatePreferences'])->name('api.notifications.update-preferences');
-            Route::get('/templates', [NotificationController::class, 'indexTemplates'])->name('api.notifications.templates.index');
-            Route::post('/templates', [NotificationController::class, 'storeTemplate'])->name('api.notifications.templates.store');
-            Route::get('/templates/{id}', [NotificationController::class, 'showTemplate'])->whereNumber('id')->name('api.notifications.templates.show');
-            Route::put('/templates/{id}', [NotificationController::class, 'updateTemplate'])->whereNumber('id')->name('api.notifications.templates.update');
-            Route::delete('/templates/{id}', [NotificationController::class, 'destroyTemplate'])->whereNumber('id')->name('api.notifications.templates.destroy');
-            Route::post('/send', [NotificationController::class, 'sendNotification'])->name('api.notifications.send');
-            Route::post('/send-bulk', [NotificationController::class, 'sendBulkNotification'])->name('api.notifications.send-bulk');
+            /*
+             * Template management and broadcasting — admin only, matching the
+             * sidebar's "notifications management" group.
+             *
+             * Only this part. Reading your own notifications, the unread count
+             * the header polls on every page, and your own preferences all stay
+             * open: they are personal, and gating them would break the header
+             * for everyone.
+             */
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/templates', [NotificationController::class, 'indexTemplates'])->name('api.notifications.templates.index');
+                Route::post('/templates', [NotificationController::class, 'storeTemplate'])->name('api.notifications.templates.store');
+                Route::get('/templates/{id}', [NotificationController::class, 'showTemplate'])->whereNumber('id')->name('api.notifications.templates.show');
+                Route::put('/templates/{id}', [NotificationController::class, 'updateTemplate'])->whereNumber('id')->name('api.notifications.templates.update');
+                Route::delete('/templates/{id}', [NotificationController::class, 'destroyTemplate'])->whereNumber('id')->name('api.notifications.templates.destroy');
+                Route::post('/send', [NotificationController::class, 'sendNotification'])->name('api.notifications.send');
+                Route::post('/send-bulk', [NotificationController::class, 'sendBulkNotification'])->name('api.notifications.send-bulk');
+            });
 
             Route::get('/{id}', [NotificationController::class, 'show'])->whereNumber('id')->name('api.notifications.show');
             Route::post('/{id}/read', [NotificationController::class, 'markAsRead'])->whereNumber('id')->name('api.notifications.read');
             Route::delete('/{id}', [NotificationController::class, 'destroy'])->whereNumber('id')->name('api.notifications.destroy');
         });
 
-        // Workflows (سير العمل)
-        Route::prefix('workflows')->group(function () {
+        // Workflows (سير العمل) — automation that acts on other people's data,
+        // so admin only, matching the sidebar.
+        Route::prefix('workflows')->middleware('role:admin')->group(function () {
             Route::get('/', [WorkflowController::class, 'index'])->name('api.workflows.index');
             Route::get('/{id}', [WorkflowController::class, 'show'])->name('api.workflows.show');
             Route::post('/', [WorkflowController::class, 'store'])->name('api.workflows.store');
@@ -923,8 +951,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/{workflowId}/steps/reorder', [WorkflowController::class, 'reorderSteps'])->name('api.workflows.steps.reorder');
         });
 
-        // Audit Logs (سجلات التدقيق)
-        Route::prefix('audit')->group(function () {
+        // Audit Logs (سجلات التدقيق) — who did what across every module,
+        // including the risk scan. Admin only, matching the sidebar.
+        Route::prefix('audit')->middleware('role:admin')->group(function () {
             Route::get('/risk-scan', [AuditController::class, 'riskScan'])->name('api.audit.risk-scan');
             Route::get('/risk-scan/export', [AuditController::class, 'exportRiskScan'])->name('api.audit.risk-scan.export');
             Route::get('/reconciliation', [AuditController::class, 'reconciliationSummary'])->name('api.audit.reconciliation');
