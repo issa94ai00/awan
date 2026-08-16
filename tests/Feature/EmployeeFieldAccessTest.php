@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Hash;
  * describe, including the case where only one of the two is given.
  */
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->admin()->create();
     $this->token = $this->admin->createToken('test-token')->plainTextToken;
 
     $this->branch = Warehouse::create([

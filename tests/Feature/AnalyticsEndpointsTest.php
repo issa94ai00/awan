@@ -52,7 +52,10 @@ dataset('analytics endpoints', [
 ]);
 
 it('answers every analytics endpoint', function (string $endpoint) {
-    $user = User::factory()->create();
+    // An admin, because the financial endpoints sit behind the accountant role
+    // — profit, margins and receivables ageing are the same picture the books
+    // give, so they answer to the same audience.
+    $user = User::factory()->admin()->create();
 
     $this->actingAs($user)
         ->getJson("/api/v1/analytics/{$endpoint}")
@@ -132,7 +135,8 @@ it('counts real revenue in top selling products rather than reporting zero', fun
 
 it('counts real revenue by category rather than reporting zero', function () {
     seedDeliveredOrder();
-    $user = User::factory()->create();
+    // Financial analytics are behind the accountant role.
+    $user = User::factory()->admin()->create();
 
     $rows = $this->actingAs($user)
         ->getJson('/api/v1/analytics/financial/revenue-by-category')

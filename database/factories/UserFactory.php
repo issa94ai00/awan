@@ -41,4 +41,20 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * An account that may reach the guarded parts of the admin API.
+     *
+     * Worth stating rather than assuming: several tests named their subject
+     * `$this->admin` while creating a plain user, and passed only because
+     * nothing checked. Once the accounting, payroll and staff routes were put
+     * behind a role, those tests failed — not because the behaviour changed,
+     * but because the fixture had never matched what the test claimed it was.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_admin' => true,
+        ]);
+    }
 }

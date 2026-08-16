@@ -202,7 +202,7 @@ test('changing the base keeps default_currency setting in sync', function () {
 test('settings default_currency chooses the base through CurrencyService', function () {
     $this->currencies->recordRate($this->syp, 13000);
 
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
 
     $this->actingAs($user, 'sanctum')
         ->post('/api/v1/settings', [
@@ -220,7 +220,7 @@ test('settings default_currency chooses the base through CurrencyService', funct
 });
 
 test('settings reject a currency that is not in the managed list', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->admin()->create();
 
     $this->actingAs($user, 'sanctum')
         ->postJson('/api/v1/settings', [

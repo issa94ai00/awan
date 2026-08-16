@@ -380,11 +380,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
 
             // Admin Employees API
-            Route::get('/employees', [EmployeeController::class, 'index'])->name('api.admin.employees.index');
-            Route::post('/employees', [EmployeeController::class, 'store'])->name('api.admin.employees.store');
-            Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
-            Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
-            Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
+            // Staff records — admin only. They carry salary and contact details
+            // and decide which warehouse a login is scoped to, so editing one is
+            // a way to widen your own access.
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/employees', [EmployeeController::class, 'index'])->name('api.admin.employees.index');
+                Route::post('/employees', [EmployeeController::class, 'store'])->name('api.admin.employees.store');
+                Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
+                Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
+                Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
+            });
 
             // Employee Customers API
             Route::get('/employees/{employee}/customers', [EmployeeController::class, 'customers'])->name('api.admin.employees.customers');
@@ -435,35 +440,49 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/inventory/import', [InventoryController::class, 'import'])->name('api.admin.inventory.import');
 
             // Admin Accounting
-            Route::get('/accounting/ledger-accounts', [LedgerAccountController::class, 'index'])->name('api.admin.accounting.ledger-accounts.index');
-            Route::post('/accounting/ledger-accounts', [LedgerAccountController::class, 'store'])->name('api.admin.accounting.ledger-accounts.store');
-            Route::get('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'show'])->name('api.admin.accounting.ledger-accounts.show');
-            Route::put('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'update'])->name('api.admin.accounting.ledger-accounts.update');
-            Route::delete('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'destroy'])->name('api.admin.accounting.ledger-accounts.destroy');
+            //
+            // Behind the accountant role. Being signed in used to be the whole
+            // check, so any staff account could read the trial balance, the
+            // ledger and every journal entry — and delete them. `RequireRole`
+            // lets an admin through regardless, so this narrows the audience
+            // without locking the owner out of their own books.
+            Route::middleware('role:accountant')->group(function () {
+                Route::get('/accounting/ledger-accounts', [LedgerAccountController::class, 'index'])->name('api.admin.accounting.ledger-accounts.index');
+                Route::post('/accounting/ledger-accounts', [LedgerAccountController::class, 'store'])->name('api.admin.accounting.ledger-accounts.store');
+                Route::get('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'show'])->name('api.admin.accounting.ledger-accounts.show');
+                Route::put('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'update'])->name('api.admin.accounting.ledger-accounts.update');
+                Route::delete('/accounting/ledger-accounts/{ledgerAccount}', [LedgerAccountController::class, 'destroy'])->name('api.admin.accounting.ledger-accounts.destroy');
 
-            Route::get('/accounting/journal-entries', [JournalEntryController::class, 'index'])->name('api.admin.accounting.journal-entries.index');
-            Route::post('/accounting/journal-entries', [JournalEntryController::class, 'store'])->name('api.admin.accounting.journal-entries.store');
-            Route::get('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('api.admin.accounting.journal-entries.show');
-            Route::put('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'update'])->name('api.admin.accounting.journal-entries.update');
-            Route::delete('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy'])->name('api.admin.accounting.journal-entries.destroy');
+                Route::get('/accounting/journal-entries', [JournalEntryController::class, 'index'])->name('api.admin.accounting.journal-entries.index');
+                Route::post('/accounting/journal-entries', [JournalEntryController::class, 'store'])->name('api.admin.accounting.journal-entries.store');
+                Route::get('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('api.admin.accounting.journal-entries.show');
+                Route::put('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'update'])->name('api.admin.accounting.journal-entries.update');
+                Route::delete('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy'])->name('api.admin.accounting.journal-entries.destroy');
 
-            Route::get('/accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
-            Route::get('/accounting/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('api.admin.accounting.income-statement');
-            // Cross-module consistency: whether the books still agree with the
-            // operational records. Read-only — repairs stay deliberate.
-            Route::get('/accounting/system-health', [AccountingReportController::class, 'systemHealth'])->name('api.admin.accounting.system-health');
-            Route::get('/accounting/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('api.admin.accounting.balance-sheet');
+                Route::get('/accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
+                Route::get('/accounting/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('api.admin.accounting.income-statement');
+                // Cross-module consistency: whether the books still agree with the
+                // operational records. Read-only — repairs stay deliberate.
+                Route::get('/accounting/system-health', [AccountingReportController::class, 'systemHealth'])->name('api.admin.accounting.system-health');
+                Route::get('/accounting/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('api.admin.accounting.balance-sheet');
+            });
         });
 
         // Settings
-        Route::post('/settings', [SettingsController::class, 'update'])->name('api.settings.update');
+        //
+        // Admin only. These decide the base currency the whole ledger is kept
+        // in, among other things — a sales account was able to change them.
+        Route::post('/settings', [SettingsController::class, 'update'])->middleware('role:admin')->name('api.settings.update');
 
         // Currencies: the managed list, their rates, and which one is base.
         //
         // Under /admin so the management endpoint does not sit on the same URI
         // as the public list — Laravel keeps only the last route registered for
         // a given method and path, and the public one was being swallowed.
-        Route::prefix('admin')->group(function () {
+        //
+        // Admin or accountant: moving the base currency is an accounting event,
+        // and a recorded rate decides what every converted price shows.
+        Route::prefix('admin')->middleware('role:accountant')->group(function () {
             Route::get('/currencies', [CurrencyController::class, 'adminIndex'])->name('api.admin.currencies.index');
             Route::post('/currencies', [CurrencyController::class, 'store'])->name('api.admin.currencies.store');
             Route::put('/currencies/{currency}', [CurrencyController::class, 'update'])->name('api.admin.currencies.update');
@@ -817,14 +836,22 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/warehouse/capacity-planning', [AnalyticsController::class, 'getCapacityPlanning'])->name('api.analytics.warehouse.capacity');
 
             // Financial Analytics (التحليلات المالية)
-            Route::get('/financial/summary', [AnalyticsController::class, 'getFinancialSummary'])->name('api.analytics.financial.summary');
-            Route::get('/financial/revenue-by-category', [AnalyticsController::class, 'getRevenueByCategory'])->name('api.analytics.financial.revenue');
-            Route::get('/financial/expenses', [AnalyticsController::class, 'getExpenseBreakdown'])->name('api.analytics.financial.expenses');
-            Route::get('/financial/cash-flow', [AnalyticsController::class, 'getCashFlowAnalysis'])->name('api.analytics.financial.cashflow');
-            Route::get('/financial/profit-loss', [AnalyticsController::class, 'getProfitAndLoss'])->name('api.analytics.financial.pnl');
-            Route::get('/financial/aging', [AnalyticsController::class, 'getAccountsAging'])->name('api.analytics.financial.aging');
-            Route::get('/financial/ratios', [AnalyticsController::class, 'getFinancialRatios'])->name('api.analytics.financial.ratios');
-            Route::get('/financial/budget-vs-actual', [AnalyticsController::class, 'getBudgetVsActual'])->name('api.analytics.financial.budget');
+            // Profit, margins, cash flow and receivables ageing: the same
+            // picture the books give, so the same audience. Only this subgroup
+            // is gated — the sales, inventory and warehouse analytics stay open
+            // because the main dashboard reads `/analytics/sales/trend` for
+            // every role, and closing that would empty the landing screen for
+            // the people who use it most.
+            Route::middleware('role:accountant')->group(function () {
+                Route::get('/financial/summary', [AnalyticsController::class, 'getFinancialSummary'])->name('api.analytics.financial.summary');
+                Route::get('/financial/revenue-by-category', [AnalyticsController::class, 'getRevenueByCategory'])->name('api.analytics.financial.revenue');
+                Route::get('/financial/expenses', [AnalyticsController::class, 'getExpenseBreakdown'])->name('api.analytics.financial.expenses');
+                Route::get('/financial/cash-flow', [AnalyticsController::class, 'getCashFlowAnalysis'])->name('api.analytics.financial.cashflow');
+                Route::get('/financial/profit-loss', [AnalyticsController::class, 'getProfitAndLoss'])->name('api.analytics.financial.pnl');
+                Route::get('/financial/aging', [AnalyticsController::class, 'getAccountsAging'])->name('api.analytics.financial.aging');
+                Route::get('/financial/ratios', [AnalyticsController::class, 'getFinancialRatios'])->name('api.analytics.financial.ratios');
+                Route::get('/financial/budget-vs-actual', [AnalyticsController::class, 'getBudgetVsActual'])->name('api.analytics.financial.budget');
+            });
 
             // Metrics Management (إدارة المؤشرات)
             Route::get('/metrics', [AnalyticsController::class, 'indexMetrics'])->name('api.analytics.metrics.index');
@@ -915,13 +942,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/cleanup', [AuditController::class, 'cleanupOldLogs'])->name('api.audit.cleanup');
         });
 
-        // Payrolls (رواتب)
-        Route::get('/payrolls', [PayrollController::class, 'index'])->name('api.payrolls.index');
-        Route::post('/payrolls', [PayrollController::class, 'store'])->name('api.payrolls.store');
-        Route::get('/payrolls/{payroll}', [PayrollController::class, 'show'])->name('api.payrolls.show');
-        Route::put('/payrolls/{payroll}', [PayrollController::class, 'update'])->name('api.payrolls.update');
-        Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroy'])->name('api.payrolls.destroy');
-        Route::post('/payrolls/auto-generate', [PayrollController::class, 'autoGenerate'])->name('api.payrolls.auto-generate');
+        // Payrolls (رواتب) — salary figures, so admin or accountant only.
+        Route::middleware('role:accountant')->group(function () {
+            Route::get('/payrolls', [PayrollController::class, 'index'])->name('api.payrolls.index');
+            Route::post('/payrolls', [PayrollController::class, 'store'])->name('api.payrolls.store');
+            Route::get('/payrolls/{payroll}', [PayrollController::class, 'show'])->name('api.payrolls.show');
+            Route::put('/payrolls/{payroll}', [PayrollController::class, 'update'])->name('api.payrolls.update');
+            Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroy'])->name('api.payrolls.destroy');
+            Route::post('/payrolls/auto-generate', [PayrollController::class, 'autoGenerate'])->name('api.payrolls.auto-generate');
+        });
     });
 });
 

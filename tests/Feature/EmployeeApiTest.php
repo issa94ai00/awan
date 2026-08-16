@@ -5,7 +5,7 @@ use App\Models\User;
 use Illuminate\Support\Str;
 
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->admin()->create();
     $this->token = $this->user->createToken('test-token')->plainTextToken;
 });
 
