@@ -11,10 +11,13 @@ use App\Models\ProductUnit;
 use App\Models\Expense;
 use App\Models\Customer;
 use App\Models\Payment;
+use App\Models\Warehouse;
+use App\Services\Sales\GoodsIssueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Illuminate\Database\QueryException;
 
 class InvoiceController extends Controller
@@ -147,17 +150,45 @@ class InvoiceController extends Controller
         ];
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Turns a shortage report into something a screen can point at.
+     *
+     * @param  list<array{product_id:int, warehouse_id:int, required:int, available:int, shortfall:int}>  $shortages
+     * @return list<array<string, mixed>>
+     */
+    private function describeShortages(array $shortages): array
+    {
+        $products = Product::whereIn('id', array_column($shortages, 'product_id'))->get()->keyBy('id');
+        $warehouses = Warehouse::whereIn('id', array_column($shortages, 'warehouse_id'))->get()->keyBy('id');
+
+        return array_map(function (array $row) use ($products, $warehouses) {
+            $product = $products->get($row['product_id']);
+
+            return $row + [
+                'product_name' => $product?->name_ar ?: ($product?->name_en ?: ('#'.$row['product_id'])),
+                'sku' => $product?->sku,
+                'warehouse_name' => $warehouses->get($row['warehouse_id'])?->name ?? ('#'.$row['warehouse_id']),
+            ];
+        }, $shortages);
+    }
+
+    public function store(Request $request, GoodsIssueService $goods): JsonResponse
     {
         try {
             $validated = $request->validate([
                 'customer_id' => 'nullable|integer|exists:customers,id',
                 'items' => 'required|array|min:1',
+                // Who made the sale. Optional — a counter sale has no rep.
+                'assigned_employee_id' => 'nullable|integer|exists:employees,id',
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
                 'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+                // Where each line is taken from. Optional only so an install
+                // with a single warehouse need not repeat itself; with more
+                // than one, GoodsIssueService refuses to guess.
+                'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
                 // What the customer handed over. Anything short of the total
@@ -223,8 +254,17 @@ class InvoiceController extends Controller
                     }
                 }
 
+                // Where this line comes off the shelf. Named per line so a sale
+                // can draw a fast-moving item from the branch and the rest from
+                // the main store — and so the cost entry can credit the holding
+                // the goods actually left.
+                $lineWarehouseId = $goods->requireWarehouse(
+                    $item['warehouse_id'] ?? ($validated['warehouse_id'] ?? null)
+                );
+
                 $itemsData[] = [
                     'product_id' => $item['product_id'],
+                    'warehouse_id' => $lineWarehouseId,
                     'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
@@ -233,9 +273,40 @@ class InvoiceController extends Controller
                     'product_unit_id' => $item['product_unit_id'] ?? null,
                     'unit_name' => $unitName,
                     'unit_multiplier' => $unitMultiplier,
+                    // Kept beside the line for the issue below; not a column.
+                    '_unit_cost' => (float) ($product->cost_price ?? 0),
                 ];
 
                 $subtotal += $totalPrice;
+            }
+
+            /*
+             * Refuse a sale the shelves cannot cover, before anything is written.
+             *
+             * The previous behaviour was to save the invoice and issue the stock
+             * with `allow_negative`, which drove the warehouse below zero and
+             * left a document claiming goods that were not there. A negative
+             * shelf is not a smaller number — it is a record that has stopped
+             * describing anything, and it corrupts every valuation and reorder
+             * decision that reads it afterwards.
+             */
+            $shortages = $goods->shortagesFor(array_map(
+                fn (array $line) => [
+                    'product_id' => (int) $line['product_id'],
+                    'quantity' => (int) $line['quantity'],
+                    'warehouse_id' => (int) $line['warehouse_id'],
+                ],
+                $itemsData
+            ));
+
+            if ($shortages !== []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'المخزون لا يغطي هذا البيع في المستودعات المحددة.',
+                    // Named per product and warehouse so the screen can point at
+                    // the exact line rather than making the seller hunt for it.
+                    'data' => ['shortages' => $this->describeShortages($shortages)],
+                ], 422);
             }
 
             // Calculate totals
@@ -288,12 +359,14 @@ class InvoiceController extends Controller
                 $discount,
                 $additionalCharges,
                 $total,
-                $paidAmount
+                $paidAmount,
+                $goods
             ) {
             // Create invoice
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
                 'customer_id' => $validated['customer_id'] ?? null,
+                'assigned_employee_id' => $validated['assigned_employee_id'] ?? null,
                 'subtotal' => $subtotal,
                 'tax' => $tax,
                 'discount' => $discount,
@@ -311,6 +384,8 @@ class InvoiceController extends Controller
             // Create invoice items
             foreach ($itemsData as $itemData) {
                 $itemData['invoice_id'] = $invoice->id;
+                // Carried alongside the line for the stock issue, not a column.
+                unset($itemData['_unit_cost']);
                 InvoiceItem::create($itemData);
             }
 
@@ -342,36 +417,48 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Take the goods off the shelf.
-            //
-            // No sales path used to touch inventory at all — invoices, sales
-            // orders and the POS alike — so stock only ever went up. Issuing is
-            // keyed per invoice line, which makes a retry a no-op instead of a
-            // second withdrawal.
+            /*
+             * Take the goods off the named shelf, and tell the ledger what they
+             * cost, in one step.
+             *
+             * Both halves were wrong before. The issue passed no warehouse, so
+             * it fell through to "whichever warehouse has the lowest id" and
+             * drew every sale from there regardless of where the goods were —
+             * driving that one negative while the real one stayed full. And no
+             * cost entry was posted at all, so every invoice raised here
+             * overstated gross profit by the entire cost of the goods.
+             *
+             * `GoodsIssueService` is the same code the sales-order shipment
+             * uses. Sharing it is the point: two copies of "move stock and post
+             * its cost" is how the two paths end up disagreeing about margin.
+             */
             $stockWarnings = [];
-            $inventory = app(\App\Services\Inventory\InventoryService::class);
 
-            foreach ($invoice->items()->get() as $line) {
-                try {
-                    $inventory->issue(
-                        $line->product_id,
-                        (int) $line->quantity,
-                        null,
-                        [
-                            'key' => 'invoice:' . $invoice->id . ':item:' . $line->id,
-                            'source' => 'sales',
-                            'reference' => $invoice->invoice_number,
-                            'reason' => 'بيع - فاتورة ' . $invoice->invoice_number,
-                            'unit_cost' => (float) $line->unit_price,
-                            // A shortfall must not block an invoice that is
-                            // already saved; it is surfaced to the user instead.
-                            'allow_negative' => true,
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    $stockWarnings[] = $e->getMessage();
-                    report($e);
-                }
+            try {
+                $goods->issueAndPostCost(
+                    lines: $invoice->items()->get()->map(fn ($line) => [
+                        'product_id' => (int) $line->product_id,
+                        'quantity' => (int) $line->quantity,
+                        'warehouse_id' => (int) $line->warehouse_id,
+                        'unit_cost' => (float) ($line->product?->cost_price ?? 0),
+                        // Keyed per line, so a retry is a no-op rather than a
+                        // second withdrawal.
+                        'movement_key' => 'invoice:'.$invoice->id.':item:'.$line->id,
+                    ])->all(),
+                    postingKey: 'invoice_cogs:'.$invoice->id,
+                    label: 'فاتورة '.$invoice->invoice_number,
+                    reference: $invoice,
+                    currency: $invoice->currency,
+                    reason: 'بيع - فاتورة '.$invoice->invoice_number,
+                    movementReference: 'invoice',
+                    movementSource: $invoice->id,
+                );
+            } catch (\Throwable $e) {
+                // Coverage was checked before the invoice was written, so this
+                // is an unexpected failure rather than a routine shortfall. It
+                // is surfaced instead of discarding a saved sale.
+                $stockWarnings[] = $e->getMessage();
+                report($e);
             }
 
             // Settle the customer's account.
@@ -426,6 +513,16 @@ class InvoiceController extends Controller
                 'message' => 'خطأ في التحقق من البيانات',
                 'data' => null,
                 'errors' => $e->errors(),
+            ], 422);
+        } catch (RuntimeException $e) {
+            // A sale that cannot name its source — no warehouse chosen and more
+            // than one to choose from, or none set up at all. That is something
+            // the seller can fix, so it is stated plainly rather than dressed up
+            // as a server fault.
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
@@ -641,7 +738,7 @@ class InvoiceController extends Controller
     /**
      * Update invoice status (pay or cancel)
      */
-    public function updateStatus(Request $request, Invoice $invoice): JsonResponse
+    public function updateStatus(Request $request, Invoice $invoice, GoodsIssueService $goods): JsonResponse
     {
         try {
             $validated = $request->validate([
@@ -653,6 +750,54 @@ class InvoiceController extends Controller
 
             $oldStatus = $invoice->status;
             $newStatus = $validated['status'];
+
+            /*
+             * Cancelling has to undo what the sale did, not merely relabel it.
+             *
+             * This used to flip the status and clear `paid_at`, and nothing
+             * else: the goods stayed off the shelf and the ledger went on
+             * carrying the revenue, the receivable and the cost. A cancelled
+             * invoice was therefore indistinguishable, in the books and in the
+             * warehouse, from one that had been fulfilled.
+             *
+             * Guarded on the previous status so cancelling twice does not return
+             * the goods twice — and the movement keys differ from the issue's,
+             * or the return would be read as a repeat of it and skipped.
+             */
+            $isCancelling = $newStatus === Invoice::STATUS_CANCELLED
+                && $oldStatus !== Invoice::STATUS_CANCELLED;
+
+            if ($isCancelling) {
+                DB::transaction(function () use ($invoice, $goods) {
+                    $goods->returnAndReverseCost(
+                        lines: $invoice->items()->with('product')->get()->map(fn ($line) => [
+                            'product_id' => (int) $line->product_id,
+                            'quantity' => (int) $line->quantity,
+                            'warehouse_id' => (int) $line->warehouse_id,
+                            'unit_cost' => (float) ($line->product?->cost_price ?? 0),
+                            'movement_key' => 'invoice_cancel:'.$invoice->id.':item:'.$line->id,
+                        ])->all(),
+                        postingKey: 'invoice_cogs:'.$invoice->id,
+                        label: 'إلغاء فاتورة '.$invoice->invoice_number,
+                        reason: 'إلغاء بيع - فاتورة '.$invoice->invoice_number,
+                    );
+
+                    /*
+                     * The sale itself: the receivable and the revenue.
+                     *
+                     * The customer's payment is deliberately *not* reversed. The
+                     * cash genuinely moved, and saying otherwise would make the
+                     * books claim money that is sitting in the till never
+                     * arrived. Reversing only the sale leaves the payment
+                     * standing against a receivable that no longer exists, so
+                     * the customer's account shows a credit — which is exactly
+                     * what they hold: a refund owed to them. Paying it back is a
+                     * separate, deliberate act.
+                     */
+                    $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+                    $ledger->reverseFor('invoice:'.$invoice->id);
+                });
+            }
 
             // Update status
             $invoice->update(['status' => $newStatus]);
@@ -668,7 +813,9 @@ class InvoiceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم تحديث حالة الفاتورة بنجاح',
+                'message' => $isCancelling
+                    ? 'أُلغيت الفاتورة: أُعيدت الكميات إلى مستودعاتها وعُكست القيود المحاسبية.'
+                    : 'تم تحديث حالة الفاتورة بنجاح',
                 'data' => new InvoiceResource($invoice->load('items.product')),
             ]);
 

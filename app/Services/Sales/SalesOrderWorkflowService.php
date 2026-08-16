@@ -72,6 +72,9 @@ class SalesOrderWorkflowService
         private LedgerPostingService $ledger,
         private PaymentRecorder $payments,
         private PickingService $picking,
+        // Moving goods out and posting what they cost is shared with the
+        // direct-sale path, so both report the same margin for the same event.
+        private GoodsIssueService $goods,
     ) {}
 
     /* ------------------------------------------------------------------ *
@@ -383,75 +386,53 @@ class SalesOrderWorkflowService
             throw new RuntimeException($e->getMessage());
         }
 
-        $movements = [];
-        $cost = 0.0;
-
-        // Cost accumulated per source warehouse, so the ledger can credit each
-        // holding for exactly what left it.
-        $costByWarehouse = [];
-
         $order->loadMissing('items.allocations');
 
+        // Flattened to (product, warehouse, quantity) lines so the shared issue
+        // can move the stock and post its cost. A line may be filled from
+        // several places — part from the seller's own stock, the rest from the
+        // main warehouse. Where a plan exists it decides the sources; a line
+        // without one ships whole from the order's fulfilment warehouse.
+        $lines = [];
+
         foreach ($order->items as $item) {
-            $unitCost = (float) ($item->product->cost_price ?? 0);
-
-            // A line may be filled from several places — part from the seller's
-            // own stock, the rest from the main warehouse. Where a plan exists
-            // it decides the sources; a line without one ships whole from the
-            // order's fulfilment warehouse, which is the single-source case.
-            $sources = $this->shipmentSourcesFor($item, $warehouseId);
-
-            foreach ($sources as $sourceWarehouseId => $quantity) {
+            foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceWarehouseId => $quantity) {
                 if ($quantity <= 0) {
                     continue;
                 }
 
-                // Consumes the units held at confirmation rather than demanding
-                // fresh availability, otherwise an order's own reservation would
-                // block it from shipping.
-                $movement = $this->inventory->shipReserved(
-                    (int) $item->product_id,
-                    (int) $quantity,
-                    (int) $sourceWarehouseId,
-                    [
-                        // Keyed per source as well as per product: a split line
-                        // writes one movement per warehouse, and sharing a key
-                        // would make the second look like a repeat of the first
-                        // and be skipped.
-                        'key' => 'SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId,
-                        'reference' => 'sales_order',
-                        'source' => $order->id,
-                        'reason' => 'إخراج مخزون لطلب بيع رقم '.$order->order_number,
-                        'unit_cost' => $unitCost,
-                    ]
-                );
-
-                if ($movement) {
-                    $movements[] = $movement->id;
-                }
-
-                // The movement carries what the units actually cost, drawn from
-                // the FIFO layers as they were consumed. Using the product's
-                // current cost price instead valued a batch bought at 20 and a
-                // batch bought at 30 identically, and the margin was wrong by
-                // the difference on every unit.
-                $lineCost = $movement
-                    ? (float) $movement->total_cost
-                    : $unitCost * (int) $quantity;
-
-                $cost += $lineCost;
-                $costByWarehouse[(int) $sourceWarehouseId] =
-                    ($costByWarehouse[(int) $sourceWarehouseId] ?? 0) + $lineCost;
+                $lines[] = [
+                    'product_id' => (int) $item->product_id,
+                    'quantity' => (int) $quantity,
+                    'warehouse_id' => (int) $sourceWarehouseId,
+                    'unit_cost' => (float) ($item->product->cost_price ?? 0),
+                    // Keyed per source as well as per product: a split line
+                    // writes one movement per warehouse, and sharing a key would
+                    // make the second look like a repeat of the first.
+                    'movement_key' => 'SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId,
+                ];
             }
         }
 
-        $this->ledger->postCostOfGoodsSoldBySource(
-            key: 'so_cogs:'.$order->id,
-            costByWarehouse: $costByWarehouse,
+        // The same code the direct-sale path uses. Keeping one implementation of
+        // "move the goods and post what they cost" is what stops the two paths
+        // drifting into reporting different margins for the same event.
+        $issued = $this->goods->issueAndPostCost(
+            lines: $lines,
+            postingKey: 'so_cogs:'.$order->id,
             label: 'طلب بيع '.$order->order_number,
             reference: $order,
             currency: $order->currency,
+            reason: 'إخراج مخزون لطلب بيع رقم '.$order->order_number,
+            // The units were held at confirmation; shipping spends that hold
+            // rather than demanding fresh availability.
+            consumeReserved: true,
+            movementReference: 'sales_order',
+            movementSource: $order->id,
         );
+
+        $movements = $issued['movements'];
+        $cost = $issued['cost'];
 
         // A shipment with items but no OUT movements means the stock settlement
         // never ran — status alone would say the goods left while the shelves

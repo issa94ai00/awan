@@ -34,9 +34,42 @@ function atomicityUser(): User
     return User::factory()->admin()->create();
 }
 
-function atomicityProduct(float $price = 100): Product
+/**
+ * A stocked product in a real warehouse.
+ *
+ * A direct sale now names the shelf it comes off and refuses what the shelf
+ * cannot cover, so these tests have to set up stock the way a real sale needs
+ * it — which is the point of the change.
+ */
+function atomicityProduct(float $price = 100, int $stock = 50): Product
 {
-    return Product::factory()->create(['price' => $price, 'cost_price' => 60]);
+    $product = Product::factory()->create(['price' => $price, 'cost_price' => 60]);
+
+    App\Models\WarehouseInventory::create([
+        'product_id' => $product->id,
+        'warehouse_id' => atomicityWarehouse()->id,
+        'quantity' => $stock,
+        'available_quantity' => $stock,
+        'reserved_quantity' => 0,
+    ]);
+
+    return $product;
+}
+
+/** One warehouse for the whole test file, so lines need not name it. */
+function atomicityWarehouse(): App\Models\Warehouse
+{
+    static $warehouse = null;
+
+    if ($warehouse === null || ! App\Models\Warehouse::whereKey($warehouse->id)->exists()) {
+        $warehouse = App\Models\Warehouse::create([
+            'name' => 'المستودع الرئيسي',
+            'code' => 'MAIN-ATOM',
+            'is_active' => true,
+        ]);
+    }
+
+    return $warehouse;
 }
 
 it('writes an invoice and its lines together', function () {

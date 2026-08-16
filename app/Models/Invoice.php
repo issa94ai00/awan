@@ -14,6 +14,10 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_number',
         'customer_id',
+        // The rep this sale is credited to. Optional: a counter sale rung up by
+        // an admin belongs to nobody, and inventing an attribution would be
+        // worse than leaving it empty.
+        'assigned_employee_id',
         'sales_order_id',
         'warehouse_id',
         'subtotal',
@@ -234,6 +238,12 @@ class Invoice extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /** The rep credited with the sale, when there is one. */
+    public function assignedEmployee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'assigned_employee_id');
     }
 
     public function salesOrder(): BelongsTo
