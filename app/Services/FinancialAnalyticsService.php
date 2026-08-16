@@ -114,7 +114,10 @@ class FinancialAnalyticsService
             ->map(function ($categoryItems) {
                 return [
                     'category' => $categoryItems->first()->product?->category?->name ?? 'Uncategorized',
-                    'revenue' => $categoryItems->sum('total_price'),
+                    // `sales_order_items` stores the line total as `total`.
+                    // Summing the absent `total_price` returned 0 without error,
+                    // so this report showed every category earning nothing.
+                    'revenue' => $categoryItems->sum('total'),
                     'quantity' => $categoryItems->sum('quantity'),
                 ];
             })

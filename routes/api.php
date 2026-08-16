@@ -780,6 +780,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
         // Analytics & Reporting (التحليلات والتقارير)
         Route::prefix('analytics')->group(function () {
+            // Overview (نظرة عامة) — the BI landing screen's whole card row.
+            Route::get('/overview', [AnalyticsController::class, 'getOverview'])->name('api.analytics.overview');
+
+            // CSV export per domain (تصدير). Declared before the domain routes
+            // so `export` is never swallowed as a path segment.
+            Route::get('/export/{domain}', [AnalyticsController::class, 'export'])
+                ->whereIn('domain', ['sales', 'inventory', 'warehouse', 'financial'])
+                ->name('api.analytics.export');
+
             // Sales Analytics (تحليلات المبيعات)
             Route::get('/sales/summary', [AnalyticsController::class, 'getSalesSummary'])->name('api.analytics.sales.summary');
             Route::get('/sales/trend', [AnalyticsController::class, 'getSalesTrend'])->name('api.analytics.sales.trend');

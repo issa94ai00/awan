@@ -10,6 +10,18 @@
       </button>
     </div>
 
+    <!--
+      A failed load used to be filled in with invented stock figures. It is now
+      stated plainly, and the panels below stay empty rather than lying.
+    -->
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-6">
+      <template #default>
+        <el-button size="small" type="danger" plain @click="loadReportData">
+          {{ $t('analytics.retry') }}
+        </el-button>
+      </template>
+    </el-alert>
+
     <!-- فلاتر الفترة -->
     <div class="bg-white p-6 rounded-lg shadow-lg mb-6">
       <div class="grid grid-cols-4 gap-4">
@@ -175,9 +187,7 @@
             </div>
             <div class="flex-1">
               <div class="flex justify-between mb-1">
-                <span class="font-medium text-sm">
-                  {{ item.type === 'in' ? 'إيداع' : item.type === 'out' ? 'صرف' : 'تسوية' }}
-                </span>
+                <span class="font-medium text-sm">{{ movementTypeLabel(item.type) }}</span>
                 <span class="text-sm text-gray-600">{{ item.count }}</span>
               </div>
               <div class="w-full bg-gray-200 rounded-full h-3">
@@ -275,11 +285,16 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted } from 'vue';
-import axios from 'axios';
+// Was raw `axios`, which bypasses the bearer-token and 401 interceptors in
+// `@/api/index.js` — every request from this screen went out unauthenticated.
+import api from '@/api';
+import { ElMessage } from 'element-plus';
+import { downloadBlob } from '@/utils/download';
 
 const { t } = useI18n();
 
 const loading = ref(false);
+const error = ref(null);
 const selectedReportType = ref('inventory');
 const dateFrom = ref('');
 const dateTo = ref('');
@@ -299,18 +314,19 @@ const reportData = ref([]);
 
 async function fetchWarehouses() {
   try {
-    const response = await axios.get('/api/v1/admin/wms/warehouses');
-    warehouses.value = response.data.data;
-  } catch (error) {
-    console.error('Error fetching warehouses:', error);
+    const response = await api.get('/admin/wms/warehouses', { params: { per_page: 100 } });
+    warehouses.value = response.data?.data ?? response.data ?? [];
+  } catch (err) {
+    console.error('Error fetching warehouses:', err);
+    warehouses.value = [];
   }
 }
 
 async function loadReportData() {
   loading.value = true;
+  error.value = null;
   try {
-    // محاكاة استدعاء API - يجب استبدالها بـ API حقيقي
-    const response = await axios.get('/api/v1/admin/wms/reports', {
+    const response = await api.get('/admin/wms/reports', {
       params: {
         type: selectedReportType.value,
         date_from: dateFrom.value,
@@ -318,62 +334,78 @@ async function loadReportData() {
         warehouse_id: selectedWarehouse.value,
       }
     });
-    
-    stats.value = response.data.stats;
+
+    stats.value = response.data.stats ?? {};
     inventoryByCategory.value = response.data.inventory_by_category || [];
     movementsByType.value = response.data.movements_by_type || [];
     reportData.value = response.data.data || [];
-  } catch (error) {
-    console.error('Error loading report data:', error);
-    // بيانات وهمية للعرض
-    loadMockData();
+  } catch (err) {
+    // Previously fell back to `loadMockData()`: a failed request filled the
+    // screen with five invented products and a 245,320 total, presented as the
+    // warehouse's real stock. A failure now says so and shows nothing.
+    console.error('Error loading report data:', err);
+    error.value = err?.response?.data?.message || err?.message || t('analytics.load_failed');
+    stats.value = {};
+    inventoryByCategory.value = [];
+    movementsByType.value = [];
+    reportData.value = [];
   } finally {
     loading.value = false;
   }
-}
-
-function loadMockData() {
-  stats.value = {
-    totalStock: 15420,
-    totalValue: '245,320 ر.س',
-    lowStockCount: 23,
-    todayMovements: 156,
-  };
-
-  inventoryByCategory.value = [
-    { category: t('electronics'), quantity: 5200 },
-    { category: 'أجهزة منزلية', quantity: 3800 },
-    { category: t('clothing'), quantity: 2900 },
-    { category: 'مواد غذائية', quantity: 2100 },
-    { category: t('subject_other'), quantity: 1420 },
-  ];
-
-  movementsByType.value = [
-    { type: 'in', count: 89 },
-    { type: 'out', count: 67 },
-    { type: 'adjustment', count: 12 },
-  ];
-
-  reportData.value = [
-    { id: 1, product_name: 'تلفزيون سامسونج 55"', product_code: 'TV-001', warehouse_name: 'المستودع الرئيسي', quantity: 45, value: '22,500 ر.س', status: 'ok' },
-    { id: 2, product_name: 'ثلاجة LG', product_code: 'RF-002', warehouse_name: 'المستودع الرئيسي', quantity: 12, value: '18,000 ر.س', status: 'low' },
-    { id: 3, product_name: 'غسالة باناسونيك', product_code: 'WM-003', warehouse_name: 'مستودع الرياض', quantity: 8, value: '12,000 ر.س', status: 'critical' },
-    { id: 4, product_name: 'مايكروويف شارب', Product_code: 'MW-004', warehouse_name: 'مستودع جدة', quantity: 32, value: '9,600 ر.س', status: 'ok' },
-    { id: 5, product_name: 'مكيف كاريير', product_code: 'AC-005', warehouse_name: 'المستودع الرئيسي', quantity: 18, value: '27,000 ر.س', status: 'ok' },
-  ];
 }
 
 function refreshData() {
   loadReportData();
 }
 
+/**
+ * Exports the rows behind one of the breakdown panels.
+ *
+ * Used to be `alert('سيتم تصدير الرسم البياني: …')` — a promise of a feature
+ * that did not exist. These panels are bar lists rather than real charts, so
+ * what there is to export is the data, and that is what this hands over.
+ */
 function exportChart(type) {
-  alert(`سيتم تصدير الرسم البياني: ${type}`);
+  const panels = {
+    inventory: {
+      rows: inventoryByCategory.value,
+      headers: [t('category'), t('quantity')],
+      toRow: (item) => [item.category, item.quantity],
+    },
+    movements: {
+      rows: movementsByType.value,
+      headers: [t('type'), t('count')],
+      toRow: (item) => [movementTypeLabel(item.type), item.count],
+    },
+  };
+
+  const panel = panels[type];
+  if (!panel || !panel.rows.length) {
+    ElMessage.warning(t('no_data_to_export'));
+    return;
+  }
+
+  const csv = [panel.headers, ...panel.rows.map(panel.toRow)]
+    .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const stamp = new Date().toISOString().split('T')[0];
+  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `wms_${type}_${stamp}.csv`);
+}
+
+/**
+ * Movement types arrive as identifiers and are translated only for display.
+ * The template used to inline the Arabic words, so an English reader saw
+ * إيداع / صرف / تسوية regardless of the language they had chosen.
+ */
+function movementTypeLabel(type) {
+  const keys = { in: 'movement_in', out: 'movement_out', adjustment: 'movement_adjustment' };
+  return keys[type] ? t(keys[type]) : type;
 }
 
 function exportTable() {
   if (reportData.value.length === 0) {
-    alert(t('no_data_to_export'));
+    ElMessage.warning(t('no_data_to_export'));
     return;
   }
   
@@ -388,12 +420,14 @@ function exportTable() {
       item.status === 'ok' ? 'جيد' : item.status === 'low' ? 'منخفض' : t('critical')
     ])
   ].map(row => row.join(',')).join('\n');
-  
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `wms_report_${selectedReportType.value}_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click();
+
+  // The BOM is what makes Excel on Windows read these Arabic product names as
+  // UTF-8 instead of the system codepage. Without it the export opened as
+  // mojibake, and the blob URL was never revoked.
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const stamp = new Date().toISOString().split('T')[0];
+
+  downloadBlob(blob, `wms_report_${selectedReportType.value}_${stamp}.csv`);
 }
 
 onMounted(() => {

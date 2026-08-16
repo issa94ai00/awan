@@ -1,128 +1,110 @@
 <template>
-  <div class="warehouse-analytics-page">
-    <div class="page-header">
-      <h1><el-icon><Management /></el-icon> {{ $t('analytics.warehouse_analytics') }}</h1>
-      <el-form :inline="true">
-        <el-form-item :label="$t('wms.warehouse')">
-          <el-select v-model="selectedWarehouse" :placeholder="$t('wms.select_warehouse')" clearable @change="loadAnalytics">
-            <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('common.date_range')">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            :range-separator="$t('common.to')"
-            :start-placeholder="$t('common.start_date')"
-            :end-placeholder="$t('common.end_date')"
-            @change="loadAnalytics"
-          />
-        </el-form-item>
-      </el-form>
-    </div>
+  <div ref="pageRef" class="warehouse-analytics-page">
+    <AdminPageHeader
+      badge="BI"
+      icon="fas fa-warehouse"
+      :title="$t('analytics.warehouse_analytics')"
+      :subtitle="$t('analytics.warehouse')"
+    />
 
-    <!-- Overview Stats -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-blue">
-              <el-icon><Grid /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.utilization }}%</h3>
-              <p>{{ $t('analytics.utilization') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-green">
-              <el-icon><Aim /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.pickingAccuracy }}%</h3>
-              <p>{{ $t('analytics.picking_accuracy') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-orange">
-              <el-icon><Open /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.packingAccuracy }}%</h3>
-              <p>{{ $t('analytics.packing_accuracy') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-purple">
-              <el-icon><Odometer /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.throughput }}</h3>
-              <p>{{ $t('analytics.throughput') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <AnalyticsToolbar
+      v-model="range"
+      :presets="rangePresets"
+      :refreshing="refreshing"
+      :exporting="exporting"
+      can-export
+      :last-updated-label="lastUpdatedLabel"
+      @apply="applyRange"
+      @refresh="refresh"
+      @export="exportCsv"
+    >
+      <div class="filter-field">
+        <label>{{ $t('warehouse') }}</label>
+        <el-select v-model="warehouseId" clearable :placeholder="$t('all_warehouses')" @change="applyRange">
+          <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+        </el-select>
+      </div>
+    </AnalyticsToolbar>
 
-    <!-- Charts -->
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.picking_efficiency') }}</span>
-            </div>
-          </template>
-          <div ref="pickingChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.zone_utilization') }}</span>
-            </div>
-          </template>
-          <div ref="zoneChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Performance Metrics -->
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('analytics.performance_metrics') }}</span>
-        </div>
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-4">
+      <template #default>
+        <el-button size="small" type="danger" plain class="mt-1" @click="fetchAll()">
+          {{ $t('analytics.retry') }}
+        </el-button>
       </template>
-      <el-table :data="performanceMetrics" v-loading="loading">
-        <el-table-column prop="metric" :label="$t('analytics.metric')" />
-        <el-table-column prop="value" :label="$t('analytics.value')" />
-        <el-table-column prop="target" :label="$t('analytics.target')" />
-        <el-table-column prop="variance" :label="$t('analytics.variance')">
-          <template #default="{ row }">
-            <el-tag :type="row.variance >= 0 ? 'success' : 'danger'">{{ row.variance }}%</el-tag>
+    </el-alert>
+
+    <AdminStatGrid :min="230">
+      <KpiCard
+        :label="$t('analytics.picking_completion')"
+        :value="formatPercent(performance.picking?.completion_rate)"
+        :icon="Checked"
+        color="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.packing_completion')"
+        :value="formatPercent(performance.packing?.completion_rate)"
+        :icon="Box"
+        color="linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.capacity_utilization')"
+        :value="formatPercent(capacity.utilization_percentage)"
+        :icon="Management"
+        color="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.cycle_count_accuracy')"
+        :value="formatPercent(accuracy.accuracy_rate)"
+        :icon="CircleCheck"
+        color="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+        :loading="loading"
+      />
+    </AdminStatGrid>
+
+    <el-row :gutter="20" class="mt-4">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.bin_utilization') }}</span>
           </template>
+          <div ref="binChartRef" class="chart-box"></div>
+        </el-card>
+      </el-col>
+
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.by_zone') }}</span>
+          </template>
+          <div ref="zoneChartRef" class="chart-box"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-card shadow="never" class="mt-4">
+      <template #header>
+        <span class="card-title">{{ $t('analytics.picker_performance') }}</span>
+      </template>
+
+      <el-table
+        :data="pickers"
+        v-loading="loading"
+        stripe
+        :empty-text="$t('analytics.no_data_for_period')"
+      >
+        <el-table-column type="index" width="55" align="center" />
+        <el-table-column prop="picker_name" :label="$t('analytics.picker')" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.picker_name || row.name || '—' }}</template>
         </el-table-column>
-        <el-table-column prop="trend" :label="$t('analytics.trend')">
-          <template #default="{ row }">
-            <el-icon :color="row.trend === 'up' ? '#67c23a' : '#f56c6c'">
-              <component :is="row.trend === 'up' ? 'ArrowUp' : 'ArrowDown'" />
-            </el-icon>
-          </template>
+        <el-table-column :label="$t('analytics.lists_completed')" width="170" align="center">
+          <template #default="{ row }">{{ formatNumber(row.completed_lists ?? row.lists) }}</template>
+        </el-table-column>
+        <el-table-column :label="$t('analytics.items_picked')" width="170" align="center">
+          <template #default="{ row }">{{ formatNumber(row.items_picked ?? row.total_items) }}</template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -130,192 +112,153 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { Management, Grid, Aim, Open, Odometer, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
-import * as echarts from 'echarts'
+import { ref, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { Box, Checked, Management, CircleCheck } from '@element-plus/icons-vue';
+import api from '@/api';
+import analyticsApi from '@/api/analytics';
+import { useCurrency } from '@/Composables/useCurrency';
+import { useAnalyticsPanel } from '@/Composables/useAnalyticsPanel';
+import { useEcharts, CHART_COLORS, donutOption, emptyChartOption } from '@/Composables/useEcharts';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import AnalyticsToolbar from '@/components/admin/analytics/AnalyticsToolbar.vue';
+import KpiCard from '@/components/admin/analytics/KpiCard.vue';
 
-const { t } = useI18n()
-const loading = ref(false)
-const selectedWarehouse = ref(null)
-const dateRange = ref([])
-const warehouses = ref([])
-const overview = ref({
-  utilization: 0,
-  pickingAccuracy: 0,
-  packingAccuracy: 0,
-  throughput: 0
-})
-const performanceMetrics = ref([])
-const pickingChartRef = ref(null)
-const zoneChartRef = ref(null)
-let pickingChart = null
-let zoneChart = null
+/**
+ * Warehouse analytics, from `/analytics/warehouse/*`.
+ *
+ * The warehouse picker used to be a single hardcoded entry — `{ id: 1, name:
+ * 'Main Warehouse' }` — so filtering was impossible on any install with more
+ * than one site. It reads the real list now.
+ */
+
+const { t } = useI18n();
+const { formatNumber } = useCurrency();
+
+const pageRef = ref(null);
+const warehouses = ref([]);
+const warehouseId = ref(null);
+const performance = ref({});
+const capacity = ref({});
+const accuracy = ref({});
+const bins = ref({});
+const pickers = ref([]);
+
+const binChartRef = ref(null);
+const zoneChartRef = ref(null);
+
+const { register, renderAll, observe } = useEcharts();
+
+const {
+  loading, refreshing, exporting, error, range, rangePresets,
+  lastUpdatedLabel, fetchAll, refresh, applyRange, exportCsv,
+} = useAnalyticsPanel({
+  exportDomain: 'warehouse',
+  load: async (query) => {
+    const scoped = { ...query, warehouse_id: warehouseId.value || undefined };
+
+    const [perfRes, capacityRes, accuracyRes, binsRes, pickersRes] = await Promise.all([
+      analyticsApi.warehousePerformance(scoped),
+      analyticsApi.capacityPlanning(scoped),
+      analyticsApi.cycleCountAccuracy(scoped),
+      analyticsApi.binUtilization(scoped),
+      analyticsApi.pickerPerformance(scoped),
+    ]);
+
+    performance.value = perfRes.data ?? {};
+    capacity.value = capacityRes.data ?? {};
+    accuracy.value = accuracyRes.data ?? {};
+    bins.value = binsRes.data ?? {};
+    pickers.value = pickersRes.data ?? [];
+
+    await renderAll();
+  },
+});
+
+const formatPercent = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${formatNumber(Math.round(number * 10) / 10)}%`;
+};
 
 const loadWarehouses = async () => {
   try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
-  } catch (error) {
-    console.error('Failed to load warehouses:', error)
+    const { data } = await api.get('/admin/wms/warehouses', { params: { per_page: 100 } });
+    warehouses.value = data?.data ?? data ?? [];
+  } catch (err) {
+    // A missing filter list must not take the whole screen down with it.
+    console.error('Failed to load warehouses:', err);
+    warehouses.value = [];
   }
-}
+};
 
-const loadAnalytics = async () => {
-  loading.value = true
-  try {
-    // const response = await api.get('/api/v1/analytics/warehouse/performance', {
-    //   params: { warehouse_id: selectedWarehouse.value, start_date: dateRange.value[0], end_date: dateRange.value[1] }
-    // })
-    overview.value = {
-      utilization: 78,
-      pickingAccuracy: 98.5,
-      packingAccuracy: 99.2,
-      throughput: 450
-    }
-    
-    performanceMetrics.value = [
-      { metric: t('wms.average_picking_time'), value: '15.5 min', target: '15 min', variance: 3.3, trend: 'up' },
-      { metric: t('wms.average_packing_time'), value: '12.3 min', target: '12 min', variance: -2.5, trend: 'down' },
-      { metric: t('wms.cycle_count_accuracy'), value: '97.8%', target: '98%', variance: -0.2, trend: 'down' }
-    ]
-    
-    initPickingChart()
-    initZoneChart()
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
-  } finally {
-    loading.value = false
+register('bins', binChartRef, () => {
+  const items = [
+    { name: t('analytics.full_bins'), value: Number(bins.value.full_bins) || 0, color: CHART_COLORS.danger },
+    { name: t('analytics.empty_bins'), value: Number(bins.value.empty_bins) || 0, color: CHART_COLORS.success },
+  ];
+  const used = (Number(bins.value.total_bins) || 0) - items[0].value - items[1].value;
+  if (used > 0) {
+    items.splice(1, 0, { name: t('analytics.partially_filled'), value: used, color: CHART_COLORS.warning });
   }
-}
 
-const initPickingChart = () => {
-  if (!pickingChartRef.value) return
-  
-  if (pickingChart) pickingChart.dispose()
-  pickingChart = echarts.init(pickingChartRef.value)
-  
-  const option = {
-    tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    },
-    yAxis: { type: 'value' },
+  if (!items.some((i) => i.value > 0)) return emptyChartOption(t('analytics.no_data_for_period'));
+
+  return donutOption(items);
+});
+
+register('zone', zoneChartRef, () => {
+  const rows = bins.value.by_zone ?? [];
+  if (!rows.length) return emptyChartOption(t('analytics.no_data_for_period'));
+
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v) => `${v}%` },
+    grid: { left: 10, right: 20, top: 20, bottom: 10, containLabel: true },
+    xAxis: { type: 'value', max: 100 },
+    yAxis: { type: 'category', data: rows.map((r) => r.zone ?? r.name ?? t('undefined')) },
     series: [{
-      name: t('analytics.orders_picked'),
-      type: 'line',
-      data: [45, 52, 48, 55, 60, 42],
-      smooth: true
-    }]
-  }
-  
-  pickingChart.setOption(option)
-}
+      type: 'bar',
+      data: rows.map((r) => Number(r.utilization ?? r.avg_utilization) || 0),
+      itemStyle: { color: CHART_COLORS.info, borderRadius: [0, 4, 4, 0] },
+      barMaxWidth: 26,
+    }],
+  };
+});
 
-const initZoneChart = () => {
-  if (!zoneChartRef.value) return
-  
-  if (zoneChart) zoneChart.dispose()
-  zoneChart = echarts.init(zoneChartRef.value)
-  
-  const option = {
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'pie',
-      data: [
-        { value: 35, name: 'Zone A' },
-        { value: 30, name: 'Zone B' },
-        { value: 20, name: 'Zone C' },
-        { value: 15, name: 'Zone D' }
-      ]
-    }]
-  }
-  
-  zoneChart.setOption(option)
-}
-
-onMounted(() => {
-  loadWarehouses()
-  loadAnalytics()
-  
-  window.addEventListener('resize', () => {
-    pickingChart?.resize()
-    zoneChart?.resize()
-  })
-})
+onMounted(async () => {
+  await loadWarehouses();
+  await fetchAll();
+  observe(pageRef.value);
+});
 </script>
 
 <style scoped>
-.warehouse-analytics-page {
-  padding: 20px;
+.chart-box {
+  width: 100%;
+  height: 320px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+.card-title {
+  font-weight: 700;
+  color: #1f2d3d;
 }
 
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
+.mt-4 {
+  margin-top: 1.5rem;
 }
 
-.stats-row {
-  margin-bottom: 20px;
+.mt-1 {
+  margin-top: 0.5rem;
 }
 
-.stat-card {
-  margin-bottom: 20px;
+.mb-4 {
+  margin-bottom: 1.5rem;
 }
 
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-}
-
-.stat-icon-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.stat-icon-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.stat-icon-orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.stat-icon-purple { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.stat-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.stat-info p {
-  margin: 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+@media (max-width: 768px) {
+  .chart-box {
+    height: 260px;
+  }
 }
 </style>

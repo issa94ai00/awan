@@ -161,8 +161,9 @@ class ReportBuilderService
             ->leftJoin('categories as c', 'p.category_id', '=', 'c.id')
             ->whereBetween('so.order_date', [$fromDate, $toDate])
             ->where('so.status', '!=', SalesOrder::STATUS_CANCELLED)
-            ->selectRaw('soi.product_id, p.name, p.name_ar, p.name_en, p.sku, c.name_ar as cat_ar, c.name_en as cat_en, SUM(soi.quantity) as quantity_sold, SUM(soi.total_price) as revenue, COUNT(so.id) as orders')
-            ->groupBy('soi.product_id', 'p.name', 'p.name_ar', 'p.name_en', 'p.sku', 'c.name_ar', 'c.name_en')
+            // No `p.name` column exists — see the same fix in SalesAnalyticsService.
+            ->selectRaw('soi.product_id, p.name_ar, p.name_en, p.sku, c.name_ar as cat_ar, c.name_en as cat_en, SUM(soi.quantity) as quantity_sold, SUM(soi.total) as revenue, COUNT(so.id) as orders')
+            ->groupBy('soi.product_id', 'p.name_ar', 'p.name_en', 'p.sku', 'c.name_ar', 'c.name_en')
             ->orderByDesc('revenue')
             ->limit($limit)
             ->get()
@@ -173,16 +174,19 @@ class ReportBuilderService
                 } elseif ($locale === 'en' && !empty($item->name_en)) {
                     $productName = $item->name_en;
                 } else {
-                    $productName = $item->name ?? ($item->name_ar ?? ($item->name_en ?? 'Unknown'));
+                    $productName = $item->name_ar ?: ($item->name_en ?: 'Unknown');
                 }
 
+                // `??` only catches null, so a product with an empty-string name
+                // in the reading language rendered as blank rather than falling
+                // through to the other language.
                 $categoryName = 'Uncategorized';
                 if ($locale === 'ar' && !empty($item->cat_ar)) {
                     $categoryName = $item->cat_ar;
                 } elseif ($locale === 'en' && !empty($item->cat_en)) {
                     $categoryName = $item->cat_en;
                 } else {
-                    $categoryName = $item->cat_ar ?? ($item->cat_en ?? 'Uncategorized');
+                    $categoryName = $item->cat_ar ?: ($item->cat_en ?: 'Uncategorized');
                 }
 
                 return [
@@ -292,36 +296,73 @@ class ReportBuilderService
     }
 
     /**
+     * Rows rendered as CSV text, ready to stream or to write.
+     *
+     * Opens with a UTF-8 BOM because Excel on Windows otherwise reads the file
+     * in the system codepage, which turns every Arabic product name into
+     * mojibake — the single most likely thing to go wrong with an export from
+     * this system.
+     *
+     * @param  iterable<int, array<string, mixed>|object>  $rows
+     */
+    public function toCsvString(iterable $rows): string
+    {
+        $rows = is_array($rows) ? $rows : iterator_to_array($rows);
+
+        if ($rows === []) {
+            return "\xEF\xBB\xBF";
+        }
+
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+
+        $first = is_object($rows[array_key_first($rows)])
+            ? get_object_vars($rows[array_key_first($rows)])
+            : $rows[array_key_first($rows)];
+        fputcsv($handle, array_keys($first));
+
+        foreach ($rows as $row) {
+            $row = is_object($row) ? get_object_vars($row) : $row;
+            // Nested values (a breakdown inside a row) would render as "Array";
+            // JSON keeps them readable in a cell.
+            $row = array_map(
+                fn ($value) => is_scalar($value) || $value === null ? $value : json_encode($value, JSON_UNESCAPED_UNICODE),
+                $row
+            );
+            fputcsv($handle, $row);
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv;
+    }
+
+    /**
      * Export report to CSV
+     *
+     * Creates the export directory first: it is not in the repository, so this
+     * method fatally failed on `fopen` for any install that had never made it
+     * by hand.
      */
     public function exportToCsv(array $reportData, $filename = null): string
     {
-        $filename = $filename ?? 'report_' . now()->format('Y-m-d_H-i-s') . '.csv';
-        $filepath = storage_path('app/exports/' . $filename);
-
         $data = $reportData['data'] ?? [];
-        
+
         if (empty($data) || !is_iterable($data)) {
             return '';
         }
 
-        $file = fopen($filepath, 'w');
+        $filename = $filename ?? 'report_' . now()->format('Y-m-d_H-i-s') . '.csv';
+        $directory = storage_path('app/exports');
 
-        // Write headers
-        if (is_array($data) && !empty($data)) {
-            $headers = array_keys(is_object($data[0]) ? get_object_vars($data[0]) : $data[0]);
-            fputcsv($file, $headers);
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
         }
 
-        // Write data rows
-        foreach ($data as $row) {
-            if (is_object($row)) {
-                $row = get_object_vars($row);
-            }
-            fputcsv($file, $row);
-        }
-
-        fclose($file);
+        $filepath = $directory . '/' . $filename;
+        file_put_contents($filepath, $this->toCsvString($data));
 
         return $filepath;
     }

@@ -1,116 +1,144 @@
 <template>
-  <div class="inventory-analytics-page">
-    <div class="page-header">
-      <h1><el-icon><Box /></el-icon> {{ $t('analytics.inventory_analytics') }}</h1>
-      <el-button type="primary" @click="exportReport">
-        <el-icon><Download /></el-icon> {{ $t('analytics.export_report') }}
-      </el-button>
-    </div>
-
-    <!-- Overview Stats -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-blue">
-              <el-icon><Box /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.totalProducts }}</h3>
-              <p>{{ $t('analytics.total_products') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-green">
-              <el-icon><Goods /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.totalStock }}</h3>
-              <p>{{ $t('analytics.total_stock') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-orange">
-              <el-icon><Warning /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.lowStock }}</h3>
-              <p>{{ $t('analytics.low_stock') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-purple">
-              <el-icon><Money /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>${{ formatNumber(overview.inventoryValue) }}</h3>
-              <p>{{ $t('analytics.inventory_value') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Charts -->
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.inventory_turnover') }}</span>
-            </div>
-          </template>
-          <div ref="turnoverChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.abc_analysis') }}</span>
-            </div>
-          </template>
-          <div ref="abcChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Low Stock Alerts -->
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('analytics.low_stock_alerts') }}</span>
-          <el-tag type="danger">{{ lowStockProducts.length }}</el-tag>
-        </div>
+  <div ref="pageRef" class="inventory-analytics-page">
+    <AdminPageHeader
+      badge="BI"
+      icon="fas fa-boxes-stacked"
+      :title="$t('analytics.inventory_analytics')"
+      :subtitle="$t('analytics.inventory')"
+    >
+      <template #actions>
+        <el-tag size="small" type="info" effect="plain">
+          {{ $t('amounts_in_base_currency', { currency: baseCode }) }}
+        </el-tag>
       </template>
-      <el-table :data="lowStockProducts" v-loading="loading">
-        <el-table-column prop="product" :label="$t('analytics.product')" />
-        <el-table-column prop="sku" :label="$t('analytics.sku')" />
-        <el-table-column prop="current_stock" :label="$t('analytics.current_stock')" />
-        <el-table-column prop="min_stock" :label="$t('analytics.min_stock')" />
-        <el-table-column prop="status" :label="$t('common.status')">
+    </AdminPageHeader>
+
+    <AnalyticsToolbar
+      v-model="range"
+      :presets="rangePresets"
+      :refreshing="refreshing"
+      :exporting="exporting"
+      can-export
+      :last-updated-label="lastUpdatedLabel"
+      @apply="applyRange"
+      @refresh="refresh"
+      @export="exportCsv"
+    />
+
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-4">
+      <template #default>
+        <el-button size="small" type="danger" plain class="mt-1" @click="fetchAll()">
+          {{ $t('analytics.retry') }}
+        </el-button>
+      </template>
+    </el-alert>
+
+    <AdminStatGrid :min="230">
+      <KpiCard
+        :label="$t('analytics.total_products')"
+        :value="formatNumber(summary.total_products)"
+        :icon="Box"
+        color="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.inventory_value')"
+        :value="formatMoney(summary.total_value)"
+        :icon="Money"
+        color="linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.low_stock')"
+        :value="formatNumber(summary.low_stock_items)"
+        :icon="Warning"
+        color="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+        to="/admin/inventory"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.health_score')"
+        :value="formatPercent(health.health_score)"
+        :icon="CircleCheck"
+        color="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
+        :loading="loading"
+      />
+    </AdminStatGrid>
+
+    <el-row :gutter="20" class="mt-4">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.abc_analysis') }}</span>
+          </template>
+          <div ref="abcChartRef" class="chart-box"></div>
+        </el-card>
+      </el-col>
+
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.inventory_value_by_category') }}</span>
+          </template>
+          <div ref="valuationChartRef" class="chart-box"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" class="mt-4">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.inventory_turnover') }}</span>
+          </template>
+          <div class="metric-list">
+            <div v-for="item in turnoverRows" :key="item.label" class="metric-row">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.stockout_analysis') }}</span>
+          </template>
+          <div class="metric-list">
+            <div v-for="item in stockoutRows" :key="item.label" class="metric-row">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-card shadow="never" class="mt-4">
+      <template #header>
+        <span class="card-title">{{ $t('analytics.slow_moving_items') }}</span>
+      </template>
+
+      <el-table
+        :data="slowMoving"
+        v-loading="loading"
+        stripe
+        :empty-text="$t('analytics.no_data_for_period')"
+      >
+        <el-table-column prop="product_name" :label="$t('analytics.product')" min-width="220" show-overflow-tooltip />
+        <el-table-column :label="$t('current_stock')" width="150" align="center">
+          <template #default="{ row }">{{ formatNumber(row.stock_quantity) }}</template>
+        </el-table-column>
+        <el-table-column :label="$t('analytics.days_since_last_sale')" width="180" align="center">
           <template #default="{ row }">
-            <el-tag type="danger">{{ $t('analytics.critical') }}</el-tag>
+            <el-tag :type="row.days_since_last_sale > 90 ? 'danger' : 'warning'" size="small">
+              {{ formatNumber(row.days_since_last_sale) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="$t('common.actions')" width="150">
-          <template #default="{ row }">
-            <el-button size="small" @click="reorderProduct(row)">
-              <el-icon><ShoppingCart /></el-icon> {{ $t('analytics.reorder') }}
-            </el-button>
-          </template>
+        <el-table-column :label="$t('analytics.value')" width="180" align="center">
+          <template #default="{ row }">{{ formatMoney(row.value ?? row.stock_value) }}</template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -118,196 +146,178 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { Box, Goods, Warning, Money, Download, ShoppingCart } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
-import * as echarts from 'echarts'
+import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { Box, Money, Warning, CircleCheck } from '@element-plus/icons-vue';
+import analyticsApi from '@/api/analytics';
+import { useCurrency } from '@/Composables/useCurrency';
+import { useAnalyticsPanel } from '@/Composables/useAnalyticsPanel';
+import { useEcharts, CHART_COLORS, donutOption, emptyChartOption } from '@/Composables/useEcharts';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import AnalyticsToolbar from '@/components/admin/analytics/AnalyticsToolbar.vue';
+import KpiCard from '@/components/admin/analytics/KpiCard.vue';
 
-const { t } = useI18n()
-const loading = ref(false)
-const overview = ref({
-  totalProducts: 0,
-  totalStock: 0,
-  lowStock: 0,
-  inventoryValue: 0
-})
-const lowStockProducts = ref([])
-const turnoverChartRef = ref(null)
-const abcChartRef = ref(null)
-let turnoverChart = null
-let abcChart = null
+/**
+ * Inventory analytics, from `/analytics/inventory/*`.
+ *
+ * The export button here previously showed "export started" and issued no
+ * request at all; it now downloads the ABC breakdown as CSV.
+ */
 
-const formatNumber = (num) => {
-  return new Intl.NumberFormat().format(num)
-}
+const { t } = useI18n();
+const { baseCode, formatMoney, formatNumber } = useCurrency();
 
-const loadAnalytics = async () => {
-  loading.value = true
-  try {
-    // const response = await api.get('/api/v1/analytics/inventory/overview')
-    overview.value = {
-      totalProducts: 500,
-      totalStock: 15000,
-      lowStock: 25,
-      inventoryValue: 750000
-    }
-    initTurnoverChart()
-    initABCChart()
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
-  } finally {
-    loading.value = false
-  }
-}
+const pageRef = ref(null);
+const summary = ref({});
+const health = ref({});
+const abc = ref({});
+const valuation = ref({});
+const turnover = ref({});
+const stockout = ref({});
+const slowMoving = ref([]);
 
-const loadLowStockProducts = async () => {
-  try {
-    // const response = await api.get('/api/v1/analytics/inventory/low-stock')
-    lowStockProducts.value = [
-      { id: 1, product: 'Product A', sku: 'SKU-001', current_stock: 5, min_stock: 10 },
-      { id: 2, product: 'Product B', sku: 'SKU-002', current_stock: 3, min_stock: 15 }
-    ]
-  } catch (error) {
-    console.error('Failed to load low stock products:', error)
-  }
-}
+const abcChartRef = ref(null);
+const valuationChartRef = ref(null);
 
-const initTurnoverChart = () => {
-  if (!turnoverChartRef.value) return
-  
-  if (turnoverChart) turnoverChart.dispose()
-  turnoverChart = echarts.init(turnoverChartRef.value)
-  
-  const option = {
-    tooltip: { trigger: 'axis' },
-    xAxis: {
+const { register, renderAll, observe } = useEcharts();
+
+const {
+  loading, refreshing, exporting, error, range, rangePresets,
+  lastUpdatedLabel, fetchAll, refresh, applyRange, exportCsv,
+} = useAnalyticsPanel({
+  exportDomain: 'inventory',
+  load: async (query) => {
+    const [summaryRes, healthRes, abcRes, valuationRes, turnoverRes, stockoutRes, slowRes] = await Promise.all([
+      analyticsApi.inventorySummary(),
+      analyticsApi.inventoryHealthScore(),
+      analyticsApi.abcAnalysis(),
+      analyticsApi.inventoryValuation(),
+      analyticsApi.inventoryTurnover(query),
+      analyticsApi.stockoutAnalysis(query),
+      analyticsApi.slowMovingInventory(query),
+    ]);
+
+    summary.value = summaryRes.data ?? {};
+    health.value = healthRes.data ?? {};
+    abc.value = abcRes.data ?? {};
+    valuation.value = valuationRes.data ?? {};
+    turnover.value = turnoverRes.data ?? {};
+    stockout.value = stockoutRes.data ?? {};
+    slowMoving.value = slowRes.data ?? [];
+
+    await renderAll();
+  },
+});
+
+const formatPercent = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  return `${formatNumber(Math.round(number * 10) / 10)}%`;
+};
+
+const turnoverRows = computed(() => [
+  { label: t('analytics.turnover_rate'), value: formatNumber(turnover.value.turnover_rate) },
+  { label: t('analytics.annualized_turnover'), value: formatNumber(turnover.value.annualized_turnover) },
+  { label: t('analytics.total_sold'), value: formatNumber(turnover.value.total_sold) },
+  { label: t('analytics.average_inventory'), value: formatNumber(turnover.value.average_inventory) },
+]);
+
+const stockoutRows = computed(() => [
+  { label: t('analytics.total_alerts'), value: formatNumber(stockout.value.total_alerts) },
+  { label: t('analytics.pending'), value: formatNumber(stockout.value.pending) },
+  { label: t('analytics.resolved'), value: formatNumber(stockout.value.resolved) },
+  { label: t('analytics.resolution_rate'), value: formatPercent(stockout.value.resolution_rate) },
+]);
+
+register('abc', abcChartRef, () => {
+  const items = [
+    { name: t('analytics.class_a'), value: Number(abc.value.a_items) || 0, color: CHART_COLORS.success },
+    { name: t('analytics.class_b'), value: Number(abc.value.b_items) || 0, color: CHART_COLORS.warning },
+    { name: t('analytics.class_c'), value: Number(abc.value.c_items) || 0, color: CHART_COLORS.danger },
+  ];
+
+  if (!items.some((i) => i.value > 0)) return emptyChartOption(t('analytics.no_data_for_period'));
+
+  return donutOption(items);
+});
+
+register('valuation', valuationChartRef, () => {
+  const rows = valuation.value.by_category ?? [];
+  if (!rows.length) return emptyChartOption(t('analytics.no_data_for_period'));
+
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v) => formatMoney(v) },
+    grid: { left: 10, right: 20, top: 20, bottom: 10, containLabel: true },
+    xAxis: { type: 'value' },
+    yAxis: {
       type: 'category',
-      data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
+      data: rows.map((r) => r.category ?? t('undefined')),
     },
-    yAxis: { type: 'value' },
     series: [{
-      name: t('analytics.turnover_rate'),
       type: 'bar',
-      data: [8.5, 9.2, 8.8, 9.5, 10.2, 9.8]
-    }]
-  }
-  
-  turnoverChart.setOption(option)
-}
+      data: rows.map((r) => Number(r.total_value ?? r.value) || 0),
+      itemStyle: { color: CHART_COLORS.primary, borderRadius: [0, 4, 4, 0] },
+      barMaxWidth: 26,
+    }],
+  };
+});
 
-const initABCChart = () => {
-  if (!abcChartRef.value) return
-  
-  if (abcChart) abcChart.dispose()
-  abcChart = echarts.init(abcChartRef.value)
-  
-  const option = {
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'pie',
-      data: [
-        { value: 20, name: 'Class A (80% value)', itemStyle: { color: '#67c23a' } },
-        { value: 30, name: 'Class B (15% value)', itemStyle: { color: '#e6a23c' } },
-        { value: 50, name: 'Class C (5% value)', itemStyle: { color: '#909399' } }
-      ]
-    }]
-  }
-  
-  abcChart.setOption(option)
-}
-
-const exportReport = async () => {
-  try {
-    // await api.get('/api/v1/analytics/inventory/export')
-    ElMessage.success(t('analytics.export_started'))
-  } catch (error) {
-    ElMessage.error(t('common.action_error'))
-  }
-}
-
-const reorderProduct = (product) => {
-  $router.push(`/admin/purchases/orders?product=${product.id}`)
-}
-
-onMounted(() => {
-  loadAnalytics()
-  loadLowStockProducts()
-  
-  window.addEventListener('resize', () => {
-    turnoverChart?.resize()
-    abcChart?.resize()
-  })
-})
+onMounted(async () => {
+  await fetchAll();
+  observe(pageRef.value);
+});
 </script>
 
 <style scoped>
-.inventory-analytics-page {
-  padding: 20px;
+.chart-box {
+  width: 100%;
+  height: 320px;
 }
 
-.page-header {
+.card-title {
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.metric-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.metric-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
-}
-
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  margin-bottom: 20px;
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.stat-icon {
-  width: 50px;
-  height: 50px;
+  padding: 0.75rem 1rem;
   border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
+  background: #f8fafc;
 }
 
-.stat-icon-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.stat-icon-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.stat-icon-orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.stat-icon-purple { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.stat-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
+.metric-row span {
+  color: #64748b;
+  font-size: 0.9rem;
 }
 
-.stat-info p {
-  margin: 0;
-  font-size: 14px;
-  color: #666;
+.metric-row strong {
+  color: #1f2d3d;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.mt-4 {
+  margin-top: 1.5rem;
+}
+
+.mt-1 {
+  margin-top: 0.5rem;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .chart-box {
+    height: 260px;
+  }
 }
 </style>

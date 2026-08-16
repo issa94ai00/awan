@@ -1,372 +1,361 @@
 <template>
-  <div class="sales-analytics-page">
-    <div class="page-header">
-      <h1><el-icon><TrendCharts /></el-icon> {{ $t('analytics.sales_analytics') }}</h1>
-      <el-form :inline="true">
-        <el-form-item :label="$t('common.date_range')">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            :range-separator="$t('common.to')"
-            :start-placeholder="$t('common.start_date')"
-            :end-placeholder="$t('common.end_date')"
-            @change="loadAnalytics"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadAnalytics">
-            <el-icon><Search /></el-icon> {{ $t('common.search') }}
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+  <div ref="pageRef" class="sales-analytics-page">
+    <AdminPageHeader
+      badge="BI"
+      icon="fas fa-chart-line"
+      :title="$t('analytics.sales_analytics')"
+      :subtitle="$t('analytics.sales')"
+    >
+      <template #actions>
+        <el-tag size="small" type="info" effect="plain">
+          {{ $t('amounts_in_base_currency', { currency: baseCode }) }}
+        </el-tag>
+      </template>
+    </AdminPageHeader>
 
-    <!-- Overview Stats -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-blue">
-              <el-icon><Money /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>${{ formatNumber(overview.totalRevenue) }}</h3>
-              <p>{{ $t('analytics.total_revenue') }}</p>
-            </div>
-          </div>
+    <AnalyticsToolbar
+      v-model="range"
+      :presets="rangePresets"
+      :refreshing="refreshing"
+      :exporting="exporting"
+      can-export
+      :last-updated-label="lastUpdatedLabel"
+      @apply="applyRange"
+      @refresh="refresh"
+      @export="exportCsv"
+    />
+
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-4">
+      <template #default>
+        <el-button size="small" type="danger" plain class="mt-1" @click="fetchAll()">
+          {{ $t('analytics.retry') }}
+        </el-button>
+      </template>
+    </el-alert>
+
+    <AdminStatGrid :min="230">
+      <KpiCard
+        :label="$t('analytics.total_revenue')"
+        :value="formatMoney(summary.total_revenue)"
+        :icon="Money"
+        color="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.total_orders')"
+        :value="formatNumber(summary.total_orders)"
+        :icon="ShoppingCart"
+        color="linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.average_order_value')"
+        :value="formatMoney(summary.average_order_value)"
+        :icon="Wallet"
+        color="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.completed_orders')"
+        :value="formatNumber(summary.completed_orders)"
+        :icon="CircleCheck"
+        color="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+        :loading="loading"
+      />
+    </AdminStatGrid>
+
+    <el-row :gutter="20" class="mt-4">
+      <el-col :xs="24" :lg="16">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.sales_trends') }}</span>
+          </template>
+          <div ref="trendChartRef" class="chart-box"></div>
         </el-card>
       </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-green">
-              <el-icon><ShoppingCart /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.totalOrders }}</h3>
-              <p>{{ $t('analytics.total_orders') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-orange">
-              <el-icon><Wallet /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>${{ formatNumber(overview.averageOrderValue) }}</h3>
-              <p>{{ $t('analytics.average_order_value') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-purple">
-              <el-icon><TrendCharts /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ overview.growthRate }}%</h3>
-              <p>{{ $t('analytics.growth_rate') }}</p>
-            </div>
-          </div>
+
+      <el-col :xs="24" :lg="8">
+        <el-card shadow="never">
+          <template #header>
+            <span class="card-title">{{ $t('analytics.sales_by_channel') }}</span>
+          </template>
+          <div ref="channelChartRef" class="chart-box"></div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- Charts -->
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.sales_trends') }}</span>
-            </div>
-          </template>
-          <div ref="trendsChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('analytics.sales_by_category') }}</span>
-            </div>
-          </template>
-          <div ref="categoryChartRef" style="height: 300px"></div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Top Products -->
-    <el-card style="margin-top: 20px">
+    <el-card shadow="never" class="mt-4">
       <template #header>
         <div class="card-header">
-          <span>{{ $t('analytics.top_products') }}</span>
+          <span class="card-title">{{ $t('analytics.top_products') }}</span>
+          <el-tag v-if="topProducts.length" size="small" effect="plain">{{ formatNumber(topProducts.length) }}</el-tag>
         </div>
       </template>
-      <el-table :data="topProducts" v-loading="loading">
-        <el-table-column prop="product" :label="$t('analytics.product')" />
-        <el-table-column prop="category" :label="$t('analytics.category')" />
-        <el-table-column prop="quantity" :label="$t('analytics.quantity_sold')" />
-        <el-table-column prop="revenue" :label="$t('analytics.revenue')">
+
+      <el-table
+        :data="topProducts"
+        v-loading="loading"
+        stripe
+        :empty-text="$t('analytics.no_data_for_period')"
+      >
+        <el-table-column type="index" width="55" align="center" />
+        <el-table-column prop="product_name" :label="$t('analytics.product')" min-width="220" show-overflow-tooltip />
+        <el-table-column :label="$t('analytics.quantity_sold')" width="140" align="center">
+          <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
+        </el-table-column>
+        <el-table-column :label="$t('analytics.revenue')" width="180" align="center">
           <template #default="{ row }">
-            ${{ formatNumber(row.revenue) }}
+            <strong>{{ formatMoney(row.revenue) }}</strong>
           </template>
         </el-table-column>
-        <el-table-column prop="growth" :label="$t('analytics.growth')">
+        <!--
+          The old table had a "growth" column filled from a mock field the API
+          never returned; every row rendered an empty tag. Share of the period's
+          revenue is something the data actually supports.
+        -->
+        <el-table-column :label="$t('analytics.revenue_share')" width="200">
           <template #default="{ row }">
-            <el-tag :type="row.growth >= 0 ? 'success' : 'danger'">{{ row.growth }}%</el-tag>
+            <el-progress
+              :percentage="revenueShare(row.revenue)"
+              :stroke-width="10"
+              :color="CHART_COLORS.primary"
+            />
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <!-- Sales Forecast -->
-    <el-card style="margin-top: 20px">
+    <el-card shadow="never" class="mt-4">
       <template #header>
         <div class="card-header">
-          <span>{{ $t('analytics.sales_forecast') }}</span>
-          <el-select v-model="forecastPeriod" @change="loadForecast" size="small">
+          <span class="card-title">{{ $t('analytics.sales_forecast') }}</span>
+          <el-select v-model="forecastDays" size="small" style="width: 140px" @change="loadForecast">
             <el-option :value="7" :label="$t('analytics.7_days')" />
             <el-option :value="30" :label="$t('analytics.30_days')" />
             <el-option :value="90" :label="$t('analytics.90_days')" />
           </el-select>
         </div>
       </template>
-      <div ref="forecastChartRef" style="height: 300px"></div>
+      <div ref="forecastChartRef" class="chart-box"></div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { TrendCharts, Money, ShoppingCart, Wallet, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
-import * as echarts from 'echarts'
+import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { Money, ShoppingCart, Wallet, CircleCheck } from '@element-plus/icons-vue';
+import analyticsApi from '@/api/analytics';
+import { useCurrency } from '@/Composables/useCurrency';
+import { useAnalyticsPanel } from '@/Composables/useAnalyticsPanel';
+import { useEcharts, CHART_COLORS, donutOption, emptyChartOption } from '@/Composables/useEcharts';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import AnalyticsToolbar from '@/components/admin/analytics/AnalyticsToolbar.vue';
+import KpiCard from '@/components/admin/analytics/KpiCard.vue';
 
-const { t } = useI18n()
-const loading = ref(false)
-const dateRange = ref([])
-const forecastPeriod = ref(30)
-const overview = ref({
-  totalRevenue: 0,
-  totalOrders: 0,
-  averageOrderValue: 0,
-  growthRate: 0
-})
-const topProducts = ref([])
-const trendsChartRef = ref(null)
-const categoryChartRef = ref(null)
-const forecastChartRef = ref(null)
-let trendsChart = null
-let categoryChart = null
-let forecastChart = null
+/**
+ * Sales analytics.
+ *
+ * Previously drew four charts from arrays written into the file. Everything
+ * here now comes from `/analytics/sales/*`, including the top-products table,
+ * whose endpoint had never once returned a response — it queried a
+ * `products.name` column that does not exist and answered 500.
+ */
 
-const formatNumber = (num) => {
-  return new Intl.NumberFormat().format(num)
-}
+const { t } = useI18n();
+const { baseCode, formatMoney, formatNumber } = useCurrency();
 
-const loadAnalytics = async () => {
-  loading.value = true
-  try {
-    // const response = await api.get('/api/v1/analytics/sales/overview', {
-    //   params: { start_date: dateRange.value[0], end_date: dateRange.value[1] }
-    // })
-    overview.value = {
-      totalRevenue: 150000,
-      totalOrders: 250,
-      averageOrderValue: 600,
-      growthRate: 12.5
-    }
-    initTrendsChart()
-    initCategoryChart()
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
-  } finally {
-    loading.value = false
-  }
-}
+const pageRef = ref(null);
+const summary = ref({});
+const trend = ref([]);
+const byChannel = ref([]);
+const topProducts = ref([]);
+const forecast = ref({});
+const forecastDays = ref(30);
 
-const loadTopProducts = async () => {
-  try {
-    // const response = await api.get('/api/v1/analytics/sales/top-products')
-    topProducts.value = [
-      { id: 1, product: 'Product A', category: 'Electronics', quantity: 150, revenue: 15000, growth: 15 },
-      { id: 2, product: 'Product B', category: 'Clothing', quantity: 120, revenue: 12000, growth: 8 },
-      { id: 3, product: 'Product C', category: 'Electronics', quantity: 100, revenue: 10000, growth: -5 }
-    ]
-  } catch (error) {
-    console.error('Failed to load top products:', error)
-  }
-}
+const trendChartRef = ref(null);
+const channelChartRef = ref(null);
+const forecastChartRef = ref(null);
+
+const { register, renderAll, render, observe } = useEcharts();
+
+const {
+  loading, refreshing, exporting, error, range, rangePresets,
+  lastUpdatedLabel, fetchAll, refresh, applyRange, exportCsv, params,
+} = useAnalyticsPanel({
+  exportDomain: 'sales',
+  load: async (query) => {
+    const [summaryRes, trendRes, channelRes, topRes, forecastRes] = await Promise.all([
+      analyticsApi.salesSummary(query),
+      analyticsApi.salesTrend({ ...query, days: 30 }),
+      analyticsApi.salesByChannel(query),
+      analyticsApi.topProducts({ ...query, limit: 10 }),
+      analyticsApi.salesForecast({ forecast_days: forecastDays.value }),
+    ]);
+
+    summary.value = summaryRes.data ?? {};
+    trend.value = trendRes.data ?? [];
+    byChannel.value = channelRes.data ?? [];
+    topProducts.value = topRes.data ?? [];
+    forecast.value = forecastRes.data ?? {};
+
+    await renderAll();
+  },
+});
+
+/** How much of the period's revenue a single product accounts for. */
+const totalTopRevenue = computed(
+  () => topProducts.value.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0)
+);
+
+const revenueShare = (revenue) => {
+  if (!totalTopRevenue.value) return 0;
+  return Math.round((Number(revenue || 0) / totalTopRevenue.value) * 100);
+};
 
 const loadForecast = async () => {
   try {
-    // const response = await api.get('/api/v1/analytics/sales/forecast', {
-    //   params: { period: forecastPeriod.value }
-    // })
-    initForecastChart()
-  } catch (error) {
-    console.error('Failed to load forecast:', error)
+    const { data } = await analyticsApi.salesForecast({ forecast_days: forecastDays.value });
+    forecast.value = data ?? {};
+    await render('forecast');
+  } catch (err) {
+    console.error('Forecast load failed:', err);
   }
-}
+};
 
-const initTrendsChart = () => {
-  if (!trendsChartRef.value) return
-  
-  if (trendsChart) trendsChart.dispose()
-  trendsChart = echarts.init(trendsChartRef.value)
-  
-  const option = {
+/* ------------------------------------------------------------------ *
+ * Charts. Options are built inside factories so that a language switch
+ * redraws them with the new labels rather than reapplying a snapshot.
+ * ------------------------------------------------------------------ */
+
+register('trend', trendChartRef, () => {
+  if (!trend.value.length) return emptyChartOption(t('analytics.no_data_for_period'));
+
+  return {
     tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-    },
-    yAxis: { type: 'value' },
-    series: [{
-      name: t('analytics.revenue'),
-      type: 'line',
-      data: [10000, 12000, 15000, 14000, 18000, 22000],
-      smooth: true
-    }]
-  }
-  
-  trendsChart.setOption(option)
-}
+    legend: { data: [t('analytics.revenue'), t('analytics.total_orders')], top: 0 },
+    grid: { left: 10, right: 10, top: 40, bottom: 10, containLabel: true },
+    xAxis: { type: 'category', data: trend.value.map((d) => d.date ?? d.period ?? '') },
+    yAxis: [
+      { type: 'value', name: t('analytics.revenue') },
+      { type: 'value', name: t('analytics.total_orders'), splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: t('analytics.revenue'),
+        type: 'line',
+        smooth: true,
+        data: trend.value.map((d) => Number(d.revenue) || 0),
+        areaStyle: { color: 'rgba(102,126,234,0.15)' },
+        lineStyle: { color: CHART_COLORS.primary, width: 3 },
+        itemStyle: { color: CHART_COLORS.primary },
+      },
+      {
+        name: t('analytics.total_orders'),
+        type: 'bar',
+        yAxisIndex: 1,
+        data: trend.value.map((d) => Number(d.orders) || 0),
+        barWidth: '40%',
+        itemStyle: { color: 'rgba(103,194,58,0.55)', borderRadius: [4, 4, 0, 0] },
+      },
+    ],
+  };
+});
 
-const initCategoryChart = () => {
-  if (!categoryChartRef.value) return
-  
-  if (categoryChart) categoryChart.dispose()
-  categoryChart = echarts.init(categoryChartRef.value)
-  
-  const option = {
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'pie',
-      data: [
-        { value: 40, name: 'Electronics' },
-        { value: 30, name: 'Clothing' },
-        { value: 20, name: 'Food' },
-        { value: 10, name: 'Other' }
-      ]
-    }]
-  }
-  
-  categoryChart.setOption(option)
-}
+register('channel', channelChartRef, () => {
+  if (!byChannel.value.length) return emptyChartOption(t('analytics.no_data_for_period'));
 
-const initForecastChart = () => {
-  if (!forecastChartRef.value) return
-  
-  if (forecastChart) forecastChart.dispose()
-  forecastChart = echarts.init(forecastChartRef.value)
-  
-  const option = {
+  return donutOption(
+    byChannel.value.map((row) => ({
+      name: row.channel ?? row.name ?? t('undefined'),
+      value: Number(row.revenue ?? row.total ?? 0),
+    })),
+    { formatter: (value) => formatMoney(value) }
+  );
+});
+
+register('forecast', forecastChartRef, () => {
+  const historical = forecast.value.historical ?? [];
+  const predicted = forecast.value.forecast ?? forecast.value.predicted ?? [];
+
+  if (!historical.length && !predicted.length) {
+    return emptyChartOption(t('analytics.no_data_for_period'));
+  }
+
+  const labels = [
+    ...historical.map((d) => d.date ?? ''),
+    ...predicted.map((d) => d.date ?? ''),
+  ];
+
+  return {
     tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: Array.from({ length: forecastPeriod.value }, (_, i) => `Day ${i + 1}`)
-    },
+    legend: { data: [t('analytics.historical'), t('analytics.forecast')], top: 0 },
+    grid: { left: 10, right: 10, top: 40, bottom: 10, containLabel: true },
+    xAxis: { type: 'category', data: labels },
     yAxis: { type: 'value' },
-    series: [{
-      name: t('analytics.forecast'),
-      type: 'line',
-      data: Array.from({ length: forecastPeriod.value }, () => Math.floor(Math.random() * 5000) + 3000),
-      smooth: true,
-      lineStyle: { type: 'dashed' }
-    }]
-  }
-  
-  forecastChart.setOption(option)
-}
+    series: [
+      {
+        name: t('analytics.historical'),
+        type: 'line',
+        smooth: true,
+        data: historical.map((d) => Number(d.revenue) || 0),
+        lineStyle: { color: CHART_COLORS.primary, width: 3 },
+        itemStyle: { color: CHART_COLORS.primary },
+      },
+      {
+        name: t('analytics.forecast'),
+        type: 'line',
+        smooth: true,
+        // Offset so the forecast starts where history ends instead of
+        // overlapping it from day zero.
+        data: [...new Array(historical.length).fill('-'), ...predicted.map((d) => Number(d.revenue) || 0)],
+        lineStyle: { color: CHART_COLORS.warning, width: 3, type: 'dashed' },
+        itemStyle: { color: CHART_COLORS.warning },
+      },
+    ],
+  };
+});
 
-onMounted(() => {
-  loadAnalytics()
-  loadTopProducts()
-  loadForecast()
-  
-  window.addEventListener('resize', () => {
-    trendsChart?.resize()
-    categoryChart?.resize()
-    forecastChart?.resize()
-  })
-})
+onMounted(async () => {
+  await fetchAll();
+  observe(pageRef.value);
+});
 </script>
 
 <style scoped>
-.sales-analytics-page {
-  padding: 20px;
+.chart-box {
+  width: 100%;
+  height: 320px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
-}
-
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  margin-bottom: 20px;
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-}
-
-.stat-icon-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.stat-icon-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.stat-icon-orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.stat-icon-purple { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.stat-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.stat-info p {
-  margin: 0;
-  font-size: 14px;
-  color: #666;
+.card-title {
+  font-weight: 700;
+  color: #1f2d3d;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
+}
+
+.mt-4 {
+  margin-top: 1.5rem;
+}
+
+.mt-1 {
+  margin-top: 0.5rem;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .chart-box {
+    height: 260px;
+  }
 }
 </style>

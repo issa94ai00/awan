@@ -1,176 +1,313 @@
 <template>
   <div class="dashboards-page">
-    <div class="page-header">
-      <h1><el-icon><DataBoard /></el-icon> {{ $t('analytics.dashboards') }}</h1>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon> {{ $t('analytics.create_dashboard') }}
-      </el-button>
+    <AdminPageHeader
+      badge="BI"
+      icon="fas fa-table-columns"
+      :title="$t('analytics.dashboards')"
+      :subtitle="$t('analytics.dashboards_subtitle')"
+    >
+      <template #actions>
+        <el-button :loading="loading" @click="loadDashboards">
+          <el-icon class="mr-1"><Refresh /></el-icon>{{ $t('refresh') }}
+        </el-button>
+        <el-button type="primary" @click="openCreate">
+          <el-icon class="mr-1"><Plus /></el-icon>{{ $t('analytics.create_dashboard') }}
+        </el-button>
+      </template>
+    </AdminPageHeader>
+
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-4" />
+
+    <el-skeleton v-if="loading" animated :rows="6" />
+
+    <el-empty v-else-if="!dashboards.length" :description="$t('analytics.no_dashboards')">
+      <el-button type="primary" @click="openCreate">{{ $t('analytics.create_dashboard') }}</el-button>
+    </el-empty>
+
+    <div v-else class="dashboard-grid">
+      <el-card v-for="board in dashboards" :key="board.id" shadow="hover" class="dashboard-card">
+        <div class="dashboard-card__head">
+          <el-tag size="small" effect="plain">{{ $t(`analytics.type_${board.type}`) }}</el-tag>
+          <el-tag v-if="board.is_default" size="small" type="success" effect="plain">
+            {{ $t('analytics.default_dashboard') }}
+          </el-tag>
+        </div>
+
+        <h3 class="dashboard-card__title">{{ localizedName(board) }}</h3>
+        <p class="dashboard-card__desc">{{ board.description || '—' }}</p>
+
+        <div class="dashboard-card__meta">
+          <span>
+            <el-icon><View /></el-icon>
+            {{ board.is_public ? $t('analytics.public_dashboard') : $t('analytics.private') }}
+          </span>
+          <span v-if="board.widgets_count !== undefined">
+            <el-icon><Grid /></el-icon>
+            {{ board.widgets_count }} {{ $t('analytics.widgets') }}
+          </span>
+        </div>
+
+        <div class="dashboard-card__actions">
+          <el-button size="small" @click="openEdit(board)">
+            <el-icon class="mr-1"><Edit /></el-icon>{{ $t('edit') }}
+          </el-button>
+          <el-button size="small" type="danger" plain @click="removeDashboard(board)">
+            <el-icon class="mr-1"><Delete /></el-icon>{{ $t('delete') }}
+          </el-button>
+        </div>
+      </el-card>
     </div>
 
-    <el-row :gutter="20">
-      <el-col :xs="24" :sm="12" :md="8" v-for="dashboard in dashboards" :key="dashboard.id">
-        <el-card class="dashboard-card" @click="viewDashboard(dashboard)">
-          <div class="dashboard-icon">
-            <el-icon><DataBoard /></el-icon>
-          </div>
-          <h3>{{ dashboard.name }}</h3>
-          <p>{{ dashboard.type }}</p>
-          <div class="dashboard-meta">
-            <span>{{ dashboard.widgets_count }} {{ $t('analytics.widgets') }}</span>
-            <span>{{ dashboard.updated_at }}</span>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editing ? $t('analytics.edit_dashboard') : $t('analytics.create_dashboard')"
+      width="560px"
+      destroy-on-close
+    >
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12">
+            <el-form-item :label="$t('analytics.name')" prop="name">
+              <el-input v-model="form.name" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item :label="$t('analytics.name_ar')">
+              <el-input v-model="form.name_ar" />
+            </el-form-item>
+          </el-col>
+        </el-row>
 
-    <!-- Create Dialog -->
-    <el-dialog v-model="showCreateDialog" :title="$t('analytics.create_dashboard')" width="500px">
-      <el-form :model="form" label-width="120px">
-        <el-form-item :label="$t('analytics.name')">
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item :label="$t('analytics.type')">
-          <el-select v-model="form.type">
-            <el-option value="executive" :label="$t('analytics.executive')" />
-            <el-option value="sales" :label="$t('analytics.sales')" />
-            <el-option value="inventory" :label="$t('analytics.inventory')" />
-            <el-option value="financial" :label="$t('analytics.financial')" />
+        <el-form-item :label="$t('analytics.type')" prop="type">
+          <el-select v-model="form.type" style="width: 100%">
+            <el-option v-for="type in TYPES" :key="type" :value="type" :label="$t(`analytics.type_${type}`)" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('analytics.layout')">
-          <el-select v-model="form.layout">
-            <el-option value="grid" :label="$t('analytics.grid')" />
-            <el-option value="list" :label="$t('analytics.list')" />
-          </el-select>
+
+        <el-form-item :label="$t('analytics.description')">
+          <el-input v-model="form.description" type="textarea" :rows="3" />
+        </el-form-item>
+
+        <el-form-item :label="$t('analytics.visibility')">
+          <div class="switch-row">
+            <el-switch v-model="form.is_public" :active-text="$t('analytics.public_dashboard')" />
+            <el-switch v-model="form.is_default" :active-text="$t('analytics.default_dashboard')" />
+          </div>
         </el-form-item>
       </el-form>
+
       <template #footer>
-        <el-button @click="showCreateDialog = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="createDashboard" :loading="saving">
-          {{ $t('common.create') }}
-        </el-button>
+        <el-button @click="dialogVisible = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="save">{{ $t('save') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { DataBoard, Plus } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
+import { ref, reactive, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { Plus, Edit, Delete, Refresh, View, Grid } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import analyticsApi from '@/api/analytics';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
-const { t } = useI18n()
-const loading = ref(false)
-const saving = ref(false)
-const showCreateDialog = ref(false)
-const dashboards = ref([])
-const form = ref({
+/**
+ * BI dashboards.
+ *
+ * Creating one used to announce success without sending anything: the POST was
+ * commented out directly above the toast, and the list was a pair of literals.
+ * Every action here now waits on the server before reporting anything.
+ */
+
+const { t, locale } = useI18n();
+
+/** Mirrors the `in:` rule in `AnalyticsController::storeDashboard`. */
+const TYPES = ['executive', 'sales', 'inventory', 'warehouse', 'financial', 'custom'];
+
+const dashboards = ref([]);
+const loading = ref(false);
+const saving = ref(false);
+const error = ref(null);
+const dialogVisible = ref(false);
+const editing = ref(null);
+const formRef = ref(null);
+
+const emptyForm = () => ({
   name: '',
-  type: 'executive',
-  layout: 'grid'
-})
+  name_ar: '',
+  description: '',
+  type: 'custom',
+  is_public: false,
+  is_default: false,
+});
+
+const form = reactive(emptyForm());
+
+const rules = {
+  name: [{ required: true, message: () => t('required_field'), trigger: 'blur' }],
+  type: [{ required: true, message: () => t('required_field'), trigger: 'change' }],
+};
+
+const localizedName = (board) => (
+  (locale.value === 'ar' ? (board.name_ar || board.name) : (board.name || board.name_ar)) || '—'
+);
 
 const loadDashboards = async () => {
-  loading.value = true
+  loading.value = true;
+  error.value = null;
   try {
-    // const response = await api.get('/api/v1/analytics/dashboards')
-    dashboards.value = [
-      { id: 1, name: 'Executive Dashboard', type: 'executive', widgets_count: 8, updated_at: '2026-06-23' },
-      { id: 2, name: 'Sales Dashboard', type: 'sales', widgets_count: 6, updated_at: '2026-06-22' },
-      { id: 3, name: 'Inventory Dashboard', type: 'inventory', widgets_count: 5, updated_at: '2026-06-21' }
-    ]
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
+    const { data } = await analyticsApi.dashboards();
+    // The endpoint paginates; rows live under `data`.
+    dashboards.value = data?.data ?? data ?? [];
+  } catch (err) {
+    error.value = err?.response?.data?.message || t('analytics.load_failed');
+    dashboards.value = [];
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
-const createDashboard = async () => {
-  saving.value = true
+const openCreate = () => {
+  editing.value = null;
+  Object.assign(form, emptyForm());
+  dialogVisible.value = true;
+};
+
+const openEdit = (board) => {
+  editing.value = board;
+  Object.assign(form, {
+    ...emptyForm(),
+    ...board,
+    is_public: !!board.is_public,
+    is_default: !!board.is_default,
+  });
+  dialogVisible.value = true;
+};
+
+const save = async () => {
+  if (!formRef.value) return;
+
   try {
-    // await api.post('/api/v1/analytics/dashboards', form.value)
-    ElMessage.success(t('common.create_success'))
-    showCreateDialog.value = false
-    await loadDashboards()
-  } catch (error) {
-    ElMessage.error(t('common.save_error'))
-  } finally {
-    saving.value = false
+    await formRef.value.validate();
+  } catch {
+    return;
   }
-}
 
-const viewDashboard = (dashboard) => {
-  $router.push(`/admin/analytics/dashboards/${dashboard.id}`)
-}
+  saving.value = true;
+  try {
+    if (editing.value) {
+      await analyticsApi.updateDashboard(editing.value.id, form);
+    } else {
+      await analyticsApi.createDashboard(form);
+    }
 
-onMounted(() => {
-  loadDashboards()
-})
+    ElMessage.success(t('saved_successfully'));
+    dialogVisible.value = false;
+    editing.value = null;
+    await loadDashboards();
+  } catch (err) {
+    const validation = err?.response?.data?.errors;
+    const firstError = validation ? Object.values(validation)[0]?.[0] : null;
+
+    ElMessage.error(firstError || err?.response?.data?.message || t('an_error_occurred_while_saving'));
+  } finally {
+    saving.value = false;
+  }
+};
+
+const removeDashboard = async (board) => {
+  try {
+    await ElMessageBox.confirm(
+      t('are_you_sure_you_want'),
+      t('confirm_deletion'),
+      { type: 'warning', confirmButtonText: t('yes'), cancelButtonText: t('no') }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    await analyticsApi.deleteDashboard(board.id);
+    ElMessage.success(t('deleted_successfully'));
+    await loadDashboards();
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || t('an_error_occurred_while_saving'));
+  }
+};
+
+onMounted(loadDashboards);
 </script>
 
 <style scoped>
 .dashboards-page {
-  padding: 20px;
+  padding: 0;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
 }
 
 .dashboard-card {
-  margin-bottom: 20px;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.dashboard-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.dashboard-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 14px;
   display: flex;
+  flex-direction: column;
+}
+
+.dashboard-card__head {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.dashboard-card__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: #1f2d3d;
+}
+
+.dashboard-card__desc {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: #64748b;
+  min-height: 2.4em;
+}
+
+.dashboard-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 1rem;
+}
+
+.dashboard-card__meta span {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  color: white;
-  margin-bottom: 15px;
+  gap: 0.3rem;
 }
 
-.dashboard-card h3 {
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  color: #333;
-}
-
-.dashboard-card p {
-  margin: 0 0 15px 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.dashboard-meta {
+.dashboard-card__actions {
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #999;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.switch-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.mr-1 {
+  margin-inline-end: 0.25rem;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem;
 }
 </style>

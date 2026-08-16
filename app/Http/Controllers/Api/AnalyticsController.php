@@ -12,7 +12,10 @@ use App\Services\SalesAnalyticsService;
 use App\Services\InventoryAnalyticsService;
 use App\Services\WarehouseAnalyticsService;
 use App\Services\FinancialAnalyticsService;
+use App\Services\PeriodComparison;
+use App\Services\ReportBuilderService;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
 {
@@ -31,6 +34,109 @@ class AnalyticsController extends Controller
         $this->inventoryAnalytics = $inventoryAnalytics;
         $this->warehouseAnalytics = $warehouseAnalytics;
         $this->financialAnalytics = $financialAnalytics;
+    }
+
+    // ==================== Overview ====================
+
+    /**
+     * The headline figures for the BI landing screen, each against its own past.
+     *
+     * The screen used to hold these numbers as literals — 150,000 in revenue and
+     * 500 products on every install — beside trend percentages that were equally
+     * invented. One endpoint now answers the whole card row so the page has a
+     * single source and one loading state instead of four.
+     *
+     * Composed from the existing domain services rather than new queries: the
+     * analysis already exists, it simply was never called.
+     */
+    public function getOverview(Request $request)
+    {
+        $toDate = $request->to_date ?? now()->toDateString();
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $warehouseId = $request->warehouse_id;
+
+        $previous = PeriodComparison::previousWindow($fromDate, $toDate);
+
+        $sales = $this->salesAnalytics->getSalesSummary($fromDate, $toDate, null, $warehouseId);
+        $salesBefore = $this->salesAnalytics->getSalesSummary($previous['from'], $previous['to'], null, $warehouseId);
+
+        $financial = $this->financialAnalytics->getFinancialSummary($fromDate, $toDate);
+        $financialBefore = $this->financialAnalytics->getFinancialSummary($previous['from'], $previous['to']);
+
+        $inventory = $this->inventoryAnalytics->getInventorySummary($warehouseId);
+        $capacity = $this->warehouseAnalytics->getCapacityPlanning($warehouseId);
+
+        return response()->json([
+            'period' => [
+                'from' => $fromDate,
+                'to' => $toDate,
+                'previous_from' => $previous['from'],
+                'previous_to' => $previous['to'],
+            ],
+            'revenue' => PeriodComparison::compare(
+                $sales['total_revenue'] ?? 0,
+                $salesBefore['total_revenue'] ?? 0
+            ),
+            'orders' => PeriodComparison::compare(
+                $sales['total_orders'] ?? 0,
+                $salesBefore['total_orders'] ?? 0
+            ),
+            'gross_margin' => PeriodComparison::compare(
+                $financial['gross_margin'] ?? 0,
+                $financialBefore['gross_margin'] ?? 0
+            ),
+            // Stock levels are a reading of right now, not of a date range, so
+            // they are reported as-is rather than dressed up with a comparison
+            // the query cannot support.
+            'inventory' => [
+                'total_products' => $inventory['total_products'] ?? 0,
+                'total_value' => $inventory['total_value'] ?? 0,
+                'low_stock_items' => $inventory['low_stock_items'] ?? 0,
+            ],
+            'warehouse' => [
+                'utilization_percentage' => $capacity['utilization_percentage'] ?? 0,
+                'total_capacity' => $capacity['total_capacity'] ?? 0,
+                'used_capacity' => $capacity['used_capacity'] ?? 0,
+            ],
+        ]);
+    }
+
+    /**
+     * A domain's detail rows as a CSV download.
+     *
+     * The export buttons on these screens previously showed "export started"
+     * and did nothing at all. This returns an actual file.
+     *
+     * Streamed rather than written to disk: the rows are already in memory, and
+     * a temp file per click is a cleanup job nobody would remember to write.
+     */
+    public function export(Request $request, ReportBuilderService $reports, string $domain): StreamedResponse
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+        $warehouseId = $request->warehouse_id;
+
+        $rows = match ($domain) {
+            'sales' => $this->salesAnalytics->getTopSellingProducts($fromDate, $toDate, 500),
+            'inventory' => $this->inventoryAnalytics->getABCAnalysis($warehouseId)['details'] ?? [],
+            'warehouse' => $this->warehouseAnalytics->getPickerPerformance($warehouseId, $fromDate, $toDate),
+            'financial' => $this->financialAnalytics->getRevenueByCategory($fromDate, $toDate),
+            default => abort(404, 'Unknown analytics domain.'),
+        };
+
+        $csv = $reports->toCsvString($rows);
+        $filename = "analytics-{$domain}-{$fromDate}-to-{$toDate}.csv";
+
+        return response()->streamDownload(
+            fn () => print($csv),
+            $filename,
+            [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                // Exposed so the browser fetch layer can read the filename back;
+                // a same-origin XHR cannot see it otherwise.
+                'Access-Control-Expose-Headers' => 'Content-Disposition',
+            ]
+        );
     }
 
     // ==================== Sales Analytics ====================

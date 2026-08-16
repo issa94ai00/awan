@@ -1,146 +1,137 @@
 <template>
-  <div class="analytics-dashboard">
-    <div class="page-header">
-      <h1><el-icon><TrendCharts /></el-icon> {{ $t('analytics.title') }}</h1>
-      <p>{{ $t('analytics.description') }}</p>
-    </div>
+  <div ref="pageRef" class="analytics-dashboard">
+    <AdminPageHeader
+      badge="BI"
+      icon="fas fa-chart-line"
+      :title="$t('analytics.title')"
+      :subtitle="$t('analytics.description')"
+    >
+      <template #actions>
+        <el-tag size="small" type="info" effect="plain">
+          {{ $t('amounts_in_base_currency', { currency: baseCode }) }}
+        </el-tag>
+      </template>
+    </AdminPageHeader>
 
-    <!-- Quick Stats -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card" @click="$router.push('/admin/analytics/sales')">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-blue">
-              <el-icon><ShoppingCart /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>${{ formatNumber(stats.totalRevenue) }}</h3>
-              <p>{{ $t('analytics.total_revenue') }}</p>
-              <small class="trend positive">+12.5%</small>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card" @click="$router.push('/admin/analytics/inventory')">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-green">
-              <el-icon><Box /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ stats.totalProducts }}</h3>
-              <p>{{ $t('analytics.total_products') }}</p>
-              <small>{{ stats.lowStock }} {{ $t('analytics.low_stock') }}</small>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card" @click="$router.push('/admin/analytics/warehouse')">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-orange">
-              <el-icon><Management /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ stats.warehouseUtilization }}%</h3>
-              <p>{{ $t('analytics.warehouse_utilization') }}</p>
-              <small class="trend positive">+5.2%</small>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card" @click="$router.push('/admin/analytics/financial')">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-purple">
-              <el-icon><Money /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ stats.profitMargin }}%</h3>
-              <p>{{ $t('analytics.profit_margin') }}</p>
-              <small class="trend positive">+2.1%</small>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <AnalyticsToolbar
+      v-model="range"
+      :presets="rangePresets"
+      :refreshing="refreshing"
+      :last-updated-label="lastUpdatedLabel"
+      @apply="applyRange"
+      @refresh="refresh"
+    />
+
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-4">
+      <template #default>
+        <el-button size="small" type="danger" plain class="mt-1" @click="fetchAll()">
+          {{ $t('analytics.retry') }}
+        </el-button>
+      </template>
+    </el-alert>
+
+    <!-- Headline figures, each measured against the equal-length window before it. -->
+    <AdminStatGrid :min="240">
+      <KpiCard
+        :label="$t('analytics.total_revenue')"
+        :value="formatMoney(overview.revenue?.current)"
+        :comparison="overview.revenue"
+        :icon="Money"
+        color="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        to="/admin/analytics/financial"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.orders')"
+        :value="formatNumber(overview.orders?.current)"
+        :comparison="overview.orders"
+        :icon="ShoppingCart"
+        color="linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+        to="/admin/analytics/sales"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.gross_margin')"
+        :value="formatPercent(overview.gross_margin?.current)"
+        :comparison="overview.gross_margin"
+        :icon="TrendCharts"
+        color="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
+        to="/admin/analytics/financial"
+        :loading="loading"
+      />
+      <!--
+        Stock and capacity are readings of right now, not of the selected range,
+        so they carry a caption instead of a period comparison the query cannot
+        honestly support.
+      -->
+      <KpiCard
+        :label="$t('analytics.total_products')"
+        :value="formatNumber(overview.inventory?.total_products)"
+        :caption="`${formatNumber(overview.inventory?.low_stock_items)} ${$t('analytics.low_stock')}`"
+        :icon="Box"
+        color="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+        to="/admin/analytics/inventory"
+        :loading="loading"
+      />
+      <KpiCard
+        :label="$t('analytics.warehouse_utilization')"
+        :value="formatPercent(overview.warehouse?.utilization_percentage)"
+        :icon="Management"
+        color="linear-gradient(135deg, #fa709a 0%, #fee140 100%)"
+        to="/admin/analytics/warehouse"
+        :loading="loading"
+      />
+    </AdminStatGrid>
 
     <!-- Quick Links -->
-    <el-card class="quick-links-card">
+    <el-card class="quick-links-card" shadow="never">
       <template #header>
-        <div class="card-header">
-          <span>{{ $t('analytics.quick_links') }}</span>
-        </div>
+        <span class="card-title">{{ $t('analytics.quick_links') }}</span>
       </template>
-      <el-row :gutter="20">
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/sales')">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ $t('analytics.sales_analytics') }}</span>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/inventory')">
-            <el-icon><Box /></el-icon>
-            <span>{{ $t('analytics.inventory_analytics') }}</span>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/warehouse')">
-            <el-icon><Management /></el-icon>
-            <span>{{ $t('analytics.warehouse_analytics') }}</span>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/financial')">
-            <el-icon><Money /></el-icon>
-            <span>{{ $t('analytics.financial_analytics') }}</span>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/reports')">
-            <el-icon><Document /></el-icon>
-            <span>{{ $t('analytics.reports') }}</span>
-          </div>
-        </el-col>
-        <el-col :xs="12" :sm="8" :md="4">
-          <div class="quick-link" @click="$router.push('/admin/analytics/dashboards')">
-            <el-icon><DataBoard /></el-icon>
-            <span>{{ $t('analytics.dashboards') }}</span>
-          </div>
-        </el-col>
-      </el-row>
+      <div class="quick-links">
+        <button
+          v-for="link in quickLinks"
+          :key="link.to"
+          type="button"
+          class="quick-link"
+          @click="$router.push(link.to)"
+        >
+          <el-icon :size="26"><component :is="link.icon" /></el-icon>
+          <span>{{ link.label }}</span>
+        </button>
+      </div>
     </el-card>
 
     <!-- Recent Reports -->
-    <el-card style="margin-top: 20px">
+    <el-card shadow="never" class="mt-4">
       <template #header>
         <div class="card-header">
-          <span>{{ $t('analytics.recent_reports') }}</span>
-          <el-button text @click="$router.push('/admin/analytics/reports')">
-            {{ $t('common.view_all') }}
+          <span class="card-title">{{ $t('analytics.recent_reports') }}</span>
+          <el-button text type="primary" @click="$router.push('/admin/analytics/reports')">
+            {{ $t('view_all') }}
           </el-button>
         </div>
       </template>
-      <el-table :data="recentReports" v-loading="loading">
-        <el-table-column prop="name" :label="$t('analytics.report_name')" />
-        <el-table-column prop="type" :label="$t('analytics.type')" />
-        <el-table-column prop="created_at" :label="$t('common.created_at')" />
-        <el-table-column prop="status" :label="$t('common.status')">
+
+      <el-table
+        :data="recentReports"
+        v-loading="loading"
+        :empty-text="$t('analytics.no_data_for_period')"
+      >
+        <el-table-column prop="name" :label="$t('analytics.report_name')" min-width="200" />
+        <el-table-column prop="type" :label="$t('analytics.type')" width="160">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'completed' ? 'success' : 'warning'">{{ row.status }}</el-tag>
+            <el-tag size="small" effect="plain">{{ row.type }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="$t('common.actions')" width="150">
+        <el-table-column :label="$t('date')" width="180">
+          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column :label="$t('actions')" width="110" align="center">
           <template #default="{ row }">
-            <el-button-group>
-              <el-button size="small" @click="viewReport(row)">
-                <el-icon><View /></el-icon>
-              </el-button>
-              <el-button size="small" @click="downloadReport(row)">
-                <el-icon><Download /></el-icon>
-              </el-button>
-            </el-button-group>
+            <el-button size="small" text type="primary" @click="openReport(row)">
+              <el-icon><View /></el-icon>
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -149,196 +140,157 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { TrendCharts, ShoppingCart, Box, Management, Money, Document, DataBoard, View, Download } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
+import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import {
+  TrendCharts, ShoppingCart, Box, Management, Money, Document, DataBoard, View, Odometer,
+} from '@element-plus/icons-vue';
+import analyticsApi from '@/api/analytics';
+import { useCurrency } from '@/Composables/useCurrency';
+import { useAnalyticsPanel } from '@/Composables/useAnalyticsPanel';
+import { formatDate } from '@/utils/sales';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import AnalyticsToolbar from '@/components/admin/analytics/AnalyticsToolbar.vue';
+import KpiCard from '@/components/admin/analytics/KpiCard.vue';
 
-const { t } = useI18n()
-const loading = ref(false)
-const stats = ref({
-  totalRevenue: 150000,
-  totalProducts: 500,
-  lowStock: 25,
-  warehouseUtilization: 78,
-  profitMargin: 22
-})
-const recentReports = ref([])
+/**
+ * The BI landing screen.
+ *
+ * Everything here was previously invented: revenue was the literal 150,000,
+ * the product count 500, and the trend chips read `+12.5%` on every install
+ * forever. `/analytics/overview` now answers the whole card row in one request,
+ * with each figure measured against the equal-length period before it.
+ */
 
-const formatNumber = (num) => {
-  return new Intl.NumberFormat().format(num)
-}
+const { t } = useI18n();
+const router = useRouter();
+const { baseCode, formatMoney, formatNumber } = useCurrency();
 
-const loadStats = async () => {
-  loading.value = true
-  try {
-    // await api.get('/api/v1/analytics/overview')
-    stats.value = {
-      totalRevenue: 150000,
-      totalProducts: 500,
-      lowStock: 25,
-      warehouseUtilization: 78,
-      profitMargin: 22
-    }
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
-  } finally {
-    loading.value = false
-  }
-}
+const pageRef = ref(null);
+const overview = ref({});
+const recentReports = ref([]);
 
-const loadRecentReports = async () => {
-  try {
-    // await api.get('/api/v1/analytics/reports?limit=5')
-    recentReports.value = [
-      { id: 1, name: 'Monthly Sales Report', type: 'sales', created_at: '2026-06-23', status: 'completed' },
-      { id: 2, name: 'Inventory Status Report', type: 'inventory', created_at: '2026-06-22', status: 'completed' }
-    ]
-  } catch (error) {
-    console.error('Failed to load reports:', error)
-  }
-}
+const {
+  loading, refreshing, error, range, rangePresets,
+  lastUpdatedLabel, fetchAll, refresh, applyRange,
+} = useAnalyticsPanel({
+  defaultDays: 30,
+  load: async (params) => {
+    // Both are needed for the screen, so they are awaited together rather than
+    // in series — and a failure in either surfaces as the screen's error state
+    // instead of being swallowed the way it used to be.
+    const [overviewResponse, reportsResponse] = await Promise.all([
+      analyticsApi.overview(params),
+      analyticsApi.reports({ per_page: 5 }),
+    ]);
 
-const viewReport = (report) => {
-  $router.push(`/admin/analytics/reports/${report.id}`)
-}
+    overview.value = overviewResponse.data ?? {};
+    // The reports endpoint paginates; the rows live under `data`.
+    recentReports.value = reportsResponse.data?.data ?? reportsResponse.data ?? [];
+  },
+});
 
-const downloadReport = async (report) => {
-  try {
-    // await api.get(`/api/v1/analytics/reports/${report.id}/export`)
-    ElMessage.success(t('analytics.download_started'))
-  } catch (error) {
-    ElMessage.error(t('common.action_error'))
-  }
-}
+/** Percentages come off the API as plain numbers, not pre-formatted strings. */
+const formatPercent = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
 
-onMounted(() => {
-  loadStats()
-  loadRecentReports()
-})
+  return `${formatNumber(Math.round(number * 10) / 10)}%`;
+};
+
+const quickLinks = computed(() => [
+  { to: '/admin/analytics/sales', icon: TrendCharts, label: t('analytics.sales') },
+  { to: '/admin/analytics/inventory', icon: Box, label: t('analytics.inventory') },
+  { to: '/admin/analytics/warehouse', icon: Management, label: t('analytics.warehouse') },
+  { to: '/admin/analytics/financial', icon: Money, label: t('analytics.financial') },
+  { to: '/admin/analytics/metrics', icon: Odometer, label: t('analytics.metrics') },
+  { to: '/admin/analytics/reports', icon: Document, label: t('analytics.reports') },
+  { to: '/admin/analytics/dashboards', icon: DataBoard, label: t('analytics.dashboards') },
+]);
+
+/**
+ * Was `$router.push(...)` inside `<script setup>`, where `$router` is not
+ * defined — every click on the view button threw a ReferenceError.
+ */
+const openReport = (report) => {
+  router.push(`/admin/analytics/reports?report=${report.id}`);
+};
+
+onMounted(fetchAll);
 </script>
 
 <style scoped>
 .analytics-dashboard {
-  padding: 20px;
+  padding: 0;
 }
 
-.page-header {
-  margin-bottom: 30px;
-}
-
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 10px 0;
-  font-size: 28px;
-  color: #333;
-}
-
-.page-header p {
-  margin: 0;
-  color: #666;
-}
-
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  margin-bottom: 20px;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.stat-card:hover {
-  transform: translateY(-5px);
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.stat-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-}
-
-.stat-icon-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.stat-icon-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.stat-icon-orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.stat-icon-purple { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.stat-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.stat-info p {
-  margin: 0 0 5px 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.stat-info small {
-  margin: 0;
-  font-size: 12px;
-  color: #999;
-}
-
-.trend.positive {
-  color: #67c23a;
-}
-
-.trend.negative {
-  color: #f56c6c;
-}
-
-.quick-links-card {
-  margin-bottom: 20px;
-}
-
-.quick-link {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.quick-link:hover {
-  background: #e6f1fc;
-  transform: translateY(-3px);
-}
-
-.quick-link el-icon {
-  font-size: 32px;
-  color: #409eff;
-}
-
-.quick-link span {
-  font-size: 14px;
-  color: #333;
-  text-align: center;
+.card-title {
+  font-weight: 700;
+  color: #1f2d3d;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.quick-links-card {
+  margin-top: 1.5rem;
+  border-radius: 14px;
+}
+
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+/* A real <button>: these were divs, so they could not be tabbed to or
+   activated from the keyboard. */
+.quick-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 0.75rem;
+  background: #f5f7fa;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #334155;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: center;
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.quick-link:hover {
+  background: #eef4ff;
+  border-color: #c7d7fb;
+  transform: translateY(-3px);
+}
+
+.quick-link:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.quick-link .el-icon {
+  color: #667eea;
+}
+
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+
+.mt-1 {
+  margin-top: 0.5rem;
+}
+
+.mt-4 {
+  margin-top: 1.5rem;
 }
 </style>

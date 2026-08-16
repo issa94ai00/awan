@@ -114,8 +114,15 @@ class SalesAnalyticsService
             ->leftJoin('products as p', 'soi.product_id', '=', 'p.id')
             ->whereBetween('so.order_date', [$fromDate, $toDate])
             ->where('so.status', '!=', SalesOrder::STATUS_CANCELLED)
-            ->selectRaw('soi.product_id, p.name, p.name_ar, p.name_en, SUM(soi.quantity) as quantity, SUM(soi.total_price) as revenue')
-            ->groupBy('soi.product_id', 'p.name', 'p.name_ar', 'p.name_en')
+            // `products` has no `name` column — only `name_ar` and `name_en`.
+            // Selecting and grouping by `p.name` made this query throw, so the
+            // "top selling products" panel answered 500 rather than ever
+            // rendering. `Product::getNameAttribute()` is a PHP accessor and
+            // cannot be reached from SQL.
+            // The line total on `sales_order_items` is `total`. `total_price` is
+            // the invoice/purchase item column and does not exist here.
+            ->selectRaw('soi.product_id, p.name_ar, p.name_en, SUM(soi.quantity) as quantity, SUM(soi.total) as revenue')
+            ->groupBy('soi.product_id', 'p.name_ar', 'p.name_en')
             ->orderByDesc('revenue')
             ->limit($limit)
             ->get()
@@ -126,7 +133,7 @@ class SalesAnalyticsService
                 } elseif ($locale === 'en' && !empty($item->name_en)) {
                     $productName = $item->name_en;
                 } else {
-                    $productName = $item->name ?? ($item->name_ar ?? ($item->name_en ?? 'Unknown'));
+                    $productName = $item->name_ar ?: ($item->name_en ?: 'Unknown');
                 }
                 return [
                     'product_id' => $item->product_id,
