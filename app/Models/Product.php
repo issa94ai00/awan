@@ -11,19 +11,27 @@ class Product extends Model implements Sitemapable
 {
     use HasFactory;
 
+    /**
+     * `name`, `description` and `status` are deliberately absent.
+     *
+     * The first two are read-only accessors over `name_ar` / `name_en` — there
+     * are no such columns, and no mutator to route them anywhere, so listing
+     * them here promised a mass assignment that Eloquent silently dropped.
+     * `status` is the name of a column that was replaced by `is_active`.
+     *
+     * Nothing sends them: neither the products API nor the import validates any
+     * of the three. Removing them makes this list describe the table again.
+     */
     protected $fillable = [
-        'name',
         'name_ar',
         'name_en',
         'slug',
-        'description',
         'description_ar',
         'description_en',
         'price',
         'stock_quantity',
         'image_main',
         'image_gallery',
-        'status',
         'category_id',
         'show_price',
         'seo',

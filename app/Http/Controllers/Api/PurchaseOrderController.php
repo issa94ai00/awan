@@ -8,6 +8,7 @@ use App\Models\PurchaseOrderItem;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderController extends Controller
 {
@@ -81,20 +82,27 @@ class PurchaseOrderController extends Controller
             $validated['subtotal'] = $subtotal;
             $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
 
-            $order = PurchaseOrder::create($validated);
+            // The header carries totals computed from the lines, so the two must
+            // land together. Written separately, a failure inside the loop left
+            // an order whose subtotal described items that do not exist.
+            $order = DB::transaction(function () use ($validated) {
+                $order = PurchaseOrder::create($validated);
 
-            foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                PurchaseOrderItem::create([
-                    'purchase_order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'total_price' => $item['unit_price'] * $item['quantity'],
-                    'notes' => $item['notes'] ?? null,
-                ]);
-            }
+                foreach ($validated['items'] as $item) {
+                    $product = Product::find($item['product_id']);
+                    PurchaseOrderItem::create([
+                        'purchase_order_id' => $order->id,
+                        'product_id' => $item['product_id'],
+                        'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'total_price' => $item['unit_price'] * $item['quantity'],
+                        'notes' => $item['notes'] ?? null,
+                    ]);
+                }
+
+                return $order;
+            });
 
             $order->load(['supplier', 'items.product']);
 
@@ -154,21 +162,29 @@ class PurchaseOrderController extends Controller
         $validated['subtotal'] = $subtotal;
         $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
 
-        $order->update($validated);
-        $order->items()->delete();
+        /*
+         * Editing an order clears its lines and writes them again. Without a
+         * transaction that is destructive rather than merely inconsistent: a
+         * failure between the delete and the last insert leaves the order with
+         * fewer lines than it had — or none — and no way to recover them.
+         */
+        DB::transaction(function () use ($order, $validated) {
+            $order->update($validated);
+            $order->items()->delete();
 
-        foreach ($validated['items'] as $item) {
-            $product = Product::find($item['product_id']);
-            PurchaseOrderItem::create([
-                'purchase_order_id' => $order->id,
-                'product_id' => $item['product_id'],
-                'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total_price' => $item['unit_price'] * $item['quantity'],
-                'notes' => $item['notes'] ?? null,
-            ]);
-        }
+            foreach ($validated['items'] as $item) {
+                $product = Product::find($item['product_id']);
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total_price' => $item['unit_price'] * $item['quantity'],
+                    'notes' => $item['notes'] ?? null,
+                ]);
+            }
+        });
 
         $order->load(['supplier', 'items.product']);
 

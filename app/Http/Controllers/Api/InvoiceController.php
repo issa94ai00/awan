@@ -13,6 +13,7 @@ use App\Models\Customer;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\QueryException;
 
@@ -262,6 +263,33 @@ class InvoiceController extends Controller
             $invoice = new Invoice();
             $invoiceNumber = $invoice->generateInvoiceNumber();
 
+            /*
+             * Everything that has to exist together, or not at all.
+             *
+             * The header, its lines, the delivery charges raised with it and the
+             * customer's settlement were written as separate statements with no
+             * transaction around them. A failure part-way through the item loop
+             * left a saved invoice whose stored subtotal and total had been
+             * computed from lines that were never written — a document that
+             * disagreed with itself, and a receivable posted for an amount
+             * nothing on the invoice added up to.
+             *
+             * Stock issuing and ledger posting stay outside on purpose. Both
+             * already swallow their own failures into warnings, because the
+             * deliberate design here is that a bookkeeping problem must not
+             * discard an invoice the user has successfully created.
+             */
+            [$invoice, $createdExpenses, $settlement, $stockWarnings] = DB::transaction(function () use (
+                $validated,
+                $itemsData,
+                $invoiceNumber,
+                $subtotal,
+                $tax,
+                $discount,
+                $additionalCharges,
+                $total,
+                $paidAmount
+            ) {
             // Create invoice
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
@@ -353,6 +381,9 @@ class InvoiceController extends Controller
             // instead of recording both would lose the payment entirely — there
             // would be no cash movement anywhere in the books.
             $settlement = $this->settleCustomerAccount($invoice, $paidAmount, $validated['payment_method'] ?? null);
+
+                return [$invoice, $createdExpenses, $settlement, $stockWarnings];
+            });
 
             // Feed the general ledger. Posting is idempotent and balanced or it
             // throws, so a ledger problem must not silently swallow a saved
@@ -541,6 +572,11 @@ class InvoiceController extends Controller
                     'notes' => $validated['notes'] ?? $invoice->notes,
                 ]);
 
+                // Replacing the lines is destructive without a transaction: the
+                // old ones are gone the moment the delete runs, so a failure
+                // before the last insert leaves the invoice short of lines it
+                // had a second earlier, with nothing to restore them from.
+                DB::transaction(function () use ($invoice, $itemsData, $validated) {
                 // Delete old items and create new ones
                 $invoice->items()->delete();
                 foreach ($itemsData as $itemData) {
@@ -569,6 +605,7 @@ class InvoiceController extends Controller
                         }
                     }
                 }
+                });
             } else {
                 // Update invoice without items (status only update)
                 $invoice->update([

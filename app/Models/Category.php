@@ -13,14 +13,17 @@ class Category extends Model implements Sitemapable
 {
     use HasFactory;
 
+    /**
+     * `name` is a read-only accessor over `name_ar` / `name_en`, and `status`
+     * was replaced by `is_active`. Neither is a column, so both were silently
+     * dropped on every mass assignment — see the same removal on Product.
+     */
     protected $fillable = [
-        'name',
         'name_ar',
         'name_en',
         'slug',
         'image',
         'icon',
-        'status',
         'parent_id',
         'description',
         'description_ar',

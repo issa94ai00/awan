@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\SalesOrder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class QuoteController extends Controller
 {
@@ -71,17 +72,21 @@ class QuoteController extends Controller
         $validated['subtotal'] = $subtotal;
         $validated['total'] = $subtotal - ($validated['discount'] ?? 0) + ($validated['tax'] ?? 0);
 
-        $quote = Quote::create($validated);
+        $quote = DB::transaction(function () use ($validated, $request) {
+            $quote = Quote::create($validated);
 
-        foreach ($request->items as $item) {
-            $quote->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'discount' => $item['discount'] ?? 0,
-                'tax' => $item['tax'] ?? 0,
-            ]);
-        }
+            foreach ($request->items as $item) {
+                $quote->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'discount' => $item['discount'] ?? 0,
+                    'tax' => $item['tax'] ?? 0,
+                ]);
+            }
+
+            return $quote;
+        });
 
         $quote->load(['customer', 'creator', 'items.product']);
 
@@ -130,18 +135,23 @@ class QuoteController extends Controller
         $validated['subtotal'] = $subtotal;
         $validated['total'] = $subtotal - ($validated['discount'] ?? 0) + ($validated['tax'] ?? 0);
 
-        $quote->update($validated);
+        // Header totals are derived from the lines, and the lines are cleared
+        // before being rewritten — so both have to land together or the quote
+        // is left describing items it no longer has.
+        DB::transaction(function () use ($quote, $validated, $request) {
+            $quote->update($validated);
 
-        $quote->items()->delete();
-        foreach ($request->items as $item) {
-            $quote->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'discount' => $item['discount'] ?? 0,
-                'tax' => $item['tax'] ?? 0,
-            ]);
-        }
+            $quote->items()->delete();
+            foreach ($request->items as $item) {
+                $quote->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'discount' => $item['discount'] ?? 0,
+                    'tax' => $item['tax'] ?? 0,
+                ]);
+            }
+        });
 
         $quote->load(['customer', 'creator', 'items.product']);
 
@@ -198,30 +208,37 @@ class QuoteController extends Controller
             ], 400);
         }
 
-        $salesOrder = SalesOrder::create([
-            'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
-            'customer_id' => $quote->customer_id,
-            'quote_id' => $quote->id,
-            'status' => SalesOrder::STATUS_PENDING,
-            'order_date' => now(),
-            'subtotal' => $quote->subtotal,
-            'tax' => $quote->tax,
-            'discount' => $quote->discount,
-            'total' => $quote->total,
-            'notes' => $quote->notes,
-            'created_by' => auth()->id(),
-        ]);
-
-        foreach ($quote->items as $item) {
-            $salesOrder->items()->create([
-                'product_id' => $item->product_id,
-                'description' => $item->product->name_ar,
-                'quantity' => $item->quantity,
-                'unit_price' => $item->unit_price,
-                'discount' => $item->discount,
-                'tax' => $item->tax,
+        // A conversion that half-succeeded would leave an order carrying the
+        // quote's totals with only some of its lines — and the quote already
+        // marked as converted, so nobody would go looking.
+        $salesOrder = DB::transaction(function () use ($quote) {
+            $salesOrder = SalesOrder::create([
+                'order_number' => 'SO-' . str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
+                'customer_id' => $quote->customer_id,
+                'quote_id' => $quote->id,
+                'status' => SalesOrder::STATUS_PENDING,
+                'order_date' => now(),
+                'subtotal' => $quote->subtotal,
+                'tax' => $quote->tax,
+                'discount' => $quote->discount,
+                'total' => $quote->total,
+                'notes' => $quote->notes,
+                'created_by' => auth()->id(),
             ]);
-        }
+
+            foreach ($quote->items as $item) {
+                $salesOrder->items()->create([
+                    'product_id' => $item->product_id,
+                    'description' => $item->product->name_ar,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'discount' => $item->discount,
+                    'tax' => $item->tax,
+                ]);
+            }
+
+            return $salesOrder;
+        });
 
         $salesOrder->load(['customer', 'creator', 'items.product']);
 
