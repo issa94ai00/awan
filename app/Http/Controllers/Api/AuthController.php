@@ -23,12 +23,17 @@ class AuthController extends Controller
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255|unique:users',
                 'password' => 'required|string|min:8|confirmed',
-                'phone' => 'nullable|string|max:20',
+                // Unique because sign-in resolves an account by number: two
+                // users sharing one would make the login answer depend on which
+                // row happened to be created first.
+                'phone' => 'nullable|string|max:20|unique:users,phone',
             ], [
                 'name.required' => 'الاسم مطلوب',
                 'email.required' => 'البريد الإلكتروني مطلوب',
                 'email.email' => 'البريد الإلكتروني غير صحيح',
                 'email.unique' => 'البريد الإلكتروني مستخدم بالفعل',
+                'phone.unique' => 'رقم الهاتف مستخدم بالفعل',
+                'phone.max' => 'رقم الهاتف يجب ألا يتجاوز 20 خانة',
                 'password.required' => 'كلمة المرور مطلوبة',
                 'password.min' => 'كلمة المرور يجب أن تكون 8 أحرف على الأقل',
                 'password.confirmed' => 'تأكيد كلمة المرور غير متطابق',
@@ -181,12 +186,15 @@ class AuthController extends Controller
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|max:255',
                 'email' => 'sometimes|required|string|email|max:255|unique:users,email,' . $user->id,
-                'phone' => 'nullable|string|max:20',
+                // Ignores this user's own row, so saving the profile unchanged
+                // does not report their own number as taken.
+                'phone' => 'nullable|string|max:20|unique:users,phone,' . $user->id,
             ], [
                 'name.required' => 'الاسم مطلوب',
                 'email.required' => 'البريد الإلكتروني مطلوب',
                 'email.email' => 'البريد الإلكتروني غير صحيح',
                 'email.unique' => 'البريد الإلكتروني مستخدم بالفعل',
+                'phone.unique' => 'رقم الهاتف مستخدم بالفعل',
             ]);
 
             if ($validator->fails()) {
