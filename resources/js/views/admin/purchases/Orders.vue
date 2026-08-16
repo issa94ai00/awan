@@ -388,8 +388,9 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
+import { salesOrdersApi } from '@/api/salesOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
@@ -401,6 +402,7 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 const { t } = useI18n();
 
 const router = useRouter();
+const route = useRoute();
 const store = usePurchaseOrdersStore();
 const suppliersStore = useSuppliersStore();
 const productsStore = useProductsStore();
@@ -623,10 +625,58 @@ const receiveGoods = (id) => {
     router.push(`/admin/purchases/receipts?create_for_order=${id}`);
 };
 
-onMounted(() => {
-    store.fetchOrders().catch(() => {});
-    suppliersStore.fetchSuppliers().catch(() => {});
-    productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
+/**
+ * Opens the create drawer already filled in from a sales order's shortfall.
+ *
+ * Reached from the confirmation that was refused for lack of stock. The order
+ * id travels in the URL and the quantities are fetched here rather than passed
+ * along with it, so what lands in the form is what is short *now* — stock may
+ * have moved between the refusal and this screen opening.
+ */
+const prefillFromShortage = async (salesOrderId) => {
+    try {
+        const { data } = await salesOrdersApi.shortages(salesOrderId);
+        const shortages = data?.data?.shortages ?? [];
+        const orderNumber = data?.data?.sales_order?.order_number ?? salesOrderId;
+
+        if (!shortages.length) {
+            ElMessage.info(t('sales.shortage_none_left'));
+            return;
+        }
+
+        resetForm();
+        isEditMode.value = false;
+        form.items = shortages.map((row) => ({
+            product_id: row.product_id,
+            quantity: row.suggested_quantity,
+            unit_price: row.unit_price,
+        }));
+        // Says where these lines came from, so whoever approves the order later
+        // can trace it back to the sale that needed them.
+        form.notes = t('sales.prefilled_from_order', { order: orderNumber });
+
+        formDrawerVisible.value = true;
+        ElMessage.success(t('sales.prefilled_from_order', { order: orderNumber }));
+    } catch (err) {
+        ElMessage.error(err?.response?.data?.message || t('sales.shortage_prefill_failed'));
+    }
+};
+
+onMounted(async () => {
+    // Products first: the item rows bind to product ids, and the selects would
+    // render blank if the drawer opened before the catalogue arrived.
+    await Promise.all([
+        store.fetchOrders().catch(() => {}),
+        suppliersStore.fetchSuppliers().catch(() => {}),
+        productsStore.fetchProducts({ per_page: 100 }).catch(() => {}),
+    ]);
+
+    const shortageFor = route.query.shortage_for_order;
+    if (shortageFor) {
+        await prefillFromShortage(shortageFor);
+        // Cleared so a refresh does not reopen the drawer over work in progress.
+        router.replace({ query: {} });
+    }
 });
 </script>
 

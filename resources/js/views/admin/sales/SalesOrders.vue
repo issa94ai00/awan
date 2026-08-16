@@ -892,6 +892,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { useStockShortage } from '@/Composables/useStockShortage';
 
 const { t } = useI18n();
 import {
@@ -906,6 +907,7 @@ import {
 } from '@/utils/sales';
 
 const router = useRouter();
+const { handleStockShortage } = useStockShortage();
 const store = useSalesOrdersStore();
 const customersStore = useCustomersStore();
 const productsStore = useProductsStore();
@@ -1326,9 +1328,15 @@ const handleStageMove = async (action) => {
         }
     }
 
+    const orderId = selectedOrder.value.id;
+
     try {
-        await afterStageChange(await store.moveToStage(selectedOrder.value.id, action.status, note ? { note } : {}));
+        await afterStageChange(await store.moveToStage(orderId, action.status, note ? { note } : {}));
     } catch (e) {
+        // A confirmation refused for lack of stock offers to raise the purchase
+        // order instead of only naming what is missing.
+        if (await handleStockShortage(e, orderId)) return;
+
         ElMessage.error(apiErrorMessage(e, t('failed_to_move_stage')));
     }
 };

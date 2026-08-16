@@ -58,6 +58,17 @@ export const salesOrdersApi = {
         return api.post(`/sales-orders/${id}/confirm`);
     },
 
+    /**
+     * What this order asks for that stock cannot cover, per line.
+     *
+     * Fetched by order id rather than carried through the URL, so the purchase
+     * screen prefills from figures read at the moment it opens instead of ones
+     * that may have moved since the confirmation was refused.
+     */
+    shortages(id) {
+        return api.get(`/sales-orders/${id}/shortages`);
+    },
+
     /** Moves the order to an execution stage, with all its side effects. */
     transition(id, payload) {
         return api.post(`/sales-orders/${id}/transition`, payload);

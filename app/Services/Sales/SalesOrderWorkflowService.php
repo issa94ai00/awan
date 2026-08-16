@@ -5,6 +5,8 @@ namespace App\Services\Sales;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
+use App\Models\Product;
+use App\Models\PurchaseOrderItem;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
@@ -705,6 +707,95 @@ class SalesOrderWorkflowService
             fn (Warehouse $a, Warehouse $b) => ((bool) $b->is_primary) <=> ((bool) $a->is_primary),
             fn (Warehouse $a, Warehouse $b) => $a->id <=> $b->id,
         ])->values();
+    }
+
+    /**
+     * What this order asks for that the network cannot supply, line by line.
+     *
+     * Read-only, and deliberately separate from the reservation: confirming an
+     * order that cannot be covered used to end at a sentence — "الرصيد غير كافٍ
+     * في أي مستودع: …" — leaving the operator to read the product names out of
+     * an error string and retype them into a purchase order. The same figures
+     * are worth returning as data so the shortfall can be turned into an order
+     * to a supplier without anyone transcribing anything.
+     *
+     * Availability is drawn from a running pool per product, so two lines of the
+     * same item cannot both be told the same units are free — which would report
+     * a shortfall smaller than the one the reservation will actually hit.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function stockShortages(SalesOrder $order): array
+    {
+        $order->loadMissing('items.product');
+
+        $candidates = $this->sourceCandidates($order);
+        $pool = [];
+        $shortages = [];
+
+        foreach ($order->items as $item) {
+            $productId = (int) $item->product_id;
+            if ($productId <= 0) {
+                continue;
+            }
+
+            if (! array_key_exists($productId, $pool)) {
+                $pool[$productId] = $candidates->sum(
+                    fn (Warehouse $warehouse) => $this->sellableFor($productId, $warehouse->id, $order)
+                );
+            }
+
+            $required = (int) $item->quantity;
+            $available = (int) $pool[$productId];
+            $covered = min($required, $available);
+
+            // Spent whether or not this line was fully covered, so the next line
+            // of the same product sees what is genuinely left.
+            $pool[$productId] = $available - $covered;
+
+            $shortfall = $required - $covered;
+            if ($shortfall <= 0) {
+                continue;
+            }
+
+            $product = $item->product;
+
+            $shortages[] = [
+                'product_id' => $productId,
+                'name' => $product?->name_ar ?: ($product?->name_en ?: ('#'.$productId)),
+                'sku' => $product?->sku,
+                'required' => $required,
+                'available' => $covered,
+                'shortfall' => $shortfall,
+                // What to put on the purchase order. The shortfall itself: buying
+                // more is a stocking decision the buyer makes, not one to assume.
+                'suggested_quantity' => $shortfall,
+                'unit_price' => $this->lastPurchasePrice($productId, $product),
+            ];
+        }
+
+        return $shortages;
+    }
+
+    /**
+     * The price to suggest on a purchase order line.
+     *
+     * The most recent price actually paid to a supplier beats the catalogue
+     * cost, which is often stale or never filled in; the buyer can still change
+     * it. Zero rather than a guess when the product has never been bought.
+     */
+    private function lastPurchasePrice(int $productId, ?Product $product): float
+    {
+        $lastPaid = PurchaseOrderItem::query()
+            ->where('product_id', $productId)
+            ->latest('id')
+            ->value('unit_price');
+
+        if ($lastPaid !== null && (float) $lastPaid > 0) {
+            return round((float) $lastPaid, 2);
+        }
+
+        return round((float) ($product?->cost_price ?? 0), 2);
     }
 
     /**

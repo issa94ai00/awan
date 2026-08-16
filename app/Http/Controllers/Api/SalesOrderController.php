@@ -675,13 +675,44 @@ class SalesOrderController extends Controller
         try {
             $result = $this->workflow->transitionTo($salesOrder, SalesOrder::STATUS_CONFIRMED);
         } catch (RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+            // A refusal for lack of stock carries the shortfall as data, not
+            // only inside the sentence. The operator was otherwise left reading
+            // product names out of an error string to retype them into a
+            // purchase order; the screen can now offer to raise one.
+            $shortages = $this->workflow->stockShortages($salesOrder);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => $shortages === [] ? null : ['shortages' => $shortages],
+            ], 422);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'تم تأكيد الطلبية: حُجز المخزون وأُنشئت الفاتورة ورُحّل القيد المحاسبي.',
             'data' => $this->orderPayload($salesOrder->refresh(), $result),
+        ]);
+    }
+
+    /**
+     * What this order asks for that stock cannot cover.
+     *
+     * Read separately from the confirm attempt so the purchase screen can fetch
+     * it by order id and prefill itself, rather than the figures being passed
+     * through a URL and going stale on the way.
+     */
+    public function stockShortages(SalesOrder $salesOrder)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'sales_order' => [
+                    'id' => $salesOrder->id,
+                    'order_number' => $salesOrder->order_number,
+                ],
+                'shortages' => $this->workflow->stockShortages($salesOrder),
+            ],
         ]);
     }
 

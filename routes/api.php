@@ -554,6 +554,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // invoice and the ledger together — see SalesOrderWorkflowService.
         Route::get('/sales-orders/{salesOrder}/detail', [SalesOrderController::class, 'detail'])->whereNumber('salesOrder')->name('api.sales-orders.detail');
         Route::get('/sales-orders/{salesOrder}/routing', [SalesOrderController::class, 'routingOptions'])->whereNumber('salesOrder')->name('api.sales-orders.routing');
+        // What stock cannot cover, for prefilling a purchase order.
+        Route::get('/sales-orders/{salesOrder}/shortages', [SalesOrderController::class, 'stockShortages'])->whereNumber('salesOrder')->name('api.sales-orders.shortages');
         // Where each line's goods come from. A line may be split across
         // warehouses; saving the plan moves the stock hold with it.
         Route::get('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'sourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing');
