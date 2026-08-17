@@ -542,6 +542,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // The documents behind one party's balance — what the aging
                 // report cannot answer, and what a dispute actually needs.
                 Route::get('/accounting/party-statement', [AccountingReportController::class, 'partyStatement'])->name('api.admin.accounting.party-statement');
+                // Which branch made the money — the question a combined income
+                // statement cannot answer.
+                Route::get('/accounting/cost-center-statement', [AccountingReportController::class, 'costCenterStatement'])->name('api.admin.accounting.cost-center-statement');
             });
         });
 

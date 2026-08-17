@@ -4,6 +4,7 @@ namespace App\Services\Accounting;
 
 use App\Exceptions\ClosedPeriodException;
 use App\Models\AccountingPeriod;
+use App\Models\CostCenter;
 use App\Models\CreditNote;
 use App\Models\Employee;
 use App\Models\FixedAsset;
@@ -84,16 +85,20 @@ class LedgerPostingService
 
         $label = 'فاتورة ' . $invoice->invoice_number;
 
+        // The branch that made the sale, so revenue and its cost of sale
+        // land in the same place and a gross margin per branch is readable.
+        $center = CostCenter::forWarehouse($invoice->warehouse_id ? (int) $invoice->warehouse_id : null);
+
         $lines = [
-            ['role' => 'accounts_receivable', 'debit' => $total, 'description' => 'ذمم مدينة - ' . $label],
+            ['role' => 'accounts_receivable', 'debit' => $total, 'description' => 'ذمم مدينة - ' . $label, 'cost_center_id' => $center],
         ];
 
         if ($goods > 0) {
-            $lines[] = ['role' => 'sales_revenue', 'credit' => $goods, 'description' => 'إيراد مبيعات - ' . $label];
+            $lines[] = ['role' => 'sales_revenue', 'credit' => $goods, 'description' => 'إيراد مبيعات - ' . $label, 'cost_center_id' => $center];
         }
 
         if ($charges > 0) {
-            $lines[] = ['role' => 'additional_charges_revenue', 'credit' => $charges, 'description' => 'إيراد شحن وخدمات - ' . $label];
+            $lines[] = ['role' => 'additional_charges_revenue', 'credit' => $charges, 'description' => 'إيراد شحن وخدمات - ' . $label, 'cost_center_id' => $center];
         }
 
         if ($tax > 0) {
@@ -433,16 +438,24 @@ class LedgerPostingService
         }
 
         $name = Warehouse::find($warehouseId)?->name ?? ('#'.$warehouseId);
-        $inventoryLine = ['account_id' => $this->inventoryAccountIdFor($warehouseId)];
+        // Both sides belong to the warehouse that was counted: the loss is
+        // that branch's loss, not a company-wide one.
+        $inventoryLine = ['account_id' => $this->inventoryAccountIdFor($warehouseId), 'warehouse_id' => $warehouseId];
+
+        // The shrinkage side carries the warehouse too, and it is the side that
+        // matters for a per-branch result: the inventory account is an asset
+        // and never reaches the income statement, so attributing only that one
+        // would leave the loss belonging to no branch at all.
+        $shrinkage = ['role' => 'inventory_adjustment', 'warehouse_id' => $warehouseId];
 
         $lines = $isShortage
             ? [
-                ['role' => 'inventory_adjustment', 'debit' => $cost, 'description' => 'عجز جرد ('.$name.') - '.$label],
+                $shrinkage + ['debit' => $cost, 'description' => 'عجز جرد ('.$name.') - '.$label],
                 $inventoryLine + ['credit' => $cost, 'description' => 'تخفيض مخزون ('.$name.') - '.$label],
             ]
             : [
                 $inventoryLine + ['debit' => $cost, 'description' => 'زيادة مخزون ('.$name.') - '.$label],
-                ['role' => 'inventory_adjustment', 'credit' => $cost, 'description' => 'زيادة جرد ('.$name.') - '.$label],
+                $shrinkage + ['credit' => $cost, 'description' => 'زيادة جرد ('.$name.') - '.$label],
             ];
 
         return $this->post(
@@ -522,7 +535,8 @@ class LedgerPostingService
         ?string $date = null,
         ?string $currency = null,
     ): ?JournalEntryHeader {
-        $lines = [];
+        $costLines = [];
+        $inventoryLines = [];
         $total = 0.0;
 
         foreach ($costByWarehouse as $warehouseId => $cost) {
@@ -535,24 +549,33 @@ class LedgerPostingService
             $warehouse = Warehouse::find($warehouseId);
             $name = $warehouse?->name ?? ('#' . $warehouseId);
 
-            $lines[] = [
+            // The cost of sale is split by source as well as the inventory
+            // credit. One pooled debit would balance just as well, but it would
+            // leave the cost belonging to no branch — and a branch's revenue
+            // without its cost of sale is not a margin, it is a turnover
+            // figure pretending to be one.
+            $costLines[] = [
+                'role' => 'cogs',
+                'debit' => $cost,
+                'description' => 'تكلفة مبيعات (' . $name . ') - ' . $label,
+                'warehouse_id' => (int) $warehouseId,
+            ];
+
+            $inventoryLines[] = [
                 'account_id' => $this->inventoryAccountIdFor((int) $warehouseId),
                 'credit' => $cost,
                 'description' => 'إخراج مخزون (' . $name . ') - ' . $label,
+                'warehouse_id' => (int) $warehouseId,
             ];
         }
 
         // Products with no cost price yield a zero entry; writing it would add
         // noise without moving a single balance.
-        if ($lines === [] || $total <= 0) {
+        if ($inventoryLines === [] || $total <= 0) {
             return null;
         }
 
-        array_unshift($lines, [
-            'role' => 'cogs',
-            'debit' => $this->money($total),
-            'description' => 'تكلفة مبيعات - ' . $label,
-        ]);
+        $lines = array_merge($costLines, $inventoryLines);
 
         return $this->post(
             key: $key,
@@ -1199,6 +1222,12 @@ class LedgerPostingService
                 'credit' => $credit,
                 'description' => $line['description'] ?? null,
                 'employee_id' => $line['employee_id'] ?? null,
+                // Which part of the business the figure belongs to. Named
+                // outright when the caller knows, otherwise derived from the
+                // warehouse the line is about — which is what keeps the
+                // dimension populated without anybody filling in a field.
+                'cost_center_id' => $line['cost_center_id']
+                    ?? CostCenter::forWarehouse($line['warehouse_id'] ?? null),
             ];
 
             $totalDebit += $debit;
@@ -1264,6 +1293,7 @@ class LedgerPostingService
                     'credit' => $line['credit'],
                     'description' => $line['description'],
                     'employee_id' => $line['employee_id'],
+                    'cost_center_id' => $line['cost_center_id'],
                 ]);
 
                 $account = LedgerAccount::find($line['account_id']);

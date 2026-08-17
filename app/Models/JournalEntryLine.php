@@ -17,6 +17,10 @@ class JournalEntryLine extends Model
         'credit',
         'description',
         'employee_id',
+        // Which part of the business the figure belongs to. Nullable on
+        // purpose: a shared cost genuinely belongs to no branch, and forcing an
+        // attribution invents precision the reports would then present as fact.
+        'cost_center_id',
     ];
 
     protected $casts = [
@@ -37,5 +41,10 @@ class JournalEntryLine extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function costCenter(): BelongsTo
+    {
+        return $this->belongsTo(CostCenter::class);
     }
 }

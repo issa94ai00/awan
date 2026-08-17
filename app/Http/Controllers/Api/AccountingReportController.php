@@ -488,6 +488,130 @@ class AccountingReportController extends Controller
     }
 
     /**
+     * Which part of the business made the money.
+     *
+     * The income statement says whether the company was profitable. It cannot
+     * say which branch was, and that is usually the question worth asking: a
+     * company can be comfortably profitable while one location loses money
+     * every month, and a combined statement will never mention it.
+     *
+     * Lines with no centre are reported as their own column rather than being
+     * spread across the branches. A shared cost genuinely belongs to none of
+     * them, and apportioning it — by turnover, by headcount, by anything —
+     * invents a precision the reader would then take for a measurement.
+     */
+    public function costCenterStatement(Request $request): JsonResponse
+    {
+        [$fromDate, $toDate] = $this->period($request);
+
+        $rows = DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->join('ledger_accounts as a', 'a.id', '=', 'l.account_id')
+            ->leftJoin('cost_centers as c', 'c.id', '=', 'l.cost_center_id')
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
+            ->whereIn('a.type', ['revenue', 'expense'])
+            ->groupBy('l.cost_center_id', 'c.code', 'c.name', 'a.type', 'a.posting_role')
+            ->selectRaw('l.cost_center_id, c.code, c.name, a.type, a.posting_role,
+                         COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c_amount')
+            ->get();
+
+        $centers = [];
+
+        foreach ($rows as $row) {
+            $key = $row->cost_center_id ?: 0;
+
+            $centers[$key] ??= [
+                'id' => $row->cost_center_id,
+                'code' => $row->code,
+                'name' => $row->name ?: 'غير موزّع',
+                'revenue' => 0.0,
+                'cost_of_sales' => 0.0,
+                'operating_expenses' => 0.0,
+            ];
+
+            $amount = round(
+                LedgerAccount::signedDelta($row->type, (float) $row->d, (float) $row->c_amount),
+                2
+            );
+
+            if ($row->type === 'revenue') {
+                // Returns and discounts are debit-normal here, so this nets
+                // them off rather than adding them to revenue.
+                $centers[$key]['revenue'] = round(
+                    $centers[$key]['revenue']
+                    + (in_array($row->posting_role, self::CONTRA_REVENUE_ROLES, true) ? -$amount : $amount),
+                    2
+                );
+
+                continue;
+            }
+
+            $bucket = in_array($row->posting_role, self::COST_OF_SALES_ROLES, true)
+                ? 'cost_of_sales'
+                : 'operating_expenses';
+
+            $centers[$key][$bucket] = round($centers[$key][$bucket] + $amount, 2);
+        }
+
+        $centers = collect($centers)
+            ->map(function (array $center) {
+                $center['gross_profit'] = round($center['revenue'] - $center['cost_of_sales'], 2);
+                $center['net_result'] = round($center['gross_profit'] - $center['operating_expenses'], 2);
+                $center['margin_percentage'] = abs($center['revenue']) > self::EPSILON
+                    ? round(($center['gross_profit'] / $center['revenue']) * 100, 1)
+                    : null;
+
+                return $center;
+            })
+            // Unattributed last: it is a residue, not a branch.
+            ->sortBy(fn ($center) => $center['id'] === null ? PHP_INT_MAX : -$center['revenue'])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cost centre statement retrieved successfully',
+            'data' => [
+                'period' => ['from' => $fromDate, 'to' => $toDate],
+                'centers' => $centers,
+                'totals' => [
+                    'revenue' => round($centers->sum('revenue'), 2),
+                    'cost_of_sales' => round($centers->sum('cost_of_sales'), 2),
+                    'operating_expenses' => round($centers->sum('operating_expenses'), 2),
+                    'net_result' => round($centers->sum('net_result'), 2),
+                ],
+                // What could not be attributed, stated rather than buried: a
+                // large share here means the dimension is not being captured,
+                // and every per-branch figure beside it is that much less
+                // complete.
+                'unattributed_share' => $this->unattributedShare($centers),
+            ],
+        ]);
+    }
+
+    /** How much of the period's activity belongs to no centre, as a percentage. */
+    private function unattributedShare(\Illuminate\Support\Collection $centers): ?float
+    {
+        $activity = $centers->sum(fn ($c) => abs($c['revenue']) + abs($c['cost_of_sales']) + abs($c['operating_expenses']));
+
+        if ($activity < self::EPSILON) {
+            return null;
+        }
+
+        $unattributed = $centers->firstWhere('id', null);
+
+        if (! $unattributed) {
+            return 0.0;
+        }
+
+        $share = abs($unattributed['revenue']) + abs($unattributed['cost_of_sales'])
+            + abs($unattributed['operating_expenses']);
+
+        return round(($share / $activity) * 100, 1);
+    }
+
+    /**
      * Every document behind one party's balance.
      *
      * The aging report answers "who owes what"; this answers the question that
