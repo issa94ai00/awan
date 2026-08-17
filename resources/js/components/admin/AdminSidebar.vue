@@ -195,6 +195,12 @@
                                 <span v-if="!collapsed" class="nav-text">{{ t('supplier_payments') }}</span>
                             </router-link>
                         </li>
+                        <li>
+                            <router-link to="/admin/purchases/returns" class="nav-link" :class="{ active: isActive('/admin/purchases/returns') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('purchase_returns') }}</span>
+                            </router-link>
+                        </li>
                     </ul>
                 </li>
 

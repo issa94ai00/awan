@@ -87,15 +87,78 @@
                         </el-tag>
                     </template>
                 </el-table-column>
-                <el-table-column :label="$t('procedures')" width="150" fixed="right">
+                <!-- What has built up towards the benefit, on the person it
+                     belongs to rather than in a report elsewhere. -->
+                <el-table-column :label="$t('end_of_service_accrued')" width="150" align="right">
+                    <template #default="{ row }">
+                        <span v-if="Number(row.end_of_service_accrued) > 0">
+                            {{ money(row.end_of_service_accrued) }}
+                        </span>
+                        <span v-else class="muted">—</span>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('procedures')" width="200" fixed="right">
                     <template #default="{ row }">
                         <el-button-group>
                             <el-button :icon="Edit" size="small" @click="editEmployee(row)" />
+                            <el-button
+                                v-if="Number(row.end_of_service_accrued) > 0"
+                                size="small"
+                                type="success"
+                                plain
+                                @click="openSettlement(row)"
+                            >
+                                {{ $t('settle_end_of_service') }}
+                            </el-button>
                             <el-button :icon="Delete" size="small" type="danger" @click="deleteEmployee(row)" />
                         </el-button-group>
                     </template>
                 </el-table-column>
             </el-table>
+
+            <!-- Paying out what the monthly accruals built up. -->
+            <el-dialog v-model="settlementVisible" :title="$t('settle_end_of_service')" width="440px" destroy-on-close>
+                <p class="settlement-note">{{ $t('settle_end_of_service_hint') }}</p>
+
+                <el-form label-position="top">
+                    <el-form-item :label="$t('accrued_so_far')">
+                        <el-input :model-value="money(settlementForm.accrued)" disabled />
+                    </el-form-item>
+                    <el-form-item :label="$t('amount')">
+                        <el-input v-model="settlementForm.amount" type="number" min="0" step="0.01" />
+                        <small v-if="exceedsAccrued" class="settlement-warn">
+                            {{ $t('cannot_pay_more_than_accrued') }}
+                        </small>
+                    </el-form-item>
+                    <el-form-item :label="$t('payment_method')">
+                        <el-select v-model="settlementForm.settlement" style="width:100%">
+                            <el-option :label="$t('cash')" value="cash" />
+                            <el-option :label="$t('bank_transfer')" value="bank" />
+                        </el-select>
+                    </el-form-item>
+                    <el-form-item :label="$t('payment_date')">
+                        <el-date-picker
+                            v-model="settlementForm.paid_on"
+                            type="date"
+                            format="YYYY-MM-DD"
+                            value-format="YYYY-MM-DD"
+                            style="width:100%"
+                        />
+                    </el-form-item>
+                </el-form>
+
+                <template #footer>
+                    <el-button @click="settlementVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button
+                        type="primary"
+                        :loading="settling"
+                        :disabled="exceedsAccrued || !(Number(settlementForm.amount) > 0)"
+                        @click="confirmSettlement"
+                    >
+                        {{ $t('settle_end_of_service') }}
+                    </el-button>
+                </template>
+            </el-dialog>
 
             <div v-if="!store.loading && !filteredEmployees.length" class="empty-state">
                 {{ $t('there_are_no_employees_matching') }}
@@ -106,7 +169,9 @@
 
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useEmployeesStore } from '@/stores/employees';
@@ -120,8 +185,67 @@ import {
     Delete
 } from '@element-plus/icons-vue';
 
+const { t } = useI18n();
 const router = useRouter();
 const store = useEmployeesStore();
+
+/* ------------------------------------------------------------------ *
+ * End-of-service settlement
+ *
+ * Paying out what the monthly accruals built up. It lives here rather than in
+ * payroll because it is the last thing that happens to a person, not a step in
+ * a monthly run — and the figure it settles is carried on their own record.
+ * ------------------------------------------------------------------ */
+
+const settlementVisible = ref(false);
+const settling = ref(false);
+const settlementForm = reactive({
+    employee_id: null,
+    accrued: 0,
+    amount: 0,
+    settlement: 'cash',
+    paid_on: new Date().toISOString().slice(0, 10),
+});
+
+const money = (value) => Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+});
+
+// Paying more than was accrued would debit a liability that was never raised.
+// The server refuses it too; catching it here saves a round trip and explains
+// the refusal next to the field that caused it.
+const exceedsAccrued = computed(() =>
+    Number(settlementForm.amount) - Number(settlementForm.accrued) > 0.009
+);
+
+const openSettlement = (employee) => {
+    settlementForm.employee_id = employee.id;
+    settlementForm.accrued = Number(employee.end_of_service_accrued) || 0;
+    settlementForm.amount = settlementForm.accrued;
+    settlementForm.settlement = 'cash';
+    settlementForm.paid_on = new Date().toISOString().slice(0, 10);
+    settlementVisible.value = true;
+};
+
+const confirmSettlement = async () => {
+    settling.value = true;
+    try {
+        await axios.post(`/api/v1/employees/${settlementForm.employee_id}/end-of-service`, {
+            amount: Number(settlementForm.amount),
+            settlement: settlementForm.settlement,
+            paid_on: settlementForm.paid_on,
+        });
+
+        settlementVisible.value = false;
+        ElMessage.success(t('end_of_service_settled'));
+        await store.fetchEmployees();
+    } catch (error) {
+        ElMessage.error(error.response?.data?.message || t('failed_to_settle_end_of_service'));
+    } finally {
+        settling.value = false;
+    }
+};
 const searchQuery = ref('');
 const selectedStatus = ref('');
 

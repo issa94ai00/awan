@@ -262,6 +262,11 @@ const routes = [
                 name: 'admin.supplier-payments.index',
                 component: () => import('@/views/admin/purchases/Payments.vue')
             },
+            {
+                path: 'purchases/returns',
+                name: 'admin.purchase-returns.index',
+                component: () => import('@/views/admin/purchases/Returns.vue')
+            },
             // HR
             {
                 path: 'hr',
