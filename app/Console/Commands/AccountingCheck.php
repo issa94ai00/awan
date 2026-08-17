@@ -36,6 +36,7 @@ class AccountingCheck extends Command
         $problems = 0;
 
         $problems += $this->checkSourceDocuments();
+        $problems += $this->checkReferentialIntegrity();
         $problems += $this->checkUnbalancedEntries();
         $problems += $this->checkLedgerTotals();
         $problems += $this->checkAccountBalances();
@@ -50,6 +51,69 @@ class AccountingCheck extends Command
         $this->warn("انتهى الفحص: {$problems} مشكلة.");
 
         return self::FAILURE;
+    }
+
+    /**
+     * Rows that point at something no longer there, and entries with no
+     * substance.
+     *
+     * Foreign keys make most of these impossible going forward, but they were
+     * added after the tables were in use, and a restore or a direct SQL edit
+     * can still leave one behind. Each is invisible to the other checks: an
+     * entry with no lines balances trivially, and a line whose account is gone
+     * is simply dropped by every join that reports on it — so the difference
+     * appears in the totals and nowhere else.
+     */
+    private function checkReferentialIntegrity(): int
+    {
+        $this->line('— سلامة الروابط');
+
+        $orphanLines = DB::table('journal_entry_lines as l')
+            ->leftJoin('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereNull('h.id')
+            ->count();
+
+        $missingAccounts = DB::table('journal_entry_lines as l')
+            ->leftJoin('ledger_accounts as a', 'a.id', '=', 'l.account_id')
+            ->whereNull('a.id')
+            ->count();
+
+        $emptyEntries = DB::table('journal_entry_headers as h')
+            ->whereNull('h.deleted_at')
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))
+                ->from('journal_entry_lines as l')
+                ->whereColumn('l.journal_entry_header_id', 'h.id'))
+            ->count();
+
+        // The unique index makes this impossible now; it was added to a table
+        // that already had rows, so a duplicate from before it would have been
+        // rejected at index creation — this confirms none slipped through a
+        // later restore.
+        $duplicateKeys = DB::table('journal_entry_headers')
+            ->whereNotNull('posting_key')
+            ->groupBy('posting_key')
+            ->havingRaw('COUNT(*) > 1')
+            ->select('posting_key')
+            ->get()
+            ->count();
+
+        $rows = array_filter([
+            $orphanLines ? ['سطور قيد بلا رأس', $orphanLines] : null,
+            $missingAccounts ? ['سطور تشير إلى حساب محذوف', $missingAccounts] : null,
+            $emptyEntries ? ['قيود بلا سطور', $emptyEntries] : null,
+            $duplicateKeys ? ['مفاتيح ترحيل مكررة', $duplicateKeys] : null,
+        ]);
+
+        if ($rows === []) {
+            $this->info('  كل الروابط سليمة.');
+
+            return 0;
+        }
+
+        $this->table(['المشكلة', 'العدد'], array_values($rows));
+        $this->warn('  هذه لا تُصلَح آلياً: كل حالة تحتاج قراراً عن القيد الذي تخصه.');
+
+        return array_sum(array_column($rows, 1));
     }
 
     /**

@@ -53,6 +53,9 @@ class LedgerAccountController extends Controller
         $account = LedgerAccount::create(array_merge($validated, [
             'is_active' => $validated['is_active'] ?? true,
             'balance' => $validated['balance'] ?? 0,
+            // The books are kept in one currency, so an account opened by hand
+            // takes it rather than being left blank or guessing.
+            'currency' => base_currency_code(),
         ]));
 
         return response()->json([
@@ -100,8 +103,49 @@ class LedgerAccountController extends Controller
         ]);
     }
 
+    /**
+     * Removes an account from the chart — only if nothing depends on it.
+     *
+     * This used to delete whatever it was given. Three things could go wrong,
+     * and each was silent:
+     *
+     *  - **An account with entries.** The database now refuses this outright
+     *    (the foreign key restricts), so the caller saw a 500 with a driver
+     *    message instead of an explanation. Its balance is also part of every
+     *    statement already printed.
+     *  - **An account holding a posting role.** Deleting the one that answers
+     *    to `cash` does not fail here; it fails the next time anybody records a
+     *    payment, with an error naming a role rather than the account somebody
+     *    removed.
+     *  - **A parent.** Its children are left pointing at nothing, and the chart
+     *    loses the branch they were grouped under.
+     */
     public function destroy(LedgerAccount $ledgerAccount): JsonResponse
     {
+        $refusal = match (true) {
+            $ledgerAccount->journalEntryLines()->exists() =>
+                'لا يمكن حذف حساب رُحّلت عليه قيود. عطّله بدل حذفه إن لم يعد مستخدماً.',
+
+            (bool) $ledgerAccount->posting_role =>
+                'هذا الحساب يحمل دور الترحيل «'.$ledgerAccount->posting_role.'»، ويعتمد عليه النظام في ترحيل المستندات. أسنِد الدور لحساب آخر أولاً.',
+
+            (bool) $ledgerAccount->is_system =>
+                'حساب نظامي لا يُحذف.',
+
+            LedgerAccount::where('parent_id', $ledgerAccount->id)->exists() =>
+                'لا يمكن حذف حساب رئيسي تتفرع عنه حسابات. انقل الحسابات الفرعية أو احذفها أولاً.',
+
+            default => null,
+        };
+
+        if ($refusal) {
+            return response()->json([
+                'success' => false,
+                'message' => $refusal,
+                'data' => null,
+            ], 422);
+        }
+
         $ledgerAccount->delete();
 
         return response()->json([

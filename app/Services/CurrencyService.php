@@ -244,6 +244,18 @@ class CurrencyService
             ]);
         }
 
+        // The chart of accounts is kept in the base currency by definition, so
+        // its labels follow the base rather than drifting behind it. Every
+        // account said 'SAR' while the configured base was the dollar, because
+        // the label was written once by a migration and never revisited.
+        //
+        // Only the labels move. Amounts already posted stay exactly as they
+        // are: they were recorded under the old base, and each entry carries
+        // its own `base_currency` stamp saying so.
+        if (Schema::hasTable('ledger_accounts')) {
+            \Illuminate\Support\Facades\DB::table('ledger_accounts')->update(['currency' => $currency->code]);
+        }
+
         $this->flushCache();
         $this->syncDefaultCurrencySetting($currency->code);
     }
