@@ -27,6 +27,10 @@ class ErpUpgradeController extends Controller
             'insurance_cost' => 'required|numeric|min:0',
             'other_charges' => 'required|numeric|min:0',
             'allocation_method' => 'required|in:value,quantity',
+            // How the charge was settled, and to whom. On credit the payable is
+            // somebody's, so the aging report keeps matching its control account.
+            'settlement' => 'nullable|in:credit,cash,bank',
+            'supplier_id' => 'nullable|exists:suppliers,id',
         ]);
 
         try {
@@ -36,7 +40,9 @@ class ErpUpgradeController extends Controller
                 (float) $validated['customs_duties'],
                 (float) $validated['insurance_cost'],
                 (float) $validated['other_charges'],
-                $validated['allocation_method']
+                $validated['allocation_method'],
+                $validated['settlement'] ?? 'credit',
+                isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null
             );
 
             return response()->json([

@@ -11,11 +11,16 @@ class LandedCost extends Model
 
     protected $fillable = [
         'purchase_receipt_id',
+        // Who the charge is owed to and how it was settled: the allocation
+        // moves a supplier's balance, and a balance that moves without a
+        // document naming the party cannot be explained afterwards.
+        'supplier_id',
         'shipping_charges',
         'customs_duties',
         'insurance_cost',
         'other_charges',
         'allocation_method',
+        'settlement',
     ];
 
     protected $casts = [

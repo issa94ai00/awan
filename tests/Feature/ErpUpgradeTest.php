@@ -71,7 +71,8 @@ test('it can allocate landed cost by value', function () {
         30.00,
         20.00,
         10.00,
-        'value'
+        'value',
+        'cash'
     );
 
     expect($landedCost)->not->toBeNull();
@@ -80,8 +81,19 @@ test('it can allocate landed cost by value', function () {
     $itemA->refresh();
     $itemB->refresh();
 
-    expect($itemA->unit_price)->toEqual(15.00);
-    expect($itemB->unit_price)->toEqual(30.00);
+    // The item rows keep the price the supplier charged. This test used to
+    // assert the opposite — that the charge was written into `unit_price` —
+    // which is precisely what left the receipt disagreeing with the journal
+    // entry posted from it, and left the freight in no cost of sale at all.
+    // The allocation now lands on the cost layers and the ledger instead.
+    expect($itemA->unit_price)->toEqual(10.00);
+    expect($itemB->unit_price)->toEqual(20.00);
+
+    $entry = App\Models\JournalEntryHeader::where('posting_key', 'landed_cost:'.$landedCost->id)->first();
+
+    expect($entry)->not->toBeNull();
+    expect(round((float) $entry->total_debit, 2))->toBe(100.0);
+    expect(round((float) $entry->total_credit, 2))->toBe(100.0);
 });
 
 test('it can reserve and release inventory', function () {
@@ -158,13 +170,19 @@ test('it can call allocate landed cost api', function () {
             'insurance_cost' => 10.00,
             'other_charges' => 10.00,
             'allocation_method' => 'value',
+            // On account the charge is owed to somebody: without a party the
+            // payables list stops adding up to its control account.
+            'settlement' => 'credit',
+            'supplier_id' => $supplier->id,
         ]);
 
     $response->assertStatus(200)
         ->assertJson(['success' => true]);
 
+    // The supplier is now owed the charge, and the item keeps its own price.
     $item->refresh();
-    expect($item->unit_price)->toEqual(20.00); // 10.00 + (100.00/10)
+    expect($item->unit_price)->toEqual(10.00);
+    expect(round((float) $supplier->fresh()->balance, 2))->toBe(100.0);
 });
 
 test('it can manage rma requests via api', function () {

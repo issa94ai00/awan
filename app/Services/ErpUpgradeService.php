@@ -12,7 +12,42 @@ use Illuminate\Support\Facades\DB;
 class ErpUpgradeService
 {
     /**
-     * Allocate landed costs to items in a purchase receipt.
+     * Adds freight, customs and insurance to what the goods actually cost.
+     *
+     * Landed cost is part of the value of stock: the business paid it to get
+     * the goods onto its own shelf, and a margin computed without it overstates
+     * every sale of those units.
+     *
+     * The previous version allocated the charge across the receipt's item rows
+     * and stopped there, rewriting `unit_price` on each one. Three records were
+     * left disagreeing, and none of them said so:
+     *
+     *  - the **receipt** now showed totals that no longer matched the journal
+     *    entry posted from it when the goods arrived;
+     *  - the **cost layers** — which is what a sale is actually costed against —
+     *    still held the original price, so the freight never reached a single
+     *    cost of sale;
+     *  - the **ledger** never heard of the charge at all: inventory did not
+     *    gain it, no expense recorded it, and nobody was recorded as owed it.
+     *
+     * What happens now instead. The item rows keep the price the supplier
+     * charged, because that is what the supplier charged and what the receipt's
+     * own entry was posted from. The charge is applied to the cost layers the
+     * receipt opened, and split by where those units are today:
+     *
+     *   Dr  Inventory              the share still on the shelf
+     *   Dr  Cost of goods sold     the share already sold
+     *       Cr  Accounts payable / Cash    the whole charge
+     *
+     * The sold share belongs in cost of sales because those units left at a
+     * cost that is now known to have been too low, and the period that sold
+     * them is the period that should carry the difference.
+     *
+     * @param  string  $settlement  `credit` (owed to a carrier, which must then
+     *                              be named), `cash`, or `bank`
+     * @param  ?int  $supplierId  who the charge is owed to, required on credit
+     *                            so the payables subsidiary keeps matching its
+     *                            control account
      */
     public function allocateLandedCost(
         int $purchaseReceiptId,
@@ -20,58 +55,163 @@ class ErpUpgradeService
         float $customs,
         float $insurance,
         float $other,
-        string $method = 'value'
+        string $method = 'value',
+        string $settlement = 'credit',
+        ?int $supplierId = null
     ): LandedCost {
-        return DB::transaction(function () use ($purchaseReceiptId, $shipping, $customs, $insurance, $other, $method) {
+        $total = round($shipping + $customs + $insurance + $other, 2);
+
+        if ($total <= 0) {
+            throw new \RuntimeException('لا توجد تكاليف إضافية لتوزيعها.');
+        }
+
+        if ($settlement === 'credit' && ! $supplierId) {
+            throw new \RuntimeException('التكاليف على الحساب تحتاج مورّداً تُقيَّد عليه، وإلا اختلّت مطابقة ذمم الموردين.');
+        }
+
+        return DB::transaction(function () use (
+            $purchaseReceiptId, $shipping, $customs, $insurance, $other, $method, $settlement, $supplierId, $total
+        ) {
             $receipt = PurchaseReceipt::findOrFail($purchaseReceiptId);
             $items = PurchaseReceiptItem::where('purchase_receipt_id', $purchaseReceiptId)->get();
 
             if ($items->isEmpty()) {
-                throw new \Exception('لا توجد أصناف في مستند الاستلام لتخصيص التكاليف.');
+                throw new \RuntimeException('لا توجد أصناف في مستند الاستلام لتخصيص التكاليف.');
             }
 
-            // Create LandedCost record
+            $basis = $method === 'quantity'
+                ? (float) $items->sum('quantity')
+                : (float) $items->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price);
+
+            if ($basis <= 0) {
+                throw new \RuntimeException('أساس التوزيع صفر — راجع كميات الإيصال وأسعاره.');
+            }
+
             $landedCost = LandedCost::create([
                 'purchase_receipt_id' => $purchaseReceiptId,
+                'supplier_id' => $settlement === 'credit' ? $supplierId : null,
                 'shipping_charges' => $shipping,
                 'customs_duties' => $customs,
                 'insurance_cost' => $insurance,
                 'other_charges' => $other,
                 'allocation_method' => $method,
+                'settlement' => $settlement,
             ]);
 
-            $totalAdditionalCost = $shipping + $customs + $insurance + $other;
+            $onShelf = 0.0;
+            $alreadySold = 0.0;
 
-            if ($method === 'quantity') {
-                $totalQuantity = $items->sum('quantity');
-                if ($totalQuantity <= 0) {
-                    throw new \Exception('إجمالي الكميات يجب أن يكون أكبر من الصفر.');
+            foreach ($items as $item) {
+                $quantity = (int) $item->quantity;
+
+                if ($quantity <= 0) {
+                    continue;
                 }
 
-                foreach ($items as $item) {
-                    $itemCostShare = ($item->quantity / $totalQuantity) * $totalAdditionalCost;
-                    $unitShare = $itemCostShare / $item->quantity;
-                    $item->unit_price = $item->unit_price + $unitShare;
-                    $item->total = $item->quantity * $item->unit_price;
-                    $item->save();
-                }
-            } else { // Default to 'value'
-                $totalValue = $items->sum('total');
-                if ($totalValue <= 0) {
-                    throw new \Exception('إجمالي قيمة الفاتورة يجب أن يكون أكبر من الصفر.');
-                }
+                $weight = $method === 'quantity'
+                    ? $quantity
+                    : $quantity * (float) $item->unit_price;
 
-                foreach ($items as $item) {
-                    $itemCostShare = ($item->total / $totalValue) * $totalAdditionalCost;
-                    $unitShare = $itemCostShare / $item->quantity;
-                    $item->unit_price = $item->unit_price + $unitShare;
-                    $item->total = $item->quantity * $item->unit_price;
-                    $item->save();
+                $share = $total * ($weight / $basis);
+                $perUnit = $share / $quantity;
+
+                // The layers this receipt opened, which is where the cost of a
+                // future sale is read from.
+                $layers = DB::table('inventory_cost_layers')
+                    ->where('product_id', $item->product_id)
+                    ->where('source', 'purchase_receipt')
+                    ->where('reference', $receipt->receipt_number)
+                    ->get();
+
+                foreach ($layers as $layer) {
+                    DB::table('inventory_cost_layers')->where('id', $layer->id)->update([
+                        'unit_cost' => round((float) $layer->unit_cost + $perUnit, 4),
+                        'updated_at' => now(),
+                    ]);
+
+                    $remaining = (int) $layer->remaining_quantity;
+                    $consumed = max(0, (int) $layer->received_quantity - $remaining);
+
+                    $onShelf += $perUnit * $remaining;
+                    $alreadySold += $perUnit * $consumed;
                 }
             }
 
+            $this->postLandedCost($landedCost, $receipt, round($onShelf, 2), round($alreadySold, 2), $settlement, $supplierId);
+
             return $landedCost;
         });
+    }
+
+    /**
+     * The ledger side of a landed cost.
+     *
+     * Rounding is settled against the total rather than left to the sum of the
+     * parts: the two debits are shares of one charge, and a cent lost between
+     * them would make the entry refuse to balance.
+     */
+    private function postLandedCost(
+        LandedCost $landedCost,
+        PurchaseReceipt $receipt,
+        float $onShelf,
+        float $alreadySold,
+        string $settlement,
+        ?int $supplierId
+    ): void {
+        $total = round(
+            (float) $landedCost->shipping_charges + (float) $landedCost->customs_duties
+            + (float) $landedCost->insurance_cost + (float) $landedCost->other_charges,
+            2
+        );
+
+        $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+        $label = 'تكاليف إضافية - '.($receipt->receipt_number ?? ('#'.$receipt->id));
+
+        // Whatever the split did not account for stays with the inventory side,
+        // which is where the bulk of a landed cost belongs.
+        $alreadySold = min($alreadySold, $total);
+        $onShelf = round($total - $alreadySold, 2);
+
+        $lines = [];
+
+        if ($onShelf > 0) {
+            $warehouseId = (int) ($receipt->warehouse_id ?? 0);
+
+            $lines[] = ($warehouseId
+                ? ['account_id' => $ledger->inventoryAccountIdFor($warehouseId)]
+                : ['role' => 'inventory'])
+                + ['debit' => $onShelf, 'description' => 'تحميل تكاليف على المخزون - '.$label];
+        }
+
+        if ($alreadySold > 0) {
+            $lines[] = ['role' => 'cogs', 'debit' => $alreadySold,
+                        'description' => 'تكاليف على بضاعة بيعت - '.$label];
+        }
+
+        $creditRole = match ($settlement) {
+            'cash' => 'cash',
+            'bank', 'bank_transfer' => 'bank',
+            default => 'accounts_payable',
+        };
+
+        $lines[] = ['role' => $creditRole, 'credit' => $total,
+                    'description' => 'مستحق تكاليف إضافية - '.$label];
+
+        $ledger->post(
+            key: 'landed_cost:'.$landedCost->id,
+            date: $receipt->receipt_date ? (string) $receipt->receipt_date->toDateString() : now()->toDateString(),
+            description: 'إثبات '.$label,
+            lines: $lines,
+            reference: $landedCost,
+            module: 'purchases',
+        );
+
+        // On credit the charge is owed to somebody, and the payables subsidiary
+        // has to move with the control account or the aging report stops
+        // reconciling.
+        if ($creditRole === 'accounts_payable' && $supplierId) {
+            \App\Models\Supplier::find($supplierId)?->updateBalance($total);
+        }
     }
 
     /**

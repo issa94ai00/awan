@@ -21,6 +21,11 @@ class Employee extends Model
         'department',
         'hire_date',
         'salary',
+        // What has been accrued towards the end-of-service benefit, and up to
+        // when. Kept on the record so the register reads without replaying the
+        // journal, and so a month cannot be accrued twice.
+        'end_of_service_accrued',
+        'end_of_service_through',
         'status',
         'notes',
         'avatar',

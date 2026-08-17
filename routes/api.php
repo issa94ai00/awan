@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\LeaveRequestController;use App\Http\Controllers\Api\TicketController;use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\PurchaseReturnController;
 use App\Http\Controllers\Api\SupplierPaymentController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockMovementController;
@@ -45,6 +46,7 @@ use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
 use App\Http\Controllers\Api\AccountingPeriodController;
+use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
 use App\Http\Controllers\Api\InventoryTransferController;
@@ -387,6 +389,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // this moves money out and settles the payables account, so it
                 // sits behind the admin role rather than with the staff-wide
                 // receipt endpoints below.
+                // Returning goods to a supplier: stock leaves, the payable
+                // drops, and the tax on the returned portion is given back.
+                Route::get('/purchase-returns', [PurchaseReturnController::class, 'index'])->name('api.admin.purchase-returns.index');
+                Route::post('/purchase-returns', [PurchaseReturnController::class, 'store'])->name('api.admin.purchase-returns.store');
+                Route::get('/purchase-returns/{purchaseReturn}', [PurchaseReturnController::class, 'show'])->name('api.admin.purchase-returns.show');
+                Route::delete('/purchase-returns/{purchaseReturn}', [PurchaseReturnController::class, 'destroy'])->name('api.admin.purchase-returns.destroy');
+
                 Route::get('/supplier-payments', [SupplierPaymentController::class, 'index'])->name('api.admin.supplier-payments.index');
                 Route::post('/supplier-payments', [SupplierPaymentController::class, 'store'])->name('api.admin.supplier-payments.store');
                 Route::get('/supplier-payments/outstanding', [SupplierPaymentController::class, 'outstanding'])->name('api.admin.supplier-payments.outstanding');
@@ -480,6 +489,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::delete('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy'])->name('api.admin.accounting.journal-entries.destroy');
                 Route::post('/accounting/journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->name('api.admin.accounting.journal-entries.reverse');
 
+                // The register of things bought to keep. Their cost belongs to
+                // the periods that use them, not to the month they were paid.
+                Route::get('/accounting/fixed-assets', [FixedAssetController::class, 'index'])->name('api.admin.accounting.fixed-assets.index');
+                Route::post('/accounting/fixed-assets', [FixedAssetController::class, 'store'])->name('api.admin.accounting.fixed-assets.store');
+                Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
+                Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
+                Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
+
                 // Accounting periods: closing one is what makes a reported
                 // month final, so it sits with the rest of the books.
                 Route::get('/accounting/periods', [AccountingPeriodController::class, 'index'])->name('api.admin.accounting.periods.index');
@@ -499,6 +516,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/account-statement', [AccountingReportController::class, 'accountStatement'])->name('api.admin.accounting.account-statement');
                 Route::get('/accounting/aging', [AccountingReportController::class, 'aging'])->name('api.admin.accounting.aging');
                 Route::get('/accounting/vat-return', [AccountingReportController::class, 'vatReturn'])->name('api.admin.accounting.vat-return');
+                Route::get('/accounting/cash-flow', [AccountingReportController::class, 'cashFlow'])->name('api.admin.accounting.cash-flow');
+                // The documents behind one party's balance — what the aging
+                // report cannot answer, and what a dispute actually needs.
+                Route::get('/accounting/party-statement', [AccountingReportController::class, 'partyStatement'])->name('api.admin.accounting.party-statement');
             });
         });
 
@@ -1008,6 +1029,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/payrolls/{payroll}', [PayrollController::class, 'update'])->name('api.payrolls.update');
             Route::delete('/payrolls/{payroll}', [PayrollController::class, 'destroy'])->name('api.payrolls.destroy');
             Route::post('/payrolls/auto-generate', [PayrollController::class, 'autoGenerate'])->name('api.payrolls.auto-generate');
+            // Paying out what the monthly accruals built up, when somebody leaves.
+            Route::post('/employees/{employee}/end-of-service', [PayrollController::class, 'settleEndOfService'])->name('api.payrolls.end-of-service');
         });
     });
 });

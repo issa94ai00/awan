@@ -7,6 +7,7 @@ use App\Models\Payroll;
 use App\Models\Employee;
 use App\Models\Attendance;
 use App\Services\Accounting\LedgerPostingService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -86,6 +87,9 @@ class PayrollController extends Controller
             'overtime_rate' => 'nullable|numeric|min:0',
             'bonuses' => 'nullable|numeric|min:0',
             'deductions' => 'nullable|numeric|min:0',
+            // Says what the deduction is: an advance being repaid reduces the
+            // advance rather than raising a liability the business now holds.
+            'deduction_type' => 'nullable|in:general,advance',
             'payment_method' => 'nullable|in:cash,bank_transfer,check',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -154,6 +158,7 @@ class PayrollController extends Controller
                 'overtime_rate' => 'nullable|numeric|min:0',
                 'bonuses' => 'nullable|numeric|min:0',
                 'deductions' => 'nullable|numeric|min:0',
+                'deduction_type' => 'nullable|in:general,advance',
             ]);
         }
 
@@ -204,6 +209,75 @@ class PayrollController extends Controller
             'success' => true,
             'message' => 'تم تحديث مسيرة الرواتب بنجاح',
             'data' => $payroll
+        ]);
+    }
+
+    /**
+     * Pays out an employee's end-of-service benefit.
+     *
+     * Settles the liability the monthly accruals built up. The cost was
+     * recognised in the years that earned it, so nothing is charged again here
+     * — which is the whole point of accruing it monthly rather than dropping
+     * years of expense into the month somebody happens to leave.
+     */
+    public function settleEndOfService(Request $request, Employee $employee): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01',
+            'settlement' => 'nullable|in:cash,bank',
+            'paid_on' => 'nullable|date',
+        ]);
+
+        $accrued = round((float) $employee->end_of_service_accrued, 2);
+        $amount = round((float) ($validated['amount'] ?? $accrued), 2);
+
+        if ($accrued <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يوجد مستحق نهاية خدمة مجمَّع لهذا الموظف.',
+                'data' => null,
+            ], 422);
+        }
+
+        // Paying more than was accrued would debit a liability that was never
+        // raised, leaving the account negative and the extra unexplained.
+        if ($amount > $accrued + 0.009) {
+            return response()->json([
+                'success' => false,
+                'message' => sprintf(
+                    'المبلغ (%s) يتجاوز المستحق المجمَّع (%s). استحقّ الأشهر الناقصة أولاً.',
+                    number_format($amount, 2),
+                    number_format($accrued, 2)
+                ),
+                'data' => null,
+            ], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($employee, $amount, $validated) {
+                $this->ledger->postEndOfServiceSettlement(
+                    $employee,
+                    $amount,
+                    $validated['settlement'] ?? 'cash',
+                    $validated['paid_on'] ?? null
+                );
+
+                $employee->forceFill([
+                    'end_of_service_accrued' => round((float) $employee->end_of_service_accrued - $amount, 2),
+                ])->save();
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذّر ترحيل قيد الصرف: '.$e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم صرف مكافأة نهاية الخدمة وترحيل قيدها',
+            'data' => $employee->refresh(),
         ]);
     }
 

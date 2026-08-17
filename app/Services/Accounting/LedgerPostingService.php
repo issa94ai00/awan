@@ -5,12 +5,15 @@ namespace App\Services\Accounting;
 use App\Exceptions\ClosedPeriodException;
 use App\Models\AccountingPeriod;
 use App\Models\CreditNote;
+use App\Models\Employee;
+use App\Models\FixedAsset;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\JournalEntryLine;
 use App\Models\LedgerAccount;
 use App\Models\Payment;
 use App\Models\Payroll;
+use App\Models\PurchaseReturn;
 use App\Models\SupplierPayment;
 use App\Models\Warehouse;
 use App\Services\CurrencyService;
@@ -250,8 +253,16 @@ class LedgerPostingService
         ];
 
         if ($deductions > 0) {
-            $lines[] = ['role' => 'payroll_deductions_payable', 'credit' => $deductions,
-                        'description' => 'استقطاعات - '.$label, 'employee_id' => $payroll->employee_id];
+            // An advance being repaid is not a liability the business now
+            // holds — it is an asset coming back. Everything else stays on the
+            // neutral payable, because the record does not say what it is.
+            $deductionRole = ($payroll->deduction_type ?? 'general') === 'advance'
+                ? 'employee_advances'
+                : 'payroll_deductions_payable';
+
+            $lines[] = ['role' => $deductionRole, 'credit' => $deductions,
+                        'description' => ($deductionRole === 'employee_advances' ? 'سداد سلفة - ' : 'استقطاعات - ').$label,
+                        'employee_id' => $payroll->employee_id];
         }
 
         if ($net > 0) {
@@ -269,6 +280,82 @@ class LedgerPostingService
             description: 'استحقاق رواتب '.$label,
             lines: $lines,
             reference: $payroll,
+            module: 'payroll',
+        );
+    }
+
+    /**
+     * A month's share of what an employee will be owed when they leave.
+     *
+     *   Dr  End-of-service expense    the month's share
+     *       Cr  End-of-service payable      what has built up so far
+     *
+     * The benefit is earned by working, not by leaving. Recognising it only on
+     * the last day puts years of cost into one month and, until then, leaves
+     * the balance sheet silent about a debt the business has already incurred —
+     * so it can look solvent while owing its staff a year of wages.
+     */
+    public function postEndOfServiceAccrual(Employee $employee, \Carbon\Carbon $month, float $amount): ?JournalEntryHeader
+    {
+        $amount = $this->money($amount);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $label = trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')) ?: ('#'.$employee->id);
+
+        return $this->post(
+            key: 'eos_accrual:'.$employee->id.':'.$month->format('Y-m'),
+            // Dated to the month it was earned in, so a month closed later
+            // carries its own share.
+            date: $month->copy()->endOfMonth()->toDateString(),
+            description: 'استحقاق مكافأة نهاية خدمة '.$month->format('Y-m').' - '.$label,
+            lines: [
+                ['role' => 'end_of_service_expense', 'debit' => $amount,
+                 'description' => 'مكافأة نهاية خدمة - '.$label, 'employee_id' => $employee->id],
+                ['role' => 'end_of_service_payable', 'credit' => $amount,
+                 'description' => 'مستحق نهاية خدمة - '.$label, 'employee_id' => $employee->id],
+            ],
+            reference: $employee,
+            module: 'payroll',
+        );
+    }
+
+    /**
+     * Paying the benefit out when somebody leaves.
+     *
+     *   Dr  End-of-service payable   what had built up
+     *       Cr  Cash/Bank                  what was handed over
+     *
+     * Settles the liability the monthly accruals raised; the cost was
+     * recognised in the years that earned it and is not charged again here.
+     */
+    public function postEndOfServiceSettlement(
+        Employee $employee,
+        float $amount,
+        string $settlement = 'cash',
+        ?string $date = null,
+    ): ?JournalEntryHeader {
+        $amount = $this->money($amount);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $label = trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')) ?: ('#'.$employee->id);
+
+        return $this->post(
+            key: 'eos_settlement:'.$employee->id,
+            date: $date ?? now()->toDateString(),
+            description: 'صرف مكافأة نهاية الخدمة - '.$label,
+            lines: [
+                ['role' => 'end_of_service_payable', 'debit' => $amount,
+                 'description' => 'سداد مستحق نهاية خدمة - '.$label, 'employee_id' => $employee->id],
+                ['role' => $settlement === 'bank' ? 'bank' : 'cash', 'credit' => $amount,
+                 'description' => 'صرف مكافأة - '.$label, 'employee_id' => $employee->id],
+            ],
+            reference: $employee,
             module: 'payroll',
         );
     }
@@ -693,6 +780,216 @@ class LedgerPostingService
             reference: $receipt,
             module: 'purchases',
             currency: $receipt->currency ?? null,
+        );
+    }
+
+    /**
+     * Buying something to keep.
+     *
+     *   Dr  Fixed assets      what was paid
+     *       Cr  Cash/Bank/Accounts payable
+     *
+     * The cost becomes an asset rather than a cost of the month it was bought
+     * in. Charging it as an expense would make the month of purchase look
+     * disastrous and every month after it flattering, for a thing the business
+     * will use for years.
+     */
+    public function postAssetAcquisition(FixedAsset $asset, string $settlement = 'credit'): ?JournalEntryHeader
+    {
+        $cost = $this->money($asset->cost);
+
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $creditRole = match ($settlement) {
+            'cash' => 'cash',
+            'bank', 'bank_transfer' => 'bank',
+            default => 'accounts_payable',
+        };
+
+        $label = $asset->asset_number.' - '.$asset->name;
+
+        return $this->post(
+            key: $asset->acquisitionKey(),
+            date: (string) $asset->acquired_on->toDateString(),
+            description: 'اقتناء أصل ثابت '.$label,
+            lines: [
+                ['role' => 'fixed_assets', 'debit' => $cost, 'description' => 'أصل ثابت - '.$label],
+                ['role' => $creditRole, 'credit' => $cost, 'description' => 'ثمن أصل - '.$label],
+            ],
+            reference: $asset,
+            module: 'assets',
+        );
+    }
+
+    /**
+     * One month of an asset being used up.
+     *
+     *   Dr  Depreciation expense        this month's slice
+     *       Cr  Accumulated depreciation      what has been used up in total
+     *
+     * The credit does not touch the asset account: the books keep saying both
+     * what the thing cost and how much of it is gone, and an asset fully
+     * depreciated but still in daily use stays visible at cost rather than
+     * vanishing from the register.
+     */
+    public function postDepreciation(FixedAsset $asset, \Carbon\Carbon $month, float $amount): ?JournalEntryHeader
+    {
+        $amount = $this->money($amount);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $label = $asset->asset_number.' - '.$asset->name;
+
+        return $this->post(
+            key: $asset->depreciationKey($month),
+            // Dated the last day of the month it belongs to, so a month closed
+            // later carries its own charge rather than the day it was run.
+            date: $month->copy()->endOfMonth()->toDateString(),
+            description: 'إهلاك '.$month->format('Y-m').' - '.$label,
+            lines: [
+                ['role' => 'depreciation_expense', 'debit' => $amount, 'description' => 'مصروف إهلاك - '.$label],
+                ['role' => 'accumulated_depreciation', 'credit' => $amount,
+                 'description' => 'مجمع إهلاك - '.$label],
+            ],
+            reference: $asset,
+            module: 'assets',
+        );
+    }
+
+    /**
+     * An asset leaving the business.
+     *
+     *   Dr  Cash/Bank                  what it sold for, if anything
+     *   Dr  Accumulated depreciation   everything charged against it so far
+     *       Cr  Fixed assets                 what it originally cost
+     *   and the difference is the gain or loss on disposal.
+     *
+     * Both the cost and its accumulated depreciation have to come off together:
+     * removing one and leaving the other would show a company owning
+     * depreciation on an asset it no longer has.
+     */
+    public function postAssetDisposal(FixedAsset $asset, float $proceeds, string $settlement = 'cash'): ?JournalEntryHeader
+    {
+        $cost = $this->money($asset->cost);
+        $accumulated = $this->money($asset->accumulated_depreciation);
+        $proceeds = $this->money($proceeds);
+
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $label = $asset->asset_number.' - '.$asset->name;
+        $lines = [];
+
+        if ($proceeds > 0) {
+            $lines[] = [
+                'role' => $settlement === 'bank' ? 'bank' : 'cash',
+                'debit' => $proceeds,
+                'description' => 'متحصلات بيع أصل - '.$label,
+            ];
+        }
+
+        if ($accumulated > 0) {
+            $lines[] = ['role' => 'accumulated_depreciation', 'debit' => $accumulated,
+                        'description' => 'إقفال مجمع الإهلاك - '.$label];
+        }
+
+        $lines[] = ['role' => 'fixed_assets', 'credit' => $cost, 'description' => 'استبعاد أصل - '.$label];
+
+        // What it was still carried at, against what it fetched.
+        $result = round($proceeds - ($cost - $accumulated), 2);
+
+        if (abs($result) > self::EPSILON) {
+            $lines[] = $result < 0
+                ? ['role' => 'asset_disposal_loss', 'debit' => abs($result),
+                   'description' => 'خسارة استبعاد - '.$label]
+                : ['role' => 'asset_disposal_loss', 'credit' => $result,
+                   'description' => 'ربح استبعاد - '.$label];
+        }
+
+        return $this->post(
+            key: $asset->disposalKey(),
+            date: (string) ($asset->disposed_on?->toDateString() ?? now()->toDateString()),
+            description: 'استبعاد أصل ثابت '.$label,
+            lines: $lines,
+            reference: $asset,
+            module: 'assets',
+        );
+    }
+
+    /**
+     * Goods sent back to the supplier.
+     *
+     * The purchase side had no return document at all, so the only way to
+     * record one was a stock adjustment — which books the goods out as
+     * shrinkage. Returning a faulty delivery therefore looked, in the income
+     * statement, exactly like losing it, and the debt to that supplier stayed
+     * on the books in full.
+     *
+     *   Dr  Accounts payable        what the supplier credits back, tax included
+     *       Cr  Inventory — warehouse     what those units actually cost
+     *       Cr  Input VAT                 tax reclaimed on the returned portion
+     *
+     * The cost comes from the FIFO layers the units were consumed from, not
+     * from what the supplier is crediting. When the two differ — a restocking
+     * fee, or a price agreed after the fact — the difference is a real result
+     * of the return and lands in other operating expenses rather than being
+     * hidden by forcing one of the two figures to match the other.
+     *
+     * @param  float  $cost  what the returned units cost, from the layers
+     */
+    public function postPurchaseReturn(PurchaseReturn $return, float $cost): ?JournalEntryHeader
+    {
+        $cost = $this->money($cost);
+        $credit = $this->money($return->credit_amount);
+        $tax = $this->money($return->tax_amount);
+
+        if ($cost <= 0 && $credit <= 0) {
+            return null;
+        }
+
+        $label = 'مردود مشتريات '.$return->return_number;
+        $warehouseId = (int) ($return->warehouse_id ?? 0);
+
+        $lines = [
+            ['role' => 'accounts_payable', 'debit' => round($credit + $tax, 2),
+             'description' => 'تخفيض ذمم مورّد - '.$label],
+        ];
+
+        if ($cost > 0) {
+            $lines[] = ($warehouseId
+                ? ['account_id' => $this->inventoryAccountIdFor($warehouseId)]
+                : ['role' => 'inventory'])
+                + ['credit' => $cost, 'description' => 'إخراج مخزون مرتجع - '.$label];
+        }
+
+        if ($tax > 0) {
+            $lines[] = ['role' => 'input_vat', 'credit' => $tax,
+                        'description' => 'عكس ضريبة مشتريات - '.$label];
+        }
+
+        // What the supplier credits, against what the goods cost us.
+        $difference = round($credit - $cost, 2);
+
+        if (abs($difference) > self::EPSILON) {
+            $lines[] = $difference > 0
+                ? ['role' => 'other_expense', 'credit' => $difference,
+                   'description' => 'فرق تسوية مردود لصالحنا - '.$label]
+                : ['role' => 'other_expense', 'debit' => abs($difference),
+                   'description' => 'فرق تسوية مردود علينا - '.$label];
+        }
+
+        return $this->post(
+            key: $return->postingKey(),
+            date: $return->return_date ? (string) $return->return_date->toDateString() : now()->toDateString(),
+            description: 'إثبات '.$label,
+            lines: $lines,
+            reference: $return,
+            module: 'purchases',
         );
     }
 

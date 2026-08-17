@@ -488,6 +488,405 @@ class AccountingReportController extends Controller
     }
 
     /**
+     * Every document behind one party's balance.
+     *
+     * The aging report answers "who owes what"; this answers the question that
+     * follows it, which is the one an actual conversation needs: *why*. A
+     * customer disputing a figure, or a supplier's month-end reconciliation,
+     * needs the documents in order with a balance running through them — not a
+     * total, and not the general ledger's receivables account, which pools
+     * every customer into one column.
+     *
+     * Built from the documents rather than from journal lines, because the
+     * ledger records the movement and not the party: a receivable line says
+     * 400 moved, and only the invoice behind it says whose 400 it was.
+     */
+    public function partyStatement(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'type' => 'required|in:customer,supplier',
+            'party_id' => 'required|integer',
+        ]);
+
+        [$fromDate, $toDate] = $this->period($request);
+
+        $isCustomer = $validated['type'] === 'customer';
+        $partyId = (int) $validated['party_id'];
+
+        $party = $isCustomer
+            ? DB::table('customers')->where('id', $partyId)->first(['id', 'name', 'balance'])
+            : DB::table('suppliers')->where('id', $partyId)->first(['id', 'name', 'balance']);
+
+        if (! $party) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الطرف غير موجود.',
+                'data' => null,
+            ], 404);
+        }
+
+        $documents = $isCustomer
+            ? $this->customerDocuments($partyId)
+            : $this->supplierDocuments($partyId);
+
+        // Everything before the window collapses into the opening figure, so
+        // each row after it can be followed to a closing balance that is the
+        // party's actual position.
+        $opening = round(
+            collect($documents)
+                ->filter(fn ($row) => $row['date'] < $fromDate)
+                ->sum(fn ($row) => $row['debit'] - $row['credit']),
+            2
+        );
+
+        $rows = collect($documents)
+            ->filter(fn ($row) => $row['date'] >= $fromDate && $row['date'] <= $toDate)
+            ->sortBy([['date', 'asc'], ['number', 'asc']])
+            ->values();
+
+        $balance = $opening;
+
+        $movements = $rows->map(function ($row) use (&$balance) {
+            $balance = round($balance + $row['debit'] - $row['credit'], 2);
+
+            return $row + ['balance' => $balance];
+        });
+
+        // A customer's balance is what they owe us; a supplier's is what we owe
+        // them, which is the same figure read from the other side.
+        $stored = round((float) $party->balance, 2) * ($isCustomer ? 1 : -1);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Party statement retrieved successfully',
+            'data' => [
+                'period' => ['from' => $fromDate, 'to' => $toDate],
+                'party' => ['id' => $party->id, 'name' => $party->name, 'type' => $validated['type']],
+                'opening_balance' => $opening,
+                'movements' => $movements,
+                'totals' => [
+                    'debits' => round($movements->sum('debit'), 2),
+                    'credits' => round($movements->sum('credit'), 2),
+                ],
+                'closing_balance' => $balance,
+                'stored_balance' => $stored,
+                // The documents and the party record must add up to the same
+                // number; when they do not, one of them missed a movement.
+                'matches_stored_balance' => abs($balance - $stored) < self::EPSILON,
+            ],
+        ]);
+    }
+
+    /**
+     * What a customer was billed and what they paid.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function customerDocuments(int $customerId): array
+    {
+        $rows = [];
+
+        foreach (DB::table('invoices')->where('customer_id', $customerId)
+            ->where('status', '!=', 'cancelled')
+            ->get(['invoice_number', 'created_at', 'total']) as $invoice) {
+            $rows[] = [
+                'date' => substr((string) $invoice->created_at, 0, 10),
+                'type' => 'invoice',
+                'label' => 'فاتورة',
+                'number' => (string) $invoice->invoice_number,
+                'debit' => round((float) $invoice->total, 2),
+                'credit' => 0.0,
+            ];
+        }
+
+        foreach (DB::table('payments')->where('customer_id', $customerId)
+            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            $amount = round((float) $payment->amount, 2);
+
+            $rows[] = [
+                'date' => substr((string) $payment->payment_date, 0, 10),
+                'type' => 'payment',
+                'label' => $amount < 0 ? 'استرداد' : 'تحصيل',
+                'number' => (string) $payment->payment_number,
+                // A refund is stored as a negative payment, so it lands on the
+                // other side rather than as a negative credit.
+                'debit' => $amount < 0 ? abs($amount) : 0.0,
+                'credit' => $amount > 0 ? $amount : 0.0,
+            ];
+        }
+
+        foreach (DB::table('credit_notes')->where('customer_id', $customerId)
+            ->get(['credit_note_number', 'issue_date', 'total']) as $note) {
+            $rows[] = [
+                'date' => substr((string) $note->issue_date, 0, 10),
+                'type' => 'credit_note',
+                'label' => 'إشعار دائن',
+                'number' => (string) $note->credit_note_number,
+                'debit' => 0.0,
+                'credit' => round((float) $note->total, 2),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * What a supplier delivered and what they were paid. Debits reduce what we
+     * owe, so the running balance reads as the debt from our side.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function supplierDocuments(int $supplierId): array
+    {
+        $rows = [];
+
+        $receipts = DB::table('purchase_receipts as r')
+            ->leftJoin('purchase_receipt_items as i', 'i.purchase_receipt_id', '=', 'r.id')
+            ->where('r.supplier_id', $supplierId)
+            ->groupBy('r.id', 'r.receipt_number', 'r.receipt_date', 'r.tax_amount')
+            ->selectRaw('r.receipt_number, r.receipt_date, r.tax_amount,
+                         COALESCE(SUM(i.quantity * i.unit_price), 0) as goods')
+            ->get();
+
+        foreach ($receipts as $receipt) {
+            $rows[] = [
+                'date' => substr((string) $receipt->receipt_date, 0, 10),
+                'type' => 'receipt',
+                'label' => 'إيصال استلام',
+                'number' => (string) $receipt->receipt_number,
+                'debit' => 0.0,
+                'credit' => round((float) $receipt->goods + (float) $receipt->tax_amount, 2),
+            ];
+        }
+
+        if (DB::getSchemaBuilder()->hasColumn('landed_costs', 'supplier_id')) {
+            foreach (DB::table('landed_costs as l')
+                ->leftJoin('purchase_receipts as r', 'r.id', '=', 'l.purchase_receipt_id')
+                ->where('l.supplier_id', $supplierId)
+                ->selectRaw('l.id, l.created_at, r.receipt_number,
+                             (l.shipping_charges + l.customs_duties + l.insurance_cost + l.other_charges) as total')
+                ->get() as $landed) {
+                $rows[] = [
+                    'date' => substr((string) $landed->created_at, 0, 10),
+                    'type' => 'landed_cost',
+                    'label' => 'تكاليف إضافية',
+                    'number' => (string) ($landed->receipt_number ?? ('#'.$landed->id)),
+                    'debit' => 0.0,
+                    'credit' => round((float) $landed->total, 2),
+                ];
+            }
+        }
+
+        foreach (DB::table('supplier_payments')->where('supplier_id', $supplierId)
+            ->whereNull('deleted_at')
+            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            $rows[] = [
+                'date' => substr((string) $payment->payment_date, 0, 10),
+                'type' => 'payment',
+                'label' => 'سداد',
+                'number' => (string) $payment->payment_number,
+                'debit' => round((float) $payment->amount, 2),
+                'credit' => 0.0,
+            ];
+        }
+
+        if (DB::getSchemaBuilder()->hasTable('purchase_returns')) {
+            foreach (DB::table('purchase_returns')->where('supplier_id', $supplierId)
+                ->whereNull('deleted_at')
+                ->get(['return_number', 'return_date', 'credit_amount', 'tax_amount']) as $return) {
+                $rows[] = [
+                    'date' => substr((string) $return->return_date, 0, 10),
+                    'type' => 'return',
+                    'label' => 'مردود مشتريات',
+                    'number' => (string) $return->return_number,
+                    'debit' => round((float) $return->credit_amount + (float) $return->tax_amount, 2),
+                    'credit' => 0.0,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Where the money actually went.
+     *
+     * Profit and cash are different questions, and a business can be plainly
+     * profitable while running out of money — a sale on credit is income the
+     * day it is invoiced and cash only when it is collected, and stock bought
+     * for the shelf is cash gone that no income statement shows.
+     *
+     * Built by the direct method: every movement on cash and bank in the
+     * period, classified by what sat on the other side of the entry. That is
+     * possible here precisely because the ledger is complete — each cash line
+     * has a counterpart naming the reason the money moved. The indirect method
+     * would start from profit and work backwards, which needs judgement about
+     * what is a working-capital change and what is not; reading the reason off
+     * the entry needs none.
+     *
+     * The opening and closing balances are reported with it, because a cash
+     * flow statement that does not tie the two together is a list, not a
+     * statement.
+     */
+    public function cashFlow(Request $request): JsonResponse
+    {
+        [$fromDate, $toDate] = $this->period($request);
+
+        $cashAccounts = LedgerAccount::whereIn('posting_role', ['cash', 'bank'])
+            ->pluck('name', 'id');
+
+        if ($cashAccounts->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا توجد حسابات نقدية معرّفة في دليل الحسابات.',
+                'data' => null,
+            ], 422);
+        }
+
+        $ids = $cashAccounts->keys()->all();
+
+        // Everything before the window, as one figure to open from.
+        $before = DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereIn('l.account_id', $ids)
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->whereDate('h.entry_date', '<', $fromDate)
+            ->selectRaw('COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c')
+            ->first();
+
+        $opening = round((float) $before->d - (float) $before->c, 2);
+
+        $movements = DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereIn('l.account_id', $ids)
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
+            ->select(['l.id', 'l.debit', 'l.credit', 'l.account_id', 'h.id as entry_id', 'h.entry_date', 'h.description'])
+            ->get();
+
+        // The counterpart lines of every entry that moved cash, which is what
+        // says why it moved.
+        $counterparts = DB::table('journal_entry_lines as l')
+            ->join('ledger_accounts as a', 'a.id', '=', 'l.account_id')
+            ->whereIn('l.journal_entry_header_id', $movements->pluck('entry_id')->unique()->all())
+            ->whereNotIn('l.account_id', $ids)
+            ->select(['l.journal_entry_header_id as entry_id', 'a.type', 'a.posting_role', 'a.name',
+                      'l.debit', 'l.credit'])
+            ->get()
+            ->groupBy('entry_id');
+
+        $buckets = [
+            'operating' => ['inflows' => [], 'outflows' => []],
+            'investing' => ['inflows' => [], 'outflows' => []],
+            'financing' => ['inflows' => [], 'outflows' => []],
+        ];
+
+        foreach ($movements as $line) {
+            $amount = round((float) $line->debit - (float) $line->credit, 2);
+
+            if (abs($amount) < self::EPSILON) {
+                continue;
+            }
+
+            $others = $counterparts->get($line->entry_id, collect());
+
+            // Cash moving between the till and the bank is not a flow at all —
+            // the business has exactly as much money before and after.
+            if ($others->isEmpty()) {
+                continue;
+            }
+
+            // The largest counterpart is what the movement was for; a payment
+            // that also carries a small fee is still a payment.
+            $reason = $others->sortByDesc(fn ($row) => abs((float) $row->debit - (float) $row->credit))->first();
+
+            $activity = $this->cashFlowActivity($reason);
+            $direction = $amount > 0 ? 'inflows' : 'outflows';
+
+            $label = $reason->name;
+            $buckets[$activity][$direction][$label] =
+                round(($buckets[$activity][$direction][$label] ?? 0) + abs($amount), 2);
+        }
+
+        $sections = [];
+        $net = 0.0;
+
+        foreach ($buckets as $activity => $sides) {
+            $in = round(array_sum($sides['inflows']), 2);
+            $out = round(array_sum($sides['outflows']), 2);
+            $net += round($in - $out, 2);
+
+            $sections[$activity] = [
+                'inflows' => $this->cashFlowLines($sides['inflows']),
+                'outflows' => $this->cashFlowLines($sides['outflows']),
+                'total_in' => $in,
+                'total_out' => $out,
+                'net' => round($in - $out, 2),
+            ];
+        }
+
+        $net = round($net, 2);
+        $closing = round($opening + $net, 2);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow statement retrieved successfully',
+            'data' => [
+                'period' => ['from' => $fromDate, 'to' => $toDate],
+                'accounts' => $cashAccounts->values(),
+                'opening_balance' => $opening,
+                'activities' => $sections,
+                'net_change' => $net,
+                'closing_balance' => $closing,
+                // What the cash accounts actually hold now, so a statement that
+                // does not tie out says so instead of being taken on trust.
+                'stored_balance' => round(
+                    (float) LedgerAccount::whereIn('id', $ids)->sum('balance'),
+                    2
+                ),
+            ],
+        ]);
+    }
+
+    /**
+     * Which activity a cash movement belongs to, read from its counterpart.
+     *
+     * Financing is what the owners and lenders put in or take out; investing is
+     * what the business buys to keep rather than to sell. Everything else is
+     * the trading itself — which, for a business with no fixed assets and no
+     * loans yet, is nearly all of it.
+     */
+    private function cashFlowActivity(object $counterpart): string
+    {
+        if ($counterpart->type === 'equity') {
+            return 'financing';
+        }
+
+        if (in_array($counterpart->posting_role, ['loans_payable', 'long_term_debt'], true)) {
+            return 'financing';
+        }
+
+        if (in_array($counterpart->posting_role, ['fixed_assets', 'accumulated_depreciation'], true)) {
+            return 'investing';
+        }
+
+        return 'operating';
+    }
+
+    /** @param array<string,float> $rows */
+    private function cashFlowLines(array $rows): array
+    {
+        arsort($rows);
+
+        return collect($rows)
+            ->map(fn ($amount, $label) => ['label' => $label, 'amount' => $amount])
+            ->values()
+            ->all();
+    }
+
+    /**
      * The value-added tax position for a period.
      *
      * Tax collected on sales is not income and tax paid on purchases is not a
