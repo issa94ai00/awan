@@ -266,6 +266,12 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/accounting/bank-reconciliation" class="nav-link" :class="{ active: isActive('/admin/accounting/bank-reconciliation') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('bank_reconciliation') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/accounting/vat-return" class="nav-link" :class="{ active: isActive('/admin/accounting/vat-return') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('vat_return') }}</span>

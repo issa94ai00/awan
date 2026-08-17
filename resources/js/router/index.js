@@ -169,6 +169,11 @@ const routes = [
                 name: 'admin.accounting.fixed-assets',
                 component: () => import('@/views/admin/accounting/FixedAssets.vue')
             },
+            {
+                path: 'accounting/bank-reconciliation',
+                name: 'admin.accounting.bank-reconciliation',
+                component: () => import('@/views/admin/accounting/BankReconciliation.vue')
+            },
             // Inventory
             {
                 path: 'inventory',

@@ -46,6 +46,7 @@ use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
 use App\Http\Controllers\Api\AccountingPeriodController;
+use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
@@ -496,6 +497,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
+
+                // Holding the bank account against the bank's own statement —
+                // the only balance in the books with an outside witness.
+                Route::get('/accounting/bank-reconciliations', [BankReconciliationController::class, 'index'])->name('api.admin.accounting.bank-reconciliations.index');
+                Route::post('/accounting/bank-reconciliations', [BankReconciliationController::class, 'store'])->name('api.admin.accounting.bank-reconciliations.store');
+                Route::get('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'show'])->name('api.admin.accounting.bank-reconciliations.show');
+                Route::post('/accounting/bank-reconciliations/{bankReconciliation}/toggle-line', [BankReconciliationController::class, 'toggleLine'])->name('api.admin.accounting.bank-reconciliations.toggle');
+                Route::post('/accounting/bank-reconciliations/{bankReconciliation}/complete', [BankReconciliationController::class, 'complete'])->name('api.admin.accounting.bank-reconciliations.complete');
+                Route::post('/accounting/bank-reconciliations/{bankReconciliation}/reopen', [BankReconciliationController::class, 'reopen'])->name('api.admin.accounting.bank-reconciliations.reopen');
+                Route::delete('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'destroy'])->name('api.admin.accounting.bank-reconciliations.destroy');
 
                 // Accounting periods: closing one is what makes a reported
                 // month final, so it sits with the rest of the books.
