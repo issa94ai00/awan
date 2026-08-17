@@ -30,7 +30,15 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
-    private const CODE = '1006';
+    /**
+     * 1007, not 1006: that code was taken by goods-in-transit, and an earlier
+     * version of this migration claimed the free code it saw without checking
+     * whether the account already had a role of its own. It overwrote one, and
+     * transfers between warehouses stopped posting because the role they
+     * resolve through no longer existed. `2026_08_17_120000` repairs any
+     * database that ran that version.
+     */
+    private const CODE = '1007';
 
     private const ROLE = 'input_vat';
 
@@ -46,12 +54,19 @@ return new class extends Migration
         $roleTaken = DB::table('ledger_accounts')->where('posting_role', self::ROLE)->exists();
 
         if ($existingId) {
+            // Only an account that carries no role at all may be claimed:
+            // overwriting one silently redirects every posting that resolved
+            // through it, and the account it belonged to stops working with no
+            // error until something tries to post.
             if (! $roleTaken) {
-                DB::table('ledger_accounts')->where('id', $existingId)->update([
-                    'posting_role' => self::ROLE,
-                    'is_system' => 1,
-                    'updated_at' => now(),
-                ]);
+                DB::table('ledger_accounts')
+                    ->where('id', $existingId)
+                    ->whereNull('posting_role')
+                    ->update([
+                        'posting_role' => self::ROLE,
+                        'is_system' => 1,
+                        'updated_at' => now(),
+                    ]);
             }
 
             return;
