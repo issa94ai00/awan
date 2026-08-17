@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
 use App\Http\Controllers\Api\AccountingPeriodController;
 use App\Http\Controllers\Api\BankReconciliationController;
+use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
@@ -497,6 +498,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
+
+                // What the year was meant to earn and spend — the only thing
+                // that turns a figure into a verdict.
+                Route::get('/accounting/budgets', [BudgetController::class, 'index'])->name('api.admin.accounting.budgets.index');
+                Route::post('/accounting/budgets', [BudgetController::class, 'store'])->name('api.admin.accounting.budgets.store');
+                Route::get('/accounting/budgets/{budget}', [BudgetController::class, 'show'])->name('api.admin.accounting.budgets.show');
+                Route::post('/accounting/budgets/{budget}/lines', [BudgetController::class, 'setLines'])->name('api.admin.accounting.budgets.lines');
+                Route::get('/accounting/budgets/{budget}/variance', [BudgetController::class, 'variance'])->name('api.admin.accounting.budgets.variance');
+                Route::post('/accounting/budgets/{budget}/approve', [BudgetController::class, 'approve'])->name('api.admin.accounting.budgets.approve');
+                Route::delete('/accounting/budgets/{budget}', [BudgetController::class, 'destroy'])->name('api.admin.accounting.budgets.destroy');
 
                 // Holding the bank account against the bank's own statement —
                 // the only balance in the books with an outside witness.
