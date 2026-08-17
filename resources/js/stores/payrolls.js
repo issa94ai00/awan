@@ -43,6 +43,26 @@ export const usePayrollsStore = defineStore('payrolls', {
             } finally {
                 this.loading = false;
             }
+        },
+
+        /**
+         * Moves a payroll along its lifecycle.
+         *
+         * The two status changes are accounting events on the server:
+         * `processed` recognises the wage as a cost of the period worked, and
+         * `paid` settles the liability that raised. The row is refetched
+         * afterwards rather than patched locally, so what the screen shows is
+         * what was actually posted.
+         */
+        async updatePayroll(id, payload) {
+            this.error = null;
+            try {
+                const res = await payrollsApi.update(id, payload);
+                return res.data?.data;
+            } catch (err) {
+                this.error = err.response?.data?.message || err.message || 'Failed to update payroll';
+                throw err;
+            }
         }
     }
 });

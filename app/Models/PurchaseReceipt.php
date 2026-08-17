@@ -18,6 +18,9 @@ class PurchaseReceipt extends Model
         // it brought in actually went.
         'warehouse_id',
         'receipt_date',
+        // Tax the supplier charged, held apart from the goods: it is a claim
+        // against the tax authority, not part of what the stock cost.
+        'tax_amount',
         'status',
         'currency',
         'notes',
@@ -26,6 +29,7 @@ class PurchaseReceipt extends Model
 
     protected $casts = [
         'receipt_date' => 'date',
+        'tax_amount' => 'decimal:2',
     ];
 
     public function purchaseOrder()

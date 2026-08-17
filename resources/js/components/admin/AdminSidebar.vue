@@ -189,6 +189,12 @@
                                 <span v-if="!collapsed" class="nav-text">{{ t('receipts') }}</span>
                             </router-link>
                         </li>
+                        <li>
+                            <router-link to="/admin/purchases/payments" class="nav-link" :class="{ active: isActive('/admin/purchases/payments') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('supplier_payments') }}</span>
+                            </router-link>
+                        </li>
                     </ul>
                 </li>
 
@@ -233,6 +239,24 @@
                             <router-link to="/admin/accounting/balance-sheet" class="nav-link" :class="{ active: isActive('/admin/accounting/balance-sheet') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('balance_sheet') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/accounting/aging" class="nav-link" :class="{ active: isActive('/admin/accounting/aging') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('aging_report') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/accounting/vat-return" class="nav-link" :class="{ active: isActive('/admin/accounting/vat-return') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('vat_return') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/accounting/periods" class="nav-link" :class="{ active: isActive('/admin/accounting/periods') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('accounting_periods') }}</span>
                             </router-link>
                         </li>
                     </ul>

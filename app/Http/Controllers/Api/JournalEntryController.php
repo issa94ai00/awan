@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\ClosedPeriodException;
 use App\Http\Controllers\Controller;
+use App\Models\AccountingPeriod;
 use App\Models\JournalEntryHeader;
 use App\Models\JournalEntryLine;
 use App\Models\LedgerAccount;
+use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -67,6 +70,20 @@ class JournalEntryController extends Controller
     {
         $validated = $this->validateHeaderAndLines($request);
 
+        // This path writes its own header rather than going through
+        // LedgerPostingService, so it has to ask the same question the service
+        // asks — otherwise the one entry a person types by hand would be the
+        // one way into a month that has already been reported on.
+        $closedPeriod = AccountingPeriod::closedFor($validated['entry_date']);
+
+        if ($closedPeriod) {
+            return response()->json([
+                'success' => false,
+                'message' => (new ClosedPeriodException($validated['entry_date'], $closedPeriod))->getMessage(),
+                'data' => null,
+            ], 422);
+        }
+
         $entry = DB::transaction(function () use ($validated) {
             $entryNumber = $this->nextEntryNumber();
 
@@ -77,9 +94,15 @@ class JournalEntryController extends Controller
                 'total_debit' => $validated['total_debit'],
                 'total_credit' => $validated['total_credit'],
                 'currency' => $validated['currency'] ?? 'SAR',
+                'source_module' => 'manual',
                 'status' => 'posted',
                 'created_by' => auth()->id(),
             ]);
+
+            // A key of its own, so this entry can be reversed by the same
+            // machinery that reverses a document's — and so a reversal cannot
+            // be written twice for it.
+            $header->update(['posting_key' => 'manual:'.$header->id]);
 
             $this->createLinesAndApplyBalances($header, $validated['lines']);
 
@@ -93,60 +116,82 @@ class JournalEntryController extends Controller
         ], 201);
     }
 
+    /**
+     * A posted entry is not editable, and this is where that rule was broken.
+     *
+     * `LedgerPostingService` guards the books on three rules — balanced or
+     * nothing, posted exactly once, never rewritten — and every document goes
+     * through it. This endpoint went around all three: it deleted the lines of
+     * a posted entry, unwound their effect on the account balances and wrote
+     * new ones in their place, under the same entry number and with no record
+     * that anything had changed. A trial balance printed before the edit and
+     * one printed after disagreed, and nothing in the system could say why.
+     *
+     * Correction is a reversal followed by a fresh entry, both of which stay
+     * in the journal. `reverse` below does the first half.
+     */
     public function update(Request $request, JournalEntryHeader $journalEntry): JsonResponse
     {
-        $validated = $this->validateHeaderAndLines($request);
-
-        $entry = DB::transaction(function () use ($validated, $journalEntry) {
-            $journalEntry = JournalEntryHeader::whereKey($journalEntry->id)->lockForUpdate()->firstOrFail();
-
-            // Reverse the old lines' balance impact before removing them.
-            $oldLines = JournalEntryLine::with('ledgerAccount')->where('journal_entry_header_id', $journalEntry->id)->get();
-            foreach ($oldLines as $line) {
-                $delta = LedgerAccount::signedDelta($line->ledgerAccount->type, (float) $line->debit, (float) $line->credit);
-                $line->ledgerAccount->increment('balance', -$delta);
-            }
-            JournalEntryLine::where('journal_entry_header_id', $journalEntry->id)->delete();
-
-            $journalEntry->update([
-                'entry_date' => $validated['entry_date'],
-                'description' => $validated['description'] ?? null,
-                'total_debit' => $validated['total_debit'],
-                'total_credit' => $validated['total_credit'],
-                'currency' => $validated['currency'] ?? $journalEntry->currency,
-            ]);
-
-            $this->createLinesAndApplyBalances($journalEntry, $validated['lines']);
-
-            return $journalEntry;
-        });
-
         return response()->json([
-            'success' => true,
-            'message' => 'Journal entry updated successfully',
-            'data' => $entry->load('lines.ledgerAccount'),
-        ]);
+            'success' => false,
+            'message' => 'لا يمكن تعديل قيد مُرحَّل. سجّل قيداً عكسياً له ثم أدخل القيد الصحيح، ليبقى أثر التصحيح في الدفاتر.',
+            'data' => null,
+        ], 422);
     }
 
+    /**
+     * Deleting a posted entry is refused for the same reason editing is: the
+     * period it belongs to has already been reported on, and a journal that
+     * loses entries cannot be reconciled against anything.
+     */
     public function destroy(JournalEntryHeader $journalEntry): JsonResponse
     {
-        DB::transaction(function () use ($journalEntry) {
-            $journalEntry = JournalEntryHeader::whereKey($journalEntry->id)->lockForUpdate()->firstOrFail();
+        return response()->json([
+            'success' => false,
+            'message' => 'لا يمكن حذف قيد مُرحَّل. استخدم العكس المحاسبي؛ يبقى القيد الأصلي ويظهر بجانبه قيد يلغي أثره.',
+            'data' => null,
+        ], 422);
+    }
 
-            $lines = JournalEntryLine::with('ledgerAccount')->where('journal_entry_header_id', $journalEntry->id)->get();
-            foreach ($lines as $line) {
-                $delta = LedgerAccount::signedDelta($line->ledgerAccount->type, (float) $line->debit, (float) $line->credit);
-                $line->ledgerAccount->increment('balance', -$delta);
-            }
+    /**
+     * Writes the mirror image of an entry and marks the original reversed.
+     *
+     * The supported way to undo a posting: both entries stay in the journal,
+     * so the account balances return to where they were while the history of
+     * how they got there survives.
+     */
+    public function reverse(Request $request, JournalEntryHeader $journalEntry): JsonResponse
+    {
+        $validated = $request->validate([
+            'entry_date' => 'nullable|date',
+        ]);
 
-            $journalEntry->delete();
-        });
+        if ($journalEntry->status === 'reversed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'هذا القيد معكوس مسبقاً.',
+                'data' => null,
+            ], 422);
+        }
+
+        $reversal = app(LedgerPostingService::class)->reverseEntry(
+            $journalEntry,
+            $validated['entry_date'] ?? null
+        );
+
+        if (! $reversal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذّر إنشاء القيد العكسي.',
+                'data' => null,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Journal entry deleted successfully',
-            'data' => null,
-        ]);
+            'message' => 'تم ترحيل قيد عكسي رقم '.$reversal->entry_number,
+            'data' => $reversal->load('lines.ledgerAccount'),
+        ], 201);
     }
 
     /**

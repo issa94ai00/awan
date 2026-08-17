@@ -198,11 +198,38 @@
                     </div>
                 </div>
 
+                <!-- Period, opening balance, and whether the rows land on the
+                     account's stored balance. -->
+                <div class="statement-controls mb-4">
+                    <el-date-picker
+                        v-model="statementRange"
+                        type="daterange"
+                        format="YYYY-MM-DD"
+                        value-format="YYYY-MM-DD"
+                        :start-placeholder="$t('period_from')"
+                        :end-placeholder="$t('to')"
+                        @change="reloadStatement"
+                    />
+                    <div v-if="statement" class="statement-summary">
+                        <span>{{ $t('opening_balance') }}: <strong>{{ money(statement.opening_balance) }}</strong></span>
+                        <span>{{ $t('closing_balance') }}: <strong>{{ money(statement.closing_balance) }}</strong></span>
+                    </div>
+                </div>
+
+                <el-alert
+                    v-if="statement && !statement.matches_stored_balance"
+                    type="warning"
+                    show-icon
+                    :closable="false"
+                    class="mb-4"
+                    :title="$t('statement_does_not_match_stored_balance')"
+                />
+
                 <!-- Ledger Statement Table -->
                 <el-table :data="statementEntriesWithBalance" style="width: 100%" stripe size="small">
                     <el-table-column prop="entry_date" :label="$t('date')" width="110" align="center" />
                     <el-table-column prop="description" :label="$t('narration')" min-width="180" />
-                    <el-table-column prop="reference" :label="$t('reference')" width="120" show-overflow-tooltip />
+                    <el-table-column prop="entry_number" :label="$t('entry_number')" width="120" show-overflow-tooltip />
                     <el-table-column prop="debit" :label="$t('debit_label')" width="110" align="right">
                         <template #default="{ row }">
                             <span v-if="row.debit > 0" class="text-success">${{ parseFloat(row.debit).toFixed(2) }}</span>
@@ -238,7 +265,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { ledgerAccountsApi } from '@/api/ledgerAccounts';
-import { journalEntriesApi } from '@/api/journalEntries';
+import { accountingReportsApi } from '@/api/accountingReports';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
@@ -297,6 +324,12 @@ const statementDrawerVisible = ref(false);
 const loadingStatement = ref(false);
 const selectedAccount = ref(null);
 const statementEntries = ref([]);
+// The whole server answer: opening balance, totals, and whether the rows land
+// on the account's stored balance.
+const statement = ref(null);
+// Empty means "the report's default window"; the server decides that, so the
+// screen does not have to invent a period of its own.
+const statementRange = ref([]);
 
 const resetForm = () => {
     form.code = '';
@@ -362,27 +395,33 @@ const deleteAccount = async (id) => {
     }
 };
 
+/**
+ * Loads the account's statement for the chosen period.
+ *
+ * This used to be assembled here in the browser: the last 200 journal entries
+ * for the account, flattened to its own lines, with a running total started
+ * from zero. The period was ignored, anything past the 200th entry was
+ * dropped, and a total that begins at zero only matches the account when
+ * nothing happened before the first row — so the statement kept disagreeing
+ * with the balance printed above it. The server now answers with the opening
+ * balance and a balance per row, and says whether the two agree.
+ */
 const openStatementDrawer = async (account) => {
     statementDrawerVisible.value = true;
     selectedAccount.value = account;
     loadingStatement.value = true;
     statementEntries.value = [];
+    statement.value = null;
+
     try {
-        const res = await journalEntriesApi.getAll({ ledger_account_id: account.id, per_page: 200 });
-        const headers = res.data.data.entries || [];
-        // Each header may have lines for other accounts too — flatten to just this account's lines,
-        // merging in the header's date/description/reference.
-        statementEntries.value = headers.flatMap((header) =>
-            (header.lines || [])
-                .filter((line) => line.account_id === account.id)
-                .map((line) => ({
-                    entry_date: header.entry_date,
-                    description: header.description,
-                    reference: header.reference,
-                    debit: line.debit,
-                    credit: line.credit,
-                }))
-        );
+        const res = await accountingReportsApi.accountStatement({
+            account_id: account.id,
+            date_from: statementRange.value?.[0] || undefined,
+            date_to: statementRange.value?.[1] || undefined,
+        });
+
+        statement.value = res.data?.data || null;
+        statementEntries.value = statement.value?.movements || [];
     } catch (e) {
         ElMessage.error(t('failed_to_load_account_movements'));
     } finally {
@@ -390,32 +429,20 @@ const openStatementDrawer = async (account) => {
     }
 };
 
-// Computes running balance cumulatively starting from 0, honoring the account's normal
-// balance side (debit-normal: asset/expense, credit-normal: liability/equity/revenue) —
-// matches the backend's LedgerAccount::signedDelta() so this reconciles with the account's
-// actual stored balance shown above.
-const statementEntriesWithBalance = computed(() => {
-    if (!statementEntries.value.length) return [];
+const reloadStatement = () => {
+    if (selectedAccount.value) openStatementDrawer(selectedAccount.value);
+};
 
-    const isDebitNormal = checkType(selectedAccount.value?.type, 'asset') || checkType(selectedAccount.value?.type, 'expense');
+const money = (value) => Number(value || 0).toFixed(2);
 
-    // Sort oldest first to calculate running balance correctly
-    const entriesSorted = [...statementEntries.value].sort((a, b) => new Date(a.entry_date) - new Date(b.entry_date));
-
-    let currentBal = 0;
-    const entriesWithBal = entriesSorted.map(entry => {
-        const deb = parseFloat(entry.debit || 0);
-        const cred = parseFloat(entry.credit || 0);
-        currentBal += isDebitNormal ? (deb - cred) : (cred - deb);
-        return {
-            ...entry,
-            running_balance: currentBal
-        };
-    });
-
-    // Return newest first for display in table
-    return entriesWithBal.reverse();
-});
+// Newest first for reading; the balance on each row comes from the server,
+// where it was accumulated oldest-first on top of the opening figure.
+const statementEntriesWithBalance = computed(() =>
+    [...statementEntries.value].reverse().map((entry) => ({
+        ...entry,
+        running_balance: entry.balance,
+    }))
+);
 
 onMounted(() => {
     store.fetchAccounts({ per_page: 100 }).catch(() => {});
@@ -425,6 +452,21 @@ onMounted(() => {
 <style scoped>
 .accounting-page {
     font-family: 'Cairo', sans-serif;
+}
+
+.statement-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.statement-summary {
+    display: flex;
+    gap: 1.25rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
 }
 
 .page-header {

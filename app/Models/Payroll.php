@@ -15,6 +15,7 @@ class Payroll extends Model
         'pay_period_start',
         'pay_period_end',
         'payment_date',
+        'payment_method',
         'basic_salary',
         'overtime_hours',
         'overtime_rate',
@@ -43,6 +44,30 @@ class Payroll extends Model
     const STATUS_PENDING = 'pending';
     const STATUS_PROCESSED = 'processed';
     const STATUS_PAID = 'paid';
+
+    /** Posting key of the entry that recognises the cost. */
+    public function accrualKey(): string
+    {
+        return 'payroll:' . $this->id;
+    }
+
+    /** Posting key of the entry that settles it. */
+    public function paymentKey(): string
+    {
+        return 'payroll_paid:' . $this->id;
+    }
+
+    /**
+     * Whether the cost has already reached the ledger.
+     *
+     * What makes a payroll record final: once the expense is on the books, its
+     * figures describe an entry that has been reported on, so they are no
+     * longer free to change.
+     */
+    public function isAccrued(): bool
+    {
+        return JournalEntryHeader::where('posting_key', $this->accrualKey())->exists();
+    }
 
     public function employee()
     {

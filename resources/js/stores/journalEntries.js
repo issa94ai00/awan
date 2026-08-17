@@ -70,23 +70,20 @@ export const useJournalEntriesStore = defineStore('journalEntries', {
             }
         },
 
-        async updateEntry(id, payload) {
+        /**
+         * Posts a mirror entry that cancels an existing one.
+         *
+         * This replaces the old update and delete actions. Both are refused by
+         * the API now: a posted entry that can be rewritten makes two trial
+         * balances of the same period disagree with nothing to explain why.
+         */
+        async reverseEntry(id, payload = {}) {
             this.error = null;
             try {
-                const res = await journalEntriesApi.update(id, payload);
+                const res = await journalEntriesApi.reverse(id, payload);
                 return res.data.data;
             } catch (error) {
-                this.error = error.response?.data?.message || error.message || 'Failed to update journal entry';
-                throw error;
-            }
-        },
-
-        async deleteEntry(id) {
-            this.error = null;
-            try {
-                await journalEntriesApi.delete(id);
-            } catch (error) {
-                this.error = error.response?.data?.message || error.message || 'Failed to delete journal entry';
+                this.error = error.response?.data?.message || error.message || 'Failed to reverse journal entry';
                 throw error;
             }
         },

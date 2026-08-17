@@ -13,6 +13,16 @@
             </template>
         </AdminPageHeader>
 
+        <!-- Says up front why there is no edit button, instead of leaving the
+             answer to be discovered when the API refuses. -->
+        <el-alert
+            type="info"
+            show-icon
+            :closable="false"
+            class="mb-4"
+            :title="$t('posted_entry_is_final')"
+        />
+
         <!-- Filters Bar Panel -->
         <el-card shadow="hover" class="filters-panel mb-4">
             <div class="filters-row">
@@ -93,12 +103,24 @@
                             <el-tag :type="row.status === 'posted' ? 'success' : 'info'" effect="plain">{{ statusLabel(row.status) }}</el-tag>
                         </template>
                     </el-table-column>
+                    <!-- Reversal is the only action: a posted entry stays as it
+                         was recorded, and a correction is a second entry beside
+                         it rather than an edit of it. -->
                     <el-table-column :label="$t('actions')" width="150" align="center" fixed="left">
                         <template #default="{ row }">
-                            <el-button-group>
-                                <el-button size="small" @click="openEditDrawer(row)"><i class="fas fa-edit"></i></el-button>
-                                <el-button size="small" type="danger" @click="confirmDelete(row)"><i class="fas fa-trash"></i></el-button>
-                            </el-button-group>
+                            <el-tooltip :content="row.status === 'reversed' ? $t('reversed') : $t('reverse_entry')" placement="top">
+                                <span>
+                                    <el-button
+                                        size="small"
+                                        type="warning"
+                                        plain
+                                        :disabled="row.status === 'reversed'"
+                                        @click="confirmReverse(row)"
+                                    >
+                                        <i class="fas fa-rotate-left"></i>
+                                    </el-button>
+                                </span>
+                            </el-tooltip>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -114,10 +136,10 @@
             </div>
         </el-card>
 
-        <!-- Create/Edit Journal Entry Drawer -->
+        <!-- Create Journal Entry Drawer -->
         <el-drawer
             v-model="drawerVisible"
-            :title="editingId ? 'تعديل قيد محاسبي' : 'تسجيل قيد محاسبي يدوي جديد'"
+            title="تسجيل قيد محاسبي يدوي جديد"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -183,7 +205,7 @@
                 <div style="border-top: 1px solid var(--border-color); margin-top: 1.5rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
                     <el-button @click="drawerVisible = false">{{ $t('cancel') }}</el-button>
                     <el-button type="primary" :loading="submittingForm" :disabled="!canSubmit" @click="saveEntry">
-                        {{ editingId ? 'حفظ التعديلات' : 'تسجيل وإثبات القيد' }}
+                        تسجيل وإثبات القيد
                     </el-button>
                 </div>
             </el-form>
@@ -214,7 +236,6 @@ const filters = reactive({
 // Form state
 const drawerVisible = ref(false);
 const submittingForm = ref(false);
-const editingId = ref(null);
 const form = reactive({
     entry_date: '',
     reference: '',
@@ -243,7 +264,11 @@ const canSubmit = computed(() => isFormBalanced.value && form.lines.every((l) =>
 
 const isRowBalanced = (row) => parseFloat(row.total_debit).toFixed(2) === parseFloat(row.total_credit).toFixed(2);
 
-const statusLabel = (status) => (status === 'posted' ? t('posted') : status);
+const statusLabel = (status) => {
+    if (status === 'posted') return t('posted');
+    if (status === 'reversed') return t('reversed');
+    return status;
+};
 
 const formatDate = (date) => (date ? String(date).slice(0, 10) : '');
 
@@ -263,22 +288,7 @@ const resetFilters = () => {
 };
 
 const openCreateDrawer = () => {
-    editingId.value = null;
     resetForm();
-    drawerVisible.value = true;
-};
-
-const openEditDrawer = async (row) => {
-    editingId.value = row.id;
-    const entry = await store.fetchEntry(row.id);
-    form.entry_date = entry.entry_date ? String(entry.entry_date).slice(0, 10) : '';
-    form.reference = entry.reference || '';
-    form.description = entry.description || '';
-    form.lines = (entry.lines || []).map((l) => ({
-        ledger_account_id: l.account_id,
-        debit: parseFloat(l.debit) || 0,
-        credit: parseFloat(l.credit) || 0,
-    }));
     drawerVisible.value = true;
 };
 
@@ -305,13 +315,8 @@ const saveEntry = async () => {
 
     submittingForm.value = true;
     try {
-        if (editingId.value) {
-            await store.updateEntry(editingId.value, payload);
-            ElMessage.success(t('entry_updated'));
-        } else {
-            await store.createEntry(payload);
-            ElMessage.success(t('entry_recorded_and_posted'));
-        }
+        await store.createEntry(payload);
+        ElMessage.success(t('entry_recorded_and_posted'));
         drawerVisible.value = false;
         await store.fetchEntries();
         await ledgerStore.fetchAccounts({ per_page: 100 });
@@ -322,19 +327,19 @@ const saveEntry = async () => {
     }
 };
 
-const confirmDelete = (row) => {
+const confirmReverse = (row) => {
     ElMessageBox.confirm(
-        `هل أنت متأكد من حذف القيد رقم ${row.entry_number}؟ سيتم عكس تأثيره على أرصدة الحسابات.`,
-        t('confirm_deletion'),
-        { confirmButtonText: t('delete'), cancelButtonText: t('cancel'), type: 'warning' }
+        `${t('confirm_reverse_entry')}\n${row.entry_number}`,
+        t('reverse_entry'),
+        { confirmButtonText: t('confirm'), cancelButtonText: t('cancel'), type: 'warning' }
     ).then(async () => {
         try {
-            await store.deleteEntry(row.id);
-            ElMessage.success(t('entry_deleted'));
+            await store.reverseEntry(row.id);
+            ElMessage.success(t('entry_reversed'));
             await store.fetchEntries();
             await ledgerStore.fetchAccounts({ per_page: 100 });
         } catch (e) {
-            ElMessage.error(t('failed_to_delete_entry'));
+            ElMessage.error(e.response?.data?.message || t('failed_to_reverse_entry'));
         }
     }).catch(() => {});
 };

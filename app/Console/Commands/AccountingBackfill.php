@@ -7,6 +7,7 @@ use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\Payment;
+use App\Models\SupplierPayment;
 use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Console\Command;
 
@@ -26,7 +27,7 @@ class AccountingBackfill extends Command
 {
     protected $signature = 'accounting:backfill
                             {--apply : Actually post (without this the command only reports)}
-                            {--type=* : Limit to invoices, payments, credit-notes or expenses}
+                            {--type=* : Limit to invoices, payments, supplier-payments, credit-notes or expenses}
                             {--from= : Only documents dated on or after this date}
                             {--repost : Replace existing entries that do not balance}';
 
@@ -35,7 +36,7 @@ class AccountingBackfill extends Command
     public function handle(LedgerPostingService $ledger): int
     {
         $apply = (bool) $this->option('apply');
-        $types = $this->option('type') ?: ['invoices', 'payments', 'credit-notes', 'expenses'];
+        $types = $this->option('type') ?: ['invoices', 'payments', 'supplier-payments', 'credit-notes', 'expenses'];
         $from = $this->option('from');
 
         if (!$apply) {
@@ -49,6 +50,7 @@ class AccountingBackfill extends Command
             $summary[] = match ($type) {
                 'invoices' => $this->postBatch('الفواتير', $this->invoices($from), fn ($d) => $ledger->postInvoice($d), $apply),
                 'payments' => $this->postBatch('المدفوعات', $this->payments($from), fn ($d) => $ledger->postPayment($d), $apply),
+                'supplier-payments' => $this->postBatch('مدفوعات الموردين', $this->supplierPayments($from), fn ($d) => $ledger->postSupplierPayment($d), $apply),
                 'credit-notes' => $this->postBatch('الإشعارات الدائنة', $this->creditNotes($from), fn ($d) => $ledger->postCreditNote($d), $apply),
                 'expenses' => $this->postBatch('المصاريف', $this->expenses($from), fn ($d) => $ledger->postExpense($d), $apply),
                 default => throw new \InvalidArgumentException("نوع غير معروف: {$type}"),
@@ -160,6 +162,7 @@ class AccountingBackfill extends Command
         return match (true) {
             $document instanceof Invoice => 'invoice:' . $document->id,
             $document instanceof Payment => 'payment:' . $document->id,
+            $document instanceof SupplierPayment => $document->postingKey(),
             $document instanceof CreditNote => 'credit_note:' . $document->id,
             $document instanceof Expense => 'expense:' . $document->id,
             default => null,
@@ -178,6 +181,15 @@ class AccountingBackfill extends Command
     private function payments(?string $from)
     {
         return Payment::query()
+            ->when($from, fn ($q) => $q->whereDate('payment_date', '>=', $from))
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** Cancelled payments are soft-deleted and already reversed; leave them out. */
+    private function supplierPayments(?string $from)
+    {
+        return SupplierPayment::query()
             ->when($from, fn ($q) => $q->whereDate('payment_date', '>=', $from))
             ->orderBy('id')
             ->get();

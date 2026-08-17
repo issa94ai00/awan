@@ -2,12 +2,16 @@
 
 namespace App\Services\Accounting;
 
+use App\Exceptions\ClosedPeriodException;
+use App\Models\AccountingPeriod;
 use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\JournalEntryLine;
 use App\Models\LedgerAccount;
 use App\Models\Payment;
+use App\Models\Payroll;
+use App\Models\SupplierPayment;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -144,6 +148,219 @@ class LedgerPostingService
             reference: $payment,
             module: 'sales',
             currency: $payment->currency,
+        );
+    }
+
+    /**
+     * Money paid out to a supplier.
+     *
+     * The other half of `postGoodsReceipt`. Receiving goods credited accounts
+     * payable on every purchase, and nothing ever debited it back, so the
+     * liability grew for the life of the installation however much had really
+     * been settled — the balance sheet was wrong by the whole amount paid.
+     *
+     *   paid:     Dr Accounts payable   Cr Cash/Bank
+     *   refunded: Dr Cash/Bank          Cr Accounts payable
+     *
+     * A negative amount is a refund from the supplier, and re-opens what is
+     * owed — the same convention `postPayment` uses on the customer side.
+     *
+     * @param  ?string  $key  overrides the default posting key, for a payment
+     *                        being corrected after its original entry was
+     *                        reversed (that key now belongs to the reversal).
+     */
+    public function postSupplierPayment(SupplierPayment $payment, ?string $key = null): ?JournalEntryHeader
+    {
+        $amount = $this->money($payment->amount);
+        if (abs($amount) < self::EPSILON) {
+            return null;
+        }
+
+        $cashRole = $payment->payment_method === SupplierPayment::METHOD_CASH ? 'cash' : 'bank';
+        $isRefund = $amount < 0;
+        $magnitude = abs($amount);
+        $label = ($payment->payment_number ?: $payment->reference) ?: ('#'.$payment->id);
+        $supplier = $payment->supplier?->name;
+        $suffix = ($supplier ? $supplier.' - ' : '').$label;
+
+        $lines = $isRefund
+            ? [
+                ['role' => $cashRole, 'debit' => $magnitude, 'description' => 'استرداد من مورّد - '.$suffix],
+                ['role' => 'accounts_payable', 'credit' => $magnitude, 'description' => 'عكس سداد مورّد - '.$suffix],
+            ]
+            : [
+                ['role' => 'accounts_payable', 'debit' => $magnitude, 'description' => 'سداد ذمم موردين - '.$suffix],
+                ['role' => $cashRole, 'credit' => $magnitude, 'description' => 'صرف نقدي - '.$suffix],
+            ];
+
+        return $this->post(
+            key: $key ?? $payment->postingKey(),
+            date: $payment->payment_date ? (string) $payment->payment_date->toDateString() : now()->toDateString(),
+            description: ($isRefund ? 'استرداد من مورّد ' : 'سداد لمورّد ').$suffix,
+            lines: $lines,
+            reference: $payment,
+            module: 'purchases',
+            currency: $payment->currency,
+        );
+    }
+
+    /**
+     * Wages earned, recognised in the period they were worked.
+     *
+     * Payroll ran entirely outside the ledger: salaries were computed, stored
+     * and paid without a single entry, so the largest recurring cost most
+     * businesses carry appeared in no income statement the system produced,
+     * and the cash it consumed left the books unexplained.
+     *
+     *   Dr  Salaries expense              gross earnings
+     *       Cr  Payroll deductions payable      whatever was withheld
+     *       Cr  Salaries payable                what the employee is owed
+     *
+     * Gross is what was earned — basic plus overtime plus bonuses — and it is
+     * the whole of the cost to the business. Deductions do not reduce that
+     * cost; they only change who ends up holding part of it, which is why they
+     * are a liability rather than a smaller expense.
+     *
+     * The accrual is deliberately separate from the payment. Recognising both
+     * at once would date the cost to the day the transfer cleared rather than
+     * the period that earned it, and a month closed before payday would show
+     * no wages at all.
+     */
+    public function postPayrollAccrual(Payroll $payroll): ?JournalEntryHeader
+    {
+        $gross = $this->money(
+            (float) $payroll->basic_salary + (float) $payroll->overtime_pay + (float) $payroll->bonuses
+        );
+        $deductions = $this->money($payroll->deductions);
+        $net = round($gross - $deductions, 2);
+
+        if ($gross <= 0) {
+            return null;
+        }
+
+        $label = $payroll->payroll_number.($payroll->employee?->name ? ' - '.$payroll->employee->name : '');
+
+        $lines = [
+            ['role' => 'salaries_expense', 'debit' => $gross, 'description' => 'رواتب وأجور - '.$label,
+             'employee_id' => $payroll->employee_id],
+        ];
+
+        if ($deductions > 0) {
+            $lines[] = ['role' => 'payroll_deductions_payable', 'credit' => $deductions,
+                        'description' => 'استقطاعات - '.$label, 'employee_id' => $payroll->employee_id];
+        }
+
+        if ($net > 0) {
+            $lines[] = ['role' => 'salaries_payable', 'credit' => $net,
+                        'description' => 'صافي مستحق - '.$label, 'employee_id' => $payroll->employee_id];
+        }
+
+        return $this->post(
+            key: 'payroll:'.$payroll->id,
+            // The cost belongs to the period worked, so it is dated at the end
+            // of that period rather than whenever the record was touched.
+            date: $payroll->pay_period_end
+                ? (string) $payroll->pay_period_end->toDateString()
+                : now()->toDateString(),
+            description: 'استحقاق رواتب '.$label,
+            lines: $lines,
+            reference: $payroll,
+            module: 'payroll',
+        );
+    }
+
+    /**
+     * The wage actually leaving the business.
+     *
+     *   Dr  Salaries payable   net
+     *       Cr  Cash/Bank            net
+     *
+     * Settles the liability the accrual raised; the expense was already
+     * recognised there and is not touched again.
+     */
+    public function postPayrollPayment(Payroll $payroll): ?JournalEntryHeader
+    {
+        $net = $this->money($payroll->net_salary);
+        if ($net <= 0) {
+            return null;
+        }
+
+        $cashRole = ($payroll->payment_method ?? 'cash') === 'cash' ? 'cash' : 'bank';
+        $label = $payroll->payroll_number.($payroll->employee?->name ? ' - '.$payroll->employee->name : '');
+
+        return $this->post(
+            key: 'payroll_paid:'.$payroll->id,
+            date: $payroll->payment_date
+                ? (string) $payroll->payment_date->toDateString()
+                : now()->toDateString(),
+            description: 'صرف رواتب '.$label,
+            lines: [
+                ['role' => 'salaries_payable', 'debit' => $net, 'description' => 'سداد مستحق - '.$label,
+                 'employee_id' => $payroll->employee_id],
+                ['role' => $cashRole, 'credit' => $net, 'description' => 'صرف راتب - '.$label,
+                 'employee_id' => $payroll->employee_id],
+            ],
+            reference: $payroll,
+            module: 'payroll',
+        );
+    }
+
+    /**
+     * A stock count that disagreed with the books.
+     *
+     * Adjustments moved the warehouse and never reached the ledger, so every
+     * count, write-off and damaged unit widened the gap between the inventory
+     * asset and the stock it is supposed to describe — silently, and in one
+     * direction only for whoever was losing goods.
+     *
+     *   shortage: Dr Inventory shrinkage      Cr Inventory — warehouse
+     *   surplus:  Dr Inventory — warehouse    Cr Inventory shrinkage
+     *
+     * Both directions land on the same account, so the period's net result of
+     * counting is one figure on the income statement rather than a gain buried
+     * in one place and a loss in another.
+     *
+     * @param  float  $cost  what the adjusted units were worth, always positive
+     * @param  bool   $isShortage  true when stock was lost, false when found
+     */
+    public function postInventoryAdjustment(
+        string $key,
+        int $warehouseId,
+        float $cost,
+        bool $isShortage,
+        string $label,
+        $reference = null,
+        ?string $date = null,
+    ): ?JournalEntryHeader {
+        $cost = $this->money(abs($cost));
+
+        // Units with no cost behind them — an item never priced, or a count on
+        // stock that arrived free — would write a zero entry that moves no
+        // balance and only adds noise to the journal.
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $name = Warehouse::find($warehouseId)?->name ?? ('#'.$warehouseId);
+        $inventoryLine = ['account_id' => $this->inventoryAccountIdFor($warehouseId)];
+
+        $lines = $isShortage
+            ? [
+                ['role' => 'inventory_adjustment', 'debit' => $cost, 'description' => 'عجز جرد ('.$name.') - '.$label],
+                $inventoryLine + ['credit' => $cost, 'description' => 'تخفيض مخزون ('.$name.') - '.$label],
+            ]
+            : [
+                $inventoryLine + ['debit' => $cost, 'description' => 'زيادة مخزون ('.$name.') - '.$label],
+                ['role' => 'inventory_adjustment', 'credit' => $cost, 'description' => 'زيادة جرد ('.$name.') - '.$label],
+            ];
+
+        return $this->post(
+            key: $key,
+            date: $date ?? now()->toDateString(),
+            description: ($isShortage ? 'تسوية عجز مخزون - ' : 'تسوية زيادة مخزون - ').$label,
+            lines: $lines,
+            reference: $reference,
+            module: 'inventory',
         );
     }
 
@@ -423,6 +640,13 @@ class LedgerPostingService
             return null;
         }
 
+        // Tax paid to the supplier is not part of what the goods cost: it is a
+        // claim against the tax authority. Booking it into inventory — which is
+        // what happened before there was an account for it — carries the stock
+        // at more than it is worth, understates every margin computed from it,
+        // and hides money the business is entitled to deduct.
+        $tax = $this->money($receipt->tax_amount ?? 0);
+
         $label = 'إيصال استلام ' . ($receipt->receipt_number ?? ('#' . $receipt->id));
 
         // A receipt whose warehouse was never resolved falls back to the shared
@@ -436,17 +660,30 @@ class LedgerPostingService
 
         $name = $warehouseId ? (Warehouse::find($warehouseId)?->name ?? ('#' . $warehouseId)) : null;
 
+        $lines = [
+            $debit + [
+                'debit' => $total,
+                'description' => 'إدخال مخزون' . ($name ? ' (' . $name . ')' : '') . ' - ' . $label,
+            ],
+        ];
+
+        if ($tax > 0) {
+            $lines[] = ['role' => 'input_vat', 'debit' => $tax, 'description' => 'ضريبة مشتريات - ' . $label];
+        }
+
+        // What the supplier is owed is the whole document, tax included — the
+        // split above only decides which of our accounts carries each part.
+        $lines[] = [
+            'role' => 'accounts_payable',
+            'credit' => round($total + $tax, 2),
+            'description' => 'ذمم موردين - ' . $label,
+        ];
+
         return $this->post(
             key: 'goods_receipt:' . $receipt->id,
             date: $receipt->receipt_date ? (string) $receipt->receipt_date->toDateString() : now()->toDateString(),
             description: 'إثبات ' . $label,
-            lines: [
-                $debit + [
-                    'debit' => $total,
-                    'description' => 'إدخال مخزون' . ($name ? ' (' . $name . ')' : '') . ' - ' . $label,
-                ],
-                ['role' => 'accounts_payable', 'credit' => $total, 'description' => 'ذمم موردين - ' . $label],
-            ],
+            lines: $lines,
             reference: $receipt,
             module: 'purchases',
             currency: $receipt->currency ?? null,
@@ -545,9 +782,27 @@ class LedgerPostingService
             ->where('posting_key', $postingKey)
             ->first();
 
-        if (!$original || $original->status === 'reversed') {
+        return $original ? $this->reverseEntry($original, $date) : null;
+    }
+
+    /**
+     * Reverses a specific entry.
+     *
+     * Separate from `reverseFor` because an entry does not have to have been
+     * produced by a document to be reversible: a manual entry typed into the
+     * journal screen is corrected the same way a posted invoice is, and older
+     * entries predate `posting_key` entirely. Those fall back to a key derived
+     * from the entry's own id, which is just as unique.
+     */
+    public function reverseEntry(JournalEntryHeader $original, ?string $date = null): ?JournalEntryHeader
+    {
+        if ($original->status === 'reversed') {
             return null;
         }
+
+        $original->loadMissing('lines.ledgerAccount');
+
+        $postingKey = $original->posting_key ?: ('entry:'.$original->id);
 
         $lines = $original->lines->map(fn (JournalEntryLine $line) => [
             'account_id' => $line->account_id,
@@ -555,6 +810,10 @@ class LedgerPostingService
             'debit' => (float) $line->credit,
             'credit' => (float) $line->debit,
             'description' => 'عكس: ' . ($line->description ?? ''),
+            // The reversal belongs to whoever the original line did, or an
+            // employee's account statement would show the charge and not the
+            // entry that cancelled it.
+            'employee_id' => $line->employee_id,
         ])->all();
 
         $reversal = $this->post(
@@ -600,6 +859,12 @@ class LedgerPostingService
             return $existing;
         }
 
+        // Checked before anything is written, and after the idempotency check:
+        // re-firing an event whose entry already exists must stay a no-op even
+        // once its period is closed, or replaying a webhook or re-saving a
+        // document would start failing on history that is already correct.
+        $this->guardOpenPeriod($date);
+
         $resolved = [];
         $totalDebit = 0.0;
         $totalCredit = 0.0;
@@ -624,6 +889,7 @@ class LedgerPostingService
                 'debit' => $debit,
                 'credit' => $credit,
                 'description' => $line['description'] ?? null,
+                'employee_id' => $line['employee_id'] ?? null,
             ];
 
             $totalDebit += $debit;
@@ -674,6 +940,7 @@ class LedgerPostingService
                     'debit' => $line['debit'],
                     'credit' => $line['credit'],
                     'description' => $line['description'],
+                    'employee_id' => $line['employee_id'],
                 ]);
 
                 $account = LedgerAccount::find($line['account_id']);
@@ -683,6 +950,25 @@ class LedgerPostingService
 
             return $header;
         });
+    }
+
+    /**
+     * Refuses to write into a period somebody has finished with.
+     *
+     * Without this, any document dated into a reported month — an invoice
+     * backdated by a typo, a stock count entered late, a hand-typed entry —
+     * changed statements that had already been printed and sent, and nothing
+     * anywhere said so.
+     *
+     * @throws ClosedPeriodException
+     */
+    private function guardOpenPeriod(string $date): void
+    {
+        $period = AccountingPeriod::closedFor($date);
+
+        if ($period) {
+            throw new ClosedPeriodException($date, $period);
+        }
     }
 
     private function accountIdForRole(string $role): ?int

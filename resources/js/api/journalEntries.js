@@ -13,11 +13,10 @@ export const journalEntriesApi = {
         return api.post('/admin/accounting/journal-entries', data);
     },
 
-    update(id, data) {
-        return api.put(`/admin/accounting/journal-entries/${id}`, data);
-    },
-
-    delete(id) {
-        return api.delete(`/admin/accounting/journal-entries/${id}`);
+    // A posted entry is never rewritten or removed — the API refuses both.
+    // Correcting one means reversing it and recording the right entry, so the
+    // journal keeps the whole story.
+    reverse(id, data = {}) {
+        return api.post(`/admin/accounting/journal-entries/${id}/reverse`, data);
     }
 };

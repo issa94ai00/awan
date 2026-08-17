@@ -292,6 +292,15 @@
                     </el-col>
                 </el-row>
 
+                <!-- Kept out of the item prices on purpose: tax paid to a
+                     supplier is recoverable from the authority, so booking it
+                     into the cost of the goods overstates the stock and hides
+                     the claim. -->
+                <el-form-item :label="$t('purchase_tax_amount')" class="mt-3">
+                    <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" :disabled="isEditMode" />
+                    <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
+                </el-form-item>
+
                 <el-form-item :label="$t('receipt_notes')" class="mt-3">
                     <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('receipt_notes_placeholder')" />
                 </el-form-item>
@@ -385,6 +394,7 @@ const form = reactive({
     purchase_order_id: '',
     warehouse_id: '',
     receipt_date: '',
+    tax_amount: 0,
     notes: '',
     items: []
 });
@@ -397,6 +407,7 @@ const resetForm = () => {
     // A single active warehouse is not a choice worth asking for.
     form.warehouse_id = warehouses.value.length === 1 ? warehouses.value[0].id : '';
     form.receipt_date = new Date().toISOString().split('T')[0];
+    form.tax_amount = 0;
     form.notes = '';
     form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
 };
@@ -449,6 +460,8 @@ const openEditDrawer = async (id) => {
         form.purchase_order_id = receipt.purchase_order_id;
         form.warehouse_id = receipt.warehouse_id;
         form.receipt_date = receipt.receipt_date;
+        // Shown but locked, like the lines: the tax was posted with them.
+        form.tax_amount = receipt.tax_amount ?? 0;
         form.notes = receipt.notes;
         form.items = receipt.items.map(item => ({
             product_id: item.product_id,

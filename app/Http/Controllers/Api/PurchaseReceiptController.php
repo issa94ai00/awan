@@ -50,6 +50,10 @@ class PurchaseReceiptController extends Controller
             'supplier_id' => 'required|exists:suppliers,id',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'receipt_date' => 'nullable|date',
+            // Tax charged by the supplier, kept apart from what the goods cost:
+            // it is recoverable from the tax authority, not part of the stock's
+            // value.
+            'tax_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array',
             'items.*.product_id' => 'required|exists:products,id',
@@ -122,9 +126,12 @@ class PurchaseReceiptController extends Controller
             $receipt->load('items');
             $this->ledger->postGoodsReceipt($receipt);
 
-            // Bought on account, so the supplier is now owed for it.
+            // Bought on account, so the supplier is now owed for it — including
+            // the tax, which is part of what the invoice has to be paid at even
+            // though the books carry it separately from the goods.
             $receipt->supplier?->updateBalance(
                 $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
+                + (float) ($receipt->tax_amount ?? 0)
             );
 
             return $receipt;

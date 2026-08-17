@@ -37,12 +37,14 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\LeaveRequestController;use App\Http\Controllers\Api\TicketController;use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\SupplierPaymentController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
+use App\Http\Controllers\Api\AccountingPeriodController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
 use App\Http\Controllers\Api\InventoryTransferController;
@@ -380,6 +382,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->name('api.admin.suppliers.show');
                 Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
                 Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
+
+                // Paying suppliers. Same audience as the rest of purchasing:
+                // this moves money out and settles the payables account, so it
+                // sits behind the admin role rather than with the staff-wide
+                // receipt endpoints below.
+                Route::get('/supplier-payments', [SupplierPaymentController::class, 'index'])->name('api.admin.supplier-payments.index');
+                Route::post('/supplier-payments', [SupplierPaymentController::class, 'store'])->name('api.admin.supplier-payments.store');
+                Route::get('/supplier-payments/outstanding', [SupplierPaymentController::class, 'outstanding'])->name('api.admin.supplier-payments.outstanding');
+                Route::get('/supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show'])->name('api.admin.supplier-payments.show');
+                Route::delete('/supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'destroy'])->name('api.admin.supplier-payments.destroy');
             });
 
             // Admin Employees API
@@ -461,8 +473,20 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/journal-entries', [JournalEntryController::class, 'index'])->name('api.admin.accounting.journal-entries.index');
                 Route::post('/accounting/journal-entries', [JournalEntryController::class, 'store'])->name('api.admin.accounting.journal-entries.store');
                 Route::get('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('api.admin.accounting.journal-entries.show');
+                // Both refuse: a posted entry is corrected by reversing it, not
+                // by rewriting or removing it. Kept registered so the refusal
+                // is an explanation rather than a 404.
                 Route::put('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'update'])->name('api.admin.accounting.journal-entries.update');
                 Route::delete('/accounting/journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy'])->name('api.admin.accounting.journal-entries.destroy');
+                Route::post('/accounting/journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->name('api.admin.accounting.journal-entries.reverse');
+
+                // Accounting periods: closing one is what makes a reported
+                // month final, so it sits with the rest of the books.
+                Route::get('/accounting/periods', [AccountingPeriodController::class, 'index'])->name('api.admin.accounting.periods.index');
+                Route::post('/accounting/periods', [AccountingPeriodController::class, 'store'])->name('api.admin.accounting.periods.store');
+                Route::post('/accounting/periods/{accountingPeriod}/close', [AccountingPeriodController::class, 'close'])->name('api.admin.accounting.periods.close');
+                Route::post('/accounting/periods/{accountingPeriod}/reopen', [AccountingPeriodController::class, 'reopen'])->name('api.admin.accounting.periods.reopen');
+                Route::delete('/accounting/periods/{accountingPeriod}', [AccountingPeriodController::class, 'destroy'])->name('api.admin.accounting.periods.destroy');
 
                 Route::get('/accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('api.admin.accounting.trial-balance');
                 Route::get('/accounting/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('api.admin.accounting.income-statement');
@@ -470,6 +494,11 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // operational records. Read-only — repairs stay deliberate.
                 Route::get('/accounting/system-health', [AccountingReportController::class, 'systemHealth'])->name('api.admin.accounting.system-health');
                 Route::get('/accounting/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('api.admin.accounting.balance-sheet');
+                // One account's movements with an opening balance, and who owes
+                // what for how long — both read straight from the ledger.
+                Route::get('/accounting/account-statement', [AccountingReportController::class, 'accountStatement'])->name('api.admin.accounting.account-statement');
+                Route::get('/accounting/aging', [AccountingReportController::class, 'aging'])->name('api.admin.accounting.aging');
+                Route::get('/accounting/vat-return', [AccountingReportController::class, 'vatReturn'])->name('api.admin.accounting.vat-return');
             });
         });
 

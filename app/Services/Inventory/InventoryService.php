@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
+use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -93,6 +94,16 @@ class InventoryService
      * Signed correction from a stock count. Positive found, negative shrinkage.
      * Allowed to drive stock negative only if the caller explicitly permits it,
      * because a count is a statement of fact.
+     *
+     * The difference reaches the ledger in the same transaction as the stock.
+     * It used to move the warehouse alone, so the inventory asset kept
+     * describing goods that had been counted away — and the loss never
+     * appeared as a cost anywhere. Both records now change together or
+     * neither does: a posting that cannot be written rolls the movement back
+     * rather than leaving the two disagreeing.
+     *
+     * @param  array{post_to_ledger?:bool}  $options  `post_to_ledger` => false
+     *         for a caller that posts the accounting side itself
      */
     public function adjust(
         int $productId,
@@ -104,12 +115,54 @@ class InventoryService
             return null;
         }
 
-        return $this->move(
-            $productId,
-            $signedQuantity,
-            $warehouseId,
-            StockMovement::TYPE_ADJUSTMENT,
-            $options + ['allow_negative' => true]
+        return DB::transaction(function () use ($productId, $signedQuantity, $warehouseId, $options) {
+            $movement = $this->move(
+                $productId,
+                $signedQuantity,
+                $warehouseId,
+                StockMovement::TYPE_ADJUSTMENT,
+                $options + ['allow_negative' => true]
+            );
+
+            if ($movement && ($options['post_to_ledger'] ?? true)) {
+                $this->postAdjustmentToLedger($movement, $options);
+            }
+
+            return $movement;
+        });
+    }
+
+    /**
+     * Books the value of an adjustment against the shrinkage account.
+     *
+     * The cost comes off the movement rather than the caller: for stock going
+     * out that is what the FIFO layers actually gave up, which is the only
+     * figure that leaves the inventory account holding what is really on the
+     * shelf.
+     *
+     * Keyed on the movement, so a repeated adjustment — which `move` already
+     * returns unchanged — cannot post its value twice.
+     */
+    private function postAdjustmentToLedger(StockMovement $movement, array $options): void
+    {
+        $cost = abs((float) $movement->total_cost);
+
+        if ($cost <= 0) {
+            return;
+        }
+
+        $label = $options['reason']
+            ?? $options['reference']
+            ?? ('حركة #'.$movement->id);
+
+        app(LedgerPostingService::class)->postInventoryAdjustment(
+            key: 'stock_adjustment:'.$movement->id,
+            warehouseId: (int) $movement->warehouse_id,
+            cost: $cost,
+            isShortage: (int) $movement->quantity < 0,
+            label: (string) $label,
+            reference: $movement,
+            date: $movement->created_at?->toDateString(),
         );
     }
 

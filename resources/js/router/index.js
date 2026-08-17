@@ -139,6 +139,21 @@ const routes = [
                 name: 'admin.accounting.balance-sheet',
                 component: () => import('@/views/admin/accounting/BalanceSheet.vue')
             },
+            {
+                path: 'accounting/periods',
+                name: 'admin.accounting.periods',
+                component: () => import('@/views/admin/accounting/Periods.vue')
+            },
+            {
+                path: 'accounting/aging',
+                name: 'admin.accounting.aging',
+                component: () => import('@/views/admin/accounting/Aging.vue')
+            },
+            {
+                path: 'accounting/vat-return',
+                name: 'admin.accounting.vat-return',
+                component: () => import('@/views/admin/accounting/VatReturn.vue')
+            },
             // Inventory
             {
                 path: 'inventory',
@@ -221,6 +236,11 @@ const routes = [
                 path: 'purchases/receipts',
                 name: 'admin.purchase-receipts.index',
                 component: () => import('@/views/admin/purchases/Receipts.vue')
+            },
+            {
+                path: 'purchases/payments',
+                name: 'admin.supplier-payments.index',
+                component: () => import('@/views/admin/purchases/Payments.vue')
             },
             // HR
             {
