@@ -248,6 +248,24 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/accounting/cash-flow" class="nav-link" :class="{ active: isActive('/admin/accounting/cash-flow') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('cash_flow_statement') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/accounting/party-statement" class="nav-link" :class="{ active: isActive('/admin/accounting/party-statement') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('party_statement') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/accounting/fixed-assets" class="nav-link" :class="{ active: isActive('/admin/accounting/fixed-assets') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('fixed_assets') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/accounting/vat-return" class="nav-link" :class="{ active: isActive('/admin/accounting/vat-return') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('vat_return') }}</span>

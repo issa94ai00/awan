@@ -154,6 +154,21 @@ const routes = [
                 name: 'admin.accounting.vat-return',
                 component: () => import('@/views/admin/accounting/VatReturn.vue')
             },
+            {
+                path: 'accounting/cash-flow',
+                name: 'admin.accounting.cash-flow',
+                component: () => import('@/views/admin/accounting/CashFlow.vue')
+            },
+            {
+                path: 'accounting/party-statement',
+                name: 'admin.accounting.party-statement',
+                component: () => import('@/views/admin/accounting/PartyStatement.vue')
+            },
+            {
+                path: 'accounting/fixed-assets',
+                name: 'admin.accounting.fixed-assets',
+                component: () => import('@/views/admin/accounting/FixedAssets.vue')
+            },
             // Inventory
             {
                 path: 'inventory',

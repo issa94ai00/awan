@@ -30,5 +30,47 @@ export const accountingReportsApi = {
     /** Who owes what, for how long, reconciled against the control accounts. */
     aging(params = {}) {
         return api.get('/admin/accounting/aging', { params });
+    },
+
+    /** Tax collected against tax paid, and what is left owing. */
+    vatReturn(params = {}) {
+        return api.get('/admin/accounting/vat-return', { params });
+    },
+
+    /**
+     * Where the money went, as opposed to what was earned — a business can be
+     * plainly profitable and still run out of cash.
+     */
+    cashFlow(params = {}) {
+        return api.get('/admin/accounting/cash-flow', { params });
+    },
+
+    /**
+     * The documents behind one party's balance. The aging report says who owes
+     * what; this says why, which is what a disputed figure actually needs.
+     */
+    partyStatement(params = {}) {
+        return api.get('/admin/accounting/party-statement', { params });
+    }
+};
+
+/** The register of things bought to keep, and their depreciation. */
+export const fixedAssetsApi = {
+    getAll(params = {}) {
+        return api.get('/admin/accounting/fixed-assets', { params });
+    },
+
+    get(id) {
+        return api.get(`/admin/accounting/fixed-assets/${id}`);
+    },
+
+    create(data) {
+        return api.post('/admin/accounting/fixed-assets', data);
+    },
+
+    // Retiring an asset, rather than deleting it: its cost is on the balance
+    // sheet and its depreciation in periods already reported on.
+    dispose(id, data = {}) {
+        return api.post(`/admin/accounting/fixed-assets/${id}/dispose`, data);
     }
 };
