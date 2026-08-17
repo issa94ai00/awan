@@ -410,7 +410,9 @@ class InvoiceController extends Controller
                             'expense_date' => now(),
                             'status' => 'pending',
                             'created_by' => auth()->check() ? auth()->id() : null,
-                            'currency' => 'SAR',
+                            // The books' own currency: a literal here made the
+                            // expense claim a currency nobody had configured.
+                            'currency' => base_currency_code(),
                             'exchange_rate' => 1.0000,
                         ]);
                     }
@@ -696,7 +698,7 @@ class InvoiceController extends Controller
                                 'expense_date' => now(),
                                 'status' => 'pending',
                                 'created_by' => auth()->check() ? auth()->id() : null,
-                                'currency' => 'SAR',
+                                'currency' => base_currency_code(),
                                 'exchange_rate' => 1.0000,
                             ]);
                         }

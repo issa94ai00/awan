@@ -40,6 +40,12 @@ class Expense extends Model
     const CATEGORY_HANDLING = 'handling';
     const CATEGORY_OTHER = 'other';
 
+    /** The key its journal entry is posted under. */
+    public function postingKey(): string
+    {
+        return 'expense:' . $this->id;
+    }
+
     public static function getStatusOptions(): array
     {
         return [

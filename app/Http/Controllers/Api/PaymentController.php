@@ -86,28 +86,39 @@ class PaymentController extends Controller
 
         // An on-account payment with no invoice behind it: still recorded and
         // still posted, but there is no invoice to settle.
+        //
+        // The three records move together. This used to catch the posting
+        // failure, log it, and answer 201 with the reason in an
+        // `accounting_warning` field no screen displays — so money that never
+        // reached the books looked, to whoever took it, exactly like money that
+        // did, and the customer's balance had already moved for it.
         $validated['payment_number'] = 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT);
         $validated['status'] = Payment::STATUS_COMPLETED;
         $validated['created_by'] = auth()->id();
 
-        $payment = Payment::create($validated);
-        $payment->customer->updateBalance(-$payment->amount);
-
-        $postingError = null;
         try {
-            app(\App\Services\Accounting\LedgerPostingService::class)->postPayment($payment);
-        } catch (\Throwable $e) {
-            $postingError = $e->getMessage();
-            report($e);
+            $payment = \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+                $payment = Payment::create($validated);
+                $payment->customer->updateBalance(-$payment->amount);
+
+                app(\App\Services\Accounting\LedgerPostingService::class)->postPayment($payment);
+
+                return $payment;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذّر ترحيل قيد الدفعة: ' . $e->getMessage(),
+                'data' => null,
+            ], 422);
         }
 
         $payment->load(['invoice', 'customer', 'creator']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إنشاء الدفعة بنجاح',
+            'message' => 'تم إنشاء الدفعة بنجاح وترحيل قيدها',
             'data' => $payment,
-            'accounting_warning' => $postingError,
         ], 201);
     }
 
@@ -206,28 +217,42 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * Cancels a payment.
+     *
+     * All four records move together: the invoice, the customer's balance, the
+     * reversing entry and the payment itself. The reversal used to be wrapped
+     * in a catch that logged and carried on, so a payment whose entry could not
+     * be reversed — most often because its period has since been closed — was
+     * deleted anyway, leaving the collection standing in the books with no
+     * document behind it.
+     */
     public function destroy(Payment $payment)
     {
-        if ($payment->invoice) {
-            $payment->invoice->decrement('paid_amount', $payment->amount);
-            $payment->invoice->increment('due_amount', $payment->amount);
-        }
-
-        $payment->customer->updateBalance($payment->amount);
-
-        // The books keep both sides: the original posting stays and a mirror
-        // entry cancels it, rather than deleting history.
         try {
-            app(\App\Services\Accounting\LedgerPostingService::class)->reverseFor('payment:' . $payment->id);
-        } catch (\Throwable $e) {
-            report($e);
-        }
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment) {
+                app(\App\Services\Accounting\LedgerPostingService::class)
+                    ->reverseFor('payment:' . $payment->id);
 
-        $payment->delete();
+                if ($payment->invoice) {
+                    $payment->invoice->decrement('paid_amount', $payment->amount);
+                    $payment->invoice->increment('due_amount', $payment->amount);
+                }
+
+                $payment->customer?->updateBalance($payment->amount);
+                $payment->delete();
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تعذّر عكس قيد الدفعة: ' . $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'تم حذف الدفعة بنجاح',
+            'message' => 'تم حذف الدفعة وترحيل قيد عكسي لها',
             'data' => null
         ]);
     }

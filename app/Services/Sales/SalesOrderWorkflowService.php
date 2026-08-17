@@ -1228,7 +1228,7 @@ class SalesOrderWorkflowService
             'status' => Invoice::STATUS_CONFIRMED,
             'notes' => $order->notes,
             'created_by' => auth()->id(),
-            'currency' => $order->currency ?: 'SYP',
+            'currency' => $order->currency ?: base_currency_code(),
         ]);
 
         foreach ($order->items as $item) {

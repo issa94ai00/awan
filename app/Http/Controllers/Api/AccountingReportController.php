@@ -819,7 +819,7 @@ class AccountingReportController extends Controller
             ->whereNotIn('status', ['cancelled'])
             ->where('total', '>', 0)
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('journal_entry_headers')
-                ->whereColumn('journal_entry_headers.posting_key', DB::raw("CONCAT('invoice:', invoices.id)"))
+                ->whereColumn('journal_entry_headers.posting_key', $this->postingKeyExpression('invoice:', 'invoices.id'))
                 ->whereNull('journal_entry_headers.deleted_at'))
             ->selectRaw('COUNT(*) as n, COALESCE(SUM(total), 0) as amount')
             ->first();
@@ -834,7 +834,7 @@ class AccountingReportController extends Controller
 
         $unpostedPayments = DB::table('payments')
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('journal_entry_headers')
-                ->whereColumn('journal_entry_headers.posting_key', DB::raw("CONCAT('payment:', payments.id)"))
+                ->whereColumn('journal_entry_headers.posting_key', $this->postingKeyExpression('payment:', 'payments.id'))
                 ->whereNull('journal_entry_headers.deleted_at'))
             ->selectRaw('COUNT(*) as n, COALESCE(SUM(amount), 0) as amount')
             ->first();
@@ -850,7 +850,7 @@ class AccountingReportController extends Controller
         $unpostedSupplierPayments = DB::table('supplier_payments')
             ->whereNull('deleted_at')
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('journal_entry_headers')
-                ->whereColumn('journal_entry_headers.posting_key', DB::raw("CONCAT('supplier_payment:', supplier_payments.id)"))
+                ->whereColumn('journal_entry_headers.posting_key', $this->postingKeyExpression('supplier_payment:', 'supplier_payments.id'))
                 ->whereNull('journal_entry_headers.deleted_at'))
             ->selectRaw('COUNT(*) as n, COALESCE(SUM(amount), 0) as amount')
             ->first();
@@ -866,7 +866,7 @@ class AccountingReportController extends Controller
         $unpostedPayrolls = DB::table('payrolls')
             ->whereIn('status', ['processed', 'paid'])
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('journal_entry_headers')
-                ->whereColumn('journal_entry_headers.posting_key', DB::raw("CONCAT('payroll:', payrolls.id)"))
+                ->whereColumn('journal_entry_headers.posting_key', $this->postingKeyExpression('payroll:', 'payrolls.id'))
                 ->whereNull('journal_entry_headers.deleted_at'))
             ->selectRaw('COUNT(*) as n, COALESCE(SUM(net_salary), 0) as amount')
             ->first();
@@ -884,7 +884,7 @@ class AccountingReportController extends Controller
         $shippedWithoutCogs = DB::table('sales_orders')
             ->whereIn('status', ['shipped', 'delivered'])
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('journal_entry_headers')
-                ->whereColumn('journal_entry_headers.posting_key', DB::raw("CONCAT('so_cogs:', sales_orders.id)"))
+                ->whereColumn('journal_entry_headers.posting_key', $this->postingKeyExpression('so_cogs:', 'sales_orders.id'))
                 ->whereNull('journal_entry_headers.deleted_at'))
             ->count();
 
@@ -938,6 +938,23 @@ class AccountingReportController extends Controller
             'سجّل تسوية مخزنية من شاشة المخزون.'
         );
 
+        /* ---- Currency: the books are kept in exactly one ---- */
+
+        $base = base_currency_code();
+
+        $foreignDocuments = DB::table('invoices')
+            ->whereNotNull('currency')
+            ->where('currency', '!=', $base)
+            ->count();
+
+        $checks[] = $this->healthCheck(
+            'documents_in_other_currency',
+            'فواتير بعملة غير عملة الأساس',
+            $foreignDocuments,
+            'الدفاتر تُمسك بعملة واحدة ('.$base.') ولا يُحوَّل شيء عند الترحيل، فمبالغ هذه الفواتير أُثبتت كما هي.',
+            'وحّد عملة المستندات مع عملة الأساس، أو راجع صحة مبالغ هذه الفواتير قبل الاعتماد عليها.'
+        );
+
         /* ---- The ledger's own integrity ---- */
 
         $unbalanced = count($this->unbalancedEntries('1900-01-01', now()->toDateString()));
@@ -973,6 +990,23 @@ class AccountingReportController extends Controller
                 'checks' => $checks,
             ],
         ]);
+    }
+
+    /**
+     * A posting key built in SQL from a prefix and a column.
+     *
+     * `CONCAT` is MySQL's spelling and SQLite has no such function at all, so
+     * every one of these checks threw "no such function: CONCAT" on the test
+     * engine — which is exactly why nothing here was ever covered by a test.
+     * Both engines understand their own operator, and this picks it.
+     */
+    private function postingKeyExpression(string $prefix, string $column): \Illuminate\Database\Query\Expression
+    {
+        $quoted = "'".str_replace("'", "''", $prefix)."'";
+
+        return DB::raw(DB::getDriverName() === 'mysql'
+            ? "CONCAT({$quoted}, {$column})"
+            : "({$quoted} || {$column})");
     }
 
     /** @return array<string,mixed> */

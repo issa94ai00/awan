@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\Payroll;
 use App\Models\SupplierPayment;
 use App\Models\Warehouse;
+use App\Services\CurrencyService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -45,6 +46,9 @@ class LedgerPostingService
 
     /** @var array<string,LedgerAccount|null> resolved within a single request */
     private array $accountCache = [];
+
+    /** The base currency, read once per request. */
+    private ?string $baseCurrency = null;
 
     /* ------------------------------------------------------------------ *
      * Document postings
@@ -593,7 +597,9 @@ class LedgerPostingService
                     // and these are resolved by warehouse rather than by role.
                     'posting_role' => null,
                     'warehouse_id' => $warehouse->id,
-                    'currency' => 'SAR',
+                    // The books' own currency, not a literal: an account opened
+                    // at runtime must not disagree with the chart around it.
+                    'currency' => $this->baseCurrencyCode(),
                     'balance' => 0,
                     'opening_balance' => 0,
                     'is_active' => true,
@@ -726,8 +732,14 @@ class LedgerPostingService
      *
      *   settled:   Dr Expense   Cr Cash
      *   unsettled: Dr Expense   Cr Accounts payable
+     *
+     * @param  ?string  $key  overrides the default `expense:{id}` key, for an
+     *                        expense being restated after its original entry
+     *                        was reversed — that key now belongs to the
+     *                        reversal, so re-posting under it would hand back
+     *                        the reversed header instead of writing a new one.
      */
-    public function postExpense($expense): ?JournalEntryHeader
+    public function postExpense($expense, ?string $key = null): ?JournalEntryHeader
     {
         $amount = $this->money($expense->amount ?? 0);
         if ($amount <= 0) {
@@ -751,7 +763,7 @@ class LedgerPostingService
         $label = $expense->expense_number ?? ('#' . $expense->id);
 
         return $this->post(
-            key: 'expense:' . $expense->id,
+            key: $key ?? ('expense:' . $expense->id),
             date: $expense->expense_date ? (string) $expense->expense_date : now()->toDateString(),
             description: 'مصروف ' . $label . ' - ' . ($expense->description ?? ''),
             lines: [
@@ -917,6 +929,8 @@ class LedgerPostingService
                 return $existing;
             }
 
+            $base = $this->baseCurrencyCode();
+
             $header = JournalEntryHeader::create([
                 'entry_number' => $this->nextEntryNumber(),
                 'entry_date' => $date,
@@ -928,7 +942,19 @@ class LedgerPostingService
                 'description' => $description,
                 'total_debit' => round($totalDebit, 2),
                 'total_credit' => round($totalCredit, 2),
-                'currency' => $currency ?: 'SAR',
+                // The document's own label, kept for tracing. It used to fall
+                // back to the literal 'SAR' regardless of what the books were
+                // actually kept in, which is how entries came to claim a
+                // currency nobody had configured.
+                'currency' => $currency ?: $base,
+                // What the amounts are really in. Stamped per entry because the
+                // base can be changed later, and an entry posted under the old
+                // one must not start claiming the new.
+                'base_currency' => $base,
+                // Nothing converts on the way into the ledger — see
+                // CurrencyService, which converts for display only — so this is
+                // 1 by fact, not by omission.
+                'exchange_rate' => 1,
                 'status' => 'posted',
                 'created_by' => auth()->id(),
             ]);
@@ -969,6 +995,23 @@ class LedgerPostingService
         if ($period) {
             throw new ClosedPeriodException($date, $period);
         }
+    }
+
+    /**
+     * The currency the books are kept in.
+     *
+     * Resolved once per request and tolerant of a system where currencies were
+     * never configured: posting must not fail because a lookup table is empty.
+     */
+    private function baseCurrencyCode(): string
+    {
+        return $this->baseCurrency ??= (function (): string {
+            try {
+                return app(CurrencyService::class)->baseCode();
+            } catch (\Throwable) {
+                return 'USD';
+            }
+        })();
     }
 
     private function accountIdForRole(string $role): ?int

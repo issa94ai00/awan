@@ -304,7 +304,7 @@ class FieldOrderController extends Controller
                     'shipping_cost' => (float) ($validated['shipping_cost'] ?? 0),
                     'total' => round($subtotal - (float) ($validated['discount'] ?? 0)
                         + (float) ($validated['tax'] ?? 0) + (float) ($validated['shipping_cost'] ?? 0), 2),
-                    'currency' => 'SAR',
+                    'currency' => base_currency_code(),
                     'fulfillment_type' => $validated['fulfillment_type'] ?? SalesOrder::FULFILLMENT_PICKUP,
                     'fulfillment_warehouse_id' => $warehouseId,
                     'assigned_employee_id' => $scope->employee()?->id,
@@ -525,7 +525,7 @@ class FieldOrderController extends Controller
             'tax' => (float) $order->tax,
             'shipping_cost' => (float) $order->shipping_cost,
             'total' => (float) $order->total,
-            'currency' => $order->currency ?: 'SAR',
+            'currency' => $order->currency ?: base_currency_code(),
             'order_date' => $order->order_date?->toDateString(),
             'expected_delivery' => $order->expected_delivery?->toDateString(),
             'created_at' => $order->created_at?->toDateTimeString(),

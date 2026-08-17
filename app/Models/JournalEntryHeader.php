@@ -29,6 +29,11 @@ class JournalEntryHeader extends Model
         'total_debit',
         'total_credit',
         'currency',
+        // What the amounts are actually in, and what they were converted at.
+        // Stamped per entry: the base currency is configurable, and an entry
+        // posted under the old one must not start claiming the new.
+        'base_currency',
+        'exchange_rate',
         'status',
         'created_by',
     ];

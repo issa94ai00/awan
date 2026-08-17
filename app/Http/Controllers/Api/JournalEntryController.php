@@ -2,17 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\ClosedPeriodException;
 use App\Http\Controllers\Controller;
-use App\Models\AccountingPeriod;
 use App\Models\JournalEntryHeader;
-use App\Models\JournalEntryLine;
-use App\Models\LedgerAccount;
 use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class JournalEntryController extends Controller
 {
@@ -66,48 +63,56 @@ class JournalEntryController extends Controller
         ]);
     }
 
+    /**
+     * Records a hand-typed entry — through the same engine as everything else.
+     *
+     * This method used to write its own header, its own lines and its own
+     * balance updates. That made it a second implementation of rules the
+     * posting service already enforces: balance checking, entry numbering,
+     * account balances, and — added twice, once here and once there — the
+     * closed-period guard. Every rule added to posting had to be remembered in
+     * two places, and the one entry a person types by hand was the likeliest
+     * place to forget.
+     *
+     * The key is drawn before the entry exists rather than after, because the
+     * service needs one to write with. It is unique per entry either way.
+     */
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validateHeaderAndLines($request);
 
-        // This path writes its own header rather than going through
-        // LedgerPostingService, so it has to ask the same question the service
-        // asks — otherwise the one entry a person types by hand would be the
-        // one way into a month that has already been reported on.
-        $closedPeriod = AccountingPeriod::closedFor($validated['entry_date']);
-
-        if ($closedPeriod) {
+        try {
+            $entry = app(LedgerPostingService::class)->post(
+                key: 'manual:'.Str::uuid(),
+                date: $validated['entry_date'],
+                description: $validated['description'] ?? 'قيد يدوي',
+                lines: array_map(fn ($line) => [
+                    'account_id' => (int) $line['ledger_account_id'],
+                    'debit' => (float) ($line['debit'] ?? 0),
+                    'credit' => (float) ($line['credit'] ?? 0),
+                    'description' => $line['description'] ?? null,
+                    'employee_id' => $line['employee_id'] ?? null,
+                ], $validated['lines']),
+                module: 'manual',
+                currency: $validated['currency'] ?? null,
+            );
+        } catch (RuntimeException $e) {
+            // Covers the closed period and an unbalanced entry alike: both are
+            // refusals from the engine, and both are explained by its message.
             return response()->json([
                 'success' => false,
-                'message' => (new ClosedPeriodException($validated['entry_date'], $closedPeriod))->getMessage(),
+                'message' => $e->getMessage(),
                 'data' => null,
             ], 422);
         }
 
-        $entry = DB::transaction(function () use ($validated) {
-            $entryNumber = $this->nextEntryNumber();
-
-            $header = JournalEntryHeader::create([
-                'entry_number' => $entryNumber,
-                'entry_date' => $validated['entry_date'],
-                'description' => $validated['description'] ?? null,
-                'total_debit' => $validated['total_debit'],
-                'total_credit' => $validated['total_credit'],
-                'currency' => $validated['currency'] ?? 'SAR',
-                'source_module' => 'manual',
-                'status' => 'posted',
-                'created_by' => auth()->id(),
-            ]);
-
-            // A key of its own, so this entry can be reversed by the same
-            // machinery that reverses a document's — and so a reversal cannot
-            // be written twice for it.
-            $header->update(['posting_key' => 'manual:'.$header->id]);
-
-            $this->createLinesAndApplyBalances($header, $validated['lines']);
-
-            return $header;
-        });
+        if (! $entry) {
+            return response()->json([
+                'success' => false,
+                'message' => 'القيد لا يحتوي على سطرين فعليين على الأقل.',
+                'data' => null,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
@@ -243,36 +248,4 @@ class JournalEntryController extends Controller
         return $validated;
     }
 
-    private function createLinesAndApplyBalances(JournalEntryHeader $header, array $lines): void
-    {
-        foreach ($lines as $line) {
-            $account = LedgerAccount::findOrFail($line['ledger_account_id']);
-            $debit = (float) ($line['debit'] ?? 0);
-            $credit = (float) ($line['credit'] ?? 0);
-
-            JournalEntryLine::create([
-                'journal_entry_header_id' => $header->id,
-                'account_id' => $account->id,
-                'debit' => $debit,
-                'credit' => $credit,
-                'description' => $line['description'] ?? null,
-                'employee_id' => $line['employee_id'] ?? null,
-            ]);
-
-            $delta = LedgerAccount::signedDelta($account->type, $debit, $credit);
-            $account->increment('balance', $delta);
-        }
-    }
-
-    /**
-     * Must be called from within an existing DB::transaction() so the lock holds
-     * until the new header is committed (matches RmaController's number-generation pattern).
-     */
-    private function nextEntryNumber(): string
-    {
-        $last = JournalEntryHeader::withTrashed()->orderByDesc('id')->lockForUpdate()->first();
-        $nextId = $last ? $last->id + 1 : 1;
-
-        return 'JE-' . str_pad($nextId, 6, '0', STR_PAD_LEFT);
-    }
 }

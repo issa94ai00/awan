@@ -69,7 +69,7 @@ class PaymentRecorder
                 'payment_date' => $options['date'] ?? now()->toDateString(),
                 'reference' => $options['reference'] ?? null,
                 'notes' => $options['notes'] ?? null,
-                'currency' => $invoice->currency ?: 'SAR',
+                'currency' => $invoice->currency ?: base_currency_code(),
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
