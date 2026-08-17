@@ -66,8 +66,16 @@ class AccountingCheck extends Command
         // Filtered with WHERE, not HAVING: there is no GROUP BY here, and under
         // ONLY_FULL_GROUP_BY MySQL rejects a HAVING clause that references a
         // non-aggregated column.
+        // `invoices` has no soft-delete column, so filtering on one made MySQL
+        // answer every run of this command with "Unknown column 'deleted_at'"
+        // — the integrity check could not be run at all. SQLite would have read
+        // the quoted name as a string literal and passed, which is why it went
+        // unnoticed.
         $bad = DB::table('invoices')
-            ->whereNull('deleted_at')
+            ->when(
+                DB::getSchemaBuilder()->hasColumn('invoices', 'deleted_at'),
+                fn ($q) => $q->whereNull('deleted_at')
+            )
             ->whereRaw('ABS(ROUND(subtotal + tax + additional_charges - discount, 2) - total) > ?', [self::EPSILON])
             ->selectRaw('id, invoice_number, subtotal, tax, discount, additional_charges, total,
                          ROUND(subtotal + tax + additional_charges - discount, 2) as computed')
