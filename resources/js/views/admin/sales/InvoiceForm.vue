@@ -1,44 +1,56 @@
 <template>
-    <div class="invoice-form-page">
-        <!-- Page Header -->
-        <div class="page-header">
-            <div class="page-title">
-                <h1>
-                    <el-icon><Document /></el-icon>
-                    {{ isEdit ? t('edit_invoice') : t('create_invoice') }}
-                </h1>
+    <div class="invoice-builder">
+        <!-- ── Header: what this is, and the two actions that end it ───────── -->
+        <header class="builder-header">
+            <div class="header-identity">
+                <span class="eyebrow">{{ t('sales') }}</span>
+                <h1>{{ isEdit ? t('edit_invoice') : t('create_invoice') }}</h1>
                 <p>{{ t('prepare_invoice_with_products') }}</p>
             </div>
-            <el-button @click="goBack" :icon="ArrowRight" class="back-btn">
-                {{ t('back_to_invoices') }}
-            </el-button>
-        </div>
 
-        <!-- Validation Errors -->
+            <div class="header-actions">
+                <el-button text @click="goBack">
+                    <el-icon><ArrowRight /></el-icon>
+                    {{ t('back_to_invoices') }}
+                </el-button>
+                <el-button
+                    type="primary"
+                    size="large"
+                    :loading="submitting"
+                    :disabled="!canSubmit"
+                    @click="submitInvoice"
+                >
+                    <el-icon><Check /></el-icon>
+                    {{ isEdit ? t('save_changes') : t('issue_invoice') }}
+                </el-button>
+            </div>
+        </header>
+
+        <!-- Errors sit above the work, never inside it: a message beside the
+             field it concerns is better, but a refusal from the server names
+             products rather than fields. -->
         <el-alert
             v-if="formErrors.length"
             :title="t('please_fix_errors')"
             type="error"
-            :closable="true"
             show-icon
             class="mb-4"
+            @close="formErrors = []"
         >
             <ul class="error-list">
                 <li v-for="(err, idx) in formErrors" :key="idx">{{ err }}</li>
             </ul>
         </el-alert>
 
-        <div class="invoice-layout">
-            <!-- Left Panel: Product Search + Items -->
-            <div class="invoice-left-panel">
-                <!-- Product Search -->
-                <div class="search-container">
-                    <div class="search-header">
-                        <el-icon><Search /></el-icon>
-                        <span>{{ t('search_product') }}</span>
-                    </div>
-                    <div class="product-search-wrapper">
+        <div class="builder-grid">
+            <!-- ── Work area ──────────────────────────────────────────────── -->
+            <section class="work-area">
+                <!-- Search is the first thing on the page because it is the
+                     first thing anybody does. -->
+                <div class="search-card">
+                    <div class="search-wrapper">
                         <el-input
+                            ref="searchInputRef"
                             v-model="searchQuery"
                             :placeholder="t('search_product_placeholder')"
                             size="large"
@@ -49,288 +61,216 @@
                             @keydown.up.prevent="navigateResult(-1)"
                             @keydown.enter.prevent="selectHighlighted"
                             @keydown.esc.prevent="showResults = false"
-                            ref="searchInputRef"
-                            :loading="searchLoading"
                         >
                             <template #prefix>
                                 <el-icon><Search /></el-icon>
                             </template>
                             <template #suffix>
-                                <el-tooltip :content="t('scan_barcode')" placement="top">
-                                    <el-button
-                                        :icon="Ticket"
-                                        circle
-                                        size="small"
-                                        @click="focusBarcodeInput"
-                                        class="barcode-btn"
-                                    />
-                                </el-tooltip>
+                                <kbd class="kbd-hint">Ctrl+B</kbd>
                             </template>
                         </el-input>
 
-                        <!-- Search Results Dropdown -->
-                        <Transition name="dropdown">
-                            <div v-if="showResults && (searchResults.length || searchLoading)" class="search-dropdown">
-                                <div v-if="searchLoading" class="search-loading">
+                        <!-- Anchored to the field itself. It used to be
+                             position-fixed and re-measured on every scroll and
+                             resize, which drifted whenever either happened
+                             between keystroke and render. -->
+                        <Transition name="drop">
+                            <div v-if="showResults && (searchResults.length || searchLoading || searchQuery.length >= 2)" class="results">
+                                <div v-if="searchLoading" class="results-state">
                                     <el-icon class="is-loading"><Loading /></el-icon>
-                                    <span>{{ t('searching') }}...</span>
+                                    {{ t('searching') }}…
                                 </div>
-                                <div v-else-if="searchResults.length" class="search-results-list">
-                                    <div
+
+                                <ul v-else-if="searchResults.length" class="results-list">
+                                    <li
                                         v-for="(product, index) in searchResults"
                                         :key="product.id"
-                                        class="search-result-item"
-                                        :class="{ highlighted: highlightedIndex === index, 'low-stock': product.stock_quantity <= 5 }"
+                                        class="result"
+                                        :class="{ active: highlightedIndex === index }"
                                         @click="addProduct(product)"
                                         @mouseenter="highlightedIndex = index"
                                     >
-                                        <div class="product-image" v-if="product.image_main">
-                                            <img :src="getImageUrl(product.image_main)" :alt="product.name_ar || product.name_en" />
+                                        <div class="result-thumb">
+                                            <img v-if="product.image_main" :src="getImageUrl(product.image_main)" alt="" />
+                                            <el-icon v-else><Box /></el-icon>
                                         </div>
-                                        <div class="product-image" v-else>
-                                            <el-icon><Box /></el-icon>
+
+                                        <div class="result-body">
+                                            <span class="result-name">{{ product.name_ar || product.name_en }}</span>
+                                            <span v-if="product.sku" class="result-sku">{{ product.sku }}</span>
                                         </div>
-                                        <div class="product-info">
-                                            <div class="product-name">{{ product.name_ar || product.name_en }}</div>
-                                            <div class="product-sku" v-if="product.sku">SKU: {{ product.sku }}</div>
-                                            <div class="product-meta">
-                                                <span class="stock-indicator" :class="{ 'low-stock': product.stock_quantity <= 5, 'out-of-stock': product.stock_quantity === 0 }">
-                                                    <el-icon><Box /></el-icon> 
-                                                    <span>{{ product.stock_quantity }} {{ product.unit || t('unit') }}</span>
-                                                    <el-tag v-if="product.stock_quantity <= 5 && product.stock_quantity > 0" type="warning" size="small" round>{{ t('low_stock') }}</el-tag>
-                                                    <el-tag v-if="product.stock_quantity === 0" type="danger" size="small" round>{{ t('out_of_stock') }}</el-tag>
-                                                </span>
-                                            </div>
+
+                                        <div class="result-side">
+                                            <span class="result-price">{{ money(product.price) }}</span>
+                                            <span class="result-stock" :class="stockTone(product.stock_quantity)">
+                                                {{ t('available') }} {{ formatNumber(product.stock_quantity || 0) }}
+                                            </span>
                                         </div>
-                                        <div class="product-actions">
-                                            <div class="product-price">
-                                                {{ formatCurrency(product.price) }}
-                                            </div>
-                                            <el-button
-                                                type="primary"
-                                                :icon="Plus"
-                                                size="small"
-                                                circle
-                                                @click.stop="addProduct(product)"
-                                                class="add-btn"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-else class="no-results">
-                                    <div class="no-results-content">
-                                        <el-icon :size="48"><WarningFilled /></el-icon>
-                                        <h4>{{ t('no_products_found') }}</h4>
-                                        <p>{{ t('try_different_keywords') }}</p>
-                                    </div>
+                                    </li>
+                                </ul>
+
+                                <div v-else class="results-state muted">
+                                    {{ t('no_products_found') }}
                                 </div>
                             </div>
                         </Transition>
                     </div>
+
+                    <p class="search-hint">{{ t('invoice_search_hint') }}</p>
                 </div>
 
-                <!-- Items Table -->
-                <el-card shadow="hover" class="items-card">
-                    <template #header>
-                        <div class="card-header">
-                            <div class="header-left">
-                                <el-icon><ShoppingCart /></el-icon>
-                                <span>{{ t('invoice_items') }}</span>
+                <!-- Lines -->
+                <div class="lines-card">
+                    <div class="lines-head">
+                        <h2>{{ t('invoice_items') }}</h2>
+                        <span class="count">{{ items.length }} {{ t('item') }}</span>
+                    </div>
+
+                    <div v-if="!items.length" class="empty">
+                        <el-icon class="empty-icon"><ShoppingCart /></el-icon>
+                        <p class="empty-title">{{ t('no_items_yet') }}</p>
+                        <p class="empty-hint">{{ t('use_search_to_add_products') }}</p>
+                    </div>
+
+                    <div v-else class="lines">
+                        <article
+                            v-for="(item, index) in items"
+                            :key="item.product_id"
+                            class="line"
+                            :class="{ short: isLineShort(item) }"
+                        >
+                            <div class="line-main">
+                                <div class="line-identity">
+                                    <span class="line-name">{{ item.name }}</span>
+                                    <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                </div>
+
+                                <div class="line-total">
+                                    <span class="line-total-value">{{ money(item.price * item.quantity) }}</span>
+                                    <el-button
+                                        text
+                                        type="danger"
+                                        size="small"
+                                        :title="t('remove')"
+                                        @click="removeItem(index)"
+                                    >
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+                                </div>
                             </div>
-                            <el-tag type="primary" round>{{ items.length }} {{ t('items') }}</el-tag>
-                        </div>
-                    </template>
 
-                    <div v-if="items.length === 0" class="empty-items">
-                        <el-icon :size="48"><ShoppingCart /></el-icon>
-                        <p>{{ t('no_items_added_yet') }}</p>
-                        <p class="hint">{{ t('use_search_to_add_products') }}</p>
-                    </div>
-
-                    <div v-else class="items-table-wrapper">
-                        <table class="items-table">
-                            <thead>
-                                <tr>
-                                    <th>{{ t('product') }}</th>
-                                    <th>{{ t('sales.source_warehouse') }}</th>
-                                    <th>{{ t('unit') }}</th>
-                                    <th>{{ t('quantity') }}</th>
-                                    <th>{{ t('unit_price') }}</th>
-                                    <th>{{ t('total') }}</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="(item, index) in items"
-                                    :key="item.product_id"
-                                    :class="{ 'row-short': isLineShort(item) }"
-                                >
-                                    <td class="product-cell" data-label="{{ t('product') }}">
-                                        <div class="product-name">{{ item.name }}</div>
-                                        <div class="product-sku" v-if="item.sku">SKU: {{ item.sku }}</div>
-                                    </td>
-
-                                    <!--
-                                        Where this line comes off the shelf.
-                                        Each option carries its own free quantity,
-                                        so the choice is made against what is
-                                        actually there rather than discovered on
-                                        submit — the moment when being told is
-                                        least useful.
-                                    -->
-                                    <td class="source-cell" :data-label="t('sales.source_warehouse')">
-                                        <el-select
-                                            v-model="item.warehouse_id"
-                                            size="small"
-                                            class="source-select"
-                                            :loading="item.loadingStock"
-                                            :placeholder="t('sales.choose_source')"
-                                            @change="onSourceChange(index)"
+                            <div class="line-fields">
+                                <!-- Which shelf this empties. The server refuses
+                                     a line it cannot cover; choosing here against
+                                     live figures means finding out now rather
+                                     than on submit. -->
+                                <label class="field field-source">
+                                    <span class="field-label">{{ t('sales.source_warehouse') }}</span>
+                                    <el-select
+                                        v-model="item.warehouse_id"
+                                        :placeholder="t('sales.choose_source')"
+                                        :loading="item.loadingStock"
+                                        size="default"
+                                        @change="onSourceChange(index)"
+                                    >
+                                        <el-option
+                                            v-for="row in item.sources"
+                                            :key="row.warehouse_id"
+                                            :value="row.warehouse_id"
+                                            :label="row.warehouse_name"
                                         >
-                                            <el-option
-                                                v-for="row in item.sources || []"
-                                                :key="row.warehouse_id"
-                                                :value="row.warehouse_id"
-                                                :label="row.warehouse_name"
-                                                :disabled="row.available <= 0"
-                                            >
-                                                <span class="source-option">
-                                                    <span>{{ row.warehouse_name }}</span>
-                                                    <span
-                                                        class="source-available"
-                                                        :class="{ 'is-empty': row.available <= 0 }"
-                                                    >{{ formatNumber(row.available) }}</span>
+                                            <span class="option-row">
+                                                <span>{{ row.warehouse_name }}</span>
+                                                <span class="option-stock" :class="{ empty: row.available <= 0 }">
+                                                    {{ formatNumber(row.available) }}
                                                 </span>
-                                            </el-option>
-                                        </el-select>
+                                            </span>
+                                        </el-option>
+                                    </el-select>
+                                </label>
 
-                                        <div v-if="isLineShort(item)" class="source-warning">
-                                            {{ t('sales.only_available', { count: formatNumber(availableFor(item)) }) }}
-                                        </div>
-                                        <div v-else-if="item.warehouse_id" class="source-hint">
-                                            {{ t('sales.available_here', { count: formatNumber(availableFor(item)) }) }}
-                                        </div>
-                                    </td>
-                                    <td class="unit-cell" data-label="{{ t('unit') }}">
-                                        <el-select
-                                            v-model="item.selectedUnit"
-                                            :placeholder="t('select_unit')"
-                                            size="small"
-                                            @change="onUnitChange(index)"
-                                            value-key="id"
-                                            class="unit-select"
-                                        >
-                                            <el-option
-                                                v-for="unit in item.units"
-                                                :key="unit.id"
-                                                :label="`${unit.name_ar || unit.name}${unit.base_unit_multiplier > 1 ? ' (' + unit.base_unit_multiplier + ')' : ''}`"
-                                                :value="unit"
-                                            />
-                                        </el-select>
-                                        <div v-if="item.selectedUnit?.barcode" class="unit-barcode">
-                                            <el-icon><Ticket /></el-icon> {{ item.selectedUnit.barcode }}
-                                        </div>
-                                    </td>
-                                    <td class="qty-cell" data-label="{{ t('quantity') }}">
-                                        <div class="qty-control">
-                                            <el-button
-                                                :icon="Minus"
-                                                size="small"
-                                                circle
-                                                @click="decrementQty(index)"
-                                                :disabled="item.quantity <= 1"
-                                            />
-                                            <el-input-number
-                                                v-model="item.quantity"
-                                                :min="1"
-                                                :max="item.stock || 9999"
-                                                size="small"
-                                                @change="updateTotals"
-                                                controls-position="inline"
-                                            />
-                                            <el-button
-                                                :icon="Plus"
-                                                size="small"
-                                                circle
-                                                @click="incrementQty(index)"
-                                            />
-                                        </div>
-                                    </td>
-                                    <td class="price-cell" data-label="{{ t('unit_price') }}">
-                                        <el-input-number
-                                            v-model="item.price"
-                                            :min="0"
-                                            :precision="2"
-                                            size="small"
-                                            @change="updateTotals"
-                                            controls-position="right"
+                                <label class="field field-unit">
+                                    <span class="field-label">{{ t('unit') }}</span>
+                                    <el-select
+                                        v-model="item.selectedUnit"
+                                        value-key="id"
+                                        size="default"
+                                        @change="onUnitChange(index)"
+                                    >
+                                        <el-option
+                                            v-for="unit in item.units"
+                                            :key="unit.id ?? unit.name"
+                                            :value="unit"
+                                            :label="unit.name_ar || unit.name"
                                         />
-                                        <span class="currency">{{ t('currency') }}</span>
-                                    </td>
-                                    <td class="total-cell" data-label="{{ t('total') }}">
-                                        {{ formatCurrency(item.price * item.quantity) }}
-                                    </td>
-                                    <td class="action-cell" data-label="">
-                                        <el-button
-                                            type="danger"
-                                            :icon="Delete"
-                                            size="small"
-                                            circle
-                                            @click="removeItem(index)"
-                                        />
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                    </el-select>
+                                </label>
+
+                                <label class="field field-qty">
+                                    <span class="field-label">{{ t('quantity') }}</span>
+                                    <div class="stepper">
+                                        <button type="button" :disabled="item.quantity <= 1" @click="decrementQty(index)">
+                                            <el-icon><Minus /></el-icon>
+                                        </button>
+                                        <input v-model.number="item.quantity" type="number" min="1" />
+                                        <button type="button" @click="incrementQty(index)">
+                                            <el-icon><Plus /></el-icon>
+                                        </button>
+                                    </div>
+                                </label>
+
+                                <label class="field field-price">
+                                    <span class="field-label">{{ t('unit_price') }}</span>
+                                    <el-input v-model.number="item.price" type="number" min="0" step="0.01" />
+                                </label>
+                            </div>
+
+                            <!-- Stated on the line that caused it, not collected
+                                 into a banner the reader has to map back. -->
+                            <p v-if="isLineShort(item)" class="line-warning">
+                                <el-icon><WarningFilled /></el-icon>
+                                {{ t('sales.line_exceeds_stock', { product: item.name, available: formatNumber(availableFor(item)) }) }}
+                            </p>
+                            <p v-else-if="item.warehouse_id" class="line-note">
+                                {{ t('available') }} {{ formatNumber(availableFor(item)) }}
+                            </p>
+                            <p v-else class="line-warning subtle">
+                                {{ t('sales.choose_source_for_this_line') }}
+                            </p>
+                        </article>
                     </div>
-                </el-card>
-            </div>
+                </div>
+            </section>
 
-            <!-- Right Panel: Summary -->
-            <div class="invoice-right-panel">
-                <!-- Customer Selection -->
-                <el-card shadow="hover" class="customer-card">
-                    <template #header>
-                        <div class="card-header">
-                            <el-icon><User /></el-icon>
-                            <span>{{ t('customer_info') }}</span>
-                        </div>
-                    </template>
+            <!-- ── Summary rail: who, how it settles, what is owed ─────────── -->
+            <aside class="summary-rail">
+                <div class="rail-card">
+                    <h3 class="rail-title"><el-icon><User /></el-icon> {{ t('client') }}</h3>
 
-                    <el-select
-                        v-model="form.customer_id"
-                        :placeholder="t('select_customer_optional')"
-                        filterable
-                        clearable
-                        size="large"
-                        class="w-full"
-                    >
-                        <el-option
-                            v-for="customer in customers"
-                            :key="customer.id"
-                            :label="`${customer.name} - ${customer.phone || customer.email}`"
-                            :value="customer.id"
-                        />
-                    </el-select>
-
-                    <!--
-                        Who to credit the sale to. Optional on purpose: a counter
-                        sale has no rep, and forcing one on would only invent an
-                        attribution the commission report then treats as real.
-                    -->
-                    <div class="field-block">
-                        <label class="field-label">
-                            {{ t('sales.sold_by') }}
-                            <span class="field-optional">{{ t('sales.optional') }}</span>
-                        </label>
+                    <label class="field">
+                        <span class="field-label">{{ t('client') }}</span>
                         <el-select
-                            v-model="form.assigned_employee_id"
-                            :placeholder="t('sales.select_rep_optional')"
+                            v-model="form.customer_id"
                             filterable
                             clearable
-                            size="large"
-                            class="w-full"
+                            :placeholder="t('choose_client')"
+                        >
+                            <el-option
+                                v-for="customer in customers"
+                                :key="customer.id"
+                                :label="customer.name"
+                                :value="customer.id"
+                            />
+                        </el-select>
+                    </label>
+
+                    <label class="field">
+                        <span class="field-label">{{ t('sales_representative') }}</span>
+                        <el-select
+                            v-model="form.assigned_employee_id"
+                            filterable
+                            clearable
+                            :placeholder="t('unassigned')"
                         >
                             <el-option
                                 v-for="employee in salesEmployees"
@@ -339,214 +279,142 @@
                                 :value="employee.id"
                             />
                         </el-select>
+                    </label>
+                </div>
+
+                <div class="rail-card">
+                    <h3 class="rail-title"><el-icon><Wallet /></el-icon> {{ t('settlement_and_totals') }}</h3>
+
+                    <div class="fields-row">
+                        <label class="field">
+                            <span class="field-label">{{ t('discount') }}</span>
+                            <el-input v-model.number="form.discount" type="number" min="0" step="0.01" />
+                        </label>
+                        <label class="field">
+                            <span class="field-label">{{ t('tax') }}</span>
+                            <el-input v-model.number="form.tax" type="number" min="0" step="0.01" />
+                        </label>
                     </div>
-                </el-card>
 
-                <!-- Summary Card -->
-                <el-card shadow="hover" class="summary-card">
-                    <template #header>
-                        <div class="card-header">
-                            <el-icon><Wallet /></el-icon>
-                            <span>{{ t('invoice_summary') }}</span>
-                        </div>
-                    </template>
-
-                    <div class="summary-body">
-                        <div class="summary-row">
-                            <span class="label">{{ t('subtotal') }}</span>
-                            <span class="value">{{ formatCurrency(subtotal) }}</span>
-                        </div>
-
-                        <div class="summary-inputs">
-                            <div class="summary-input-row">
-                                <label>{{ t('status') }}</label>
-                                <el-select v-model="form.status" size="small" class="status-select">
-                                    <el-option
-                                        v-for="status in availableStatuses"
-                                        :key="status"
-                                        :value="status"
-                                        :label="statusLabels[status]"
-                                    >
-                                        <div class="status-option">
-                                            <el-tag :type="statusColors[status]" size="small">{{ statusLabels[status] }}</el-tag>
-                                        </div>
-                                    </el-option>
-                                </el-select>
-                            </div>
-                            <div class="summary-input-row">
-                                <label>{{ t('discount') }}</label>
-                                <el-input-number
-                                    v-model="form.discount"
-                                    :min="0"
-                                    :precision="2"
-                                    size="small"
-                                    @change="updateTotals"
+                    <div class="fields-row">
+                        <label class="field">
+                            <span class="field-label">{{ t('payment_method') }}</span>
+                            <el-select v-model="form.payment_method">
+                                <el-option :label="t('cash')" value="cash" />
+                                <el-option :label="t('card')" value="card" />
+                                <el-option :label="t('bank_transfer')" value="bank_transfer" />
+                                <el-option :label="t('cheque')" value="check" />
+                            </el-select>
+                        </label>
+                        <label class="field">
+                            <span class="field-label">{{ t('status') }}</span>
+                            <el-select v-model="form.status">
+                                <el-option
+                                    v-for="status in availableStatuses"
+                                    :key="status"
+                                    :label="statusLabels[status]"
+                                    :value="status"
                                 />
-                            </div>
-                            <div class="summary-input-row">
-                                <label>{{ t('tax') }}</label>
-                                <el-input-number
-                                    v-model="form.tax"
-                                    :min="0"
-                                    :precision="2"
-                                    size="small"
-                                    @change="updateTotals"
-                                />
-                            </div>
-                            <div class="summary-input-row">
-                                <label>{{ t('payment_method') }}</label>
-                                <el-select v-model="form.payment_method" size="small">
-                                    <el-option :label="t('cash')" value="cash" />
-                                    <el-option :label="t('card')" value="card" />
-                                    <el-option :label="t('transfer')" value="transfer" />
-                                </el-select>
-                            </div>
-                        </div>
+                            </el-select>
+                        </label>
+                    </div>
 
-                        <el-divider />
+                    <!-- Costs billed on this invoice. Folded away until used, so
+                         the common sale is not asked about the rare one. -->
+                    <div class="extras">
+                        <button type="button" class="extras-toggle" @click="showExpenses = !showExpenses">
+                            <el-icon><component :is="showExpenses ? Minus : Plus" /></el-icon>
+                            {{ t('additional_charges') }}
+                            <span v-if="totalExpenses > 0" class="extras-badge">{{ money(totalExpenses) }}</span>
+                        </button>
 
-                        <!-- Additional Expenses Section -->
-                        <div class="expenses-section">
-                            <div class="expenses-header">
-                                <span>{{ t('additional_expenses') }}</span>
-                                <el-button type="primary" size="small" @click="addExpense">
-                                    <el-icon><Plus /></el-icon>
-                                    {{ t('add_expense') }}
+                        <div v-if="showExpenses" class="extras-body">
+                            <div v-for="(expense, index) in form.expenses" :key="index" class="extra-row">
+                                <el-input v-model="expense.description" :placeholder="t('description')" size="small" />
+                                <el-input v-model.number="expense.amount" type="number" min="0" size="small" style="width: 110px" />
+                                <el-button text type="danger" size="small" @click="removeExpense(index)">
+                                    <el-icon><Delete /></el-icon>
                                 </el-button>
                             </div>
-                            <div v-if="form.expenses.length > 0" class="expenses-list">
-                                <div v-for="(expense, index) in form.expenses" :key="index" class="expense-item">
-                                    <el-input
-                                        v-model="expense.description"
-                                        :placeholder="t('description')"
-                                        size="small"
-                                        class="expense-description"
-                                    />
-                                    <el-select v-model="expense.category" size="small" class="expense-category">
-                                        <el-option value="shipping" :label="t('shipping')" />
-                                        <el-option value="packaging" :label="t('packaging')" />
-                                        <el-option value="handling" :label="t('handling')" />
-                                        <el-option value="other" :label="t('other')" />
-                                    </el-select>
-                                    <el-input-number
-                                        v-model="expense.amount"
-                                        :min="0"
-                                        :precision="2"
-                                        size="small"
-                                        @change="updateTotals"
-                                        class="expense-amount"
-                                    />
-                                    <el-button
-                                        type="danger"
-                                        :icon="Delete"
-                                        size="small"
-                                        circle
-                                        @click="removeExpense(index)"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <el-divider />
-
-                        <div class="summary-row discount">
-                            <span class="label">{{ t('discount') }}</span>
-                            <span class="value negative">-{{ formatCurrency(form.discount) }}</span>
-                        </div>
-                        <div class="summary-row tax">
-                            <span class="label">{{ t('tax') }}</span>
-                            <span class="value positive">+{{ formatCurrency(form.tax) }}</span>
-                        </div>
-                        <div class="summary-row expenses" v-if="totalExpenses > 0">
-                            <span class="label">{{ t('additional_expenses') }}</span>
-                            <span class="value positive">+{{ formatCurrency(totalExpenses) }}</span>
-                        </div>
-
-                        <el-divider />
-
-                        <div class="summary-row total">
-                            <span class="label">{{ t('total') }}</span>
-                            <span class="value total-value">{{ formatCurrency(total) }}</span>
-                        </div>
-
-                        <el-divider />
-
-                        <!-- Settlement: what the customer pays now, and what is
-                             left on their account afterwards. -->
-                        <div class="settlement-block">
-                            <div class="summary-input-row">
-                                <label>{{ t('paid_amount') }}</label>
-                                <el-input-number
-                                    v-model="form.paid_amount"
-                                    :min="0"
-                                    :precision="2"
-                                    :step="100"
-                                    size="small"
-                                    controls-position="right"
-                                />
-                            </div>
-
-                            <div class="quick-pay">
-                                <el-button size="small" text @click="form.paid_amount = total">
-                                    {{ t('pay_full') }}
-                                </el-button>
-                                <el-button size="small" text @click="form.paid_amount = 0">
-                                    {{ t('pay_none') }}
-                                </el-button>
-                            </div>
-
-                            <div class="summary-row remaining" :class="remainingTone">
-                                <span class="label">
-                                    {{ remaining >= 0
-                                        ? (t('remaining_amount'))
-                                        : (t('customer_credit')) }}
-                                </span>
-                                <span class="value">{{ formatCurrency(Math.abs(remaining)) }}</span>
-                            </div>
-
-                            <p v-if="!form.customer_id && form.paid_amount !== total" class="settlement-hint">
-                                {{ t('select_customer_to_track_debt') }}
-                            </p>
+                            <el-button text size="small" @click="addExpense">
+                                <el-icon><Plus /></el-icon> {{ t('add_expense') }}
+                            </el-button>
                         </div>
                     </div>
 
-                    <div class="submit-section">
-                        <el-button
-                            type="primary"
-                            size="large"
-                            :loading="submitting"
-                            :disabled="items.length === 0"
-                            @click="submitInvoice"
-                            class="submit-btn"
-                        >
-                            <el-icon><Check /></el-icon>
-                            {{ isEdit ? t('update_invoice') : t('create_invoice') }}
-                        </el-button>
-                    </div>
-                </el-card>
-
-                <!-- Notes -->
-                <el-card shadow="hover" class="notes-card">
-                    <template #header>
-                        <div class="card-header">
-                            <el-icon><Notebook /></el-icon>
-                            <span>{{ t('notes') }}</span>
+                    <dl class="totals">
+                        <div class="total-line">
+                            <dt>{{ t('subtotal') }}</dt>
+                            <dd>{{ money(subtotal) }}</dd>
                         </div>
-                    </template>
-                    <el-input
-                        v-model="form.notes"
-                        type="textarea"
-                        :rows="3"
-                        :placeholder="t('add_notes_placeholder')"
-                    />
-                </el-card>
+                        <div v-if="form.discount > 0" class="total-line deduct">
+                            <dt>{{ t('discount') }}</dt>
+                            <dd>− {{ money(form.discount) }}</dd>
+                        </div>
+                        <div v-if="form.tax > 0" class="total-line">
+                            <dt>{{ t('tax') }}</dt>
+                            <dd>+ {{ money(form.tax) }}</dd>
+                        </div>
+                        <div v-if="totalExpenses > 0" class="total-line">
+                            <dt>{{ t('additional_charges') }}</dt>
+                            <dd>+ {{ money(totalExpenses) }}</dd>
+                        </div>
+                        <div class="total-line grand">
+                            <dt>{{ t('grand_total_label') }}</dt>
+                            <dd>{{ money(total) }}</dd>
+                        </div>
+                    </dl>
+
+                    <label class="field">
+                        <span class="field-label">{{ t('paid_now') }}</span>
+                        <el-input v-model.number="form.paid_amount" type="number" min="0" step="0.01" size="large">
+                            <template #append>
+                                <el-button @click="form.paid_amount = total">{{ t('full_amount') }}</el-button>
+                            </template>
+                        </el-input>
+                    </label>
+
+                    <!-- What the customer's account will say after this is
+                         saved, before it is saved. -->
+                    <div class="settlement" :class="remainingTone">
+                        <span class="settlement-label">
+                            {{ remainingTone === 'settled' ? t('fully_settled')
+                                : remainingTone === 'owing' ? t('remaining_on_customer')
+                                : t('customer_credit') }}
+                        </span>
+                        <span class="settlement-value">{{ money(Math.abs(remaining)) }}</span>
+                    </div>
+                </div>
+
+                <div class="rail-card">
+                    <h3 class="rail-title"><el-icon><Notebook /></el-icon> {{ t('notes') }}</h3>
+                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="t('invoice_notes_placeholder')" />
+                </div>
+
+                <p class="shortcuts">
+                    <kbd>Ctrl+B</kbd> {{ t('search_product') }}
+                    <span class="dot">·</span>
+                    <kbd>Ctrl+Enter</kbd> {{ t('save') }}
+                </p>
+            </aside>
+        </div>
+
+        <!-- On a phone the summary rail is far below the lines, so the figure
+             that decides whether to save follows the screen. -->
+        <div class="mobile-bar">
+            <div class="mobile-total">
+                <span>{{ t('grand_total_label') }}</span>
+                <strong>{{ money(total) }}</strong>
             </div>
+            <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submitInvoice">
+                {{ isEdit ? t('save_changes') : t('issue_invoice') }}
+            </el-button>
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useInvoicesStore } from '@/stores/invoices';
@@ -560,11 +428,11 @@ import {
     isLineShort as lineIsShort,
     preferredSource,
 } from '@/utils/stockSources';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-    Document, Search, ShoppingCart, User, Wallet, Notebook,
+    Search, ShoppingCart, User, Wallet, Notebook,
     ArrowRight, Plus, Minus, Delete, Check, Loading,
-    Ticket, Box, WarningFilled
+    Box, WarningFilled,
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
@@ -576,7 +444,6 @@ const customersStore = useCustomersStore();
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
 
-// Form data
 const form = reactive({
     customer_id: null,
     // The rep credited with the sale. Null is a valid answer.
@@ -589,18 +456,16 @@ const form = reactive({
     paid_amount: 0,
     notes: '',
     status: 'pending',
-    items: [],
-    expenses: []
+    expenses: [],
 });
 
-// Status transitions configuration
 const statusTransitions = {
     pending: ['confirmed', 'cancelled'],
     confirmed: ['processing', 'cancelled'],
     processing: ['shipped', 'cancelled'],
     shipped: ['delivered', 'cancelled'],
     delivered: [],
-    cancelled: []
+    cancelled: [],
 };
 
 const statusLabels = {
@@ -609,23 +474,14 @@ const statusLabels = {
     processing: t('sales_status_processing'),
     shipped: t('sales_status_shipped'),
     delivered: t('sales_status_delivered'),
-    cancelled: t('sales_status_cancelled')
-};
-
-const statusColors = {
-    pending: 'warning',
-    confirmed: 'primary',
-    processing: 'info',
-    shipped: 'success',
-    delivered: 'success',
-    cancelled: 'danger'
+    cancelled: t('sales_status_cancelled'),
 };
 
 const items = ref([]);
 const formErrors = ref([]);
 const submitting = ref(false);
+const showExpenses = ref(false);
 
-// Search
 const searchQuery = ref('');
 const searchResults = ref([]);
 const searchLoading = ref(false);
@@ -633,7 +489,6 @@ const showResults = ref(false);
 const highlightedIndex = ref(-1);
 let searchTimeout = null;
 
-// Customers
 const customers = ref([]);
 const salesEmployees = ref([]);
 
@@ -641,23 +496,15 @@ const salesEmployees = ref([]);
  * Where each line comes from
  *
  * A sale has to say which shelf it empties. The server refuses a line it
- * cannot cover, but discovering that on submit is the least useful moment
- * to be told — so the choice is made here against live figures, and a line
- * that does not fit is marked before anyone presses save.
+ * cannot cover, but discovering that on submit is the least useful moment to
+ * be told — so the choice is made here against live figures, and a line that
+ * does not fit is marked before anyone presses save.
  * ------------------------------------------------------------------ */
 
-/**
- * Free quantity at the warehouse this line is drawing from, and whether the
- * line overdraws it. Both rules live in `@/utils/stockSources` so they can be
- * tested on their own and stated once.
- */
 const availableFor = (item) => availableAt(item);
-
 const isLineShort = (item) => lineIsShort(items.value, item);
 
-/** Every short line, for the banner and to block submission. */
 const shortLines = computed(() => items.value.filter(isLineShort));
-
 const missingSource = computed(() => items.value.filter((item) => !item.warehouse_id));
 
 /**
@@ -691,55 +538,66 @@ const loadSourcesFor = async (item) => {
 
 const onSourceChange = (index) => {
     // Nothing to fetch — the figures are already loaded. The handler exists so
-    // the shortage marker recomputes the moment the source changes.
+    // a line whose sources never loaded gets another chance.
     const item = items.value[index];
     if (item && !item.sources?.length) {
         loadSourcesFor(item);
     }
 };
 
-// Computed
-const subtotal = computed(() => {
-    return items.value.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-});
+/* ------------------------------------------------------------------ *
+ * Money
+ * ------------------------------------------------------------------ */
 
-const total = computed(() => {
-    return Math.max(0, subtotal.value - (form.discount || 0) + (form.tax || 0) + totalExpenses.value);
-});
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+const subtotal = computed(() =>
+    items.value.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0)
+);
+
+const totalExpenses = computed(() =>
+    form.expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
+);
+
+const total = computed(() =>
+    Math.max(0, subtotal.value - (Number(form.discount) || 0) + (Number(form.tax) || 0) + totalExpenses.value)
+);
 
 // Positive: the customer still owes this. Negative: they overpaid and the
 // difference becomes credit on their account.
-const remaining = computed(() => round2(total.value - (form.paid_amount || 0)));
+const remaining = computed(() => round2(total.value - (Number(form.paid_amount) || 0)));
 
 const remainingTone = computed(() => {
     if (Math.abs(remaining.value) < 0.005) return 'settled';
     return remaining.value > 0 ? 'owing' : 'credit';
 });
 
-const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+const availableStatuses = computed(() => [form.status, ...(statusTransitions[form.status] || [])]);
 
-// Available status transitions based on current status
-const availableStatuses = computed(() => {
-    const currentStatus = form.status;
-    const transitions = statusTransitions[currentStatus] || [];
-    
-    // Always include current status
-    return [currentStatus, ...transitions];
-});
+// The save button says what the form knows: no lines, or a line that cannot be
+// covered, and it is not ready. The server still decides.
+const canSubmit = computed(() =>
+    items.value.length > 0 && missingSource.value.length === 0 && shortLines.value.length === 0
+);
 
-// Methods
-const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ar-SY', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(value || 0) + ' ' + t('currency');
+const money = (value) =>
+    new Intl.NumberFormat('ar-SY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        .format(Number(value) || 0) + ' ' + t('currency');
+
+const stockTone = (quantity) => {
+    const value = Number(quantity) || 0;
+    if (value <= 0) return 'out';
+    return value <= 5 ? 'low' : 'ok';
 };
 
 const getImageUrl = (image) => {
     if (!image) return '';
-    if (image.startsWith('http')) return image;
-    return `/storage/${image}`;
+    return image.startsWith('http') ? image : `/storage/${image}`;
 };
+
+/* ------------------------------------------------------------------ *
+ * Search
+ * ------------------------------------------------------------------ */
 
 const onSearchInput = (query) => {
     clearTimeout(searchTimeout);
@@ -758,10 +616,7 @@ const onSearchInput = (query) => {
             const res = await posApi.productLookup({ q: query });
             const data = res.data?.data || res.data || [];
             searchResults.value = Array.isArray(data) ? data : [];
-            await nextTick();
-            updateDropdownPosition();
         } catch (error) {
-            console.error('Search error:', error);
             searchResults.value = [];
         } finally {
             searchLoading.value = false;
@@ -769,20 +624,38 @@ const onSearchInput = (query) => {
     }, 300);
 };
 
-const addProduct = (product) => {
-    const existingIndex = items.value.findIndex(i => i.product_id === product.id);
+const navigateResult = (direction) => {
+    if (!searchResults.value.length) return;
 
-    if (existingIndex !== -1) {
-        items.value[existingIndex].quantity += 1;
+    const max = searchResults.value.length - 1;
+    highlightedIndex.value = direction === 1
+        ? (highlightedIndex.value >= max ? 0 : highlightedIndex.value + 1)
+        : (highlightedIndex.value <= 0 ? max : highlightedIndex.value - 1);
+};
+
+const selectHighlighted = () => {
+    if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
+        addProduct(searchResults.value[highlightedIndex.value]);
+    }
+};
+
+/* ------------------------------------------------------------------ *
+ * Lines
+ * ------------------------------------------------------------------ */
+
+const addProduct = (product) => {
+    const existing = items.value.findIndex((line) => line.product_id === product.id);
+
+    if (existing !== -1) {
+        items.value[existing].quantity += 1;
     } else {
-        // Default unit info
         const defaultUnit = {
             id: null,
             name: product.unit || t('piece'),
             name_ar: product.unit || t('piece'),
             base_unit_multiplier: 1,
             price_multiplier: 1,
-            barcode: product.barcode || ''
+            barcode: product.barcode || '',
         };
 
         const line = reactive({
@@ -793,7 +666,6 @@ const addProduct = (product) => {
             quantity: 1,
             stock: product.stock_quantity || 0,
             unit: product.unit || '',
-            // Unit selection
             selectedUnit: defaultUnit,
             units: [defaultUnit],
             base_price: parseFloat(product.price) || 0,
@@ -805,160 +677,91 @@ const addProduct = (product) => {
 
         items.value.push(line);
         loadSourcesFor(line);
-
-        // Load product units
         loadProductUnits(product.id, items.value.length - 1);
     }
 
     searchQuery.value = '';
     searchResults.value = [];
     showResults.value = false;
-    updateTotals();
+
+    nextTick(() => searchInputRef.value?.focus());
 };
 
 const loadProductUnits = async (productId, itemIndex) => {
     try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`/api/v1/admin/products/${productId}/units`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-            }
-        });
-        const data = await res.json();
+        const { data } = await api.get(`/admin/products/${productId}/units`);
+        const rows = data?.data ?? [];
 
-        if (data.success && data.data && data.data.length > 0) {
-            const units = data.data.map(u => ({
-                id: u.id,
-                name: u.name,
-                name_ar: u.name_ar || u.name,
-                base_unit_multiplier: parseFloat(u.base_unit_multiplier),
-                price_multiplier: parseFloat(u.price_multiplier),
-                barcode: u.barcode || ''
-            }));
-
-            // Find the default unit or use the first one
-            const defaultUnit = units.find(u => u.is_default) || units[0];
-
-            if (items.value[itemIndex]) {
-                items.value[itemIndex].units = units;
-                items.value[itemIndex].selectedUnit = defaultUnit;
-                // Update price based on unit multiplier
-                items.value[itemIndex].price = items.value[itemIndex].base_price * defaultUnit.price_multiplier;
-                updateTotals();
-            }
+        if (!rows.length || !items.value[itemIndex]) {
+            return;
         }
+
+        const units = rows.map((unit) => ({
+            id: unit.id,
+            name: unit.name,
+            name_ar: unit.name_ar || unit.name,
+            base_unit_multiplier: parseFloat(unit.base_unit_multiplier),
+            price_multiplier: parseFloat(unit.price_multiplier),
+            barcode: unit.barcode || '',
+        }));
+
+        const defaultUnit = rows.find((unit) => unit.is_default)
+            ? units[rows.findIndex((unit) => unit.is_default)]
+            : units[0];
+
+        items.value[itemIndex].units = units;
+        items.value[itemIndex].selectedUnit = defaultUnit;
+        items.value[itemIndex].price = items.value[itemIndex].base_price * defaultUnit.price_multiplier;
     } catch (error) {
-        console.error('Failed to load units:', error);
+        // A product with no unit list keeps the default piece it was added
+        // with; the sale does not depend on this call.
     }
 };
 
 const onUnitChange = (index) => {
     const item = items.value[index];
-    if (item && item.selectedUnit) {
-        // Update price based on unit multiplier
+    if (item?.selectedUnit) {
         item.price = item.base_price * item.selectedUnit.price_multiplier;
-        updateTotals();
     }
 };
 
-const removeItem = (index) => {
-    items.value.splice(index, 1);
-    updateTotals();
-};
-
-const incrementQty = (index) => {
-    items.value[index].quantity += 1;
-    updateTotals();
-};
-
+const removeItem = (index) => items.value.splice(index, 1);
+const incrementQty = (index) => { items.value[index].quantity += 1; };
 const decrementQty = (index) => {
-    if (items.value[index].quantity > 1) {
-        items.value[index].quantity -= 1;
-        updateTotals();
-    }
+    if (items.value[index].quantity > 1) items.value[index].quantity -= 1;
 };
 
-const updateTotals = () => {
-    // Trigger reactivity
-    items.value = [...items.value];
-};
+const addExpense = () => form.expenses.push({ description: '', category: 'other', amount: 0 });
+const removeExpense = (index) => form.expenses.splice(index, 1);
 
-const navigateResult = (direction) => {
-    if (!searchResults.value.length) return;
+/* ------------------------------------------------------------------ *
+ * Keyboard
+ * ------------------------------------------------------------------ */
 
-    const max = searchResults.value.length - 1;
-    if (direction === 1) {
-        highlightedIndex.value = highlightedIndex.value >= max ? 0 : highlightedIndex.value + 1;
-    } else {
-        highlightedIndex.value = highlightedIndex.value <= 0 ? max : highlightedIndex.value - 1;
-    }
-};
-
-const selectHighlighted = () => {
-    if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
-        addProduct(searchResults.value[highlightedIndex.value]);
-    }
-};
-
-const focusBarcodeInput = () => {
-    searchInputRef.value?.focus();
-};
-
-// Expense management
-const addExpense = () => {
-    form.expenses.push({
-        description: '',
-        category: 'other',
-        amount: 0
-    });
-};
-
-const removeExpense = (index) => {
-    form.expenses.splice(index, 1);
-    updateTotals();
-};
-
-const totalExpenses = computed(() => {
-    return form.expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-});
-
-// Keyboard shortcuts
 const handleKeyboardShortcuts = (e) => {
-    // Ctrl/Cmd + B: Focus search
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         searchInputRef.value?.focus();
     }
-    // Ctrl/Cmd + Enter: Submit invoice
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        if (items.value.length > 0) {
-            submitInvoice();
-        }
+        if (canSubmit.value) submitInvoice();
     }
-    // Escape: Close search dropdown
+
     if (e.key === 'Escape') {
         showResults.value = false;
     }
-    // Ctrl/Cmd + N: New invoice (clear form)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-        e.preventDefault();
-        if (items.value.length > 0 && confirm(t('confirm_clear_invoice'))) {
-            items.value = [];
-            form.customer_id = null;
-            form.discount = 0;
-            form.tax = 0;
-            form.notes = '';
-            updateTotals();
-        }
-    }
 };
+
+/* ------------------------------------------------------------------ *
+ * Submit
+ * ------------------------------------------------------------------ */
 
 const submitInvoice = async () => {
     formErrors.value = [];
 
-    if (items.value.length === 0) {
+    if (!items.value.length) {
         formErrors.value.push(t('add_at_least_one_item'));
         return;
     }
@@ -967,12 +770,12 @@ const submitInvoice = async () => {
     // holds the lock and refuses the write — but letting the request go and
     // reporting the refusal afterwards wastes the seller's time in front of a
     // waiting customer.
-    if (missingSource.value.length > 0) {
+    if (missingSource.value.length) {
         formErrors.value.push(t('sales.choose_source_for_every_line'));
         return;
     }
 
-    if (shortLines.value.length > 0) {
+    if (shortLines.value.length) {
         formErrors.value = shortLines.value.map((item) => t('sales.line_exceeds_stock', {
             product: item.name,
             available: formatNumber(availableFor(item)),
@@ -992,14 +795,14 @@ const submitInvoice = async () => {
             paid_amount: form.paid_amount || 0,
             notes: form.notes,
             status: form.status,
-            items: items.value.map(item => ({
+            items: items.value.map((item) => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
                 unit_price: item.price,
                 warehouse_id: item.warehouse_id,
-                product_unit_id: item.selectedUnit?.id || null
+                product_unit_id: item.selectedUnit?.id || null,
             })),
-            expenses: form.expenses.filter(exp => exp.description && exp.amount > 0)
+            expenses: form.expenses.filter((expense) => expense.description && expense.amount > 0),
         };
 
         if (isEdit.value) {
@@ -1007,25 +810,27 @@ const submitInvoice = async () => {
             ElMessage.success(t('invoice_updated_successfully'));
         } else {
             const created = await invoicesStore.createInvoice(payload);
+
             // Report what actually happened to the customer's account, rather
             // than a generic "saved".
-            const s = created?.settlement;
+            const settlement = created?.settlement;
             const parts = [t('invoice_created_successfully')];
-            if (s?.payment_number) {
-                parts.push(`${t('payment')} ${s.payment_number}`);
+
+            if (settlement?.payment_number) {
+                parts.push(`${t('payment')} ${settlement.payment_number}`);
             }
-            if (s && Math.abs(s.remaining) >= 0.005) {
-                parts.push(s.remaining > 0
-                    ? `${t('remaining_on_customer')} ${formatCurrency(s.remaining)}`
-                    : `${t('customer_credit')} ${formatCurrency(Math.abs(s.remaining))}`);
+
+            if (settlement && Math.abs(settlement.remaining) >= 0.005) {
+                parts.push(settlement.remaining > 0
+                    ? `${t('remaining_on_customer')} ${money(settlement.remaining)}`
+                    : `${t('customer_credit')} ${money(Math.abs(settlement.remaining))}`);
             }
+
             ElMessage.success({ message: parts.join(' • '), duration: 5000 });
         }
 
         router.push('/admin/sales/invoices');
     } catch (error) {
-        console.error('Submit error:', error);
-
         // The server refused because a shelf could not cover a line — most
         // often because someone else sold the same stock while this sale was
         // being rung up. Named per product and warehouse, and the fresh figures
@@ -1033,7 +838,7 @@ const submitInvoice = async () => {
         // true a minute ago.
         const shortages = error.response?.data?.data?.shortages;
 
-        if (Array.isArray(shortages) && shortages.length > 0) {
+        if (Array.isArray(shortages) && shortages.length) {
             formErrors.value = shortages.map((row) => t('sales.line_short_at_warehouse', {
                 product: row.product_name,
                 warehouse: row.warehouse_name,
@@ -1043,8 +848,7 @@ const submitInvoice = async () => {
 
             await Promise.all(items.value.map(loadSourcesFor));
         } else if (error.response?.data?.errors) {
-            const errors = error.response.data.errors;
-            formErrors.value = Object.values(errors).flat();
+            formErrors.value = Object.values(error.response.data.errors).flat();
         } else {
             formErrors.value = [
                 error.response?.data?.message || error.message || t('failed_to_save_invoice'),
@@ -1055,42 +859,86 @@ const submitInvoice = async () => {
     }
 };
 
-const goBack = () => {
+const goBack = async () => {
+    if (items.value.length && !isEdit.value) {
+        try {
+            await ElMessageBox.confirm(t('confirm_leave_unsaved_invoice'), t('confirm'), {
+                type: 'warning',
+                confirmButtonText: t('confirm'),
+                cancelButtonText: t('cancel'),
+            });
+        } catch {
+            return;
+        }
+    }
+
     router.push('/admin/sales/invoices');
 };
 
-// Close dropdown on outside click
 const handleClickOutside = (e) => {
-    const searchWrapper = document.querySelector('.product-search-wrapper');
-    const dropdown = document.querySelector('.search-dropdown');
-    if (searchWrapper && !searchWrapper.contains(e.target) && dropdown && !dropdown.contains(e.target)) {
+    if (!e.target.closest('.search-wrapper')) {
         showResults.value = false;
     }
 };
 
-// Calculate dropdown position
-const updateDropdownPosition = () => {
-    const searchInput = searchInputRef.value?.$el;
-    const dropdown = document.querySelector('.search-dropdown');
-    if (searchInput && dropdown && showResults.value) {
-        const rect = searchInput.getBoundingClientRect();
-        dropdown.style.top = `${rect.bottom + 8}px`;
-    }
+/* ------------------------------------------------------------------ *
+ * Load
+ * ------------------------------------------------------------------ */
+
+const loadInvoice = async () => {
+    const invoice = await invoicesStore.fetchInvoice(route.params.id);
+
+    if (!invoice) return;
+
+    form.customer_id = invoice.customer_id;
+    form.assigned_employee_id = invoice.assigned_employee_id ?? null;
+    form.payment_method = invoice.payment_method || 'cash';
+    form.discount = parseFloat(invoice.discount) || 0;
+    form.tax = parseFloat(invoice.tax) || 0;
+    form.paid_amount = parseFloat(invoice.paid_amount) || 0;
+    form.status = invoice.status || 'pending';
+    form.notes = invoice.notes || '';
+
+    // Every field the form can change is restored. This used to reload the
+    // product, price and quantity only — so reopening an invoice lost the
+    // warehouse each line came from and the unit it was priced in, and saving
+    // it again wrote those back as empty.
+    items.value = (invoice.items ?? []).map((item) => reactive({
+        product_id: item.product_id,
+        name: item.product_name || item.product?.name_ar,
+        sku: item.product?.sku || '',
+        price: parseFloat(item.unit_price) || 0,
+        quantity: item.quantity || 1,
+        stock: item.product?.stock_quantity || 0,
+        unit: item.product?.unit || '',
+        base_price: parseFloat(item.unit_price) || 0,
+        selectedUnit: {
+            id: item.product_unit_id ?? null,
+            name: item.unit_name || item.product?.unit || t('piece'),
+            name_ar: item.unit_name || item.product?.unit || t('piece'),
+            base_unit_multiplier: 1,
+            price_multiplier: 1,
+        },
+        units: [],
+        warehouse_id: item.warehouse_id ?? null,
+        sources: [],
+        loadingStock: false,
+    }));
+
+    // The live figures for each line, so a shortage introduced since the
+    // invoice was raised is visible immediately rather than on submit.
+    await Promise.all(items.value.map(loadSourcesFor));
 };
 
-// Load data
 onMounted(async () => {
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeyboardShortcuts);
-    window.addEventListener('resize', updateDropdownPosition);
-    window.addEventListener('scroll', updateDropdownPosition);
 
-    // Load customers
     try {
         await customersStore.fetchCustomers();
         customers.value = customersStore.customers;
     } catch (error) {
-        console.error('Failed to load customers:', error);
+        customers.value = [];
     }
 
     // The reps a sale can be credited to. A failure here leaves the field
@@ -1100,1172 +948,532 @@ onMounted(async () => {
         const { data } = await api.get('/sales-employees');
         salesEmployees.value = data?.data ?? data ?? [];
     } catch (error) {
-        console.error('Failed to load sales employees:', error);
         salesEmployees.value = [];
     }
 
-    // Load invoice for edit mode
     if (isEdit.value) {
         try {
-            const invoice = await invoicesStore.fetchInvoice(route.params.id);
-            if (invoice) {
-                form.customer_id = invoice.customer_id;
-                form.payment_method = invoice.payment_method || 'cash';
-                form.discount = parseFloat(invoice.discount) || 0;
-                form.tax = parseFloat(invoice.tax) || 0;
-                form.notes = invoice.notes || '';
-
-                if (invoice.items) {
-                    items.value = invoice.items.map(item => ({
-                        product_id: item.product_id,
-                        name: item.product_name || item.product?.name_ar,
-                        sku: item.product?.sku || '',
-                        price: parseFloat(item.unit_price) || 0,
-                        quantity: item.quantity || 1,
-                        stock: item.product?.stock_quantity || 0,
-                        unit: item.product?.unit || ''
-                    }));
-                }
-            }
+            await loadInvoice();
         } catch (error) {
-            console.error('Failed to load invoice:', error);
             ElMessage.error(t('failed_to_load_invoice'));
         }
+    } else {
+        nextTick(() => searchInputRef.value?.focus());
     }
 
-    // Auto-focus search input on mount
-    if (!isEdit.value) {
-        setTimeout(() => {
-            searchInputRef.value?.focus();
-        }, 100);
-    }
+    if (form.expenses.length) showExpenses.value = true;
 });
 
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
     document.removeEventListener('keydown', handleKeyboardShortcuts);
-    window.removeEventListener('resize', updateDropdownPosition);
-    window.removeEventListener('scroll', updateDropdownPosition);
     clearTimeout(searchTimeout);
 });
 </script>
 
 <style scoped>
-.invoice-form-page {
-    padding: 0;
+/* The house palette: navy and gold from vue-custom.css, with semantic colours
+   kept separate from the accent so "owing" never reads as "brand". */
+.invoice-builder {
+    --ink: #121c2c;
+    --ink-soft: #475569;
+    --ink-mute: #7c8798;
+    --line: #e2e8f0;
+    --surface: #ffffff;
+    --ground: #f8fafc;
+    --gold: #d4a84b;
+    --ok: #1b6b4c;
+    --ok-soft: #e8f3ee;
+    --warn: #8a6212;
+    --warn-soft: #fbf3e0;
+    --bad: #9b2c2c;
+    --bad-soft: #fbeceb;
+
+    font-family: 'Cairo', sans-serif;
+    color: var(--ink);
+    padding-bottom: 5rem;
 }
 
-.page-header {
+/* ── Header ─────────────────────────────────────────────────────────── */
+.builder-header {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 1.25rem;
+    padding-bottom: 1.25rem;
     margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--line);
 }
 
-.page-title {
-    display: flex;
-    flex-direction: column;
-}
-
-.page-title h1 {
-    margin: 0;
-    font-size: 1.8rem;
+.eyebrow {
+    font-size: 0.72rem;
     font-weight: 700;
-    color: #1f2d3d;
+    letter-spacing: 0.14em;
+    color: var(--gold);
+    text-transform: uppercase;
+}
+
+.header-identity h1 {
+    margin: 0.35rem 0 0;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.header-identity p {
+    margin: 0.3rem 0 0;
+    color: var(--ink-mute);
+    font-size: 0.9rem;
+}
+
+.header-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    background: linear-gradient(135deg, #1f2d3d 0%, #475569 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.page-title p {
-    margin: 0.35rem 0 0;
-    color: #5f6d85;
-}
-
-.back-btn {
-    border-radius: 8px;
-}
-
-.mb-4 {
-    margin-bottom: 1rem;
+    gap: 0.75rem;
 }
 
 .error-list {
-    margin: 0;
-    padding-left: 1.25rem;
+    margin: 0.5rem 0 0;
+    padding-inline-start: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
 }
 
-.error-list li {
-    margin: 0.25rem 0;
-}
-
-/* Layout */
-.invoice-layout {
+/* ── Grid ───────────────────────────────────────────────────────────── */
+.builder-grid {
     display: grid;
-    grid-template-columns: 1fr 380px;
+    grid-template-columns: minmax(0, 1fr) 380px;
     gap: 1.5rem;
     align-items: start;
 }
 
-.invoice-left-panel,
-.invoice-right-panel {
+.work-area {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-}
-
-.invoice-right-panel {
-    position: sticky;
-    top: 90px;
-    max-height: calc(100vh - 120px);
-    overflow-y: auto;
-}
-
-/* Card Headers */
-.card-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    font-size: 1rem;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-/* Product Search */
-.search-container {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e5e7eb;
-    overflow: hidden;
-    position: relative;
-    z-index: 50;
-    transition: all 0.3s ease;
-}
-
-.search-container:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-}
-
-.search-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem 1.25rem;
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    color: #fff;
-    font-weight: 600;
-    font-size: 1rem;
-}
-
-.search-header .el-icon {
-    font-size: 1.2rem;
-}
-
-.product-search-wrapper {
-    position: relative;
-    padding: 1.25rem;
-    min-height: 80px;
-}
-
-.search-dropdown {
-    position: fixed;
-    top: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 600px;
-    max-width: 90vw;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-    max-height: 500px;
-    overflow-y: auto;
-    z-index: 1000;
-    border: 1px solid #e5e7eb;
-    margin-top: 0.5rem;
-}
-
-.search-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 1.5rem;
-    color: #6b7280;
-}
-
-.search-results-list {
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.search-result-item {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.875rem 1rem;
-    cursor: pointer;
-    border-bottom: 1px solid #f3f4f6;
-    transition: all 0.2s ease;
-}
-
-.search-result-item:last-child {
-    border-bottom: none;
-}
-
-.search-result-item:hover,
-.search-result-item.highlighted {
-    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    transform: translateX(2px);
-}
-
-.search-result-item.low-stock {
-    background: #fff7ed;
-    border-left: 3px solid #f59e0b;
-}
-
-.search-result-item.low-stock:hover,
-.search-result-item.low-stock.highlighted {
-    background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
-}
-
-.product-image {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #f3f4f6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.product-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.product-image .el-icon {
-    font-size: 1.5rem;
-    color: #9ca3af;
-}
-
-.product-info {
-    flex: 1;
+    gap: 1.25rem;
     min-width: 0;
 }
 
-.product-name {
-    font-weight: 600;
-    color: #1f2937;
-    font-size: 0.95rem;
-    margin-bottom: 0.25rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+/* ── Search ─────────────────────────────────────────────────────────── */
+.search-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(18, 28, 44, 0.04);
 }
 
-.product-sku {
-    font-size: 0.75rem;
-    color: #6b7280;
-    margin-bottom: 0.25rem;
+/* Anchors the dropdown; it used to be positioned by hand against the viewport
+   and re-measured on scroll. */
+.search-wrapper {
+    position: relative;
 }
 
-.product-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8rem;
-    color: #6b7280;
-}
-
-.stock-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.stock-indicator.low-stock {
-    color: #d97706;
-}
-
-.stock-indicator.out-of-stock {
-    color: #dc2626;
-}
-
-.product-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.5rem;
-    flex-shrink: 0;
-}
-
-.product-price {
+.kbd-hint,
+.shortcuts kbd {
+    font-family: inherit;
+    font-size: 0.68rem;
     font-weight: 700;
-    color: #3b82f6;
-    font-size: 1rem;
-    white-space: nowrap;
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--ink-mute);
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 0.1rem 0.4rem;
 }
 
-.add-btn {
-    transition: all 0.2s ease;
+.search-hint {
+    margin: 0.65rem 0 0;
+    font-size: 0.8rem;
+    color: var(--ink-mute);
 }
 
-.add-btn:hover {
-    transform: scale(1.1);
+.results {
+    position: absolute;
+    inset-inline: 0;
+    top: calc(100% + 8px);
+    z-index: 30;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px -18px rgba(18, 28, 44, 0.45);
+    overflow: hidden;
+    max-height: 22rem;
+    overflow-y: auto;
 }
 
-.no-results {
+.results-state {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2rem 1rem;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
 }
 
-.no-results-content {
-    text-align: center;
-    color: #9ca3af;
-}
+.results-state.muted { color: var(--ink-mute); }
 
-.no-results-content .el-icon {
-    margin-bottom: 1rem;
-    color: #d1d5db;
-}
-
-.no-results-content h4 {
-    margin: 0 0 0.5rem;
-    color: #6b7280;
-    font-size: 1rem;
-}
-
-.no-results-content p {
+.results-list {
+    list-style: none;
     margin: 0;
-    font-size: 0.875rem;
-    color: #9ca3af;
+    padding: 0.35rem;
 }
 
-.barcode-btn {
-    margin-left: 0.5rem;
-}
-
-/* Improved focus states */
-.el-input:focus-within,
-.el-select:focus-within,
-.el-input-number:focus-within {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    border-radius: 6px;
-}
-
-/* Dropdown Transition */
-.dropdown-enter-active,
-.dropdown-leave-active {
-    transition: all 0.2s ease;
-}
-
-.dropdown-enter-from,
-.dropdown-leave-to {
-    opacity: 0;
-    transform: translateY(-8px);
-}
-
-/* Empty State */
-.empty-items {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: #9ca3af;
-}
-
-.empty-items .el-icon {
-    margin-bottom: 1rem;
-    color: #d1d5db;
-}
-
-.empty-items p {
-    margin: 0;
-    font-size: 1rem;
-}
-
-.empty-items .hint {
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
-    color: #d1d5db;
-}
-
-/* Items Table */
-.items-table-wrapper {
-    overflow-x: auto;
-}
-
-.items-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-/* ---------- Source warehouse per line ---------- */
-
-.source-cell {
-    min-width: 11rem;
-}
-
-.source-select {
-    width: 100%;
-}
-
-/* Name on one side, free quantity on the other, so the eye can scan the
-   column for the warehouse that can actually fill the line. */
-.source-option {
+.result {
     display: flex;
     align-items: center;
+    gap: 0.85rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.result.active { background: var(--ground); }
+
+.result-thumb {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    color: var(--ink-mute);
+}
+
+.result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.result-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.result-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.result-sku {
+    font-size: 0.74rem;
+    color: var(--ink-mute);
+    font-family: 'Cascadia Mono', Consolas, monospace;
+}
+
+.result-side {
+    text-align: end;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: none;
+}
+
+.result-price { font-weight: 700; font-size: 0.9rem; }
+
+.result-stock { font-size: 0.72rem; }
+.result-stock.ok { color: var(--ok); }
+.result-stock.low { color: var(--warn); }
+.result-stock.out { color: var(--bad); }
+
+.drop-enter-active, .drop-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
+.drop-enter-from, .drop-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* ── Lines ──────────────────────────────────────────────────────────── */
+.lines-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.lines-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.lines-head h2 { margin: 0; font-size: 1.05rem; font-weight: 700; }
+
+.count {
+    font-size: 0.8rem;
+    color: var(--ink-mute);
+    background: var(--ground);
+    border-radius: 999px;
+    padding: 0.15rem 0.65rem;
+}
+
+.empty {
+    padding: 3.5rem 1.5rem;
+    text-align: center;
+    color: var(--ink-mute);
+}
+
+.empty-icon { font-size: 2.5rem; opacity: 0.35; }
+.empty-title { margin: 1rem 0 0.25rem; font-weight: 700; color: var(--ink-soft); }
+.empty-hint { margin: 0; font-size: 0.88rem; }
+
+.lines { display: flex; flex-direction: column; }
+
+.line {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.line:last-child { border-bottom: none; }
+
+/* The rail carries the state; the row itself stays quiet. */
+.line.short {
+    background: var(--bad-soft);
+    box-shadow: inset 3px 0 0 var(--bad);
+}
+
+.line-main {
+    display: flex;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
 }
 
-.source-available {
-    font-variant-numeric: tabular-nums;
-    font-size: 0.8rem;
-    color: #16a34a;
-    font-weight: 600;
+.line-identity { display: flex; flex-direction: column; min-width: 0; }
+.line-name { font-weight: 700; }
+.line-sku {
+    font-size: 0.74rem;
+    color: var(--ink-mute);
+    font-family: 'Cascadia Mono', Consolas, monospace;
 }
 
-.source-available.is-empty {
-    color: #94a3b8;
+.line-total { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+.line-total-value { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+.line-fields {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.4fr) minmax(110px, 1fr) 140px minmax(110px, 1fr);
+    gap: 0.75rem;
 }
 
-.source-hint {
-    margin-top: 0.25rem;
-    font-size: 0.75rem;
-    color: #94a3b8;
-    font-variant-numeric: tabular-nums;
-}
-
-.source-warning {
-    margin-top: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #dc2626;
-    font-variant-numeric: tabular-nums;
-}
-
-/* The whole row is tinted, not just the cell: the seller is looking at the
-   quantity they just typed, not at the source column. */
-.items-table tbody tr.row-short {
-    background: #fef2f2;
-}
-
-.items-table tbody tr.row-short:hover {
-    background: #fee2e2;
-}
-
-/* ---------- Optional field labelling ---------- */
-
-.field-block {
-    margin-top: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
+.field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 
 .field-label {
-    font-size: 0.85rem;
+    font-size: 0.74rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--ink-mute);
+}
+
+.option-row { display: flex; justify-content: space-between; gap: 1rem; width: 100%; }
+.option-stock { color: var(--ok); font-variant-numeric: tabular-nums; }
+.option-stock.empty { color: var(--bad); }
+
+.stepper {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    height: 32px;
+    background: var(--surface);
+}
+
+.stepper button {
+    width: 34px;
+    height: 100%;
+    border: none;
+    background: var(--ground);
+    color: var(--ink-soft);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+}
+
+.stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
+.stepper button:hover:not(:disabled) { background: var(--line); }
+
+.stepper input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    background: transparent;
+    color: var(--ink);
+    -moz-appearance: textfield;
+}
+
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.line-warning,
+.line-note {
+    margin: 0;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
     gap: 0.35rem;
 }
 
-.field-optional {
-    font-weight: 400;
-    font-size: 0.78rem;
-    color: #94a3b8;
-}
+.line-warning { color: var(--bad); font-weight: 600; }
+.line-warning.subtle { color: var(--warn); font-weight: 500; }
+.line-note { color: var(--ink-mute); }
 
-.items-table thead th {
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-    padding: 0.75rem 1rem;
-    text-align: right;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #cbd5e1;
-}
-
-.items-table tbody td {
-    padding: 1rem;
-    border-bottom: 1px solid #f1f5f9;
-    vertical-align: middle;
-}
-
-.items-table tbody tr:hover {
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-}
-
-.product-cell .product-name {
-    font-weight: 600;
-    color: #1e293b;
-    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.product-cell .product-sku {
-    font-size: 0.75rem;
-    color: #94a3b8;
-    margin-top: 0.25rem;
-}
-
-.unit-cell {
-    min-width: 150px;
-}
-
-.unit-select {
-    width: 100%;
-}
-
-.unit-barcode {
-    font-size: 0.7rem;
-    color: #64748b;
-    margin-top: 0.25rem;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.qty-cell {
-    white-space: nowrap;
-}
-
-.qty-control {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.price-cell {
-    white-space: nowrap;
-}
-
-.price-cell .currency {
-    margin-right: 0.5rem;
-    color: #94a3b8;
-    font-size: 0.8rem;
-}
-
-.total-cell {
-    font-weight: 700;
-    color: #3b82f6;
-    white-space: nowrap;
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.action-cell {
-    text-align: center;
-}
-
-/* Summary Card */
-.summary-body {
+/* ── Summary rail ───────────────────────────────────────────────────── */
+.summary-rail {
+    position: sticky;
+    top: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
 }
 
-.summary-row {
+.rail-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.85rem;
 }
 
-.summary-row .label {
-    color: #64748b;
-    font-size: 0.95rem;
-    font-weight: 500;
-}
-
-.summary-row .value {
-    font-weight: 700;
-    color: #1e293b;
-    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* ---------- Settlement block ---------- */
-
-.settlement-block {
-    display: grid;
-    gap: 10px;
-}
-
-.summary-input-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.summary-input-row label {
-    font-size: 0.9rem;
-    color: #475569;
-}
-
-.quick-pay {
-    display: flex;
-    gap: 4px;
-    justify-content: flex-end;
-    margin-top: -6px;
-}
-
-.summary-row.remaining {
-    padding: 10px 12px;
-    border-radius: 10px;
-    font-weight: 700;
-}
-
-.summary-row.remaining.owing {
-    background: #fef2f2;
-    color: #b91c1c;
-}
-
-.summary-row.remaining.credit {
-    background: #eff6ff;
-    color: #1d4ed8;
-}
-
-.summary-row.remaining.settled {
-    background: #ecfdf5;
-    color: #047857;
-}
-
-.settlement-hint {
+.rail-title {
     margin: 0;
-    font-size: 0.78rem;
-    line-height: 1.6;
-    color: #b45309;
+    font-size: 0.95rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--ink);
 }
 
-.summary-row.total .label {
-    font-size: 1.1rem;
-    font-weight: 800;
+.fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+.extras { border-top: 1px dashed var(--line); padding-top: 0.85rem; }
+
+.extras-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    cursor: pointer;
 }
 
-.summary-row.total .total-value {
-    font-size: 1.5rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+.extras-badge {
+    margin-inline-start: auto;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
 }
 
-.summary-row.discount .value.negative {
-    color: #dc2626;
-}
+.extras-body { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.extra-row { display: flex; align-items: center; gap: 0.4rem; }
 
-.summary-row.tax .value.positive {
-    color: #16a34a;
-}
-
-.summary-inputs {
+.totals {
+    margin: 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--line);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.75rem 0;
+    gap: 0.45rem;
 }
 
-.summary-input-row {
+.total-line {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
+    font-size: 0.9rem;
 }
 
-.summary-input-row label {
-    color: #475569;
-    font-size: 0.875rem;
-    font-weight: 600;
-    min-width: 60px;
+.total-line dt { color: var(--ink-soft); margin: 0; }
+.total-line dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.total-line.deduct dd { color: var(--bad); }
+
+.total-line.grand {
+    padding-top: 0.6rem;
+    margin-top: 0.2rem;
+    border-top: 1px solid var(--line);
+    font-size: 1.05rem;
 }
 
-.status-select {
-    width: 100%;
-}
+.total-line.grand dt { color: var(--ink); font-weight: 700; }
+.total-line.grand dd { font-weight: 800; font-size: 1.2rem; }
 
-.status-select .el-select__wrapper {
-    border-radius: 8px;
-}
-
-.status-option {
+.settlement {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-}
-
-.submit-section {
-    padding-top: 1rem;
-    border-top: 1px solid #f1f5f9;
-    margin-top: 1rem;
-}
-
-.submit-btn {
-    width: 100%;
-    height: 48px;
-    font-size: 1rem;
-    font-weight: 700;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 0.9rem;
     border-radius: 10px;
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    border: none;
-    transition: all 0.3s ease;
+    font-weight: 700;
 }
 
-.submit-btn:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+.settlement-value { font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+.settlement.settled { background: var(--ok-soft); color: var(--ok); }
+.settlement.owing { background: var(--warn-soft); color: var(--warn); }
+.settlement.credit { background: #eef2fb; color: #22406e; }
+
+.shortcuts {
+    margin: 0;
+    text-align: center;
+    font-size: 0.76rem;
+    color: var(--ink-mute);
 }
 
-.w-full {
-    width: 100%;
+.shortcuts .dot { margin: 0 0.4rem; }
+
+/* ── Mobile action bar ──────────────────────────────────────────────── */
+.mobile-bar { display: none; }
+
+@media (max-width: 1100px) {
+    .builder-grid { grid-template-columns: minmax(0, 1fr); }
+    .summary-rail { position: static; }
 }
 
-/* Responsive */
-@media (max-width: 1400px) {
-    .invoice-layout {
-        grid-template-columns: 1fr 350px;
-    }
-}
+@media (max-width: 720px) {
+    .line-fields { grid-template-columns: 1fr 1fr; }
 
-@media (max-width: 1200px) {
-    .invoice-layout {
-        grid-template-columns: 1fr;
-    }
+    .header-actions .el-button--large { display: none; }
 
-    .invoice-right-panel {
-        position: static;
-        max-height: none;
-    }
-}
-
-@media (max-width: 992px) {
-    .page-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .page-title h1 {
-        font-size: 1.6rem;
-    }
-
-    .items-table {
-        font-size: 0.9rem;
-    }
-
-    .items-table thead th {
-        padding: 0.6rem 0.8rem;
-        font-size: 0.7rem;
-    }
-
-    .items-table tbody td {
-        padding: 0.8rem;
-    }
-}
-
-@media (max-width: 768px) {
-    .page-title h1 {
-        font-size: 1.4rem;
-    }
-
-    .page-title p {
-        font-size: 0.9rem;
-    }
-
-    .search-dropdown {
-        width: 95vw;
-        max-width: 95vw;
-        left: 50%;
-        transform: translateX(-50%);
-    }
-
-    .items-table thead {
-        display: none;
-    }
-
-    .items-table tbody tr {
+    .mobile-bar {
+        position: fixed;
+        inset-inline: 0;
+        bottom: 0;
+        z-index: 20;
         display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 1rem;
-        border-bottom: 1px solid #f1f5f9;
-        background: #fafbfc;
-    }
-
-    .items-table tbody td {
-        padding: 0;
-        border-bottom: none;
-        display: flex;
-        justify-content: space-between;
         align-items: center;
-        width: 100%;
-    }
-
-    .items-table tbody td::before {
-        content: attr(data-label);
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        margin-right: 0.5rem;
-    }
-
-    .product-cell {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .product-cell::before {
-        display: none;
-    }
-
-    .unit-cell,
-    .qty-cell,
-    .price-cell {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .unit-select,
-    .qty-control,
-    .price-cell .el-input-number {
-        width: 100%;
-    }
-
-    .action-cell {
-        justify-content: flex-end;
-    }
-
-    .summary-row {
-        flex-direction: row;
         justify-content: space-between;
-        align-items: center;
-        gap: 0.5rem;
+        gap: 1rem;
+        padding: 0.7rem 1rem;
+        background: var(--surface);
+        border-top: 1px solid var(--line);
+        box-shadow: 0 -6px 20px -12px rgba(18, 28, 44, 0.4);
     }
 
-    .summary-row.total {
-        flex-direction: column;
-        text-align: center;
-        gap: 0.5rem;
-    }
-
-    .summary-input-row {
-        flex-direction: column;
-        gap: 0.5rem;
-        align-items: stretch;
-    }
-
-    .summary-input-row label {
-        min-width: auto;
-        text-align: right;
-    }
-
-    .summary-input-row .el-input-number,
-    .summary-input-row .el-select {
-        width: 100%;
-    }
-
-    .search-dropdown {
-        max-height: 250px;
-    }
-
-    .submit-btn {
-        height: 52px;
-        font-size: 1.1rem;
-    }
+    .mobile-total { display: flex; flex-direction: column; }
+    .mobile-total span { font-size: 0.72rem; color: var(--ink-mute); }
+    .mobile-total strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 }
 
 @media (max-width: 480px) {
-    .invoice-form-page {
-        padding: 0.5rem;
-    }
-
-    .page-header {
-        gap: 0.75rem;
-        margin-bottom: 1rem;
-    }
-
-    .page-title h1 {
-        font-size: 1.2rem;
-    }
-
-    .back-btn {
-        width: 100%;
-    }
-
-    .card-header {
-        font-size: 0.9rem;
-    }
-
-    .items-table tbody tr {
-        padding: 0.75rem;
-        gap: 0.5rem;
-    }
-
-    .product-name {
-        font-size: 0.9rem;
-    }
-
-    .product-sku {
-        font-size: 0.7rem;
-    }
-
-    .unit-barcode {
-        font-size: 0.65rem;
-    }
-
-    .summary-row .label {
-        font-size: 0.85rem;
-    }
-
-    .summary-row.total .total-value {
-        font-size: 1.3rem;
-    }
-
-    .submit-btn {
-        height: 48px;
-        font-size: 1rem;
-    }
-
-    .search-result-item {
-        padding: 0.75rem;
-    }
-
-    .product-name {
-        font-size: 0.85rem;
-    }
-
-    .product-meta {
-        font-size: 0.75rem;
-        gap: 0.5rem;
-    }
-
-    .product-price {
-        font-size: 0.9rem;
-    }
-}
-
-/* Expenses Section Styling */
-.expenses-section {
-    margin-top: 1rem;
-}
-
-.expenses-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    font-weight: 600;
-    color: #253358;
-}
-
-.expenses-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.expense-item {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.expense-description {
-    flex: 2;
-}
-
-.expense-category {
-    flex: 1;
-}
-
-.expense-amount {
-    flex: 1;
-}
-
-.summary-row.expenses {
-    font-size: 0.9rem;
-    color: #5f6d85;
-}
-
-/* Touch-friendly improvements */
-@media (hover: none) and (pointer: coarse) {
-    .search-result-item,
-    .items-table tbody tr {
-        min-height: 48px;
-    }
-
-    .el-button {
-        min-height: 44px;
-        min-width: 44px;
-    }
-
-    .el-input-number {
-        min-height: 44px;
-    }
-
-    .el-select {
-        min-height: 44px;
-    }
-
-    .expense-item {
-        flex-wrap: wrap;
-    }
-
-    .expense-description,
-    .expense-category,
-    .expense-amount {
-        flex: 1 1 100%;
-    }
-}
-
-/* Accessibility improvements */
-@media (prefers-reduced-motion: reduce) {
-    .dropdown-enter-active,
-    .dropdown-leave-active {
-        transition: none;
-    }
-
-    .search-result-item,
-    .items-table tbody tr {
-        transition: none;
-    }
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    .page-title h1 {
-        color: #e5e7eb;
-    }
-
-    .page-title p {
-        color: #9ca3af;
-    }
-
-    .search-container {
-        background: #1f2937;
-        border-color: #374151;
-    }
-
-    .search-container:hover {
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    }
-
-    .search-dropdown {
-        background: #1f2937;
-        border-color: #374151;
-    }
-
-    .search-result-item {
-        border-bottom-color: #374151;
-    }
-
-    .search-result-item:hover,
-    .search-result-item.highlighted {
-        background: #374151;
-    }
-
-    .search-result-item.low-stock {
-        background: #451a03;
-        border-left-color: #f59e0b;
-    }
-
-    .search-result-item.low-stock:hover,
-    .search-result-item.low-stock.highlighted {
-        background: #78350f;
-    }
-
-    .product-image {
-        background: #374151;
-    }
-
-    .product-image .el-icon {
-        color: #6b7280;
-    }
-
-    .product-name {
-        color: #f3f4f6;
-    }
-
-    .product-sku {
-        color: #9ca3af;
-    }
-
-    .product-meta {
-        color: #9ca3af;
-    }
-
-    .product-price {
-        color: #60a5fa;
-    }
-
-    .no-results-content {
-        color: #9ca3af;
-    }
-
-    .no-results-content .el-icon {
-        color: #4b5563;
-    }
-
-    .no-results-content h4 {
-        color: #9ca3af;
-    }
-
-    .no-results-content p {
-        color: #6b7280;
-    }
-
-    .items-table thead th {
-        background: #1f2937;
-        color: #9ca3af;
-        border-bottom-color: #374151;
-    }
-
-    .items-table tbody td {
-        border-bottom-color: #374151;
-    }
-
-    .items-table tbody tr:hover {
-        background: #1f2937;
-    }
-
-    .summary-row .label {
-        color: #9ca3af;
-    }
-
-    .summary-row .value {
-        color: #e5e7eb;
-    }
+    .line-fields { grid-template-columns: 1fr; }
 }
 </style>
