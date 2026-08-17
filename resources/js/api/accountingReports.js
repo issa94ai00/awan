@@ -51,6 +51,14 @@ export const accountingReportsApi = {
      */
     partyStatement(params = {}) {
         return api.get('/admin/accounting/party-statement', { params });
+    },
+
+    /**
+     * Which branch made the money. The combined income statement says whether
+     * the company was profitable; it never says which location was.
+     */
+    costCenterStatement(params = {}) {
+        return api.get('/admin/accounting/cost-center-statement', { params });
     }
 };
 

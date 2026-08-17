@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\AccountingReportController;
 use App\Http\Controllers\Api\AccountingPeriodController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BudgetController;
+use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
@@ -498,6 +499,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
+
+                // The parts of the business a figure can belong to.
+                Route::get('/accounting/cost-centers', [CostCenterController::class, 'index'])->name('api.admin.accounting.cost-centers.index');
+                Route::post('/accounting/cost-centers', [CostCenterController::class, 'store'])->name('api.admin.accounting.cost-centers.store');
+                Route::put('/accounting/cost-centers/{costCenter}', [CostCenterController::class, 'update'])->name('api.admin.accounting.cost-centers.update');
+                Route::delete('/accounting/cost-centers/{costCenter}', [CostCenterController::class, 'destroy'])->name('api.admin.accounting.cost-centers.destroy');
 
                 // What the year was meant to earn and spend — the only thing
                 // that turns a figure into a verdict.

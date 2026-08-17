@@ -278,6 +278,12 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/accounting/cost-centers" class="nav-link" :class="{ active: isActive('/admin/accounting/cost-centers') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!collapsed" class="nav-text">{{ t('cost_centers') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/accounting/vat-return" class="nav-link" :class="{ active: isActive('/admin/accounting/vat-return') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!collapsed" class="nav-text">{{ t('vat_return') }}</span>
