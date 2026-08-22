@@ -292,14 +292,25 @@
                 <el-row :gutter="20">
                     <el-col :span="12">
                         <el-form-item :label="$t('supplier')" required>
-                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable>
-                                <el-option 
-                                    v-for="s in suppliersStore.suppliers" 
-                                    :key="s.id" 
-                                    :label="s.name" 
-                                    :value="s.id" 
-                                />
-                            </el-select>
+                            <div style="display: flex; gap: 0.5rem; width: 100%;">
+                                <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable>
+                                    <el-option
+                                        v-for="s in suppliersStore.suppliers"
+                                        :key="s.id"
+                                        :label="s.name"
+                                        :value="s.id"
+                                    />
+                                </el-select>
+                                <el-button
+                                    type="success"
+                                    circle
+                                    plain
+                                    @click="openQuickAddSupplier"
+                                    :title="$t('add_new_supplier')"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                </el-button>
+                            </div>
                         </el-form-item>
                     </el-col>
                     <el-col :span="12" v-if="isEditMode">
@@ -486,6 +497,42 @@
                 </el-button>
             </template>
         </el-dialog>
+
+        <!-- Quick Add Supplier Dialog: creates a missing supplier and selects
+             it right away, so a first-time supplier no longer means
+             abandoning the order to go create it in the supplier list first. -->
+        <el-dialog
+            v-model="quickAddSupplierDialogVisible"
+            :title="$t('quick_add_supplier')"
+            width="440px"
+            append-to-body
+            destroy-on-close
+        >
+            <p class="quick-add-hint">{{ $t('quick_add_supplier_hint') }}</p>
+            <el-form :model="quickAddSupplierForm" label-position="top">
+                <el-form-item :label="$t('supplier_name_label')" required>
+                    <el-input v-model="quickAddSupplierForm.name" />
+                </el-form-item>
+                <el-row :gutter="16">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('phone_label')">
+                            <el-input v-model="quickAddSupplierForm.phone" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('company_label')">
+                            <el-input v-model="quickAddSupplierForm.company" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+            </el-form>
+            <template #footer>
+                <el-button @click="quickAddSupplierDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickAddSupplierSubmitting" @click="submitQuickAddSupplier">
+                    {{ $t('save') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -546,6 +593,16 @@ const quickAddForm = reactive({
     price: '',
     sku: '',
     unit: ''
+});
+
+// Quick-add-supplier state: lets a missing supplier be created without
+// leaving the order form, then selects it right away.
+const quickAddSupplierDialogVisible = ref(false);
+const quickAddSupplierSubmitting = ref(false);
+const quickAddSupplierForm = reactive({
+    name: '',
+    phone: '',
+    company: ''
 });
 
 const form = reactive({
@@ -810,6 +867,38 @@ const submitQuickAddProduct = async () => {
         ElMessage.error(e.response?.data?.message || t('failed_to_create_product'));
     } finally {
         quickAddSubmitting.value = false;
+    }
+};
+
+const openQuickAddSupplier = () => {
+    quickAddSupplierForm.name = '';
+    quickAddSupplierForm.phone = '';
+    quickAddSupplierForm.company = '';
+    quickAddSupplierDialogVisible.value = true;
+};
+
+const submitQuickAddSupplier = async () => {
+    if (!quickAddSupplierForm.name) {
+        ElMessage.warning(t('please_fill_supplier_name'));
+        return;
+    }
+
+    quickAddSupplierSubmitting.value = true;
+    try {
+        const supplier = await suppliersStore.createSupplier({
+            name: quickAddSupplierForm.name,
+            phone: quickAddSupplierForm.phone || null,
+            company: quickAddSupplierForm.company || null
+        });
+
+        form.supplier_id = supplier.id;
+
+        ElMessage.success(t('supplier_created_and_selected'));
+        quickAddSupplierDialogVisible.value = false;
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_create_supplier'));
+    } finally {
+        quickAddSupplierSubmitting.value = false;
     }
 };
 

@@ -44,6 +44,23 @@ export const useSuppliersStore = defineStore('suppliers', {
             }
         },
 
+        async createSupplier(data) {
+            this.loading = true;
+            this.error = null;
+            try {
+                const res = await suppliersApi.create(data);
+                const supplier = res.data.data;
+                this.suppliers.unshift(supplier);
+                return supplier;
+            } catch (error) {
+                this.error = error.response?.data?.message || error.message || 'Failed to create supplier';
+                console.error('Supplier create error:', error);
+                throw error;
+            } finally {
+                this.loading = false;
+            }
+        },
+
         async fetchSupplier(id) {
             this.loading = true;
             this.error = null;
