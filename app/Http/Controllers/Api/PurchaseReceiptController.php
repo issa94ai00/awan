@@ -105,6 +105,11 @@ class PurchaseReceiptController extends Controller
                         'reason' => 'استلام من أمر شراء',
                         'unit_cost' => $item['unit_price'],
                         'created_by' => auth()->id(),
+                        // A purchase is real money paid, so it should move the
+                        // product's reference cost — a weighted average with
+                        // what was already on hand — not just open a FIFO
+                        // layer for this warehouse.
+                        'update_average_cost' => true,
                     ]
                 );
             }
