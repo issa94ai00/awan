@@ -67,14 +67,18 @@ class ProductController extends Controller
             $query->where('price', '<=', (float) $maxPrice);
         }
 
-        // Search by name, brand, or model
+        // Search by name, brand, model, SKU or barcode — a purchasing screen
+        // looking up a product by its code needs this as much as a shopper
+        // searching by name does.
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name_ar', 'like', $searchTerm)
                   ->orWhere('name_en', 'like', $searchTerm)
                   ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm);
+                  ->orWhere('model', 'like', $searchTerm)
+                  ->orWhere('sku', 'like', $searchTerm)
+                  ->orWhere('barcode', 'like', $searchTerm);
             });
         }
 

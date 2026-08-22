@@ -357,12 +357,25 @@
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" @change="(val) => updateItemPrice(val, idx)">
-                                <el-option 
-                                    v-for="p in productsStore.products" 
-                                    :key="p.id" 
-                                    :label="p.name_ar + ' - $' + p.price" 
-                                    :value="p.id" 
+                            <!-- Searches the whole catalog on the server instead of
+                                 filtering only the first page already in memory, so
+                                 a product outside that page is still found. -->
+                            <el-select
+                                v-model="item.product_id"
+                                :placeholder="$t('select_item')"
+                                filterable
+                                remote
+                                reserve-keyword
+                                :remote-method="searchProducts"
+                                :loading="productSearchLoading"
+                                style="flex: 2.5;"
+                                @change="(val) => updateItemPrice(val, idx)"
+                            >
+                                <el-option
+                                    v-for="p in productOptions"
+                                    :key="p.id"
+                                    :label="p.name_ar + ' - $' + p.price"
+                                    :value="p.id"
                                 />
                             </el-select>
                             <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" />
@@ -394,6 +407,7 @@ import { salesOrdersApi } from '@/api/salesOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
+import { productsApi } from '@/api/products';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -418,6 +432,14 @@ const formDrawerVisible = ref(false);
 const isEditMode = ref(false);
 const submittingForm = ref(false);
 const editingOrderId = ref(null);
+
+// Item-row product search: starts as whatever page loaded on mount, then
+// becomes the live server search results once the operator types. Shared
+// across rows on purpose — remote-select keeps each row's own already-picked
+// label regardless of what the shared option pool currently holds.
+const productOptions = ref([]);
+const productSearchLoading = ref(false);
+let productSearchTimer = null;
 
 const form = reactive({
     supplier_id: '',
@@ -575,10 +597,35 @@ const removeItemRow = (idx) => {
 };
 
 const updateItemPrice = (productId, idx) => {
-    const prod = productsStore.products.find(p => p.id === productId);
+    // The chosen product may only exist in the current search results, not
+    // in the page that loaded on mount, so look there first.
+    const prod = productOptions.value.find(p => p.id === productId)
+        || productsStore.products.find(p => p.id === productId);
     if (prod) {
         form.items[idx].unit_price = prod.price;
     }
+};
+
+const searchProducts = (query) => {
+    clearTimeout(productSearchTimer);
+
+    if (!query) {
+        productOptions.value = productsStore.products;
+        return;
+    }
+
+    productSearchLoading.value = true;
+    productSearchTimer = setTimeout(async () => {
+        try {
+            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            productOptions.value = res.data.data || [];
+        } catch (e) {
+            // Keep whatever was showing rather than blanking the list on a
+            // transient failure.
+        } finally {
+            productSearchLoading.value = false;
+        }
+    }, 300);
 };
 
 const saveOrder = async () => {
@@ -670,6 +717,7 @@ onMounted(async () => {
         suppliersStore.fetchSuppliers().catch(() => {}),
         productsStore.fetchProducts({ per_page: 100 }).catch(() => {}),
     ]);
+    productOptions.value = productsStore.products;
 
     const shortageFor = route.query.shortage_for_order;
     if (shortageFor) {
