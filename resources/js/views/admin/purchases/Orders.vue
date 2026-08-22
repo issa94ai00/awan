@@ -193,8 +193,11 @@
                             <el-table :data="selectedOrder.items || []" style="width: 100%" stripe>
                                 <el-table-column prop="product.name_ar" :label="$t('item_product')" />
                                 <el-table-column prop="quantity" :label="$t('quantity_ordered')" width="130" align="center" />
-                                <el-table-column prop="unit_price" :label="$t('unit_price')" width="120">
+                                <el-table-column prop="unit_price" :label="$t('purchase_cost')" width="120">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
+                                </el-table-column>
+                                <el-table-column prop="sale_price" :label="$t('sale_price')" width="120">
+                                    <template #default="{ row }">{{ row.sale_price != null ? '$' + parseFloat(row.sale_price).toFixed(2) : '-' }}</template>
                                 </el-table-column>
                                 <el-table-column :label="$t('grand_total')" width="120">
                                     <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
@@ -357,43 +360,60 @@
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <!-- Searches the whole catalog on the server instead of
-                                 filtering only the first page already in memory, so
-                                 a product outside that page is still found. -->
-                            <el-select
-                                v-model="item.product_id"
-                                :placeholder="$t('select_item')"
-                                filterable
-                                remote
-                                reserve-keyword
-                                :remote-method="searchProducts"
-                                :loading="productSearchLoading"
-                                style="flex: 2.5;"
-                                @change="(val) => updateItemPrice(val, idx)"
-                            >
-                                <el-option
-                                    v-for="p in productOptions"
-                                    :key="p.id"
-                                    :label="p.name_ar + ' - $' + p.price"
-                                    :value="p.id"
-                                />
-                            </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" />
-                            <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;">
-                                <template #suffix>$</template>
-                            </el-input>
-                            <el-button
-                                type="success"
-                                circle
-                                plain
-                                @click="openQuickAddProduct(idx)"
-                                :title="$t('add_new_product')"
-                            >
-                                <i class="fas fa-plus"></i>
-                            </el-button>
-                            <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
-                                <i class="fas fa-trash"></i>
-                            </el-button>
+                            <div class="item-row-top">
+                                <!-- Searches the whole catalog on the server instead of
+                                     filtering only the first page already in memory, so
+                                     a product outside that page is still found. -->
+                                <el-select
+                                    v-model="item.product_id"
+                                    :placeholder="$t('select_item')"
+                                    filterable
+                                    remote
+                                    reserve-keyword
+                                    :remote-method="searchProducts"
+                                    :loading="productSearchLoading"
+                                    style="flex: 2.5;"
+                                    @change="(val) => updateItemPrice(val, idx)"
+                                >
+                                    <el-option
+                                        v-for="p in productOptions"
+                                        :key="p.id"
+                                        :label="p.name_ar + ' - $' + p.price"
+                                        :value="p.id"
+                                    />
+                                </el-select>
+                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" />
+                                <el-button
+                                    type="success"
+                                    circle
+                                    plain
+                                    @click="openQuickAddProduct(idx)"
+                                    :title="$t('add_new_product')"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                </el-button>
+                                <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                    <i class="fas fa-trash"></i>
+                                </el-button>
+                            </div>
+                            <!-- Cost is what the supplier is paid; sale price is what
+                                 the order plans to retail the line at. Selecting a
+                                 product fills both from its current figures so
+                                 editing one and leaving the other alone is enough. -->
+                            <div class="item-row-prices">
+                                <div class="price-field">
+                                    <label>{{ $t('purchase_cost') }}</label>
+                                    <el-input v-model="item.unit_price" placeholder="0.00">
+                                        <template #suffix>$</template>
+                                    </el-input>
+                                </div>
+                                <div class="price-field">
+                                    <label>{{ $t('sale_price') }}</label>
+                                    <el-input v-model="item.sale_price" placeholder="0.00">
+                                        <template #suffix>$</template>
+                                    </el-input>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -547,7 +567,7 @@ const resetForm = () => {
     form.discount = 0;
     form.tax = 0;
     form.notes = '';
-    form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+    form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
 };
 
 const normalizeStatus = (status) => String(status || '').toLowerCase();
@@ -664,7 +684,8 @@ const openEditDrawer = async (id) => {
         form.items = order.items.map(item => ({
             product_id: item.product_id,
             quantity: item.quantity,
-            unit_price: item.unit_price
+            unit_price: item.unit_price,
+            sale_price: item.sale_price
         }));
     } catch (e) {
         ElMessage.error(t('failed_to_load_order_for_edit'));
@@ -676,7 +697,7 @@ const openEditDrawer = async (id) => {
 
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push({ product_id: '', quantity: 1, unit_price: '' });
+    form.items.push({ product_id: '', quantity: 1, unit_price: '', sale_price: '' });
 };
 
 const removeItemRow = (idx) => {
@@ -689,7 +710,11 @@ const updateItemPrice = (productId, idx) => {
     const prod = productOptions.value.find(p => p.id === productId)
         || productsStore.products.find(p => p.id === productId);
     if (prod) {
-        form.items[idx].unit_price = prod.price;
+        // A purchase order's price is what the supplier is paid, so it
+        // starts from the product's cost — not its retail price, which is
+        // what the line is instead defaulted to sell at.
+        form.items[idx].unit_price = prod.cost_price || prod.price;
+        form.items[idx].sale_price = prod.price;
     }
 };
 
@@ -774,6 +799,9 @@ const submitQuickAddProduct = async () => {
             if (!form.items[idx].unit_price) {
                 form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
             }
+            if (!form.items[idx].sale_price) {
+                form.items[idx].sale_price = quickAddForm.price || product.price;
+            }
         }
 
         ElMessage.success(t('product_created_and_selected'));
@@ -854,6 +882,7 @@ const prefillFromShortage = async (salesOrderId) => {
             product_id: row.product_id,
             quantity: row.suggested_quantity,
             unit_price: row.unit_price,
+            sale_price: '',
         }));
         // Says where these lines came from, so whoever approves the order later
         // can trace it back to the sale that needed them.
@@ -1243,11 +1272,34 @@ onMounted(async () => {
     color: var(--text-muted);
 }
 
-/* Form Grid row */
-.item-grid-row {
+.item-row-top {
     display: flex;
     gap: 1rem;
     align-items: center;
+}
+
+.item-row-prices {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.price-field {
+    flex: 1;
+    max-width: 220px;
+}
+
+.price-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+}
+
+/* Form Grid row */
+.item-grid-row {
+    display: block;
     margin-bottom: 1rem;
     padding: 1rem;
     background: var(--bg-light);

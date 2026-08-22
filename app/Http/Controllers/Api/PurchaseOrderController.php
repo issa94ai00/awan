@@ -56,6 +56,7 @@ class PurchaseOrderController extends Controller
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
+                'items.*.sale_price' => 'nullable|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
             ], [
                 'supplier_id.required' => 'يجب اختيار المورد',
@@ -96,6 +97,7 @@ class PurchaseOrderController extends Controller
                         'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
                         'quantity' => $item['quantity'],
                         'unit_price' => $item['unit_price'],
+                        'sale_price' => $item['sale_price'] ?? null,
                         'total_price' => $item['unit_price'] * $item['quantity'],
                         'notes' => $item['notes'] ?? null,
                     ]);
@@ -151,6 +153,7 @@ class PurchaseOrderController extends Controller
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.sale_price' => 'nullable|numeric|min:0',
             'items.*.notes' => 'nullable|string|max:500',
         ]);
 
@@ -180,6 +183,7 @@ class PurchaseOrderController extends Controller
                     'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
+                    'sale_price' => $item['sale_price'] ?? null,
                     'total_price' => $item['unit_price'] * $item['quantity'],
                     'notes' => $item['notes'] ?? null,
                 ]);

@@ -15,6 +15,7 @@ class PurchaseOrderItem extends Model
         'product_name',
         'quantity',
         'unit_price',
+        'sale_price',
         'total_price',
         'notes',
     ];
@@ -22,6 +23,7 @@ class PurchaseOrderItem extends Model
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
         'total_price' => 'decimal:2',
     ];
 
