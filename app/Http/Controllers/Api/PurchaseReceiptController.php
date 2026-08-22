@@ -59,6 +59,7 @@ class PurchaseReceiptController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.sale_price' => 'nullable|numeric|min:0',
         ]);
 
         // Derived from the last id: counting reuses a number as soon as any
@@ -81,6 +82,7 @@ class PurchaseReceiptController extends Controller
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
+                    'sale_price' => $item['sale_price'] ?? null,
                     'total' => $item['quantity'] * $item['unit_price'],
                 ]);
             }
@@ -110,6 +112,9 @@ class PurchaseReceiptController extends Controller
                         // what was already on hand — not just open a FIFO
                         // layer for this warehouse.
                         'update_average_cost' => true,
+                        // If the operator set a shelf price on this line, receiving
+                        // the goods is what puts it into effect.
+                        'sale_price' => $item['sale_price'] ?? null,
                     ]
                 );
             }
@@ -189,6 +194,7 @@ class PurchaseReceiptController extends Controller
                         'product_name' => $item->product_name,
                         'quantity' => $item->quantity,
                         'unit_price' => $item->unit_price,
+                        'sale_price' => $item->sale_price,
                         'total_price' => $item->total_price,
                         'product' => $item->product,
                     ];

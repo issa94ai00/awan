@@ -158,6 +158,9 @@
                                 <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
                                 </el-table-column>
+                                <el-table-column prop="sale_price" :label="$t('sale_price')" width="130">
+                                    <template #default="{ row }">{{ row.sale_price != null ? '$' + parseFloat(row.sale_price).toFixed(2) : '-' }}</template>
+                                </el-table-column>
                                 <el-table-column :label="$t('grand_total')" width="130">
                                     <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
                                 </el-table-column>
@@ -342,29 +345,44 @@
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
-                                <el-option
-                                    v-for="p in productsStore.products"
-                                    :key="p.id"
-                                    :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
-                                    :value="p.id"
-                                />
-                            </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
-                            <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;" :disabled="isEditMode" />
-                            <el-button
-                                v-if="!isEditMode"
-                                type="success"
-                                circle
-                                plain
-                                @click="openQuickAddProduct(idx)"
-                                :title="$t('add_new_product')"
-                            >
-                                <i class="fas fa-plus"></i>
-                            </el-button>
-                            <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
-                                <i class="fas fa-trash"></i>
-                            </el-button>
+                            <div class="item-row-top">
+                                <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
+                                    <el-option
+                                        v-for="p in productsStore.products"
+                                        :key="p.id"
+                                        :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
+                                        :value="p.id"
+                                    />
+                                </el-select>
+                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
+                                <el-button
+                                    v-if="!isEditMode"
+                                    type="success"
+                                    circle
+                                    plain
+                                    @click="openQuickAddProduct(idx)"
+                                    :title="$t('add_new_product')"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                </el-button>
+                                <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                    <i class="fas fa-trash"></i>
+                                </el-button>
+                            </div>
+                            <!-- Cost is rolled into the product's weighted-average
+                                 cost on save; sale price, if set, replaces the
+                                 product's shelf price outright — receiving this
+                                 purchase is what puts both into effect. -->
+                            <div class="item-row-prices">
+                                <div class="price-field">
+                                    <label>{{ $t('purchase_cost') }}</label>
+                                    <el-input v-model="item.unit_price" placeholder="0.00" :disabled="isEditMode" />
+                                </div>
+                                <div class="price-field">
+                                    <label>{{ $t('sale_price') }}</label>
+                                    <el-input v-model="item.sale_price" placeholder="0.00" :disabled="isEditMode" />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -510,7 +528,7 @@ const resetForm = () => {
     form.receipt_date = new Date().toISOString().split('T')[0];
     form.tax_amount = 0;
     form.notes = '';
-    form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+    form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
 };
 
 const filteredReceipts = computed(() => {
@@ -567,7 +585,8 @@ const openEditDrawer = async (id) => {
         form.items = receipt.items.map(item => ({
             product_id: item.product_id,
             quantity: item.quantity,
-            unit_price: item.unit_price
+            unit_price: item.unit_price,
+            sale_price: item.sale_price
         }));
 
         // Populate the order list scoped to this receipt's supplier so the
@@ -589,7 +608,7 @@ const openEditDrawer = async (id) => {
 const handleSupplierChange = async (supplierId) => {
     if (form.purchase_order_id) {
         form.purchase_order_id = '';
-        form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
     }
 
     if (!supplierId) {
@@ -606,7 +625,7 @@ const handleSupplierChange = async (supplierId) => {
 
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push({ product_id: '', quantity: 1, unit_price: '' });
+    form.items.push({ product_id: '', quantity: 1, unit_price: '', sale_price: '' });
 };
 
 const removeItemRow = (idx) => {
@@ -616,7 +635,11 @@ const removeItemRow = (idx) => {
 const updateItemPrice = (productId, idx) => {
     const prod = productsStore.products.find(p => p.id === productId);
     if (prod) {
-        form.items[idx].unit_price = prod.price;
+        // The receipt's price is what the supplier is paid, so it starts
+        // from the product's cost — not its retail price, which is what the
+        // line is instead defaulted to sell at.
+        form.items[idx].unit_price = prod.cost_price || prod.price;
+        form.items[idx].sale_price = prod.price;
     }
 };
 
@@ -675,6 +698,9 @@ const submitQuickAddProduct = async () => {
             if (!form.items[idx].unit_price) {
                 form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
             }
+            if (!form.items[idx].sale_price) {
+                form.items[idx].sale_price = quickAddForm.price || product.price;
+            }
         }
 
         ElMessage.success(t('product_created_and_selected'));
@@ -689,7 +715,7 @@ const submitQuickAddProduct = async () => {
 const handlePurchaseOrderChange = async (purchaseOrderId) => {
     if (!purchaseOrderId) {
         // If cleared, reset items to empty
-        form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
         return;
     }
 
@@ -703,14 +729,16 @@ const handlePurchaseOrderChange = async (purchaseOrderId) => {
                 form.supplier_id = data.supplier_id;
             }
             
-            // Auto-fill items from purchase order
+            // Auto-fill items from purchase order, sale price included — it
+            // was already decided when the order was made.
             if (data.items && data.items.length > 0) {
                 form.items = data.items.map(item => ({
                     product_id: item.product_id,
                     quantity: item.quantity,
-                    unit_price: item.unit_price
+                    unit_price: item.unit_price,
+                    sale_price: item.sale_price
                 }));
-                
+
                 ElMessage.success(t('items_filled_from_purchase_order'));
             }
         }
@@ -1129,10 +1157,33 @@ onMounted(async () => {
 }
 
 /* Form Grid row */
-.item-grid-row {
+.item-row-top {
     display: flex;
     gap: 1rem;
     align-items: center;
+}
+
+.item-row-prices {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.price-field {
+    flex: 1;
+    max-width: 220px;
+}
+
+.price-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+}
+
+.item-grid-row {
+    display: block;
     margin-bottom: 1rem;
     padding: 1rem;
     background: var(--bg-light);

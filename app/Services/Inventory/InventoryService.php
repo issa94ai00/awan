@@ -294,6 +294,13 @@ class InventoryService
                 if ($options['update_average_cost'] ?? false) {
                     $this->applyWeightedAverageCost($productId, $signedQuantity, $unitCost);
                 }
+
+                // The shelf price is a decision the operator made when they
+                // typed it on the receipt, not a figure to blend with the old
+                // one — so, unlike cost, it is set outright rather than averaged.
+                if (! empty($options['sale_price'])) {
+                    $this->applySalePrice($productId, (float) $options['sale_price']);
+                }
             }
 
             // The model hook on StockMovement maintains products.stock_quantity,
@@ -566,6 +573,21 @@ class InventoryService
 
         $product->cost_price = round($newCost, 2);
         $product->save();
+    }
+
+    /**
+     * Sets the product's retail price to what the receipt line asked for.
+     *
+     * No lock and no read of the current value: this is a plain overwrite,
+     * not a computation built from it, so there is nothing to race.
+     */
+    private function applySalePrice(int $productId, float $salePrice): void
+    {
+        if ($salePrice <= 0) {
+            return;
+        }
+
+        Product::whereKey($productId)->update(['price' => round($salePrice, 2)]);
     }
 
     private function bucketColumn(string $condition): string
