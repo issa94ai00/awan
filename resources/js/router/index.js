@@ -272,6 +272,11 @@ const routes = [
                 name: 'admin.purchase-returns.index',
                 component: () => import('@/views/admin/purchases/Returns.vue')
             },
+            {
+                path: 'purchases/report',
+                name: 'admin.purchases.report',
+                component: () => import('@/views/admin/purchases/Report.vue')
+            },
             // HR
             {
                 path: 'hr',

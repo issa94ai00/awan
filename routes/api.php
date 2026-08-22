@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\PurchaseReturnController;
 use App\Http\Controllers\Api\SupplierPaymentController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\PurchaseReportController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LedgerAccountController;
@@ -435,6 +436,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/reports/inventory/export', [SalesReportController::class, 'inventoryExport'])->name('api.admin.reports.inventory.export');
             Route::get('/reports/invoices/dimensions', [SalesReportController::class, 'invoiceDimensions'])->name('api.admin.reports.invoices.dimensions');
             Route::get('/reports/invoices/export', [SalesReportController::class, 'invoiceExport'])->name('api.admin.reports.invoices.export');
+
+            // Purchase Reports API
+            Route::get('/reports/purchases', [PurchaseReportController::class, 'purchaseReport'])->name('api.admin.reports.purchases');
+            Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'purchaseSummary'])->name('api.admin.reports.purchases.summary');
+            Route::get('/reports/purchases/dimensions', [PurchaseReportController::class, 'purchaseDimensions'])->name('api.admin.reports.purchases.dimensions');
+            Route::get('/reports/purchases/performance', [PurchaseReportController::class, 'purchasePerformance'])->name('api.admin.reports.purchases.performance');
+            Route::get('/reports/purchases/product-spend', [PurchaseReportController::class, 'productSpend'])->name('api.admin.reports.purchases.product-spend');
+            Route::get('/reports/purchases/top-suppliers', [PurchaseReportController::class, 'topSuppliers'])->name('api.admin.reports.purchases.top-suppliers');
+            Route::get('/reports/purchases/export', [PurchaseReportController::class, 'export'])->name('api.admin.reports.purchases.export');
 
             // Admin Attendance API
             Route::get('/attendance', [AttendanceController::class, 'index'])->name('api.admin.attendance.index');
