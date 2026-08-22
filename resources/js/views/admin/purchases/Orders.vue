@@ -382,6 +382,15 @@
                             <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;">
                                 <template #suffix>$</template>
                             </el-input>
+                            <el-button
+                                type="success"
+                                circle
+                                plain
+                                @click="openQuickAddProduct(idx)"
+                                :title="$t('add_new_product')"
+                            >
+                                <i class="fas fa-plus"></i>
+                            </el-button>
                             <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                 <i class="fas fa-trash"></i>
                             </el-button>
@@ -395,6 +404,68 @@
                 </div>
             </el-form>
         </el-drawer>
+
+        <!-- Quick Add Product Dialog: creates a missing item and drops it
+             straight into the order line that needed it, so a product that
+             does not exist yet no longer means abandoning the order to go
+             create it in the catalog first. -->
+        <el-dialog
+            v-model="quickAddDialogVisible"
+            :title="$t('quick_add_product')"
+            width="480px"
+            append-to-body
+            destroy-on-close
+        >
+            <p class="quick-add-hint">{{ $t('quick_add_product_hint') }}</p>
+            <el-form :model="quickAddForm" label-position="top">
+                <el-form-item :label="$t('product_name_ar')" required>
+                    <el-input v-model="quickAddForm.name_ar" />
+                </el-form-item>
+                <el-form-item :label="$t('product_name_en')" required>
+                    <el-input v-model="quickAddForm.name_en" />
+                </el-form-item>
+                <el-form-item :label="$t('category')" required>
+                    <el-select v-model="quickAddForm.category_id" filterable style="width: 100%">
+                        <el-option
+                            v-for="c in productsStore.categories"
+                            :key="c.id"
+                            :label="c.name_ar || c.name"
+                            :value="c.id"
+                        />
+                    </el-select>
+                </el-form-item>
+                <el-row :gutter="16">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('purchase_cost')">
+                            <el-input v-model="quickAddForm.cost_price" type="number" min="0" step="0.01" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('sale_price')" required>
+                            <el-input v-model="quickAddForm.price" type="number" min="0" step="0.01" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-row :gutter="16">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('sku_optional')">
+                            <el-input v-model="quickAddForm.sku" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('unit_optional')">
+                            <el-input v-model="quickAddForm.unit" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+            </el-form>
+            <template #footer>
+                <el-button @click="quickAddDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickAddSubmitting" @click="submitQuickAddProduct">
+                    {{ $t('save') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -408,6 +479,7 @@ import { useSuppliersStore } from '@/stores/suppliers';
 import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
+import { baseCurrencyCode } from '@/utils/currency';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -440,6 +512,21 @@ const editingOrderId = ref(null);
 const productOptions = ref([]);
 const productSearchLoading = ref(false);
 let productSearchTimer = null;
+
+// Quick-add-product state: lets a missing item be created without leaving
+// the order form, then drops straight into the row that needed it.
+const quickAddDialogVisible = ref(false);
+const quickAddSubmitting = ref(false);
+const quickAddTargetIndex = ref(null);
+const quickAddForm = reactive({
+    name_ar: '',
+    name_en: '',
+    category_id: '',
+    cost_price: '',
+    price: '',
+    sku: '',
+    unit: ''
+});
 
 const form = reactive({
     supplier_id: '',
@@ -626,6 +713,76 @@ const searchProducts = (query) => {
             productSearchLoading.value = false;
         }
     }, 300);
+};
+
+// Quick-add-product: opens pre-filled with whatever price the operator had
+// already typed on this line, since that number is the purchase cost anyway.
+const openQuickAddProduct = (idx) => {
+    quickAddTargetIndex.value = idx;
+    quickAddForm.name_ar = '';
+    quickAddForm.name_en = '';
+    quickAddForm.category_id = '';
+    quickAddForm.cost_price = form.items[idx]?.unit_price || '';
+    quickAddForm.price = '';
+    quickAddForm.sku = '';
+    quickAddForm.unit = '';
+    if (!productsStore.categories.length) {
+        productsStore.fetchCategories().catch(() => {});
+    }
+    quickAddDialogVisible.value = true;
+};
+
+const slugify = (text) => text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
+const submitQuickAddProduct = async () => {
+    if (!quickAddForm.name_ar || !quickAddForm.name_en || !quickAddForm.category_id || !quickAddForm.price) {
+        ElMessage.warning(t('please_fill_required_product_fields'));
+        return;
+    }
+
+    quickAddSubmitting.value = true;
+    try {
+        // The catalog requires a unique slug, but this dialog never shows one —
+        // a timestamp suffix keeps two products with the same name from
+        // colliding without asking the operator to think about it.
+        const baseSlug = slugify(quickAddForm.name_en) || 'product';
+        const product = await productsStore.createProduct({
+            name_ar: quickAddForm.name_ar,
+            name_en: quickAddForm.name_en,
+            slug: `${baseSlug}-${Date.now().toString(36)}`,
+            category_id: quickAddForm.category_id,
+            price: quickAddForm.price,
+            cost_price: quickAddForm.cost_price || null,
+            sku: quickAddForm.sku || null,
+            unit: quickAddForm.unit || null,
+            currency: baseCurrencyCode(),
+            stock_quantity: 0
+        });
+
+        // Drop it into both pools: the search results the row renders from,
+        // and the store's list other rows fall back to.
+        productOptions.value = [product, ...productOptions.value];
+
+        const idx = quickAddTargetIndex.value;
+        if (idx !== null && form.items[idx]) {
+            form.items[idx].product_id = product.id;
+            if (!form.items[idx].unit_price) {
+                form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
+            }
+        }
+
+        ElMessage.success(t('product_created_and_selected'));
+        quickAddDialogVisible.value = false;
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_create_product'));
+    } finally {
+        quickAddSubmitting.value = false;
+    }
 };
 
 const saveOrder = async () => {
@@ -1078,6 +1235,12 @@ onMounted(async () => {
     color: #1e3a8a;
     margin: 0 0 1rem 0;
     line-height: 1.5;
+}
+
+.quick-add-hint {
+    margin: 0 0 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
 }
 
 /* Form Grid row */
