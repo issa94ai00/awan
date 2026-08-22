@@ -250,24 +250,37 @@
                 <el-row :gutter="20">
                     <el-col :span="12">
                         <el-form-item :label="$t('supplier')" required>
-                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable>
-                                <el-option 
-                                    v-for="s in suppliersStore.suppliers" 
-                                    :key="s.id" 
-                                    :label="s.name" 
-                                    :value="s.id" 
+                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable @change="handleSupplierChange">
+                                <el-option
+                                    v-for="s in suppliersStore.suppliers"
+                                    :key="s.id"
+                                    :label="s.name"
+                                    :value="s.id"
                                 />
                             </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
+                        <!-- A supplier's own orders are the only ones that can ever
+                             be received against, so the list is scoped to whichever
+                             supplier is chosen instead of listing every order in
+                             the system and letting a mismatch slip through. -->
                         <el-form-item :label="$t('linked_purchase_order')">
-                            <el-select v-model="form.purchase_order_id" :placeholder="$t('select_purchase_order_or_direct')" style="width: 100%" filterable clearable @change="handlePurchaseOrderChange">
-                                <el-option 
-                                    v-for="o in purchaseOrdersStore.orders" 
-                                    :key="o.id" 
-                                    :label="o.order_number" 
-                                    :value="o.id" 
+                            <el-select
+                                v-model="form.purchase_order_id"
+                                :placeholder="form.supplier_id ? $t('select_purchase_order_or_direct') : $t('select_supplier_first')"
+                                style="width: 100%"
+                                filterable
+                                clearable
+                                :disabled="!form.supplier_id"
+                                :loading="purchaseOrdersStore.loading"
+                                @change="handlePurchaseOrderChange"
+                            >
+                                <el-option
+                                    v-for="o in purchaseOrdersStore.orders"
+                                    :key="o.id"
+                                    :label="o.order_number"
+                                    :value="o.id"
                                 />
                             </el-select>
                         </el-form-item>
@@ -556,11 +569,38 @@ const openEditDrawer = async (id) => {
             quantity: item.quantity,
             unit_price: item.unit_price
         }));
+
+        // Populate the order list scoped to this receipt's supplier so the
+        // already-linked order (if any) shows up as a valid option.
+        if (form.supplier_id) {
+            await purchaseOrdersStore.fetchOrders({ supplier_id: form.supplier_id, per_page: 100 }).catch(() => {});
+        }
     } catch (e) {
         ElMessage.error(t('failed_to_load_receipt_for_edit'));
         formDrawerVisible.value = false;
     } finally {
         submittingForm.value = false;
+    }
+};
+
+// Purchase orders are scoped to the chosen supplier: an order belonging to a
+// different supplier could never be received against this receipt anyway,
+// so listing every order in the system just invited picking the wrong one.
+const handleSupplierChange = async (supplierId) => {
+    if (form.purchase_order_id) {
+        form.purchase_order_id = '';
+        form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+    }
+
+    if (!supplierId) {
+        purchaseOrdersStore.orders = [];
+        return;
+    }
+
+    try {
+        await purchaseOrdersStore.fetchOrders({ supplier_id: supplierId, per_page: 100 });
+    } catch (e) {
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
     }
 };
 
@@ -744,7 +784,9 @@ const deleteReceipt = async (id) => {
 onMounted(async () => {
     store.fetchReceipts().catch(() => {});
     suppliersStore.fetchSuppliers().catch(() => {});
-    purchaseOrdersStore.fetchOrders().catch(() => {});
+    // Purchase orders load once a supplier is chosen (handleSupplierChange) or
+    // when editing a receipt that already has one, so the list is always
+    // scoped to a supplier instead of dumping every order in the system.
     productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
 });
