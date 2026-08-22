@@ -144,6 +144,19 @@ class PurchaseReceiptController extends Controller
                 + (float) ($receipt->tax_amount ?? 0)
             );
 
+            // Receiving goods against a linked order is what completes it: the
+            // order was a promise to buy, and this receipt is that promise
+            // kept. Skips a cancelled order rather than resurrecting it —
+            // goods should never have been received against one anyway.
+            if ($receipt->purchase_order_id) {
+                PurchaseOrder::whereKey($receipt->purchase_order_id)
+                    ->where('status', '!=', 'cancelled')
+                    ->update([
+                        'status' => 'completed',
+                        'received_date' => $receipt->receipt_date ?? now(),
+                    ]);
+            }
+
             return $receipt;
         });
 
