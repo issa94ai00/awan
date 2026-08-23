@@ -366,8 +366,8 @@
 
                         <div v-if="showExpenses" class="extras-body">
                             <div v-for="(expense, index) in form.expenses" :key="index" class="extra-row">
-                                <el-input v-model="expense.description" :placeholder="t('description')" size="small" />
-                                <el-input v-model.number="expense.amount" type="number" min="0" size="small" style="width: 110px" />
+                                <el-input v-model="expense.description" :placeholder="t('description')" size="small" class="expense-desc" />
+                                <el-input v-model.number="expense.amount" type="number" min="0" size="small" class="expense-amount" />
                                 <el-button text type="danger" size="small" @click="removeExpense(index)">
                                     <el-icon><Delete /></el-icon>
                                 </el-button>
@@ -1585,6 +1585,11 @@ onUnmounted(() => {
 
 .extras-body { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
 .extra-row { display: flex; align-items: center; gap: 0.4rem; }
+/* Without min-width:0 a flex item can't shrink past its content, so on a
+   narrow rail the fixed-width amount field pushed the row wider than its
+   card instead of letting the description give up space first. */
+.extra-row .expense-desc { flex: 1; min-width: 0; }
+.extra-row .expense-amount { width: 110px; flex: none; }
 
 .totals {
     margin: 0;
@@ -1653,6 +1658,10 @@ onUnmounted(() => {
 
     .header-actions .el-button--large { display: none; }
 
+    /* Ctrl+B / Ctrl+Enter only mean anything with a physical keyboard. */
+    .kbd-hint,
+    .shortcuts { display: none; }
+
     .mobile-bar {
         position: fixed;
         inset-inline: 0;
@@ -1677,5 +1686,11 @@ onUnmounted(() => {
     .line-fields { grid-template-columns: 1fr; }
     .allocation-row { grid-template-columns: 1fr; }
     .allocation-remove { justify-self: end; }
+    /* Paired selects (discount/tax, payment method/status) get too narrow
+       for their own labels and options once the rail is this tight. */
+    .fields-row { grid-template-columns: 1fr; }
+    .extra-row { flex-wrap: wrap; }
+    .extra-row .expense-desc { flex-basis: 100%; }
+    .extra-row .expense-amount { flex: 1; width: auto; }
 }
 </style>
