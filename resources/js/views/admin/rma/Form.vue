@@ -58,10 +58,10 @@
                     </div>
                     <div class="customer-option-details">
                       <span class="customer-option-phone" v-if="customer.phone">
-                        <el-icon><Phone /></el-icon> {{ customer.phone }}
+                        <el-icon><Phone /></el-icon> <span>{{ customer.phone }}</span>
                       </span>
                       <span class="customer-option-email" v-if="customer.email">
-                        <el-icon><Message /></el-icon> {{ customer.email }}
+                        <el-icon><Message /></el-icon> <span>{{ customer.email }}</span>
                       </span>
                     </div>
                   </div>
@@ -517,28 +517,36 @@ const onCustomerChange = async () => {
 
 const loadCustomerStats = async (customerId) => {
   try {
-    // Get total orders for this customer
-    const totalOrders = orders.value.filter(order => {
-      const orderCustomerId = order.customer_id || order.customer?.id
-      return orderCustomerId === customerId
-    }).length
-    
-    // Get delivered orders (available for return)
-    const availableOrders = orders.value.filter(order => {
-      const orderCustomerId = order.customer_id || order.customer?.id
-      return orderCustomerId === customerId && order.status === 'delivered'
-    }).length
-    
+    // orders.value already holds exactly this customer's delivered orders —
+    // loadOrders() requested { customer_id, status: 'delivered' } — so no
+    // further filtering is needed for the returnable count. Filtering it
+    // again for "total orders" (as before) always produced the same number
+    // as "returnable orders", since every entry in the array was already
+    // delivered; the two stats read identical no matter the customer.
+    const availableOrders = orders.value.length
+
+    // The customer's real order history, across every status — a separate,
+    // lightweight (per_page: 1) call just for the count.
+    let totalOrders = availableOrders
+    try {
+      const totalResponse = await api.get('/sales-orders', {
+        params: { customer_id: customerId, per_page: 1 }
+      })
+      totalOrders = totalResponse.data.data?.pagination?.total ?? availableOrders
+    } catch (error) {
+      // Fall back to the delivered count rather than showing nothing.
+    }
+
     // Get total returns for this customer (from RMA requests)
     try {
-      const response = await api.get('/admin/rma', { 
-        params: { 
+      const response = await api.get('/admin/rma', {
+        params: {
           customer_id: customerId,
           per_page: 1
-        } 
+        }
       })
       const totalReturns = response.data.data?.total || 0
-      
+
       customerStats.value = {
         totalOrders,
         totalReturns,
@@ -1241,6 +1249,10 @@ onMounted(async () => {
   font-weight: 700;
   color: #1e293b;
   font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .customer-option-id {
@@ -1250,12 +1262,14 @@ onMounted(async () => {
   background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
+  flex: none;
 }
 
 .customer-option-details {
   display: flex;
   gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .customer-option-phone,
@@ -1266,6 +1280,16 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.customer-option-phone span,
+.customer-option-email span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .customer-option-phone .el-icon,
