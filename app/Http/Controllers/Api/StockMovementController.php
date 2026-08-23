@@ -122,6 +122,53 @@ class StockMovementController extends Controller
         ], 201);
     }
 
+    /**
+     * Moves stock from one warehouse straight into another via
+     * InventoryService::transfer() — the atomic primitive, not the
+     * InventoryTransfer ship/receive workflow. There is nothing in transit to
+     * track here: the destination has the stock the moment this returns.
+     */
+    public function transfer(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'from_warehouse_id' => 'required|exists:warehouses,id',
+            'to_warehouse_id' => 'required|exists:warehouses,id|different:from_warehouse_id',
+            'quantity' => 'required|integer|min:1',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            [$out, $in] = $this->inventory->transfer(
+                $validated['product_id'],
+                $validated['quantity'],
+                $validated['from_warehouse_id'],
+                $validated['to_warehouse_id'],
+                [
+                    'reference' => $validated['reference'] ?? null,
+                    'reason' => $validated['notes'] ?? null,
+                    'created_by' => auth()->id(),
+                ]
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم نقل الكمية بين المستودعين بنجاح',
+            'data' => [
+                'out' => $out?->load(['product', 'warehouse']),
+                'in' => $in?->load(['product', 'warehouse']),
+            ],
+        ], 201);
+    }
+
     private function movementOptions(array $validated): array
     {
         return [

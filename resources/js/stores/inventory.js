@@ -72,5 +72,10 @@ export const useInventoryStore = defineStore('inventory', {
             const res = await inventoryApi.createMovement(data);
             return res.data;
         },
+
+        async transferStock(data) {
+            const res = await inventoryApi.transferStock(data);
+            return res.data;
+        },
     },
 });

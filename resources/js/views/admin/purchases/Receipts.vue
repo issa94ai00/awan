@@ -461,12 +461,14 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
+import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { baseCurrencyCode } from '@/utils/currency';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -475,6 +477,8 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const { t } = useI18n();
 
+const route = useRoute();
+const router = useRouter();
 const store = usePurchaseReceiptsStore();
 const suppliersStore = useSuppliersStore();
 const purchaseOrdersStore = usePurchaseOrdersStore();
@@ -564,6 +568,27 @@ const openCreateDrawer = () => {
     isEditMode.value = false;
     resetForm();
     formDrawerVisible.value = true;
+};
+
+// Reached via the "record a goods receipt" prompt shown right after a
+// purchase order is placed: opens the create drawer pre-bound to that order
+// instead of leaving the operator to search for it in the picker.
+const openCreateDrawerForOrder = async (orderId) => {
+    isEditMode.value = false;
+    resetForm();
+    formDrawerVisible.value = true;
+    try {
+        const res = await purchaseOrdersApi.getById(orderId);
+        const order = res.data.data;
+        if (order?.supplier_id) {
+            form.supplier_id = order.supplier_id;
+            await purchaseOrdersStore.fetchOrders({ supplier_id: order.supplier_id, per_page: 100 }).catch(() => {});
+        }
+        form.purchase_order_id = orderId;
+        await handlePurchaseOrderChange(orderId);
+    } catch (e) {
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
+    }
 };
 
 const openEditDrawer = async (id) => {
@@ -817,6 +842,13 @@ onMounted(async () => {
     // scoped to a supplier instead of dumping every order in the system.
     productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
+
+    const orderId = route.query.create_for_order;
+    if (orderId) {
+        // Drop the query param so a refresh/back-nav doesn't reopen the drawer.
+        router.replace({ query: { ...route.query, create_for_order: undefined } });
+        openCreateDrawerForOrder(orderId);
+    }
 });
 </script>
 

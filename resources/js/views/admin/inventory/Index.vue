@@ -10,6 +10,9 @@
                 <el-button type="info" plain @click="openAdjustmentDrawer">
                     <i class="fas fa-sliders-h mr-1"></i> {{ $t('stock_adjustment') }}
                 </el-button>
+                <el-button type="info" plain @click="openTransferDrawer">
+                    <i class="fas fa-exchange-alt mr-1"></i> {{ $t('transfer_stock') }}
+                </el-button>
                 <router-link to="/admin/inventory/movements">
                     <el-button>
                         <i class="fas fa-history mr-1"></i> {{ $t('movement_log') }}
@@ -307,6 +310,64 @@
                 <div class="drawer-footer">
                     <el-button @click="adjustmentDrawerVisible = false">{{ $t('cancel') }}</el-button>
                     <el-button type="primary" :loading="submittingForm" @click="saveAdjustment">{{ $t('confirm_movement') }}</el-button>
+                </div>
+            </el-form>
+        </el-drawer>
+
+        <!-- Transfer Drawer -->
+        <el-drawer
+            v-model="transferDrawerVisible"
+            :title="$t('transfer_between_warehouses')"
+            size="42%"
+            direction="rtl"
+            destroy-on-close
+            class="form-drawer"
+        >
+            <el-form :model="transferForm" label-position="top">
+                <el-form-item :label="$t('product')" required>
+                    <el-select v-model="transferForm.product_id" :placeholder="$t('select_product')" style="width: 100%" filterable>
+                        <el-option
+                            v-for="p in products"
+                            :key="p.id"
+                            :label="`${p.name_ar || p.name_en || p.name} (SKU: ${p.sku})`"
+                            :value="p.id"
+                        />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item :label="$t('from_warehouse')" required>
+                    <el-select v-model="transferForm.from_warehouse_id" :placeholder="$t('select_warehouse')" style="width: 100%">
+                        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item :label="$t('to_warehouse')" required>
+                    <el-select v-model="transferForm.to_warehouse_id" :placeholder="$t('select_warehouse')" style="width: 100%">
+                        <el-option
+                            v-for="w in warehouses"
+                            :key="w.id"
+                            :label="w.name"
+                            :value="w.id"
+                            :disabled="w.id === transferForm.from_warehouse_id"
+                        />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item :label="$t('quantity')" required>
+                    <el-input-number v-model="transferForm.quantity" :min="1" style="width: 100%" />
+                </el-form-item>
+
+                <el-form-item :label="$t('reference_code')">
+                    <el-input v-model="transferForm.reference" :placeholder="$t('reference_example')" />
+                </el-form-item>
+
+                <el-form-item :label="$t('notes')">
+                    <el-input v-model="transferForm.notes" type="textarea" :rows="3" :placeholder="$t('movement_reason_placeholder')" />
+                </el-form-item>
+
+                <div class="drawer-footer">
+                    <el-button @click="transferDrawerVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :loading="submittingTransfer" @click="saveTransfer">{{ $t('confirm_transfer') }}</el-button>
                 </div>
             </el-form>
         </el-drawer>
@@ -652,6 +713,70 @@ const resetForm = () => {
 const openAdjustmentDrawer = () => {
     resetForm();
     adjustmentDrawerVisible.value = true;
+};
+
+// Transfer between warehouses
+const transferDrawerVisible = ref(false);
+const submittingTransfer = ref(false);
+const transferForm = reactive({
+    product_id: null,
+    from_warehouse_id: null,
+    to_warehouse_id: null,
+    quantity: 1,
+    reference: '',
+    notes: '',
+});
+
+const resetTransferForm = () => {
+    transferForm.product_id = null;
+    transferForm.from_warehouse_id = null;
+    transferForm.to_warehouse_id = null;
+    transferForm.quantity = 1;
+    transferForm.reference = '';
+    transferForm.notes = '';
+};
+
+const openTransferDrawer = () => {
+    resetTransferForm();
+    transferDrawerVisible.value = true;
+};
+
+const saveTransfer = async () => {
+    if (!transferForm.product_id) {
+        ElMessage.warning(t('please_select_product_first'));
+        return;
+    }
+    if (!transferForm.from_warehouse_id || !transferForm.to_warehouse_id) {
+        ElMessage.warning(t('please_select_both_warehouses'));
+        return;
+    }
+    if (transferForm.from_warehouse_id === transferForm.to_warehouse_id) {
+        ElMessage.warning(t('warehouses_must_differ'));
+        return;
+    }
+    if (!transferForm.quantity || transferForm.quantity < 1) {
+        ElMessage.warning(t('please_set_quantity'));
+        return;
+    }
+
+    submittingTransfer.value = true;
+    try {
+        await store.transferStock({
+            product_id: transferForm.product_id,
+            from_warehouse_id: transferForm.from_warehouse_id,
+            to_warehouse_id: transferForm.to_warehouse_id,
+            quantity: transferForm.quantity,
+            reference: transferForm.reference,
+            notes: transferForm.notes,
+        });
+        ElMessage.success(t('stock_transferred'));
+        transferDrawerVisible.value = false;
+        await refreshAll();
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_transfer_stock'));
+    } finally {
+        submittingTransfer.value = false;
+    }
 };
 
 const saveAdjustment = async () => {

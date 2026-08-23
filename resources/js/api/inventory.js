@@ -17,6 +17,10 @@ export const inventoryApi = {
         return api.post('/admin/inventory/movements', data);
     },
 
+    transferStock(data) {
+        return api.post('/admin/inventory/transfer', data);
+    },
+
     getWarehouses(params) {
         return api.get('/admin/wms/warehouses', { params });
     },

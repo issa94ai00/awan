@@ -21,7 +21,7 @@
                     @click="submitInvoice"
                 >
                     <el-icon><Check /></el-icon>
-                    {{ isEdit ? t('save_changes') : t('issue_invoice') }}
+                    {{ isEdit ? t('save_changes') : t('create_invoice') }}
                 </el-button>
             </div>
         </header>
@@ -146,7 +146,7 @@
                                 </div>
 
                                 <div class="line-total">
-                                    <span class="line-total-value">{{ money(item.price * item.quantity) }}</span>
+                                    <span class="line-total-value">{{ money(item.price * lineQuantity(item)) }}</span>
                                     <el-button
                                         text
                                         type="danger"
@@ -159,18 +159,25 @@
                                 </div>
                             </div>
 
-                            <div class="line-fields">
-                                <!-- Which shelf this empties. The server refuses
-                                     a line it cannot cover; choosing here against
-                                     live figures means finding out now rather
-                                     than on submit. -->
-                                <label class="field field-source">
+                            <!-- Which shelf this empties, and how much of the
+                                 line each takes. The server refuses a line it
+                                 cannot cover; choosing here against live figures
+                                 means finding out now rather than on submit. A
+                                 line can draw from more than one warehouse when
+                                 no single one holds the whole quantity. -->
+                            <div class="allocations">
+                                <div class="allocations-head">
                                     <span class="field-label">{{ t('sales.source_warehouse') }}</span>
+                                    <span class="allocations-total">{{ t('quantity') }}: {{ formatNumber(lineQuantity(item)) }}</span>
+                                </div>
+
+                                <div v-for="(alloc, aIdx) in item.allocations" :key="aIdx" class="allocation-row">
                                     <el-select
-                                        v-model="item.warehouse_id"
+                                        v-model="alloc.warehouse_id"
                                         :placeholder="t('sales.choose_source')"
                                         :loading="item.loadingStock"
                                         size="default"
+                                        class="allocation-source"
                                         @change="onSourceChange(index)"
                                     >
                                         <el-option
@@ -178,6 +185,7 @@
                                             :key="row.warehouse_id"
                                             :value="row.warehouse_id"
                                             :label="row.warehouse_name"
+                                            :disabled="isSourceTaken(item, alloc, row.warehouse_id)"
                                         >
                                             <span class="option-row">
                                                 <span>{{ row.warehouse_name }}</span>
@@ -187,8 +195,57 @@
                                             </span>
                                         </el-option>
                                     </el-select>
-                                </label>
 
+                                    <div class="stepper allocation-qty">
+                                        <button type="button" :disabled="alloc.quantity <= 1" @click="decrementAllocQty(index, aIdx)">
+                                            <el-icon><Minus /></el-icon>
+                                        </button>
+                                        <input v-model.number="alloc.quantity" type="number" min="1" />
+                                        <button type="button" @click="incrementAllocQty(index, aIdx)">
+                                            <el-icon><Plus /></el-icon>
+                                        </button>
+                                    </div>
+
+                                    <el-button
+                                        v-if="item.allocations.length > 1"
+                                        text
+                                        type="danger"
+                                        size="small"
+                                        class="allocation-remove"
+                                        :title="t('remove')"
+                                        @click="removeAllocation(index, aIdx)"
+                                    >
+                                        <el-icon><Delete /></el-icon>
+                                    </el-button>
+
+                                    <!-- Stated on the allocation that caused it,
+                                         not collected into a banner the reader
+                                         has to map back. -->
+                                    <p v-if="isAllocationShort(item, alloc)" class="allocation-warning">
+                                        <el-icon><WarningFilled /></el-icon>
+                                        {{ t('sales.line_short_at_warehouse', {
+                                            product: item.name,
+                                            warehouse: warehouseName(item, alloc.warehouse_id),
+                                            available: formatNumber(availableAt(item, alloc.warehouse_id)),
+                                            required: formatNumber(askedFor(items, item.product_id, alloc.warehouse_id)),
+                                        }) }}
+                                    </p>
+                                    <p v-else-if="!alloc.warehouse_id" class="allocation-warning subtle">
+                                        {{ t('sales.choose_source_for_this_line') }}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    class="add-source-btn"
+                                    :disabled="!canAddAllocation(item)"
+                                    @click="addAllocation(index)"
+                                >
+                                    <el-icon><Plus /></el-icon> {{ t('sales.add_source_warehouse') }}
+                                </button>
+                            </div>
+
+                            <div class="line-fields">
                                 <label class="field field-unit">
                                     <span class="field-label">{{ t('unit') }}</span>
                                     <el-select
@@ -206,37 +263,11 @@
                                     </el-select>
                                 </label>
 
-                                <label class="field field-qty">
-                                    <span class="field-label">{{ t('quantity') }}</span>
-                                    <div class="stepper">
-                                        <button type="button" :disabled="item.quantity <= 1" @click="decrementQty(index)">
-                                            <el-icon><Minus /></el-icon>
-                                        </button>
-                                        <input v-model.number="item.quantity" type="number" min="1" />
-                                        <button type="button" @click="incrementQty(index)">
-                                            <el-icon><Plus /></el-icon>
-                                        </button>
-                                    </div>
-                                </label>
-
                                 <label class="field field-price">
                                     <span class="field-label">{{ t('unit_price') }}</span>
                                     <el-input v-model.number="item.price" type="number" min="0" step="0.01" />
                                 </label>
                             </div>
-
-                            <!-- Stated on the line that caused it, not collected
-                                 into a banner the reader has to map back. -->
-                            <p v-if="isLineShort(item)" class="line-warning">
-                                <el-icon><WarningFilled /></el-icon>
-                                {{ t('sales.line_exceeds_stock', { product: item.name, available: formatNumber(availableFor(item)) }) }}
-                            </p>
-                            <p v-else-if="item.warehouse_id" class="line-note">
-                                {{ t('available') }} {{ formatNumber(availableFor(item)) }}
-                            </p>
-                            <p v-else class="line-warning subtle">
-                                {{ t('sales.choose_source_for_this_line') }}
-                            </p>
                         </article>
                     </div>
                 </div>
@@ -407,7 +438,7 @@
                 <strong>{{ money(total) }}</strong>
             </div>
             <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submitInvoice">
-                {{ isEdit ? t('save_changes') : t('issue_invoice') }}
+                {{ isEdit ? t('save_changes') : t('create_invoice') }}
             </el-button>
         </div>
     </div>
@@ -425,7 +456,10 @@ import { formatNumber } from '@/utils/currency';
 import {
     summariseSources,
     availableAt,
+    askedFor,
     isLineShort as lineIsShort,
+    isAllocationShort as allocationIsShort,
+    lineQuantity,
     preferredSource,
 } from '@/utils/stockSources';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -501,11 +535,20 @@ const salesEmployees = ref([]);
  * does not fit is marked before anyone presses save.
  * ------------------------------------------------------------------ */
 
-const availableFor = (item) => availableAt(item);
 const isLineShort = (item) => lineIsShort(items.value, item);
+const isAllocationShort = (item, allocation) => allocationIsShort(items.value, item, allocation);
+const warehouseName = (item, warehouseId) =>
+    item.sources?.find((row) => row.warehouse_id === warehouseId)?.warehouse_name || '';
+// Another allocation on the same line already draws from this warehouse — the
+// dropdown hides it rather than letting the seller pick one shelf twice.
+const isSourceTaken = (item, allocation, warehouseId) =>
+    (item.allocations || []).some((row) => row !== allocation && row.warehouse_id === warehouseId);
+const canAddAllocation = (item) => (item.sources?.length || 0) > (item.allocations?.length || 0);
 
 const shortLines = computed(() => items.value.filter(isLineShort));
-const missingSource = computed(() => items.value.filter((item) => !item.warehouse_id));
+const missingSource = computed(() =>
+    items.value.filter((item) => (item.allocations || []).some((allocation) => !allocation.warehouse_id))
+);
 
 /**
  * Reads what each warehouse holds of a product, newest figures first.
@@ -526,8 +569,17 @@ const loadSourcesFor = async (item) => {
         // one) and ordered by what is free.
         item.sources = summariseSources(data?.data?.stock ?? []);
 
-        if (!item.warehouse_id) {
-            item.warehouse_id = preferredSource(item.sources, item.quantity);
+        // Fills in any allocation still missing a warehouse — preferring one no
+        // other allocation on this line already draws from, so two blank
+        // allocations do not both default to the same shelf.
+        const used = new Set(item.allocations.filter((a) => a.warehouse_id).map((a) => a.warehouse_id));
+        for (const allocation of item.allocations) {
+            if (allocation.warehouse_id) continue;
+
+            const candidates = item.sources.filter((row) => !used.has(row.warehouse_id));
+            const picked = preferredSource(candidates.length ? candidates : item.sources, allocation.quantity);
+            allocation.warehouse_id = picked;
+            if (picked) used.add(picked);
         }
     } catch (error) {
         item.sources = [];
@@ -552,7 +604,7 @@ const onSourceChange = (index) => {
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 const subtotal = computed(() =>
-    items.value.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0)
+    items.value.reduce((sum, item) => sum + (Number(item.price) || 0) * lineQuantity(item), 0)
 );
 
 const totalExpenses = computed(() =>
@@ -647,7 +699,10 @@ const addProduct = (product) => {
     const existing = items.value.findIndex((line) => line.product_id === product.id);
 
     if (existing !== -1) {
-        items.value[existing].quantity += 1;
+        // Bumps the first source rather than opening a new allocation — most
+        // repeat adds mean "one more of the same"; a split across warehouses is
+        // the deliberate choice made with "add another source" below.
+        items.value[existing].allocations[0].quantity += 1;
     } else {
         const defaultUnit = {
             id: null,
@@ -663,14 +718,15 @@ const addProduct = (product) => {
             name: product.name_ar || product.name_en,
             sku: product.sku || '',
             price: parseFloat(product.price) || 0,
-            quantity: 1,
             stock: product.stock_quantity || 0,
             unit: product.unit || '',
             selectedUnit: defaultUnit,
             units: [defaultUnit],
             base_price: parseFloat(product.price) || 0,
-            // Where this line is taken from, and what each warehouse holds.
-            warehouse_id: null,
+            // Where this line is taken from, and how much of it each source
+            // covers. Starts as one allocation; "add another source" below
+            // splits it across more than one warehouse.
+            allocations: [{ warehouse_id: null, quantity: 1 }],
             sources: [],
             loadingStock: false,
         });
@@ -726,9 +782,30 @@ const onUnitChange = (index) => {
 };
 
 const removeItem = (index) => items.value.splice(index, 1);
-const incrementQty = (index) => { items.value[index].quantity += 1; };
-const decrementQty = (index) => {
-    if (items.value[index].quantity > 1) items.value[index].quantity -= 1;
+
+const incrementAllocQty = (index, allocIndex) => {
+    items.value[index].allocations[allocIndex].quantity += 1;
+};
+const decrementAllocQty = (index, allocIndex) => {
+    const allocation = items.value[index].allocations[allocIndex];
+    if (allocation.quantity > 1) allocation.quantity -= 1;
+};
+
+// Opens a second (or third...) source on the line, defaulting to a warehouse
+// no allocation on it already uses.
+const addAllocation = (index) => {
+    const item = items.value[index];
+    if (!item) return;
+
+    const used = new Set(item.allocations.map((a) => a.warehouse_id).filter(Boolean));
+    const candidate = (item.sources || []).find((row) => !used.has(row.warehouse_id));
+    item.allocations.push({ warehouse_id: candidate?.warehouse_id ?? null, quantity: 1 });
+};
+
+const removeAllocation = (index, allocIndex) => {
+    const item = items.value[index];
+    if (!item || item.allocations.length <= 1) return;
+    item.allocations.splice(allocIndex, 1);
 };
 
 const addExpense = () => form.expenses.push({ description: '', category: 'other', amount: 0 });
@@ -776,10 +853,16 @@ const submitInvoice = async () => {
     }
 
     if (shortLines.value.length) {
-        formErrors.value = shortLines.value.map((item) => t('sales.line_exceeds_stock', {
-            product: item.name,
-            available: formatNumber(availableFor(item)),
-        }));
+        formErrors.value = shortLines.value.flatMap((item) =>
+            item.allocations
+                .filter((allocation) => isAllocationShort(item, allocation))
+                .map((allocation) => t('sales.line_short_at_warehouse', {
+                    product: item.name,
+                    warehouse: warehouseName(item, allocation.warehouse_id),
+                    available: formatNumber(availableAt(item, allocation.warehouse_id)),
+                    required: formatNumber(askedFor(items.value, item.product_id, allocation.warehouse_id)),
+                }))
+        );
         return;
     }
 
@@ -795,13 +878,18 @@ const submitInvoice = async () => {
             paid_amount: form.paid_amount || 0,
             notes: form.notes,
             status: form.status,
-            items: items.value.map((item) => ({
-                product_id: item.product_id,
-                quantity: item.quantity,
-                unit_price: item.price,
-                warehouse_id: item.warehouse_id,
-                product_unit_id: item.selectedUnit?.id || null,
-            })),
+            // Each allocation becomes its own invoice line — the API already
+            // accepts several lines for one product, one per warehouse, which
+            // is how a split line is represented on the server.
+            items: items.value.flatMap((item) => item.allocations
+                .filter((allocation) => allocation.warehouse_id && Number(allocation.quantity) > 0)
+                .map((allocation) => ({
+                    product_id: item.product_id,
+                    quantity: allocation.quantity,
+                    unit_price: item.price,
+                    warehouse_id: allocation.warehouse_id,
+                    product_unit_id: item.selectedUnit?.id || null,
+                }))),
             expenses: form.expenses.filter((expense) => expense.description && expense.amount > 0),
         };
 
@@ -903,27 +991,46 @@ const loadInvoice = async () => {
     // product, price and quantity only — so reopening an invoice lost the
     // warehouse each line came from and the unit it was priced in, and saving
     // it again wrote those back as empty.
-    items.value = (invoice.items ?? []).map((item) => reactive({
-        product_id: item.product_id,
-        name: item.product_name || item.product?.name_ar,
-        sku: item.product?.sku || '',
-        price: parseFloat(item.unit_price) || 0,
-        quantity: item.quantity || 1,
-        stock: item.product?.stock_quantity || 0,
-        unit: item.product?.unit || '',
-        base_price: parseFloat(item.unit_price) || 0,
-        selectedUnit: {
-            id: item.product_unit_id ?? null,
-            name: item.unit_name || item.product?.unit || t('piece'),
-            name_ar: item.unit_name || item.product?.unit || t('piece'),
-            base_unit_multiplier: 1,
-            price_multiplier: 1,
-        },
-        units: [],
-        warehouse_id: item.warehouse_id ?? null,
-        sources: [],
-        loadingStock: false,
-    }));
+    //
+    // Several invoice items can share a product_id — that is how a line split
+    // across warehouses was saved — so they are regrouped into one line with
+    // several allocations, the same shape the builder edits them in.
+    const grouped = new Map();
+
+    for (const item of invoice.items ?? []) {
+        let line = grouped.get(item.product_id);
+
+        if (!line) {
+            line = reactive({
+                product_id: item.product_id,
+                name: item.product_name || item.product?.name_ar,
+                sku: item.product?.sku || '',
+                price: parseFloat(item.unit_price) || 0,
+                stock: item.product?.stock_quantity || 0,
+                unit: item.product?.unit || '',
+                base_price: parseFloat(item.unit_price) || 0,
+                selectedUnit: {
+                    id: item.product_unit_id ?? null,
+                    name: item.unit_name || item.product?.unit || t('piece'),
+                    name_ar: item.unit_name || item.product?.unit || t('piece'),
+                    base_unit_multiplier: 1,
+                    price_multiplier: 1,
+                },
+                units: [],
+                allocations: [],
+                sources: [],
+                loadingStock: false,
+            });
+            grouped.set(item.product_id, line);
+        }
+
+        line.allocations.push({
+            warehouse_id: item.warehouse_id ?? null,
+            quantity: item.quantity || 1,
+        });
+    }
+
+    items.value = [...grouped.values()];
 
     // The live figures for each line, so a shortage introduced since the
     // invoice was raised is visible immediately rather than on submit.
@@ -1260,8 +1367,73 @@ onUnmounted(() => {
 
 .line-fields {
     display: grid;
-    grid-template-columns: minmax(150px, 1.4fr) minmax(110px, 1fr) 140px minmax(110px, 1fr);
+    grid-template-columns: minmax(150px, 1fr) minmax(110px, 1fr);
     gap: 0.75rem;
+}
+
+/* ── Allocations: which shelves a line draws from ─────────────────────── */
+.allocations {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.75rem;
+}
+
+.allocations-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.allocations-total {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+}
+
+.allocation-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.6fr) 140px auto;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.allocation-row .allocation-warning {
+    grid-column: 1 / -1;
+}
+
+.allocation-remove {
+    justify-self: start;
+}
+
+.add-source-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: none;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    cursor: pointer;
+}
+
+.add-source-btn:hover:not(:disabled) {
+    border-color: var(--gold);
+    color: var(--ink);
+}
+
+.add-source-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
@@ -1316,7 +1488,8 @@ onUnmounted(() => {
 .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .line-warning,
-.line-note {
+.line-note,
+.allocation-warning {
     margin: 0;
     font-size: 0.8rem;
     display: flex;
@@ -1324,8 +1497,10 @@ onUnmounted(() => {
     gap: 0.35rem;
 }
 
-.line-warning { color: var(--bad); font-weight: 600; }
-.line-warning.subtle { color: var(--warn); font-weight: 500; }
+.line-warning,
+.allocation-warning { color: var(--bad); font-weight: 600; }
+.line-warning.subtle,
+.allocation-warning.subtle { color: var(--warn); font-weight: 500; }
 .line-note { color: var(--ink-mute); }
 
 /* ── Summary rail ───────────────────────────────────────────────────── */
@@ -1475,5 +1650,7 @@ onUnmounted(() => {
 
 @media (max-width: 480px) {
     .line-fields { grid-template-columns: 1fr; }
+    .allocation-row { grid-template-columns: 1fr; }
+    .allocation-remove { justify-self: end; }
 }
 </style>

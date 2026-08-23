@@ -27,7 +27,12 @@ class SalesReportController extends Controller
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
         ]);
 
-        $query = SalesOrder::with(['customer', 'assignedEmployee', 'items.product']);
+        // invoiced_total/invoices_count ride on the same query as the listing so
+        // each row can say how much of itself has actually been billed — an
+        // order and its invoice are two different documents and can disagree.
+        $query = SalesOrder::with(['customer', 'assignedEmployee', 'items.product', 'invoices:id,sales_order_id,invoice_number,status,total'])
+            ->withSum('invoices as invoiced_total', 'total')
+            ->withCount('invoices as invoices_count');
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
@@ -484,9 +489,12 @@ class SalesReportController extends Controller
         }
 
         $customerSummary = $query
+            ->clone()
             ->select('customer_id')
             ->selectRaw('COUNT(*) as total_invoices')
             ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
             ->groupBy('customer_id')
             ->get()
             ->map(function ($item) {
@@ -497,13 +505,18 @@ class SalesReportController extends Controller
                     'customer_name' => $customer ? $customer->name : 'Unknown',
                     'total_invoices' => (int) ($item->total_invoices ?? 0),
                     'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                    'paid_amount' => (float) ($item->paid_amount ?? 0),
+                    'due_amount' => (float) ($item->due_amount ?? 0),
                 ];
             });
 
         $warehouseSummary = $query
+            ->clone()
             ->select('warehouse_id')
             ->selectRaw('COUNT(*) as total_invoices')
             ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
             ->groupBy('warehouse_id')
             ->get()
             ->map(function ($item) {
@@ -514,6 +527,34 @@ class SalesReportController extends Controller
                     'warehouse_name' => $warehouse ? $warehouse->name : 'Unknown',
                     'total_invoices' => (int) ($item->total_invoices ?? 0),
                     'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                    'paid_amount' => (float) ($item->paid_amount ?? 0),
+                    'due_amount' => (float) ($item->due_amount ?? 0),
+                ];
+            });
+
+        // Credited the same way sales-order performance is: nothing for a
+        // counter sale nobody was assigned to, so it is left out rather than
+        // lumped under a fake "Unknown" rep.
+        $employeeSummary = $query
+            ->clone()
+            ->whereNotNull('assigned_employee_id')
+            ->select('assigned_employee_id')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
+            ->groupBy('assigned_employee_id')
+            ->get()
+            ->map(function ($item) {
+                $employee = Employee::find($item->assigned_employee_id);
+
+                return [
+                    'employee_id' => $item->assigned_employee_id,
+                    'employee_name' => $employee ? $employee->name : 'Unknown',
+                    'total_invoices' => (int) ($item->total_invoices ?? 0),
+                    'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                    'paid_amount' => (float) ($item->paid_amount ?? 0),
+                    'due_amount' => (float) ($item->due_amount ?? 0),
                 ];
             });
 
@@ -521,6 +562,7 @@ class SalesReportController extends Controller
             'success' => true,
             'message' => 'Invoice dimensions retrieved successfully',
             'data' => [
+                'employee_summary' => $employeeSummary,
                 'customer_summary' => $customerSummary,
                 'warehouse_summary' => $warehouseSummary,
                 'overall' => [
@@ -530,6 +572,319 @@ class SalesReportController extends Controller
                     'due_amount' => (float) $query->sum('due_amount'),
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Invoice-side counterpart to salesReport(): the professional sales
+     * screen otherwise reports a pipeline of sales orders that were never
+     * necessarily billed. Same filters, same shape, so the two paginated
+     * tables sit on the report as two views of one funnel rather than as
+     * unrelated screens.
+     */
+    public function invoiceReport(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'per_page' => 'nullable|integer|min:1|max:500',
+        ]);
+
+        // salesOrder is the reverse of salesReport()'s invoices relation — lets
+        // the invoice list point back at the order it was billed against,
+        // instead of the two documents only being joinable in a spreadsheet.
+        $query = Invoice::with(['customer', 'assignedEmployee', 'warehouse', 'salesOrder:id,order_number']);
+        $this->applyInvoiceDateFilters($query, $request);
+
+        if ($request->filled('employee_id')) {
+            $query->where('assigned_employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
+        $invoices = $query->latest('created_at')->latest('id')->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice report retrieved successfully',
+            'data' => [
+                'invoices' => $invoices->items(),
+                'summary' => $this->calculateInvoiceSummary($query->clone()),
+                'pagination' => [
+                    'current_page' => $invoices->currentPage(),
+                    'last_page' => $invoices->lastPage(),
+                    'per_page' => $invoices->perPage(),
+                    'total' => $invoices->total(),
+                    'has_more_pages' => $invoices->hasMorePages(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Revenue, cost and margin off what was actually billed.
+     *
+     * salesPerformance() reads the same figures off SalesOrder — a pipeline
+     * commitment that can be discounted, cancelled or never invoiced at all.
+     * This is the invoice-side counterpart, costed the same way (line
+     * quantity against the product's current cost_price) but grounded in
+     * documents that were actually issued to a customer.
+     */
+    public function invoicePerformance(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+        ]);
+
+        $query = Invoice::query()->with(['items.product', 'customer', 'assignedEmployee', 'warehouse']);
+        $this->applyInvoiceDateFilters($query, $request);
+
+        if ($request->filled('employee_id')) {
+            $query->where('assigned_employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $invoices = $query->get();
+        $costOf = fn ($invoice) => $invoice->items->reduce(function ($sum, $item) {
+            $cost = (float) ($item->product?->cost_price ?? 0);
+
+            return $sum + ($cost * (float) ($item->quantity ?? 0));
+        }, 0);
+
+        $totalRevenue = (float) $invoices->sum('total');
+        $totalCost = (float) $invoices->reduce(fn ($carry, $invoice) => $carry + $costOf($invoice), 0);
+        $grossProfit = $totalRevenue - $totalCost;
+
+        $summarize = function ($group) use ($costOf) {
+            $totalRevenue = (float) $group->sum('total');
+            $totalCost = (float) $group->reduce(fn ($carry, $invoice) => $carry + $costOf($invoice), 0);
+            $grossProfit = $totalRevenue - $totalCost;
+
+            return [
+                'total_invoices' => $group->count(),
+                'total_revenue' => $totalRevenue,
+                'total_cost' => $totalCost,
+                'gross_profit' => $grossProfit,
+                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+            ];
+        };
+
+        $employeeSummary = $invoices->whereNotNull('assigned_employee_id')->groupBy('assigned_employee_id')
+            ->map(function ($group, $employeeId) use ($summarize) {
+                return ['employee_id' => (int) $employeeId, 'employee_name' => $group->first()->assignedEmployee?->name ?? 'Unknown'] + $summarize($group);
+            })->values();
+
+        $customerSummary = $invoices->groupBy('customer_id')->map(function ($group, $customerId) use ($summarize) {
+            return ['customer_id' => (int) $customerId, 'customer_name' => $group->first()->customer?->name ?? 'Unknown'] + $summarize($group);
+        })->values();
+
+        $warehouseSummary = $invoices->groupBy('warehouse_id')->map(function ($group, $warehouseId) use ($summarize) {
+            return ['warehouse_id' => (int) $warehouseId, 'warehouse_name' => $group->first()->warehouse?->name ?? 'Unknown'] + $summarize($group);
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice performance retrieved successfully',
+            'data' => [
+                'summary' => [
+                    'total_revenue' => $totalRevenue,
+                    'total_cost' => $totalCost,
+                    'gross_profit' => $grossProfit,
+                    'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+                    'total_invoices' => $invoices->count(),
+                ],
+                'employee_summary' => $employeeSummary,
+                'customer_summary' => $customerSummary,
+                'warehouse_summary' => $warehouseSummary,
+            ],
+        ]);
+    }
+
+    /**
+     * Product profitability off invoice lines rather than order lines — see
+     * invoicePerformance() for why the two can disagree.
+     */
+    public function invoiceProductProfitability(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'product_id' => 'nullable|exists:products,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+        ]);
+
+        $query = Invoice::query()->with(['items.product', 'warehouse']);
+        $this->applyInvoiceDateFilters($query, $request);
+
+        if ($request->filled('employee_id')) {
+            $query->where('assigned_employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $invoices = $query->get();
+
+        $lineSummary = $invoices->flatMap(function ($invoice) {
+            return $invoice->items->map(function ($item) use ($invoice) {
+                $product = $item->product;
+                $revenue = (float) ($item->unit_price * $item->quantity);
+                $cost = (float) (($product?->cost_price ?? 0) * ($item->quantity ?? 0));
+                $grossProfit = $revenue - $cost;
+
+                return [
+                    'product_id' => (int) ($product?->id ?? 0),
+                    'product_name' => $product?->name ?? 'Unknown',
+                    'warehouse_id' => (int) ($invoice->warehouse_id ?? 0),
+                    'warehouse_name' => $invoice->warehouse?->name ?? 'Unknown',
+                    'quantity' => (float) ($item->quantity ?? 0),
+                    'total_revenue' => $revenue,
+                    'total_cost' => $cost,
+                    'gross_profit' => $grossProfit,
+                    'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
+                ];
+            });
+        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
+
+        $grouped = $lineSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
+
+        $productSummary = $grouped->map(function ($rows) {
+            $revenue = $rows->sum('total_revenue');
+            $cost = $rows->sum('total_cost');
+            $profit = $revenue - $cost;
+
+            return [
+                'product_id' => $rows->first()['product_id'],
+                'product_name' => $rows->first()['product_name'],
+                'warehouse_id' => $rows->first()['warehouse_id'],
+                'warehouse_name' => $rows->first()['warehouse_name'],
+                'quantity' => $rows->sum('quantity'),
+                'total_revenue' => $revenue,
+                'total_cost' => $cost,
+                'gross_profit' => $profit,
+                'gross_margin' => $revenue > 0 ? round(($profit / $revenue) * 100, 2) : 0,
+            ];
+        })->values()->sortByDesc('gross_profit')->values();
+
+        $totalRevenue = (float) $productSummary->sum('total_revenue');
+        $totalCost = (float) $productSummary->sum('total_cost');
+        $grossProfit = $totalRevenue - $totalCost;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice product profitability retrieved successfully',
+            'data' => [
+                'summary' => [
+                    'total_revenue' => $totalRevenue,
+                    'total_cost' => $totalCost,
+                    'gross_profit' => (float) $grossProfit,
+                    'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+                    'product_count' => $productSummary->count(),
+                    'top_product' => $productSummary->first() ?: null,
+                    'lowest_product' => $productSummary->last() ?: null,
+                ],
+                'product_summary' => $productSummary,
+            ],
+        ]);
+    }
+
+    /** Ranks reps by what they actually billed, not what they put on order. */
+    public function invoiceTopPerformers(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $query = Invoice::query()->whereNotNull('assigned_employee_id');
+        $this->applyInvoiceDateFilters($query, $request);
+
+        if ($request->filled('employee_id')) {
+            $query->where('assigned_employee_id', $request->employee_id);
+        }
+
+        $limit = min((int) $request->input('limit', 10) ?: 10, 50);
+
+        $topEmployees = $query
+            ->select('assigned_employee_id')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_sales')
+            ->selectRaw('AVG(total) as average_invoice_value')
+            ->groupBy('assigned_employee_id')
+            ->orderByDesc('total_sales')
+            ->limit($limit)
+            ->get()
+            ->map(function ($item) {
+                $employee = Employee::find($item->assigned_employee_id);
+
+                return [
+                    'employee_id' => $item->assigned_employee_id,
+                    'employee_name' => $employee ? $employee->name : 'Unknown',
+                    'total_invoices' => (int) ($item->total_invoices ?? 0),
+                    'total_sales' => (float) ($item->total_sales ?? 0),
+                    'average_invoice_value' => (float) ($item->average_invoice_value ?? 0),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice top performers retrieved successfully',
+            'data' => $topEmployees,
         ]);
     }
 
@@ -901,14 +1256,44 @@ class SalesReportController extends Controller
 
     private function calculateSummary($query)
     {
+        $totalOrders = (int) $query->count();
+        $totalSales = (float) $query->sum('total');
+
+        // Orders that made it into at least one invoice, and what those
+        // invoices actually total — a confirmed order is a promise, an invoice
+        // is the bill. The gap between the two is unbilled revenue sitting on
+        // the books, which the order figures alone can't show.
+        $invoicedOrders = (int) (clone $query)->has('invoices')->count();
+        $invoicedTotal = (float) (clone $query)
+            ->join('invoices', 'invoices.sales_order_id', '=', 'sales_orders.id')
+            ->sum('invoices.total');
+
         return [
-            'total_orders' => (int) $query->count(),
-            'total_sales' => (float) $query->sum('total'),
+            'total_orders' => $totalOrders,
+            'total_sales' => $totalSales,
             'total_subtotal' => (float) $query->sum('subtotal'),
             'total_discount' => (float) $query->sum('discount'),
             'total_tax' => (float) $query->sum('tax'),
             'total_shipping' => (float) $query->sum('shipping_cost'),
-            'average_order_value' => $query->count() > 0 ? (float) $query->avg('total') : 0,
+            'average_order_value' => $totalOrders > 0 ? (float) $query->avg('total') : 0,
+            'invoiced_orders' => $invoicedOrders,
+            'uninvoiced_orders' => max(0, $totalOrders - $invoicedOrders),
+            'total_invoiced' => $invoicedTotal,
+            'uninvoiced_amount' => max(0, $totalSales - $invoicedTotal),
+        ];
+    }
+
+    private function calculateInvoiceSummary($query)
+    {
+        return [
+            'total_invoices' => (int) $query->count(),
+            'total_invoiced' => (float) $query->sum('total'),
+            'total_subtotal' => (float) $query->sum('subtotal'),
+            'total_discount' => (float) $query->sum('discount'),
+            'total_tax' => (float) $query->sum('tax'),
+            'paid_amount' => (float) $query->sum('paid_amount'),
+            'due_amount' => (float) $query->sum('due_amount'),
+            'average_invoice_value' => $query->count() > 0 ? (float) $query->avg('total') : 0,
         ];
     }
 

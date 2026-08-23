@@ -548,7 +548,7 @@ import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
 import { baseCurrencyCode } from '@/utils/currency';
 import { Search } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
@@ -917,16 +917,36 @@ const saveOrder = async () => {
         if (isEditMode.value) {
             await purchaseOrdersApi.update(editingOrderId.value, form);
             ElMessage.success(t('purchase_order_updated'));
+            formDrawerVisible.value = false;
+            await store.fetchOrders();
         } else {
-            await purchaseOrdersApi.create(form);
+            const { data } = await purchaseOrdersApi.create(form);
             ElMessage.success(t('purchase_order_saved'));
+            formDrawerVisible.value = false;
+            await store.fetchOrders();
+            promptCreateGoodsReceipt(data.data?.id);
         }
-        formDrawerVisible.value = false;
-        await store.fetchOrders();
     } catch (e) {
         ElMessage.error(t('failed_to_save_purchase_order'));
     } finally {
         submittingForm.value = false;
+    }
+};
+
+// Asks the operator, right after a new order is placed, whether to jump
+// straight into recording the goods receipt for it — skips the extra trip
+// back through the list once the supplier confirms delivery.
+const promptCreateGoodsReceipt = async (orderId) => {
+    if (!orderId) return;
+    try {
+        await ElMessageBox.confirm(
+            t('create_goods_receipt_now_message'),
+            t('record_goods_receipt'),
+            { type: 'success', confirmButtonText: t('yes'), cancelButtonText: t('no') }
+        );
+        receiveGoods(orderId);
+    } catch {
+        // Operator chose not to create the receipt now.
     }
 };
 
