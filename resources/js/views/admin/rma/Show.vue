@@ -470,8 +470,8 @@ const loadRma = async () => {
       rma_number: data.rma_number,
       customer: data.customer?.name || 'N/A',
       customer_phone: data.customer?.phone || '',
-      order_number: data.sales_order?.order_number || 'N/A',
-      order_id: data.sales_order_id,
+      order_number: data.invoice?.invoice_number || 'N/A',
+      order_id: data.invoice_id,
       return_type: data.type || 'refund',
       reason: data.reason || 'defective',
       reason_description: data.reason_description || 'N/A',
@@ -506,7 +506,7 @@ const loadRma = async () => {
         // Server-calculated credit for this line; the settlement breakdown and
         // the completion dialog's default both read it.
         refund_amount: parseFloat(item.refund_amount) || 0,
-        unit_price: parseFloat(item.sales_order_item?.unit_price) || 0,
+        unit_price: parseFloat(item.invoice_item?.unit_price) || 0,
         exchange_product: item.exchange_product ? (item.exchange_product.name_ar || item.exchange_product.name) : null
       })) : []
     }

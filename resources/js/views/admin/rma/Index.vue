@@ -151,11 +151,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="order_number" :label="$t('original_sales_order')" min-width="150">
+          <el-table-column prop="order_number" :label="$t('linked_original_invoice')" min-width="150">
             <template #default="{ row }">
               <div class="order-info-cell">
-                <span class="order-number">#{{ row.sales_order?.order_number || row.order_number || 'N/A' }}</span>
-                <span class="order-date" v-if="row.sales_order?.order_date">{{ row.sales_order.order_date }}</span>
+                <span class="order-number">#{{ row.invoice?.invoice_number || row.order_number || 'N/A' }}</span>
               </div>
             </template>
           </el-table-column>

@@ -253,9 +253,7 @@ class RmaSettlementService
             'total' => 0,
             'created_by' => $userId,
             'notes' => 'طلب بديل تلقائي لطلب الإرجاع: '.$rmaRequest->rma_number,
-            'fulfillment_warehouse_id' => $rmaRequest->salesOrder?->fulfillment_warehouse_id ?? Warehouse::first()?->id,
-            'shipping_address' => $rmaRequest->salesOrder?->shipping_address,
-            'billing_address' => $rmaRequest->salesOrder?->billing_address,
+            'fulfillment_warehouse_id' => $rmaRequest->invoice?->warehouse_id ?? Warehouse::first()?->id,
         ]);
 
         $subtotal = 0.0;
@@ -315,8 +313,8 @@ class RmaSettlementService
             return $price;
         }
 
-        // Same-value swap: reuse the price from the original order line.
-        $originalPrice = (float) ($item->salesOrderItem->unit_price ?? 0);
+        // Same-value swap: reuse the price from the original invoice line.
+        $originalPrice = (float) ($item->invoiceItem->unit_price ?? $item->salesOrderItem->unit_price ?? 0);
         if ($originalPrice > 0) {
             return $originalPrice;
         }
@@ -329,11 +327,7 @@ class RmaSettlementService
 
     private function invoiceFor(RmaRequest $rmaRequest): ?Invoice
     {
-        if (! $rmaRequest->sales_order_id) {
-            return null;
-        }
-
-        return Invoice::where('sales_order_id', $rmaRequest->sales_order_id)->latest('id')->first();
+        return $rmaRequest->invoice;
     }
 
     /**

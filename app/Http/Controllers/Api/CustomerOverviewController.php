@@ -143,10 +143,10 @@ class CustomerOverviewController extends Controller
     private function rmaRequests(Customer $customer)
     {
         return $customer->rmaRequests()
-            ->with('salesOrder:id,order_number')
+            ->with('invoice:id,invoice_number')
             ->latest('requested_at')->latest('id')
             ->limit(self::RECENT_LIMIT)
-            ->get(['id', 'rma_number', 'sales_order_id', 'status', 'type', 'reason', 'refund_amount', 'requested_at']);
+            ->get(['id', 'rma_number', 'invoice_id', 'status', 'type', 'reason', 'refund_amount', 'requested_at']);
     }
 
     private function quotes(Customer $customer)

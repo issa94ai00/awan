@@ -12,6 +12,7 @@ class RmaRequest extends Model
     protected $fillable = [
         'customer_id',
         'sales_order_id',
+        'invoice_id',
         'rma_number',
         'reason',
         'type',
@@ -67,6 +68,12 @@ class RmaRequest extends Model
     public function salesOrder()
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    /** The invoice this return is filed against — how RMA is actually reached: customers hold invoices, not sales orders. */
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     public function items()

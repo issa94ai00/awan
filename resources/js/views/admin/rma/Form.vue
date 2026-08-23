@@ -461,13 +461,14 @@ const onCustomerFocus = () => {
 }
 
 /**
- * Loads the orders a return can be raised against.
+ * Loads the invoices a return can be raised against.
  *
- * RmaController::store() rejects any order that is not `delivered` and any
- * order that does not belong to the chosen customer, so both constraints are
- * pushed to the API. Previously this pulled a global list and filtered it in
- * the browser, which offered orders the server would refuse and — because the
- * endpoint capped the page at 20 — often did not contain the right order at all.
+ * RMA is filed against invoices, not sales orders — this business creates
+ * invoices directly and never populates sales_orders. RmaController::store()
+ * rejects any invoice that is not `delivered` and any invoice that does not
+ * belong to the chosen customer, so both constraints are pushed to the API.
+ * `orders`/`order_id` keep their names throughout this file to limit the
+ * size of this change; what they hold is invoices.
  */
 const loadOrders = async (customerId = null) => {
   ordersLoading.value = true
@@ -475,11 +476,16 @@ const loadOrders = async (customerId = null) => {
     const params = { per_page: 200, status: 'delivered' }
     if (customerId) params.customer_id = customerId
 
-    const response = await api.get('/sales-orders', { params })
-    const ordersData = response.data.data?.sales_orders || response.data.data || response.data || []
-    orders.value = Array.isArray(ordersData) ? ordersData : []
+    const response = await api.get('/admin/invoices', { params })
+    const invoicesData = response.data.data?.invoices || response.data.data || response.data || []
+    orders.value = (Array.isArray(invoicesData) ? invoicesData : []).map(invoice => ({
+      id: invoice.id,
+      order_number: invoice.invoice_number,
+      status: invoice.status,
+      customer_id: invoice.customer_id,
+    }))
   } catch (error) {
-    console.error('Failed to load sales orders:', error)
+    console.error('Failed to load invoices:', error)
     ElMessage.error(t('failed_to_load_sales_orders'))
     orders.value = []
   } finally {
@@ -525,11 +531,11 @@ const loadCustomerStats = async (customerId) => {
     // delivered; the two stats read identical no matter the customer.
     const availableOrders = orders.value.length
 
-    // The customer's real order history, across every status — a separate,
+    // The customer's real invoice history, across every status — a separate,
     // lightweight (per_page: 1) call just for the count.
     let totalOrders = availableOrders
     try {
-      const totalResponse = await api.get('/sales-orders', {
+      const totalResponse = await api.get('/admin/invoices', {
         params: { customer_id: customerId, per_page: 1 }
       })
       totalOrders = totalResponse.data.data?.pagination?.total ?? availableOrders
@@ -592,19 +598,19 @@ const loadOrderItems = async () => {
   }
   loading.value = true
   try {
-    const response = await api.get(`/sales-orders/${form.value.order_id}`)
+    const response = await api.get(`/admin/invoices/${form.value.order_id}`)
     const order = response.data.data || response.data
     if (order && order.items) {
-      // Check if order is delivered
+      // Check if the invoice is delivered
       if (order.status !== 'delivered') {
         ElMessage.warning(t('invoice_must_be_delivered'))
         orderItems.value = []
         loading.value = false
         return
       }
-      
+
       orderItems.value = order.items.map(item => ({
-        sales_order_item_id: item.id,
+        invoice_item_id: item.id,
         product_id: item.product_id,
         product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
         original_quantity: item.quantity,
@@ -657,7 +663,7 @@ const loadRma = async () => {
     // Set form basics
     form.value = {
       customer_id: rma.customer_id,
-      order_id: rma.sales_order_id,
+      order_id: rma.invoice_id,
       reason: rma.reason || 'defective',
       return_type: rma.type || 'refund',
       reason_description: rma.reason_description || '',
@@ -677,20 +683,22 @@ const loadRma = async () => {
     await loadOrders(rma.customer_id)
     filteredOrders.value = orders.value
 
-    // The linked order may no longer be `delivered` (or may sit outside the
+    // The linked invoice may no longer be `delivered` (or may sit outside the
     // page); keep it in the list so editing does not silently blank the field.
-    if (rma.sales_order_id && !filteredOrders.value.some(o => o.id === rma.sales_order_id)) {
+    if (rma.invoice_id && !filteredOrders.value.some(o => o.id === rma.invoice_id)) {
       filteredOrders.value = [
         ...filteredOrders.value,
-        rma.sales_order || { id: rma.sales_order_id, order_number: `#${rma.sales_order_id}` },
+        rma.invoice
+          ? { id: rma.invoice.id, order_number: rma.invoice.invoice_number, status: rma.invoice.status, customer_id: rma.invoice.customer_id }
+          : { id: rma.invoice_id, order_number: `#${rma.invoice_id}` },
       ]
     }
 
     // Load customer statistics
     await loadCustomerStats(rma.customer_id)
 
-    // Load original sales order items first
-    const soResponse = await api.get(`/sales-orders/${rma.sales_order_id}`)
+    // Load original invoice items first
+    const soResponse = await api.get(`/admin/invoices/${rma.invoice_id}`)
     const order = soResponse.data.data || soResponse.data
     const orderItemsMap = {}
     if (order && order.items) {
@@ -702,9 +710,9 @@ const loadRma = async () => {
     // Map existing returned items and check them in the list
     if (rma.items) {
       orderItems.value = rma.items.map(item => {
-        const originalItem = orderItemsMap[item.sales_order_item_id]
+        const originalItem = orderItemsMap[item.invoice_item_id]
         return {
-          sales_order_item_id: item.sales_order_item_id,
+          invoice_item_id: item.invoice_item_id,
           product_id: item.product_id,
           product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
           original_quantity: originalItem ? originalItem.quantity : item.quantity_requested,
@@ -776,14 +784,14 @@ const submitForm = async () => {
     
     const data = {
       customer_id: customerId,
-      sales_order_id: form.value.order_id,
+      invoice_id: form.value.order_id,
       reason: form.value.reason,
       type: form.value.return_type,
       reason_description: form.value.reason_description,
       admin_notes: form.value.notes,
       return_address: form.value.return_address,
       items: selectedItems.map(item => ({
-        sales_order_item_id: item.sales_order_item_id,
+        invoice_item_id: item.invoice_item_id,
         quantity_requested: item.quantity,
         condition: item.condition,
         resolution: item.resolution,
