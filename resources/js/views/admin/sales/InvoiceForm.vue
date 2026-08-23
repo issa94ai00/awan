@@ -200,7 +200,12 @@
                                         <button type="button" :disabled="alloc.quantity <= 1" @click="decrementAllocQty(index, aIdx)">
                                             <el-icon><Minus /></el-icon>
                                         </button>
-                                        <input v-model.number="alloc.quantity" type="number" min="1" />
+                                        <input
+                                            v-model.number="alloc.quantity"
+                                            type="number"
+                                            min="1"
+                                            :ref="(el) => { if (aIdx === 0) setQtyRef(item.product_id, el); }"
+                                        />
                                         <button type="button" @click="incrementAllocQty(index, aIdx)">
                                             <el-icon><Plus /></el-icon>
                                         </button>
@@ -478,6 +483,15 @@ const customersStore = useCustomersStore();
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
 
+// Keyed by product_id, pointing at that line's first allocation quantity
+// input — where addProduct() sends focus so the quantity can be typed right
+// away instead of clicking back into the row.
+const qtyInputRefs = reactive({});
+const setQtyRef = (productId, el) => {
+    if (el) qtyInputRefs[productId] = el;
+    else delete qtyInputRefs[productId];
+};
+
 const form = reactive({
     customer_id: null,
     // The rep credited with the sale. Null is a valid answer.
@@ -740,7 +754,18 @@ const addProduct = (product) => {
     searchResults.value = [];
     showResults.value = false;
 
-    nextTick(() => searchInputRef.value?.focus());
+    // Land on the quantity field of the line just touched so it can be
+    // typed straight away; fall back to the search box if the row isn't
+    // rendered yet for some reason.
+    nextTick(() => {
+        const qtyInput = qtyInputRefs[product.id];
+        if (qtyInput) {
+            qtyInput.focus();
+            qtyInput.select();
+        } else {
+            searchInputRef.value?.focus();
+        }
+    });
 };
 
 const loadProductUnits = async (productId, itemIndex) => {
