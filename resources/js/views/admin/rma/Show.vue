@@ -1,361 +1,311 @@
 <template>
-  <div class="rma-details-container">
-    <!-- Header Section -->
-    <div class="page-header-premium">
-      <div class="header-info">
-        <div class="header-icon-box">
-          <el-icon><RefreshLeft /></el-icon>
-        </div>
-        <div>
-          <h1 class="header-title">{{ $t('return_request_details_title', { number: rma.rma_number }) }}</h1>
-          <p class="header-subtitle">{{ $t('rma_show_subtitle') }}</p>
-        </div>
-      </div>
-      <div class="header-actions">
-        <el-button @click="goBack" class="btn-back-premium">
-          <el-icon><Back /></el-icon> {{ $t('back') }}
-        </el-button>
-        <el-button @click="router.push(`/admin/rma/${rma.id}/edit`)" :disabled="rma.status !== 'pending'" class="btn-edit-premium">
-          <el-icon><Edit /></el-icon> {{ $t('edit') }}
-        </el-button>
-      </div>
-    </div>
-
-    <!-- Stepper Lifecycle Progress -->
-    <el-card class="lifecycle-card" shadow="never" v-if="rma.status !== 'rejected' && rma.status !== 'cancelled'">
-      <el-steps :active="currentStep" align-center finish-status="success" class="premium-steps" process-status="success">
-        <el-step>
-          <template #icon>
-            <el-icon><DocumentAdd /></el-icon>
-          </template>
-          <template #title>
-            <span class="step-title">{{ $t('request_submitted') }}</span>
-          </template>
-          <template #description>
-            <span class="step-desc">{{ formatDate(rma.created_at) }}</span>
-          </template>
-        </el-step>
-        <el-step>
-          <template #icon>
-            <el-icon><Select /></el-icon>
-          </template>
-          <template #title>
-            <span class="step-title">{{ $t('approved') }}</span>
-          </template>
-          <template #description>
-            <span class="step-desc" v-if="rma.approved_at">{{ formatDate(rma.approved_at) }}</span>
-            <span class="step-desc" v-else>{{ $t('awaiting_approval_state') }}</span>
-          </template>
-        </el-step>
-        <el-step>
-          <template #icon>
-            <el-icon><Box /></el-icon>
-          </template>
-          <template #title>
-            <span class="step-title">{{ $t('receive_products') }}</span>
-          </template>
-          <template #description>
-            <span class="step-desc" v-if="rma.received_at">{{ formatDate(rma.received_at) }}</span>
-            <span class="step-desc" v-else-if="receivedUnits > 0">{{ $t('units_received_count', { count: receivedUnits }) }}</span>
-            <span class="step-desc" v-else>{{ $t('awaiting_receipt') }}</span>
-          </template>
-        </el-step>
-        <el-step>
-          <template #icon>
-            <el-icon><CircleCheck /></el-icon>
-          </template>
-          <template #title>
-            <span class="step-title">{{ $t('settlement_completed') }}</span>
-          </template>
-          <template #description>
-            <span class="step-desc" v-if="rma.completed_at">{{ formatDate(rma.completed_at) }}</span>
-            <span class="step-desc" v-else>{{ $t('awaiting_completion') }}</span>
-          </template>
-        </el-step>
-      </el-steps>
-    </el-card>
-
-    <!-- Reject/Cancel Banner -->
-    <div class="alert-banner" :class="rma.status" v-else>
-      <el-icon><Warning /></el-icon>
-      <div>
-        <h4>{{ rma.status === 'rejected' ? $t('return_request_rejected_heading') : $t('return_request_cancelled_heading') }}</h4>
-        <p v-if="rma.status === 'rejected'">{{ $t('rejection_reason_label') }}: {{ rma.notes || $t('no_rejection_reason_given') }}</p>
-        <p v-else>{{ $t('request_cancelled_notice') }}</p>
-      </div>
-    </div>
-
-    <!-- Main Content Area Grid -->
-    <el-row :gutter="25">
-      <!-- Left Column: Details Cards -->
-      <el-col :xs="24" :lg="16">
-        <!-- Returned Items Card -->
-        <el-card class="details-section-card" shadow="never">
-          <template #header>
-            <div class="section-card-header">
-              <span class="dot"></span>
-              <h3>{{ $t('products_in_return_request') }}</h3>
+    <div class="rma-details" v-loading="loading">
+        <!-- ── Header ─────────────────────────────────────────────────────── -->
+        <header class="builder-header">
+            <div class="header-identity">
+                <span class="eyebrow">{{ t('rma') }}</span>
+                <h1>{{ t('return_request_details_title', { number: rma.rma_number }) }}</h1>
+                <p>{{ t('rma_show_subtitle') }}</p>
             </div>
-          </template>
 
-          <el-table :data="rma.items" stripe class="items-table-premium">
-            <el-table-column prop="product" :label="$t('product')" min-width="200" />
-            <el-table-column prop="quantity_requested" :label="$t('quantity_ordered')" width="130" align="center" />
-            <el-table-column prop="quantity_received" :label="$t('quantity_received')" width="130" align="center">
-              <template #default="{ row }">
-                <span :class="{'qty-warning': row.quantity_received < row.quantity_requested, 'qty-success': row.quantity_received === row.quantity_requested}">
-                  {{ row.quantity_received }} / {{ row.quantity_requested }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="condition" :label="$t('received_product_condition')" width="140">
-              <template #default="{ row }">
-                <el-tag :type="getConditionTagType(row.condition)" class="premium-tag">
-                  {{ getConditionLabel(row.condition) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="resolution" :label="$t('line_settlement_type')" width="130">
-              <template #default="{ row }">
-                <el-tag :type="getResolutionTagType(row.resolution)" class="premium-tag">
-                  {{ getResolutionLabel(row.resolution) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="exchange_product" :label="$t('replacement_product')" min-width="160" v-if="rma.items.some(i => i.resolution === 'exchange')">
-              <template #default="{ row }">
-                <span class="exchange-product-text" v-if="row.resolution === 'exchange'">{{ row.exchange_product || $t('not_chosen_yet') }}</span>
-                <span class="text-placeholder" v-else>-</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-
-        <!-- Timeline / Audit Logs Card -->
-        <el-card class="details-section-card" shadow="never" style="margin-top: 25px">
-          <template #header>
-            <div class="section-card-header">
-              <span class="dot"></span>
-              <h3>{{ $t('activity_and_tracking_log') }}</h3>
+            <div class="header-actions">
+                <el-button text @click="goBack">
+                    <el-icon><ArrowRight /></el-icon>
+                    {{ t('back') }}
+                </el-button>
+                <el-button
+                    :disabled="rma.status !== 'pending'"
+                    @click="router.push(`/admin/rma/${rma.id}/edit`)"
+                >
+                    <el-icon><Edit /></el-icon>
+                    {{ t('edit') }}
+                </el-button>
             </div>
-          </template>
+        </header>
 
-          <el-timeline class="premium-timeline">
-            <el-timeline-item
-              v-for="activity in activities"
-              :key="activity.id"
-              :timestamp="formatDate(activity.created_at)"
-              placement="top"
-              :type="getTimelineType(activity.action)"
-            >
-              <div class="timeline-content-card">
-                <div class="timeline-header">
-                  <span class="action-badge">{{ activity.action }}</span>
-                  <span class="user-badge"><el-icon><User /></el-icon> {{ activity.user }}</span>
+        <!-- ── Lifecycle stepper ──────────────────────────────────────────── -->
+        <div class="panel-card lifecycle-card" v-if="!['rejected', 'cancelled'].includes(rma.status)">
+            <el-steps :active="currentStep" align-center finish-status="success" process-status="success">
+                <el-step>
+                    <template #icon><el-icon><DocumentAdd /></el-icon></template>
+                    <template #title><span class="step-title">{{ t('request_submitted') }}</span></template>
+                    <template #description><span class="step-desc">{{ formatDate(rma.created_at) }}</span></template>
+                </el-step>
+                <el-step>
+                    <template #icon><el-icon><Select /></el-icon></template>
+                    <template #title><span class="step-title">{{ t('approved') }}</span></template>
+                    <template #description>
+                        <span class="step-desc" v-if="rma.approved_at">{{ formatDate(rma.approved_at) }}</span>
+                        <span class="step-desc" v-else>{{ t('awaiting_approval_state') }}</span>
+                    </template>
+                </el-step>
+                <el-step>
+                    <template #icon><el-icon><Box /></el-icon></template>
+                    <template #title><span class="step-title">{{ t('receive_products') }}</span></template>
+                    <template #description>
+                        <span class="step-desc" v-if="rma.received_at">{{ formatDate(rma.received_at) }}</span>
+                        <span class="step-desc" v-else-if="receivedUnits > 0">{{ t('units_received_count', { count: receivedUnits }) }}</span>
+                        <span class="step-desc" v-else>{{ t('awaiting_receipt') }}</span>
+                    </template>
+                </el-step>
+                <el-step>
+                    <template #icon><el-icon><CircleCheck /></el-icon></template>
+                    <template #title><span class="step-title">{{ t('settlement_completed') }}</span></template>
+                    <template #description>
+                        <span class="step-desc" v-if="rma.completed_at">{{ formatDate(rma.completed_at) }}</span>
+                        <span class="step-desc" v-else>{{ t('awaiting_completion') }}</span>
+                    </template>
+                </el-step>
+            </el-steps>
+        </div>
+
+        <!-- ── Reject/cancel banner ───────────────────────────────────────── -->
+        <div class="alert-banner" :class="rma.status" v-else>
+            <el-icon><Warning /></el-icon>
+            <div>
+                <h4>{{ rma.status === 'rejected' ? t('return_request_rejected_heading') : t('return_request_cancelled_heading') }}</h4>
+                <p v-if="rma.status === 'rejected'">{{ t('rejection_reason_label') }}: {{ rma.notes || t('no_rejection_reason_given') }}</p>
+                <p v-else>{{ t('request_cancelled_notice') }}</p>
+            </div>
+        </div>
+
+        <div class="builder-grid">
+            <!-- ── Work area ──────────────────────────────────────────────── -->
+            <section class="work-area">
+                <!-- Returned items -->
+                <div class="panel-card">
+                    <h2 class="panel-title">{{ t('products_in_return_request') }}</h2>
+
+                    <div class="return-lines">
+                        <article v-for="item in rma.items" :key="item.id" class="return-line">
+                            <div class="line-identity">
+                                <span class="line-name">{{ item.product }}</span>
+                                <span class="line-meta">
+                                    {{ t('quantity_received') }}:
+                                    <b :class="{ 'qty-warning': item.quantity_received < item.quantity_requested, 'qty-success': item.quantity_received === item.quantity_requested }">
+                                        {{ item.quantity_received }} / {{ item.quantity_requested }}
+                                    </b>
+                                </span>
+                            </div>
+
+                            <div class="line-tags">
+                                <el-tag :type="getConditionTagType(item.condition)" size="small">{{ getConditionLabel(item.condition) }}</el-tag>
+                                <el-tag :type="getResolutionTagType(item.resolution)" size="small">{{ getResolutionLabel(item.resolution) }}</el-tag>
+                                <span class="exchange-chip" v-if="item.resolution === 'exchange'">
+                                    <el-icon><Sort /></el-icon> {{ item.exchange_product || t('not_chosen_yet') }}
+                                </span>
+                            </div>
+                        </article>
+                    </div>
                 </div>
-                <p class="timeline-desc">{{ activity.description }}</p>
-              </div>
-            </el-timeline-item>
-          </el-timeline>
-        </el-card>
-      </el-col>
 
-      <!-- Right Column: Operations Panel & Information Summary -->
-      <el-col :xs="24" :lg="8">
-        <!-- Operations Panel Card -->
-        <el-card class="operations-card-premium" shadow="never">
-          <template #header>
-            <div class="section-card-header">
-              <span class="dot orange"></span>
-              <h3>{{ $t('operations_and_actions') }}</h3>
-            </div>
-          </template>
+                <!-- Activity log -->
+                <div class="panel-card">
+                    <h2 class="panel-title">{{ t('activity_and_tracking_log') }}</h2>
 
-          <div class="operations-buttons-grid">
-            <el-button type="success" class="op-btn approve" :disabled="rma.status !== 'pending'" @click="approveRma">
-              <el-icon><Check /></el-icon> {{ $t('approve_the_request') }}
-            </el-button>
-            <el-button type="danger" class="op-btn reject" :disabled="rma.status !== 'pending'" @click="rejectRma">
-              <el-icon><Close /></el-icon> {{ $t('reject_the_return') }}
-            </el-button>
-            <!-- Receiving stays available while `received` so a miscounted
-                 receipt can be corrected; the server books only the difference. -->
-            <el-button type="warning" class="op-btn receive" :disabled="!canReceive" @click="openReceiveDialog">
-              <el-icon><Location /></el-icon>
-              {{ rma.status === 'received' ? $t('edit_received_quantities') : $t('receive_and_inspect_products') }}
-            </el-button>
-            <el-button type="primary" class="op-btn complete" :disabled="!canComplete" @click="openCompleteDialog">
-              <el-icon><Finished /></el-icon> {{ $t('complete_the_settlement') }}
-            </el-button>
-            <el-button type="info" class="op-btn cancel" :disabled="rma.status === 'completed' || rma.status === 'rejected' || rma.status === 'cancelled'" @click="cancelRma">
-              <el-icon><Warning /></el-icon> {{ $t('cancel_the_request') }}
-            </el-button>
-          </div>
-        </el-card>
+                    <el-timeline class="activity-timeline">
+                        <el-timeline-item
+                            v-for="activity in activities"
+                            :key="activity.id"
+                            :timestamp="formatDate(activity.created_at)"
+                            placement="top"
+                            :type="getTimelineType(activity.action)"
+                        >
+                            <div class="activity-card">
+                                <div class="activity-head">
+                                    <span class="activity-action">{{ activity.action }}</span>
+                                    <span class="activity-user"><el-icon><User /></el-icon> {{ activity.user }}</span>
+                                </div>
+                                <p class="activity-desc">{{ activity.description }}</p>
+                            </div>
+                        </el-timeline-item>
+                    </el-timeline>
+                </div>
+            </section>
 
-        <!-- Information Card -->
-        <el-card class="info-card-premium" shadow="never" style="margin-top: 25px">
-          <template #header>
-            <div class="section-card-header">
-              <span class="dot blue"></span>
-              <h3>{{ $t('customer_and_invoice_details') }}</h3>
-            </div>
-          </template>
+            <!-- ── Summary rail ───────────────────────────────────────────── -->
+            <aside class="summary-rail">
+                <div class="rail-card">
+                    <h3 class="rail-title">{{ t('operations_and_actions') }}</h3>
 
-          <el-descriptions :column="1" border class="premium-descriptions">
-            <el-descriptions-item :label="$t('customer')">
-              <div class="customer-info-box">
-                <span class="name">{{ rma.customer }}</span>
-                <span class="phone" v-if="rma.customer_phone">{{ rma.customer_phone }}</span>
-              </div>
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('original_sales_invoice')">
-              <span class="invoice-number">#{{ rma.order_number }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('settlement_type')">
-              <el-tag :type="getReturnTypeClass(rma.return_type)" class="premium-tag">
-                {{ getReturnTypeLabel(rma.return_type) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('return_reason')">
-              {{ getReasonLabel(rma.reason) }}
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('submitted_on')">
-              {{ formatDate(rma.created_at) }}
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('approved_compensation_value')" v-if="rma.status === 'completed'">
-              <span class="final-refund-amount">{{ formatCurrency(rma.refund_amount) }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item :label="$t('financial_settlement_method')" v-if="rma.status === 'completed'">
-              <el-tag type="info" class="premium-tag">{{ getRefundMethodLabel(rma.refund_method) }}</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
+                    <div class="op-buttons">
+                        <el-button type="success" class="op-btn" :disabled="rma.status !== 'pending'" @click="approveRma">
+                            <el-icon><Check /></el-icon> {{ t('approve_the_request') }}
+                        </el-button>
+                        <el-button type="danger" class="op-btn" :disabled="rma.status !== 'pending'" @click="rejectRma">
+                            <el-icon><Close /></el-icon> {{ t('reject_the_return') }}
+                        </el-button>
+                        <!-- Receiving stays available while `received` so a
+                             miscounted receipt can be corrected; the server
+                             books only the difference. -->
+                        <el-button type="warning" class="op-btn" :disabled="!canReceive" @click="openReceiveDialog">
+                            <el-icon><Location /></el-icon>
+                            {{ rma.status === 'received' ? t('edit_received_quantities') : t('receive_and_inspect_products') }}
+                        </el-button>
+                        <el-button type="primary" class="op-btn" :disabled="!canComplete" @click="openCompleteDialog">
+                            <el-icon><Finished /></el-icon> {{ t('complete_the_settlement') }}
+                        </el-button>
+                        <el-button class="op-btn" :disabled="['completed', 'rejected', 'cancelled'].includes(rma.status)" @click="cancelRma">
+                            <el-icon><Warning /></el-icon> {{ t('cancel_the_request') }}
+                        </el-button>
+                    </div>
+                </div>
 
-        <!-- Credit notes raised when this return was settled: the document
-             trail behind the money, rather than just a total on the request. -->
-        <el-card class="details-section-card" shadow="never" v-if="creditNotes.length">
-          <template #header>
-            <div class="section-card-header">
-              <span class="dot purple"></span>
-              <h3>{{ $t('credit_notes') }}</h3>
-            </div>
-          </template>
+                <div class="rail-card">
+                    <h3 class="rail-title">{{ t('customer_and_invoice_details') }}</h3>
 
-          <div v-for="note in creditNotes" :key="note.id" class="credit-note-card">
-            <div class="credit-note-head">
-              <strong>{{ note.credit_note_number }}</strong>
-              <el-tag :type="creditNoteTagType(note.status)" size="small">{{ note.status_text }}</el-tag>
-            </div>
-            <div class="credit-note-rows">
-              <div class="credit-note-row">
-                <span>{{ $t('value') }}</span>
-                <strong>{{ formatCurrency(note.total) }}</strong>
-              </div>
-              <div class="credit-note-row" v-if="Number(note.applied_to_invoice) > 0">
-                <span>{{ $t('deducted_from_invoice') }}</span>
-                <strong>{{ formatCurrency(note.applied_to_invoice) }}</strong>
-              </div>
-              <div class="credit-note-row" v-if="Number(note.refunded_amount) > 0">
-                <span>{{ $t('refunded_in_cash') }}</span>
-                <strong>{{ formatCurrency(note.refunded_amount) }}</strong>
-              </div>
-              <div class="credit-note-row" v-if="Number(note.store_credit_amount) > 0">
-                <span>{{ $t('credited_to_customer') }}</span>
-                <strong>{{ formatCurrency(note.store_credit_amount) }}</strong>
-              </div>
-              <div class="credit-note-row open" v-if="Number(note.open_amount) > 0">
-                <span>{{ $t('not_settled_yet') }}</span>
-                <strong>{{ formatCurrency(note.open_amount) }}</strong>
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+                    <dl class="fact-list">
+                        <div class="fact-row">
+                            <dt>{{ t('customer') }}</dt>
+                            <dd>
+                                <span class="fact-primary">{{ rma.customer }}</span>
+                                <span class="fact-secondary" v-if="rma.customer_phone">{{ rma.customer_phone }}</span>
+                            </dd>
+                        </div>
+                        <div class="fact-row">
+                            <dt>{{ t('original_sales_invoice') }}</dt>
+                            <dd class="fact-accent">#{{ rma.order_number }}</dd>
+                        </div>
+                        <div class="fact-row">
+                            <dt>{{ t('settlement_type') }}</dt>
+                            <dd><el-tag :type="getReturnTypeClass(rma.return_type)" size="small">{{ getReturnTypeLabel(rma.return_type) }}</el-tag></dd>
+                        </div>
+                        <div class="fact-row">
+                            <dt>{{ t('return_reason') }}</dt>
+                            <dd>{{ getReasonLabel(rma.reason) }}</dd>
+                        </div>
+                        <div class="fact-row">
+                            <dt>{{ t('submitted_on') }}</dt>
+                            <dd>{{ formatDate(rma.created_at) }}</dd>
+                        </div>
+                        <div class="fact-row" v-if="rma.status === 'completed'">
+                            <dt>{{ t('approved_compensation_value') }}</dt>
+                            <dd class="fact-money">{{ formatCurrency(rma.refund_amount) }}</dd>
+                        </div>
+                        <div class="fact-row" v-if="rma.status === 'completed'">
+                            <dt>{{ t('financial_settlement_method') }}</dt>
+                            <dd><el-tag type="info" size="small">{{ getRefundMethodLabel(rma.refund_method) }}</el-tag></dd>
+                        </div>
+                    </dl>
+                </div>
 
-    <!-- Receive Items Dialog -->
-    <el-dialog v-model="showReceiveDialog" :title="$t('receive_and_inspect_returns')" width="600px" class="premium-dialog">
-      <p class="dialog-desc">{{ $t('record_inspected_quantities_hint') }}</p>
-      <el-table :data="receiveForm.items" stripe class="mini-table">
-        <el-table-column prop="product" :label="$t('product')" />
-        <el-table-column prop="quantity_requested" :label="$t('requested_for_return')" width="130" align="center" />
-        <el-table-column :label="$t('quantity_received')" width="150" align="center">
-          <template #default="{ row }">
-            <el-input-number v-model="row.quantity_received" :min="0" :max="row.quantity_requested" size="small" />
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <el-button @click="showReceiveDialog = false">{{ $t('cancel') }}</el-button>
-        <el-button type="primary" @click="submitReceive" :loading="receiveLoading">{{ $t('confirm_receipt') }}</el-button>
-      </template>
-    </el-dialog>
+                <!-- Credit notes raised when this return was settled: the
+                     document trail behind the money, rather than just a
+                     total on the request. -->
+                <div class="rail-card" v-if="creditNotes.length">
+                    <h3 class="rail-title">{{ t('credit_notes') }}</h3>
 
-    <!-- Complete RMA Dialog -->
-    <el-dialog v-model="showCompleteDialog" :title="$t('complete_and_settle_return')" width="550px" class="premium-dialog">
-      <!-- Breakdown so the operator can see how the return splits before
-           committing: cash back vs. credit consumed by a replacement. -->
-      <div class="settlement-summary">
-        <div class="settlement-row">
-          <span>{{ $t('refundable_lines_value') }}</span>
-          <strong>{{ formatCurrency(refundableTotal) }}</strong>
+                    <div class="credit-note" v-for="note in creditNotes" :key="note.id">
+                        <div class="credit-note-head">
+                            <strong>{{ note.credit_note_number }}</strong>
+                            <el-tag :type="creditNoteTagType(note.status)" size="small">{{ note.status_text }}</el-tag>
+                        </div>
+                        <dl class="fact-list compact">
+                            <div class="fact-row">
+                                <dt>{{ t('value') }}</dt>
+                                <dd class="fact-money">{{ formatCurrency(note.total) }}</dd>
+                            </div>
+                            <div class="fact-row" v-if="Number(note.applied_to_invoice) > 0">
+                                <dt>{{ t('deducted_from_invoice') }}</dt>
+                                <dd class="fact-money">{{ formatCurrency(note.applied_to_invoice) }}</dd>
+                            </div>
+                            <div class="fact-row" v-if="Number(note.refunded_amount) > 0">
+                                <dt>{{ t('refunded_in_cash') }}</dt>
+                                <dd class="fact-money">{{ formatCurrency(note.refunded_amount) }}</dd>
+                            </div>
+                            <div class="fact-row" v-if="Number(note.store_credit_amount) > 0">
+                                <dt>{{ t('credited_to_customer') }}</dt>
+                                <dd class="fact-money">{{ formatCurrency(note.store_credit_amount) }}</dd>
+                            </div>
+                            <div class="fact-row" v-if="Number(note.open_amount) > 0">
+                                <dt>{{ t('not_settled_yet') }}</dt>
+                                <dd class="fact-money open">{{ formatCurrency(note.open_amount) }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+            </aside>
         </div>
-        <div class="settlement-row" v-if="hasExchangeItems">
-          <span>{{ $t('credit_against_exchange_order') }}</span>
-          <strong class="exchange">{{ formatCurrency(exchangeCredit) }}</strong>
-        </div>
-        <p class="settlement-hint" v-if="hasExchangeItems">
-          {{ $t('exchange_lines_not_refunded_notice') }}
-        </p>
-      </div>
 
-      <el-form :model="completeForm" label-position="top">
-        <el-form-item :label="$t('compensation_settlement_method')" prop="refund_method">
-          <el-select v-model="completeForm.refund_method" :placeholder="$t('select_compensation_method')" class="premium-select-field">
-            <el-option value="original" :label="$t('refund_to_original_account')" />
-            <el-option value="store_credit" :label="$t('store_credit_to_customer_wallet')" />
-            <el-option value="bank_transfer" :label="$t('custom_bank_transfer')" />
-            <el-option value="check" :label="$t('paper_bank_cheque')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('refund_amount')" prop="refund_amount">
-          <el-input-number v-model="completeForm.refund_amount" :min="0" :precision="2" class="premium-select-field" />
-          <span class="input-helper-text">
-            {{ $t('compensation_calculation_hint') }}
-          </span>
-        </el-form-item>
+        <!-- ── Receive items dialog ───────────────────────────────────────── -->
+        <el-dialog v-model="showReceiveDialog" :title="t('receive_and_inspect_returns')" class="rma-dialog">
+            <p class="dialog-desc">{{ t('record_inspected_quantities_hint') }}</p>
 
-        <!-- What each method will actually record, since they behave differently. -->
-        <el-alert
-          :type="completeForm.refund_method === 'store_credit' ? 'info' : 'warning'"
-          :closable="false"
-          show-icon
-          class="settlement-effect"
-        >
-          <template v-if="completeForm.refund_method === 'store_credit'">
-            {{ $t('amount_deducted_from_balance_notice') }}
-          </template>
-          <template v-else>
-            {{ $t('negative_payment_notice') }}
-          </template>
-        </el-alert>
-        <el-form-item :label="$t('final_settlement_notes')" prop="admin_notes">
-          <el-input v-model="completeForm.admin_notes" type="textarea" :rows="3" :placeholder="$t('settlement_notes_placeholder')" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCompleteDialog = false">{{ $t('cancel') }}</el-button>
-        <el-button type="primary" @click="submitComplete" :loading="completeLoading">{{ $t('confirm_and_close_request') }}</el-button>
-      </template>
-    </el-dialog>
-  </div>
+            <div class="dialog-lines">
+                <div class="dialog-line" v-for="item in receiveForm.items" :key="item.rma_item_id">
+                    <span class="dialog-line-name">{{ item.product }}</span>
+                    <div class="dialog-line-fields">
+                        <span class="dialog-line-requested">{{ t('requested_for_return') }}: {{ item.quantity_requested }}</span>
+                        <el-input-number v-model="item.quantity_received" :min="0" :max="item.quantity_requested" size="small" />
+                    </div>
+                </div>
+            </div>
+
+            <template #footer>
+                <el-button @click="showReceiveDialog = false">{{ t('cancel') }}</el-button>
+                <el-button type="primary" :loading="receiveLoading" @click="submitReceive">{{ t('confirm_receipt') }}</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- ── Complete RMA dialog ────────────────────────────────────────── -->
+        <el-dialog v-model="showCompleteDialog" :title="t('complete_and_settle_return')" class="rma-dialog">
+            <!-- Breakdown so the operator can see how the return splits
+                 before committing: cash back vs. credit consumed by a
+                 replacement. -->
+            <div class="settlement-summary">
+                <div class="settlement-row">
+                    <span>{{ t('refundable_lines_value') }}</span>
+                    <strong>{{ formatCurrency(refundableTotal) }}</strong>
+                </div>
+                <div class="settlement-row" v-if="hasExchangeItems">
+                    <span>{{ t('credit_against_exchange_order') }}</span>
+                    <strong class="exchange">{{ formatCurrency(exchangeCredit) }}</strong>
+                </div>
+                <p class="settlement-hint" v-if="hasExchangeItems">{{ t('exchange_lines_not_refunded_notice') }}</p>
+            </div>
+
+            <el-form :model="completeForm" label-position="top">
+                <el-form-item :label="t('compensation_settlement_method')" prop="refund_method">
+                    <el-select v-model="completeForm.refund_method" :placeholder="t('select_compensation_method')" class="full-width">
+                        <el-option value="original" :label="t('refund_to_original_account')" />
+                        <el-option value="store_credit" :label="t('store_credit_to_customer_wallet')" />
+                        <el-option value="bank_transfer" :label="t('custom_bank_transfer')" />
+                        <el-option value="check" :label="t('paper_bank_cheque')" />
+                    </el-select>
+                </el-form-item>
+                <el-form-item :label="t('refund_amount')" prop="refund_amount">
+                    <el-input-number v-model="completeForm.refund_amount" :min="0" :precision="2" class="full-width" />
+                    <span class="helper-text">{{ t('compensation_calculation_hint') }}</span>
+                </el-form-item>
+
+                <!-- What each method will actually record, since they behave differently. -->
+                <el-alert
+                    :type="completeForm.refund_method === 'store_credit' ? 'info' : 'warning'"
+                    :closable="false"
+                    show-icon
+                    class="settlement-effect"
+                >
+                    <template v-if="completeForm.refund_method === 'store_credit'">{{ t('amount_deducted_from_balance_notice') }}</template>
+                    <template v-else>{{ t('negative_payment_notice') }}</template>
+                </el-alert>
+
+                <el-form-item :label="t('final_settlement_notes')" prop="admin_notes">
+                    <el-input v-model="completeForm.admin_notes" type="textarea" :rows="3" :placeholder="t('settlement_notes_placeholder')" />
+                </el-form-item>
+            </el-form>
+
+            <template #footer>
+                <el-button @click="showCompleteDialog = false">{{ t('cancel') }}</el-button>
+                <el-button type="primary" :loading="completeLoading" @click="submitComplete">{{ t('confirm_and_close_request') }}</el-button>
+            </template>
+        </el-dialog>
+    </div>
 </template>
 
 <script setup>
 import { formatMoney } from '@/utils/currency';
 import { ref, onMounted, computed } from 'vue'
-import { RefreshLeft, Back, Edit, Check, Close, Location, Finished, Warning, User, DocumentAdd, Select, Box, CircleCheck } from '@element-plus/icons-vue'
+import { ArrowRight, Edit, Check, Close, Location, Finished, Warning, User, DocumentAdd, Select, Box, CircleCheck, Sort } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -802,648 +752,309 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Credit notes panel */
-.credit-note-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 14px 16px;
+.rma-details {
+    --surface: #ffffff;
+    --ground: #f8fafc;
+    --line: #e2e8f0;
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --ink-mute: #64748b;
+    --primary: #2563eb;
+    --primary-soft: #eff6ff;
+    --ok: #16a34a;
+    --ok-soft: #f0fdf4;
+    --warn: #d97706;
+    --warn-soft: #fffbeb;
+    --bad: #dc2626;
+    --bad-soft: #fef2f2;
+
+    font-family: 'Cairo', sans-serif;
+    color: var(--ink);
+    padding-bottom: 2rem;
 }
 
-.credit-note-card + .credit-note-card {
-  margin-top: 12px;
+/* ── Header ─────────────────────────────────────────────────────────── */
+.builder-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--line);
 }
 
-.credit-note-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
+.eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--primary);
+    text-transform: uppercase;
 }
 
-.credit-note-head strong {
-  font-size: 1rem;
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
+.header-identity h1 {
+    margin: 0.35rem 0 0;
+    font-size: clamp(1.35rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
 }
 
-.credit-note-rows {
-  display: grid;
-  gap: 6px;
-}
-
-.credit-note-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.88rem;
-  color: #475569;
-}
-
-.credit-note-row strong {
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
-}
-
-.credit-note-row.open strong {
-  color: #b45309;
-}
-
-.section-card-header .dot.purple {
-  background: #8b5cf6;
-}
-
-/* Settlement breakdown inside the completion dialog */
-.settlement-summary {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 18px;
-}
-
-.settlement-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9rem;
-  color: #475569;
-}
-
-.settlement-row + .settlement-row {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed #cbd5e1;
-}
-
-.settlement-row strong {
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
-}
-
-.settlement-row strong.exchange {
-  color: #6d28d9;
-}
-
-.settlement-hint {
-  margin: 10px 0 0;
-  font-size: 0.8rem;
-  line-height: 1.6;
-  color: #64748b;
-}
-
-.settlement-effect {
-  margin-bottom: 16px;
-}
-
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
-
-.rma-details-container {
-  padding: 30px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100vh;
-  font-family: 'Cairo', 'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  direction: rtl;
-}
-
-/* Premium Page Header */
-.page-header-premium {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 25px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  padding: 24px 32px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.12);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-}
-
-.header-info {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.header-icon-box {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  color: #2563eb;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  box-shadow: inset 0 2px 4px rgba(37, 99, 235, 0.06), 0 4px 12px rgba(37, 99, 235, 0.08);
-}
-
-.header-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: #0f172a;
-  margin: 0 0 6px 0;
-  letter-spacing: -0.5px;
-}
-
-.header-subtitle {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0;
-  font-weight: 500;
+.header-identity p {
+    margin: 0.3rem 0 0;
+    color: var(--ink-mute);
+    font-size: 0.9rem;
 }
 
 .header-actions {
-  display: flex;
-  gap: 12px;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
-.btn-back-premium {
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-weight: 700;
-  border-radius: 12px;
-  padding: 12px 24px;
-  font-family: 'Cairo', sans-serif;
-  transition: all 0.2s;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ── Shared panel chrome (mirrors the RMA create page) ─────────────── */
+.panel-card,
+.rail-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(18, 28, 44, 0.04);
 }
 
-.btn-back-premium:hover {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
+.panel-title,
+.rail-title {
+    margin: 0 0 0.85rem;
+    font-size: 1.02rem;
+    font-weight: 800;
+    color: var(--ink);
 }
 
-.btn-edit-premium {
-  padding: 12px 24px;
-  border-radius: 12px;
-  font-weight: 700;
-  border: 1px solid #fde68a;
-  color: #d97706;
-  background: #fffbeb;
-  font-family: 'Cairo', sans-serif;
-  transition: all 0.2s;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.full-width { width: 100%; }
+
+.helper-text {
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+    margin-top: 0.4rem;
+    display: block;
+    line-height: 1.5;
 }
 
-.btn-edit-premium:hover {
-  background: #fef3c7;
-  color: #b45309;
-  border-color: #fcd34d;
+/* ── Lifecycle stepper ──────────────────────────────────────────────── */
+.lifecycle-card { margin-bottom: 1.5rem; }
+
+.step-title { font-weight: 700; color: var(--ink-soft); }
+.step-desc { font-size: 0.76rem; color: var(--ink-mute); display: block; margin-top: 0.2rem; }
+
+:deep(.el-step__icon) {
+    background: var(--primary-soft);
+    border: 2px solid #bfdbfe;
+    color: var(--primary);
 }
 
-/* Stepper cards */
-.lifecycle-card {
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: #ffffff;
-  padding: 24px;
-  margin-bottom: 25px;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.08);
+:deep(.el-step__icon.is-process),
+:deep(.el-step__icon.is-finish) {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #34d399;
+    color: #fff;
 }
 
-.premium-steps :deep(.el-step__title) {
-  font-family: 'Cairo', sans-serif;
-  font-weight: 800;
-  font-size: 14px;
-}
-
-.premium-steps :deep(.el-step__description) {
-  font-family: 'Cairo', sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.step-title {
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.step-desc {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-  display: block;
-  margin-top: 4px;
-}
-
-.premium-steps :deep(.el-step__icon) {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border: 2px solid #bfdbfe;
-  color: #2563eb;
-  font-size: 18px;
-  width: 40px;
-  height: 40px;
-}
-
-.premium-steps :deep(.el-step__icon.is-process) {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border: 2px solid #34d399;
-  color: #ffffff;
-}
-
-.premium-steps :deep(.el-step__icon.is-finish) {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border: 2px solid #34d399;
-  color: #ffffff;
-}
-
-/* Alert banners */
+/* ── Alert banner ───────────────────────────────────────────────────── */
 .alert-banner {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 20px 28px;
-  border-radius: 16px;
-  margin-bottom: 25px;
-  border: 1px solid;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 1.1rem 1.4rem;
+    border-radius: 14px;
+    margin-bottom: 1.5rem;
+    border: 1px solid;
 }
 
-.alert-banner.rejected {
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border-color: #fca5a5;
-  color: #991b1b;
+.alert-banner .el-icon { font-size: 1.9rem; flex: none; }
+.alert-banner h4 { margin: 0 0 0.3rem; font-weight: 800; font-size: 1rem; }
+.alert-banner p { margin: 0; font-size: 0.85rem; font-weight: 600; opacity: 0.9; }
+
+.alert-banner.rejected { background: var(--bad-soft); border-color: #fca5a5; color: #991b1b; }
+.alert-banner.cancelled { background: var(--ground); border-color: var(--line); color: var(--ink-soft); }
+
+/* ── Grid ───────────────────────────────────────────────────────────── */
+.builder-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 1.5rem;
+    align-items: start;
 }
 
-.alert-banner.cancelled {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-color: #cbd5e1;
-  color: #475569;
+.work-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    min-width: 0;
 }
 
-.alert-banner .el-icon {
-  font-size: 36px;
+.summary-rail {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 
-.alert-banner h4 {
-  margin: 0 0 6px 0;
-  font-weight: 800;
-  font-size: 16px;
+/* ── Return lines ───────────────────────────────────────────────────── */
+.return-lines { display: flex; flex-direction: column; gap: 0.65rem; }
+
+.return-line {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
-.alert-banner p {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  opacity: 0.9;
+.line-identity { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.line-name { font-weight: 700; }
+.line-meta { font-size: 0.8rem; color: var(--ink-mute); }
+.line-meta b { font-variant-numeric: tabular-nums; }
+.line-meta b.qty-warning { color: var(--warn); }
+.line-meta b.qty-success { color: var(--ok); }
+
+.line-tags { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+.exchange-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border: 1px dashed #bfdbfe;
+    border-radius: 8px;
+    padding: 0.2rem 0.6rem;
 }
 
-/* Details Section cards */
-.details-section-card {
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: #ffffff;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.08);
-  padding: 24px;
+/* ── Activity timeline ──────────────────────────────────────────────── */
+.activity-timeline { padding: 0.5rem 0.25rem; }
+
+.activity-card {
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
 }
 
-.details-section-card :deep(.el-card__header) {
-  padding: 20px 24px;
-  border-bottom: 1px solid #f1f5f9;
+.activity-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
-.section-card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.activity-action { font-weight: 800; font-size: 0.92rem; }
+.activity-user {
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+}
+.activity-user .el-icon { color: var(--primary); }
+.activity-desc { margin: 0; font-size: 0.85rem; color: var(--ink-soft); line-height: 1.6; }
+
+/* ── Operations panel ───────────────────────────────────────────────── */
+.op-buttons { display: flex; flex-direction: column; gap: 0.6rem; }
+.op-btn { width: 100%; justify-content: flex-start; margin-inline-start: 0 !important; }
+
+/* ── Fact list (customer/invoice details, credit notes) ────────────── */
+.fact-list { margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.fact-list.compact { gap: 0.4rem; margin-top: 0.6rem; }
+
+.fact-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px dashed var(--line);
+}
+.fact-list.compact .fact-row { padding-bottom: 0; border-bottom: none; font-size: 0.85rem; }
+.fact-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.fact-row dt { margin: 0; font-size: 0.78rem; font-weight: 700; color: var(--ink-mute); flex: none; }
+.fact-row dd { margin: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; text-align: end; min-width: 0; }
+
+.fact-primary { font-weight: 700; }
+.fact-secondary { font-size: 0.76rem; color: var(--ink-mute); }
+.fact-accent { font-weight: 700; color: var(--primary); }
+.fact-money { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ok); }
+.fact-money.open { color: var(--warn); }
+
+/* ── Credit notes ───────────────────────────────────────────────────── */
+.credit-note { border: 1px solid var(--line); border-radius: 12px; padding: 0.85rem 1rem; }
+.credit-note + .credit-note { margin-top: 0.75rem; }
+.credit-note-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.4rem; }
+.credit-note-head strong { font-variant-numeric: tabular-nums; }
+
+/* ── Dialogs ────────────────────────────────────────────────────────── */
+.rma-dialog { width: 600px; max-width: 92vw; }
+
+.dialog-desc { font-size: 0.85rem; color: var(--ink-mute); margin: 0 0 1rem; line-height: 1.6; }
+
+.dialog-lines { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.dialog-line {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
-.section-card-header .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2563eb;
-  box-shadow: 0 0 8px rgba(37, 99, 235, 0.6);
+.dialog-line-name { font-weight: 700; min-width: 0; }
+
+.dialog-line-fields { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.dialog-line-requested { font-size: 0.8rem; color: var(--ink-mute); }
+
+.settlement-summary {
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1.1rem;
 }
 
-.section-card-header .dot.orange { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
-.section-card-header .dot.blue { background: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
+.settlement-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; color: var(--ink-soft); }
+.settlement-row + .settlement-row { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--line); }
+.settlement-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.settlement-row strong.exchange { color: #6d28d9; }
 
-.section-card-header h3 {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0f172a;
-  margin: 0;
-}
+.settlement-hint { margin: 0.6rem 0 0; font-size: 0.78rem; line-height: 1.6; color: var(--ink-mute); }
+.settlement-effect { margin-bottom: 1rem; }
 
-.items-table-premium {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  overflow: hidden;
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+    .builder-grid { grid-template-columns: minmax(0, 1fr); }
+    .summary-rail { position: static; }
 }
 
-.items-table-premium :deep(.el-table__header-wrapper) th {
-  font-weight: 800 !important;
-  color: #475569 !important;
-  font-size: 13px !important;
-  background-color: #f8fafc !important;
-  padding: 14px 0 !important;
+@media (max-width: 720px) {
+    .header-actions .el-button:not(.is-text) { flex: 1; }
+
+    .fact-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+    .fact-row dd { align-items: flex-start; text-align: start; }
 }
 
-.qty-warning {
-  color: #b45309;
-  font-weight: 700;
-  background: #fffbeb;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #fde68a;
-  font-size: 12px;
-}
-
-.qty-success {
-  color: #15803d;
-  font-weight: 700;
-  background: #f0fdf4;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #bbf7d0;
-  font-size: 12px;
-}
-
-.premium-tag {
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 11px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-}
-
-.exchange-product-text {
-  font-weight: 700;
-  color: #2563eb;
-  background: #eff6ff;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  border: 1px dashed #bfdbfe;
-}
-
-.text-placeholder {
-  color: #cbd5e1;
-  font-weight: 500;
-}
-
-/* Operations Panel styling */
-.operations-card-premium {
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: #ffffff;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.08);
-  padding: 24px;
-}
-
-.operations-card-premium :deep(.el-card__header) {
-  padding: 20px 24px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.operations-buttons-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 15px;
-}
-
-.op-btn {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 14px 18px;
-  border-radius: 12px;
-  font-weight: 700;
-  font-size: 13px;
-  margin-left: 0 !important;
-  font-family: 'Cairo', sans-serif;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.op-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-}
-
-.op-btn.approve {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-}
-.op-btn.approve:hover:not(:disabled) {
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
-}
-
-.op-btn.reject {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
-}
-.op-btn.reject:hover:not(:disabled) {
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.35);
-}
-
-.op-btn.receive {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-}
-.op-btn.receive:hover:not(:disabled) {
-  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
-}
-
-.op-btn.complete {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-}
-.op-btn.complete:hover:not(:disabled) {
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.35);
-}
-
-.op-btn.cancel {
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  background: #ffffff;
-}
-.op-btn.cancel:hover:not(:disabled) {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
-}
-
-/* Info Card styling */
-.info-card-premium {
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: #ffffff;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.08);
-  padding: 24px;
-}
-
-.info-card-premium :deep(.el-card__header) {
-  padding: 20px 24px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.customer-info-box {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.customer-info-box .name {
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.customer-info-box .phone {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.invoice-number {
-  font-weight: 700;
-  color: #2563eb;
-}
-
-.final-refund-amount {
-  font-weight: 800;
-  color: #059669;
-  font-size: 16px;
-}
-
-.premium-descriptions {
-  --el-descriptions-table-border: 1px solid #f1f5f9;
-}
-
-.premium-descriptions :deep(.el-descriptions__label) {
-  font-weight: 800;
-  color: #475569;
-  background-color: #f8fafc;
-  font-size: 13px;
-  padding: 14px 20px;
-}
-
-.premium-descriptions :deep(.el-descriptions__content) {
-  color: #0f172a;
-  font-weight: 600;
-  font-size: 13px;
-  padding: 14px 20px;
-}
-
-/* Dialog styles */
-.premium-dialog {
-  border-radius: 20px;
-}
-
-.premium-dialog :deep(.el-dialog__header) {
-  padding: 24px 24px 16px 24px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.premium-dialog :deep(.el-dialog__title) {
-  font-weight: 800;
-  font-family: 'Cairo', sans-serif;
-  color: #0f172a;
-}
-
-.premium-dialog :deep(.el-dialog__body) {
-  padding: 24px;
-}
-
-.premium-dialog :deep(.el-dialog__footer) {
-  padding: 16px 24px 24px 24px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.dialog-desc {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 20px;
-  line-height: 1.5;
-  font-weight: 500;
-}
-
-.mini-table {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.mini-table :deep(.el-table__header-wrapper) th {
-  font-weight: 800 !important;
-  color: #475569 !important;
-  background-color: #f8fafc !important;
-}
-
-.premium-select-field {
-  width: 100%;
-}
-
-.premium-select-field :deep(.el-input__wrapper),
-.premium-select-field :deep(.el-select__wrapper) {
-  border-radius: 10px;
-  padding: 6px 12px;
-}
-
-.input-helper-text {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 6px;
-  display: block;
-  line-height: 1.4;
-  font-weight: 500;
-}
-
-/* Timeline Custom Styles */
-.premium-timeline {
-  padding: 10px 12px;
-}
-
-.timeline-content-card {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 14px;
-  padding: 16px 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
-}
-
-.timeline-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.action-badge {
-  font-weight: 800;
-  color: #0f172a;
-  font-size: 14px;
-}
-
-.user-badge {
-  font-size: 12px;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.user-badge .el-icon {
-  color: #2563eb;
-}
-
-.timeline-desc {
-  font-size: 13px;
-  color: #475569;
-  margin: 0;
-  line-height: 1.6;
-  font-weight: 500;
+@media (max-width: 480px) {
+    :deep(.el-steps) { --el-text-color-placeholder: transparent; }
+    .step-desc { display: none; }
 }
 </style>
