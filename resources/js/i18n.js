@@ -7716,17 +7716,25 @@ const messages = {
     }
 };
 
+// An explicit choice already saved (the admin language switcher, or the
+// public one) has to outlive the next page load. Reading systemData.locale
+// first — the server session's locale, which nothing in the admin panel
+// ever pushes back to the server — meant every fresh load silently reset
+// English back to Arabic (and the layout back to RTL) a moment after the
+// switcher had just changed it.
+const savedLocale = localStorage.getItem('locale');
+
 const i18n = createI18n({
     legacy: false,
-    locale: window.systemData?.locale || localStorage.getItem('locale') || 'ar',
+    locale: savedLocale || window.systemData?.locale || 'ar',
     fallbackLocale: 'ar',
     messages,
 });
 
-// Sync locale with Laravel
-if (window.systemData?.locale) {
+// Only seed localStorage from the server locale when there is no saved
+// preference yet (first visit) — never overwrite a choice already made.
+if (!savedLocale && window.systemData?.locale) {
     localStorage.setItem('locale', window.systemData.locale);
-    i18n.global.locale.value = window.systemData.locale;
 }
 
 export default i18n;
