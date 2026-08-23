@@ -823,16 +823,6 @@ class RmaController extends Controller
 
     public function getCustomersWithOrders(Request $request)
     {
-        // Debug: Log all customers with their orders
-        $allCustomers = Customer::with('salesOrders')->get();
-        \Log::info('All customers count: '.$allCustomers->count());
-        foreach ($allCustomers as $customer) {
-            \Log::info("Customer: {$customer->name}, Orders count: {$customer->salesOrders->count()}");
-            foreach ($customer->salesOrders as $order) {
-                \Log::info("  Order #{$order->order_number}, Status: {$order->status}");
-            }
-        }
-
         $query = Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
             $query->where('status', 'delivered');
         }])->whereHas('salesOrders', function ($query) {
@@ -850,8 +840,6 @@ class RmaController extends Controller
 
         $customers = $query->orderBy('name', 'asc')
             ->paginate($request->per_page ?? 50);
-
-        \Log::info('Filtered customers with delivered orders count: '.$customers->count());
 
         return response()->json([
             'success' => true,

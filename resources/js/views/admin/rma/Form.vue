@@ -418,29 +418,39 @@ const loadCustomers = async () => {
   customers.value = []
 }
 
-const searchCustomers = async (query = '') => {
+// Debounced so typing a name doesn't fire a request per keystroke — the
+// remote-method callback ran on every input change with nothing to coalesce
+// it, which made the customer search feel like it was hanging or dropping
+// keystrokes under normal typing speed.
+let customerSearchTimer = null
+
+const searchCustomers = (query = '') => {
+  clearTimeout(customerSearchTimer)
   customersLoading.value = true
-  try {
-    const params = { per_page: 50 }
-    if (query) {
-      params.search = query
+
+  customerSearchTimer = setTimeout(async () => {
+    try {
+      const params = { per_page: 50 }
+      if (query) {
+        params.search = query
+      }
+      // Via the service, like the rest of the RMA screens.
+      const response = await rmaService.getCustomersWithOrders(params)
+      const customersData = response.data.data?.data || response.data.data || response.data || []
+
+      // Ensure selectedCustomer is kept in the array list so el-select doesn't hide it
+      let list = Array.isArray(customersData) ? customersData : []
+      if (selectedCustomer.value && !list.some(c => c.id === selectedCustomer.value.id)) {
+        list.push(selectedCustomer.value)
+      }
+      customers.value = list
+    } catch (error) {
+      console.error('Failed to search customers:', error)
+      customers.value = selectedCustomer.value ? [selectedCustomer.value] : []
+    } finally {
+      customersLoading.value = false
     }
-    // Via the service, like the rest of the RMA screens.
-    const response = await rmaService.getCustomersWithOrders(params)
-    const customersData = response.data.data?.data || response.data.data || response.data || []
-    
-    // Ensure selectedCustomer is kept in the array list so el-select doesn't hide it
-    let list = Array.isArray(customersData) ? customersData : []
-    if (selectedCustomer.value && !list.some(c => c.id === selectedCustomer.value.id)) {
-      list.push(selectedCustomer.value)
-    }
-    customers.value = list
-  } catch (error) {
-    console.error('Failed to search customers:', error)
-    customers.value = selectedCustomer.value ? [selectedCustomer.value] : []
-  } finally {
-    customersLoading.value = false
-  }
+  }, 300)
 }
 
 const onCustomerFocus = () => {
