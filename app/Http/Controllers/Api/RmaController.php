@@ -823,11 +823,15 @@ class RmaController extends Controller
 
     public function getCustomersWithOrders(Request $request)
     {
-        $query = Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
-            $query->where('status', 'delivered');
-        }])->whereHas('salesOrders', function ($query) {
-            $query->where('status', 'delivered');
-        });
+        // Not restricted to customers who already have a delivered order: this
+        // is the picker for "who is returning something", and requiring a
+        // delivered order to even appear here meant the search returned
+        // nothing at all whenever the customer's order was still in transit
+        // (or, in a fresh dataset, always). Which order is eligible to return
+        // against is enforced separately once a customer is chosen — the
+        // sales-orders endpoint the form calls next already filters to
+        // status=delivered for that customer.
+        $query = Customer::query();
 
         if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
