@@ -32,7 +32,14 @@ class InvoiceController extends Controller
 
             // Filter by status
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                // A caller narrowing to "any of these statuses" (e.g. the RMA
+                // picker, which accepts confirmed or delivered invoices) sends
+                // an array; every other caller still sends one status string.
+                if (is_array($request->status)) {
+                    $query->whereIn('status', $request->status);
+                } else {
+                    $query->where('status', $request->status);
+                }
             }
 
             // Filter by customer_id

@@ -23,6 +23,16 @@ use Illuminate\Validation\ValidationException;
 
 class RmaController extends Controller
 {
+    /**
+     * Invoice statuses a return can be filed against.
+     *
+     * Restricted to `delivered` only, every invoice in this business's data
+     * was ineligible — confirmed is where an invoice actually sits once the
+     * sale is finalized, since the shipping stages (processing/shipped) are
+     * not part of this business's real workflow.
+     */
+    private const RMA_ELIGIBLE_INVOICE_STATUSES = ['confirmed', 'delivered'];
+
     public function index(Request $request)
     {
         $query = $this->buildFilteredQuery($request);
@@ -246,9 +256,9 @@ class RmaController extends Controller
                 throw new \Exception('الفاتورة لا تنتمي للعميل المحدد');
             }
 
-            // Check if the invoice is delivered
-            if ($invoice->status !== 'delivered') {
-                throw new \Exception('لا يمكن إنشاء طلب إرجاع لفاتورة لم يتم تسليمها');
+            // Check if the invoice is eligible for a return
+            if (! in_array($invoice->status, self::RMA_ELIGIBLE_INVOICE_STATUSES, true)) {
+                throw new \Exception('لا يمكن إنشاء طلب إرجاع لفاتورة لم تُعتمد أو تُسلَّم بعد');
             }
 
             // Check that the returned quantities do not exceed original purchased quantities

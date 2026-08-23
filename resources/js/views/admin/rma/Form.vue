@@ -1,332 +1,348 @@
 <template>
-  <div class="rma-form-container">
-    <!-- Header Section -->
-    <div class="page-header-premium">
-      <div class="header-info">
-        <div class="header-icon-box">
-          <el-icon><RefreshLeft /></el-icon>
-        </div>
-        <div>
-          <h1 class="header-title">{{ isEdit ? $t('edit_return_request') : $t('create_return_request') }}</h1>
-          <p class="header-subtitle">{{ $t('rma_form_subtitle') }}</p>
-        </div>
-      </div>
-      <el-button @click="goBack" class="btn-back-premium">
-        <el-icon><Back /></el-icon> {{ $t('back_to_home') }}
-      </el-button>
-    </div>
+    <div class="rma-builder">
+        <!-- ── Header ─────────────────────────────────────────────────────── -->
+        <header class="builder-header">
+            <div class="header-identity">
+                <span class="eyebrow">{{ t('rma') }}</span>
+                <h1>{{ isEdit ? t('edit_return_request') : t('create_return_request') }}</h1>
+                <p>{{ t('rma_form_subtitle') }}</p>
+            </div>
 
-    <el-form :model="form" :rules="rules" ref="formRef" label-position="top" class="premium-form-layout" v-loading="loading">
-      <el-row :gutter="25">
-        <!-- Left Column: RMA Request Details -->
-        <el-col :xs="24" :lg="8">
-          <el-card class="form-section-card" shadow="never">
-            <template #header>
-              <div class="section-card-header">
-                <span class="dot"></span>
-                <h3>{{ $t('basic_request_details') }}</h3>
-              </div>
-            </template>
-
-            <!-- Select Customer -->
-            <el-form-item :label="$t('returning_customer')" prop="customer_id">
-              <el-select
-                v-model="form.customer_id"
-                :placeholder="$t('search_customer_by_name_or_phone')"
-                filterable
-                remote
-                reserve-keyword
-                :remote-method="searchCustomers"
-                :loading="customersLoading"
-                :remote-show-suffix="true"
-                clearable
-                @change="onCustomerChange"
-                @focus="onCustomerFocus"
-                class="premium-input-field"
-                :disabled="isEdit"
-              >
-                <el-option 
-                  v-for="customer in customers" 
-                  :key="customer.id" 
-                  :value="customer.id" 
-                  :label="customer.name"
+            <div class="header-actions">
+                <el-button text @click="goBack">
+                    <el-icon><ArrowRight /></el-icon>
+                    {{ t('back_to_home') }}
+                </el-button>
+                <el-button
+                    type="primary"
+                    size="large"
+                    :loading="saving"
+                    :disabled="!canSubmit"
+                    @click="submitForm"
                 >
-                  <div class="customer-option">
-                    <div class="customer-option-header">
-                      <span class="customer-option-name">{{ customer.name }}</span>
-                      <span class="customer-option-id">#{{ customer.id }}</span>
+                    <el-icon><Check /></el-icon>
+                    {{ isEdit ? t('update_and_save_changes') : t('create_the_return_request') }}
+                </el-button>
+            </div>
+        </header>
+
+        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" v-loading="loading">
+            <div class="builder-grid">
+                <!-- ── Work area ──────────────────────────────────────────── -->
+                <section class="work-area">
+                    <!-- Customer -->
+                    <div class="panel-card">
+                        <h2 class="panel-title">{{ t('returning_customer') }}</h2>
+
+                        <el-form-item prop="customer_id" class="bare-item">
+                            <el-select
+                                v-model="form.customer_id"
+                                :placeholder="t('search_customer_by_name_or_phone')"
+                                filterable
+                                remote
+                                reserve-keyword
+                                clearable
+                                :remote-method="searchCustomers"
+                                :loading="customersLoading"
+                                class="full-width"
+                                :disabled="isEdit"
+                                @change="onCustomerChange"
+                                @focus="onCustomerFocus"
+                            >
+                                <el-option
+                                    v-for="customer in customers"
+                                    :key="customer.id"
+                                    :value="customer.id"
+                                    :label="customer.name"
+                                >
+                                    <div class="customer-option">
+                                        <div class="customer-option-header">
+                                            <span class="customer-option-name">{{ customer.name }}</span>
+                                            <span class="customer-option-id">#{{ customer.id }}</span>
+                                        </div>
+                                        <div class="customer-option-details">
+                                            <span class="customer-option-meta" v-if="customer.phone">
+                                                <el-icon><Phone /></el-icon> <span>{{ customer.phone }}</span>
+                                            </span>
+                                            <span class="customer-option-meta" v-if="customer.email">
+                                                <el-icon><Message /></el-icon> <span>{{ customer.email }}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </el-option>
+                            </el-select>
+                        </el-form-item>
+
+                        <div class="customer-summary" v-if="selectedCustomer">
+                            <div class="customer-summary-header">
+                                <div class="customer-avatar"><el-icon><User /></el-icon></div>
+                                <div class="customer-identity">
+                                    <strong>{{ selectedCustomer.name }}</strong>
+                                    <span>{{ t('customer_number_label') }}: #{{ selectedCustomer.id }}</span>
+                                </div>
+                                <div class="customer-stats">
+                                    <div class="stat-pill">
+                                        <span class="stat-value">{{ customerStats.totalOrders }}</span>
+                                        <span class="stat-label">{{ t('total_orders') }}</span>
+                                    </div>
+                                    <div class="stat-pill">
+                                        <span class="stat-value">{{ customerStats.totalReturns }}</span>
+                                        <span class="stat-label">{{ t('rma') }}</span>
+                                    </div>
+                                    <div class="stat-pill">
+                                        <span class="stat-value">{{ customerStats.availableOrders }}</span>
+                                        <span class="stat-label">{{ t('returnable_orders') }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="customer-contact" v-if="selectedCustomer.phone || selectedCustomer.email">
+                                <span v-if="selectedCustomer.phone"><el-icon><Phone /></el-icon> {{ selectedCustomer.phone }}</span>
+                                <span v-if="selectedCustomer.email"><el-icon><Message /></el-icon> {{ selectedCustomer.email }}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="customer-option-details">
-                      <span class="customer-option-phone" v-if="customer.phone">
-                        <el-icon><Phone /></el-icon> <span>{{ customer.phone }}</span>
-                      </span>
-                      <span class="customer-option-email" v-if="customer.email">
-                        <el-icon><Message /></el-icon> <span>{{ customer.email }}</span>
-                      </span>
+
+                    <!-- Invoice -->
+                    <div class="panel-card">
+                        <h2 class="panel-title">{{ t('linked_original_invoice') }}</h2>
+
+                        <el-form-item prop="invoice_id" class="bare-item">
+                            <el-select
+                                v-model="form.invoice_id"
+                                :placeholder="t('select_original_invoice')"
+                                filterable
+                                clearable
+                                class="full-width"
+                                :disabled="!form.customer_id || isEdit"
+                                :loading="invoicesLoading"
+                                @change="loadInvoiceItems"
+                            >
+                                <el-option
+                                    v-for="invoice in invoices"
+                                    :key="invoice.id"
+                                    :value="invoice.id"
+                                    :label="invoice.invoice_number"
+                                />
+                            </el-select>
+                        </el-form-item>
+                        <p class="helper-text" v-if="!form.customer_id">{{ t('select_customer_to_see_orders') }}</p>
+                        <p class="helper-text" v-else-if="!invoicesLoading && !invoices.length">
+                            {{ t('no_delivered_orders_for_customer') }}
+                        </p>
                     </div>
-                  </div>
-                </el-option>
-              </el-select>
-            </el-form-item>
 
-            <!-- Customer Details Card (shown when customer is selected) -->
-            <div class="customer-details-card" v-if="selectedCustomer">
-              <div class="customer-details-header">
-                <div class="customer-avatar">
-                  <el-icon><User /></el-icon>
-                </div>
-                <div class="customer-info">
-                  <h4>{{ selectedCustomer.name }}</h4>
-                  <p class="customer-meta">{{ $t('customer_number_label') }}: #{{ selectedCustomer.id }}</p>
-                </div>
-                <div class="customer-stats">
-                  <div class="stat-item">
-                    <span class="stat-value">{{ customerStats.totalOrders }}</span>
-                    <span class="stat-label">{{ $t('total_orders') }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-value">{{ customerStats.totalReturns }}</span>
-                    <span class="stat-label">{{ $t('rma') }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-value">{{ customerStats.availableOrders }}</span>
-                    <span class="stat-label">{{ $t('returnable_orders') }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="customer-contact-info" v-if="selectedCustomer.phone || selectedCustomer.email">
-                <span class="contact-item" v-if="selectedCustomer.phone">
-                  <el-icon><Phone /></el-icon> {{ selectedCustomer.phone }}
-                </span>
-                <span class="contact-item" v-if="selectedCustomer.email">
-                  <el-icon><Message /></el-icon> {{ selectedCustomer.email }}
-                </span>
-              </div>
-            </div>
+                    <!-- Returned items -->
+                    <div class="panel-card items-panel">
+                        <div class="panel-header-row">
+                            <h2 class="panel-title">{{ t('returned_products') }}</h2>
+                            <span class="count-badge" v-if="invoiceItems.length">
+                                {{ t('selected_of_total', { selected: selectedItemsCount, total: invoiceItems.length }) }}
+                            </span>
+                        </div>
 
-            <!-- Select Sales Order -->
-            <el-form-item :label="$t('linked_original_invoice')" prop="order_id">
-              <el-select
-                v-model="form.order_id"
-                :placeholder="$t('select_original_invoice')"
-                filterable
-                clearable
-                @change="loadOrderItems"
-                class="premium-input-field"
-                :disabled="!form.customer_id || isEdit"
-                :loading="ordersLoading"
-              >
-                <el-option
-                  v-for="order in filteredOrders"
-                  :key="order.id"
-                  :value="order.id"
-                  :label="order.order_number"
-                />
-              </el-select>
-              <span class="input-helper-text" v-if="!form.customer_id">{{ $t('select_customer_to_see_orders') }}</span>
-              <span class="input-helper-text" v-else-if="!ordersLoading && !filteredOrders.length">
-                {{ $t('no_delivered_orders_for_customer') }}
-              </span>
-            </el-form-item>
+                        <div v-if="!invoiceItems.length" class="empty-state">
+                            <el-icon><ShoppingCart /></el-icon>
+                            <p>{{ t('select_customer_and_invoice_for_items') }}</p>
+                        </div>
 
-            <!-- Return Type (Resolution) -->
-            <el-form-item :label="$t('settlement_type_and_handling')" prop="return_type">
-              <el-select v-model="form.return_type" :placeholder="$t('select_default_handling')" class="premium-input-field">
-                <el-option value="refund" :label="$t('refund_compensation')" />
-                <el-option value="exchange" :label="$t('exchange_for_another_product')" />
-                <el-option value="store_credit" :label="$t('store_credit_to_wallet')" />
-              </el-select>
-            </el-form-item>
+                        <div v-else class="return-lines">
+                            <article
+                                v-for="item in invoiceItems"
+                                :key="item.invoice_item_id"
+                                class="return-line"
+                                :class="{ 'is-selected': item.selected }"
+                            >
+                                <label class="line-select">
+                                    <el-checkbox v-model="item.selected" />
+                                    <div class="line-identity">
+                                        <span class="line-name">{{ item.product_name }}</span>
+                                        <span class="line-meta">
+                                            {{ formatCurrency(item.unit_price) }}
+                                            <span class="dot">·</span>
+                                            {{ t('invoice_quantity_label', { count: item.original_quantity }) }}
+                                        </span>
+                                    </div>
+                                    <span class="line-refund" v-if="item.selected">{{ formatCurrency(lineRefundEstimate(item)) }}</span>
+                                </label>
 
-            <!-- Return Cause Reason -->
-            <el-form-item :label="$t('main_return_reason')" prop="reason">
-              <el-select v-model="form.reason" :placeholder="$t('select_main_return_reason')" class="premium-input-field">
-                <el-option value="defective" :label="$t('reason_defective')" />
-                <el-option value="damaged" :label="$t('reason_damaged')" />
-                <el-option value="wrong_item" :label="$t('reason_wrong_item')" />
-                <el-option value="not_as_described" :label="$t('reason_not_as_described')" />
-                <el-option value="changed_mind" :label="$t('reason_changed_mind')" />
-                <el-option value="other" :label="$t('reason_other')" />
-              </el-select>
-            </el-form-item>
+                                <div class="line-fields" v-if="item.selected">
+                                    <label class="field">
+                                        <span class="field-label">{{ t('return_quantity') }}</span>
+                                        <el-input-number
+                                            v-model="item.quantity"
+                                            :min="1"
+                                            :max="item.original_quantity"
+                                            size="default"
+                                            class="full-width"
+                                        />
+                                    </label>
 
-            <!-- Reason Description -->
-            <el-form-item :label="$t('additional_return_details')">
-              <el-input v-model="form.reason_description" type="textarea" :rows="3" :placeholder="$t('additional_return_details_placeholder')" />
-            </el-form-item>
+                                    <label class="field">
+                                        <span class="field-label">{{ t('received_condition') }}</span>
+                                        <el-select v-model="item.condition" class="full-width">
+                                            <el-option value="new" :label="t('condition_new')" />
+                                            <el-option value="used" :label="t('condition_used')" />
+                                            <el-option value="damaged" :label="t('condition_damaged')" />
+                                            <el-option value="missing" :label="t('condition_missing')" />
+                                        </el-select>
+                                    </label>
 
-            <!-- Return Address -->
-            <div class="address-section">
-              <div class="address-header">
-                <el-icon><Location /></el-icon>
-                <span>{{ $t('pickup_address_optional') }}</span>
-              </div>
-              <el-form-item :label="$t('main_address')">
-                <el-input v-model="form.return_address.address_line1" :placeholder="$t('address_line_placeholder')" />
-              </el-form-item>
-              <el-row :gutter="10">
-                <el-col :span="12">
-                  <el-form-item :label="$t('city')">
-                    <el-input v-model="form.return_address.city" :placeholder="$t('city')" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item :label="$t('country')">
-                    <el-input v-model="form.return_address.country" :placeholder="$t('country')" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-            </div>
+                                    <label class="field">
+                                        <span class="field-label">{{ t('settlement_method') }}</span>
+                                        <el-select v-model="item.resolution" class="full-width">
+                                            <el-option value="refund" :label="t('refund')" />
+                                            <el-option value="exchange" :label="t('exchange')" />
+                                            <el-option value="repair" :label="t('repair')" />
+                                            <el-option value="discard" :label="t('scrap')" />
+                                        </el-select>
+                                    </label>
 
-            <!-- Notes -->
-            <el-form-item :label="$t('handling_and_follow_up_notes')">
-              <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('internal_notes_placeholder')" />
-            </el-form-item>
-          </el-card>
-        </el-col>
+                                    <label class="field" v-if="item.resolution === 'exchange'">
+                                        <span class="field-label">{{ t('replacement_product') }}</span>
+                                        <el-select
+                                            v-model="item.exchange_product_id"
+                                            :placeholder="t('search_replacement_product')"
+                                            filterable
+                                            remote
+                                            reserve-keyword
+                                            clearable
+                                            :remote-method="searchExchangeProducts"
+                                            :loading="catalogLoading"
+                                            class="full-width"
+                                            @focus="onExchangeFocus"
+                                        >
+                                            <el-option
+                                                v-for="prod in catalogProducts"
+                                                :key="prod.id"
+                                                :value="prod.id"
+                                                :label="prod.name_ar || prod.name_en"
+                                            >
+                                                <div class="product-option">
+                                                    <span class="product-option-name">{{ prod.name_ar || prod.name_en }}</span>
+                                                    <span class="product-option-stock" :class="stockTone(prod.stock_quantity)">
+                                                        {{ t('available') }} {{ prod.stock_quantity ?? 0 }}
+                                                    </span>
+                                                </div>
+                                            </el-option>
+                                        </el-select>
+                                    </label>
+                                </div>
 
-        <!-- Right Column: Products Selection & Configuration -->
-        <el-col :xs="24" :lg="16">
-          <el-card class="form-section-card" shadow="never">
-            <template #header>
-              <div class="section-card-header items-header">
-                <div class="title-with-count">
-                  <span class="dot"></span>
-                  <h3>{{ $t('returned_products') }}</h3>
-                  <span class="items-count-badge" v-if="orderItems.length">{{ $t('selected_of_total', { selected: selectedItemsCount, total: orderItems.length }) }}</span>
-                </div>
-              </div>
-            </template>
-
-            <!-- Empty State -->
-            <div v-if="orderItems.length === 0" class="items-empty-state">
-              <el-icon><ShoppingCart /></el-icon>
-              <p>{{ $t('select_customer_and_invoice_for_items') }}</p>
-            </div>
-
-            <!-- Table of Items -->
-            <div v-else class="items-table-wrapper">
-              <el-table :data="orderItems" stripe class="items-selection-table">
-                <!-- Checkbox Column -->
-                <el-table-column width="55" align="center">
-                  <template #default="{ row }">
-                    <el-checkbox v-model="row.selected" @change="calculateRefundSummary" />
-                  </template>
-                </el-table-column>
-
-                <!-- Product Details -->
-                <el-table-column :label="$t('original_product')">
-                  <template #default="{ row }">
-                    <div class="item-product-cell">
-                      <span class="item-product-name">{{ row.product_name }}</span>
-                      <div class="item-product-meta">
-                        <span class="price-badge">{{ formatCurrency(row.unit_price) }}</span>
-                        <span class="qty-badge">{{ $t('invoice_quantity_label', { count: row.original_quantity }) }}</span>
-                      </div>
+                                <label class="line-note-field" v-if="item.selected">
+                                    <span class="field-label">{{ t('notes') }}</span>
+                                    <el-input v-model="item.notes" :placeholder="t('internal_notes_placeholder')" size="default" />
+                                </label>
+                            </article>
+                        </div>
                     </div>
-                  </template>
-                </el-table-column>
+                </section>
 
-                <!-- Return Qty -->
-                <el-table-column :label="$t('return_quantity')" width="130">
-                  <template #default="{ row }">
-                    <el-input-number
-                      v-model="row.quantity"
-                      :min="1"
-                      :max="row.original_quantity"
-                      size="small"
-                      :disabled="!row.selected"
-                      @change="calculateRefundSummary"
-                      class="qty-input-premium"
-                    />
-                  </template>
-                </el-table-column>
+                <!-- ── Summary rail ───────────────────────────────────────── -->
+                <aside class="summary-rail">
+                    <div class="rail-card">
+                        <h3 class="rail-title">{{ t('settlement_type_and_handling') }}</h3>
 
-                <!-- Condition -->
-                <el-table-column :label="$t('received_condition')" width="130">
-                  <template #default="{ row }">
-                    <el-select v-model="row.condition" size="small" :disabled="!row.selected" @change="calculateRefundSummary" class="condition-select">
-                      <el-option value="new" :label="$t('condition_new')" />
-                      <el-option value="used" :label="$t('condition_used')" />
-                      <el-option value="damaged" :label="$t('condition_damaged')" />
-                      <el-option value="missing" :label="$t('condition_missing')" />
-                    </el-select>
-                  </template>
-                </el-table-column>
+                        <label class="field">
+                            <el-select v-model="form.return_type" :placeholder="t('select_default_handling')" class="full-width">
+                                <el-option value="refund" :label="t('refund_compensation')" />
+                                <el-option value="exchange" :label="t('exchange_for_another_product')" />
+                                <el-option value="store_credit" :label="t('store_credit_to_wallet')" />
+                            </el-select>
+                        </label>
 
-                <!-- Resolution -->
-                <el-table-column :label="$t('settlement_method')" width="130">
-                  <template #default="{ row }">
-                    <el-select v-model="row.resolution" size="small" :disabled="!row.selected" class="resolution-select">
-                      <el-option value="refund" :label="$t('refund')" />
-                      <el-option value="exchange" :label="$t('exchange')" />
-                      <el-option value="repair" :label="$t('repair')" />
-                      <el-option value="discard" :label="$t('scrap')" />
-                    </el-select>
-                  </template>
-                </el-table-column>
+                        <el-form-item prop="reason" class="bare-item">
+                            <label class="field">
+                                <span class="field-label">{{ t('main_return_reason') }}</span>
+                                <el-select v-model="form.reason" :placeholder="t('select_main_return_reason')" class="full-width">
+                                    <el-option value="defective" :label="t('reason_defective')" />
+                                    <el-option value="damaged" :label="t('reason_damaged')" />
+                                    <el-option value="wrong_item" :label="t('reason_wrong_item')" />
+                                    <el-option value="not_as_described" :label="t('reason_not_as_described')" />
+                                    <el-option value="changed_mind" :label="t('reason_changed_mind')" />
+                                    <el-option value="other" :label="t('reason_other')" />
+                                </el-select>
+                            </label>
+                        </el-form-item>
 
-                <!-- Exchange Product Selector (Shown only when resolution is exchange) -->
-                <el-table-column :label="$t('replacement_product')" min-width="180">
-                  <template #default="{ row }">
-                    <div v-if="row.resolution === 'exchange'" class="exchange-selector-cell">
-                      <el-select
-                        v-model="row.exchange_product_id"
-                        :placeholder="$t('search_replacement_product')"
-                        filterable
-                        remote
-                        reserve-keyword
-                        :remote-method="queryCatalogProducts"
-                        :loading="catalogLoading"
-                        size="small"
-                        :disabled="!row.selected"
-                        class="exchange-product-select"
-                      >
-                        <el-option
-                          v-for="prod in catalogProducts"
-                          :key="prod.id"
-                          :value="prod.id"
-                          :label="prod.name_ar || prod.name_en"
-                        />
-                      </el-select>
+                        <el-form-item prop="reason_description" class="bare-item">
+                            <label class="field">
+                                <span class="field-label">{{ t('additional_return_details') }}</span>
+                                <el-input
+                                    v-model="form.reason_description"
+                                    type="textarea"
+                                    :rows="3"
+                                    :placeholder="t('additional_return_details_placeholder')"
+                                />
+                            </label>
+                        </el-form-item>
                     </div>
-                    <span v-else class="text-placeholder">-</span>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
 
-            <!-- Refund Summary Section -->
-            <div class="refund-summary-panel" v-if="orderItems.some(i => i.selected)">
-              <div class="summary-row title">
-                <span>{{ $t('estimated_compensation_summary') }}</span>
-                <span class="value">{{ formatCurrency(estimatedRefundTotal) }}</span>
-              </div>
-              <div class="summary-row desc">
-                <p>{{ $t('compensation_rate_note') }}</p>
-              </div>
-            </div>
+                    <div class="rail-card">
+                        <button type="button" class="extras-toggle" @click="showAddress = !showAddress">
+                            <el-icon><component :is="showAddress ? Minus : Plus" /></el-icon>
+                            {{ t('pickup_address_optional') }}
+                        </button>
 
-            <!-- Actions buttons -->
-            <div class="form-actions-panel">
-              <el-button type="primary" @click="submitForm" :loading="saving" class="btn-save-premium">
-                {{ isEdit ? $t('update_and_save_changes') : $t('create_the_return_request') }}
-              </el-button>
-              <el-button @click="router.back()" class="btn-cancel-premium">
-                {{ $t('cancel') }}
-              </el-button>
+                        <div v-if="showAddress" class="extras-body">
+                            <el-form-item prop="return_address.address_line1" class="bare-item">
+                                <label class="field">
+                                    <span class="field-label">{{ t('main_address') }}</span>
+                                    <el-input v-model="form.return_address.address_line1" :placeholder="t('address_line_placeholder')" />
+                                </label>
+                            </el-form-item>
+                            <div class="fields-row">
+                                <el-form-item prop="return_address.city" class="bare-item">
+                                    <label class="field">
+                                        <span class="field-label">{{ t('city') }}</span>
+                                        <el-input v-model="form.return_address.city" :placeholder="t('city')" />
+                                    </label>
+                                </el-form-item>
+                                <el-form-item prop="return_address.country" class="bare-item">
+                                    <label class="field">
+                                        <span class="field-label">{{ t('country') }}</span>
+                                        <el-input v-model="form.return_address.country" :placeholder="t('country')" />
+                                    </label>
+                                </el-form-item>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rail-card">
+                        <h3 class="rail-title">{{ t('handling_and_follow_up_notes') }}</h3>
+                        <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="t('internal_notes_placeholder')" />
+                    </div>
+
+                    <div class="rail-card totals-card" v-if="selectedItemsCount">
+                        <dl class="totals">
+                            <div class="total-line grand">
+                                <dt>{{ t('estimated_compensation_summary') }}</dt>
+                                <dd>{{ formatCurrency(estimatedRefundTotal) }}</dd>
+                            </div>
+                        </dl>
+                        <p class="totals-note">{{ t('compensation_rate_note') }}</p>
+                    </div>
+                </aside>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
-    </el-form>
-  </div>
+        </el-form>
+
+        <!-- On a phone the summary rail is far below the lines, so the figure
+             that decides whether to save follows the screen. -->
+        <div class="mobile-bar">
+            <div class="mobile-total">
+                <span>{{ t('estimated_compensation_summary') }}</span>
+                <strong>{{ formatCurrency(estimatedRefundTotal) }}</strong>
+            </div>
+            <el-button type="primary" :loading="saving" :disabled="!canSubmit" @click="submitForm">
+                {{ isEdit ? t('update_and_save_changes') : t('create_the_return_request') }}
+            </el-button>
+        </div>
+    </div>
 </template>
 
 <script setup>
-import { formatMoney } from '@/utils/currency';
-import { ref, onMounted, computed } from 'vue'
-import { RefreshLeft, Back, Location, ShoppingCart, User, Phone, Message } from '@element-plus/icons-vue'
+import { formatMoney } from '@/utils/currency'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ArrowRight, Check, Minus, Plus, ShoppingCart, User, Phone, Message } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -337,1070 +353,792 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const rmaId = computed(() => route.params.id ? parseInt(route.params.id) : null)
-const goBack = () => {
-  router.push('/admin/rma')
-}
+const rmaId = computed(() => (route.params.id ? parseInt(route.params.id) : null))
+const isEdit = computed(() => !!rmaId.value)
+const goBack = () => router.push('/admin/rma')
 
+// Mirrors RmaController::RMA_ELIGIBLE_INVOICE_STATUSES — confirmed is where
+// an invoice actually sits once a sale is finalized in this business; the
+// shipping stages (processing/shipped) never happen, and restricting to
+// delivered-only left the picker permanently empty.
+const RMA_ELIGIBLE_INVOICE_STATUSES = ['confirmed', 'delivered']
+
+const formRef = ref(null)
 const loading = ref(false)
 const saving = ref(false)
-const catalogLoading = ref(false)
+const showAddress = ref(false)
+
 const customersLoading = ref(false)
-const ordersLoading = ref(false)
+const invoicesLoading = ref(false)
+const catalogLoading = ref(false)
 
 const customers = ref([])
-const orders = ref([])
-const filteredOrders = ref([])
-const orderItems = ref([])
+const invoices = ref([])
+const invoiceItems = ref([])
 const catalogProducts = ref([])
 const selectedCustomer = ref(null)
-const customerStats = ref({
-  totalOrders: 0,
-  totalReturns: 0,
-  availableOrders: 0
+const customerStats = ref({ totalOrders: 0, totalReturns: 0, availableOrders: 0 })
+
+const form = reactive({
+    customer_id: null,
+    invoice_id: null,
+    reason: 'defective',
+    return_type: 'refund',
+    reason_description: '',
+    notes: '',
+    return_address: { address_line1: '', city: '', country: '', postal_code: '' },
 })
 
-const form = ref({
-  customer_id: null,
-  order_id: null,
-  reason: 'defective',
-  return_type: 'refund',
-  reason_description: '',
-  notes: '',
-  return_address: {
-    address_line1: '',
-    city: '',
-    country: '',
-    postal_code: ''
-  }
-})
+/** Only enforced once the operator has started filling in a pickup address — the whole section is optional. */
+const addressStarted = () => {
+    const addr = form.return_address
+    return !!(addr.address_line1 || addr.city || addr.country)
+}
+const requiredIfAddressStarted = (message) => (rule, value, callback) => {
+    if (addressStarted() && !value) {
+        callback(new Error(message))
+    } else {
+        callback()
+    }
+}
 
 const rules = {
-  customer_id: [{ required: true, message: t('please_select_returning_customer'), trigger: 'change' }],
-  order_id: [{ required: true, message: t('please_select_original_invoice'), trigger: 'change' }],
-  reason: [{ required: true, message: t('return_reason_required'), trigger: 'change' }],
-  return_type: [{ required: true, message: t('settlement_type_required'), trigger: 'change' }],
-  reason_description: [
-    { max: 1000, message: t('description_max_1000'), trigger: 'blur' }
-  ],
-  'return_address.address_line1': [
-    { required: true, message: t('address_required_for_pickup'), trigger: 'blur' }
-  ],
-  'return_address.city': [
-    { required: true, message: t('city_required_for_pickup'), trigger: 'blur' }
-  ],
-  'return_address.country': [
-    { required: true, message: t('country_required_for_pickup'), trigger: 'blur' }
-  ]
+    customer_id: [{ required: true, message: t('please_select_returning_customer'), trigger: 'change' }],
+    invoice_id: [{ required: true, message: t('please_select_original_invoice'), trigger: 'change' }],
+    reason: [{ required: true, message: t('return_reason_required'), trigger: 'change' }],
+    reason_description: [{ max: 1000, message: t('description_max_1000'), trigger: 'blur' }],
+    'return_address.address_line1': [{ validator: requiredIfAddressStarted(t('address_required_for_pickup')), trigger: 'blur' }],
+    'return_address.city': [{ validator: requiredIfAddressStarted(t('city_required_for_pickup')), trigger: 'blur' }],
+    'return_address.country': [{ validator: requiredIfAddressStarted(t('country_required_for_pickup')), trigger: 'blur' }],
 }
 
-const isEdit = computed(() => !!rmaId.value)
+const selectedItemsCount = computed(() => invoiceItems.value.filter((i) => i.selected).length)
 
-const selectedItemsCount = computed(() => {
-  return orderItems.value.filter(i => i.selected).length
-})
+const canSubmit = computed(() => !saving.value && !!form.customer_id && !!form.invoice_id && selectedItemsCount.value > 0)
 
-const estimatedRefundTotal = computed(() => {
-  return orderItems.value.reduce((sum, item) => {
-    if (!item.selected) return sum
-    const multiplier = {
-      new: 1.0,
-      used: 0.7,
-      damaged: 0.5,
-      missing: 0.0
-    }[item.condition] || 0.5
-    return sum + (item.unit_price * multiplier * item.quantity)
-  }, 0)
-})
-
-const loadCustomers = async () => {
-  // Don't load all customers initially - use remote search instead
-  customers.value = []
+const lineRefundEstimate = (item) => {
+    const multiplier = { new: 1.0, used: 0.7, damaged: 0.5, missing: 0.0 }[item.condition] ?? 0.5
+    return item.unit_price * multiplier * (item.quantity || 0)
 }
 
-// Debounced so typing a name doesn't fire a request per keystroke — the
-// remote-method callback ran on every input change with nothing to coalesce
-// it, which made the customer search feel like it was hanging or dropping
-// keystrokes under normal typing speed.
+const estimatedRefundTotal = computed(() =>
+    invoiceItems.value.filter((i) => i.selected).reduce((sum, item) => sum + lineRefundEstimate(item), 0)
+)
+
+// Debounced so typing a name doesn't fire a request per keystroke.
 let customerSearchTimer = null
-
 const searchCustomers = (query = '') => {
-  clearTimeout(customerSearchTimer)
-  customersLoading.value = true
+    clearTimeout(customerSearchTimer)
+    customersLoading.value = true
 
-  customerSearchTimer = setTimeout(async () => {
-    try {
-      const params = { per_page: 50 }
-      if (query) {
-        params.search = query
-      }
-      // Via the service, like the rest of the RMA screens.
-      const response = await rmaService.getCustomersWithOrders(params)
-      const customersData = response.data.data?.data || response.data.data || response.data || []
+    customerSearchTimer = setTimeout(async () => {
+        try {
+            const params = { per_page: 50 }
+            if (query) params.search = query
 
-      // Ensure selectedCustomer is kept in the array list so el-select doesn't hide it
-      let list = Array.isArray(customersData) ? customersData : []
-      if (selectedCustomer.value && !list.some(c => c.id === selectedCustomer.value.id)) {
-        list.push(selectedCustomer.value)
-      }
-      customers.value = list
-    } catch (error) {
-      console.error('Failed to search customers:', error)
-      customers.value = selectedCustomer.value ? [selectedCustomer.value] : []
-    } finally {
-      customersLoading.value = false
-    }
-  }, 300)
+            const response = await rmaService.getCustomersWithOrders(params)
+            const customersData = response.data.data?.data || response.data.data || response.data || []
+
+            // Keep the already-picked customer in the list so el-select doesn't hide it.
+            const list = Array.isArray(customersData) ? customersData : []
+            if (selectedCustomer.value && !list.some((c) => c.id === selectedCustomer.value.id)) {
+                list.push(selectedCustomer.value)
+            }
+            customers.value = list
+        } catch (error) {
+            console.error('Failed to search customers:', error)
+            customers.value = selectedCustomer.value ? [selectedCustomer.value] : []
+        } finally {
+            customersLoading.value = false
+        }
+    }, 300)
 }
 
 const onCustomerFocus = () => {
-  // Load initial customers when select is focused
-  if (customers.value.length === 0) {
-    searchCustomers('')
-  }
+    if (customers.value.length === 0) searchCustomers('')
 }
 
 /**
  * Loads the invoices a return can be raised against.
  *
  * RMA is filed against invoices, not sales orders — this business creates
- * invoices directly and never populates sales_orders. RmaController::store()
- * rejects any invoice that is not `delivered` and any invoice that does not
- * belong to the chosen customer, so both constraints are pushed to the API.
- * `orders`/`order_id` keep their names throughout this file to limit the
- * size of this change; what they hold is invoices.
+ * invoices directly and the sales-orders table is never populated.
+ * RmaController::store() rejects any invoice that is not confirmed/delivered
+ * and any invoice that does not belong to the chosen customer, so both
+ * constraints are pushed to the API.
  */
-const loadOrders = async (customerId = null) => {
-  ordersLoading.value = true
-  try {
-    const params = { per_page: 200, status: 'delivered' }
-    if (customerId) params.customer_id = customerId
+const loadInvoices = async (customerId = null) => {
+    invoicesLoading.value = true
+    try {
+        const params = { per_page: 200, status: RMA_ELIGIBLE_INVOICE_STATUSES }
+        if (customerId) params.customer_id = customerId
 
-    const response = await api.get('/admin/invoices', { params })
-    const invoicesData = response.data.data?.invoices || response.data.data || response.data || []
-    orders.value = (Array.isArray(invoicesData) ? invoicesData : []).map(invoice => ({
-      id: invoice.id,
-      order_number: invoice.invoice_number,
-      status: invoice.status,
-      customer_id: invoice.customer_id,
-    }))
-  } catch (error) {
-    console.error('Failed to load invoices:', error)
-    ElMessage.error(t('failed_to_load_sales_orders'))
-    orders.value = []
-  } finally {
-    ordersLoading.value = false
-  }
+        const response = await api.get('/admin/invoices', { params })
+        const invoicesData = response.data.data?.invoices || response.data.data || response.data || []
+        invoices.value = Array.isArray(invoicesData) ? invoicesData : []
+    } catch (error) {
+        console.error('Failed to load invoices:', error)
+        ElMessage.error(t('failed_to_load_sales_orders'))
+        invoices.value = []
+    } finally {
+        invoicesLoading.value = false
+    }
 }
 
 const onCustomerChange = async () => {
-  form.value.order_id = null
-  orderItems.value = []
-  
-  if (form.value.customer_id) {
-    const customerId = form.value.customer_id
-    selectedCustomer.value = customers.value.find(c => c.id === customerId)
+    form.invoice_id = null
+    invoiceItems.value = []
 
-    // Ask the API for this customer's delivered orders rather than filtering a
-    // partial global list in the browser.
-    await loadOrders(customerId)
-    filteredOrders.value = orders.value
-
-    // Load customer statistics
-    await loadCustomerStats(customerId)
-    
-    // The empty case is explained inline under the picker, so no toast here.
-  } else {
-    selectedCustomer.value = null
-    customerStats.value = {
-      totalOrders: 0,
-      totalReturns: 0,
-      availableOrders: 0
+    if (!form.customer_id) {
+        selectedCustomer.value = null
+        customerStats.value = { totalOrders: 0, totalReturns: 0, availableOrders: 0 }
+        invoices.value = []
+        return
     }
-    filteredOrders.value = []
-  }
+
+    const customerId = form.customer_id
+    selectedCustomer.value = customers.value.find((c) => c.id === customerId)
+
+    await loadInvoices(customerId)
+    await loadCustomerStats(customerId)
 }
 
 const loadCustomerStats = async (customerId) => {
-  try {
-    // orders.value already holds exactly this customer's delivered orders —
-    // loadOrders() requested { customer_id, status: 'delivered' } — so no
-    // further filtering is needed for the returnable count. Filtering it
-    // again for "total orders" (as before) always produced the same number
-    // as "returnable orders", since every entry in the array was already
-    // delivered; the two stats read identical no matter the customer.
-    const availableOrders = orders.value.length
+    // invoices.value already holds exactly this customer's return-eligible
+    // invoices (loadInvoices() requested { customer_id, status: RMA_ELIGIBLE_INVOICE_STATUSES }).
+    const availableOrders = invoices.value.length
 
     // The customer's real invoice history, across every status — a separate,
     // lightweight (per_page: 1) call just for the count.
     let totalOrders = availableOrders
     try {
-      const totalResponse = await api.get('/admin/invoices', {
-        params: { customer_id: customerId, per_page: 1 }
-      })
-      totalOrders = totalResponse.data.data?.pagination?.total ?? availableOrders
+        const totalResponse = await api.get('/admin/invoices', { params: { customer_id: customerId, per_page: 1 } })
+        totalOrders = totalResponse.data.data?.pagination?.total ?? availableOrders
     } catch (error) {
-      // Fall back to the delivered count rather than showing nothing.
+        // Fall back to the delivered count rather than showing nothing.
     }
 
-    // Get total returns for this customer (from RMA requests)
+    let totalReturns = 0
     try {
-      const response = await api.get('/admin/rma', {
-        params: {
-          customer_id: customerId,
-          per_page: 1
-        }
-      })
-      const totalReturns = response.data.data?.total || 0
-
-      customerStats.value = {
-        totalOrders,
-        totalReturns,
-        availableOrders
-      }
+        const response = await api.get('/admin/rma', { params: { customer_id: customerId, per_page: 1 } })
+        totalReturns = response.data.data?.total || 0
     } catch (error) {
-      // If RMA stats fail, just use order stats
-      customerStats.value = {
-        totalOrders,
-        totalReturns: 0,
-        availableOrders
-      }
+        // If RMA stats fail, the order stats still stand.
     }
-  } catch (error) {
-    console.error('Failed to load customer stats:', error)
-  }
+
+    customerStats.value = { totalOrders, totalReturns, availableOrders }
 }
 
-const validateOrderItems = () => {
-  if (orderItems.value.length === 0) {
-    ElMessage.warning(t('no_products_in_selected_invoice'))
-    return false
-  }
-  
-  const availableItems = orderItems.value.filter(item => {
-    const previouslyReturned = item.quantity_requested || 0
-    const availableToReturn = item.original_quantity - previouslyReturned
-    return availableToReturn > 0
-  })
-  
-  if (availableItems.length === 0) {
-    ElMessage.warning(t('all_invoice_products_already_returned'))
-    return false
-  }
-  
-  return true
-}
+const mapInvoiceItem = (item, overrides = {}) => ({
+    invoice_item_id: item.id,
+    product_id: item.product_id,
+    product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
+    original_quantity: item.quantity,
+    quantity: 1,
+    unit_price: parseFloat(item.unit_price) || 0,
+    condition: 'new',
+    resolution: form.return_type,
+    selected: false,
+    exchange_product_id: null,
+    notes: '',
+    ...overrides,
+})
 
-const loadOrderItems = async () => {
-  if (!form.value.order_id) {
-    orderItems.value = []
-    return
-  }
-  loading.value = true
-  try {
-    const response = await api.get(`/admin/invoices/${form.value.order_id}`)
-    const order = response.data.data || response.data
-    if (order && order.items) {
-      // Check if the invoice is delivered
-      if (order.status !== 'delivered') {
-        ElMessage.warning(t('invoice_must_be_delivered'))
-        orderItems.value = []
-        loading.value = false
+const loadInvoiceItems = async () => {
+    if (!form.invoice_id) {
+        invoiceItems.value = []
         return
-      }
-
-      orderItems.value = order.items.map(item => ({
-        invoice_item_id: item.id,
-        product_id: item.product_id,
-        product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
-        original_quantity: item.quantity,
-        quantity: 1,
-        unit_price: parseFloat(item.unit_price) || 0,
-        condition: 'new',
-        resolution: form.value.return_type,
-        selected: false,
-        exchange_product_id: null
-      }))
-      
-      // Validate items availability
-      validateOrderItems()
-    } else {
-      orderItems.value = []
-      ElMessage.warning(t('no_products_in_invoice'))
     }
-  } catch (error) {
-    console.error('Failed to load order items:', error)
-    ElMessage.error(t('failed_to_load_invoice_products'))
-    orderItems.value = []
-  } finally {
-    loading.value = false
-  }
+    loading.value = true
+    try {
+        const response = await api.get(`/admin/invoices/${form.invoice_id}`)
+        const invoice = response.data.data || response.data
+
+        if (!invoice || !invoice.items?.length) {
+            invoiceItems.value = []
+            ElMessage.warning(t('no_products_in_invoice'))
+            return
+        }
+
+        if (!RMA_ELIGIBLE_INVOICE_STATUSES.includes(invoice.status)) {
+            ElMessage.warning(t('invoice_must_be_delivered'))
+            invoiceItems.value = []
+            return
+        }
+
+        invoiceItems.value = invoice.items.map((item) => mapInvoiceItem(item))
+    } catch (error) {
+        console.error('Failed to load invoice items:', error)
+        ElMessage.error(t('failed_to_load_invoice_products'))
+        invoiceItems.value = []
+    } finally {
+        loading.value = false
+    }
 }
 
-const queryCatalogProducts = async (query = '') => {
-  if (!query) return
-  catalogLoading.value = true
-  try {
-    const response = await api.get('/admin/products', { params: { search: query, per_page: 50 } })
-    catalogProducts.value = response.data.data || response.data || []
-  } catch (error) {
-    console.error('Failed to query catalog products:', error)
-  } finally {
-    catalogLoading.value = false
-  }
+// Debounced for the same reason the customer search is.
+let exchangeSearchTimer = null
+const searchExchangeProducts = (query = '') => {
+    clearTimeout(exchangeSearchTimer)
+    catalogLoading.value = true
+
+    exchangeSearchTimer = setTimeout(async () => {
+        try {
+            const response = await api.get('/admin/products', { params: { search: query, per_page: 50 } })
+            const data = response.data.data || response.data || []
+            catalogProducts.value = Array.isArray(data) ? data : []
+        } catch (error) {
+            console.error('Failed to search replacement products:', error)
+        } finally {
+            catalogLoading.value = false
+        }
+    }, 300)
 }
 
-const calculateRefundSummary = () => {
-  // Computed property updates automatically
+const onExchangeFocus = () => {
+    if (catalogProducts.value.length === 0) searchExchangeProducts('')
+}
+
+const stockTone = (quantity) => {
+    const value = Number(quantity) || 0
+    if (value <= 0) return 'out'
+    return value <= 5 ? 'low' : 'ok'
 }
 
 const loadRma = async () => {
-  loading.value = true
-  try {
-    const response = await rmaService.getRmaRequest(rmaId.value)
-    const rma = response.data.data || response.data
-    
-    // Set form basics
-    form.value = {
-      customer_id: rma.customer_id,
-      order_id: rma.invoice_id,
-      reason: rma.reason || 'defective',
-      return_type: rma.type || 'refund',
-      reason_description: rma.reason_description || '',
-      notes: rma.admin_notes || '',
-      return_address: rma.return_address || { address_line1: '', city: '', country: '', postal_code: '' }
-    }
+    loading.value = true
+    try {
+        const response = await rmaService.getRmaRequest(rmaId.value)
+        const rma = response.data.data || response.data
 
-    if (rma.customer) {
-      selectedCustomer.value = rma.customer
-      if (!customers.value.some(c => c.id === rma.customer.id)) {
-        customers.value.push(rma.customer)
-      }
-    }
-    
-    // Fetch this customer's orders so the picker can render the current
-    // selection (orders are no longer preloaded globally on mount).
-    await loadOrders(rma.customer_id)
-    filteredOrders.value = orders.value
+        form.customer_id = rma.customer_id
+        form.invoice_id = rma.invoice_id
+        form.reason = rma.reason || 'defective'
+        form.return_type = rma.type || 'refund'
+        form.reason_description = rma.reason_description || ''
+        form.notes = rma.admin_notes || ''
+        form.return_address = rma.return_address || { address_line1: '', city: '', country: '', postal_code: '' }
+        showAddress.value = addressStarted()
 
-    // The linked invoice may no longer be `delivered` (or may sit outside the
-    // page); keep it in the list so editing does not silently blank the field.
-    if (rma.invoice_id && !filteredOrders.value.some(o => o.id === rma.invoice_id)) {
-      filteredOrders.value = [
-        ...filteredOrders.value,
-        rma.invoice
-          ? { id: rma.invoice.id, order_number: rma.invoice.invoice_number, status: rma.invoice.status, customer_id: rma.invoice.customer_id }
-          : { id: rma.invoice_id, order_number: `#${rma.invoice_id}` },
-      ]
-    }
-
-    // Load customer statistics
-    await loadCustomerStats(rma.customer_id)
-
-    // Load original invoice items first
-    const soResponse = await api.get(`/admin/invoices/${rma.invoice_id}`)
-    const order = soResponse.data.data || soResponse.data
-    const orderItemsMap = {}
-    if (order && order.items) {
-      order.items.forEach(item => {
-        orderItemsMap[item.id] = item
-      })
-    }
-
-    // Map existing returned items and check them in the list
-    if (rma.items) {
-      orderItems.value = rma.items.map(item => {
-        const originalItem = orderItemsMap[item.invoice_item_id]
-        return {
-          invoice_item_id: item.invoice_item_id,
-          product_id: item.product_id,
-          product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
-          original_quantity: originalItem ? originalItem.quantity : item.quantity_requested,
-          quantity: item.quantity_requested,
-          unit_price: parseFloat(originalItem?.unit_price || item.refund_amount / item.quantity_requested) || 0,
-          condition: item.condition || 'new',
-          resolution: item.resolution || 'refund',
-          selected: true,
-          exchange_product_id: item.exchange_product_id
+        if (rma.customer) {
+            selectedCustomer.value = rma.customer
+            if (!customers.value.some((c) => c.id === rma.customer.id)) {
+                customers.value.push(rma.customer)
+            }
         }
-      })
 
-      // Query products for exchange if any exists
-      const exchangeItem = rma.items.find(i => i.exchange_product_id)
-      if (exchangeItem && exchangeItem.exchange_product) {
-        catalogProducts.value = [exchangeItem.exchange_product]
-      }
+        // Fetch this customer's invoices so the picker can render the current
+        // selection (invoices are no longer preloaded globally on mount).
+        await loadInvoices(rma.customer_id)
+
+        // The linked invoice may no longer be `delivered` (or may sit outside
+        // the page); keep it in the list so editing does not silently blank
+        // the field.
+        if (rma.invoice_id && !invoices.value.some((inv) => inv.id === rma.invoice_id)) {
+            invoices.value = [
+                ...invoices.value,
+                rma.invoice || { id: rma.invoice_id, invoice_number: `#${rma.invoice_id}` },
+            ]
+        }
+
+        await loadCustomerStats(rma.customer_id)
+
+        // Load the original invoice's lines so quantity/price context survives
+        // even for a line the customer returned all of.
+        const invoiceResponse = await api.get(`/admin/invoices/${rma.invoice_id}`)
+        const invoice = invoiceResponse.data.data || invoiceResponse.data
+        const originalItemsById = {}
+        invoice?.items?.forEach((item) => { originalItemsById[item.id] = item })
+
+        invoiceItems.value = (rma.items || []).map((item) => {
+            const originalItem = originalItemsById[item.invoice_item_id]
+            return {
+                invoice_item_id: item.invoice_item_id,
+                product_id: item.product_id,
+                product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
+                original_quantity: originalItem ? originalItem.quantity : item.quantity_requested,
+                quantity: item.quantity_requested,
+                unit_price: parseFloat(originalItem?.unit_price ?? (item.refund_amount / item.quantity_requested)) || 0,
+                condition: item.condition || 'new',
+                resolution: item.resolution || 'refund',
+                selected: true,
+                exchange_product_id: item.exchange_product_id,
+                notes: item.notes || '',
+            }
+        })
+
+        const exchangeItem = (rma.items || []).find((i) => i.exchange_product)
+        if (exchangeItem) catalogProducts.value = [exchangeItem.exchange_product]
+    } catch (error) {
+        console.error('Failed to load RMA data:', error)
+        ElMessage.error(t('failed_to_load_return_request'))
+        router.back()
+    } finally {
+        loading.value = false
     }
-  } catch (error) {
-    console.error('Failed to load RMA data:', error)
-    ElMessage.error(t('failed_to_load_return_request'))
-    router.back()
-  } finally {
-    loading.value = false
-  }
 }
 
 const submitForm = async () => {
-  const selectedItems = orderItems.value.filter(i => i.selected)
-  if (selectedItems.length === 0) {
-    ElMessage.warning(t('select_at_least_one_product_to_return'))
-    return
-  }
+    if (!formRef.value) return
 
-  // Validate exchange items have exchange_product_id
-  for (const item of selectedItems) {
-    if (item.resolution === 'exchange' && !item.exchange_product_id) {
-      ElMessage.error(t('select_replacement_for_product', { product: item.product_name }))
-      return
-    }
-    
-    // Validate quantity doesn't exceed original
-    if (item.quantity > item.original_quantity) {
-      ElMessage.error(t('return_quantity_exceeds_original', { quantity: item.quantity, original: item.original_quantity, product: item.product_name }))
-      return
-    }
-  }
-
-  // Validate return address if provided
-  if (form.value.return_address && (form.value.return_address.address_line1 || form.value.return_address.city || form.value.return_address.country)) {
-    if (!form.value.return_address.address_line1) {
-      ElMessage.error(t('please_enter_street_address'))
-      return
-    }
-    if (!form.value.return_address.city) {
-      ElMessage.error(t('please_enter_city'))
-      return
-    }
-    if (!form.value.return_address.country) {
-      ElMessage.error(t('please_enter_country'))
-      return
-    }
-  }
-
-  saving.value = true
-  try {
-    // Extract customer_id from object if needed
-    const customerId = typeof form.value.customer_id === 'object' ? form.value.customer_id.id : form.value.customer_id
-    
-    const data = {
-      customer_id: customerId,
-      invoice_id: form.value.order_id,
-      reason: form.value.reason,
-      type: form.value.return_type,
-      reason_description: form.value.reason_description,
-      admin_notes: form.value.notes,
-      return_address: form.value.return_address,
-      items: selectedItems.map(item => ({
-        invoice_item_id: item.invoice_item_id,
-        quantity_requested: item.quantity,
-        condition: item.condition,
-        resolution: item.resolution,
-        exchange_product_id: item.exchange_product_id,
-        notes: item.notes || ''
-      }))
+    const selectedItems = invoiceItems.value.filter((i) => i.selected)
+    if (selectedItems.length === 0) {
+        ElMessage.warning(t('select_at_least_one_product_to_return'))
+        return
     }
 
-    if (isEdit.value) {
-      await rmaService.updateRmaRequest(rmaId.value, data)
-      ElMessage.success(t('return_request_updated'))
-    } else {
-      await rmaService.createRmaRequest(data)
-      ElMessage.success(t('return_request_created'))
+    for (const item of selectedItems) {
+        if (item.resolution === 'exchange' && !item.exchange_product_id) {
+            ElMessage.error(t('select_replacement_for_product', { product: item.product_name }))
+            return
+        }
+        if (item.quantity > item.original_quantity) {
+            ElMessage.error(t('return_quantity_exceeds_original', {
+                quantity: item.quantity,
+                original: item.original_quantity,
+                product: item.product_name,
+            }))
+            return
+        }
     }
-    router.push('/admin/rma')
-  } catch (error) {
-    console.error('Failed to save RMA:', error)
-    if (error.response?.data?.errors) {
-      const errors = error.response.data.errors
-      const errorMessages = Object.values(errors).flat()
-      ElMessage.error(errorMessages[0] || t('failed_to_save_return_request'))
-    } else {
-      ElMessage.error(error.response?.data?.message || t('failed_to_save_return_request'))
+
+    try {
+        await formRef.value.validate()
+    } catch {
+        return
     }
-  } finally {
-    saving.value = false
-  }
+
+    saving.value = true
+    try {
+        const data = {
+            customer_id: form.customer_id,
+            invoice_id: form.invoice_id,
+            reason: form.reason,
+            type: form.return_type,
+            reason_description: form.reason_description,
+            admin_notes: form.notes,
+            return_address: form.return_address,
+            items: selectedItems.map((item) => ({
+                invoice_item_id: item.invoice_item_id,
+                quantity_requested: item.quantity,
+                condition: item.condition,
+                resolution: item.resolution,
+                exchange_product_id: item.exchange_product_id,
+                notes: item.notes || '',
+            })),
+        }
+
+        if (isEdit.value) {
+            await rmaService.updateRmaRequest(rmaId.value, data)
+            ElMessage.success(t('return_request_updated'))
+        } else {
+            await rmaService.createRmaRequest(data)
+            ElMessage.success(t('return_request_created'))
+        }
+        router.push('/admin/rma')
+    } catch (error) {
+        console.error('Failed to save RMA:', error)
+        const errors = error.response?.data?.errors
+        if (errors) {
+            ElMessage.error(Object.values(errors).flat()[0] || t('failed_to_save_return_request'))
+        } else {
+            ElMessage.error(error.response?.data?.message || t('failed_to_save_return_request'))
+        }
+    } finally {
+        saving.value = false
+    }
 }
 
 const formatCurrency = (val) => formatMoney(val)
 
 onMounted(async () => {
-  await loadCustomers()
-  // Orders are fetched per customer in onCustomerChange (and by loadRma when
-  // editing), so there is nothing useful to preload here.
-
-  if (isEdit.value) {
-    await loadRma()
-  } else {
-    form.value = {
-      customer_id: null,
-      order_id: null,
-      reason: 'defective',
-      return_type: 'refund',
-      reason_description: '',
-      notes: '',
-      return_address: { address_line1: '', city: '', country: '', postal_code: '' }
+    // Customers and invoices are both remote-searched (see onCustomerFocus /
+    // onCustomerChange); there is nothing useful to preload here.
+    if (isEdit.value) {
+        await loadRma()
     }
-  }
 })
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
+.rma-builder {
+    --surface: #ffffff;
+    --ground: #f8fafc;
+    --line: #e2e8f0;
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --ink-mute: #64748b;
+    --primary: #2563eb;
+    --primary-soft: #eff6ff;
+    --ok: #16a34a;
+    --ok-soft: #f0fdf4;
+    --warn: #d97706;
+    --bad: #dc2626;
 
-.rma-form-container {
-  padding: 30px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100vh;
-  font-family: 'Cairo', 'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  direction: rtl;
+    font-family: 'Cairo', sans-serif;
+    color: var(--ink);
+    padding-bottom: 5rem;
 }
 
-/* Premium Page Header */
-.page-header-premium {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  padding: 24px 32px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.12);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+/* ── Header ─────────────────────────────────────────────────────────── */
+.builder-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--line);
 }
 
-.header-info {
-  display: flex;
-  align-items: center;
-  gap: 20px;
+.eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--primary);
+    text-transform: uppercase;
 }
 
-.header-icon-box {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  color: #2563eb;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  box-shadow: inset 0 2px 4px rgba(37, 99, 235, 0.06), 0 4px 12px rgba(37, 99, 235, 0.08);
+.header-identity h1 {
+    margin: 0.35rem 0 0;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
 }
 
-.header-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: #0f172a;
-  margin: 0 0 6px 0;
-  letter-spacing: -0.5px;
+.header-identity p {
+    margin: 0.3rem 0 0;
+    color: var(--ink-mute);
+    font-size: 0.9rem;
 }
 
-.header-subtitle {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0;
-  font-weight: 500;
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
-.btn-back-premium {
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-weight: 700;
-  border-radius: 12px;
-  padding: 12px 24px;
-  font-family: 'Cairo', sans-serif;
-  transition: all 0.2s;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ── Grid ───────────────────────────────────────────────────────────── */
+.builder-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 1.5rem;
+    align-items: start;
 }
 
-.btn-back-premium:hover {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
+.work-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    min-width: 0;
 }
 
-/* Form Layout */
-.premium-form-layout {
-  margin-bottom: 40px;
+/* ── Shared panel chrome ────────────────────────────────────────────── */
+.panel-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(18, 28, 44, 0.04);
 }
 
-.form-section-card {
-  border-radius: 20px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: #ffffff;
-  box-shadow: 0 10px 30px -10px rgba(148, 163, 184, 0.08);
-  margin-bottom: 25px;
-  padding: 8px;
+.panel-title {
+    margin: 0 0 0.85rem;
+    font-size: 1.02rem;
+    font-weight: 800;
+    color: var(--ink);
 }
 
-.form-section-card :deep(.el-card__header) {
-  padding: 20px 24px;
-  border-bottom: 1px solid #f1f5f9;
+.panel-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
 }
 
-.section-card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.panel-header-row .panel-title { margin: 0; }
+
+.count-badge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    white-space: nowrap;
 }
 
-.section-card-header .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2563eb;
-  box-shadow: 0 0 8px rgba(37, 99, 235, 0.6);
+.bare-item :deep(.el-form-item__label) { display: none; }
+.bare-item { margin-bottom: 0; }
+
+.full-width { width: 100%; }
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
 }
 
-.section-card-header h3 {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0f172a;
-  margin: 0;
+.field-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--ink-mute);
 }
 
-.premium-input-field {
-  width: 100%;
+.helper-text {
+    margin: 0.65rem 0 0;
+    font-size: 0.82rem;
+    color: var(--ink-mute);
+    line-height: 1.5;
 }
 
-.premium-input-field :deep(.el-input__wrapper),
-.premium-input-field :deep(.el-select__wrapper) {
-  border-radius: 10px;
-  padding: 6px 12px;
-}
-
-.premium-form-layout :deep(.el-form-item__label) {
-  font-weight: 700;
-  color: #475569;
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-
-.input-helper-text {
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 6px;
-  display: block;
-  line-height: 1.4;
-}
-
-/* Address Fields Section */
-.address-section {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  padding: 20px;
-  border-radius: 14px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  margin: 20px 0;
-}
-
-.address-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 800;
-  color: #1e293b;
-  font-size: 13px;
-  margin-bottom: 16px;
-}
-
-.address-header .el-icon {
-  color: #2563eb;
-}
-
-/* Items Table & Lists */
-.items-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.title-with-count {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.items-count-badge {
-  background: #eff6ff;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 20px;
-}
-
-.items-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  text-align: center;
-  color: #94a3b8;
-  gap: 16px;
-  background: #fafbfc;
-  border-radius: 16px;
-  border: 2px dashed #e2e8f0;
-  margin: 20px 12px;
-}
-
-.items-empty-state .el-icon {
-  font-size: 54px;
-  color: #bfdbfe;
-}
-
-.items-empty-state p {
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  max-width: 400px;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.items-table-wrapper {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  overflow: hidden;
-  margin: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
-}
-
-.items-selection-table {
-  --el-table-header-bg-color: #f8fafc;
-}
-
-.items-selection-table :deep(.el-table__header-wrapper) th {
-  font-weight: 800 !important;
-  color: #475569 !important;
-  font-size: 13px !important;
-  background-color: #f8fafc !important;
-  padding: 14px 0 !important;
-}
-
-.item-product-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 0;
-}
-
-.item-product-name {
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 14px;
-}
-
-.item-product-meta {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.price-badge {
-  color: #059669;
-  font-weight: 700;
-  font-size: 12px;
-}
-
-.qty-badge {
-  color: #475569;
-  font-size: 11px;
-  background: #f1f5f9;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-weight: 600;
-}
-
-.qty-input-premium {
-  width: 110px;
-}
-
-.qty-input-premium :deep(.el-input-number__increase),
-.qty-input-premium :deep(.el-input-number__decrease) {
-  border-radius: 6px;
-}
-
-.condition-select,
-.resolution-select {
-  width: 100%;
-}
-
-.condition-select :deep(.el-select__wrapper),
-.resolution-select :deep(.el-select__wrapper) {
-  border-radius: 8px;
-}
-
-.text-placeholder {
-  color: #cbd5e1;
-  font-weight: 500;
-}
-
-/* Exchange Selector styling */
-.exchange-selector-cell {
-  width: 100%;
-}
-
-.exchange-product-select {
-  width: 100%;
-}
-
-.exchange-product-select :deep(.el-select__wrapper) {
-  border-radius: 8px;
-}
-
-/* Refund summary panel */
-.refund-summary-panel {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 1px solid #bbf7d0;
-  border-radius: 14px;
-  padding: 20px;
-  margin: 12px;
-  box-shadow: 0 4px 16px rgba(22, 101, 52, 0.05);
-}
-
-.summary-row.title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 800;
-  color: #166534;
-  font-size: 16px;
-  margin-bottom: 10px;
-}
-
-.summary-row.title .value {
-  font-size: 22px;
-  font-weight: 900;
-  color: #15803d;
-  font-family: monospace, 'Cairo';
-}
-
-.summary-row.desc {
-  font-size: 12px;
-  color: #166534;
-  opacity: 0.85;
-  margin: 0;
-  line-height: 1.6;
-  font-weight: 500;
-}
-
-/* Actions Panel */
-.form-actions-panel {
-  display: flex;
-  gap: 14px;
-  justify-content: flex-end;
-  margin: 20px 12px 12px 12px;
-}
-
-.btn-save-premium {
-  padding: 14px 28px;
-  border-radius: 12px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  border: none;
-  font-family: 'Cairo', sans-serif;
-  color: white;
-  box-shadow: 0 8px 20px -6px rgba(37, 99, 235, 0.4);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  height: 46px;
-}
-
-.btn-save-premium:hover {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  box-shadow: 0 12px 24px -4px rgba(37, 99, 235, 0.5);
-  transform: translateY(-2px);
-}
-
-.btn-save-premium:active {
-  transform: translateY(0);
-}
-
-.btn-cancel-premium {
-  padding: 14px 28px;
-  border-radius: 12px;
-  font-weight: 700;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-family: 'Cairo', sans-serif;
-  transition: all 0.2s;
-  height: 46px;
-}
-
-.btn-cancel-premium:hover {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
-}
-
-.customer-option {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 0;
-}
-
-.customer-option-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
+/* ── Customer search + summary ─────────────────────────────────────── */
+.customer-option { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.2rem 0; }
+.customer-option-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .customer-option-name {
-  font-weight: 700;
-  color: #1e293b;
-  font-size: 14px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-
 .customer-option-id {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 600;
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex: none;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--ink-mute);
+    background: var(--ground);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    flex: none;
+}
+.customer-option-details { display: flex; gap: 0.75rem; align-items: center; min-width: 0; }
+.customer-option-meta {
+    font-size: 0.76rem;
+    color: var(--ink-mute);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    overflow: hidden;
+}
+.customer-option-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.customer-summary {
+    margin-top: 1rem;
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1rem;
 }
 
-.customer-option-details {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  min-width: 0;
-}
-
-.customer-option-phone,
-.customer-option-email {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.customer-option-phone span,
-.customer-option-email span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.customer-option-phone .el-icon,
-.customer-option-email .el-icon {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-/* Customer Details Card */
-.customer-details-card {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 14px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
-}
-
-.customer-details-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
+.customer-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
 }
 
 .customer-avatar {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #2563eb;
-  font-size: 24px;
-  flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-radius: 10px;
+    font-size: 1.15rem;
 }
 
-.customer-info {
-  flex: 1;
+.customer-identity { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.customer-identity strong { font-size: 0.95rem; }
+.customer-identity span { font-size: 0.78rem; color: var(--ink-mute); }
+
+.customer-stats { display: flex; gap: 0.6rem; margin-inline-start: auto; flex-wrap: wrap; }
+.stat-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    min-width: 64px;
+}
+.stat-value { font-weight: 800; font-size: 1.05rem; color: var(--primary); }
+.stat-label { font-size: 0.68rem; color: var(--ink-mute); font-weight: 600; }
+
+.customer-contact {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+}
+.customer-contact span { display: flex; align-items: center; gap: 0.35rem; }
+
+/* ── Return lines ───────────────────────────────────────────────────── */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 3rem 1.5rem;
+    text-align: center;
+    color: var(--ink-mute);
+    background: var(--ground);
+    border-radius: 12px;
+    border: 2px dashed var(--line);
+}
+.empty-state .el-icon { font-size: 2.25rem; color: #bfdbfe; }
+.empty-state p { margin: 0; font-size: 0.9rem; font-weight: 600; max-width: 22rem; line-height: 1.6; }
+
+.return-lines { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.return-line {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.customer-info h4 {
-  margin: 0 0 4px 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: #0f172a;
+.return-line.is-selected { border-color: #bfdbfe; background: var(--primary-soft); }
+
+.line-select {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
 }
 
-.customer-meta {
-  margin: 0;
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
+.line-identity { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 1; }
+.line-name { font-weight: 700; }
+.line-meta { font-size: 0.78rem; color: var(--ink-mute); }
+.line-meta .dot { margin: 0 0.3rem; }
+
+.line-refund {
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--ok);
+    flex: none;
 }
 
-.customer-stats {
-  display: flex;
-  gap: 20px;
+.line-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--line);
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
-  background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  min-width: 80px;
+.line-note-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
 }
 
-.stat-value {
-  font-size: 20px;
-  font-weight: 800;
-  color: #2563eb;
+/* ── Exchange product option ───────────────────────────────────────── */
+.product-option { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; width: 100%; }
+.product-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-option-stock { font-size: 0.78rem; flex: none; font-variant-numeric: tabular-nums; }
+.product-option-stock.ok { color: var(--ok); }
+.product-option-stock.low { color: var(--warn); }
+.product-option-stock.out { color: var(--bad); }
+
+/* ── Summary rail ───────────────────────────────────────────────────── */
+.summary-rail {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 
-.stat-label {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 600;
+.rail-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
 }
 
-.customer-contact-info {
-  display: flex;
-  gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
+.rail-title { margin: 0; font-size: 0.95rem; font-weight: 700; }
+
+.fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+.extras-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    cursor: pointer;
 }
 
-.contact-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #475569;
-  font-weight: 600;
+.extras-body { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem; }
+
+.totals-card { background: var(--ok-soft); border-color: #bbf7d0; }
+
+.totals { margin: 0; }
+
+.total-line.grand { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.total-line.grand dt { margin: 0; font-weight: 700; color: #166534; }
+.total-line.grand dd { margin: 0; font-weight: 800; font-size: 1.2rem; color: #15803d; font-variant-numeric: tabular-nums; }
+
+.totals-note { margin: 0; font-size: 0.78rem; color: #166534; opacity: 0.85; line-height: 1.5; }
+
+/* ── Mobile action bar ──────────────────────────────────────────────── */
+.mobile-bar { display: none; }
+
+@media (max-width: 1100px) {
+    .builder-grid { grid-template-columns: minmax(0, 1fr); }
+    .summary-rail { position: static; }
 }
 
-.contact-item .el-icon {
-  color: #64748b;
-  font-size: 14px;
+@media (max-width: 720px) {
+    .header-actions .el-button--large { display: none; }
+
+    .mobile-bar {
+        position: fixed;
+        inset-inline: 0;
+        bottom: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.7rem 1rem;
+        background: var(--surface);
+        border-top: 1px solid var(--line);
+        box-shadow: 0 -6px 20px -12px rgba(18, 28, 44, 0.4);
+    }
+
+    .mobile-total { display: flex; flex-direction: column; }
+    .mobile-total span { font-size: 0.72rem; color: var(--ink-mute); }
+    .mobile-total strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+    .customer-stats { margin-inline-start: 0; width: 100%; justify-content: flex-start; }
+}
+
+@media (max-width: 480px) {
+    .fields-row { grid-template-columns: 1fr; }
+    .line-fields { grid-template-columns: 1fr; }
 }
 </style>
