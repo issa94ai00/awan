@@ -473,7 +473,7 @@ const loadInvoices = async (customerId = null) => {
         const params = { per_page: 200, status: RMA_ELIGIBLE_INVOICE_STATUSES }
         if (customerId) params.customer_id = customerId
 
-        const response = await api.get('/admin/invoices', { params })
+        const response = await api.get('/invoices', { params })
         const invoicesData = response.data.data?.invoices || response.data.data || response.data || []
         invoices.value = Array.isArray(invoicesData) ? invoicesData : []
     } catch (error) {
@@ -512,7 +512,7 @@ const loadCustomerStats = async (customerId) => {
     // lightweight (per_page: 1) call just for the count.
     let totalOrders = availableOrders
     try {
-        const totalResponse = await api.get('/admin/invoices', { params: { customer_id: customerId, per_page: 1 } })
+        const totalResponse = await api.get('/invoices', { params: { customer_id: customerId, per_page: 1 } })
         totalOrders = totalResponse.data.data?.pagination?.total ?? availableOrders
     } catch (error) {
         // Fall back to the delivered count rather than showing nothing.
@@ -551,7 +551,7 @@ const loadInvoiceItems = async () => {
     }
     loading.value = true
     try {
-        const response = await api.get(`/admin/invoices/${form.invoice_id}`)
+        const response = await api.get(`/invoices/${form.invoice_id}`)
         const invoice = response.data.data || response.data
 
         if (!invoice || !invoice.items?.length) {
@@ -645,7 +645,7 @@ const loadRma = async () => {
 
         // Load the original invoice's lines so quantity/price context survives
         // even for a line the customer returned all of.
-        const invoiceResponse = await api.get(`/admin/invoices/${rma.invoice_id}`)
+        const invoiceResponse = await api.get(`/invoices/${rma.invoice_id}`)
         const invoice = invoiceResponse.data.data || invoiceResponse.data
         const originalItemsById = {}
         invoice?.items?.forEach((item) => { originalItemsById[item.id] = item })

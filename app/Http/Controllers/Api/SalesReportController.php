@@ -36,7 +36,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -44,7 +44,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {
@@ -89,7 +89,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -97,7 +97,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {
@@ -145,7 +145,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -153,7 +153,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {
@@ -189,7 +189,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -197,7 +197,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {
@@ -314,7 +314,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -322,7 +322,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {
@@ -905,7 +905,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         $limit = min((int) $request->input('limit', 10) ?: 10, 50);
@@ -957,7 +957,7 @@ class SalesReportController extends Controller
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
-            $query->where('assigned_employee_id', $request->employee_id);
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
         }
 
         if ($request->filled('customer_id')) {
@@ -965,7 +965,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('warehouse_id')) {
-            $query->where('fulfillment_warehouse_id', $request->warehouse_id);
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('status')) {

@@ -222,9 +222,16 @@ class RmaController extends Controller
             'type' => 'required|in:refund,exchange,store_credit',
             'reason_description' => 'nullable|string|max:1000',
             'return_address' => 'nullable|array',
-            'return_address.address_line1' => 'required_with:return_address|string',
-            'return_address.city' => 'required_with:return_address|string',
-            'return_address.country' => 'required_with:return_address|string',
+            // The address is all-or-nothing: `required_with:return_address`
+            // checked whether the *parent* array was present, and the form
+            // always sends it (even fully blank), so this rejected every
+            // request that left the optional address section untouched.
+            // Requiring each field only when a sibling has a value makes the
+            // three mutually required — exactly the "started it, finish it"
+            // rule the frontend already enforces.
+            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
+            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
+            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
             'return_address.postal_code' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
@@ -245,6 +252,12 @@ class RmaController extends Controller
             'items.min' => 'يجب إضافة منتج واحد على الأقل',
             'items.*.quantity_requested.max' => 'الكمية المطلوبة لا يمكن أن تتجاوز 999',
             'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
+            // Explicit messages: the app has no lang/ar/validation.php, so the
+            // generic required_with rule fell back to the raw "validation.
+            // required_with" translation key instead of a readable sentence.
+            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
+            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
+            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
         ]);
 
         try {
@@ -916,9 +929,11 @@ class RmaController extends Controller
         $request->validate([
             'reason_description' => 'nullable|string|max:1000',
             'return_address' => 'nullable|array',
-            'return_address.address_line1' => 'required_with:return_address|string',
-            'return_address.city' => 'required_with:return_address|string',
-            'return_address.country' => 'required_with:return_address|string',
+            // See store(): required only when a sibling address field has a
+            // value, not merely because the (always-sent) parent array exists.
+            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
+            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
+            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
             'return_address.postal_code' => 'nullable|string',
             'admin_notes' => 'nullable|string|max:1000',
             'refund_method' => 'nullable|in:original,store_credit,bank_transfer,check',
@@ -930,6 +945,13 @@ class RmaController extends Controller
             'items.*.exchange_product_id' => 'nullable|exists:products,id|required_if:items.*.resolution,exchange',
             'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
             'items.*.notes' => 'nullable|string|max:500',
+        ], [
+            // The app has no lang/ar/validation.php, so the generic rule
+            // fell back to the raw "validation.required_with" translation key.
+            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
+            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
+            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
+            'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
         ]);
 
         try {
