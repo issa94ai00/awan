@@ -126,7 +126,24 @@ class Warehouse extends Model
         return $this->hasMany(SalesOrder::class, 'fulfillment_warehouse_id');
     }
 
-    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
+    /**
+     * Invoices billed out of this warehouse.
+     *
+     * Reads `invoices.warehouse_id` directly. It used to go through
+     * `sales_orders.fulfillment_warehouse_id` instead, which returned nothing
+     * for every invoice raised outside the sales-order flow — the header
+     * column this table already carries for exactly this purpose was never
+     * read. An invoice whose lines span more than one warehouse has no single
+     * warehouse to report here and correctly stays out of this list; see
+     * `invoice_items.warehouse_id` for the per-line breakdown.
+     */
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    /** Invoices reached via a sales order fulfilled from this warehouse. */
+    public function invoicesViaSalesOrders(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
     {
         return $this->hasManyThrough(Invoice::class, SalesOrder::class, 'fulfillment_warehouse_id', 'sales_order_id');
     }
