@@ -46,6 +46,52 @@ class PaymentController extends Controller
         return ['amount' => $converted, 'currency' => $code, 'tendered_amount' => round($amount, 2)];
     }
 
+    /**
+     * What has actually been collected, per currency — read as separate
+     * cash drawers rather than one figure translated through a rate.
+     *
+     * Deliberately not a conversion to the base: that is exactly the number
+     * the accounting summary already gives. This answers a different
+     * question — "how many actual dollars, and how many actual pounds, have
+     * we been handed" — which is why each row sums `tendered_amount` (what
+     * was physically received) and falls back to `amount` only for the rows
+     * that were paid in the base currency to begin with, where the two are
+     * the same figure.
+     */
+    public function currencySummary(): \Illuminate\Http\JsonResponse
+    {
+        $rows = Payment::query()
+            ->where('status', Payment::STATUS_COMPLETED)
+            ->selectRaw('currency, SUM(COALESCE(tendered_amount, amount)) as total, COUNT(*) as payments_count')
+            ->groupBy('currency')
+            ->get();
+
+        $base = $this->currencies->baseCode();
+
+        $wallets = $rows->map(function ($row) use ($base) {
+            $currency = $this->currencies->find((string) $row->currency);
+
+            return [
+                'currency' => $row->currency,
+                'name' => $currency?->displayName(),
+                'symbol' => $currency?->symbol,
+                'decimal_places' => $currency?->decimal_places ?? 2,
+                'is_base' => $row->currency === $base,
+                'total' => (float) $row->total,
+                'payments_count' => (int) $row->payments_count,
+            ];
+        })
+            // The base currency's drawer leads, since it is the one the books
+            // are kept in; the rest follow by however much sits in them.
+            ->sortByDesc(fn ($wallet) => $wallet['is_base'] ? PHP_INT_MAX : $wallet['total'])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => ['base' => $base, 'wallets' => $wallets],
+        ]);
+    }
+
     public function index(Request $request)
     {
         $query = Payment::with(['invoice', 'customer', 'creator']);

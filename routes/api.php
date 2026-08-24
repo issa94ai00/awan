@@ -690,6 +690,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // Payments (مدفوعات)
         Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');
         Route::post('/payments', [PaymentController::class, 'store'])->name('api.payments.store');
+        // Ahead of the {payment} wildcard below, which would otherwise try to
+        // resolve "currency-summary" as a payment id.
+        Route::get('/payments/currency-summary', [PaymentController::class, 'currencySummary'])->name('api.payments.currency-summary');
         Route::get('/payments/{payment}', [PaymentController::class, 'show'])->name('api.payments.show');
         Route::put('/payments/{payment}', [PaymentController::class, 'update'])->name('api.payments.update');
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])->name('api.payments.destroy');

@@ -118,6 +118,45 @@ test('an on-account payment (no invoice) also converts through the recorded rate
     expect((float) $this->customer->balance)->toBe(18.0);
 });
 
+test('the currency summary reports each currency as its own wallet, not converted into the base', function () {
+    $this->currencies->recordRate($this->syp, 13100);
+
+    // One payment in the base currency, two in SYP — the wallet totals should
+    // read exactly what was handed over in each, never a blended figure.
+    $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/payments', [
+        'invoice_id' => $this->invoice->id,
+        'customer_id' => $this->customer->id,
+        'payment_method' => 'cash',
+        'amount' => 5,
+    ])->assertCreated();
+
+    $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/payments', [
+        'customer_id' => $this->customer->id,
+        'payment_method' => 'cash',
+        'amount' => 65500,
+        'currency' => 'SYP',
+    ])->assertCreated();
+
+    $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/payments', [
+        'customer_id' => $this->customer->id,
+        'payment_method' => 'cash',
+        'amount' => 13100,
+        'currency' => 'SYP',
+    ])->assertCreated();
+
+    $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/payments/currency-summary');
+
+    $response->assertOk()->assertJsonPath('data.base', 'USD');
+
+    $wallets = collect($response->json('data.wallets'))->keyBy('currency');
+
+    expect((float) $wallets['USD']['total'])->toBe(5.0)
+        ->and($wallets['USD']['is_base'])->toBeTrue()
+        ->and((float) $wallets['SYP']['total'])->toBe(78600.0)
+        ->and($wallets['SYP']['payments_count'])->toBe(2)
+        ->and($wallets['SYP']['is_base'])->toBeFalse();
+});
+
 test('omitting the currency still pays in the base currency exactly as before', function () {
     $response = $this->actingAs($this->user, 'sanctum')
         ->postJson('/api/v1/payments', [
