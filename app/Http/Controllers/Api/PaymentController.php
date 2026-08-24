@@ -6,10 +6,46 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\Customer;
+use App\Services\CurrencyService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
 {
+    public function __construct(private CurrencyService $currencies)
+    {
+    }
+
+    /**
+     * Turns what a payer typed — an amount in `$code` — into what actually
+     * settles the books: the base-currency equivalent, plus what to keep on
+     * the payment row for the receipt.
+     *
+     * Converting here rather than trusting a client-supplied rate is the
+     * whole point: the rate used is always the one on file at this moment,
+     * never a number a request could quietly override.
+     *
+     * @return array{amount: float, currency: string, tendered_amount: ?float}
+     *
+     * @throws \RuntimeException when `$code` has no rate recorded
+     */
+    private function resolveAmount(float $amount, ?string $code): array
+    {
+        $code = strtoupper(trim((string) ($code ?: $this->currencies->baseCode())));
+
+        if ($code === $this->currencies->baseCode()) {
+            return ['amount' => round($amount, 2), 'currency' => $code, 'tendered_amount' => null];
+        }
+
+        $converted = $this->currencies->convertToBase($amount, $code);
+
+        if ($converted === null) {
+            throw new \RuntimeException("لا يوجد سعر صرف مسجّل للعملة {$code}. سجّل السعر من إدارة العملات قبل القبض بها.");
+        }
+
+        return ['amount' => $converted, 'currency' => $code, 'tendered_amount' => round($amount, 2)];
+    }
+
     public function index(Request $request)
     {
         $query = Payment::with(['invoice', 'customer', 'creator']);
@@ -46,11 +82,20 @@ class PaymentController extends Controller
             'invoice_id' => 'nullable|exists:invoices,id',
             'customer_id' => 'required|exists:customers,id',
             'payment_method' => 'required|in:cash,card,bank_transfer,check',
-            'amount' => 'required|numeric|min:0',
+            'amount' => 'required|numeric|min:0.01',
+            // The currency the payer actually handed over. Optional — omitting
+            // it means the base currency, same as before this field existed.
+            'currency' => ['nullable', 'string', Rule::in($this->currencies->selectableCodes())],
             'payment_date' => 'nullable|date',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
+
+        try {
+            $resolved = $this->resolveAmount((float) $validated['amount'], $validated['currency'] ?? null);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
 
         // A collection against an invoice goes through PaymentRecorder, the same
         // path delivery-time settlement uses, so the invoice, the customer
@@ -63,12 +108,14 @@ class PaymentController extends Controller
             try {
                 $payment = app(\App\Services\Sales\PaymentRecorder::class)->record(
                     $invoice,
-                    (float) $validated['amount'],
+                    $resolved['amount'],
                     [
                         'method' => $validated['payment_method'],
                         'date' => $validated['payment_date'] ?? null,
                         'reference' => $validated['reference'] ?? null,
                         'notes' => $validated['notes'] ?? null,
+                        'currency' => $resolved['currency'],
+                        'tendered_amount' => $resolved['tendered_amount'],
                     ]
                 );
             } catch (\RuntimeException $e) {
@@ -92,13 +139,26 @@ class PaymentController extends Controller
         // `accounting_warning` field no screen displays — so money that never
         // reached the books looked, to whoever took it, exactly like money that
         // did, and the customer's balance had already moved for it.
-        $validated['payment_number'] = 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT);
-        $validated['status'] = Payment::STATUS_COMPLETED;
-        $validated['created_by'] = auth()->id();
+        $payment_data = [
+            'payment_number' => 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+            'customer_id' => $validated['customer_id'],
+            'payment_method' => $validated['payment_method'],
+            'payment_date' => $validated['payment_date'] ?? null,
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'status' => Payment::STATUS_COMPLETED,
+            'created_by' => auth()->id(),
+            'amount' => $resolved['amount'],
+            'currency' => $resolved['currency'],
+            'tendered_amount' => $resolved['tendered_amount'],
+            'exchange_rate' => $resolved['tendered_amount'] !== null && $resolved['amount'] > 0
+                ? round($resolved['tendered_amount'] / $resolved['amount'], 4)
+                : 1,
+        ];
 
         try {
-            $payment = \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
-                $payment = Payment::create($validated);
+            $payment = \Illuminate\Support\Facades\DB::transaction(function () use ($payment_data) {
+                $payment = Payment::create($payment_data);
                 $payment->customer->updateBalance(-$payment->amount);
 
                 app(\App\Services\Accounting\LedgerPostingService::class)->postPayment($payment);

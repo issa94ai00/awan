@@ -30,7 +30,14 @@ class PaymentRecorder
     /**
      * Records a collection against an invoice.
      *
-     * @param  array{method?:string,date?:string,reference?:string,notes?:string,sales_order_id?:int,created_by?:int}  $options
+     * `$amount` is always in the base currency — the same one the invoice's
+     * due amount is expressed in — because that is what actually settles the
+     * receivable. A collection taken in another currency (`options.currency`)
+     * still passes its base-currency equivalent here; `options.tendered_amount`
+     * is only carried through onto the payment row for the receipt, never used
+     * to decide how much of the invoice was paid.
+     *
+     * @param  array{method?:string,date?:string,reference?:string,notes?:string,sales_order_id?:int,created_by?:int,currency?:string,tendered_amount?:float}  $options
      *
      * @throws RuntimeException when the amount is not collectable
      */
@@ -56,6 +63,9 @@ class PaymentRecorder
         }
 
         return DB::transaction(function () use ($invoice, $amount, $options) {
+            $currency = strtoupper((string) ($options['currency'] ?? $invoice->currency ?: base_currency_code()));
+            $tendered = isset($options['tendered_amount']) ? round((float) $options['tendered_amount'], 2) : null;
+
             $payment = Payment::create([
                 // Derived from the last id: counting reuses a number as soon as
                 // any payment is deleted, and two concurrent collections collide.
@@ -69,7 +79,12 @@ class PaymentRecorder
                 'payment_date' => $options['date'] ?? now()->toDateString(),
                 'reference' => $options['reference'] ?? null,
                 'notes' => $options['notes'] ?? null,
-                'currency' => $invoice->currency ?: base_currency_code(),
+                'currency' => $currency,
+                // The rate actually used for this collection, derived from what
+                // was tendered rather than looked up again — the rate on file
+                // may have moved by the time anyone reads this back.
+                'exchange_rate' => $tendered !== null && $amount > 0 ? round($tendered / $amount, 4) : 1,
+                'tendered_amount' => $tendered,
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
