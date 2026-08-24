@@ -321,7 +321,7 @@ class SalesReportController extends Controller
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
-        $query = SalesOrder::query()->with(['items.product', 'fulfillmentWarehouse']);
+        $query = SalesOrder::query()->with(['items.product', 'items.allocations.warehouse', 'fulfillmentWarehouse']);
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
@@ -343,23 +343,55 @@ class SalesReportController extends Controller
         $orders = $query->get();
 
         $productSummary = $orders->flatMap(function ($order) {
-            return $order->items->map(function ($item) use ($order) {
+            return $order->items->flatMap(function ($item) use ($order) {
                 $product = $item->product;
-                $revenue = (float) ($item->unit_price * $item->quantity);
-                $cost = (float) (($product?->cost_price ?? 0) * ($item->quantity ?? 0));
+                $unitRevenue = (float) $item->unit_price;
+                $unitCost = (float) ($product?->cost_price ?? 0);
+
+                // An item split across warehouses (see SalesOrderItem::allocations)
+                // has its revenue and cost split the same way, so each
+                // warehouse's row reflects only the share it actually
+                // fulfilled — rather than crediting the whole line to
+                // whichever warehouse happened to own the order.
+                if ($item->allocations->isNotEmpty()) {
+                    return $item->allocations->map(function ($allocation) use ($product, $unitRevenue, $unitCost) {
+                        $quantity = (float) ($allocation->quantity ?? 0);
+                        $revenue = $unitRevenue * $quantity;
+                        $cost = $unitCost * $quantity;
+                        $grossProfit = $revenue - $cost;
+
+                        return [
+                            'product_id' => (int) ($product?->id ?? 0),
+                            'product_name' => $product?->name ?? 'Unknown',
+                            'warehouse_id' => (int) ($allocation->warehouse_id ?? 0),
+                            'warehouse_name' => $allocation->warehouse?->name ?? 'Unknown',
+                            'quantity' => $quantity,
+                            'total_revenue' => $revenue,
+                            'total_cost' => $cost,
+                            'gross_profit' => $grossProfit,
+                            'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
+                        ];
+                    });
+                }
+
+                // No fulfilment plan recorded yet — fall back to the order's
+                // own warehouse, the only thing known about it so far.
+                $quantity = (float) ($item->quantity ?? 0);
+                $revenue = $unitRevenue * $quantity;
+                $cost = $unitCost * $quantity;
                 $grossProfit = $revenue - $cost;
 
-                return [
+                return [[
                     'product_id' => (int) ($product?->id ?? 0),
                     'product_name' => $product?->name ?? 'Unknown',
                     'warehouse_id' => (int) ($order->fulfillment_warehouse_id ?? 0),
                     'warehouse_name' => $order->fulfillmentWarehouse?->name ?? 'Unknown',
-                    'quantity' => (float) ($item->quantity ?? 0),
+                    'quantity' => $quantity,
                     'total_revenue' => $revenue,
                     'total_cost' => $cost,
                     'gross_profit' => $grossProfit,
                     'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
-                ];
+                ]];
             });
         })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
 
@@ -764,7 +796,7 @@ class SalesReportController extends Controller
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
-        $query = Invoice::query()->with(['items.product', 'warehouse']);
+        $query = Invoice::query()->with(['items.product', 'items.warehouse', 'warehouse']);
         $this->applyInvoiceDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
@@ -792,11 +824,18 @@ class SalesReportController extends Controller
                 $cost = (float) (($product?->cost_price ?? 0) * ($item->quantity ?? 0));
                 $grossProfit = $revenue - $cost;
 
+                // Each line knows which warehouse actually shipped it — a
+                // multi-warehouse invoice can have a different one per
+                // product. The header's own warehouse_id is a courtesy
+                // default for lines that predate per-line tracking, or were
+                // never assigned one.
+                $warehouse = $item->warehouse ?: $invoice->warehouse;
+
                 return [
                     'product_id' => (int) ($product?->id ?? 0),
                     'product_name' => $product?->name ?? 'Unknown',
-                    'warehouse_id' => (int) ($invoice->warehouse_id ?? 0),
-                    'warehouse_name' => $invoice->warehouse?->name ?? 'Unknown',
+                    'warehouse_id' => (int) ($item->warehouse_id ?? $invoice->warehouse_id ?? 0),
+                    'warehouse_name' => $warehouse?->name ?? 'Unknown',
                     'quantity' => (float) ($item->quantity ?? 0),
                     'total_revenue' => $revenue,
                     'total_cost' => $cost,
