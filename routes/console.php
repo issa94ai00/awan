@@ -14,6 +14,11 @@ Artisan::command('inspire', function () {
 // Schedule sitemap generation
 Schedule::command('sitemap:generate')->daily();
 
+// Nightly database backup, kept for 14 days.
+Schedule::command('db:backup')
+    ->dailyAt('05:00')
+    ->withoutOverlapping();
+
 /*
 |--------------------------------------------------------------------------
 | The monthly accounting run
