@@ -40,7 +40,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -48,7 +48,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
@@ -93,7 +93,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -101,20 +101,31 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         $groupBy = $request->input('group_by', 'day');
 
+        // Each groupByX() adds its own select()/groupBy() to whatever builder
+        // it is handed — Eloquent builder methods mutate in place, they don't
+        // return a copy. Handing them $query directly left calculateSummary()
+        // reusing that same, now-grouped builder for the "overall" totals: the
+        // group's GROUP BY rode along into the join calculateSummary() runs for
+        // invoiced_total, which is where "employee" and "customer" grouping
+        // crashed outright (both sales_orders and invoices carry those
+        // columns, so the leftover bare `assigned_employee_id`/`customer_id`
+        // became ambiguous) — and the other groupings silently miscomputed
+        // "overall" instead of crashing. A clone per call keeps $query itself
+        // untouched for calculateSummary() below.
         $data = match ($groupBy) {
-            'employee' => $this->groupByEmployee($query),
-            'customer' => $this->groupByCustomer($query),
-            'warehouse' => $this->groupByWarehouse($query),
-            'status' => $this->groupByStatus($query),
-            'day' => $this->groupByDay($query),
-            'week' => $this->groupByWeek($query),
-            'month' => $this->groupByMonth($query),
-            default => $this->groupByDay($query),
+            'employee' => $this->groupByEmployee($query->clone()),
+            'customer' => $this->groupByCustomer($query->clone()),
+            'warehouse' => $this->groupByWarehouse($query->clone()),
+            'status' => $this->groupByStatus($query->clone()),
+            'day' => $this->groupByDay($query->clone()),
+            'week' => $this->groupByWeek($query->clone()),
+            'month' => $this->groupByMonth($query->clone()),
+            default => $this->groupByDay($query->clone()),
         };
 
         return response()->json([
@@ -149,7 +160,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -157,7 +168,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         return response()->json([
@@ -193,7 +204,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -201,7 +212,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         $orders = $query->get();
@@ -318,7 +329,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -326,7 +337,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         $orders = $query->get();
@@ -961,7 +972,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+            $query->where('sales_orders.customer_id', $request->customer_id);
         }
 
         if ($request->filled('warehouse_id')) {
@@ -969,7 +980,7 @@ class SalesReportController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sales_orders.status', $request->status);
         }
 
         $rows = $query->latest('order_date')->get();
