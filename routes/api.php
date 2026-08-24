@@ -153,12 +153,17 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // Stats (إحصائيات)
         Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
 
-        // Warehouses (المستودعات)
+        // Warehouses (المستودعات) — reading the list/managers is open to any
+        // signed-in admin-app user (other screens use it as a lookup);
+        // creating, editing and deleting is gated to admins only.
         Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
         Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
-        Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
-        Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
-        Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+        Route::get('/managers', [WmsController::class, 'indexManagers'])->name('api.admin.wms.warehouses.managers');
+        Route::middleware('admin')->group(function () {
+            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
+            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
+            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+        });
 
         // Warehouse Bins (أماكن التخزين)
         Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');

@@ -2,9 +2,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { ElNotification } from 'element-plus';
 import axios from 'axios';
 
 const router = useRouter();
+const { t } = useI18n();
 const loading = ref(true);
 const stats = ref({
     linked_products: 0,
@@ -16,6 +19,7 @@ const stats = ref({
     total_value: 0,
     today_movements: 0,
     active_users: 0,
+    avg_utilization: 0,
 });
 const topProducts = ref([]);
 const warehouseDistribution = ref([]);
@@ -31,7 +35,7 @@ async function fetchDashboardData() {
         stats.value = response.data.stats;
         topProducts.value = response.data.top_products;
         warehouseDistribution.value = response.data.warehouse_distribution;
-        recentMovements.value = response.data.recent_movements;
+        recentMovements.value = response.data.recent_movements || [];
         alerts.value = response.data.alerts;
     } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -56,8 +60,12 @@ function setupEchoListeners() {
 }
 
 function showNotification(message) {
-    // عرض إشعار بسيط
-    alert(message);
+    ElNotification({
+        title: t('recent_alerts'),
+        message,
+        type: 'warning',
+        position: 'bottom-right',
+    });
 }
 
 onMounted(() => {
@@ -215,8 +223,8 @@ function navigateTo(path) {
                 <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('fill_rate') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">87%</p>
+                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('avg_utilization') }}</h3>
+                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.avg_utilization }}%</p>
                         </div>
                         <div class="text-2xl sm:text-3xl">📈</div>
                     </div>
@@ -309,19 +317,26 @@ function navigateTo(path) {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-if="stats.today_movements === 0">
+                            <tr v-if="recentMovements.length === 0">
                                 <td colspan="5" class="p-4 text-center text-gray-500">{{ $t('no_movements_today') }}</td>
                             </tr>
-                            <tr v-else class="border-b hover:bg-gray-50">
-                                <td class="p-3 text-sm">{{ $t('today') }}</td>
-                                <td class="p-3 text-sm">-</td>
-                                <td class="p-3 text-sm">-</td>
+                            <tr v-for="movement in recentMovements" :key="movement.id" class="border-b hover:bg-gray-50">
+                                <td class="p-3 text-sm">{{ movement.date }}</td>
+                                <td class="p-3 text-sm">{{ movement.product }}</td>
+                                <td class="p-3 text-sm">{{ movement.warehouse }}</td>
                                 <td class="p-3">
-                                    <span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                        {{ $t('deposit') }}
+                                    <span
+                                        class="px-2 py-1 rounded-full text-xs font-medium"
+                                        :class="{
+                                            'bg-blue-100 text-blue-800': movement.type === 'in',
+                                            'bg-red-100 text-red-800': movement.type === 'out',
+                                            'bg-amber-100 text-amber-800': movement.type === 'adjustment',
+                                        }"
+                                    >
+                                        {{ movement.type_text }}
                                     </span>
                                 </td>
-                                <td class="p-3 text-sm font-medium">-</td>
+                                <td class="p-3 text-sm font-medium">{{ movement.quantity }}</td>
                             </tr>
                         </tbody>
                     </table>

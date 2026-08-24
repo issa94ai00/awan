@@ -28,6 +28,10 @@ export const wmsService = {
         return api.delete(`${API_BASE_URL}/warehouses/${id}`);
     },
 
+    getManagers() {
+        return api.get(`${API_BASE_URL}/managers`);
+    },
+
     // Bins
     getBins(params = {}) {
         return api.get(`${API_BASE_URL}/bins`, { params });
