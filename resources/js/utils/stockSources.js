@@ -1,6 +1,12 @@
 /**
  * Reading which warehouse can fill a sale line.
  *
+ * A sale line can draw its quantity from more than one warehouse — the
+ * common case is a single source, but a seller can split a line across
+ * shelves when one alone cannot cover it. Each line therefore carries a list
+ * of allocations (`{ warehouse_id, quantity }`) instead of one warehouse and
+ * one quantity, and these helpers reason in terms of that list.
+ *
  * Two small rules decide whether the direct-sale screen tells the truth, and
  * both are easy to get subtly wrong inside a large component:
  *
@@ -8,9 +14,10 @@
  *     the free quantities have to be summed per warehouse before being offered.
  *     Showing one bin's figure makes a warehouse that can fill the line look
  *     like it cannot.
- *   - Two lines of the same product from the same warehouse have to be counted
- *     together. Judged separately, each looks satisfiable while together they
- *     overdraw the shelf — which is exactly the case the server refuses, so the
+ *   - Every allocation drawing the same product from the same warehouse has to
+ *     be counted together — whether it is two lines or two allocations on one
+ *     line. Judged separately, each looks satisfiable while together they
+ *     overdraw the shelf, which is exactly the case the server refuses, so the
  *     screen must refuse it in the same terms or the seller is surprised at the
  *     till.
  *
@@ -54,35 +61,48 @@ export function summariseSources(rows) {
     return [...byWarehouse.values()].sort((a, b) => b.available - a.available);
 }
 
-/** Free quantity at the warehouse a line is drawing from. */
-export function availableAt(item) {
-    const source = (item?.sources || []).find((row) => row.warehouse_id === item.warehouse_id);
+/** Free quantity a line's product has at one warehouse. */
+export function availableAt(item, warehouseId) {
+    const source = (item?.sources || []).find((row) => row.warehouse_id === warehouseId);
     return source ? source.available : 0;
 }
 
 /**
- * Whether a line asks for more than its warehouse holds.
+ * The combined quantity every line asks of one product at one warehouse.
  *
- * Pools every line drawing the same product from the same warehouse, matching
- * how the server totals them before deciding.
- *
- * @param {Array<object>} items every line on the sale
- * @param {object} item the line being judged
+ * Pools every allocation on every line, not just the one being judged —
+ * matching how the server totals them before deciding.
  */
+export function askedFor(items, productId, warehouseId) {
+    return (items || []).reduce((sum, item) => {
+        if (item.product_id !== productId) return sum;
+
+        return sum + (item.allocations || [])
+            .filter((allocation) => allocation.warehouse_id === warehouseId)
+            .reduce((s, allocation) => s + (Number(allocation.quantity) || 0), 0);
+    }, 0);
+}
+
+/** Whether one allocation asks for more than its warehouse holds. */
+export function isAllocationShort(items, item, allocation) {
+    if (!allocation?.warehouse_id) return false;
+    return askedFor(items, item.product_id, allocation.warehouse_id) > availableAt(item, allocation.warehouse_id);
+}
+
+/** Whether any allocation on a line asks for more than its warehouse holds. */
 export function isLineShort(items, item) {
-    if (!item?.warehouse_id) return false;
+    return (item?.allocations || []).some((allocation) => isAllocationShort(items, item, allocation));
+}
 
-    const asked = (items || [])
-        .filter((row) => row.product_id === item.product_id && row.warehouse_id === item.warehouse_id)
-        .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
-
-    return asked > availableAt(item);
+/** The quantity a line asks for in total, across every source it draws from. */
+export function lineQuantity(item) {
+    return (item?.allocations || []).reduce((sum, allocation) => sum + (Number(allocation.quantity) || 0), 0);
 }
 
 /**
- * The source to preselect for a newly added line.
+ * The source to preselect for a newly added line or allocation.
  *
- * The first that can cover the whole line, so the common case needs no
+ * The first that can cover the whole request, so the common case needs no
  * interaction. Falls back to the fullest warehouse — which will be marked short,
  * telling the seller the problem rather than leaving the field blank and making
  * them discover it on submit.

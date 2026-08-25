@@ -15,13 +15,17 @@ use App\Models\ProductWarehouseAssignment;
 use App\Models\SalesOrder;
 use App\Models\ShippingManifest;
 use App\Models\ShippingManifestItem;
+use App\Models\StockMovement;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseBin;
 use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryCostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PackingService;
 use App\Services\PickingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WmsController extends Controller
 {
@@ -51,10 +55,23 @@ class WmsController extends Controller
                 '('.WarehouseInventory::availableSql().') <= COALESCE(reorder_point, 0)'
             )->count(),
             'total_stock' => WarehouseInventory::sum('quantity'),
-            'total_value' => WarehouseInventory::selectRaw('SUM(quantity * cost_basis) as total')->value('total') ?? 0,
-            'today_movements' => 0, // TODO: Add movements table
-            'active_users' => 0, // TODO: Add user activity tracking
+            // Priced off the real FIFO layers, not the `cost_basis` column —
+            // that column holds the FIFO/FEFO/LIFO costing-method enum, not a
+            // number (see InventoryController::summary()).
+            'total_value' => app(InventoryCostingService::class)->valueOnHand(),
+            'today_movements' => StockMovement::whereDate('created_at', today())->count(),
+            'active_users' => StockMovement::whereDate('created_at', today())
+                ->whereNotNull('created_by')
+                ->distinct('created_by')
+                ->count('created_by'),
         ];
+
+        $warehousesWithCapacity = Warehouse::withSum('inventory as total_stock', 'quantity')
+            ->where('capacity', '>', 0)
+            ->get();
+        $stats['avg_utilization'] = $warehousesWithCapacity->isNotEmpty()
+            ? round($warehousesWithCapacity->avg(fn ($w) => min(100, (($w->total_stock ?? 0) / $w->capacity) * 100)), 1)
+            : 0;
 
         $topProducts = Product::withSum('inventory as total_consumption', 'quantity')
             ->orderByDesc('total_consumption')
@@ -98,10 +115,31 @@ class WmsController extends Controller
                 ];
             });
 
+        $recentMovements = StockMovement::with(['product:id,name_ar,name_en', 'warehouse:id,name'])
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($movement) {
+                return [
+                    'id' => $movement->id,
+                    'date' => $movement->created_at->format('Y-m-d H:i'),
+                    // Product has no `name` column — it's a computed accessor
+                    // over name_ar/name_en — so the eager-load above selects
+                    // those instead; the plain `->name` here still resolves
+                    // through the accessor once they're loaded.
+                    'product' => $movement->product?->name ?? '-',
+                    'warehouse' => $movement->warehouse?->name ?? '-',
+                    'type' => $movement->movement_type,
+                    'type_text' => $movement->movement_type_text,
+                    'quantity' => $movement->quantity,
+                ];
+            });
+
         return response()->json([
             'stats' => $stats,
             'top_products' => $topProducts,
             'warehouse_distribution' => $warehouseDistribution,
+            'recent_movements' => $recentMovements,
             'alerts' => $alerts,
         ]);
     }
@@ -207,7 +245,10 @@ class WmsController extends Controller
                 'min_stock_level' => $assignment->min_stock_level,
                 'max_stock_level' => $assignment->max_stock_level,
                 'safety_stock' => $assignment->safety_stock,
-                'cost_price' => $inventory ? $inventory->cost_basis : $product->cost_price,
+                // `warehouse_inventory.cost_basis` is the FIFO/FEFO/LIFO
+                // costing-method enum, not a price — the product's cost_price
+                // is the correct figure to show here.
+                'cost_price' => $product->cost_price,
                 'primary_bin_id' => $assignment->primary_bin_id,
                 'primary_bin_code' => $assignment->primaryBin ? $assignment->primaryBin->code : '',
                 'replenishment_method' => $assignment->replenishment_method,
@@ -271,7 +312,10 @@ class WmsController extends Controller
                 'min_stock_level' => $assignment->min_stock_level,
                 'max_stock_level' => $assignment->max_stock_level,
                 'safety_stock' => $assignment->safety_stock,
-                'cost_price' => $inventory ? $inventory->cost_basis : $product->cost_price,
+                // `warehouse_inventory.cost_basis` is the FIFO/FEFO/LIFO
+                // costing-method enum, not a price — the product's cost_price
+                // is the correct figure to show here.
+                'cost_price' => $product->cost_price,
                 'primary_bin_id' => $assignment->primary_bin_id,
                 'primary_bin_code' => $assignment->primaryBin ? $assignment->primaryBin->code : '',
                 'replenishment_method' => $assignment->replenishment_method,
@@ -364,10 +408,13 @@ class WmsController extends Controller
                 $warehouseRow->refresh();
             }
 
-            if ($warehouseRow && $request->filled('cost_price')) {
-                $warehouseRow->cost_basis = $request->cost_price;
-                $warehouseRow->save();
-            }
+            // `cost_price` submitted here used to be written into
+            // `warehouse_inventory.cost_basis` — that column is the
+            // FIFO/FEFO/LIFO costing-method enum, not a price, so that write
+            // silently corrupted the row's costing strategy and never fed
+            // real costing (InventoryCostingService reads from
+            // inventory_cost_layers). Removed rather than replaced: this
+            // screen has no per-warehouse cost override today.
 
             if (! $warehouseRow && $newQuantity > 0) {
                 $inventory->receive($assignment->product_id, $newQuantity, $assignment->warehouse_id, [
@@ -1332,27 +1379,49 @@ class WmsController extends Controller
 
     public function indexWarehouses(Request $request)
     {
-        $query = Warehouse::query();
+        $query = Warehouse::withSum('inventory as total_stock', 'quantity');
 
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%'.$request->search.'%')
-                ->orWhere('code', 'like', '%'.$request->search.'%');
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('code', 'like', '%'.$request->search.'%');
+            });
         }
 
         if ($request->filled('is_active')) {
             $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
         }
 
-        $warehouses = $query->latest()->paginate($request->input('per_page', 20));
+        if ($request->filled('location_type')) {
+            $query->where('location_type', $request->location_type);
+        }
+
+        $warehouses = $query->with('manager:id,name,email')->latest()->paginate($request->input('per_page', 20));
+
+        $warehouses->getCollection()->transform(function ($warehouse) {
+            $warehouse->utilization_percentage = $warehouse->capacity > 0
+                ? round((($warehouse->total_stock ?? 0) / $warehouse->capacity) * 100, 1)
+                : null;
+
+            return $warehouse;
+        });
 
         return response()->json($warehouses);
     }
 
     public function showWarehouse($id)
     {
-        $warehouse = Warehouse::findOrFail($id);
+        $warehouse = Warehouse::with('manager:id,name,email')->findOrFail($id);
 
         return response()->json($warehouse);
+    }
+
+    /** Lists users who can be linked as a warehouse's `manager_id`. */
+    public function indexManagers()
+    {
+        return response()->json(
+            User::select('id', 'name', 'email')->orderBy('name')->get()
+        );
     }
 
     public function storeWarehouse(Request $request)
@@ -1375,10 +1444,20 @@ class WmsController extends Controller
             'manager_id' => 'nullable|exists:users,id',
         ]);
 
-        $warehouse = Warehouse::create(array_merge($validated, [
-            'is_active' => $validated['is_active'] ?? true,
-            'is_primary' => $validated['is_primary'] ?? false,
-        ]));
+        $warehouse = DB::transaction(function () use ($validated) {
+            $isPrimary = $validated['is_primary'] ?? false;
+
+            if ($isPrimary) {
+                // Only one warehouse is ever primary — several routing/sourcing
+                // services treat it as singular already, nothing enforced it.
+                Warehouse::where('is_primary', true)->update(['is_primary' => false]);
+            }
+
+            return Warehouse::create(array_merge($validated, [
+                'is_active' => $validated['is_active'] ?? true,
+                'is_primary' => $isPrimary,
+            ]));
+        });
 
         return response()->json($warehouse, 201);
     }
@@ -1405,19 +1484,39 @@ class WmsController extends Controller
             'manager_id' => 'nullable|exists:users,id',
         ]);
 
-        $warehouse->update($validated);
+        DB::transaction(function () use ($warehouse, $validated) {
+            if (($validated['is_primary'] ?? false) === true) {
+                Warehouse::where('is_primary', true)
+                    ->where('id', '!=', $warehouse->id)
+                    ->update(['is_primary' => false]);
+            }
 
-        return response()->json($warehouse);
+            $warehouse->update($validated);
+        });
+
+        return response()->json($warehouse->fresh());
     }
 
     public function destroyWarehouse($id)
     {
         $warehouse = Warehouse::findOrFail($id);
+
+        // warehouse_inventory and warehouse_bins both cascade-delete with the
+        // warehouse — without this guard, deleting one silently wipes every
+        // stock record it holds (bin-level inventory is a subset of this).
+        $hasStock = $warehouse->inventory()->where('quantity', '>', 0)->exists();
+
+        if ($hasStock) {
+            return response()->json([
+                'message' => 'لا يمكن حذف المستودع لأنه يحتوي على مخزون فعلي. رجاءً انقل أو صفّر الرصيد أولاً.',
+            ], 422);
+        }
+
         $warehouse->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Warehouse deleted successfully',
+            'message' => 'تم حذف المستودع بنجاح',
         ]);
     }
 

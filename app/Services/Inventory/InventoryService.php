@@ -285,6 +285,22 @@ class InventoryService
                     'source' => $options['source'] ?? null,
                     'reference' => $options['reference'] ?? null,
                 ]);
+
+                // A purchase moves the reference price, not just the FIFO layers:
+                // callers that pass this ask for products.cost_price to become a
+                // quantity-weighted average of what was on hand and what was just
+                // paid, so the figure shown around the app keeps tracking reality
+                // instead of freezing at whatever the product was created with.
+                if ($options['update_average_cost'] ?? false) {
+                    $this->applyWeightedAverageCost($productId, $signedQuantity, $unitCost);
+                }
+
+                // The shelf price is a decision the operator made when they
+                // typed it on the receipt, not a figure to blend with the old
+                // one — so, unlike cost, it is set outright rather than averaged.
+                if (! empty($options['sale_price'])) {
+                    $this->applySalePrice($productId, (float) $options['sale_price']);
+                }
             }
 
             // The model hook on StockMovement maintains products.stock_quantity,
@@ -529,6 +545,49 @@ class InventoryService
             'reserved_quantity' => 0,
             'cost_basis' => WarehouseInventory::COST_BASIS_FIFO,
         ]);
+    }
+
+    /**
+     * Rolls a purchase price into products.cost_price as a quantity-weighted
+     * average of the stock already on hand and what just arrived.
+     *
+     * Locked on the product row so two concurrent receipts for the same
+     * product cannot both average against the same starting figure. Reads
+     * stock_quantity as it stands right now: the StockMovement hook that
+     * bumps it for this receipt has not run yet, so it is still the
+     * pre-receipt total.
+     */
+    private function applyWeightedAverageCost(int $productId, int $receivedQuantity, float $unitCost): void
+    {
+        $product = Product::whereKey($productId)->lockForUpdate()->first();
+        if (! $product) {
+            return;
+        }
+
+        $oldQuantity = max(0, (int) $product->stock_quantity);
+        $oldCost = (float) $product->cost_price;
+
+        $newCost = $oldQuantity > 0
+            ? (($oldQuantity * $oldCost) + ($receivedQuantity * $unitCost)) / ($oldQuantity + $receivedQuantity)
+            : $unitCost;
+
+        $product->cost_price = round($newCost, 2);
+        $product->save();
+    }
+
+    /**
+     * Sets the product's retail price to what the receipt line asked for.
+     *
+     * No lock and no read of the current value: this is a plain overwrite,
+     * not a computation built from it, so there is nothing to race.
+     */
+    private function applySalePrice(int $productId, float $salePrice): void
+    {
+        if ($salePrice <= 0) {
+            return;
+        }
+
+        Product::whereKey($productId)->update(['price' => round($salePrice, 2)]);
     }
 
     private function bucketColumn(string $condition): string

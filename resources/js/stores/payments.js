@@ -15,9 +15,24 @@ export const usePaymentsStore = defineStore('payments', {
             per_page: 20,
             total: 0,
         },
+        // What has actually been collected, per currency — separate "wallets"
+        // rather than one figure converted through a rate. See
+        // PaymentController::currencySummary.
+        wallets: [],
+        walletsLoading: false,
     }),
 
     actions: {
+        async fetchCurrencyWallets() {
+            this.walletsLoading = true;
+            try {
+                const res = await paymentsApi.currencySummary();
+                this.wallets = res.data?.data?.wallets || [];
+            } finally {
+                this.walletsLoading = false;
+            }
+        },
+
         async fetchPayments(params = {}) {
             this.loading = true;
             this.error = null;

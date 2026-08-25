@@ -32,7 +32,14 @@ class InvoiceController extends Controller
 
             // Filter by status
             if ($request->filled('status')) {
-                $query->where('status', $request->status);
+                // A caller narrowing to "any of these statuses" (e.g. the RMA
+                // picker, which accepts confirmed or delivered invoices) sends
+                // an array; every other caller still sends one status string.
+                if (is_array($request->status)) {
+                    $query->whereIn('status', $request->status);
+                } else {
+                    $query->where('status', $request->status);
+                }
             }
 
             // Filter by customer_id
@@ -330,6 +337,15 @@ class InvoiceController extends Controller
 
             $paidAmount = round((float) ($validated['paid_amount'] ?? 0), 2);
 
+            // The header's warehouse, when every line agrees on one. A sale
+            // split across warehouses (see items.*.warehouse_id) has no single
+            // warehouse to report at the header level, so it stays null rather
+            // than picking one line arbitrarily — Warehouse::invoices() and
+            // reports that filter by warehouse_id rely on this being either
+            // right or absent, never a guess.
+            $lineWarehouseIds = collect($itemsData)->pluck('warehouse_id')->filter()->unique();
+            $headerWarehouseId = $lineWarehouseIds->count() === 1 ? $lineWarehouseIds->first() : null;
+
             // Generate invoice number
             $invoice = new Invoice();
             $invoiceNumber = $invoice->generateInvoiceNumber();
@@ -360,6 +376,7 @@ class InvoiceController extends Controller
                 $additionalCharges,
                 $total,
                 $paidAmount,
+                $headerWarehouseId,
                 $goods
             ) {
             // Create invoice
@@ -367,6 +384,7 @@ class InvoiceController extends Controller
                 'invoice_number' => $invoiceNumber,
                 'customer_id' => $validated['customer_id'] ?? null,
                 'assigned_employee_id' => $validated['assigned_employee_id'] ?? null,
+                'warehouse_id' => $headerWarehouseId,
                 'subtotal' => $subtotal,
                 'tax' => $tax,
                 'discount' => $discount,

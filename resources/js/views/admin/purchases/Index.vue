@@ -156,6 +156,17 @@
                             </div>
                             <i class="fas fa-chevron-left btn-arrow"></i>
                         </div>
+
+                        <div class="insight-item-btn" @click="goToReport">
+                            <div class="btn-icon bg-purple">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="btn-info">
+                                <h4>{{ $t('purchase_report') }}</h4>
+                                <p>{{ $t('purchases_report_subtitle') }}</p>
+                            </div>
+                            <i class="fas fa-chevron-left btn-arrow"></i>
+                        </div>
                     </div>
                 </el-card>
             </el-col>
@@ -234,6 +245,10 @@ const goToOrders = () => {
 
 const goToReceipts = () => {
     router.push('/admin/purchases/receipts');
+};
+
+const goToReport = () => {
+    router.push('/admin/purchases/report');
 };
 
 const viewOrder = (id) => {
@@ -448,6 +463,7 @@ onMounted(refreshData);
 .bg-blue { background-color: var(--accent-blue); }
 .bg-yellow { background-color: var(--warning-dark); }
 .bg-green { background-color: var(--success); }
+.bg-purple { background-color: #7c3aed; }
 
 .btn-info {
     flex: 1;

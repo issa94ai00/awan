@@ -111,6 +111,9 @@
             </template>
         </AdminFilterBar>
 
+        <el-tabs v-model="activeTab" class="report-tabs">
+        <el-tab-pane :label="$t('sales_orders_pipeline')" name="orders">
+
         <el-alert
             v-if="hasSalesData === false && !loading"
             :title="$t('no_data_for_current_filters')"
@@ -365,6 +368,16 @@
                         <strong>{{ formatCurrency(row.total) }}</strong>
                     </template>
                 </el-table-column>
+                <el-table-column :label="$t('invoiced')" width="150">
+                    <template #default="{ row }">
+                        <el-tag :type="invoiceCoverageType(row)" size="small">
+                            {{ invoiceCoverageText(row) }}
+                        </el-tag>
+                        <p v-if="Number(row.invoices_count) > 0" class="table-sub-note">
+                            {{ formatCurrency(row.invoiced_total) }}
+                        </p>
+                    </template>
+                </el-table-column>
             </el-table>
 
             <el-pagination
@@ -413,6 +426,299 @@
                 </el-table-column>
             </el-table>
         </el-card>
+
+        </el-tab-pane>
+
+        <el-tab-pane :label="$t('invoices')" name="invoices">
+
+        <el-alert
+            v-if="hasInvoiceData === false && !loadingInvoices"
+            :title="$t('no_data_for_current_filters')"
+            type="info"
+            :closable="false"
+            show-icon
+            class="empty-alert"
+        />
+
+        <AdminStatGrid v-if="loadingInvoices">
+            <el-card v-for="n in 5" :key="n" shadow="hover" class="stat-card skeleton-card">
+                <el-skeleton :rows="2" animated />
+            </el-card>
+        </AdminStatGrid>
+
+        <AdminStatGrid v-else>
+            <el-card v-for="(stat, key) in invoiceSummaryStats" :key="key" shadow="hover" class="stat-card" :class="'stat-card-' + key">
+                <div class="stat-content">
+                    <div class="stat-icon">
+                        <component :is="stat.icon" />
+                    </div>
+                    <div class="stat-info">
+                        <h3>{{ formatValue(stat.value, stat.format) }}</h3>
+                        <p>{{ stat.label }}</p>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
+
+        <el-row v-if="!loadingInvoices && invoicePerformanceData.summary" :gutter="20" style="margin-top: 20px; margin-bottom: 10px;">
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('sales_revenue') }}</span>
+                        <strong>{{ formatCurrency(invoicePerformanceData.summary.total_revenue || 0) }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('cost_of_goods') }}</span>
+                        <strong>{{ formatCurrency(invoicePerformanceData.summary.total_cost || 0) }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('gross_profit') }}</span>
+                        <strong>{{ formatCurrency(invoicePerformanceData.summary.gross_profit || 0) }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('profit_margin') }}</span>
+                        <strong>{{ formatPercentage(invoicePerformanceData.summary.gross_margin || 0) }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-row :gutter="20" class="dimension-panels" style="margin-top: 20px; margin-bottom: 20px;">
+            <el-col :xs="24" :md="8">
+                <el-card shadow="hover">
+                    <template #header>
+                        <span>{{ $t('employees') }}</span>
+                    </template>
+                    <el-table :data="invoiceDimensionData.employee_summary || []" stripe style="width: 100%">
+                        <el-table-column prop="employee_name" :label="$t('employee')" />
+                        <el-table-column :label="$t('total_invoiced')">
+                            <template #default="{ row }">{{ formatCurrency(row.total_invoiced) }}</template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="8">
+                <el-card shadow="hover">
+                    <template #header>
+                        <span>{{ $t('customers') }}</span>
+                    </template>
+                    <el-table :data="invoiceDimensionData.customer_summary || []" stripe style="width: 100%">
+                        <el-table-column prop="customer_name" :label="$t('customer')" />
+                        <el-table-column :label="$t('total_invoiced')">
+                            <template #default="{ row }">{{ formatCurrency(row.total_invoiced) }}</template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="8">
+                <el-card shadow="hover">
+                    <template #header>
+                        <span>{{ $t('warehouses') }}</span>
+                    </template>
+                    <el-table :data="invoiceDimensionData.warehouse_summary || []" stripe style="width: 100%">
+                        <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                        <el-table-column :label="$t('total_invoiced')">
+                            <template #default="{ row }">{{ formatCurrency(row.total_invoiced) }}</template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-row v-if="invoiceProductProfitabilityData.summary" :gutter="20" style="margin-top: 20px; margin-bottom: 10px;">
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('most_profitable_product') }}</span>
+                        <strong>{{ invoiceProductProfitabilityData.summary.top_product?.product_name || '-' }}</strong>
+                        <small>{{ formatCurrency(invoiceProductProfitabilityData.summary.top_product?.gross_profit || 0) }}</small>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('least_profitable_product') }}</span>
+                        <strong>{{ invoiceProductProfitabilityData.summary.lowest_product?.product_name || '-' }}</strong>
+                        <small>{{ formatCurrency(invoiceProductProfitabilityData.summary.lowest_product?.gross_profit || 0) }}</small>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('total_profit') }}</span>
+                        <strong>{{ formatCurrency(invoiceProductProfitabilityData.summary.gross_profit || 0) }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :md="6">
+                <el-card shadow="hover">
+                    <div class="mini-metric">
+                        <span>{{ $t('items_count') }}</span>
+                        <strong>{{ invoiceProductProfitabilityData.summary.product_count || 0 }}</strong>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+
+        <el-card shadow="hover" class="profitability-table-card" style="margin-bottom: 20px;">
+            <template #header>
+                <div class="card-header">
+                    <span>{{ $t('product_profitability_by_warehouse') }}</span>
+                </div>
+            </template>
+
+            <el-table :data="invoiceProductProfitabilityData.product_summary || []" stripe style="width: 100%">
+                <el-table-column prop="product_name" :label="$t('product')" />
+                <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
+                <el-table-column prop="quantity" :label="$t('quantity')" />
+                <el-table-column :label="$t('revenue')">
+                    <template #default="{ row }">{{ formatCurrency(row.total_revenue) }}</template>
+                </el-table-column>
+                <el-table-column :label="$t('cost')">
+                    <template #default="{ row }">{{ formatCurrency(row.total_cost) }}</template>
+                </el-table-column>
+                <el-table-column :label="$t('profit')">
+                    <template #default="{ row }">
+                        <strong :class="row.gross_profit >= 0 ? 'profit-positive' : 'profit-negative'">
+                            {{ formatCurrency(row.gross_profit) }}
+                        </strong>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('margin')">
+                    <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
+                </el-table-column>
+            </el-table>
+        </el-card>
+
+        <!-- Detailed Invoice Table -->
+        <el-card shadow="hover" class="table-card">
+            <template #header>
+                <div class="card-header">
+                    <span>{{ $t('detailed_report') }}</span>
+                    <el-button type="success" :icon="Download" @click="exportInvoiceReport">
+                        {{ $t('export_report') }}
+                    </el-button>
+                </div>
+            </template>
+
+            <el-table
+                v-loading="loadingInvoices"
+                :data="invoiceReportData"
+                style="width: 100%"
+                stripe
+                highlight-current-row
+            >
+                <el-table-column prop="invoice_number" :label="$t('invoice_number')" width="130" />
+                <el-table-column :label="$t('source_order')" width="120">
+                    <template #default="{ row }">
+                        <span v-if="row.sales_order">{{ row.sales_order.order_number }}</span>
+                        <span v-else class="table-sub-note">{{ $t('direct_sale') }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('date')" width="120">
+                    <template #default="{ row }">
+                        {{ formatDate(row.created_at) }}
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('customer')">
+                    <template #default="{ row }">
+                        {{ row.customer ? row.customer.name : '-' }}
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('employee')">
+                    <template #default="{ row }">
+                        {{ row.assigned_employee ? row.assigned_employee.name : '-' }}
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('status')" width="100">
+                    <template #default="{ row }">
+                        <el-tag :type="getStatusType(row.status)" size="small">
+                            {{ getStatusText(row.status) }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('total')" width="120">
+                    <template #default="{ row }">
+                        <strong>{{ formatCurrency(row.total) }}</strong>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('paid_amount')" width="120">
+                    <template #default="{ row }">
+                        {{ formatCurrency(row.paid_amount) }}
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('due_amount')" width="120">
+                    <template #default="{ row }">
+                        <strong :class="Number(row.due_amount) > 0 ? 'profit-negative' : 'profit-positive'">
+                            {{ formatCurrency(row.due_amount) }}
+                        </strong>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <el-pagination
+                v-if="invoicePagination.total > 0"
+                v-model:current-page="invoicePagination.current_page"
+                v-model:page-size="invoicePagination.per_page"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="invoicePagination.total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleInvoiceSizeChange"
+                @current-change="handleInvoicePageChange"
+                style="margin-top: 20px; justify-content: center"
+            />
+        </el-card>
+
+        <!-- Top Performers (invoiced) -->
+        <el-card shadow="hover" class="top-performers-card">
+            <template #header>
+                <span>{{ $t('top_performing_employees') }}</span>
+            </template>
+
+            <el-table
+                v-loading="loadingInvoiceTopPerformers"
+                :data="invoiceTopPerformers"
+                style="width: 100%"
+                stripe
+            >
+                <el-table-column :label="$t('rank')" width="80">
+                    <template #default="{ $index }">
+                        <el-tag :type="getRankType($index)" size="small">
+                            {{ $index + 1 }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="employee_name" :label="$t('employee')" />
+                <el-table-column prop="total_invoices" :label="$t('invoices_count')" />
+                <el-table-column :label="$t('total_invoiced')">
+                    <template #default="{ row }">
+                        <strong>{{ formatCurrency(row.total_sales) }}</strong>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="$t('average_invoice_value')">
+                    <template #default="{ row }">
+                        {{ formatCurrency(row.average_invoice_value) }}
+                    </template>
+                </el-table-column>
+            </el-table>
+        </el-card>
+
+        </el-tab-pane>
+        </el-tabs>
     </div>
 </template>
 
@@ -422,7 +728,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { ArrowLeft, Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts } from '@element-plus/icons-vue';
+import { ArrowLeft, Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
 import api from '@/api';
 import * as echarts from 'echarts';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -455,6 +761,33 @@ const productProfitabilityData = ref({
     summary: {},
     product_summary: []
 });
+const activeTab = ref('orders');
+const loadingInvoices = ref(false);
+const invoiceReportData = ref([]);
+const invoiceSummary = ref({});
+const invoiceDimensionData = ref({
+    employee_summary: [],
+    customer_summary: [],
+    warehouse_summary: []
+});
+const invoicePagination = ref({
+    current_page: 1,
+    per_page: 20,
+    total: 0
+});
+const invoicePerformanceData = ref({
+    summary: {},
+    employee_summary: [],
+    customer_summary: [],
+    warehouse_summary: []
+});
+const invoiceProductProfitabilityData = ref({
+    summary: {},
+    product_summary: []
+});
+const invoiceTopPerformers = ref([]);
+const loadingInvoiceTopPerformers = ref(false);
+
 const salesChartRef = ref(null);
 const distributionChartRef = ref(null);
 let salesChart = null;
@@ -482,6 +815,47 @@ const hasSalesData = computed(() => {
     const dimensionRows = (dimensionData.value.employee_summary || []).length > 0 || (dimensionData.value.customer_summary || []).length > 0 || (dimensionData.value.warehouse_summary || []).length > 0;
     return summaryRows || dimensionRows || Number(summary.value.total_orders || 0) > 0 || Number(summary.value.total_sales || 0) > 0;
 });
+
+const hasInvoiceData = computed(() => {
+    const rows = (invoiceReportData.value || []).length > 0;
+    const dimensionRows = (invoiceDimensionData.value.employee_summary || []).length > 0
+        || (invoiceDimensionData.value.customer_summary || []).length > 0
+        || (invoiceDimensionData.value.warehouse_summary || []).length > 0;
+    return rows || dimensionRows || Number(invoiceSummary.value.total_invoices || 0) > 0;
+});
+
+const invoiceSummaryStats = computed(() => ({
+    total_invoices: {
+        label: t('invoices_count'),
+        value: invoiceSummary.value.total_invoices || 0,
+        icon: Document,
+        format: 'number'
+    },
+    total_invoiced: {
+        label: t('total_invoiced'),
+        value: invoiceSummary.value.total_invoiced || 0,
+        icon: Coin,
+        format: 'currency'
+    },
+    paid_amount: {
+        label: t('paid_amount'),
+        value: invoiceSummary.value.paid_amount || 0,
+        icon: Wallet,
+        format: 'currency'
+    },
+    due_amount: {
+        label: t('due_amount'),
+        value: invoiceSummary.value.due_amount || 0,
+        icon: Warning,
+        format: 'currency'
+    },
+    average_invoice_value: {
+        label: t('average_invoice_value'),
+        value: invoiceSummary.value.average_invoice_value || 0,
+        icon: TrendCharts,
+        format: 'currency'
+    }
+}));
 
 const summaryStats = computed(() => ({
     total_orders: {
@@ -525,8 +899,35 @@ const summaryStats = computed(() => ({
         value: summary.value.average_order_value || 0,
         icon: TrendCharts,
         format: 'currency'
+    },
+    invoiced_orders: {
+        label: t('invoiced_orders'),
+        value: summary.value.invoiced_orders || 0,
+        icon: Document,
+        format: 'number'
+    },
+    uninvoiced_amount: {
+        label: t('uninvoiced_amount'),
+        value: summary.value.uninvoiced_amount || 0,
+        icon: Warning,
+        format: 'currency'
     }
 }));
+
+/** Whether an order has been billed yet, and how much of it. */
+const invoiceCoverageType = (row) => {
+    const invoicesCount = Number(row.invoices_count || 0);
+    if (invoicesCount === 0) return 'info';
+    const invoicedTotal = Number(row.invoiced_total || 0);
+    return invoicedTotal >= Number(row.total || 0) ? 'success' : 'warning';
+};
+
+const invoiceCoverageText = (row) => {
+    const invoicesCount = Number(row.invoices_count || 0);
+    if (invoicesCount === 0) return t('not_invoiced');
+    const invoicedTotal = Number(row.invoiced_total || 0);
+    return invoicedTotal >= Number(row.total || 0) ? t('fully_invoiced') : t('partially_invoiced');
+};
 
 const goBack = () => {
     router.push({ name: 'admin.reports.index' });
@@ -637,11 +1038,17 @@ const formatDateForAPI = (date) => {
 
 const applyFilters = () => {
     pagination.value.current_page = 1;
+    invoicePagination.value.current_page = 1;
     loadReport();
     loadTopPerformers();
     loadDimensionSummary();
     loadPerformanceMetrics();
     loadProductProfitability();
+    loadInvoiceReport();
+    loadInvoiceDimensionsData();
+    loadInvoicePerformance();
+    loadInvoiceProductProfitability();
+    loadInvoiceTopPerformers();
 };
 
 const resetFilters = () => {
@@ -656,11 +1063,17 @@ const resetFilters = () => {
         group_by: 'day'
     };
     pagination.value.current_page = 1;
+    invoicePagination.value.current_page = 1;
     loadReport();
     loadTopPerformers();
     loadDimensionSummary();
     loadPerformanceMetrics();
     loadProductProfitability();
+    loadInvoiceReport();
+    loadInvoiceDimensionsData();
+    loadInvoicePerformance();
+    loadInvoiceProductProfitability();
+    loadInvoiceTopPerformers();
 };
 
 const loadReport = async () => {
@@ -801,6 +1214,155 @@ const loadProductProfitability = async () => {
             summary: {},
             product_summary: []
         };
+    }
+};
+
+const loadInvoiceReport = async () => {
+    loadingInvoices.value = true;
+    try {
+        const params = getFilterParams();
+        delete params.group_by;
+        params.page = invoicePagination.value.current_page;
+        params.per_page = invoicePagination.value.per_page;
+
+        const response = await api.get('/admin/reports/invoices', { params });
+
+        if (response.data.success && response.data.data) {
+            invoiceReportData.value = Array.isArray(response.data.data.invoices) ? response.data.data.invoices : [];
+            invoiceSummary.value = response.data.data.summary || {};
+            invoicePagination.value = response.data.data.pagination || { current_page: 1, per_page: 20, total: 0 };
+        } else {
+            invoiceReportData.value = [];
+            invoiceSummary.value = {};
+        }
+    } catch (error) {
+        console.error('Failed to load invoice report:', error);
+        ElMessage.error(t('failed_to_load_report'));
+        invoiceReportData.value = [];
+        invoiceSummary.value = {};
+    } finally {
+        loadingInvoices.value = false;
+    }
+};
+
+const loadInvoiceDimensionsData = async () => {
+    try {
+        const params = getFilterParams();
+        delete params.page;
+        delete params.per_page;
+        delete params.group_by;
+
+        const response = await api.get('/admin/reports/invoices/dimensions', { params });
+        if (response.data.success && response.data.data) {
+            invoiceDimensionData.value = {
+                employee_summary: response.data.data.employee_summary || [],
+                customer_summary: response.data.data.customer_summary || [],
+                warehouse_summary: response.data.data.warehouse_summary || []
+            };
+        } else {
+            invoiceDimensionData.value = { employee_summary: [], customer_summary: [], warehouse_summary: [] };
+        }
+    } catch (error) {
+        console.error('Failed to load invoice dimensions:', error);
+        invoiceDimensionData.value = { employee_summary: [], customer_summary: [], warehouse_summary: [] };
+    }
+};
+
+const loadInvoicePerformance = async () => {
+    try {
+        const params = getFilterParams();
+        delete params.page;
+        delete params.per_page;
+        delete params.group_by;
+
+        const response = await api.get('/admin/reports/invoices/performance', { params });
+        if (response.data.success && response.data.data) {
+            invoicePerformanceData.value = {
+                summary: response.data.data.summary || {},
+                employee_summary: response.data.data.employee_summary || [],
+                customer_summary: response.data.data.customer_summary || [],
+                warehouse_summary: response.data.data.warehouse_summary || []
+            };
+        }
+    } catch (error) {
+        console.error('Failed to load invoice performance:', error);
+        invoicePerformanceData.value = { summary: {}, employee_summary: [], customer_summary: [], warehouse_summary: [] };
+    }
+};
+
+const loadInvoiceProductProfitability = async () => {
+    try {
+        const params = getFilterParams();
+        delete params.page;
+        delete params.per_page;
+        delete params.group_by;
+
+        const response = await api.get('/admin/reports/invoices/product-profitability', { params });
+        if (response.data.success && response.data.data) {
+            invoiceProductProfitabilityData.value = {
+                summary: response.data.data.summary || {},
+                product_summary: response.data.data.product_summary || []
+            };
+        }
+    } catch (error) {
+        console.error('Failed to load invoice product profitability:', error);
+        invoiceProductProfitabilityData.value = { summary: {}, product_summary: [] };
+    }
+};
+
+const loadInvoiceTopPerformers = async () => {
+    loadingInvoiceTopPerformers.value = true;
+    try {
+        const params = getFilterParams();
+        delete params.page;
+        delete params.per_page;
+        delete params.group_by;
+
+        const response = await api.get('/admin/reports/invoices/top-performers', { params });
+        if (response.data.success && response.data.data) {
+            invoiceTopPerformers.value = Array.isArray(response.data.data) ? response.data.data : [];
+        } else {
+            invoiceTopPerformers.value = [];
+        }
+    } catch (error) {
+        console.error('Failed to load invoice top performers:', error);
+        invoiceTopPerformers.value = [];
+    } finally {
+        loadingInvoiceTopPerformers.value = false;
+    }
+};
+
+const handleInvoicePageChange = (page) => {
+    invoicePagination.value.current_page = page;
+    loadInvoiceReport();
+};
+
+const handleInvoiceSizeChange = (size) => {
+    invoicePagination.value.per_page = size;
+    invoicePagination.value.current_page = 1;
+    loadInvoiceReport();
+};
+
+const exportInvoiceReport = async () => {
+    try {
+        const params = getFilterParams();
+        delete params.page;
+        delete params.per_page;
+        delete params.group_by;
+
+        const response = await api.get('/admin/reports/invoices/export', { params, responseType: 'blob' });
+
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8;' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `invoice-report-${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Failed to export invoice report:', error);
+        ElMessage.error(t('failed_to_export_report'));
     }
 };
 
@@ -1025,6 +1587,11 @@ onMounted(() => {
     loadDimensionSummary();
     loadPerformanceMetrics();
     loadProductProfitability();
+    loadInvoiceReport();
+    loadInvoiceDimensionsData();
+    loadInvoicePerformance();
+    loadInvoiceProductProfitability();
+    loadInvoiceTopPerformers();
 });
 </script>
 
@@ -1097,6 +1664,12 @@ onMounted(() => {
 
 .profit-negative {
     color: #dc2626;
+}
+
+.table-sub-note {
+    margin: 0.2rem 0 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
 }
 
 .page-title h1 {

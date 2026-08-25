@@ -359,6 +359,111 @@ it('calculates product profitability by warehouse and product', function () {
         ->assertJsonPath('data.product_summary.0.warehouse_id', $warehouse->id);
 });
 
+/**
+ * A line split across warehouses (SalesOrderItem::allocations) used to be
+ * credited entirely to the order's own fulfillment_warehouse_id — wrong
+ * whenever the order itself had none set, which is the normal state before
+ * an order is routed, and the reason the "product profit by warehouse"
+ * table read "Unknown" even for lines with a recorded split.
+ */
+it('splits a sales-order line\'s profit across each warehouse its fulfilment plan actually used', function () {
+    $this->actingAs(User::factory()->create(), 'sanctum');
+
+    $warehouseA = Warehouse::create([
+        'name' => 'Split Warehouse A', 'code' => 'SPLIT-A', 'is_active' => true,
+    ]);
+    $warehouseB = Warehouse::create([
+        'name' => 'Split Warehouse B', 'code' => 'SPLIT-B', 'is_active' => true,
+    ]);
+
+    $customer = Customer::create([
+        'name' => 'Split Customer', 'email' => 'split@example.com', 'phone' => '966500000899', 'status' => 'active',
+    ]);
+
+    $product = Product::create([
+        'name_ar' => 'منتج مقسوم', 'name_en' => 'Split Product', 'sku' => 'SKU-SPLIT-1',
+        'price' => 100, 'cost_price' => 60, 'is_active' => true,
+    ]);
+
+    // No fulfillment_warehouse_id on the order itself — the split lives on
+    // the item's allocations, not the header.
+    $order = SalesOrder::create([
+        'order_number' => 'SO-SPLIT-001',
+        'customer_id' => $customer->id,
+        'status' => SalesOrder::STATUS_CONFIRMED,
+        'order_date' => now()->toDateString(),
+        'subtotal' => 1000, 'discount' => 0, 'tax' => 0, 'total' => 1000,
+        'currency' => 'USD',
+    ]);
+
+    $item = $order->items()->create([
+        'product_id' => $product->id, 'quantity' => 10, 'unit_price' => 100, 'discount' => 0, 'tax' => 0,
+    ]);
+
+    $item->allocations()->create(['warehouse_id' => $warehouseA->id, 'quantity' => 4, 'status' => 'allocated']);
+    $item->allocations()->create(['warehouse_id' => $warehouseB->id, 'quantity' => 6, 'status' => 'allocated']);
+
+    $response = $this->getJson('/api/v1/admin/reports/sales/product-profitability?date_filter_type=today');
+    $response->assertStatus(200);
+
+    $rows = collect($response->json('data.product_summary'))->keyBy('warehouse_id');
+
+    expect($rows[$warehouseA->id]['quantity'])->toBe(4)
+        ->and($rows[$warehouseA->id]['total_revenue'])->toBe(400)
+        ->and($rows[$warehouseA->id]['total_cost'])->toBe(240)
+        ->and($rows[$warehouseB->id]['quantity'])->toBe(6)
+        ->and($rows[$warehouseB->id]['total_revenue'])->toBe(600)
+        ->and($rows[$warehouseB->id]['total_cost'])->toBe(360);
+});
+
+/**
+ * The invoice-level warehouse_id is often never set — every InvoiceItem
+ * carries its own warehouse_id instead, populated whenever a line is
+ * actually picked from stock. Reading the header field left this table
+ * showing "Unknown" for every invoice created that way, even though the
+ * real warehouse was one relation away.
+ */
+it('reads a line\'s own warehouse for invoice product profitability, not just the header\'s', function () {
+    $this->actingAs(User::factory()->create(), 'sanctum');
+
+    $warehouse = Warehouse::create([
+        'name' => 'Invoice Line Warehouse', 'code' => 'INV-LINE-WH', 'is_active' => true,
+    ]);
+
+    $customer = Customer::create([
+        'name' => 'Invoice Line Customer', 'email' => 'invoice.line@example.com', 'phone' => '966500000877', 'status' => 'active',
+    ]);
+
+    $product = Product::create([
+        'name_ar' => 'منتج فاتورة', 'name_en' => 'Invoice Line Product', 'sku' => 'SKU-INV-LINE-1',
+        'price' => 80, 'cost_price' => 50, 'is_active' => true,
+    ]);
+
+    // Deliberately no warehouse_id on the invoice header — only the line
+    // carries one, the way real invoices in this system are populated.
+    $invoice = Invoice::create([
+        'invoice_number' => 'INV-LINE-WH-001',
+        'customer_id' => $customer->id,
+        'status' => 'confirmed',
+        'subtotal' => 80, 'tax' => 0, 'discount' => 0, 'total' => 80,
+        'paid_amount' => 0, 'due_amount' => 80,
+        'currency' => 'USD',
+    ]);
+
+    $invoice->items()->create([
+        'warehouse_id' => $warehouse->id,
+        'product_id' => $product->id,
+        'product_name' => $product->name_en,
+        'quantity' => 1,
+        'unit_price' => 80,
+    ]);
+
+    $response = $this->getJson('/api/v1/admin/reports/invoices/product-profitability?date_filter_type=today');
+    $response->assertStatus(200)
+        ->assertJsonPath('data.product_summary.0.warehouse_id', $warehouse->id)
+        ->assertJsonPath('data.product_summary.0.warehouse_name', $warehouse->name);
+});
+
 it('keeps every reporting endpoint closed to guests', function (string $uri) {
     $this->getJson($uri)->assertStatus(401);
 })->with([

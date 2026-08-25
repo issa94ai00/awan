@@ -34,6 +34,30 @@
             </el-card>
         </AdminStatGrid>
 
+        <!-- Cash by currency — each currency read as its own wallet, never
+             blended into one converted figure. -->
+        <el-card v-if="store.wallets.length" shadow="hover" class="table-panel wallets-panel">
+            <template #header>
+                <div class="card-header">
+                    <span><i class="fas fa-wallet"></i> {{ $t('cash_by_currency') }}</span>
+                </div>
+            </template>
+            <div class="wallet-grid">
+                <div v-for="wallet in store.wallets" :key="wallet.currency" class="wallet-card" :class="{ 'is-base': wallet.is_base }">
+                    <div class="wallet-head">
+                        <span class="wallet-code">{{ wallet.currency }}</span>
+                        <el-tag v-if="wallet.is_base" size="small" type="primary" effect="plain">
+                            {{ $t('base_currency_tag') }}
+                        </el-tag>
+                    </div>
+                    <div class="wallet-amount">{{ formatWalletTotal(wallet) }}</div>
+                    <div class="wallet-meta">
+                        {{ wallet.name || wallet.currency }} · {{ wallet.payments_count }} {{ $t('payments_count') }}
+                    </div>
+                </div>
+            </div>
+        </el-card>
+
         <!-- Payments -->
         <el-card shadow="hover" class="table-panel">
             <template #header>
@@ -245,6 +269,11 @@ import {
     sumBy,
     apiErrorMessage,
 } from '@/utils/sales';
+import { formatMoney } from '@/utils/currency';
+
+/** Each wallet is written in its own currency's precision — never the base's. */
+const formatWalletTotal = (wallet) =>
+    formatMoney(wallet.total, { code: wallet.currency, decimals: wallet.decimal_places });
 
 const router = useRouter();
 const store = usePaymentsStore();
@@ -344,6 +373,7 @@ const changePage = (page) => store.fetchPayments({ page }).catch(() => {});
 
 const onPaymentSaved = () => {
     reload();
+    store.fetchCurrencyWallets().catch(() => {});
 };
 
 const removePayment = async (payment) => {
@@ -361,6 +391,7 @@ const removePayment = async (payment) => {
     try {
         await store.deletePayment(payment.id);
         ElMessage.success(t('payment_deleted'));
+        store.fetchCurrencyWallets().catch(() => {});
     } catch (error) {
         ElMessage.error(apiErrorMessage(error, t('failed_to_delete_payment')));
     }
@@ -418,6 +449,7 @@ const addExpense = async () => {
 
 onMounted(() => {
     store.fetchPayments().catch(() => {});
+    store.fetchCurrencyWallets().catch(() => {});
     fetchExpenses();
 });
 </script>
@@ -430,5 +462,53 @@ onMounted(() => {
 
 .muted {
     color: var(--el-text-color-placeholder, #c0c4cc);
+}
+
+.wallets-panel {
+    margin-bottom: 1.25rem;
+}
+
+.wallet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.85rem;
+}
+
+.wallet-card {
+    border: 1px solid var(--el-border-color-lighter, #e4e7ed);
+    border-radius: 0.85rem;
+    padding: 0.9rem 1rem;
+    background: var(--el-fill-color-light, #f5f7fa);
+}
+
+.wallet-card.is-base {
+    border-color: var(--el-color-primary-light-5, #a0cfff);
+    background: var(--el-color-primary-light-9, #ecf5ff);
+}
+
+.wallet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.4rem;
+}
+
+.wallet-code {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--el-text-color-primary, #303133);
+}
+
+.wallet-amount {
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--el-color-success, #059669);
+    margin-bottom: 0.25rem;
+}
+
+.wallet-meta {
+    font-size: 0.78rem;
+    color: var(--el-text-color-secondary, #909399);
 }
 </style>

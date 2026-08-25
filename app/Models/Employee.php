@@ -103,7 +103,21 @@ class Employee extends Model
         return $this->hasMany(SalesOrder::class, 'assigned_employee_id');
     }
 
+    /**
+     * Invoices this employee is the sales rep of record for.
+     *
+     * Reads `invoices.assigned_employee_id` directly. It used to go through
+     * `sales_orders.assigned_employee_id` instead, which returned nothing for
+     * every invoice raised outside the sales-order flow — the header column
+     * this table already carries for exactly this purpose was never read.
+     */
     public function invoices()
+    {
+        return $this->hasMany(Invoice::class, 'assigned_employee_id');
+    }
+
+    /** Invoices reached via a sales order this employee is assigned to. */
+    public function invoicesViaSalesOrders()
     {
         return $this->hasManyThrough(Invoice::class, SalesOrder::class, 'assigned_employee_id', 'sales_order_id');
     }

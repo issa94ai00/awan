@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\RmaItem;
 use App\Models\RmaRequest;
-use App\Models\SalesOrder;
-use App\Models\SalesOrderItem;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Models\WarehouseBin;
@@ -23,6 +23,16 @@ use Illuminate\Validation\ValidationException;
 
 class RmaController extends Controller
 {
+    /**
+     * Invoice statuses a return can be filed against.
+     *
+     * Restricted to `delivered` only, every invoice in this business's data
+     * was ineligible — confirmed is where an invoice actually sits once the
+     * sale is finalized, since the shipping stages (processing/shipped) are
+     * not part of this business's real workflow.
+     */
+    private const RMA_ELIGIBLE_INVOICE_STATUSES = ['confirmed', 'delivered'];
+
     public function index(Request $request)
     {
         $query = $this->buildFilteredQuery($request);
@@ -66,7 +76,7 @@ class RmaController extends Controller
             fputcsv($handle, [
                 'رقم الإرجاع',
                 'العميل',
-                'طلب البيع',
+                'الفاتورة الأصلية',
                 'الحالة',
                 'النوع',
                 'السبب',
@@ -84,7 +94,7 @@ class RmaController extends Controller
                 fputcsv($handle, [
                     $rma->rma_number,
                     $rma->customer?->name ?? '',
-                    $rma->salesOrder?->order_number ?? '',
+                    $rma->invoice?->invoice_number ?? '',
                     $rma->status_text,
                     $rma->type_text,
                     $rma->reason_text,
@@ -132,7 +142,7 @@ class RmaController extends Controller
     /** Filter set shared by index() and export(). */
     private function buildFilteredQuery(Request $request)
     {
-        $query = RmaRequest::with(['customer', 'salesOrder', 'items.product', 'items.variant', 'approver', 'completer']);
+        $query = RmaRequest::with(['customer', 'invoice', 'items.product', 'items.variant', 'approver', 'completer']);
 
         if ($request->filled('customer_id')) {
             $query->byCustomer($request->customer_id);
@@ -142,8 +152,8 @@ class RmaController extends Controller
             $query->byStatus($request->status);
         }
 
-        if ($request->filled('sales_order_id')) {
-            $query->where('sales_order_id', $request->sales_order_id);
+        if ($request->filled('invoice_id')) {
+            $query->where('invoice_id', $request->invoice_id);
         }
 
         if ($request->filled('reason')) {
@@ -170,8 +180,8 @@ class RmaController extends Controller
                         $customerQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
                     })
-                    ->orWhereHas('salesOrder', function ($orderQuery) use ($search) {
-                        $orderQuery->where('order_number', 'like', "%{$search}%");
+                    ->orWhereHas('invoice', function ($invoiceQuery) use ($search) {
+                        $invoiceQuery->where('invoice_number', 'like', "%{$search}%");
                     });
             });
         }
@@ -183,10 +193,11 @@ class RmaController extends Controller
     {
         $rmaRequest = RmaRequest::with([
             'customer',
-            'salesOrder',
-            'salesOrder.items',
+            'invoice',
+            'invoice.items',
             'items.product',
             'items.variant',
+            'items.invoiceItem',
             'items.exchangeProduct',
             'items.exchangeVariant',
             'approver',
@@ -206,17 +217,24 @@ class RmaController extends Controller
     {
         $request->validate([
             'customer_id' => 'required|exists:customers,id',
-            'sales_order_id' => 'required|exists:sales_orders,id',
+            'invoice_id' => 'required|exists:invoices,id',
             'reason' => 'required|in:defective,wrong_item,damaged,not_as_described,changed_mind,other',
             'type' => 'required|in:refund,exchange,store_credit',
             'reason_description' => 'nullable|string|max:1000',
             'return_address' => 'nullable|array',
-            'return_address.address_line1' => 'required_with:return_address|string',
-            'return_address.city' => 'required_with:return_address|string',
-            'return_address.country' => 'required_with:return_address|string',
+            // The address is all-or-nothing: `required_with:return_address`
+            // checked whether the *parent* array was present, and the form
+            // always sends it (even fully blank), so this rejected every
+            // request that left the optional address section untouched.
+            // Requiring each field only when a sibling has a value makes the
+            // three mutually required — exactly the "started it, finish it"
+            // rule the frontend already enforces.
+            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
+            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
+            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
             'return_address.postal_code' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.sales_order_item_id' => 'required|exists:sales_order_items,id',
+            'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
             'items.*.quantity_requested' => 'required|integer|min:1|max:999',
             'items.*.condition' => 'required|in:new,used,damaged,missing',
             'items.*.resolution' => 'required|in:refund,exchange,repair,discard',
@@ -226,45 +244,51 @@ class RmaController extends Controller
         ], [
             'customer_id.required' => 'حقل العميل مطلوب',
             'customer_id.exists' => 'العميل المحدد غير موجود',
-            'sales_order_id.required' => 'حقل الطلب مطلوب',
-            'sales_order_id.exists' => 'الطلب المحدد غير موجود',
+            'invoice_id.required' => 'حقل الفاتورة مطلوب',
+            'invoice_id.exists' => 'الفاتورة المحددة غير موجودة',
             'reason.required' => 'حقل سبب الإرجاع مطلوب',
             'type.required' => 'حقل نوع الإرجاع مطلوب',
             'items.required' => 'يجب إضافة منتج واحد على الأقل',
             'items.min' => 'يجب إضافة منتج واحد على الأقل',
             'items.*.quantity_requested.max' => 'الكمية المطلوبة لا يمكن أن تتجاوز 999',
             'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
+            // Explicit messages: the app has no lang/ar/validation.php, so the
+            // generic required_with rule fell back to the raw "validation.
+            // required_with" translation key instead of a readable sentence.
+            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
+            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
+            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Check if sales order belongs to the customer
-            $salesOrder = SalesOrder::findOrFail($request->sales_order_id);
-            if ($salesOrder->customer_id != $request->customer_id) {
-                throw new \Exception('الطلب لا ينتمي للعميل المحدد');
+            // Check if the invoice belongs to the customer
+            $invoice = Invoice::findOrFail($request->invoice_id);
+            if ($invoice->customer_id != $request->customer_id) {
+                throw new \Exception('الفاتورة لا تنتمي للعميل المحدد');
             }
 
-            // Check if sales order is delivered
-            if ($salesOrder->status !== 'delivered') {
-                throw new \Exception('لا يمكن إنشاء طلب إرجاع لطلب لم يتم تسليمه');
+            // Check if the invoice is eligible for a return
+            if (! in_array($invoice->status, self::RMA_ELIGIBLE_INVOICE_STATUSES, true)) {
+                throw new \Exception('لا يمكن إنشاء طلب إرجاع لفاتورة لم تُعتمد أو تُسلَّم بعد');
             }
 
             // Check that the returned quantities do not exceed original purchased quantities
             foreach ($request->items as $item) {
-                $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
+                $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
 
-                // Sum previously requested quantities for this order item in active requests
-                $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
+                // Sum previously requested quantities for this invoice line in active requests
+                $previouslyRequested = RmaItem::where('invoice_item_id', $item['invoice_item_id'])
                     ->whereHas('rmaRequest', function ($query) {
                         $query->whereNotIn('status', ['rejected', 'cancelled']);
                     })
                     ->sum('quantity_requested');
 
                 $totalRequested = $previouslyRequested + $item['quantity_requested'];
-                if ($totalRequested > $orderItem->quantity) {
-                    $availableToReturn = $orderItem->quantity - $previouslyRequested;
-                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($orderItem->product ? $orderItem->product->name : ''));
+                if ($totalRequested > $invoiceItem->quantity) {
+                    $availableToReturn = $invoiceItem->quantity - $previouslyRequested;
+                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($invoiceItem->product?->name ?? $invoiceItem->product_name));
                 }
             }
 
@@ -278,7 +302,7 @@ class RmaController extends Controller
 
             $rmaRequest = RmaRequest::create([
                 'customer_id' => $request->customer_id,
-                'sales_order_id' => $request->sales_order_id,
+                'invoice_id' => $request->invoice_id,
                 'rma_number' => $rmaNumber,
                 'reason' => $request->reason,
                 'type' => $request->type,
@@ -290,12 +314,11 @@ class RmaController extends Controller
 
             $totalRefundAmount = 0;
             foreach ($request->items as $item) {
-                $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
+                $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
 
                 $rmaItem = $rmaRequest->items()->create([
-                    'sales_order_item_id' => $item['sales_order_item_id'],
-                    'product_id' => $orderItem->product_id,
-                    'product_variant_id' => $orderItem->product_variant_id,
+                    'invoice_item_id' => $item['invoice_item_id'],
+                    'product_id' => $invoiceItem->product_id,
                     'quantity_requested' => $item['quantity_requested'],
                     'quantity_received' => 0,
                     'condition' => $item['condition'],
@@ -306,7 +329,7 @@ class RmaController extends Controller
                 ]);
 
                 // Calculate refund amount based on condition
-                $originalPrice = $orderItem->unit_price;
+                $originalPrice = $invoiceItem->unit_price;
                 $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
                 $rmaItem->refund_amount = $refundAmount;
                 $rmaItem->save();
@@ -482,7 +505,7 @@ class RmaController extends Controller
 
     public function receiveItems(Request $request, $id)
     {
-        $rmaRequest = RmaRequest::with(['items', 'salesOrder'])->findOrFail($id);
+        $rmaRequest = RmaRequest::with(['items', 'invoice'])->findOrFail($id);
 
         if (! $rmaRequest->canReceive()) {
             return response()->json([
@@ -504,7 +527,7 @@ class RmaController extends Controller
             DB::beginTransaction();
 
             $warehouseId = $request->warehouse_id
-                ?? $rmaRequest->salesOrder?->fulfillment_warehouse_id
+                ?? $rmaRequest->invoice?->warehouse_id
                 ?? Warehouse::first()?->id;
 
             if (! $warehouseId) {
@@ -541,9 +564,9 @@ class RmaController extends Controller
                         default => ['quarantined', 'مرتجع مستعمل (قيد المعاينة)'],
                     };
 
-                    $orderRef = $rmaRequest->salesOrder?->order_number ?? '';
+                    $orderRef = $rmaRequest->invoice?->invoice_number ?? '';
                     $note = $delta > 0
-                        ? "{$noteLabel} من العميل لطلب {$orderRef}"
+                        ? "{$noteLabel} من العميل لفاتورة {$orderRef}"
                         : "تصحيح كمية الاستلام لطلب الإرجاع {$rmaRequest->rma_number}";
 
                     // Returned units must not open a zero-cost layer: the FIFO
@@ -627,7 +650,7 @@ class RmaController extends Controller
 
     public function complete(Request $request, $id)
     {
-        $rmaRequest = RmaRequest::with(['items', 'customer', 'salesOrder'])->findOrFail($id);
+        $rmaRequest = RmaRequest::with(['items', 'customer', 'invoice'])->findOrFail($id);
 
         if (! $rmaRequest->canComplete()) {
             return response()->json([
@@ -823,21 +846,15 @@ class RmaController extends Controller
 
     public function getCustomersWithOrders(Request $request)
     {
-        // Debug: Log all customers with their orders
-        $allCustomers = Customer::with('salesOrders')->get();
-        \Log::info('All customers count: '.$allCustomers->count());
-        foreach ($allCustomers as $customer) {
-            \Log::info("Customer: {$customer->name}, Orders count: {$customer->salesOrders->count()}");
-            foreach ($customer->salesOrders as $order) {
-                \Log::info("  Order #{$order->order_number}, Status: {$order->status}");
-            }
-        }
-
-        $query = Customer::withCount(['salesOrders as delivered_orders_count' => function ($query) {
-            $query->where('status', 'delivered');
-        }])->whereHas('salesOrders', function ($query) {
-            $query->where('status', 'delivered');
-        });
+        // Not restricted to customers who already have a delivered order: this
+        // is the picker for "who is returning something", and requiring a
+        // delivered order to even appear here meant the search returned
+        // nothing at all whenever the customer's order was still in transit
+        // (or, in a fresh dataset, always). Which order is eligible to return
+        // against is enforced separately once a customer is chosen — the
+        // sales-orders endpoint the form calls next already filters to
+        // status=delivered for that customer.
+        $query = Customer::query();
 
         if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
@@ -850,8 +867,6 @@ class RmaController extends Controller
 
         $customers = $query->orderBy('name', 'asc')
             ->paginate($request->per_page ?? 50);
-
-        \Log::info('Filtered customers with delivered orders count: '.$customers->count());
 
         return response()->json([
             'success' => true,
@@ -914,20 +929,29 @@ class RmaController extends Controller
         $request->validate([
             'reason_description' => 'nullable|string|max:1000',
             'return_address' => 'nullable|array',
-            'return_address.address_line1' => 'required_with:return_address|string',
-            'return_address.city' => 'required_with:return_address|string',
-            'return_address.country' => 'required_with:return_address|string',
+            // See store(): required only when a sibling address field has a
+            // value, not merely because the (always-sent) parent array exists.
+            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
+            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
+            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
             'return_address.postal_code' => 'nullable|string',
             'admin_notes' => 'nullable|string|max:1000',
             'refund_method' => 'nullable|in:original,store_credit,bank_transfer,check',
             'items' => 'nullable|array',
-            'items.*.sales_order_item_id' => 'required|exists:sales_order_items,id',
+            'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
             'items.*.quantity_requested' => 'required|integer|min:1|max:999',
             'items.*.condition' => 'required|in:new,used,damaged,missing',
             'items.*.resolution' => 'required|in:refund,exchange,repair,discard',
             'items.*.exchange_product_id' => 'nullable|exists:products,id|required_if:items.*.resolution,exchange',
             'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
             'items.*.notes' => 'nullable|string|max:500',
+        ], [
+            // The app has no lang/ar/validation.php, so the generic rule
+            // fell back to the raw "validation.required_with" translation key.
+            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
+            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
+            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
+            'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
         ]);
 
         try {
@@ -948,10 +972,10 @@ class RmaController extends Controller
 
                 $totalRefundAmount = 0;
                 foreach ($request->items as $item) {
-                    $orderItem = SalesOrderItem::findOrFail($item['sales_order_item_id']);
+                    $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
 
-                    // Sum previously requested quantities for this order item in other active requests
-                    $previouslyRequested = RmaItem::where('sales_order_item_id', $item['sales_order_item_id'])
+                    // Sum previously requested quantities for this invoice line in other active requests
+                    $previouslyRequested = RmaItem::where('invoice_item_id', $item['invoice_item_id'])
                         ->whereHas('rmaRequest', function ($query) use ($id) {
                             $query->whereNotIn('status', ['rejected', 'cancelled'])
                                 ->where('id', '!=', $id);
@@ -959,15 +983,14 @@ class RmaController extends Controller
                         ->sum('quantity_requested');
 
                     $totalRequested = $previouslyRequested + $item['quantity_requested'];
-                    if ($totalRequested > $orderItem->quantity) {
-                        $availableToReturn = $orderItem->quantity - $previouslyRequested;
-                        throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($orderItem->product ? $orderItem->product->name : ''));
+                    if ($totalRequested > $invoiceItem->quantity) {
+                        $availableToReturn = $invoiceItem->quantity - $previouslyRequested;
+                        throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($invoiceItem->product?->name ?? $invoiceItem->product_name));
                     }
 
                     $rmaItem = $rmaRequest->items()->create([
-                        'sales_order_item_id' => $item['sales_order_item_id'],
-                        'product_id' => $orderItem->product_id,
-                        'product_variant_id' => $orderItem->product_variant_id,
+                        'invoice_item_id' => $item['invoice_item_id'],
+                        'product_id' => $invoiceItem->product_id,
                         'quantity_requested' => $item['quantity_requested'],
                         'quantity_received' => 0,
                         'condition' => $item['condition'],
@@ -977,7 +1000,7 @@ class RmaController extends Controller
                         'notes' => $item['notes'] ?? null,
                     ]);
 
-                    $originalPrice = $orderItem->unit_price;
+                    $originalPrice = $invoiceItem->unit_price;
                     $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
                     $rmaItem->refund_amount = $refundAmount;
                     $rmaItem->save();

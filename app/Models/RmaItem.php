@@ -12,6 +12,7 @@ class RmaItem extends Model
     protected $fillable = [
         'rma_request_id',
         'sales_order_item_id',
+        'invoice_item_id',
         'product_id',
         'product_variant_id',
         'quantity_requested',
@@ -52,6 +53,12 @@ class RmaItem extends Model
     public function salesOrderItem()
     {
         return $this->belongsTo(SalesOrderItem::class);
+    }
+
+    /** The invoice line this return line was taken from. */
+    public function invoiceItem()
+    {
+        return $this->belongsTo(InvoiceItem::class);
     }
 
     public function product()

@@ -174,6 +174,11 @@ const routes = [
                 name: 'admin.accounting.bank-reconciliation',
                 component: () => import('@/views/admin/accounting/BankReconciliation.vue')
             },
+            {
+                path: 'accounting/cost-centers',
+                name: 'admin.accounting.cost-centers',
+                component: () => import('@/views/admin/accounting/CostCenters.vue')
+            },
             // Inventory
             {
                 path: 'inventory',
@@ -266,6 +271,11 @@ const routes = [
                 path: 'purchases/returns',
                 name: 'admin.purchase-returns.index',
                 component: () => import('@/views/admin/purchases/Returns.vue')
+            },
+            {
+                path: 'purchases/report',
+                name: 'admin.purchases.report',
+                component: () => import('@/views/admin/purchases/Report.vue')
             },
             // HR
             {

@@ -9,6 +9,11 @@ export const paymentsApi = {
         return api.get(`/payments/${id}`);
     },
 
+    /** Totals actually collected per currency — see PaymentController::currencySummary. */
+    currencySummary() {
+        return api.get('/payments/currency-summary');
+    },
+
     create(data) {
         return api.post('/payments', data);
     },

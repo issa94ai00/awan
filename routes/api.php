@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\PurchaseReturnController;
 use App\Http\Controllers\Api\SupplierPaymentController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\PurchaseReportController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LedgerAccountController;
@@ -48,6 +49,7 @@ use App\Http\Controllers\Api\AccountingReportController;
 use App\Http\Controllers\Api\AccountingPeriodController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BudgetController;
+use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SpecialOfferController;
@@ -151,12 +153,17 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // Stats (إحصائيات)
         Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
 
-        // Warehouses (المستودعات)
+        // Warehouses (المستودعات) — reading the list/managers is open to any
+        // signed-in admin-app user (other screens use it as a lookup);
+        // creating, editing and deleting is gated to admins only.
         Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.wms.warehouses.index');
         Route::get('/warehouses/{id}', [WmsController::class, 'showWarehouse'])->name('api.admin.wms.warehouses.show');
-        Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
-        Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
-        Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+        Route::get('/managers', [WmsController::class, 'indexManagers'])->name('api.admin.wms.warehouses.managers');
+        Route::middleware('admin')->group(function () {
+            Route::post('/warehouses', [WmsController::class, 'storeWarehouse'])->name('api.admin.wms.warehouses.store');
+            Route::put('/warehouses/{id}', [WmsController::class, 'updateWarehouse'])->name('api.admin.wms.warehouses.update');
+            Route::delete('/warehouses/{id}', [WmsController::class, 'destroyWarehouse'])->name('api.admin.wms.warehouses.destroy');
+        });
 
         // Warehouse Bins (أماكن التخزين)
         Route::get('/bins', [WmsController::class, 'indexBins'])->name('api.admin.wms.bins.index');
@@ -432,8 +439,21 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/reports/sales/export', [SalesReportController::class, 'export'])->name('api.admin.reports.sales.export');
             Route::get('/reports/inventory/dimensions', [SalesReportController::class, 'inventoryDimensions'])->name('api.admin.reports.inventory.dimensions');
             Route::get('/reports/inventory/export', [SalesReportController::class, 'inventoryExport'])->name('api.admin.reports.inventory.export');
+            Route::get('/reports/invoices', [SalesReportController::class, 'invoiceReport'])->name('api.admin.reports.invoices.index');
             Route::get('/reports/invoices/dimensions', [SalesReportController::class, 'invoiceDimensions'])->name('api.admin.reports.invoices.dimensions');
+            Route::get('/reports/invoices/performance', [SalesReportController::class, 'invoicePerformance'])->name('api.admin.reports.invoices.performance');
+            Route::get('/reports/invoices/product-profitability', [SalesReportController::class, 'invoiceProductProfitability'])->name('api.admin.reports.invoices.product-profitability');
+            Route::get('/reports/invoices/top-performers', [SalesReportController::class, 'invoiceTopPerformers'])->name('api.admin.reports.invoices.top-performers');
             Route::get('/reports/invoices/export', [SalesReportController::class, 'invoiceExport'])->name('api.admin.reports.invoices.export');
+
+            // Purchase Reports API
+            Route::get('/reports/purchases', [PurchaseReportController::class, 'purchaseReport'])->name('api.admin.reports.purchases');
+            Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'purchaseSummary'])->name('api.admin.reports.purchases.summary');
+            Route::get('/reports/purchases/dimensions', [PurchaseReportController::class, 'purchaseDimensions'])->name('api.admin.reports.purchases.dimensions');
+            Route::get('/reports/purchases/performance', [PurchaseReportController::class, 'purchasePerformance'])->name('api.admin.reports.purchases.performance');
+            Route::get('/reports/purchases/product-spend', [PurchaseReportController::class, 'productSpend'])->name('api.admin.reports.purchases.product-spend');
+            Route::get('/reports/purchases/top-suppliers', [PurchaseReportController::class, 'topSuppliers'])->name('api.admin.reports.purchases.top-suppliers');
+            Route::get('/reports/purchases/export', [PurchaseReportController::class, 'export'])->name('api.admin.reports.purchases.export');
 
             // Admin Attendance API
             Route::get('/attendance', [AttendanceController::class, 'index'])->name('api.admin.attendance.index');
@@ -460,6 +480,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             // Admin Inventory Movements
             Route::get('/inventory/movements', [StockMovementController::class, 'index'])->name('api.admin.inventory.movements.index');
             Route::post('/inventory/movements', [StockMovementController::class, 'store'])->name('api.admin.inventory.movements.store');
+            Route::post('/inventory/transfer', [StockMovementController::class, 'transfer'])->name('api.admin.inventory.transfer');
 
             // Admin Inventory Overview (single source of truth for the screens)
             Route::get('/inventory/summary', [InventoryController::class, 'summary'])->name('api.admin.inventory.summary');
@@ -498,6 +519,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
+
+                // The parts of the business a figure can belong to.
+                Route::get('/accounting/cost-centers', [CostCenterController::class, 'index'])->name('api.admin.accounting.cost-centers.index');
+                Route::post('/accounting/cost-centers', [CostCenterController::class, 'store'])->name('api.admin.accounting.cost-centers.store');
+                Route::put('/accounting/cost-centers/{costCenter}', [CostCenterController::class, 'update'])->name('api.admin.accounting.cost-centers.update');
+                Route::delete('/accounting/cost-centers/{costCenter}', [CostCenterController::class, 'destroy'])->name('api.admin.accounting.cost-centers.destroy');
 
                 // What the year was meant to earn and spend — the only thing
                 // that turns a figure into a verdict.
@@ -668,6 +695,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // Payments (مدفوعات)
         Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');
         Route::post('/payments', [PaymentController::class, 'store'])->name('api.payments.store');
+        // Ahead of the {payment} wildcard below, which would otherwise try to
+        // resolve "currency-summary" as a payment id.
+        Route::get('/payments/currency-summary', [PaymentController::class, 'currencySummary'])->name('api.payments.currency-summary');
         Route::get('/payments/{payment}', [PaymentController::class, 'show'])->name('api.payments.show');
         Route::put('/payments/{payment}', [PaymentController::class, 'update'])->name('api.payments.update');
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])->name('api.payments.destroy');

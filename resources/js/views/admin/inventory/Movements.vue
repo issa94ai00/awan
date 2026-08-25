@@ -19,40 +19,59 @@
         <!-- Filter Panel -->
         <el-card shadow="never" class="filters-panel mb-4">
             <div class="filters-row">
-                <div class="filter-item">
+                <div class="filter-item filter-item-product">
                     <label>{{ $t('product_item') }}</label>
-                    <el-select v-model="filters.product_id" :placeholder="$t('all')" clearable style="width: 230px;" filterable @change="applyFilters">
-                        <el-option
-                            v-for="p in productsStore.products"
-                            :key="p.id"
-                            :label="`${p.name_ar || p.name_en || p.name} (SKU: ${p.sku})`"
-                            :value="p.id"
-                        />
+                    <!-- Searches the whole catalog on the server instead of filtering
+                         only the first page already in memory, so a product outside
+                         that page is still found. -->
+                    <el-select
+                        v-model="filters.product_id"
+                        :placeholder="$t('search_product_placeholder')"
+                        clearable
+                        filterable
+                        remote
+                        reserve-keyword
+                        :remote-method="searchProducts"
+                        :loading="productSearchLoading"
+                        style="width: 100%;"
+                        @change="applyFilters"
+                    >
+                        <el-option v-for="p in productOptions" :key="p.id" :value="p.id" :label="p.name_ar || p.name_en || p.name">
+                            <div class="product-option">
+                                <span class="product-option-name">{{ p.name_ar || p.name_en || p.name }}</span>
+                                <span class="product-option-meta">
+                                    <span class="product-option-sku">SKU: {{ p.sku || '-' }}</span>
+                                    <span class="product-option-stock" :class="stockTone(p.stock_quantity)">
+                                        {{ $t('available') }} {{ p.stock_quantity ?? 0 }}
+                                    </span>
+                                </span>
+                            </div>
+                        </el-option>
                     </el-select>
                 </div>
-                <div class="filter-item">
+                <div class="filter-item filter-item-warehouse">
                     <label>{{ $t('warehouse') }}</label>
-                    <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable style="width: 180px;" @change="applyFilters">
+                    <el-select v-model="filters.warehouse_id" :placeholder="$t('all')" clearable style="width: 100%;" @change="applyFilters">
                         <el-option v-for="w in inventoryStore.warehouses" :key="w.id" :label="w.name" :value="w.id" />
                     </el-select>
                 </div>
-                <div class="filter-item">
+                <div class="filter-item filter-item-type">
                     <label>{{ $t('movement_type') }}</label>
-                    <el-select v-model="filters.movement_type" :placeholder="$t('all')" clearable style="width: 160px;" @change="applyFilters">
+                    <el-select v-model="filters.movement_type" :placeholder="$t('all')" clearable style="width: 100%;" @change="applyFilters">
                         <el-option :label="$t('movement_in')" value="in" />
                         <el-option :label="$t('movement_out_label')" value="out" />
                         <el-option :label="$t('movement_adjustment')" value="adjustment" />
                     </el-select>
                 </div>
-                <div class="filter-item">
+                <div class="filter-item filter-item-date">
                     <label>{{ $t('date_from') }}</label>
-                    <el-date-picker v-model="filters.from_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <el-date-picker v-model="filters.from_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 100%;" @change="applyFilters" />
                 </div>
-                <div class="filter-item">
+                <div class="filter-item filter-item-date">
                     <label>{{ $t('date_to') }}</label>
-                    <el-date-picker v-model="filters.to_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 160px;" @change="applyFilters" />
+                    <el-date-picker v-model="filters.to_date" type="date" :placeholder="$t('choose_the_date')" value-format="YYYY-MM-DD" style="width: 100%;" @change="applyFilters" />
                 </div>
-                <el-button type="info" plain @click="resetFilters" style="margin-top: 1.5rem;">{{ $t('reset') }}</el-button>
+                <el-button type="info" plain class="filter-reset" @click="resetFilters">{{ $t('reset') }}</el-button>
             </div>
         </el-card>
 
@@ -155,13 +174,28 @@
         >
             <el-form :model="form" label-position="top">
                 <el-form-item :label="$t('product_to_adjust')" required>
-                    <el-select v-model="form.product_id" :placeholder="$t('select_product')" style="width: 100%" filterable>
-                        <el-option
-                            v-for="p in productsStore.products"
-                            :key="p.id"
-                            :label="`${p.name_ar || p.name_en || p.name} (الرصيد: ${p.stock_quantity ?? 0})`"
-                            :value="p.id"
-                        />
+                    <el-select
+                        v-model="form.product_id"
+                        :placeholder="$t('search_product_placeholder')"
+                        style="width: 100%"
+                        clearable
+                        filterable
+                        remote
+                        reserve-keyword
+                        :remote-method="searchProducts"
+                        :loading="productSearchLoading"
+                    >
+                        <el-option v-for="p in productOptions" :key="p.id" :value="p.id" :label="p.name_ar || p.name_en || p.name">
+                            <div class="product-option">
+                                <span class="product-option-name">{{ p.name_ar || p.name_en || p.name }}</span>
+                                <span class="product-option-meta">
+                                    <span class="product-option-sku">SKU: {{ p.sku || '-' }}</span>
+                                    <span class="product-option-stock" :class="stockTone(p.stock_quantity)">
+                                        {{ $t('available') }} {{ p.stock_quantity ?? 0 }}
+                                    </span>
+                                </span>
+                            </div>
+                        </el-option>
                     </el-select>
                 </el-form-item>
 
@@ -211,6 +245,7 @@ import { useStockMovementsStore } from '@/stores/stockMovements';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { stockMovementsApi } from '@/api/stockMovements';
+import { productsApi } from '@/api/products';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
@@ -219,6 +254,41 @@ const { t } = useI18n();
 const store = useStockMovementsStore();
 const productsStore = useProductsStore();
 const inventoryStore = useInventoryStore();
+
+// Product search: starts as whatever page loaded on mount, then becomes the
+// live server search results once the operator types — shared between the
+// filter panel and the adjustment drawer since both search the same catalog.
+const productOptions = ref([]);
+const productSearchLoading = ref(false);
+let productSearchTimer = null;
+
+const searchProducts = (query) => {
+    clearTimeout(productSearchTimer);
+
+    if (!query) {
+        productOptions.value = productsStore.products;
+        return;
+    }
+
+    productSearchLoading.value = true;
+    productSearchTimer = setTimeout(async () => {
+        try {
+            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            productOptions.value = res.data.data || [];
+        } catch (e) {
+            // Keep whatever was showing rather than blanking the list on a
+            // transient failure.
+        } finally {
+            productSearchLoading.value = false;
+        }
+    }, 300);
+};
+
+const stockTone = (quantity) => {
+    const value = Number(quantity) || 0;
+    if (value <= 0) return 'out';
+    return value <= 5 ? 'low' : 'ok';
+};
 
 // Filters state
 const filters = reactive({
@@ -348,10 +418,12 @@ const quantityColorClass = (type) => {
     return 'text-warning';
 };
 
-onMounted(() => {
+onMounted(async () => {
     store.fetchMovements(buildParams()).catch(() => {});
-    productsStore.fetchProducts({ per_page: 200 }).catch(() => {});
     inventoryStore.fetchWarehouses().catch(() => {});
+
+    await productsStore.fetchProducts({ per_page: 200 }).catch(() => {});
+    productOptions.value = productsStore.products;
 });
 </script>
 
@@ -422,13 +494,56 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    width: 180px;
 }
+
+.filter-item-product { width: 280px; }
+.filter-item-warehouse { width: 180px; }
+.filter-item-type { width: 160px; }
+.filter-item-date { width: 160px; }
 
 .filter-item label {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-muted);
 }
+
+.filter-reset { align-self: flex-end; }
+
+/* Product search dropdown: name first, SKU and live stock secondary so a
+   pick can be made without opening the product itself to check either. */
+.product-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    line-height: 1.3;
+    padding: 0.15rem 0;
+}
+
+.product-option-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.product-option-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.product-option-sku {
+    font-family: 'Cascadia Mono', Consolas, monospace;
+}
+
+.product-option-stock { font-variant-numeric: tabular-nums; }
+.product-option-stock.ok { color: var(--success-color, #10b981); }
+.product-option-stock.low { color: var(--warning-color, #f59e0b); }
+.product-option-stock.out { color: var(--danger-color, #ef4444); }
 
 .table-panel {
     border-radius: 1rem;
@@ -505,5 +620,34 @@ onMounted(() => {
 
 .text-muted {
     color: var(--text-muted);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .filters-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-item,
+    .filter-item-product,
+    .filter-item-warehouse,
+    .filter-item-type,
+    .filter-item-date {
+        width: 100%;
+    }
+
+    .filter-reset {
+        align-self: stretch;
+        width: 100%;
+    }
+}
+
+@media (max-width: 640px) {
+    /* The drawer's percentage width was sized for desktop; on a phone it
+       left barely room for the fields it holds. */
+    .form-drawer {
+        width: 92vw !important;
+    }
 }
 </style>

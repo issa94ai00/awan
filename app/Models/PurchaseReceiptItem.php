@@ -15,12 +15,14 @@ class PurchaseReceiptItem extends Model
         'description',
         'quantity',
         'unit_price',
+        'sale_price',
         'total',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
         'total' => 'decimal:2',
     ];
 

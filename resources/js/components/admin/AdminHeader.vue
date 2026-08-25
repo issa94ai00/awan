@@ -182,6 +182,15 @@ const handleLanguageCommand = (command) => {
     locale.value = command;
     localStorage.setItem('locale', command);
     updateDirection(command);
+
+    // Keeps the server-rendered <html dir> (set from the session locale on
+    // the next full load) in step with this choice, so the page doesn't
+    // flash back to RTL for an instant before the client-side switch above
+    // re-applies. No reload here — an admin mid-task shouldn't be interrupted
+    // just for the session to catch up.
+    fetch(`/lang/${command}`, {
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    }).catch(() => {});
 };
 
 const toggleMobileSidebar = () => {

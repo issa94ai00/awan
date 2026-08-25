@@ -55,4 +55,6 @@ Thumbs.db
 
 # Flutter mobile app (separate project, not tracked here)
 /mobile_app
->>>>>>> 26e3cf6 (First Commit)
+
+# Backup credentials (mysqldump defaults-extra-file, mode 600)
+/.mysql_backup.cnf

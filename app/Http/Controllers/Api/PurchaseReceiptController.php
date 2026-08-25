@@ -59,6 +59,7 @@ class PurchaseReceiptController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.sale_price' => 'nullable|numeric|min:0',
         ]);
 
         // Derived from the last id: counting reuses a number as soon as any
@@ -81,6 +82,7 @@ class PurchaseReceiptController extends Controller
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
+                    'sale_price' => $item['sale_price'] ?? null,
                     'total' => $item['quantity'] * $item['unit_price'],
                 ]);
             }
@@ -105,6 +107,14 @@ class PurchaseReceiptController extends Controller
                         'reason' => 'استلام من أمر شراء',
                         'unit_cost' => $item['unit_price'],
                         'created_by' => auth()->id(),
+                        // A purchase is real money paid, so it should move the
+                        // product's reference cost — a weighted average with
+                        // what was already on hand — not just open a FIFO
+                        // layer for this warehouse.
+                        'update_average_cost' => true,
+                        // If the operator set a shelf price on this line, receiving
+                        // the goods is what puts it into effect.
+                        'sale_price' => $item['sale_price'] ?? null,
                     ]
                 );
             }
@@ -133,6 +143,19 @@ class PurchaseReceiptController extends Controller
                 $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
                 + (float) ($receipt->tax_amount ?? 0)
             );
+
+            // Receiving goods against a linked order is what completes it: the
+            // order was a promise to buy, and this receipt is that promise
+            // kept. Skips a cancelled order rather than resurrecting it —
+            // goods should never have been received against one anyway.
+            if ($receipt->purchase_order_id) {
+                PurchaseOrder::whereKey($receipt->purchase_order_id)
+                    ->where('status', '!=', 'cancelled')
+                    ->update([
+                        'status' => 'completed',
+                        'received_date' => $receipt->receipt_date ?? now(),
+                    ]);
+            }
 
             return $receipt;
         });
@@ -184,6 +207,7 @@ class PurchaseReceiptController extends Controller
                         'product_name' => $item->product_name,
                         'quantity' => $item->quantity,
                         'unit_price' => $item->unit_price,
+                        'sale_price' => $item->sale_price,
                         'total_price' => $item->total_price,
                         'product' => $item->product,
                     ];

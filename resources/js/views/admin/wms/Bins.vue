@@ -93,12 +93,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { Box, Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { wmsService } from '@/services/wms'
 
 const { t } = useI18n()
+const route = useRoute()
 const loading = ref(false)
 const saving = ref(false)
 const showCreateDialog = ref(false)
@@ -208,6 +210,9 @@ const deleteBin = async (bin) => {
 }
 
 onMounted(() => {
+  if (route.query.warehouse_id) {
+    filters.value.warehouse_id = Number(route.query.warehouse_id)
+  }
   loadWarehouses()
   loadBins()
 })

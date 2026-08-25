@@ -88,15 +88,32 @@
             </div>
 
             <el-form-item :label="$t('amount')" prop="amount">
-                <el-input-number
-                    v-model="form.amount"
-                    :min="0.01"
-                    :max="maxAmount"
-                    :precision="2"
-                    :step="10"
-                    controls-position="right"
-                    style="width: 100%"
-                />
+                <div class="amount-row">
+                    <el-input-number
+                        v-model="form.amount"
+                        :min="0.01"
+                        :max="maxAmount"
+                        :precision="amountPrecision"
+                        :step="10"
+                        controls-position="right"
+                        style="flex: 1"
+                    />
+                    <el-select v-model="form.currency" style="width: 110px" @change="onCurrencyChange">
+                        <el-option
+                            v-for="option in currencyList"
+                            :key="option.code"
+                            :value="option.code"
+                            :label="option.code"
+                        />
+                    </el-select>
+                </div>
+                <div v-if="!isBaseCurrency" class="field-hint">
+                    <template v-if="baseEquivalent !== null">
+                        {{ $t('equivalent_to') }} {{ formatCurrency(baseEquivalent) }}
+                        <span class="rate-note">({{ $t('exchange_rate') }}: {{ selectedRate }})</span>
+                    </template>
+                    <span v-else class="warning">{{ $t('no_exchange_rate_set') }}</span>
+                </div>
             </el-form-item>
 
             <!-- POS-style method buttons -->
@@ -162,6 +179,8 @@ import { Checked } from '@element-plus/icons-vue';
 import { usePaymentsStore } from '@/stores/payments';
 import { useCustomersStore } from '@/stores/customers';
 import { invoicesApi } from '@/api/invoices';
+import { useSettingsStore } from '@/stores/settings';
+import { useCurrency } from '@/Composables/useCurrency';
 
 const { t } = useI18n();
 import {
@@ -185,6 +204,8 @@ const emit = defineEmits(['update:modelValue', 'saved']);
 
 const paymentsStore = usePaymentsStore();
 const customersStore = useCustomersStore();
+const settingsStore = useSettingsStore();
+const { baseCode } = useCurrency();
 
 const formRef = ref(null);
 const outstandingLoading = ref(false);
@@ -194,6 +215,7 @@ const form = reactive({
     customer_id: null,
     invoice_id: null,
     amount: 0,
+    currency: baseCode.value,
     payment_method: 'cash',
     payment_date: new Date().toISOString().slice(0, 10),
     reference: '',
@@ -226,9 +248,43 @@ const totalOutstanding = computed(() =>
     outstandingInvoices.value.reduce((sum, inv) => sum + invoiceDue(inv), 0)
 );
 
-const maxAmount = computed(() =>
-    selectedInvoice.value ? Math.max(dueAmount.value * 2, 1) : 9999999
-);
+const currencyList = computed(() => (
+    settingsStore.currencies?.length ? settingsStore.currencies : [{ code: baseCode.value }]
+));
+
+const isBaseCurrency = computed(() => form.currency === baseCode.value);
+
+const selectedCurrencyInfo = computed(() => currencyList.value.find((c) => c.code === form.currency));
+
+const amountPrecision = computed(() => {
+    const places = Number(selectedCurrencyInfo.value?.decimal_places);
+    return Number.isFinite(places) ? places : 2;
+});
+
+/** Units of the selected currency per one unit of the base — from CurrencyService. */
+const selectedRate = computed(() => Number(selectedCurrencyInfo.value?.rate) || null);
+
+const baseEquivalent = computed(() => {
+    if (isBaseCurrency.value) return form.amount;
+    if (!selectedRate.value) return null;
+    return form.amount / selectedRate.value;
+});
+
+const onCurrencyChange = () => {
+    if (dueAmount.value > 0) {
+        form.amount = isBaseCurrency.value
+            ? Number(dueAmount.value.toFixed(2))
+            : Number((dueAmount.value * (selectedRate.value || 1)).toFixed(amountPrecision.value));
+    }
+};
+
+const maxAmount = computed(() => {
+    if (!selectedInvoice.value) return 9999999;
+    const dueInCurrency = isBaseCurrency.value
+        ? dueAmount.value
+        : dueAmount.value * (selectedRate.value || 1);
+    return Math.max(dueInCurrency * 2, 1);
+});
 
 const searchCustomers = (query) => {
     customersStore.fetchCustomers(query ? { search: query, per_page: 30 } : { per_page: 30 }).catch(() => {});
@@ -260,7 +316,10 @@ const loadOutstanding = async (customerId) => {
 
 const pickInvoice = (inv) => {
     form.invoice_id = inv.id;
-    form.amount = Number(invoiceDue(inv).toFixed(2));
+    const due = invoiceDue(inv);
+    form.amount = isBaseCurrency.value
+        ? Number(due.toFixed(2))
+        : Number((due * (selectedRate.value || 1)).toFixed(amountPrecision.value));
 };
 
 const onOpen = () => {
@@ -268,6 +327,8 @@ const onOpen = () => {
     form.reference = '';
     form.notes = '';
     form.payment_method = 'cash';
+    form.currency = baseCode.value;
+    if (!settingsStore.currencies.length) settingsStore.fetch().catch(() => {});
 
     if (props.invoice) {
         form.invoice_id = props.invoice.id;
@@ -301,7 +362,9 @@ const submit = async (full) => {
 
     let amount = form.amount;
     if (full && dueAmount.value > 0) {
-        amount = Number(dueAmount.value.toFixed(2));
+        amount = isBaseCurrency.value
+            ? Number(dueAmount.value.toFixed(2))
+            : Number((dueAmount.value * (selectedRate.value || 1)).toFixed(amountPrecision.value));
     }
     if (!amount || amount <= 0) {
         ElMessage.warning(t('enter_amount_above_zero'));
@@ -313,6 +376,7 @@ const submit = async (full) => {
             customer_id: form.customer_id,
             invoice_id: form.invoice_id || null,
             amount,
+            currency: form.currency,
             payment_method: form.payment_method,
             payment_date: form.payment_date,
             reference: form.reference || null,
@@ -329,6 +393,26 @@ const submit = async (full) => {
 </script>
 
 <style scoped>
+.amount-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.field-hint {
+    font-size: 0.8rem;
+    margin-top: 0.35rem;
+    color: var(--el-text-color-regular, #5f6d85);
+}
+
+.field-hint.warning,
+.field-hint .warning {
+    color: var(--el-color-warning, #e6a23c);
+}
+
+.rate-note {
+    color: var(--el-text-color-secondary, #909399);
+}
+
 .payment-number {
     display: flex;
     justify-content: space-between;

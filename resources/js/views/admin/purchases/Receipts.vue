@@ -158,6 +158,9 @@
                                 <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
                                 </el-table-column>
+                                <el-table-column prop="sale_price" :label="$t('sale_price')" width="130">
+                                    <template #default="{ row }">{{ row.sale_price != null ? '$' + parseFloat(row.sale_price).toFixed(2) : '-' }}</template>
+                                </el-table-column>
                                 <el-table-column :label="$t('grand_total')" width="130">
                                     <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
                                 </el-table-column>
@@ -250,24 +253,37 @@
                 <el-row :gutter="20">
                     <el-col :span="12">
                         <el-form-item :label="$t('supplier')" required>
-                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable>
-                                <el-option 
-                                    v-for="s in suppliersStore.suppliers" 
-                                    :key="s.id" 
-                                    :label="s.name" 
-                                    :value="s.id" 
+                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable @change="handleSupplierChange">
+                                <el-option
+                                    v-for="s in suppliersStore.suppliers"
+                                    :key="s.id"
+                                    :label="s.name"
+                                    :value="s.id"
                                 />
                             </el-select>
                         </el-form-item>
                     </el-col>
                     <el-col :span="12">
+                        <!-- A supplier's own orders are the only ones that can ever
+                             be received against, so the list is scoped to whichever
+                             supplier is chosen instead of listing every order in
+                             the system and letting a mismatch slip through. -->
                         <el-form-item :label="$t('linked_purchase_order')">
-                            <el-select v-model="form.purchase_order_id" :placeholder="$t('select_purchase_order_or_direct')" style="width: 100%" filterable clearable @change="handlePurchaseOrderChange">
-                                <el-option 
-                                    v-for="o in purchaseOrdersStore.orders" 
-                                    :key="o.id" 
-                                    :label="o.order_number" 
-                                    :value="o.id" 
+                            <el-select
+                                v-model="form.purchase_order_id"
+                                :placeholder="form.supplier_id ? $t('select_purchase_order_or_direct') : $t('select_supplier_first')"
+                                style="width: 100%"
+                                filterable
+                                clearable
+                                :disabled="!form.supplier_id"
+                                :loading="purchaseOrdersStore.loading"
+                                @change="handlePurchaseOrderChange"
+                            >
+                                <el-option
+                                    v-for="o in purchaseOrdersStore.orders"
+                                    :key="o.id"
+                                    :label="o.order_number"
+                                    :value="o.id"
                                 />
                             </el-select>
                         </el-form-item>
@@ -329,19 +345,44 @@
 
                     <div class="items-grid-wrapper">
                         <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
-                            <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
-                                <el-option
-                                    v-for="p in productsStore.products"
-                                    :key="p.id"
-                                    :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
-                                    :value="p.id"
-                                />
-                            </el-select>
-                            <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
-                            <el-input v-model="item.unit_price" :placeholder="$t('price')" style="flex: 1;" :disabled="isEditMode" />
-                            <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
-                                <i class="fas fa-trash"></i>
-                            </el-button>
+                            <div class="item-row-top">
+                                <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
+                                    <el-option
+                                        v-for="p in productsStore.products"
+                                        :key="p.id"
+                                        :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
+                                        :value="p.id"
+                                    />
+                                </el-select>
+                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
+                                <el-button
+                                    v-if="!isEditMode"
+                                    type="success"
+                                    circle
+                                    plain
+                                    @click="openQuickAddProduct(idx)"
+                                    :title="$t('add_new_product')"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                </el-button>
+                                <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                    <i class="fas fa-trash"></i>
+                                </el-button>
+                            </div>
+                            <!-- Cost is rolled into the product's weighted-average
+                                 cost on save; sale price, if set, replaces the
+                                 product's shelf price outright — receiving this
+                                 purchase is what puts both into effect. -->
+                            <div class="item-row-prices">
+                                <div class="price-field">
+                                    <label>{{ $t('purchase_cost') }}</label>
+                                    <el-input v-model="item.unit_price" placeholder="0.00" :disabled="isEditMode" />
+                                </div>
+                                <div class="price-field">
+                                    <label>{{ $t('sale_price') }}</label>
+                                    <el-input v-model="item.sale_price" placeholder="0.00" :disabled="isEditMode" />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -352,18 +393,83 @@
                 </div>
             </el-form>
         </el-drawer>
+
+        <!-- Quick Add Product Dialog: lets an unlisted item be created and
+             dropped straight into the receipt line that needed it, so a
+             missing product no longer means abandoning the whole receipt to
+             go create it in the catalog first. -->
+        <el-dialog
+            v-model="quickAddDialogVisible"
+            :title="$t('quick_add_product')"
+            width="480px"
+            append-to-body
+            destroy-on-close
+        >
+            <p class="quick-add-hint">{{ $t('quick_add_product_hint') }}</p>
+            <el-form :model="quickAddForm" label-position="top">
+                <el-form-item :label="$t('product_name_ar')" required>
+                    <el-input v-model="quickAddForm.name_ar" />
+                </el-form-item>
+                <el-form-item :label="$t('product_name_en')" required>
+                    <el-input v-model="quickAddForm.name_en" />
+                </el-form-item>
+                <el-form-item :label="$t('category')" required>
+                    <el-select v-model="quickAddForm.category_id" filterable style="width: 100%">
+                        <el-option
+                            v-for="c in productsStore.categories"
+                            :key="c.id"
+                            :label="c.name_ar || c.name"
+                            :value="c.id"
+                        />
+                    </el-select>
+                </el-form-item>
+                <el-row :gutter="16">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('purchase_cost')">
+                            <el-input v-model="quickAddForm.cost_price" type="number" min="0" step="0.01" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('sale_price')" required>
+                            <el-input v-model="quickAddForm.price" type="number" min="0" step="0.01" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                <el-row :gutter="16">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('sku_optional')">
+                            <el-input v-model="quickAddForm.sku" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('unit_optional')">
+                            <el-input v-model="quickAddForm.unit" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+            </el-form>
+            <template #footer>
+                <el-button @click="quickAddDialogVisible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickAddSubmitting" @click="submitQuickAddProduct">
+                    {{ $t('save') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
+import { purchaseOrdersApi } from '@/api/purchaseOrders';
+import { baseCurrencyCode } from '@/utils/currency';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -371,6 +477,8 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const { t } = useI18n();
 
+const route = useRoute();
+const router = useRouter();
 const store = usePurchaseReceiptsStore();
 const suppliersStore = useSuppliersStore();
 const purchaseOrdersStore = usePurchaseOrdersStore();
@@ -388,6 +496,21 @@ const formDrawerVisible = ref(false);
 const isEditMode = ref(false);
 const submittingForm = ref(false);
 const editingReceiptId = ref(null);
+
+// Quick-add-product state: lets a missing item be created without leaving
+// the receipt form, then drops straight into the row that needed it.
+const quickAddDialogVisible = ref(false);
+const quickAddSubmitting = ref(false);
+const quickAddTargetIndex = ref(null);
+const quickAddForm = reactive({
+    name_ar: '',
+    name_en: '',
+    category_id: '',
+    cost_price: '',
+    price: '',
+    sku: '',
+    unit: ''
+});
 
 const form = reactive({
     supplier_id: '',
@@ -409,7 +532,7 @@ const resetForm = () => {
     form.receipt_date = new Date().toISOString().split('T')[0];
     form.tax_amount = 0;
     form.notes = '';
-    form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+    form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
 };
 
 const filteredReceipts = computed(() => {
@@ -447,6 +570,27 @@ const openCreateDrawer = () => {
     formDrawerVisible.value = true;
 };
 
+// Reached via the "record a goods receipt" prompt shown right after a
+// purchase order is placed: opens the create drawer pre-bound to that order
+// instead of leaving the operator to search for it in the picker.
+const openCreateDrawerForOrder = async (orderId) => {
+    isEditMode.value = false;
+    resetForm();
+    formDrawerVisible.value = true;
+    try {
+        const res = await purchaseOrdersApi.getById(orderId);
+        const order = res.data.data;
+        if (order?.supplier_id) {
+            form.supplier_id = order.supplier_id;
+            await purchaseOrdersStore.fetchOrders({ supplier_id: order.supplier_id, per_page: 100 }).catch(() => {});
+        }
+        form.purchase_order_id = orderId;
+        await handlePurchaseOrderChange(orderId);
+    } catch (e) {
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
+    }
+};
+
 const openEditDrawer = async (id) => {
     isEditMode.value = true;
     editingReceiptId.value = id;
@@ -466,8 +610,15 @@ const openEditDrawer = async (id) => {
         form.items = receipt.items.map(item => ({
             product_id: item.product_id,
             quantity: item.quantity,
-            unit_price: item.unit_price
+            unit_price: item.unit_price,
+            sale_price: item.sale_price
         }));
+
+        // Populate the order list scoped to this receipt's supplier so the
+        // already-linked order (if any) shows up as a valid option.
+        if (form.supplier_id) {
+            await purchaseOrdersStore.fetchOrders({ supplier_id: form.supplier_id, per_page: 100 }).catch(() => {});
+        }
     } catch (e) {
         ElMessage.error(t('failed_to_load_receipt_for_edit'));
         formDrawerVisible.value = false;
@@ -476,9 +627,30 @@ const openEditDrawer = async (id) => {
     }
 };
 
+// Purchase orders are scoped to the chosen supplier: an order belonging to a
+// different supplier could never be received against this receipt anyway,
+// so listing every order in the system just invited picking the wrong one.
+const handleSupplierChange = async (supplierId) => {
+    if (form.purchase_order_id) {
+        form.purchase_order_id = '';
+        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
+    }
+
+    if (!supplierId) {
+        purchaseOrdersStore.orders = [];
+        return;
+    }
+
+    try {
+        await purchaseOrdersStore.fetchOrders({ supplier_id: supplierId, per_page: 100 });
+    } catch (e) {
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
+    }
+};
+
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push({ product_id: '', quantity: 1, unit_price: '' });
+    form.items.push({ product_id: '', quantity: 1, unit_price: '', sale_price: '' });
 };
 
 const removeItemRow = (idx) => {
@@ -488,14 +660,87 @@ const removeItemRow = (idx) => {
 const updateItemPrice = (productId, idx) => {
     const prod = productsStore.products.find(p => p.id === productId);
     if (prod) {
-        form.items[idx].unit_price = prod.price;
+        // The receipt's price is what the supplier is paid, so it starts
+        // from the product's cost — not its retail price, which is what the
+        // line is instead defaulted to sell at.
+        form.items[idx].unit_price = prod.cost_price || prod.price;
+        form.items[idx].sale_price = prod.price;
+    }
+};
+
+// Quick-add-product: opens pre-filled with whatever price the operator had
+// already typed on this line, since that number is the purchase cost anyway.
+const openQuickAddProduct = (idx) => {
+    quickAddTargetIndex.value = idx;
+    quickAddForm.name_ar = '';
+    quickAddForm.name_en = '';
+    quickAddForm.category_id = '';
+    quickAddForm.cost_price = form.items[idx]?.unit_price || '';
+    quickAddForm.price = '';
+    quickAddForm.sku = '';
+    quickAddForm.unit = '';
+    if (!productsStore.categories.length) {
+        productsStore.fetchCategories().catch(() => {});
+    }
+    quickAddDialogVisible.value = true;
+};
+
+const slugify = (text) => text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
+const submitQuickAddProduct = async () => {
+    if (!quickAddForm.name_ar || !quickAddForm.name_en || !quickAddForm.category_id || !quickAddForm.price) {
+        ElMessage.warning(t('please_fill_required_product_fields'));
+        return;
+    }
+
+    quickAddSubmitting.value = true;
+    try {
+        // The catalog requires a unique slug, but this dialog never shows one —
+        // a timestamp suffix keeps two products with the same name from
+        // colliding without asking the operator to think about it.
+        const baseSlug = slugify(quickAddForm.name_en) || 'product';
+        const product = await productsStore.createProduct({
+            name_ar: quickAddForm.name_ar,
+            name_en: quickAddForm.name_en,
+            slug: `${baseSlug}-${Date.now().toString(36)}`,
+            category_id: quickAddForm.category_id,
+            price: quickAddForm.price,
+            cost_price: quickAddForm.cost_price || null,
+            sku: quickAddForm.sku || null,
+            unit: quickAddForm.unit || null,
+            currency: baseCurrencyCode(),
+            stock_quantity: 0
+        });
+
+        const idx = quickAddTargetIndex.value;
+        if (idx !== null && form.items[idx]) {
+            form.items[idx].product_id = product.id;
+            if (!form.items[idx].unit_price) {
+                form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
+            }
+            if (!form.items[idx].sale_price) {
+                form.items[idx].sale_price = quickAddForm.price || product.price;
+            }
+        }
+
+        ElMessage.success(t('product_created_and_selected'));
+        quickAddDialogVisible.value = false;
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_create_product'));
+    } finally {
+        quickAddSubmitting.value = false;
     }
 };
 
 const handlePurchaseOrderChange = async (purchaseOrderId) => {
     if (!purchaseOrderId) {
         // If cleared, reset items to empty
-        form.items = [{ product_id: '', quantity: 1, unit_price: '' }];
+        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
         return;
     }
 
@@ -509,14 +754,16 @@ const handlePurchaseOrderChange = async (purchaseOrderId) => {
                 form.supplier_id = data.supplier_id;
             }
             
-            // Auto-fill items from purchase order
+            // Auto-fill items from purchase order, sale price included — it
+            // was already decided when the order was made.
             if (data.items && data.items.length > 0) {
                 form.items = data.items.map(item => ({
                     product_id: item.product_id,
                     quantity: item.quantity,
-                    unit_price: item.unit_price
+                    unit_price: item.unit_price,
+                    sale_price: item.sale_price
                 }));
-                
+
                 ElMessage.success(t('items_filled_from_purchase_order'));
             }
         }
@@ -590,9 +837,18 @@ const deleteReceipt = async (id) => {
 onMounted(async () => {
     store.fetchReceipts().catch(() => {});
     suppliersStore.fetchSuppliers().catch(() => {});
-    purchaseOrdersStore.fetchOrders().catch(() => {});
+    // Purchase orders load once a supplier is chosen (handleSupplierChange) or
+    // when editing a receipt that already has one, so the list is always
+    // scoped to a supplier instead of dumping every order in the system.
     productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
+
+    const orderId = route.query.create_for_order;
+    if (orderId) {
+        // Drop the query param so a refresh/back-nav doesn't reopen the drawer.
+        router.replace({ query: { ...route.query, create_for_order: undefined } });
+        openCreateDrawerForOrder(orderId);
+    }
 });
 </script>
 
@@ -926,11 +1182,40 @@ onMounted(async () => {
     color: var(--text-dark);
 }
 
+.quick-add-hint {
+    margin: 0 0 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
 /* Form Grid row */
-.item-grid-row {
+.item-row-top {
     display: flex;
     gap: 1rem;
     align-items: center;
+}
+
+.item-row-prices {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.price-field {
+    flex: 1;
+    max-width: 220px;
+}
+
+.price-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+}
+
+.item-grid-row {
+    display: block;
     margin-bottom: 1rem;
     padding: 1rem;
     background: var(--bg-light);

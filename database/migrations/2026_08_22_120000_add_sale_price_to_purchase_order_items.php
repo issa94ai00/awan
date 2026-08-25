@@ -1,0 +1,27 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * unit_price is what the supplier is paid — the cost. A purchase order also
+ * needs to record what the line is meant to retail at, so the order captures
+ * the pricing decision instead of only the buying decision.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('purchase_order_items', function (Blueprint $table) {
+            $table->decimal('sale_price', 15, 2)->nullable()->after('unit_price');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('purchase_order_items', function (Blueprint $table) {
+            $table->dropColumn('sale_price');
+        });
+    }
+};
