@@ -58,10 +58,18 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // `permission` matters more than it looks: an artisan command run as root
+        // creates the log file, and with the default 0644 php-fpm (www-data) can
+        // then never append to it. Monolog throws, and because the request had
+        // already reached a controller that logs, the whole response became a 500
+        // — the public API returned "Server Error" for every request until the
+        // file was chowned. 0664 plus the setgid bit on storage/logs keeps the
+        // file writable by the www-data group whoever creates it.
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'permission' => 0664,
             'replace_placeholders' => true,
         ],
 
@@ -70,6 +78,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
+            'permission' => 0664,
             'replace_placeholders' => true,
         ],
 

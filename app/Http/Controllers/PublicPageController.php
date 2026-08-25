@@ -54,6 +54,47 @@ class PublicPageController extends Controller
         return $string;
     }
 
+    /**
+     * Crawlable links for the <noscript> fallback.
+     *
+     * Every public URL renders the same SPA shell — an empty <div id="app"> plus
+     * a <noscript> block that, until now, carried nothing but the page title and
+     * the same six nav links. To any crawler that does not execute JS all 111
+     * URLs were therefore near-identical and effectively contentless, which is
+     * what Search Console reports as a soft 404. Emitting the actual categories
+     * and products as plain <a> elements gives each page distinct content and
+     * makes the catalogue reachable without running the SPA.
+     */
+    private function categoryLinks(): array
+    {
+        return Category::where('is_active', 1)
+            ->orderBy('sort_order')
+            ->get()
+            ->map(fn (Category $category) => [
+                'label' => $category->name,
+                'url' => route('category.show', $category->slug),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder|null  $query  Defaults to every active product.
+     */
+    private function productLinks($query = null, int $limit = 200): array
+    {
+        $query ??= Product::query();
+
+        return $query->where('is_active', 1)
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Product $product) => [
+                'label' => $product->name,
+                'url' => route('product.show', $product->slug),
+            ])
+            ->all();
+    }
+
     public function home()
     {
         $locale = app()->getLocale();
@@ -71,8 +112,9 @@ class PublicPageController extends Controller
         $seo_image = $siteImage;
 
         $seo_json_ld = $this->generateOrgJsonLd($siteName, $siteDescription, $seo_image);
+        $seo_links = $this->categoryLinks();
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld'));
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld', 'seo_links'));
     }
 
     public function vision()
@@ -191,8 +233,9 @@ class PublicPageController extends Controller
             : 'تصفح الكتالوج الكامل لمواد البناء والأدوات الصحية والكلادينج وأنظمة التثبيت.';
         $seo_keywords = $siteKeywords;
         $seo_image = $siteImage;
+        $seo_links = $this->productLinks();
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image'));
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
     }
 
     public function specialOffers()
@@ -235,8 +278,9 @@ class PublicPageController extends Controller
         $seo_description = $locale === 'en' ? 'Browse our main construction product categories.' : 'تصفح الفئات الرئيسية لمواد البناء ومستلزمات التثبيت.';
         $seo_keywords = $siteKeywords;
         $seo_image = $siteImage;
+        $seo_links = $this->categoryLinks();
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image'));
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
     }
 
     public function categoryShow($categorySlug)
@@ -256,8 +300,9 @@ class PublicPageController extends Controller
         $seo_description = $this->cleanString($category->meta_description ?: ($catDesc ?: $siteDescription));
         $seo_keywords = $siteKeywords;
         $seo_image = $category->image ? image_url($category->image) : $siteImage;
+        $seo_links = $this->productLinks(Product::where('category_id', $category->id));
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image'));
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
     }
 
     public function productShow($productSlug)
@@ -295,7 +340,19 @@ class PublicPageController extends Controller
         $seo_json_ld = $this->generateProductJsonLd($product, $prodName, $seo_description, $seo_image, $siteName);
         $seo_og_type = 'product';
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld', 'seo_og_type'));
+        // The product's own copy is the only thing that makes this page distinct
+        // to a non-rendering crawler, so emit more of it than the 160-char meta
+        // description, and link back to the category it belongs to.
+        $seo_body = $this->cleanString($prodDesc, 1000);
+        $seo_links = [];
+        if ($product->category && $product->category->is_active) {
+            $seo_links[] = [
+                'label' => $product->category->name,
+                'url' => route('category.show', $product->category->slug),
+            ];
+        }
+
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld', 'seo_og_type', 'seo_body', 'seo_links'));
     }
 
     /**
