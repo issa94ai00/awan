@@ -166,6 +166,12 @@
                                 <span v-if="!isCollapsed" class="nav-text">{{ t('payments') }}</span>
                             </router-link>
                         </li>
+                        <li>
+                            <router-link to="/admin/sales/reports" class="nav-link" :class="{ active: isActive('/admin/sales/reports') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!isCollapsed" class="nav-text">{{ t('professional_sales_reports') }}</span>
+                            </router-link>
+                        </li>
                     </ul>
                 </li>
 
@@ -527,12 +533,6 @@
                             <router-link to="/admin/reports/sales" class="nav-link" :class="{ active: isActive('/admin/reports/sales') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!isCollapsed" class="nav-text">{{ t('sales_report') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/reports/professional-sales" class="nav-link" :class="{ active: isActive('/admin/reports/professional-sales') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ $t('professional_sales_reports') }}</span>
                             </router-link>
                         </li>
                         <li>
@@ -932,6 +932,7 @@ const navIndex = [
     { labelKey: 'quotes', path: '/admin/sales/quotes', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
     { labelKey: 'sales_orders', path: '/admin/sales/sales-orders', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
     { labelKey: 'payments', path: '/admin/sales/payments', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
+    { labelKey: 'professional_sales_reports', path: '/admin/sales/reports', icon: DataAnalysis, group: 'sales', groupLabelKey: 'sales' },
     { labelKey: 'overview', path: '/admin/rma', icon: Refresh, group: 'rma', groupLabelKey: 'rma' },
     { labelKey: 'create', path: '/admin/rma/create', icon: Refresh, group: 'rma', groupLabelKey: 'rma' },
     { labelKey: 'overview', path: '/admin/purchases', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
@@ -977,7 +978,6 @@ const navIndex = [
     { labelKey: 'overview', path: '/admin/production', icon: Tools, group: 'production', groupLabelKey: 'production' },
     { labelKey: 'overview', path: '/admin/reports', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
     { labelKey: 'sales_report', path: '/admin/reports/sales', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'professional_sales_reports', path: '/admin/reports/professional-sales', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
     { labelKey: 'inventory_report', path: '/admin/reports/inventory', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
     { labelKey: 'financial_report', path: '/admin/reports/financial', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
     { labelKey: 'payroll_report', path: '/admin/reports/payroll', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },

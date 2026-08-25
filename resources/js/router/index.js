@@ -241,6 +241,11 @@ const routes = [
                 name: 'admin.payments.index',
                 component: () => import('@/views/admin/sales/Payments.vue')
             },
+            {
+                path: 'sales/reports',
+                name: 'admin.reports.professional-sales',
+                component: () => import('@/views/admin/reports/ProfessionalSales.vue')
+            },
             // Purchases
             {
                 path: 'purchases',
@@ -389,11 +394,6 @@ const routes = [
                 path: 'reports/sales',
                 name: 'admin.reports.sales',
                 component: () => import('@/views/admin/reports/Sales.vue')
-            },
-            {
-                path: 'reports/professional-sales',
-                name: 'admin.reports.professional-sales',
-                component: () => import('@/views/admin/reports/ProfessionalSales.vue')
             },
             {
                 path: 'reports/product-kpi',
