@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\SalesOrder;
 use App\Models\Employee;
+use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -196,7 +198,7 @@ class SalesReportController extends Controller
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
-        $query = SalesOrder::query()->with(['items.product', 'customer', 'assignedEmployee', 'fulfillmentWarehouse']);
+        $query = SalesOrder::query();
         $this->applyDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
@@ -215,96 +217,99 @@ class SalesReportController extends Controller
             $query->where('sales_orders.status', $request->status);
         }
 
-        $orders = $query->get();
+        // Revenue and count come straight off sales_orders — no join, no
+        // fan-out. Cost is a separate grouped query through the items table;
+        // joining items into this same query would multiply every order's
+        // revenue by however many lines it has.
+        $costQuery = fn () => (clone $query)
+            ->join('sales_order_items', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+            ->leftJoin('products', 'products.id', '=', 'sales_order_items.product_id');
+
+        $totalRevenue = (float) (clone $query)->sum('total');
+        $totalOrders = (int) (clone $query)->count();
+        $totalCost = (float) $costQuery()->sum(DB::raw('sales_order_items.quantity * COALESCE(products.cost_price, 0)'));
+        $grossProfit = $totalRevenue - $totalCost;
+
         $summary = [
-            'total_revenue' => (float) $orders->sum('total'),
-            'total_cost' => (float) $orders->reduce(function ($carry, $order) {
-                return $carry + $order->items->reduce(function ($sum, $item) {
-                    $cost = (float) ($item->product?->cost_price ?? 0);
-                    return $sum + ($cost * (float) ($item->quantity ?? 0));
-                }, 0);
-            }, 0),
-            'gross_profit' => 0,
-            'gross_margin' => 0,
-            'total_orders' => $orders->count(),
+            'total_revenue' => $totalRevenue,
+            'total_cost' => $totalCost,
+            'gross_profit' => $grossProfit,
+            'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+            'total_orders' => $totalOrders,
         ];
-
-        $summary['gross_profit'] = $summary['total_revenue'] - $summary['total_cost'];
-        $summary['gross_margin'] = $summary['total_revenue'] > 0 ? round(($summary['gross_profit'] / $summary['total_revenue']) * 100, 2) : 0;
-
-        $employeeSummary = $orders->groupBy('assigned_employee_id')->map(function ($group, $employeeId) {
-            $totalRevenue = (float) $group->sum('total');
-            $totalCost = (float) $group->reduce(function ($carry, $order) {
-                return $carry + $order->items->reduce(function ($sum, $item) {
-                    $cost = (float) ($item->product?->cost_price ?? 0);
-                    return $sum + ($cost * (float) ($item->quantity ?? 0));
-                }, 0);
-            }, 0);
-            $grossProfit = $totalRevenue - $totalCost;
-
-            return [
-                'employee_id' => (int) $employeeId,
-                'employee_name' => $group->first()->assignedEmployee?->name ?? 'Unknown',
-                'total_orders' => $group->count(),
-                'total_revenue' => $totalRevenue,
-                'total_cost' => $totalCost,
-                'gross_profit' => $grossProfit,
-                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-            ];
-        })->values();
-
-        $customerSummary = $orders->groupBy('customer_id')->map(function ($group, $customerId) {
-            $totalRevenue = (float) $group->sum('total');
-            $totalCost = (float) $group->reduce(function ($carry, $order) {
-                return $carry + $order->items->reduce(function ($sum, $item) {
-                    $cost = (float) ($item->product?->cost_price ?? 0);
-                    return $sum + ($cost * (float) ($item->quantity ?? 0));
-                }, 0);
-            }, 0);
-            $grossProfit = $totalRevenue - $totalCost;
-
-            return [
-                'customer_id' => (int) $customerId,
-                'customer_name' => $group->first()->customer?->name ?? 'Unknown',
-                'total_orders' => $group->count(),
-                'total_revenue' => $totalRevenue,
-                'total_cost' => $totalCost,
-                'gross_profit' => $grossProfit,
-                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-            ];
-        })->values();
-
-        $warehouseSummary = $orders->groupBy('fulfillment_warehouse_id')->map(function ($group, $warehouseId) {
-            $totalRevenue = (float) $group->sum('total');
-            $totalCost = (float) $group->reduce(function ($carry, $order) {
-                return $carry + $order->items->reduce(function ($sum, $item) {
-                    $cost = (float) ($item->product?->cost_price ?? 0);
-                    return $sum + ($cost * (float) ($item->quantity ?? 0));
-                }, 0);
-            }, 0);
-            $grossProfit = $totalRevenue - $totalCost;
-
-            return [
-                'warehouse_id' => (int) $warehouseId,
-                'warehouse_name' => $group->first()->fulfillmentWarehouse?->name ?? 'Unknown',
-                'total_orders' => $group->count(),
-                'total_revenue' => $totalRevenue,
-                'total_cost' => $totalCost,
-                'gross_profit' => $grossProfit,
-                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-            ];
-        })->values();
 
         return response()->json([
             'success' => true,
             'message' => 'Sales performance retrieved successfully',
             'data' => [
                 'summary' => $summary,
-                'employee_summary' => $employeeSummary,
-                'customer_summary' => $customerSummary,
-                'warehouse_summary' => $warehouseSummary,
+                'employee_summary' => $this->salesPerformanceByGroup($query, $costQuery, 'assigned_employee_id', 'employee_id', 'employee_name', Employee::class),
+                'customer_summary' => $this->salesPerformanceByGroup($query, $costQuery, 'customer_id', 'customer_id', 'customer_name', Customer::class),
+                'warehouse_summary' => $this->salesPerformanceByGroup($query, $costQuery, 'fulfillment_warehouse_id', 'warehouse_id', 'warehouse_name', Warehouse::class),
             ],
         ]);
+    }
+
+    /**
+     * One grouping's revenue/cost/margin breakdown for salesPerformance().
+     * Revenue and order count are grouped directly on sales_orders; cost
+     * reuses the same items join as the overall total, grouped the same way
+     * and merged here by group id — so an order's revenue is never
+     * multiplied by its item count, and every group's employee/customer/
+     * warehouse name is one batched query instead of one per group.
+     */
+    private function salesPerformanceByGroup($query, callable $costQuery, string $column, string $idKey, string $nameKey, string $modelClass)
+    {
+        $revenueRows = (clone $query)
+            ->select($column)
+            ->selectRaw('COUNT(*) as total_orders')
+            ->selectRaw('SUM(total) as total_revenue')
+            ->groupBy($column)
+            ->get()
+            ->keyBy($column);
+
+        $costByGroup = $costQuery()
+            ->select('sales_orders.'.$column)
+            ->selectRaw('SUM(sales_order_items.quantity * COALESCE(products.cost_price, 0)) as total_cost')
+            ->groupBy('sales_orders.'.$column)
+            ->pluck('total_cost', $column);
+
+        $names = $this->namesFor($modelClass, $revenueRows->keys()->all());
+
+        return $revenueRows->map(function ($row) use ($costByGroup, $names, $column, $idKey, $nameKey) {
+            $groupId = $row->{$column};
+            $totalRevenue = (float) ($row->total_revenue ?? 0);
+            $totalCost = (float) ($costByGroup[$groupId] ?? 0);
+            $grossProfit = $totalRevenue - $totalCost;
+
+            return [
+                $idKey => (int) $groupId,
+                $nameKey => $names[$groupId] ?? 'غير معروف',
+                'total_orders' => (int) ($row->total_orders ?? 0),
+                'total_revenue' => $totalRevenue,
+                'total_cost' => $totalCost,
+                'gross_profit' => $grossProfit,
+                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+            ];
+        })->values();
+    }
+
+    /**
+     * Batch-loads {id => name} for a set of ids in one query. Several report
+     * endpoints turn a grouped SQL result (one row per employee/customer/
+     * warehouse) into named rows; doing that with Model::find() inside the
+     * map fired one extra query per distinct id in the result. This is one
+     * query for the whole batch, however many groups there are.
+     */
+    private function namesFor(string $modelClass, iterable $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(is_array($ids) ? $ids : iterator_to_array($ids))));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return $modelClass::whereIn('id', $ids)->get()->pluck('name', 'id')->all();
     }
 
     public function productProfitability(Request $request)
@@ -362,9 +367,9 @@ class SalesReportController extends Controller
 
                         return [
                             'product_id' => (int) ($product?->id ?? 0),
-                            'product_name' => $product?->name ?? 'Unknown',
+                            'product_name' => $product?->name ?? 'غير معروف',
                             'warehouse_id' => (int) ($allocation->warehouse_id ?? 0),
-                            'warehouse_name' => $allocation->warehouse?->name ?? 'Unknown',
+                            'warehouse_name' => $allocation->warehouse?->name ?? 'غير معروف',
                             'quantity' => $quantity,
                             'total_revenue' => $revenue,
                             'total_cost' => $cost,
@@ -383,9 +388,9 @@ class SalesReportController extends Controller
 
                 return [[
                     'product_id' => (int) ($product?->id ?? 0),
-                    'product_name' => $product?->name ?? 'Unknown',
+                    'product_name' => $product?->name ?? 'غير معروف',
                     'warehouse_id' => (int) ($order->fulfillment_warehouse_id ?? 0),
-                    'warehouse_name' => $order->fulfillmentWarehouse?->name ?? 'Unknown',
+                    'warehouse_name' => $order->fulfillmentWarehouse?->name ?? 'غير معروف',
                     'quantity' => $quantity,
                     'total_revenue' => $revenue,
                     'total_cost' => $cost,
@@ -531,7 +536,7 @@ class SalesReportController extends Controller
             $query->where('status', $request->status);
         }
 
-        $customerSummary = $query
+        $customerRows = $query
             ->clone()
             ->select('customer_id')
             ->selectRaw('COUNT(*) as total_invoices')
@@ -539,21 +544,20 @@ class SalesReportController extends Controller
             ->selectRaw('SUM(paid_amount) as paid_amount')
             ->selectRaw('SUM(due_amount) as due_amount')
             ->groupBy('customer_id')
-            ->get()
-            ->map(function ($item) {
-                $customer = \App\Models\Customer::find($item->customer_id);
+            ->get();
+        $customerNames = $this->namesFor(Customer::class, $customerRows->pluck('customer_id')->all());
+        $customerSummary = $customerRows->map(function ($item) use ($customerNames) {
+            return [
+                'customer_id' => $item->customer_id,
+                'customer_name' => $customerNames[$item->customer_id] ?? 'غير معروف',
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                'paid_amount' => (float) ($item->paid_amount ?? 0),
+                'due_amount' => (float) ($item->due_amount ?? 0),
+            ];
+        });
 
-                return [
-                    'customer_id' => $item->customer_id,
-                    'customer_name' => $customer ? $customer->name : 'Unknown',
-                    'total_invoices' => (int) ($item->total_invoices ?? 0),
-                    'total_invoiced' => (float) ($item->total_invoiced ?? 0),
-                    'paid_amount' => (float) ($item->paid_amount ?? 0),
-                    'due_amount' => (float) ($item->due_amount ?? 0),
-                ];
-            });
-
-        $warehouseSummary = $query
+        $warehouseRows = $query
             ->clone()
             ->select('warehouse_id')
             ->selectRaw('COUNT(*) as total_invoices')
@@ -561,24 +565,23 @@ class SalesReportController extends Controller
             ->selectRaw('SUM(paid_amount) as paid_amount')
             ->selectRaw('SUM(due_amount) as due_amount')
             ->groupBy('warehouse_id')
-            ->get()
-            ->map(function ($item) {
-                $warehouse = \App\Models\Warehouse::find($item->warehouse_id);
-
-                return [
-                    'warehouse_id' => $item->warehouse_id,
-                    'warehouse_name' => $warehouse ? $warehouse->name : 'Unknown',
-                    'total_invoices' => (int) ($item->total_invoices ?? 0),
-                    'total_invoiced' => (float) ($item->total_invoiced ?? 0),
-                    'paid_amount' => (float) ($item->paid_amount ?? 0),
-                    'due_amount' => (float) ($item->due_amount ?? 0),
-                ];
-            });
+            ->get();
+        $warehouseNames = $this->namesFor(Warehouse::class, $warehouseRows->pluck('warehouse_id')->all());
+        $warehouseSummary = $warehouseRows->map(function ($item) use ($warehouseNames) {
+            return [
+                'warehouse_id' => $item->warehouse_id,
+                'warehouse_name' => $warehouseNames[$item->warehouse_id] ?? 'غير معروف',
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                'paid_amount' => (float) ($item->paid_amount ?? 0),
+                'due_amount' => (float) ($item->due_amount ?? 0),
+            ];
+        });
 
         // Credited the same way sales-order performance is: nothing for a
         // counter sale nobody was assigned to, so it is left out rather than
         // lumped under a fake "Unknown" rep.
-        $employeeSummary = $query
+        $employeeRows = $query
             ->clone()
             ->whereNotNull('assigned_employee_id')
             ->select('assigned_employee_id')
@@ -587,19 +590,18 @@ class SalesReportController extends Controller
             ->selectRaw('SUM(paid_amount) as paid_amount')
             ->selectRaw('SUM(due_amount) as due_amount')
             ->groupBy('assigned_employee_id')
-            ->get()
-            ->map(function ($item) {
-                $employee = Employee::find($item->assigned_employee_id);
-
-                return [
-                    'employee_id' => $item->assigned_employee_id,
-                    'employee_name' => $employee ? $employee->name : 'Unknown',
-                    'total_invoices' => (int) ($item->total_invoices ?? 0),
-                    'total_invoiced' => (float) ($item->total_invoiced ?? 0),
-                    'paid_amount' => (float) ($item->paid_amount ?? 0),
-                    'due_amount' => (float) ($item->due_amount ?? 0),
-                ];
-            });
+            ->get();
+        $employeeNames = $this->namesFor(Employee::class, $employeeRows->pluck('assigned_employee_id')->all());
+        $employeeSummary = $employeeRows->map(function ($item) use ($employeeNames) {
+            return [
+                'employee_id' => $item->assigned_employee_id,
+                'employee_name' => $employeeNames[$item->assigned_employee_id] ?? 'غير معروف',
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                'paid_amount' => (float) ($item->paid_amount ?? 0),
+                'due_amount' => (float) ($item->due_amount ?? 0),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -703,7 +705,7 @@ class SalesReportController extends Controller
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
-        $query = Invoice::query()->with(['items.product', 'customer', 'assignedEmployee', 'warehouse']);
+        $query = Invoice::query();
         $this->applyInvoiceDateFilters($query, $request);
 
         if ($request->filled('employee_id')) {
@@ -722,43 +724,17 @@ class SalesReportController extends Controller
             $query->where('status', $request->status);
         }
 
-        $invoices = $query->get();
-        $costOf = fn ($invoice) => $invoice->items->reduce(function ($sum, $item) {
-            $cost = (float) ($item->product?->cost_price ?? 0);
+        // Same shape as salesPerformance(): revenue/count straight off
+        // invoices, cost through a separate grouped join on invoice_items so
+        // an invoice's total is never multiplied by its line count.
+        $costQuery = fn () => (clone $query)
+            ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
+            ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id');
 
-            return $sum + ($cost * (float) ($item->quantity ?? 0));
-        }, 0);
-
-        $totalRevenue = (float) $invoices->sum('total');
-        $totalCost = (float) $invoices->reduce(fn ($carry, $invoice) => $carry + $costOf($invoice), 0);
+        $totalRevenue = (float) (clone $query)->sum('total');
+        $totalInvoices = (int) (clone $query)->count();
+        $totalCost = (float) $costQuery()->sum(DB::raw('invoice_items.quantity * COALESCE(products.cost_price, 0)'));
         $grossProfit = $totalRevenue - $totalCost;
-
-        $summarize = function ($group) use ($costOf) {
-            $totalRevenue = (float) $group->sum('total');
-            $totalCost = (float) $group->reduce(fn ($carry, $invoice) => $carry + $costOf($invoice), 0);
-            $grossProfit = $totalRevenue - $totalCost;
-
-            return [
-                'total_invoices' => $group->count(),
-                'total_revenue' => $totalRevenue,
-                'total_cost' => $totalCost,
-                'gross_profit' => $grossProfit,
-                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-            ];
-        };
-
-        $employeeSummary = $invoices->whereNotNull('assigned_employee_id')->groupBy('assigned_employee_id')
-            ->map(function ($group, $employeeId) use ($summarize) {
-                return ['employee_id' => (int) $employeeId, 'employee_name' => $group->first()->assignedEmployee?->name ?? 'Unknown'] + $summarize($group);
-            })->values();
-
-        $customerSummary = $invoices->groupBy('customer_id')->map(function ($group, $customerId) use ($summarize) {
-            return ['customer_id' => (int) $customerId, 'customer_name' => $group->first()->customer?->name ?? 'Unknown'] + $summarize($group);
-        })->values();
-
-        $warehouseSummary = $invoices->groupBy('warehouse_id')->map(function ($group, $warehouseId) use ($summarize) {
-            return ['warehouse_id' => (int) $warehouseId, 'warehouse_name' => $group->first()->warehouse?->name ?? 'Unknown'] + $summarize($group);
-        })->values();
 
         return response()->json([
             'success' => true,
@@ -769,13 +745,52 @@ class SalesReportController extends Controller
                     'total_cost' => $totalCost,
                     'gross_profit' => $grossProfit,
                     'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-                    'total_invoices' => $invoices->count(),
+                    'total_invoices' => $totalInvoices,
                 ],
-                'employee_summary' => $employeeSummary,
-                'customer_summary' => $customerSummary,
-                'warehouse_summary' => $warehouseSummary,
+                'employee_summary' => $this->invoicePerformanceByGroup((clone $query)->whereNotNull('assigned_employee_id'), 'assigned_employee_id', 'employee_id', 'employee_name', Employee::class),
+                'customer_summary' => $this->invoicePerformanceByGroup($query, 'customer_id', 'customer_id', 'customer_name', Customer::class),
+                'warehouse_summary' => $this->invoicePerformanceByGroup($query, 'warehouse_id', 'warehouse_id', 'warehouse_name', Warehouse::class),
             ],
         ]);
+    }
+
+    /** invoicePerformance()'s counterpart to salesPerformanceByGroup() — see there for why revenue and cost are grouped separately. */
+    private function invoicePerformanceByGroup($query, string $column, string $idKey, string $nameKey, string $modelClass)
+    {
+        $revenueRows = (clone $query)
+            ->select($column)
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_revenue')
+            ->groupBy($column)
+            ->get()
+            ->keyBy($column);
+
+        $costByGroup = (clone $query)
+            ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
+            ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id')
+            ->select('invoices.'.$column)
+            ->selectRaw('SUM(invoice_items.quantity * COALESCE(products.cost_price, 0)) as total_cost')
+            ->groupBy('invoices.'.$column)
+            ->pluck('total_cost', $column);
+
+        $names = $this->namesFor($modelClass, $revenueRows->keys()->all());
+
+        return $revenueRows->map(function ($row) use ($costByGroup, $names, $column, $idKey, $nameKey) {
+            $groupId = $row->{$column};
+            $totalRevenue = (float) ($row->total_revenue ?? 0);
+            $totalCost = (float) ($costByGroup[$groupId] ?? 0);
+            $grossProfit = $totalRevenue - $totalCost;
+
+            return [
+                $idKey => (int) $groupId,
+                $nameKey => $names[$groupId] ?? 'غير معروف',
+                'total_invoices' => (int) ($row->total_invoices ?? 0),
+                'total_revenue' => $totalRevenue,
+                'total_cost' => $totalCost,
+                'gross_profit' => $grossProfit,
+                'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+            ];
+        })->values();
     }
 
     /**
@@ -833,9 +848,9 @@ class SalesReportController extends Controller
 
                 return [
                     'product_id' => (int) ($product?->id ?? 0),
-                    'product_name' => $product?->name ?? 'Unknown',
+                    'product_name' => $product?->name ?? 'غير معروف',
                     'warehouse_id' => (int) ($item->warehouse_id ?? $invoice->warehouse_id ?? 0),
-                    'warehouse_name' => $warehouse?->name ?? 'Unknown',
+                    'warehouse_name' => $warehouse?->name ?? 'غير معروف',
                     'quantity' => (float) ($item->quantity ?? 0),
                     'total_revenue' => $revenue,
                     'total_cost' => $cost,
@@ -910,7 +925,7 @@ class SalesReportController extends Controller
 
         $limit = min((int) $request->input('limit', 10) ?: 10, 50);
 
-        $topEmployees = $query
+        $rows = $query
             ->select('assigned_employee_id')
             ->selectRaw('COUNT(*) as total_invoices')
             ->selectRaw('SUM(total) as total_sales')
@@ -918,18 +933,19 @@ class SalesReportController extends Controller
             ->groupBy('assigned_employee_id')
             ->orderByDesc('total_sales')
             ->limit($limit)
-            ->get()
-            ->map(function ($item) {
-                $employee = Employee::find($item->assigned_employee_id);
+            ->get();
 
-                return [
-                    'employee_id' => $item->assigned_employee_id,
-                    'employee_name' => $employee ? $employee->name : 'Unknown',
-                    'total_invoices' => (int) ($item->total_invoices ?? 0),
-                    'total_sales' => (float) ($item->total_sales ?? 0),
-                    'average_invoice_value' => (float) ($item->average_invoice_value ?? 0),
-                ];
-            });
+        $names = $this->namesFor(Employee::class, $rows->pluck('assigned_employee_id')->all());
+
+        $topEmployees = $rows->map(function ($item) use ($names) {
+            return [
+                'employee_id' => $item->assigned_employee_id,
+                'employee_name' => $names[$item->assigned_employee_id] ?? 'غير معروف',
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_sales' => (float) ($item->total_sales ?? 0),
+                'average_invoice_value' => (float) ($item->average_invoice_value ?? 0),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -960,7 +976,7 @@ class SalesReportController extends Controller
 
         $limit = min((int) $request->input('limit', 10) ?: 10, 50);
 
-        $topEmployees = $query
+        $rows = $query
             ->select('assigned_employee_id')
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('SUM(total) as total_sales')
@@ -969,19 +985,20 @@ class SalesReportController extends Controller
             ->groupBy('assigned_employee_id')
             ->orderByDesc('total_sales')
             ->limit($limit)
-            ->get()
-            ->map(function ($item) {
-                $employee = Employee::find($item->assigned_employee_id);
+            ->get();
 
-                return [
-                    'employee_id' => $item->assigned_employee_id,
-                    'employee_name' => $employee ? $employee->name : 'Unknown',
-                    'total_orders' => (int) ($item->total_orders ?? 0),
-                    'total_sales' => (float) ($item->total_sales ?? 0),
-                    'total_subtotal' => (float) ($item->total_subtotal ?? 0),
-                    'average_order_value' => (float) ($item->average_order_value ?? 0),
-                ];
-            });
+        $names = $this->namesFor(Employee::class, $rows->pluck('assigned_employee_id')->all());
+
+        $topEmployees = $rows->map(function ($item) use ($names) {
+            return [
+                'employee_id' => $item->assigned_employee_id,
+                'employee_name' => $names[$item->assigned_employee_id] ?? 'غير معروف',
+                'total_orders' => (int) ($item->total_orders ?? 0),
+                'total_sales' => (float) ($item->total_sales ?? 0),
+                'total_subtotal' => (float) ($item->total_subtotal ?? 0),
+                'average_order_value' => (float) ($item->average_order_value ?? 0),
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -1349,73 +1366,77 @@ class SalesReportController extends Controller
 
     private function groupByEmployee($query)
     {
-        return $query
+        $rows = $query
             ->select('assigned_employee_id')
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('SUM(total) as total_sales')
             ->selectRaw('SUM(subtotal) as total_subtotal')
             ->selectRaw('AVG(total) as average_order_value')
             ->groupBy('assigned_employee_id')
-            ->get()
-            ->map(function ($item) {
-                $employee = Employee::find($item->assigned_employee_id);
-                return [
-                    'employee_id' => $item->assigned_employee_id,
-                    'employee_name' => $employee ? $employee->name : 'Unknown',
-                    'total_orders' => (int) ($item->total_orders ?? 0),
-                    'total_sales' => (float) ($item->total_sales ?? 0),
-                    'total_subtotal' => (float) ($item->total_subtotal ?? 0),
-                    'average_order_value' => (float) ($item->average_order_value ?? 0),
-                ];
-            });
+            ->get();
+
+        $names = $this->namesFor(Employee::class, $rows->pluck('assigned_employee_id')->all());
+
+        return $rows->map(function ($item) use ($names) {
+            return [
+                'employee_id' => $item->assigned_employee_id,
+                'employee_name' => $names[$item->assigned_employee_id] ?? 'غير معروف',
+                'total_orders' => (int) ($item->total_orders ?? 0),
+                'total_sales' => (float) ($item->total_sales ?? 0),
+                'total_subtotal' => (float) ($item->total_subtotal ?? 0),
+                'average_order_value' => (float) ($item->average_order_value ?? 0),
+            ];
+        });
     }
 
     private function groupByCustomer($query)
     {
-        return $query
+        $rows = $query
             ->select('customer_id')
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('SUM(total) as total_sales')
             ->selectRaw('SUM(subtotal) as total_subtotal')
             ->selectRaw('AVG(total) as average_order_value')
             ->groupBy('customer_id')
-            ->get()
-            ->map(function ($item) {
-                $customer = \App\Models\Customer::find($item->customer_id);
+            ->get();
 
-                return [
-                    'customer_id' => $item->customer_id,
-                    'customer_name' => $customer ? $customer->name : 'Unknown',
-                    'total_orders' => (int) ($item->total_orders ?? 0),
-                    'total_sales' => (float) ($item->total_sales ?? 0),
-                    'total_subtotal' => (float) ($item->total_subtotal ?? 0),
-                    'average_order_value' => (float) ($item->average_order_value ?? 0),
-                ];
-            });
+        $names = $this->namesFor(Customer::class, $rows->pluck('customer_id')->all());
+
+        return $rows->map(function ($item) use ($names) {
+            return [
+                'customer_id' => $item->customer_id,
+                'customer_name' => $names[$item->customer_id] ?? 'غير معروف',
+                'total_orders' => (int) ($item->total_orders ?? 0),
+                'total_sales' => (float) ($item->total_sales ?? 0),
+                'total_subtotal' => (float) ($item->total_subtotal ?? 0),
+                'average_order_value' => (float) ($item->average_order_value ?? 0),
+            ];
+        });
     }
 
     private function groupByWarehouse($query)
     {
-        return $query
+        $rows = $query
             ->select('fulfillment_warehouse_id as warehouse_id')
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('SUM(total) as total_sales')
             ->selectRaw('SUM(subtotal) as total_subtotal')
             ->selectRaw('AVG(total) as average_order_value')
             ->groupBy('fulfillment_warehouse_id')
-            ->get()
-            ->map(function ($item) {
-                $warehouse = \App\Models\Warehouse::find($item->warehouse_id);
+            ->get();
 
-                return [
-                    'warehouse_id' => $item->warehouse_id,
-                    'warehouse_name' => $warehouse ? $warehouse->name : 'Unknown',
-                    'total_orders' => (int) ($item->total_orders ?? 0),
-                    'total_sales' => (float) ($item->total_sales ?? 0),
-                    'total_subtotal' => (float) ($item->total_subtotal ?? 0),
-                    'average_order_value' => (float) ($item->average_order_value ?? 0),
-                ];
-            });
+        $names = $this->namesFor(Warehouse::class, $rows->pluck('warehouse_id')->all());
+
+        return $rows->map(function ($item) use ($names) {
+            return [
+                'warehouse_id' => $item->warehouse_id,
+                'warehouse_name' => $names[$item->warehouse_id] ?? 'غير معروف',
+                'total_orders' => (int) ($item->total_orders ?? 0),
+                'total_sales' => (float) ($item->total_sales ?? 0),
+                'total_subtotal' => (float) ($item->total_subtotal ?? 0),
+                'average_order_value' => (float) ($item->average_order_value ?? 0),
+            ];
+        });
     }
 
     private function groupByStatus($query)

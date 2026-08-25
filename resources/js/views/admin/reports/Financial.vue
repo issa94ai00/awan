@@ -190,7 +190,7 @@
 import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted, nextTick } from 'vue';
-import { Coin, Wallet, TrendingUp, CircleCheck, Document, Ticket, Download, RefreshRight } from '@element-plus/icons-vue';
+import { Coin, Wallet, CircleCheck, Document, Ticket, Download, RefreshRight } from '@element-plus/icons-vue';
 import * as echarts from 'echarts';
 import api from '@/api';
 import { dashboardApi } from '@/api/dashboard';
