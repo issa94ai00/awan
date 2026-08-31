@@ -609,6 +609,11 @@ class WmsController extends Controller
             'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'movement_type' => 'required|in:in,out,adjustment,transfer',
+            // A transfer with no destination is indistinguishable from a
+            // plain issue — the stock would leave the source warehouse and
+            // never be recorded anywhere else. Required, distinct from the
+            // source, and a real warehouse.
+            'to_warehouse_id' => 'required_if:movement_type,transfer|nullable|exists:warehouses,id|different:warehouse_id',
             'quantity' => 'required|numeric|min:0.01',
             'reference_document' => 'nullable|string',
             'movement_key' => 'nullable|string|max:255',
@@ -631,12 +636,26 @@ class WmsController extends Controller
         ];
 
         try {
-            $movement = match ($request->movement_type) {
-                'in' => $inventory->receive($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
-                'transfer' => $inventory->issue($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
-                'adjustment' => $inventory->adjust($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
-                default => $inventory->issue($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
-            };
+            if ($request->movement_type === 'transfer') {
+                // issue() alone would delete the stock from the source
+                // warehouse with no record of where it went. transfer()
+                // moves it: an issue out of the source and a receipt into
+                // the destination, in one DB transaction.
+                [$movement, $inMovement] = $inventory->transfer(
+                    $request->product_id,
+                    (int) $request->quantity,
+                    $request->warehouse_id,
+                    (int) $request->to_warehouse_id,
+                    $options
+                );
+            } else {
+                $movement = match ($request->movement_type) {
+                    'in' => $inventory->receive($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
+                    'adjustment' => $inventory->adjust($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
+                    default => $inventory->issue($request->product_id, (int) $request->quantity, $request->warehouse_id, $options),
+                };
+                $inMovement = null;
+            }
         } catch (\RuntimeException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -650,14 +669,29 @@ class WmsController extends Controller
         // بث حدث الحركة
         broadcast(new StockMovementCreated($movement, $request->warehouse_id));
 
+        $lowStockRows = [[$warehouseRow, $request->warehouse_id]];
+
+        // A transfer also changes the destination warehouse's stock — broadcast
+        // that leg and check it for a reorder breach too, not just the source.
+        if ($inMovement) {
+            broadcast(new StockMovementCreated($inMovement, (int) $request->to_warehouse_id));
+
+            $destinationRow = WarehouseInventory::where('product_id', $request->product_id)
+                ->where('warehouse_id', $request->to_warehouse_id)
+                ->first();
+            $lowStockRows[] = [$destinationRow, (int) $request->to_warehouse_id];
+        }
+
         // إرسال تنبيه إذا وصل للحد الأدنى
-        if ($warehouseRow && $warehouseRow->quantity <= ($warehouseRow->reorder_point ?? 0)) {
-            broadcast(new StockAlert([
-                'product_id' => $warehouseRow->product_id,
-                'warehouse_id' => $request->warehouse_id,
-                'message' => "المنتج {$warehouseRow->product->name} في المستودع وصل للحد الأدنى",
-                'created_at' => now()->format('Y-m-d H:i:s'),
-            ]));
+        foreach ($lowStockRows as [$row, $warehouseId]) {
+            if ($row && $row->quantity <= ($row->reorder_point ?? 0)) {
+                broadcast(new StockAlert([
+                    'product_id' => $row->product_id,
+                    'warehouse_id' => $warehouseId,
+                    'message' => "المنتج {$row->product->name} في المستودع وصل للحد الأدنى",
+                    'created_at' => now()->format('Y-m-d H:i:s'),
+                ]));
+            }
         }
 
         return response()->json([

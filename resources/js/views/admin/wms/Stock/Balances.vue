@@ -32,6 +32,7 @@ const dateToFilter = ref('');
 const form = ref({
     product_id: null,
     warehouse_id: null,
+    to_warehouse_id: null,
     movement_type: 'in',
     quantity: 0,
     reference_document: '',
@@ -47,7 +48,7 @@ const previewBalance = computed(() => {
     
     if (form.value.movement_type === 'in' || form.value.movement_type === 'adjustment') {
         return availableQty + qty;
-    } else if (form.value.movement_type === 'out') {
+    } else if (form.value.movement_type === 'out' || form.value.movement_type === 'transfer') {
         return availableQty - qty;
     }
     return availableQty;
@@ -219,11 +220,16 @@ function validateQuantity() {
         return false;
     }
     
-    if (form.value.movement_type === 'out' && previewBalance.value < 0) {
+    if ((form.value.movement_type === 'out' || form.value.movement_type === 'transfer') && previewBalance.value < 0) {
         ElMessage.error(t('insufficient_available_balance'));
         return false;
     }
-    
+
+    if (form.value.movement_type === 'transfer' && !form.value.to_warehouse_id) {
+        ElMessage.error(t('please_choose_destination_warehouse'));
+        return false;
+    }
+
     return true;
 }
 
@@ -246,6 +252,7 @@ async function submitMovement() {
         form.value = {
             product_id: selectedProduct.value?.id,
             warehouse_id: selectedWarehouse.value?.id,
+            to_warehouse_id: null,
             movement_type: 'in',
             quantity: 0,
             reference_document: '',
@@ -300,6 +307,7 @@ function handleCancel() {
     form.value = {
         product_id: selectedProduct.value?.id,
         warehouse_id: selectedWarehouse.value?.id,
+        to_warehouse_id: null,
         movement_type: 'in',
         quantity: 0,
         reference_document: '',
@@ -657,6 +665,23 @@ function getMovementTypeText(type) {
                                 <option value="out">{{ $t('issue_movement') }}</option>
                                 <option value="adjustment">{{ $t('adjustment') }}</option>
                                 <option value="transfer">{{ $t('transfer_movement') }}</option>
+                            </select>
+                        </div>
+
+                        <div v-if="form.movement_type === 'transfer'">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('destination_warehouse') }}</label>
+                            <select
+                                v-model="form.to_warehouse_id"
+                                class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            >
+                                <option :value="null">{{ $t('choose_warehouse') }}</option>
+                                <option
+                                    v-for="wh in warehouses.filter(w => w.id !== form.warehouse_id)"
+                                    :key="wh.id"
+                                    :value="wh.id"
+                                >
+                                    {{ wh.name }} ({{ wh.code }})
+                                </option>
                             </select>
                         </div>
 
