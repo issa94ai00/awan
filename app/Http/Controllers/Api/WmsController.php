@@ -162,7 +162,15 @@ class WmsController extends Controller
             $query->where('category_id', $request->category);
         }
 
-        $products = $query->get()->map(function ($product) {
+        // Was an unbounded ->get() — every product, with every warehouse's
+        // inventory row, on every request. Same per_page cap the rest of the
+        // module uses; callers that genuinely need the whole catalog (Stock
+        // Organization's assigned/unassigned view) ask for a larger page
+        // explicitly rather than the server handing out everything by default.
+        $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
+        $products = $query->paginate($perPage);
+
+        $products->getCollection()->transform(function ($product) {
             return [
                 'id' => $product->id,
                 'code' => $product->code ?? 'N/A',
@@ -178,9 +186,7 @@ class WmsController extends Controller
             ];
         });
 
-        return response()->json([
-            'data' => $products,
-        ]);
+        return response()->json($products);
     }
 
     // ==================== Assignments ====================
@@ -533,16 +539,41 @@ class WmsController extends Controller
         $request->validate([
             'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
+            'lead_time_days' => 'nullable|integer|min:1',
         ]);
 
-        // حساب متوسط الاستهلاك الشهري (محاكاة)
-        // في الواقع، يجب جلب البيانات من جدول الحركات
-        $avgConsumption = 10; // قيمة افتراضية
+        $leadTimeDays = (int) ($request->lead_time_days ?? 7);
+        $lookbackDays = 90;
+
+        // Real consumption, not a made-up constant: everything this product
+        // has actually shipped from this warehouse in the last 90 days.
+        $totalConsumed = (int) StockMovement::where('product_id', $request->product_id)
+            ->where('warehouse_id', $request->warehouse_id)
+            ->where('movement_type', StockMovement::TYPE_OUT)
+            ->where('created_at', '>=', now()->subDays($lookbackDays))
+            ->sum('quantity');
+
+        $avgDailyConsumption = $totalConsumed / $lookbackDays;
+        // The safety buffer covers demand during lead time, but is capped —
+        // a six-month lead time shouldn't demand six months of safety stock
+        // on top of the lead-time coverage itself.
+        $safetyDays = min($leadTimeDays, 7);
+
+        $safetyStock = (int) ceil($avgDailyConsumption * $safetyDays);
+        $minStock = (int) ceil($avgDailyConsumption * $leadTimeDays) + $safetyStock;
+        // Headroom for roughly a month between reorders on top of the
+        // reorder point itself.
+        $maxStock = $minStock + (int) ceil($avgDailyConsumption * 30);
 
         return response()->json([
-            'min_stock' => $avgConsumption * 3,  // 3 أشهر
-            'max_stock' => $avgConsumption * 6,  // 6 أشهر
-            'safety_stock' => $avgConsumption * 1.5,
+            'min_stock' => $minStock,
+            'max_stock' => max($maxStock, $minStock + 1),
+            'safety_stock' => $safetyStock,
+            // So the screen can say what the numbers are based on instead of
+            // presenting them as if they came from nowhere.
+            'avg_daily_consumption' => round($avgDailyConsumption, 2),
+            'based_on_days' => $lookbackDays,
+            'total_consumed' => $totalConsumed,
         ]);
     }
 
@@ -595,8 +626,30 @@ class WmsController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
         ]);
 
-        // TODO: Add stock movements table and query here
-        $transactions = collect();
+        // The stock_movements table this screen was always meant to read
+        // from already exists and is exactly what every other WMS write
+        // (receive/issue/adjust/transfer) records to — this just never
+        // queried it, so the ledger the screen renders was always empty.
+        $transactions = StockMovement::where('product_id', $request->product_id)
+            ->where('warehouse_id', $request->warehouse_id)
+            ->with('creator:id,name')
+            ->latest('id')
+            ->limit(500)
+            ->get()
+            ->map(fn ($m) => [
+                'id' => $m->id,
+                'movement_type' => $m->movement_type,
+                'movement_type_text' => $m->movement_type_text,
+                'quantity' => (int) $m->quantity,
+                // The model column is `reference`; the screen has always
+                // called it `reference_document`.
+                'reference_document' => $m->reference,
+                'notes' => $m->notes,
+                'unit_cost' => (float) $m->unit_cost,
+                'total_cost' => (float) $m->total_cost,
+                'created_by_name' => $m->creator?->name,
+                'created_at' => $m->created_at?->toDateTimeString(),
+            ]);
 
         return response()->json([
             'data' => $transactions,
@@ -753,7 +806,12 @@ class WmsController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $bin = WarehouseBin::create($validated);
+        // `code` is what this screen and product assignments read; `bin_code`
+        // is the original column and Picking/Packing/Cycle Count still read
+        // it (see the migration that split them). Keeping both set here is
+        // what keeps a bin created through this form showing its code on
+        // those screens instead of a blank.
+        $bin = WarehouseBin::create([...$validated, 'bin_code' => $validated['code']]);
 
         return response()->json($bin, 201);
     }
@@ -778,6 +836,11 @@ class WmsController extends Controller
             'coordinates' => 'nullable|array',
             'notes' => 'nullable|string',
         ]);
+
+        // Keep bin_code in step with code — see storeBin().
+        if (array_key_exists('code', $validated)) {
+            $validated['bin_code'] = $validated['code'];
+        }
 
         $bin->update($validated);
 
