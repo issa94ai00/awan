@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\PackingList;
 use App\Models\PackingListItem;
 use App\Models\PickingList;
+use App\Models\PickingListItem;
 use App\Models\ShippingManifest;
 use App\Models\ShippingManifestItem;
 use Illuminate\Support\Collection;

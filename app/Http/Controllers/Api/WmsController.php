@@ -1066,29 +1066,108 @@ class WmsController extends Controller
 
     public function indexPackingLists(Request $request)
     {
-        $query = PackingList::with(['warehouse', 'pickingList', 'salesOrder.customer', 'packer', 'items.product']);
+        $query = PackingList::with(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name', 'packer:id,name']);
 
-        if ($request->warehouse_id) {
+        if ($request->filled('warehouse_id')) {
             $query->byWarehouse($request->warehouse_id);
         }
 
-        if ($request->status) {
+        if ($request->filled('status')) {
             $query->byStatus($request->status);
         }
 
-        if ($request->packer_id) {
+        if ($request->filled('packer_id')) {
             $query->byPacker($request->packer_id);
         }
 
-        return response()->json($query->paginate(20));
+        $lists = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'lists' => collect($lists->items())->map(fn ($l) => $this->presentPackingList($l))->all(),
+                'pagination' => [
+                    'current_page' => $lists->currentPage(),
+                    'last_page' => $lists->lastPage(),
+                    'per_page' => $lists->perPage(),
+                    'total' => $lists->total(),
+                    'has_more_pages' => $lists->hasMorePages(),
+                ],
+            ],
+        ]);
+    }
+
+    /** Every packing action answers with the refreshed list — same reasoning as picking. */
+    private function packingResponse(PackingList $list, string $message)
+    {
+        $list->refresh()->load(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name', 'packer:id,name', 'items.product:id,sku,name_ar,name_en']);
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => ['list' => $this->presentPackingList($list, withItems: true)],
+        ]);
+    }
+
+    /** One packing list, flattened for the screen — mirrors presentPickingList. */
+    private function presentPackingList(PackingList $l, bool $withItems = false): array
+    {
+        $row = [
+            'id' => $l->id,
+            'list_number' => $l->list_number,
+            'status' => $l->status,
+            'status_text' => $l->status_text,
+            'warehouse_id' => (int) $l->warehouse_id,
+            'warehouse_name' => $l->warehouse?->name,
+            'picking_list_id' => $l->picking_list_id ? (int) $l->picking_list_id : null,
+            'picking_list_number' => $l->pickingList?->list_number,
+            'sales_order_id' => $l->sales_order_id ? (int) $l->sales_order_id : null,
+            'order_number' => $l->salesOrder?->order_number,
+            'customer_name' => $l->salesOrder?->customer?->name,
+            'packer_id' => $l->packer_id ? (int) $l->packer_id : null,
+            'packer_name' => $l->packer?->name,
+            'total_packages' => (int) $l->total_packages,
+            'total_weight' => (float) $l->total_weight,
+            'box_type' => $l->box_type,
+            'packing_instructions' => $l->packing_instructions,
+            'notes' => $l->notes,
+            // The screen shows or hides its buttons off these rather than
+            // re-deriving the rules, so the two cannot disagree.
+            'can_start' => $l->canStart(),
+            'can_complete' => $l->status === PackingList::STATUS_IN_PROGRESS,
+            'can_cancel' => $l->status !== PackingList::STATUS_COMPLETED && $l->status !== PackingList::STATUS_CANCELLED,
+            'started_at' => $l->started_at?->toDateTimeString(),
+            'completed_at' => $l->completed_at?->toDateTimeString(),
+            'created_at' => $l->created_at?->toDateTimeString(),
+        ];
+
+        if ($withItems) {
+            $row['items'] = $l->items->map(fn ($i) => [
+                'id' => $i->id,
+                'product_id' => (int) $i->product_id,
+                'sku' => $i->product?->sku,
+                'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
+                'quantity' => (int) $i->quantity,
+                'package_number' => $i->package_number,
+                'dimensions' => $i->dimensions,
+                'weight' => $i->weight !== null ? (float) $i->weight : null,
+                'fragile' => (bool) $i->fragile,
+                'notes' => $i->notes,
+            ])->values();
+        }
+
+        return $row;
     }
 
     public function showPackingList($id)
     {
-        $list = PackingList::with(['warehouse', 'pickingList', 'salesOrder.customer', 'packer', 'items.product', 'items.productVariant'])
+        $list = PackingList::with(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name', 'packer:id,name', 'items.product:id,sku,name_ar,name_en'])
             ->findOrFail($id);
 
-        return response()->json($list);
+        return response()->json([
+            'success' => true,
+            'data' => ['list' => $this->presentPackingList($list, withItems: true)],
+        ]);
     }
 
     public function createPackingList(Request $request)
@@ -1101,11 +1180,10 @@ class WmsController extends Controller
 
         try {
             $packingList = $this->packingService->createPackingList($pickingList);
-            $packingList->load(['warehouse', 'pickingList', 'salesOrder', 'items.product']);
 
-            return response()->json($packingList, 201);
+            return $this->packingResponse($packingList, 'أُنشئت قائمة التعبئة.')->setStatusCode(201);
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -1116,9 +1194,9 @@ class WmsController extends Controller
         try {
             $this->packingService->startPacking($list, $request->user()->id);
 
-            return response()->json(['message' => 'Packing started']);
+            return $this->packingResponse($list, 'بدأت عملية التعبئة.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -1129,7 +1207,7 @@ class WmsController extends Controller
         $validated = $request->validate([
             'package_number' => 'nullable|string',
             'dimensions' => 'nullable|array',
-            'weight' => 'nullable|numeric',
+            'weight' => 'nullable|numeric|min:0',
             'fragile' => 'boolean',
             'notes' => 'nullable|string',
         ]);
@@ -1137,9 +1215,9 @@ class WmsController extends Controller
         try {
             $this->packingService->updatePackageDetails($item, $validated);
 
-            return response()->json(['message' => 'Package details updated']);
+            return $this->packingResponse($item->packingList()->first(), 'تم تحديث بيانات الطرد.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -1150,9 +1228,9 @@ class WmsController extends Controller
         try {
             $this->packingService->completePacking($list);
 
-            return response()->json(['message' => 'Packing completed']);
+            return $this->packingResponse($list, 'اكتملت التعبئة — الطرود جاهزة للشحن.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -1163,9 +1241,9 @@ class WmsController extends Controller
         try {
             $this->packingService->cancelPacking($list);
 
-            return response()->json(['message' => 'Packing cancelled']);
+            return $this->packingResponse($list, 'أُلغيت قائمة التعبئة.');
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
 
@@ -1277,33 +1355,129 @@ class WmsController extends Controller
 
     public function indexCycleCounts(Request $request)
     {
-        $query = CycleCount::with(['warehouse', 'bin', 'counter', 'reviewer', 'items.product']);
+        $query = CycleCount::with(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name']);
 
-        if ($request->warehouse_id) {
+        if ($request->filled('warehouse_id')) {
             $query->byWarehouse($request->warehouse_id);
         }
 
-        if ($request->bin_id) {
+        if ($request->filled('bin_id')) {
             $query->byBin($request->bin_id);
         }
 
-        if ($request->status) {
+        if ($request->filled('status')) {
             $query->byStatus($request->status);
         }
 
-        if ($request->type) {
+        if ($request->filled('type')) {
             $query->byType($request->type);
         }
 
-        return response()->json($query->paginate(20));
+        $counts = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'counts' => collect($counts->items())->map(fn ($c) => $this->presentCycleCount($c))->all(),
+                'pagination' => [
+                    'current_page' => $counts->currentPage(),
+                    'last_page' => $counts->lastPage(),
+                    'per_page' => $counts->perPage(),
+                    'total' => $counts->total(),
+                    'has_more_pages' => $counts->hasMorePages(),
+                ],
+            ],
+        ]);
+    }
+
+    /** Every cycle count action answers with the refreshed count — same reasoning as picking. */
+    private function cycleCountResponse(CycleCount $count, string $message)
+    {
+        $count->refresh()->load(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'items.product:id,sku,name_ar,name_en', 'items.bin:id,bin_code']);
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data' => ['count' => $this->presentCycleCount($count, withItems: true)],
+        ]);
+    }
+
+    /** One cycle count, flattened for the screen — mirrors presentPickingList. */
+    private function presentCycleCount(CycleCount $c, bool $withItems = false): array
+    {
+        $total = $c->items()->count() ?: null;
+        // Same variance figures the record already carries, but expressed the
+        // way an operator reads them: what fraction of counted lines matched.
+        $accuracy = $total && $c->total_items
+            ? (int) round((1 - ($c->variance_items / $c->total_items)) * 100)
+            : null;
+
+        $row = [
+            'id' => $c->id,
+            'count_number' => $c->count_number,
+            'type' => $c->type,
+            'type_text' => $c->type_text,
+            'status' => $c->status,
+            'status_text' => $c->status_text,
+            'warehouse_id' => (int) $c->warehouse_id,
+            'warehouse_name' => $c->warehouse?->name,
+            'bin_id' => $c->bin_id ? (int) $c->bin_id : null,
+            'bin_code' => $c->bin?->bin_code,
+            'counter_id' => $c->counter_id ? (int) $c->counter_id : null,
+            'counter_name' => $c->counter?->name,
+            'reviewer_id' => $c->reviewer_id ? (int) $c->reviewer_id : null,
+            'reviewer_name' => $c->reviewer?->name,
+            'total_items' => (int) $c->total_items,
+            'variance_items' => (int) $c->variance_items,
+            'variance_value' => (float) $c->variance_value,
+            'accuracy' => $accuracy,
+            'requires_adjustment' => (bool) $c->requires_adjustment,
+            'notes' => $c->notes,
+            // The screen shows or hides its buttons off these rather than
+            // re-deriving the rules, so the two cannot disagree.
+            'can_start' => $c->canStart(),
+            'can_add_items' => $c->status === CycleCount::STATUS_IN_PROGRESS,
+            'can_complete' => $c->status === CycleCount::STATUS_IN_PROGRESS,
+            'can_review' => $c->status === CycleCount::STATUS_COMPLETED && ! $c->reviewer_id,
+            'can_apply_adjustment' => $c->requires_adjustment && ! $c->adjustment_by,
+            'can_cancel' => ! in_array($c->status, [CycleCount::STATUS_COMPLETED, CycleCount::STATUS_CANCELLED], true),
+            'started_at' => $c->started_at?->toDateTimeString(),
+            'completed_at' => $c->completed_at?->toDateTimeString(),
+            'reviewed_at' => $c->reviewed_at?->toDateTimeString(),
+            'adjusted_at' => $c->adjusted_at?->toDateTimeString(),
+            'created_at' => $c->created_at?->toDateTimeString(),
+        ];
+
+        if ($withItems) {
+            $row['items'] = $c->items->map(fn ($i) => [
+                'id' => $i->id,
+                'product_id' => (int) $i->product_id,
+                'sku' => $i->product?->sku,
+                'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
+                'bin_code' => $i->bin?->bin_code,
+                'expected_quantity' => (int) $i->expected_quantity,
+                'counted_quantity' => (int) $i->counted_quantity,
+                'variance' => (int) $i->variance,
+                'variance_value' => (float) $i->variance_value,
+                'variance_reason' => $i->variance_reason,
+                'variance_reason_text' => $i->variance_reason_text,
+                'verified' => (bool) $i->verified,
+                'notes' => $i->notes,
+            ])->values();
+        }
+
+        return $row;
     }
 
     public function showCycleCount($id)
     {
-        $count = CycleCount::with(['warehouse', 'bin', 'counter', 'reviewer', 'items.product', 'items.productVariant', 'items.bin'])
+        $count = CycleCount::with(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'items.product:id,sku,name_ar,name_en', 'items.bin:id,bin_code'])
             ->findOrFail($id);
 
-        return response()->json($count);
+        return response()->json([
+            'success' => true,
+            'data' => ['count' => $this->presentCycleCount($count, withItems: true)],
+        ]);
     }
 
     public function storeCycleCount(Request $request)
@@ -1317,14 +1491,14 @@ class WmsController extends Controller
 
         $count = CycleCount::create([
             'warehouse_id' => $validated['warehouse_id'],
-            'bin_id' => $validated['bin_id'],
+            'bin_id' => $validated['bin_id'] ?? null,
             'count_number' => 'CC-'.str_pad(CycleCount::count() + 1, 6, '0', STR_PAD_LEFT),
             'type' => $validated['type'],
             'status' => CycleCount::STATUS_PENDING,
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        return response()->json($count, 201);
+        return $this->cycleCountResponse($count, 'أُنشئ الجرد الدوري.')->setStatusCode(201);
     }
 
     public function startCycleCount(Request $request, $id)
@@ -1332,33 +1506,54 @@ class WmsController extends Controller
         $count = CycleCount::findOrFail($id);
 
         if (! $count->canStart()) {
-            return response()->json(['message' => 'Cycle count cannot be started'], 400);
+            return response()->json(['success' => false, 'message' => 'لا يمكن بدء هذا الجرد.'], 422);
         }
 
         $count->start($request->user()->id);
 
-        return response()->json(['message' => 'Cycle count started']);
+        return $this->cycleCountResponse($count, 'بدأ الجرد الدوري.');
     }
 
     public function addCycleCountItem(Request $request, $countId)
     {
         $count = CycleCount::findOrFail($countId);
 
+        if ($count->status !== CycleCount::STATUS_IN_PROGRESS) {
+            return response()->json(['success' => false, 'message' => 'يجب بدء الجرد قبل إضافة أصناف إليه.'], 422);
+        }
+
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
             'bin_id' => 'nullable|exists:warehouse_bins,id',
-            'expected_quantity' => 'required|integer|min:0',
             'counted_quantity' => 'required|integer|min:0',
-            'unit_cost' => 'nullable|numeric',
+            'unit_cost' => 'nullable|numeric|min:0',
             'variance_reason' => 'nullable|in:theft,damage,data_entry,unknown',
             'notes' => 'nullable|string',
         ]);
 
-        $item = $count->items()->create($validated);
-        $item->calculateVariance();
+        // The "expected" figure is what makes a count meaningful — it has to
+        // come from the system's own stock record, not from whatever the
+        // request claims, or a careless (or dishonest) entry could report
+        // zero variance on real shrinkage. It's read straight off
+        // warehouse_inventory for this product/warehouse/bin combination.
+        $expectedQuantity = (int) WarehouseInventory::where('product_id', $validated['product_id'])
+            ->where('warehouse_id', $count->warehouse_id)
+            ->when($validated['product_variant_id'] ?? null, fn ($q, $v) => $q->where('product_variant_id', $v))
+            ->when($validated['bin_id'] ?? null, fn ($q, $b) => $q->where('bin_id', $b))
+            ->value('quantity') ?? 0;
 
-        return response()->json($item, 201);
+        $product = Product::find($validated['product_id']);
+
+        $item = $count->items()->create([
+            ...$validated,
+            'expected_quantity' => $expectedQuantity,
+            'unit_cost' => $validated['unit_cost'] ?? $product?->cost_price ?? 0,
+        ]);
+        $item->calculateVariance();
+        $count->calculateVariance();
+
+        return $this->cycleCountResponse($count, 'أُضيف الصنف إلى الجرد.');
     }
 
     public function completeCycleCount($id)
@@ -1366,13 +1561,19 @@ class WmsController extends Controller
         $count = CycleCount::findOrFail($id);
 
         if ($count->status !== CycleCount::STATUS_IN_PROGRESS) {
-            return response()->json(['message' => 'Cycle count is not in progress'], 400);
+            return response()->json(['success' => false, 'message' => 'الجرد ليس قيد التنفيذ.'], 422);
         }
 
-        $count->complete();
-        $count->calculateVariance();
+        if ($count->items()->count() === 0) {
+            return response()->json(['success' => false, 'message' => 'لا يمكن إكمال جرد لم تُضف إليه أي أصناف.'], 422);
+        }
 
-        return response()->json(['message' => 'Cycle count completed']);
+        DB::transaction(function () use ($count) {
+            $count->complete();
+            $count->calculateVariance();
+        });
+
+        return $this->cycleCountResponse($count, 'اكتمل الجرد الدوري.');
     }
 
     public function reviewCycleCount(Request $request, $id)
@@ -1380,33 +1581,38 @@ class WmsController extends Controller
         $count = CycleCount::findOrFail($id);
 
         if ($count->status !== CycleCount::STATUS_COMPLETED) {
-            return response()->json(['message' => 'Cycle count must be completed before review'], 400);
+            return response()->json(['success' => false, 'message' => 'يجب إكمال الجرد قبل مراجعته.'], 422);
         }
 
         $count->review($request->user()->id);
 
-        return response()->json(['message' => 'Cycle count reviewed']);
+        return $this->cycleCountResponse($count, 'رُوجع الجرد الدوري.');
     }
 
     public function applyAdjustment(Request $request, $id)
     {
         $count = CycleCount::findOrFail($id);
 
-        if (! $count->requires_adjustment) {
-            return response()->json(['message' => 'No adjustment required'], 400);
+        if (! $count->requires_adjustment || $count->adjustment_by) {
+            return response()->json(['success' => false, 'message' => 'لا توجد تسوية مطلوبة لهذا الجرد.'], 422);
         }
 
         $count->applyAdjustment($request->user()->id);
 
-        return response()->json(['message' => 'Adjustment applied']);
+        return $this->cycleCountResponse($count, 'طُبّقت التسوية على المخزون.');
     }
 
     public function cancelCycleCount($id)
     {
         $count = CycleCount::findOrFail($id);
+
+        if (in_array($count->status, [CycleCount::STATUS_COMPLETED, CycleCount::STATUS_CANCELLED], true)) {
+            return response()->json(['success' => false, 'message' => 'لا يمكن إلغاء جرد مكتمل أو ملغى بالفعل.'], 422);
+        }
+
         $count->cancel();
 
-        return response()->json(['message' => 'Cycle count cancelled']);
+        return $this->cycleCountResponse($count, 'أُلغي الجرد الدوري.');
     }
 
     // ==================== Warehouses CRUD ====================

@@ -77,7 +77,9 @@ class CycleCountItem extends Model
             self::VARIANCE_REASON_DAMAGE => 'تلف',
             self::VARIANCE_REASON_DATA_ENTRY => 'خطأ في الإدخال',
             self::VARIANCE_REASON_UNKNOWN => 'غير معروف',
-            default => $this->variance_reason,
+            // No reason has been recorded — most items, since it's only set
+            // when there actually is a variance to explain.
+            default => (string) ($this->variance_reason ?? ''),
         };
     }
 
