@@ -1,5 +1,9 @@
 import api from '@/api';
 const API_BASE_URL = '/wms';
+// Packing and cycle counts are only registered under the admin-gated
+// `/admin/wms` prefix (routes/api.php), not the plain `/wms` prefix the rest
+// of this service uses — hitting `${API_BASE_URL}/packing-lists` 404s.
+const ADMIN_BASE_URL = '/admin/wms';
 
 export const wmsService = {
     // Stats
@@ -97,68 +101,52 @@ export const wmsService = {
 
     // Packing Lists
     getPackingLists(params = {}) {
-        return api.get(`${API_BASE_URL}/packing-lists`, { params });
+        return api.get(`${ADMIN_BASE_URL}/packing-lists`, { params });
     },
 
     getPackingList(id) {
-        return api.get(`${API_BASE_URL}/packing-lists/${id}`);
+        return api.get(`${ADMIN_BASE_URL}/packing-lists/${id}`);
     },
 
     createPackingList(data) {
-        return api.post(`${API_BASE_URL}/packing-lists`, data);
-    },
-
-    updatePackingList(id, data) {
-        return api.put(`${API_BASE_URL}/packing-lists/${id}`, data);
-    },
-
-    deletePackingList(id) {
-        return api.delete(`${API_BASE_URL}/packing-lists/${id}`);
+        return api.post(`${ADMIN_BASE_URL}/packing-lists`, data);
     },
 
     startPacking(id) {
-        return api.post(`${API_BASE_URL}/packing-lists/${id}/start`);
+        return api.post(`${ADMIN_BASE_URL}/packing-lists/${id}/start`);
     },
 
     completePacking(id) {
-        return api.post(`${API_BASE_URL}/packing-lists/${id}/complete`);
+        return api.post(`${ADMIN_BASE_URL}/packing-lists/${id}/complete`);
     },
 
     cancelPacking(id) {
-        return api.post(`${API_BASE_URL}/packing-lists/${id}/cancel`);
+        return api.post(`${ADMIN_BASE_URL}/packing-lists/${id}/cancel`);
     },
 
     // Cycle Counts
     getCycleCounts(params = {}) {
-        return api.get(`${API_BASE_URL}/cycle-counts`, { params });
+        return api.get(`${ADMIN_BASE_URL}/cycle-counts`, { params });
     },
 
     getCycleCount(id) {
-        return api.get(`${API_BASE_URL}/cycle-counts/${id}`);
+        return api.get(`${ADMIN_BASE_URL}/cycle-counts/${id}`);
     },
 
     createCycleCount(data) {
-        return api.post(`${API_BASE_URL}/cycle-counts`, data);
-    },
-
-    updateCycleCount(id, data) {
-        return api.put(`${API_BASE_URL}/cycle-counts/${id}`, data);
-    },
-
-    deleteCycleCount(id) {
-        return api.delete(`${API_BASE_URL}/cycle-counts/${id}`);
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts`, data);
     },
 
     startCycleCount(id) {
-        return api.post(`${API_BASE_URL}/cycle-counts/${id}/start`);
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/start`);
     },
 
     completeCycleCount(id) {
-        return api.post(`${API_BASE_URL}/cycle-counts/${id}/complete`);
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/complete`);
     },
 
     cancelCycleCount(id) {
-        return api.post(`${API_BASE_URL}/cycle-counts/${id}/cancel`);
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/cancel`);
     },
 
     // Performance

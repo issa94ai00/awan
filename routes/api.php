@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductUnitController;
+use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\ProductWarehouseAssignmentController;
 use App\Http\Controllers\Api\MrpController;
 use App\Http\Controllers\Api\CompositeProductController;
@@ -147,10 +148,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::delete('/assignments/{id}', [WmsController::class, 'destroyAssignment'])->name('api.admin.wms.assignments.destroy');
         Route::get('/suggest-stock-levels', [WmsController::class, 'suggestStockLevels'])->name('api.admin.wms.suggest-stock-levels');
 
-        // Stock (المخزون)
+        // Stock (المخزون) — reading is open like the rest of this group, but
+        // recording a movement changes real inventory, so it needs the same
+        // admin gate the equivalent /admin/wms/stock/movements route already
+        // carries. Without it, any signed-in user could create stock
+        // movements straight through this prefix regardless of role.
         Route::get('/stock/balance', [WmsController::class, 'getStockBalance'])->name('api.admin.wms.stock.balance');
         Route::get('/stock/transactions', [WmsController::class, 'getStockTransactions'])->name('api.admin.wms.stock.transactions');
-        Route::post('/stock/movements', [WmsController::class, 'createStockMovement'])->name('api.admin.wms.stock.movements.create');
+        Route::post('/stock/movements', [WmsController::class, 'createStockMovement'])->middleware('admin')->name('api.admin.wms.stock.movements.create');
 
         // Stats (إحصائيات)
         Route::get('/stats', [WmsController::class, 'getWmsStats'])->name('api.admin.wms.stats');
@@ -312,6 +317,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
             Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+            Route::put('/product-variants/{variant}', [ProductVariantController::class, 'update'])->name('api.admin.product-variants.update');
 
             // Product Units API
             Route::get('/products/{product}/units', [ProductUnitController::class, 'index'])->name('api.admin.product-units.index');

@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import axios from 'axios';
+import api from '@/api';
 
 const { t } = useI18n();
 
@@ -42,8 +42,8 @@ async function fetchData() {
     
     try {
         const [productsRes, warehousesRes] = await Promise.all([
-            axios.get('/api/v1/admin/wms/products'),
-            axios.get('/api/v1/admin/wms/warehouses')
+            api.get('/admin/wms/products'),
+            api.get('/admin/wms/warehouses')
         ]);
         
         // التحقق من صحة البيانات
@@ -145,7 +145,7 @@ async function assignToWarehouse() {
     
     assigning.value = true;
     try {
-        const response = await axios.post('/api/v1/admin/wms/assignments', {
+        const response = await api.post('/admin/wms/assignments', {
             product_id: selectedProduct.value.id,
             warehouse_id: selectedWarehouse.value,
             quantity: 0,
@@ -176,7 +176,9 @@ function goToProductDetails(productId) {
         ElMessage.error(t('invalid_product_id'));
         return;
     }
-    router.push(`/admin/wms/products/${productId}`);
+    // There is no WMS-specific product detail screen — the main product
+    // record (edited in full elsewhere) is the real destination.
+    router.push(`/admin/products/${productId}`);
 }
 
 function goToAssignment(productId) {

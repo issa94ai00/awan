@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import axios from 'axios';
+import api from '@/api';
 
 const { t } = useI18n();
 
@@ -94,7 +94,7 @@ const filteredTransactions = computed(() => {
 // جلب البيانات مع معالجة أخطاء محسنة
 async function fetchProducts() {
     try {
-        const response = await axios.get('/api/v1/products');
+        const response = await api.get('/products');
         
         if (!response.data || !Array.isArray(response.data.data)) {
             throw new Error('Invalid products data format');
@@ -109,7 +109,7 @@ async function fetchProducts() {
 
 async function fetchWarehouses() {
     try {
-        const response = await axios.get('/api/v1/admin/wms/warehouses');
+        const response = await api.get('/admin/wms/warehouses');
         
         if (!response.data || !Array.isArray(response.data.data)) {
             throw new Error('Invalid warehouses data format');
@@ -126,7 +126,7 @@ async function fetchBalance() {
     if (!selectedProduct.value || !selectedWarehouse.value) return;
     
     try {
-        const response = await axios.get('/api/v1/admin/wms/stock/balance', {
+        const response = await api.get('/admin/wms/stock/balance', {
             params: {
                 product_id: selectedProduct.value.id,
                 warehouse_id: selectedWarehouse.value.id,
@@ -150,7 +150,7 @@ async function fetchTransactions() {
     if (!selectedProduct.value || !selectedWarehouse.value) return;
     
     try {
-        const response = await axios.get('/api/v1/admin/wms/stock/transactions', {
+        const response = await api.get('/admin/wms/stock/transactions', {
             params: {
                 product_id: selectedProduct.value.id,
                 warehouse_id: selectedWarehouse.value.id,
@@ -233,7 +233,7 @@ async function submitMovement() {
     
     submitting.value = true;
     try {
-        const response = await axios.post('/api/v1/admin/wms/stock/movements', form.value);
+        const response = await api.post('/admin/wms/stock/movements', form.value);
         
         if (!response.data) {
             throw new Error('Invalid response from server');

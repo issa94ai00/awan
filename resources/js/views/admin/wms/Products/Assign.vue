@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import axios from 'axios';
+import api from '@/api';
 
 const { t } = useI18n();
 
@@ -68,10 +68,10 @@ async function fetchData() {
     
     try {
         const [productsRes, warehousesRes, suppliersRes, binsRes] = await Promise.all([
-            axios.get('/api/v1/products'),
-            axios.get('/api/v1/admin/wms/warehouses'),
-            axios.get('/api/v1/suppliers'),
-            axios.get('/api/v1/admin/wms/bins'),
+            api.get('/products'),
+            api.get('/admin/wms/warehouses'),
+            api.get('/admin/suppliers'),
+            api.get('/admin/wms/bins'),
         ]);
 
         // التحقق من صحة البيانات
@@ -94,7 +94,7 @@ async function fetchData() {
             if (!isNaN(productId)) {
                 form.value.product_id = productId;
                 try {
-                    const productRes = await axios.get(`/api/v1/products/${productId}`);
+                    const productRes = await api.get(`/products/${productId}`);
                     if (productRes.data?.data) {
                         const product = productRes.data.data;
                     }
@@ -142,7 +142,7 @@ async function suggestStockLevels() {
     
     suggesting.value = true;
     try {
-        const response = await axios.get(`/api/v1/admin/wms/suggest-stock-levels`, {
+        const response = await api.get(`/admin/wms/suggest-stock-levels`, {
             params: {
                 product_id: form.value.product_id,
                 warehouse_id: form.value.warehouse_id,
@@ -182,7 +182,7 @@ async function submit() {
             }
         );
 
-        const response = await axios.post('/api/v1/admin/wms/assignments', form.value);
+        const response = await api.post('/admin/wms/assignments', form.value);
         
         if (!response.data) {
             throw new Error('Invalid response from server');

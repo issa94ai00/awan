@@ -507,16 +507,10 @@ const routes = [
                 name: 'admin.wms.bins.index',
                 component: () => import('@/views/admin/wms/Bins.vue')
             },
-            {
-                path: 'wms/bins/create',
-                name: 'admin.wms.bins.create',
-                component: () => import('@/views/admin/wms/BinForm.vue')
-            },
-            {
-                path: 'wms/bins/:id/edit',
-                name: 'admin.wms.bins.edit',
-                component: () => import('@/views/admin/wms/BinForm.vue')
-            },
+            // Bin create/edit happens inline via a dialog on the list page
+            // (Bins.vue) — there used to be a dedicated form here, but it was
+            // an orphaned mock (API calls commented out, fake success toast,
+            // a crash on save) that nothing linked to.
             {
                 path: 'wms/products',
                 name: 'admin.wms.products.index',
@@ -547,11 +541,10 @@ const routes = [
                 name: 'admin.wms.picking.index',
                 component: () => import('@/views/admin/wms/PickingLists.vue')
             },
-            {
-                path: 'wms/picking/create',
-                name: 'admin.wms.picking.create',
-                component: () => import('@/views/admin/wms/PickingForm.vue')
-            },
+            // Picking-list create happens inline via a dialog on the list page
+            // (PickingLists.vue) — there used to be a dedicated form here, but
+            // it was an orphaned mock (API calls commented out, fake success
+            // toast, a crash on save) that nothing linked to.
             {
                 // The picking screen itself. The list page has always linked
                 // here, but the route did not exist, so "view" was a dead end
@@ -565,21 +558,19 @@ const routes = [
                 name: 'admin.wms.packing.index',
                 component: () => import('@/views/admin/wms/PackingLists.vue')
             },
-            {
-                path: 'wms/packing/create',
-                name: 'admin.wms.packing.create',
-                component: () => import('@/views/admin/wms/PackingForm.vue')
-            },
+            // Packing-list create happens inline via a dialog on the list page
+            // (PackingLists.vue) — there used to be a dedicated form here, but
+            // it was an orphaned mock (API calls commented out, fake success
+            // toast, a crash on save) that nothing linked to.
             {
                 path: 'wms/cycle-counts',
                 name: 'admin.wms.cycle-counts.index',
                 component: () => import('@/views/admin/wms/CycleCounts.vue')
             },
-            {
-                path: 'wms/cycle-counts/create',
-                name: 'admin.wms.cycle-counts.create',
-                component: () => import('@/views/admin/wms/CycleCountForm.vue')
-            },
+            // Cycle-count create happens inline via a dialog on the list page
+            // (CycleCounts.vue) — there used to be a dedicated form here, but
+            // it was an orphaned mock (API calls commented out, fake success
+            // toast, a crash on save) that nothing linked to.
             {
                 path: 'wms/performance',
                 name: 'admin.wms.performance',

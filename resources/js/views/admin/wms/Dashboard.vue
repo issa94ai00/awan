@@ -4,7 +4,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElNotification } from 'element-plus';
-import axios from 'axios';
+import api from '@/api';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -31,7 +31,7 @@ const showAlerts = ref(false);
 async function fetchDashboardData() {
     loading.value = true;
     try {
-        const response = await axios.get('/api/v1/admin/wms/dashboard');
+        const response = await api.get('/admin/wms/dashboard');
         stats.value = response.data.stats;
         topProducts.value = response.data.top_products;
         warehouseDistribution.value = response.data.warehouse_distribution;

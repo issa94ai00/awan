@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import axios from 'axios';
+import api from '@/api';
 
 const { t } = useI18n();
 
@@ -43,7 +43,7 @@ async function fetchProducts() {
         if (searchQuery.value) params.search = searchQuery.value;
         if (categoryFilter.value) params.category = categoryFilter.value;
 
-        const response = await axios.get('/api/v1/admin/wms/products', { params });
+        const response = await api.get('/admin/wms/products', { params });
         
         // التحقق من صحة البيانات
         if (!response.data || !Array.isArray(response.data.data)) {
@@ -62,7 +62,7 @@ async function fetchProducts() {
 
 async function fetchCategories() {
     try {
-        const response = await axios.get('/api/v1/categories');
+        const response = await api.get('/categories');
         
         if (!response.data || !Array.isArray(response.data.data)) {
             throw new Error('Invalid categories data format');
@@ -169,7 +169,9 @@ function goToProduct(productId) {
         ElMessage.error(t('invalid_product_id'));
         return;
     }
-    router.push(`/admin/wms/products/${productId}`);
+    // There is no WMS-specific product detail screen — the main product
+    // record (edited in full elsewhere) is the real destination.
+    router.push(`/admin/products/${productId}`);
 }
 
 // حذف منتج مع تأكيد محسن
@@ -191,7 +193,9 @@ async function deleteProduct(productId) {
             }
         );
 
-        await axios.delete(`/api/v1/admin/wms/products/${productId}`);
+        // No WMS-specific delete endpoint exists — this removes the product
+        // record itself, same as the main product list's delete action.
+        await api.delete(`/admin/products/${productId}`);
         ElMessage.success(t('product_deleted'));
         fetchProducts();
     } catch (err) {
