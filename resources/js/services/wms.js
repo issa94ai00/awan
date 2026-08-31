@@ -216,13 +216,14 @@ export const wmsService = {
         return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/cancel`);
     },
 
-    // Performance
+    // Performance — registered only under the admin-gated prefix, like
+    // packing/cycle counts.
     getPerformanceMetrics(params = {}) {
-        return api.get(`${API_BASE_URL}/performance`, { params });
+        return api.get(`${ADMIN_BASE_URL}/performance`, { params });
     },
 
     getPerformanceTrends(params = {}) {
-        return api.get(`${API_BASE_URL}/performance/trends`, { params });
+        return api.get(`${ADMIN_BASE_URL}/performance/trends`, { params });
     },
 
     // Dashboard

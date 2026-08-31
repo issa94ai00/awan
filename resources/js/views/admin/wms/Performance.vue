@@ -1,316 +1,212 @@
 <template>
-  <div class="performance-page">
-    <div class="page-header">
-      <h1><el-icon><TrendCharts /></el-icon> {{ $t('wms.performance') }}</h1>
-      <el-form :inline="true">
-        <el-form-item :label="$t('wms.warehouse')">
-          <el-select v-model="selectedWarehouse" :placeholder="$t('wms.select_warehouse')" clearable @change="loadPerformance">
-            <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('wms.date_range')">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            :range-separator="$t('common.to')"
-            :start-placeholder="$t('common.start_date')"
-            :end-placeholder="$t('common.end_date')"
-            @change="loadPerformance"
-          />
-        </el-form-item>
-      </el-form>
+    <div class="performance-page">
+        <AdminPageHeader icon="fas fa-chart-line" :title="$t('wms.performance')">
+            <template #actions>
+                <el-select v-model="selectedWarehouse" :placeholder="$t('all_warehouses')" clearable style="width: 200px" @change="loadAll">
+                    <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
+                </el-select>
+                <el-date-picker
+                    v-model="dateRange"
+                    type="daterange"
+                    value-format="YYYY-MM-DD"
+                    :range-separator="$t('common.to')"
+                    :start-placeholder="$t('common.start_date')"
+                    :end-placeholder="$t('common.end_date')"
+                    style="width: 260px"
+                    @change="loadMetrics"
+                />
+            </template>
+        </AdminPageHeader>
+
+        <div v-if="loading" class="loading-state"><el-skeleton :rows="8" animated /></div>
+
+        <template v-else>
+            <el-alert
+                type="info" :closable="false" show-icon class="mb-3"
+                :title="$t('wms.performance_period_hint', { from: metrics.from_date, to: metrics.to_date })"
+            />
+
+            <div class="stat-grid mb-3">
+                <el-card shadow="never" class="stat-card stat-blue">
+                    <span class="stat-label">{{ $t('wms.picking_accuracy') }}</span>
+                    <strong class="stat-value">{{ formatPct(metrics.picking_accuracy) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-orange">
+                    <span class="stat-label">{{ $t('wms.cycle_count_accuracy') }}</span>
+                    <strong class="stat-value">{{ formatPct(metrics.cycle_count_accuracy) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-purple">
+                    <span class="stat-label">{{ $t('wms.total_units_picked') }}</span>
+                    <strong class="stat-value">{{ formatNumber(metrics.total_units_picked) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-green">
+                    <span class="stat-label">{{ $t('wms.completed_activity') }}</span>
+                    <strong class="stat-value">
+                        {{ metrics.completed_picking_lists }} / {{ metrics.completed_packing_lists }} / {{ metrics.completed_cycle_counts }}
+                    </strong>
+                    <span class="stat-sub">{{ $t('wms.picking_packing_counts_short') }}</span>
+                </el-card>
+            </div>
+
+            <div class="two-col mb-3">
+                <el-card shadow="never">
+                    <template #header>
+                        <div class="card-header">
+                            <span>{{ $t('wms.average_picking_time') }}</span>
+                            <el-tag>{{ metrics.average_picking_time || 0 }} {{ $t('common.minutes') }}</el-tag>
+                        </div>
+                    </template>
+                    <el-progress :percentage="timePercentage(metrics.average_picking_time, 30)" :status="timeStatus(metrics.average_picking_time, 30)" />
+                </el-card>
+                <el-card shadow="never">
+                    <template #header>
+                        <div class="card-header">
+                            <span>{{ $t('wms.average_packing_time') }}</span>
+                            <el-tag>{{ metrics.average_packing_time || 0 }} {{ $t('common.minutes') }}</el-tag>
+                        </div>
+                    </template>
+                    <el-progress :percentage="timePercentage(metrics.average_packing_time, 25)" :status="timeStatus(metrics.average_packing_time, 25)" />
+                </el-card>
+            </div>
+
+            <el-card shadow="never">
+                <template #header>{{ $t('wms.performance_trends') }}</template>
+                <el-empty v-if="!hasTrendData" :description="$t('wms.no_trend_data')" :image-size="60" />
+                <div v-show="hasTrendData" ref="chartRef" class="trend-chart"></div>
+            </el-card>
+        </template>
     </div>
-
-    <el-row :gutter="20">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="metric-card">
-          <div class="metric-content">
-            <div class="metric-icon metric-icon-blue">
-              <el-icon><Aim /></el-icon>
-            </div>
-            <div class="metric-info">
-              <h3>{{ performance.picking_accuracy || 0 }}%</h3>
-              <p>{{ $t('wms.picking_accuracy') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="metric-card">
-          <div class="metric-content">
-            <div class="metric-icon metric-icon-green">
-              <el-icon><Open /></el-icon>
-            </div>
-            <div class="metric-info">
-              <h3>{{ performance.packing_accuracy || 0 }}%</h3>
-              <p>{{ $t('wms.packing_accuracy') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="metric-card">
-          <div class="metric-content">
-            <div class="metric-icon metric-icon-orange">
-              <el-icon><Document /></el-icon>
-            </div>
-            <div class="metric-info">
-              <h3>{{ performance.cycle_count_accuracy || 0 }}%</h3>
-              <p>{{ $t('wms.cycle_count_accuracy') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="metric-card">
-          <div class="metric-content">
-            <div class="metric-icon metric-icon-purple">
-              <el-icon><Odometer /></el-icon>
-            </div>
-            <div class="metric-info">
-              <h3>{{ performance.throughput || 0 }}</h3>
-              <p>{{ $t('wms.throughput') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('wms.average_picking_time') }}</span>
-              <el-tag>{{ performance.average_picking_time || 0 }} {{ $t('common.minutes') }}</el-tag>
-            </div>
-          </template>
-          <div class="progress-bar">
-            <el-progress :percentage="calculatePercentage(performance.average_picking_time, 30)" :status="getProgressStatus(performance.average_picking_time, 30)" />
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('wms.average_packing_time') }}</span>
-              <el-tag>{{ performance.average_packing_time || 0 }} {{ $t('common.minutes') }}</el-tag>
-            </div>
-          </template>
-          <div class="progress-bar">
-            <el-progress :percentage="calculatePercentage(performance.average_packing_time, 25)" :status="getProgressStatus(performance.average_packing_time, 25)" />
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('wms.performance_trends') }}</span>
-        </div>
-      </template>
-      <div ref="chartRef" style="height: 300px"></div>
-    </el-card>
-  </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { TrendCharts, Aim, Open, Document, Odometer } from '@element-plus/icons-vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import * as echarts from 'echarts'
+import { formatNumber as formatCount } from '@/utils/currency'
+import { wmsService } from '@/services/wms'
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue'
 
 const { t } = useI18n()
-const loading = ref(false)
+const loading = ref(true)
 const selectedWarehouse = ref(null)
 const dateRange = ref([])
 const warehouses = ref([])
-const performance = ref({
-  picking_accuracy: 0,
-  packing_accuracy: 0,
-  cycle_count_accuracy: 0,
-  average_picking_time: 0,
-  average_packing_time: 0,
-  throughput: 0
+const metrics = ref({
+    picking_accuracy: null,
+    cycle_count_accuracy: null,
+    average_picking_time: 0,
+    average_packing_time: 0,
+    total_units_picked: 0,
+    completed_picking_lists: 0,
+    completed_packing_lists: 0,
+    completed_cycle_counts: 0,
+    from_date: '',
+    to_date: '',
 })
+const trends = ref({ labels: [], picking_accuracy: [], cycle_count_accuracy: [] })
 const chartRef = ref(null)
 let chartInstance = null
 
-const calculatePercentage = (value, max) => {
-  return Math.min((value / max) * 100, 100)
-}
+const hasTrendData = computed(() => trends.value.labels.length > 0 && (
+    trends.value.picking_accuracy.some((v) => v !== null) || trends.value.cycle_count_accuracy.some((v) => v !== null)
+))
 
-const getProgressStatus = (value, max) => {
-  const percentage = calculatePercentage(value, max)
-  if (percentage < 50) return 'success'
-  if (percentage < 80) return 'warning'
-  return 'exception'
+const formatPct = (value) => (value === null || value === undefined ? t('wms.no_data_short') : `${value}%`)
+const formatNumber = (num) => (num === null || num === undefined ? '—' : formatCount(num))
+
+const timePercentage = (value, max) => Math.min(((value || 0) / max) * 100, 100)
+const timeStatus = (value, max) => {
+    const pct = timePercentage(value, max)
+    if (pct < 50) return 'success'
+    if (pct < 80) return 'warning'
+    return 'exception'
 }
 
 const loadWarehouses = async () => {
-  try {
-    // await api.get('/api/v1/wms/warehouses')
-    warehouses.value = [
-      { id: 1, name: 'Main Warehouse' }
-    ]
-  } catch (error) {
-    console.error('Failed to load warehouses:', error)
-  }
+    try {
+        const res = await wmsService.getWarehouses()
+        warehouses.value = res.data?.data || res.data || []
+    } catch {
+        /* the filter simply stays empty */
+    }
 }
 
-const loadPerformance = async () => {
-  loading.value = true
-  try {
-    // const response = await api.get('/api/v1/wms/performance', {
-    //   params: { warehouse_id: selectedWarehouse.value, start_date: dateRange.value[0], end_date: dateRange.value[1] }
-    // })
-    performance.value = {
-      picking_accuracy: 98.5,
-      packing_accuracy: 99.2,
-      cycle_count_accuracy: 97.8,
-      average_picking_time: 15.5,
-      average_packing_time: 12.3,
-      throughput: 450
+const loadMetrics = async () => {
+    try {
+        const params = {}
+        if (selectedWarehouse.value) params.warehouse_id = selectedWarehouse.value
+        if (dateRange.value?.length === 2) {
+            params.from_date = dateRange.value[0]
+            params.to_date = dateRange.value[1]
+        }
+        const res = await wmsService.getPerformanceMetrics(params)
+        metrics.value = res.data
+    } catch {
+        ElMessage.error(t('common.load_error'))
     }
-    initChart()
-  } catch (error) {
-    ElMessage.error(t('common.load_error'))
-  } finally {
+}
+
+const loadTrends = async () => {
+    try {
+        const params = { months: 6 }
+        if (selectedWarehouse.value) params.warehouse_id = selectedWarehouse.value
+        const res = await wmsService.getPerformanceTrends(params)
+        trends.value = res.data
+        await nextTick()
+        renderChart()
+    } catch {
+        ElMessage.error(t('common.load_error'))
+    }
+}
+
+const loadAll = () => Promise.all([loadMetrics(), loadTrends()])
+
+const renderChart = () => {
+    if (!chartRef.value || !hasTrendData.value) return
+    if (chartInstance) chartInstance.dispose()
+    chartInstance = echarts.init(chartRef.value)
+
+    chartInstance.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: [t('wms.picking_accuracy'), t('wms.cycle_count_accuracy')] },
+        xAxis: { type: 'category', data: trends.value.labels },
+        yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+        series: [
+            { name: t('wms.picking_accuracy'), type: 'line', connectNulls: true, data: trends.value.picking_accuracy },
+            { name: t('wms.cycle_count_accuracy'), type: 'line', connectNulls: true, data: trends.value.cycle_count_accuracy },
+        ],
+    })
+}
+
+onMounted(async () => {
+    loading.value = true
+    await loadWarehouses()
+    await loadAll()
     loading.value = false
-  }
-}
 
-const initChart = () => {
-  if (!chartRef.value) return
-  
-  if (chartInstance) {
-    chartInstance.dispose()
-  }
-  
-  chartInstance = echarts.init(chartRef.value)
-  
-  const option = {
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      data: [t('wms.picking_accuracy'), t('wms.packing_accuracy'), t('wms.cycle_count_accuracy')]
-    },
-    xAxis: {
-      type: 'category',
-      data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-    },
-    yAxis: {
-      type: 'value',
-      max: 100,
-      axisLabel: {
-        formatter: '{value}%'
-      }
-    },
-    series: [
-      {
-        name: t('wms.picking_accuracy'),
-        type: 'line',
-        data: [95, 96, 97, 98, 98.5, 98.5]
-      },
-      {
-        name: t('wms.packing_accuracy'),
-        type: 'line',
-        data: [97, 98, 98.5, 99, 99.2, 99.2]
-      },
-      {
-        name: t('wms.cycle_count_accuracy'),
-        type: 'line',
-        data: [94, 95, 96, 97, 97.5, 97.8]
-      }
-    ]
-  }
-  
-  chartInstance.setOption(option)
-}
-
-onMounted(() => {
-  loadWarehouses()
-  loadPerformance()
-  
-  window.addEventListener('resize', () => {
-    if (chartInstance) {
-      chartInstance.resize()
-    }
-  })
+    window.addEventListener('resize', () => chartInstance?.resize())
 })
 </script>
 
 <style scoped>
-.performance-page {
-  padding: 20px;
-}
+.performance-page { font-family: 'Cairo', sans-serif; }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+.stat-card { border-radius: 12px; border-inline-start: 4px solid var(--el-color-info); }
+.stat-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 0.3rem; }
+.stat-blue { border-inline-start-color: var(--el-color-primary); }
+.stat-orange { border-inline-start-color: #f97316; }
+.stat-purple { border-inline-start-color: #8b5cf6; }
+.stat-green { border-inline-start-color: var(--el-color-success); }
+.stat-label { font-size: 0.8rem; color: var(--text-muted); }
+.stat-value { font-size: 1.4rem; font-weight: 800; }
+.stat-sub { font-size: 0.7rem; color: var(--text-muted); }
 
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
-}
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
 
-.metric-card {
-  margin-bottom: 20px;
-}
-
-.metric-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.metric-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-}
-
-.metric-icon-blue { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.metric-icon-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.metric-icon-orange { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.metric-icon-purple { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.metric-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.metric-info p {
-  margin: 0;
-  font-size: 14px;
-  color: #666;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.progress-bar {
-  padding: 20px 0;
-}
+.trend-chart { height: 320px; }
+.loading-state { padding: 2rem; }
+.mb-3 { margin-bottom: 0.75rem; }
 </style>
