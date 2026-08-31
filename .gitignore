@@ -19,6 +19,7 @@ storage/framework/sessions/*
 storage/framework/views/*
 storage/pail
 storage/logs/*
+storage/backups/
 
 # Public
 public/storage
