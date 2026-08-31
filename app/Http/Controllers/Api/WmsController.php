@@ -73,15 +73,23 @@ class WmsController extends Controller
             ? round($warehousesWithCapacity->avg(fn ($w) => min(100, (($w->total_stock ?? 0) / $w->capacity) * 100)), 1)
             : 0;
 
-        $topProducts = Product::withSum('inventory as total_consumption', 'quantity')
+        // "Consumed" means shipped out, not sitting on the shelf — summing
+        // current inventory here (as this used to) ranked products by how
+        // much stock they're holding, which is closer to the opposite of
+        // consumption. Real issue movements over the last 30 days instead.
+        $topProducts = StockMovement::where('movement_type', StockMovement::TYPE_OUT)
+            ->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('product_id, SUM(quantity) as total_consumption')
+            ->groupBy('product_id')
             ->orderByDesc('total_consumption')
             ->limit(5)
+            ->with('product:id,name_ar,name_en')
             ->get()
-            ->map(function ($product) {
+            ->map(function ($row) {
                 return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'consumption' => $product->total_consumption ?? 0,
+                    'id' => $row->product_id,
+                    'name' => $row->product?->name ?? '-',
+                    'consumption' => (int) $row->total_consumption,
                 ];
             });
 
