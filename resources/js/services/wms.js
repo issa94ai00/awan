@@ -36,6 +36,50 @@ export const wmsService = {
         return api.get(`${API_BASE_URL}/managers`);
     },
 
+    // Products (WMS view: category, unit, price, per-warehouse balance)
+    getProducts(params = {}) {
+        return api.get(`${ADMIN_BASE_URL}/products`, { params });
+    },
+
+    // Product ↔ Warehouse Assignments
+    getAssignments(params = {}) {
+        return api.get(`${ADMIN_BASE_URL}/assignments`, { params });
+    },
+
+    getAssignment(id) {
+        return api.get(`${ADMIN_BASE_URL}/assignments/${id}`);
+    },
+
+    createAssignment(data) {
+        return api.post(`${ADMIN_BASE_URL}/assignments`, data);
+    },
+
+    updateAssignment(id, data) {
+        return api.put(`${ADMIN_BASE_URL}/assignments/${id}`, data);
+    },
+
+    deleteAssignment(id) {
+        return api.delete(`${ADMIN_BASE_URL}/assignments/${id}`);
+    },
+
+    /** Reorder-point suggestion computed from real consumption history. */
+    suggestStockLevels(params = {}) {
+        return api.get(`${ADMIN_BASE_URL}/suggest-stock-levels`, { params });
+    },
+
+    // Stock balance / movement ledger
+    getStockBalance(params = {}) {
+        return api.get(`${ADMIN_BASE_URL}/stock/balance`, { params });
+    },
+
+    getStockTransactions(params = {}) {
+        return api.get(`${ADMIN_BASE_URL}/stock/transactions`, { params });
+    },
+
+    createStockMovement(data) {
+        return api.post(`${ADMIN_BASE_URL}/stock/movements`, data);
+    },
+
     // Bins
     getBins(params = {}) {
         return api.get(`${API_BASE_URL}/bins`, { params });

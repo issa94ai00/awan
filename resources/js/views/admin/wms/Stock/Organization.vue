@@ -1,17 +1,122 @@
 <!-- resources/js/views/admin/wms/Stock/Organization.vue -->
+<template>
+    <div class="organization-page">
+        <AdminPageHeader
+            icon="fas fa-diagram-project"
+            :title="$t('stock_organization')"
+            :subtitle="$t('stock_organization_subtitle')"
+        >
+            <template #actions>
+                <el-input v-model="searchQuery" :placeholder="$t('search_by_name_or_code')" clearable style="width: 240px">
+                    <template #prefix><i class="fas fa-search"></i></template>
+                </el-input>
+                <el-button plain :loading="refreshing" @click="refreshData">
+                    <i class="fas fa-rotate"></i> {{ $t('update') }}
+                </el-button>
+            </template>
+        </AdminPageHeader>
+
+        <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="mb-3" />
+
+        <div class="stat-grid mb-3">
+            <el-card shadow="never" class="stat-card stat-blue">
+                <span class="stat-label">{{ $t('total_products') }}</span>
+                <strong class="stat-value">{{ formatNumber(stats.total) }}</strong>
+            </el-card>
+            <el-card shadow="never" class="stat-card stat-green">
+                <span class="stat-label">{{ $t('linked_products') }}</span>
+                <strong class="stat-value">{{ formatNumber(stats.assigned) }}</strong>
+            </el-card>
+            <el-card shadow="never" class="stat-card stat-yellow">
+                <span class="stat-label">{{ $t('unlinked_products') }}</span>
+                <strong class="stat-value">{{ formatNumber(stats.unassigned) }}</strong>
+            </el-card>
+        </div>
+
+        <div v-if="loading" class="loading-state"><el-skeleton :rows="8" animated /></div>
+
+        <div v-else class="columns-grid">
+            <el-card shadow="never" class="column-card">
+                <template #header>
+                    <span class="column-header column-header-warning">
+                        {{ $t('unlinked_products') }}
+                        <el-tag type="warning" size="small">{{ formatNumber(filteredUnassigned.length) }}</el-tag>
+                    </span>
+                </template>
+                <div class="column-body">
+                    <el-empty v-if="!filteredUnassigned.length" :description="$t('no_unlinked_products')" />
+                    <div v-for="product in filteredUnassigned" :key="product.id" class="product-row">
+                        <div class="product-info">
+                            <strong>{{ product.name }}</strong>
+                            <p class="product-sub">{{ $t('code_label') }} {{ product.code }} · {{ product.category?.name || '—' }}</p>
+                        </div>
+                        <div class="product-actions">
+                            <el-button size="small" type="primary" @click="openAssignModal(product)">{{ $t('link_action') }}</el-button>
+                            <el-button size="small" plain @click="goToAssignment(product.id)">{{ $t('details') }}</el-button>
+                        </div>
+                    </div>
+                </div>
+            </el-card>
+
+            <el-card shadow="never" class="column-card">
+                <template #header>
+                    <span class="column-header column-header-success">
+                        {{ $t('linked_products') }}
+                        <el-tag type="success" size="small">{{ formatNumber(filteredAssigned.length) }}</el-tag>
+                    </span>
+                </template>
+                <div class="column-body">
+                    <el-empty v-if="!filteredAssigned.length" :description="$t('no_linked_products')" />
+                    <div v-for="product in filteredAssigned" :key="product.id" class="product-row clickable" @click="goToProductDetails(product.id)">
+                        <div class="product-info">
+                            <strong>{{ product.name }}</strong>
+                            <p class="product-sub">
+                                {{ $t('code_label') }} {{ product.code }} ·
+                                {{ $t('warehouses') }}: {{ formatNumber(product.warehouses_count) }} ·
+                                {{ $t('balance') }}: {{ formatNumber(product.total_balance) }}
+                            </p>
+                        </div>
+                        <div class="product-actions">
+                            <el-button size="small" plain @click.stop="goToAssignment(product.id)">{{ $t('edit_action') }}</el-button>
+                        </div>
+                    </div>
+                </div>
+            </el-card>
+        </div>
+
+        <!-- Assign Dialog -->
+        <el-dialog v-model="showAssignModal" :title="$t('link_product_to_warehouse')" width="440px">
+            <div v-if="selectedProduct" class="assign-summary">
+                <p><strong>{{ $t('product_label') }}</strong> {{ selectedProduct.name }}</p>
+                <p><strong>{{ $t('code_label') }}</strong> {{ selectedProduct.code }}</p>
+            </div>
+            <el-form-item :label="$t('choose_warehouse')">
+                <el-select v-model="selectedWarehouseId" :placeholder="$t('choose_warehouse_placeholder')" style="width: 100%">
+                    <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="`${wh.name} (${wh.code})`" />
+                </el-select>
+            </el-form-item>
+            <template #footer>
+                <el-button :disabled="assigning" @click="closeAssignModal">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="assigning" :disabled="!selectedWarehouseId" @click="assignToWarehouse">
+                    {{ $t('link_action') }}
+                </el-button>
+            </template>
+        </el-dialog>
+    </div>
+</template>
+
 <script setup>
 import { formatNumber as formatCount } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import api from '@/api';
+import { ElMessage } from 'element-plus';
+import { wmsService } from '@/services/wms';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
-
 const router = useRouter();
 
-// State management
 const loading = ref(false);
 const products = ref([]);
 const warehouses = ref([]);
@@ -20,48 +125,36 @@ const assignedProducts = ref([]);
 const error = ref(null);
 const refreshing = ref(false);
 
-const selectedWarehouse = ref(null);
+const selectedWarehouseId = ref(null);
 const searchQuery = ref('');
 const showAssignModal = ref(false);
 const selectedProduct = ref(null);
 const assigning = ref(false);
 
-// Statistics
-const stats = computed(() => {
-    return {
-        total: products.value.length,
-        assigned: assignedProducts.value.length,
-        unassigned: unassignedProducts.value.length
-    };
-});
+const stats = computed(() => ({
+    total: products.value.length,
+    assigned: assignedProducts.value.length,
+    unassigned: unassignedProducts.value.length,
+}));
 
-// جلب البيانات مع معالجة أخطاء محسنة
 async function fetchData() {
     loading.value = true;
     error.value = null;
-    
+
     try {
         const [productsRes, warehousesRes] = await Promise.all([
-            api.get('/admin/wms/products'),
-            api.get('/admin/wms/warehouses')
+            // This screen's whole job is sorting the catalog into assigned vs
+            // unassigned, so it genuinely needs close to everything rather
+            // than one page of it.
+            wmsService.getProducts({ per_page: 500 }),
+            wmsService.getWarehouses(),
         ]);
-        
-        // التحقق من صحة البيانات
-        if (!productsRes.data || !Array.isArray(productsRes.data.data)) {
-            throw new Error('Invalid products data format');
-        }
-        
-        if (!warehousesRes.data || !Array.isArray(warehousesRes.data.data)) {
-            throw new Error('Invalid warehouses data format');
-        }
-        
-        products.value = productsRes.data.data;
-        warehouses.value = warehousesRes.data.data;
-        
-        // تصنيف المنتجات
+
+        products.value = productsRes.data?.data || [];
+        warehouses.value = warehousesRes.data?.data || warehousesRes.data || [];
+
         categorizeProducts();
     } catch (err) {
-        console.error('Error fetching data:', err);
         error.value = err.response?.data?.message || err.message || t('failed_to_fetch_data_short');
         ElMessage.error(error.value);
     } finally {
@@ -70,42 +163,19 @@ async function fetchData() {
 }
 
 function categorizeProducts() {
-    if (!Array.isArray(products.value)) {
-        unassignedProducts.value = [];
-        assignedProducts.value = [];
-        return;
-    }
-    
-    unassignedProducts.value = products.value.filter(p => p.warehouses_count === 0);
-    assignedProducts.value = products.value.filter(p => p.warehouses_count > 0);
+    unassignedProducts.value = products.value.filter((p) => p.warehouses_count === 0);
+    assignedProducts.value = products.value.filter((p) => p.warehouses_count > 0);
 }
 
-// المنتجات المفلترة مع التحقق من البيانات
-const filteredUnassigned = computed(() => {
-    if (!Array.isArray(unassignedProducts.value)) return [];
-    
-    if (!searchQuery.value) return unassignedProducts.value;
-    
-    const query = searchQuery.value.toLowerCase();
-    return unassignedProducts.value.filter(p => 
-        (p.name && p.name.toLowerCase().includes(query)) ||
-        (p.code && p.code.toLowerCase().includes(query))
-    );
-});
+const filteredUnassigned = computed(() => filterProducts(unassignedProducts.value));
+const filteredAssigned = computed(() => filterProducts(assignedProducts.value));
 
-const filteredAssigned = computed(() => {
-    if (!Array.isArray(assignedProducts.value)) return [];
-    
-    if (!searchQuery.value) return assignedProducts.value;
-    
+function filterProducts(list) {
+    if (!searchQuery.value) return list;
     const query = searchQuery.value.toLowerCase();
-    return assignedProducts.value.filter(p => 
-        (p.name && p.name.toLowerCase().includes(query)) ||
-        (p.code && p.code.toLowerCase().includes(query))
-    );
-});
+    return list.filter((p) => (p.name && p.name.toLowerCase().includes(query)) || (p.code && p.code.toLowerCase().includes(query)));
+}
 
-// تحديث البيانات
 async function refreshData() {
     refreshing.value = true;
     await fetchData();
@@ -113,312 +183,95 @@ async function refreshData() {
     ElMessage.success(t('data_updated_successfully'));
 }
 
-// فتح Modal ربط مع التحقق
 function openAssignModal(product) {
-    if (!product || !product.id) {
-        ElMessage.error(t('invalid_product_data'));
-        return;
-    }
-    
     selectedProduct.value = product;
-    selectedWarehouse.value = null;
+    selectedWarehouseId.value = null;
     showAssignModal.value = true;
 }
 
 function closeAssignModal() {
     showAssignModal.value = false;
     selectedProduct.value = null;
-    selectedWarehouse.value = null;
+    selectedWarehouseId.value = null;
 }
 
-// ربط المنتج بالمستودع مع معالجة أخطاء محسنة
 async function assignToWarehouse() {
-    if (!selectedProduct.value || !selectedProduct.value.id) {
-        ElMessage.error(t('invalid_product_data'));
-        return;
-    }
-    
-    if (!selectedWarehouse.value) {
+    if (!selectedProduct.value || !selectedWarehouseId.value) {
         ElMessage.warning(t('please_choose_warehouse'));
         return;
     }
-    
+
     assigning.value = true;
     try {
-        const response = await api.post('/admin/wms/assignments', {
+        // Quick-link defaults — refine exact levels from the assignment
+        // screen ("edit" on the linked side) once real usage data exists.
+        await wmsService.createAssignment({
             product_id: selectedProduct.value.id,
-            warehouse_id: selectedWarehouse.value,
-            quantity: 0,
-            min_stock: 10,
-            max_stock: 1000,
+            warehouse_id: selectedWarehouseId.value,
+            replenishment_method: 'purchase',
+            planning_method: 'rop',
+            min_stock_level: 10,
+            max_stock_level: 1000,
             safety_stock: 5,
+            lead_time_days: 7,
         });
-        
-        if (!response.data) {
-            throw new Error('Invalid response from server');
-        }
-        
+
         ElMessage.success(t('product_linked_to_warehouse'));
         closeAssignModal();
         await fetchData();
     } catch (err) {
-        console.error('Error assigning product:', err);
-        const errorMsg = err.response?.data?.message || err.message || t('failed_to_link_product');
-        ElMessage.error(errorMsg);
+        ElMessage.error(err.response?.data?.message || t('failed_to_link_product'));
     } finally {
         assigning.value = false;
     }
 }
 
-// التنقل مع التحقق
 function goToProductDetails(productId) {
-    if (!productId) {
-        ElMessage.error(t('invalid_product_id'));
-        return;
-    }
     // There is no WMS-specific product detail screen — the main product
     // record (edited in full elsewhere) is the real destination.
     router.push(`/admin/products/${productId}`);
 }
 
 function goToAssignment(productId) {
-    if (!productId) {
-        ElMessage.error(t('invalid_product_id'));
-        return;
-    }
     router.push(`/admin/wms/products/${productId}/assign`);
 }
 
-// تنسيق الأرقام
 function formatNumber(num) {
-    if (num === null || num === undefined) return '-';
+    if (num === null || num === undefined) return '—';
     return formatCount(num);
 }
 
-onMounted(() => {
-    fetchData();
-});
+onMounted(fetchData);
 </script>
 
-<template>
-    <div class="p-6">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $t('stock_organization') }}</h1>
-                <p class="text-gray-600 mt-1">{{ $t('stock_organization_subtitle') }}</p>
-            </div>
-            <button 
-                @click="refreshData"
-                :disabled="refreshing"
-                class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-all"
-            >
-                <span v-if="refreshing" class="animate-spin">⟳</span>
-                <span v-else>↻</span>
-                {{ $t('update') }}
-            </button>
-        </div>
+<style scoped>
+.organization-page { font-family: 'Cairo', sans-serif; }
 
-        <!-- Error State -->
-        <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div class="flex items-center gap-3">
-                <span class="text-2xl">❌</span>
-                <div>
-                    <p class="font-medium text-red-800">{{ $t('failed_to_fetch_data') }}</p>
-                    <p class="text-sm text-red-600">{{ error }}</p>
-                </div>
-                <button @click="fetchData" class="mr-auto text-red-600 hover:text-red-700 text-sm font-medium">
-                    {{ $t('retry') }}
-                </button>
-            </div>
-        </div>
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; }
+.stat-card { border-radius: 12px; border-inline-start: 4px solid var(--el-color-info); }
+.stat-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 0.3rem; }
+.stat-blue { border-inline-start-color: var(--el-color-primary); }
+.stat-green { border-inline-start-color: var(--el-color-success); }
+.stat-yellow { border-inline-start-color: var(--el-color-warning); }
+.stat-label { font-size: 0.8rem; color: var(--text-muted); }
+.stat-value { font-size: 1.5rem; font-weight: 800; }
 
-        <!-- Search Bar -->
-        <div class="mb-6">
-            <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="$t('search_by_name_or_code')"
-                class="w-full md:w-96 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-            />
-        </div>
+.columns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: start; }
+.column-card :deep(.el-card__body) { padding: 0; }
+.column-header { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
 
-        <!-- Statistics Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm text-gray-600">{{ $t('total_products') }}</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.total) }}</p>
-                    </div>
-                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span class="text-2xl">📦</span>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm text-gray-600">{{ $t('linked_products') }}</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.assigned) }}</p>
-                    </div>
-                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                        <span class="text-2xl">✓</span>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm text-gray-600">{{ $t('unlinked_products') }}</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ formatNumber(stats.unassigned) }}</p>
-                    </div>
-                    <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                        <span class="text-2xl">○</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+.column-body { max-height: 480px; overflow-y: auto; }
+.product-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--border-color); }
+.product-row:last-child { border-bottom: none; }
+.product-row.clickable { cursor: pointer; }
+.product-row.clickable:hover { background: var(--el-fill-color-light); }
+.product-info { min-width: 0; }
+.product-sub { margin: 0.15rem 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.product-actions { display: flex; gap: 0.4rem; flex: 0 0 auto; }
 
-        <!-- Loading State -->
-        <div v-if="loading" class="flex justify-center py-12">
-            <div class="flex flex-col items-center">
-                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-                <p class="mt-4 text-gray-600">{{ $t('loading_data') }}</p>
-            </div>
-        </div>
+.assign-summary { margin-bottom: 1rem; padding: 0.75rem 1rem; background: var(--el-fill-color-light); border-radius: 8px; font-size: 0.85rem; }
+.assign-summary p { margin: 0.2rem 0; }
 
-        <!-- Products Grid -->
-        <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Unassigned Products -->
-            <div class="bg-white rounded-lg shadow-lg">
-                <div class="p-4 border-b bg-yellow-50">
-                    <h2 class="text-lg font-bold text-gray-800">{{ $t('unlinked_products') }}</h2>
-                    <p class="text-sm text-gray-600">{{ formatNumber(filteredUnassigned.length) }} منتج</p>
-                </div>
-                <div class="p-4 max-h-96 overflow-y-auto">
-                    <div v-if="filteredUnassigned.length === 0" class="text-center py-8">
-                        <span class="text-4xl mb-2">📭</span>
-                        <p class="text-gray-500">{{ $t('no_unlinked_products') }}</p>
-                    </div>
-                    <div 
-                        v-for="product in filteredUnassigned" 
-                        :key="product.id"
-                        class="p-4 border-b hover:bg-gray-50 transition-colors"
-                    >
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1">
-                                <h3 class="font-medium text-gray-900">{{ product.name }}</h3>
-                                <p class="text-sm text-gray-600">الكود: {{ product.code }}</p>
-                                <p class="text-sm text-gray-600">الفئة: {{ product.category?.name || '-' }}</p>
-                            </div>
-                            <div class="flex gap-2">
-                                <button
-                                    @click="openAssignModal(product)"
-                                    class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
-                                >
-                                    {{ $t('link_action') }}
-                                </button>
-                                <button
-                                    @click="goToAssignment(product.id)"
-                                    class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium transition-colors"
-                                >
-                                    {{ $t('details') }}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Assigned Products -->
-            <div class="bg-white rounded-lg shadow-lg">
-                <div class="p-4 border-b bg-green-50">
-                    <h2 class="text-lg font-bold text-gray-800">{{ $t('linked_products') }}</h2>
-                    <p class="text-sm text-gray-600">{{ formatNumber(filteredAssigned.length) }} منتج</p>
-                </div>
-                <div class="p-4 max-h-96 overflow-y-auto">
-                    <div v-if="filteredAssigned.length === 0" class="text-center py-8">
-                        <span class="text-4xl mb-2">📭</span>
-                        <p class="text-gray-500">{{ $t('no_linked_products') }}</p>
-                    </div>
-                    <div 
-                        v-for="product in filteredAssigned" 
-                        :key="product.id"
-                        class="p-4 border-b hover:bg-gray-50 cursor-pointer transition-colors"
-                        @click="goToProductDetails(product.id)"
-                    >
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1">
-                                <h3 class="font-medium text-gray-900">{{ product.name }}</h3>
-                                <p class="text-sm text-gray-600">الكود: {{ product.code }}</p>
-                                <p class="text-sm text-gray-600">المستودعات: {{ formatNumber(product.warehouses_count) }}</p>
-                                <p class="text-sm text-gray-600">إجمالي الرصيد: {{ formatNumber(product.total_balance) }}</p>
-                            </div>
-                            <div class="flex gap-2">
-                                <button
-                                    @click.stop="goToAssignment(product.id)"
-                                    class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium transition-colors"
-                                >
-                                    {{ $t('edit_action') }}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Assign Modal -->
-        <div v-if="showAssignModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" @click="closeAssignModal"></div>
-            
-            <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-900">{{ $t('link_product_to_warehouse') }}</h3>
-                    <button @click="closeAssignModal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-                </div>
-                
-                <div v-if="selectedProduct" class="mb-4 p-3 bg-gray-50 rounded-lg">
-                    <p class="text-sm text-gray-700"><span class="font-medium">{{ $t('product_label') }}</span> {{ selectedProduct.name }}</p>
-                    <p class="text-sm text-gray-700"><span class="font-medium">{{ $t('code_label') }}</span> {{ selectedProduct.code }}</p>
-                </div>
-                
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">{{ $t('choose_warehouse') }}</label>
-                    <select
-                        v-model="selectedWarehouse"
-                        class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    >
-                        <option value="">{{ $t('choose_warehouse_placeholder') }}</option>
-                        <option 
-                            v-for="warehouse in warehouses" 
-                            :key="warehouse.id" 
-                            :value="warehouse.id"
-                        >
-                            {{ warehouse.name }} ({{ warehouse.code }})
-                        </option>
-                    </select>
-                </div>
-                
-                <div class="flex justify-end gap-3">
-                    <button
-                        @click="closeAssignModal"
-                        class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
-                        :disabled="assigning"
-                    >
-                        {{ $t('cancel') }}
-                    </button>
-                    <button
-                        @click="assignToWarehouse"
-                        :disabled="!selectedWarehouse || assigning"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-                    >
-                        <span v-if="assigning" class="animate-spin">⟳</span>
-                        {{ assigning ? 'جاري الربط...' : 'ربط' }}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
+.loading-state { padding: 2rem; }
+.mb-3 { margin-bottom: 0.75rem; }
+</style>
