@@ -461,9 +461,17 @@ class PickingService
     /**
      * Get picking statistics for warehouse
      */
-    public function getPickingStatistics($warehouseId, $fromDate = null, $toDate = null): array
+    public function getPickingStatistics($warehouseId = null, $fromDate = null, $toDate = null): array
     {
-        $query = PickingList::where('warehouse_id', $warehouseId);
+        // where('warehouse_id', null) resolves to `WHERE warehouse_id IS NULL`,
+        // which no real list ever satisfies — omitting the filter (an "all
+        // warehouses" view) used to silently return zero rows instead of the
+        // aggregate across every warehouse.
+        $query = PickingList::query();
+
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
 
         if ($fromDate) {
             $query->where('created_at', '>=', $fromDate);
@@ -482,8 +490,35 @@ class PickingService
             'in_progress_lists' => $lists->where('status', PickingList::STATUS_IN_PROGRESS)->count(),
             'total_items_picked' => $lists->sum('picked_items'),
             'average_completion_time' => $this->calculateAverageCompletionTime($lists),
+            'picking_accuracy' => $this->calculatePickingAccuracy($lists),
             'picker_performance' => $this->getPickerPerformance($lists),
         ];
+    }
+
+    /**
+     * Share of completed lines picked in full, not short — null (not 0 or
+     * 100) when nothing has been completed in the period, so the caller can
+     * say "no data" instead of asserting a number nothing backs.
+     */
+    public function calculatePickingAccuracy(Collection $lists): ?float
+    {
+        $completedIds = $lists->where('status', PickingList::STATUS_COMPLETED)->pluck('id');
+
+        if ($completedIds->isEmpty()) {
+            return null;
+        }
+
+        $totalItems = PickingListItem::whereIn('picking_list_id', $completedIds)->count();
+
+        if ($totalItems === 0) {
+            return null;
+        }
+
+        $shortItems = PickingListItem::whereIn('picking_list_id', $completedIds)
+            ->where('status', PickingListItem::STATUS_SHORT)
+            ->count();
+
+        return round((1 - $shortItems / $totalItems) * 100, 1);
     }
 
     /**

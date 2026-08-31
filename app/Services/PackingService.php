@@ -286,9 +286,17 @@ class PackingService
     /**
      * Get packing statistics for warehouse
      */
-    public function getPackingStatistics($warehouseId, $fromDate = null, $toDate = null): array
+    public function getPackingStatistics($warehouseId = null, $fromDate = null, $toDate = null): array
     {
-        $query = PackingList::where('warehouse_id', $warehouseId);
+        // where('warehouse_id', null) resolves to `WHERE warehouse_id IS
+        // NULL`, which no real list ever satisfies — omitting the filter (an
+        // "all warehouses" view) used to silently return zero rows instead
+        // of the aggregate across every warehouse.
+        $query = PackingList::query();
+
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
 
         if ($fromDate) {
             $query->where('created_at', '>=', $fromDate);

@@ -1875,4 +1875,128 @@ class WmsController extends Controller
             'cycleCounts' => CycleCount::count(),
         ]);
     }
+
+    // ==================== Performance ====================
+
+    /**
+     * Snapshot KPIs for the selected window (default: the last 30 days),
+     * built entirely from real picking/packing/cycle-count activity.
+     *
+     * "Packing accuracy" is deliberately absent: packing items are copied
+     * 1:1 from what was picked, so there is nothing in the data model today
+     * to compare a "packed correctly" count against. Inventing one would be
+     * exactly the kind of number this endpoint replaces.
+     */
+    public function getPerformanceMetrics(Request $request)
+    {
+        $from = $request->from_date ? now()->parse($request->from_date) : now()->subDays(30);
+        $to = $request->to_date ? now()->parse($request->to_date) : now();
+        $warehouseId = $request->warehouse_id;
+
+        $picking = $this->pickingService->getPickingStatistics($warehouseId, $from, $to);
+        $packing = $this->packingService->getPackingStatistics($warehouseId, $from, $to);
+        $cycleCounts = $this->cycleCountStatistics($warehouseId, $from, $to);
+
+        return response()->json([
+            'picking_accuracy' => $picking['picking_accuracy'],
+            'cycle_count_accuracy' => $cycleCounts['accuracy'],
+            'average_picking_time' => round($picking['average_completion_time'], 1),
+            'average_packing_time' => round($packing['average_completion_time'], 1),
+            // A real count for the period, not a rate — labelled as such on
+            // the screen rather than implying a per-day figure this does not
+            // actually compute.
+            'total_units_picked' => (int) $picking['total_items_picked'],
+            'completed_picking_lists' => $picking['completed_lists'],
+            'completed_packing_lists' => $packing['completed_lists'],
+            'completed_cycle_counts' => $cycleCounts['completed_counts'],
+            'from_date' => $from->toDateString(),
+            'to_date' => $to->toDateString(),
+        ]);
+    }
+
+    /**
+     * Monthly accuracy history for the trend chart.
+     *
+     * Grouped in PHP over a fetched Collection rather than SQL-side
+     * YEAR()/MONTH() (used elsewhere in the codebase but MySQL-only) — this
+     * module's own statistics methods already work this way, and the volume
+     * involved (a few months of picking/cycle-count activity) is small
+     * enough that portability costs nothing here.
+     */
+    public function getPerformanceTrends(Request $request)
+    {
+        $months = max(1, min((int) $request->input('months', 6), 24));
+        $warehouseId = $request->warehouse_id;
+        $from = now()->startOfMonth()->subMonths($months - 1);
+
+        $pickingLists = PickingList::query()
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->where('created_at', '>=', $from)
+            ->get();
+
+        $cycleCounts = CycleCount::query()
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->where('created_at', '>=', $from)
+            ->get();
+
+        $labels = [];
+        $pickingAccuracy = [];
+        $cycleCountAccuracy = [];
+
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $month = now()->startOfMonth()->subMonths($i);
+            $key = $month->format('Y-m');
+            $labels[] = $key;
+
+            $monthPicking = $pickingLists->filter(fn ($l) => $l->created_at->format('Y-m') === $key)->values();
+            $monthCounts = $cycleCounts->filter(fn ($c) => $c->created_at->format('Y-m') === $key)->values();
+
+            $pickingAccuracy[] = $this->pickingService->calculatePickingAccuracy($monthPicking);
+            $cycleCountAccuracy[] = $this->cycleCountAccuracyFor($monthCounts);
+        }
+
+        return response()->json([
+            'labels' => $labels,
+            'picking_accuracy' => $pickingAccuracy,
+            'cycle_count_accuracy' => $cycleCountAccuracy,
+        ]);
+    }
+
+    private function cycleCountStatistics($warehouseId, $fromDate, $toDate): array
+    {
+        $query = CycleCount::query();
+
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+
+        if ($fromDate) {
+            $query->where('created_at', '>=', $fromDate);
+        }
+
+        if ($toDate) {
+            $query->where('created_at', '<=', $toDate);
+        }
+
+        $counts = $query->get();
+
+        return [
+            'total_counts' => $counts->count(),
+            'completed_counts' => $counts->where('status', CycleCount::STATUS_COMPLETED)->count(),
+            'accuracy' => $this->cycleCountAccuracyFor($counts),
+        ];
+    }
+
+    /** Null (not 0 or 100) when nothing completed in the period backs a number. */
+    private function cycleCountAccuracyFor($counts): ?float
+    {
+        $completed = $counts->where('status', CycleCount::STATUS_COMPLETED);
+        $totalItems = $completed->sum('total_items');
+
+        if ($totalItems <= 0) {
+            return null;
+        }
+
+        return round((1 - $completed->sum('variance_items') / $totalItems) * 100, 1);
+    }
 }

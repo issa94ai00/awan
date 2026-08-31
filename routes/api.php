@@ -951,6 +951,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/cycle-counts/{id}/review', [WmsController::class, 'reviewCycleCount'])->name('api.admin.wms.cycle-counts.review');
             Route::post('/cycle-counts/{id}/adjustment', [WmsController::class, 'applyAdjustment'])->name('api.admin.wms.cycle-counts.adjustment');
             Route::post('/cycle-counts/{id}/cancel', [WmsController::class, 'cancelCycleCount'])->name('api.admin.wms.cycle-counts.cancel');
+
+            // Performance (مؤشرات الأداء)
+            Route::get('/performance', [WmsController::class, 'getPerformanceMetrics'])->name('api.admin.wms.performance');
+            Route::get('/performance/trends', [WmsController::class, 'getPerformanceTrends'])->name('api.admin.wms.performance.trends');
         });
 
         // Analytics & Reporting (التحليلات والتقارير)
