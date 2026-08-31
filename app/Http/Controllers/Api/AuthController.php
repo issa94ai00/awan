@@ -114,10 +114,11 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            // Revoke existing tokens
-            $user->tokens()->delete();
+            // Revoke only this device's previous token so other devices stay logged in
+            $deviceName = (string) $request->header('User-Agent', 'unknown_device');
+            $user->tokens()->where('name', $deviceName)->delete();
 
-            $token = $user->createToken('api_token')->plainTextToken;
+            $token = $user->createToken($deviceName)->plainTextToken;
 
             return response()->json([
                 'success' => true,
