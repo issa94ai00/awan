@@ -110,7 +110,7 @@ test('a bin created through the API is readable by bin_code on Picking/Packing/C
         ])
         ->assertCreated();
 
-    $bin = WarehouseBin::find($response->json('id'));
+    $bin = WarehouseBin::find($response->json('data.id'));
     expect($bin->code)->toBe('BIN-A1');
     expect($bin->bin_code)->toBe('BIN-A1');
 

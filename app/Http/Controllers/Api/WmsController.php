@@ -757,7 +757,7 @@ class WmsController extends Controller
 
     public function indexBins(Request $request)
     {
-        $query = WarehouseBin::with(['warehouse', 'inventory.product']);
+        $query = WarehouseBin::with(['warehouse:id,name,code']);
 
         if ($request->warehouse_id) {
             $query->where('warehouse_id', $request->warehouse_id);
@@ -775,15 +775,47 @@ class WmsController extends Controller
             $query->active();
         }
 
-        return response()->json($query->paginate(20));
+        $perPage = min((int) $request->input('per_page', 20) ?: 20, 100);
+        $bins = $query->withCount('inventory')->paginate($perPage);
+        $bins->getCollection()->transform(fn ($b) => $this->presentBin($b));
+
+        return response()->json($bins);
+    }
+
+    /** One bin, flattened — the warehouse relation rendered as an object was showing "[object Object]" on the list screen. */
+    private function presentBin(WarehouseBin $b): array
+    {
+        return [
+            'id' => $b->id,
+            'code' => $b->code,
+            'bin_code' => $b->bin_code,
+            'name' => $b->name,
+            'warehouse_id' => (int) $b->warehouse_id,
+            'warehouse_name' => $b->warehouse?->name,
+            'zone' => $b->zone,
+            'aisle' => $b->aisle,
+            'shelf' => $b->shelf,
+            'level' => $b->level,
+            'type' => $b->type,
+            'type_text' => $b->type_text,
+            'capacity_type' => $b->capacity_type,
+            'capacity_value' => $b->capacity_value !== null ? (float) $b->capacity_value : null,
+            'current_utilization' => (float) $b->current_utilization,
+            'utilization_percentage' => round($b->utilization_percentage, 1),
+            'is_active' => (bool) $b->is_active,
+            'requires_equipment' => (bool) $b->requires_equipment,
+            'inventory_count' => (int) ($b->inventory_count ?? 0),
+            'notes' => $b->notes,
+        ];
     }
 
     public function showBin($id)
     {
-        $bin = WarehouseBin::with(['warehouse', 'inventory.product', 'inventory.productVariant'])
+        $bin = WarehouseBin::with(['warehouse:id,name,code', 'inventory.product', 'inventory.productVariant'])
+            ->withCount('inventory')
             ->findOrFail($id);
 
-        return response()->json($bin);
+        return response()->json(['data' => $this->presentBin($bin)]);
     }
 
     public function storeBin(Request $request)
@@ -813,7 +845,7 @@ class WmsController extends Controller
         // those screens instead of a blank.
         $bin = WarehouseBin::create([...$validated, 'bin_code' => $validated['code']]);
 
-        return response()->json($bin, 201);
+        return response()->json(['data' => $this->presentBin($bin->load('warehouse:id,name,code'))], 201);
     }
 
     public function updateBin(Request $request, $id)
@@ -844,7 +876,7 @@ class WmsController extends Controller
 
         $bin->update($validated);
 
-        return response()->json($bin);
+        return response()->json(['data' => $this->presentBin($bin->load('warehouse:id,name,code'))]);
     }
 
     public function destroyBin($id)
