@@ -129,10 +129,10 @@
           </template>
           <el-table :data="recentPicking" v-loading="loading">
             <el-table-column prop="list_number" :label="$t('wms.list_number')" />
-            <el-table-column prop="warehouse" :label="$t('wms.warehouse')" />
+            <el-table-column prop="warehouse_name" :label="$t('wms.warehouse')" />
             <el-table-column prop="status" :label="$t('common.status')">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
+                <el-tag :type="getStatusType(row.status)">{{ row.status_text }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" :label="$t('common.created_at')" />
@@ -151,10 +151,10 @@
           </template>
           <el-table :data="recentPacking" v-loading="loading">
             <el-table-column prop="list_number" :label="$t('wms.list_number')" />
-            <el-table-column prop="warehouse" :label="$t('wms.warehouse')" />
+            <el-table-column prop="warehouse_name" :label="$t('wms.warehouse')" />
             <el-table-column prop="status" :label="$t('common.status')">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
+                <el-tag :type="getStatusType(row.status)">{{ row.status_text }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" :label="$t('common.created_at')" />
@@ -202,8 +202,11 @@ onMounted(async () => {
     ])
     
     stats.value = statsRes.data
-    recentPicking.value = (pickingRes.data.data || pickingRes.data || []).slice(0, 5)
-    recentPacking.value = (packingRes.data.data || packingRes.data || []).slice(0, 5)
+    // Both list endpoints answer with { data: { lists: [...] } }, not a bare
+    // array — this used to reach for pickingRes.data.data directly, which is
+    // that inner object, not a list, so .slice() threw on every page load.
+    recentPicking.value = (pickingRes.data?.data?.lists || []).slice(0, 5)
+    recentPacking.value = (packingRes.data?.data?.lists || []).slice(0, 5)
   } catch (error) {
     console.error('Failed to load WMS stats:', error)
   } finally {

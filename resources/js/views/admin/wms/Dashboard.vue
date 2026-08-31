@@ -1,10 +1,166 @@
 <!-- resources/js/views/admin/wms/Dashboard.vue -->
+<template>
+    <div class="wms-dashboard-page">
+        <AdminPageHeader icon="fas fa-gauge-high" :title="$t('wms_dashboard')">
+            <template #actions>
+                <el-popover placement="bottom-end" trigger="click" width="340" popper-class="alerts-popover">
+                    <template #reference>
+                        <el-badge :value="alerts.length" :hidden="!alerts.length" type="danger">
+                            <el-button type="danger" plain>
+                                <i class="fas fa-triangle-exclamation"></i> {{ $t('alerts_with_icon') }}
+                            </el-button>
+                        </el-badge>
+                    </template>
+                    <div class="alerts-list">
+                        <h4 class="alerts-title">{{ $t('recent_alerts') }}</h4>
+                        <el-empty v-if="!alerts.length" :description="$t('no_alerts')" :image-size="60" />
+                        <div v-for="alert in alerts" :key="alert.id" class="alert-row" @click="navigateTo(`/admin/products/${alert.product_id}`)">
+                            <i class="fas fa-triangle-exclamation alert-icon"></i>
+                            <div>
+                                <p class="alert-message">{{ alert.message }}</p>
+                                <p class="alert-date">{{ alert.created_at }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </el-popover>
+            </template>
+        </AdminPageHeader>
+
+        <div v-if="loading" class="loading-state"><el-skeleton :rows="8" animated /></div>
+
+        <template v-else>
+            <div class="stat-grid mb-3">
+                <el-card shadow="never" class="stat-card stat-blue">
+                    <span class="stat-label">{{ $t('linked_products') }}</span>
+                    <strong class="stat-value">{{ formatNumber(stats.linked_products) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-green">
+                    <span class="stat-label">{{ $t('active_warehouses') }}</span>
+                    <strong class="stat-value">{{ stats.active_warehouses }} / {{ stats.total_warehouses }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-yellow">
+                    <span class="stat-label">{{ $t('products_needing_reorder') }}</span>
+                    <strong class="stat-value">{{ formatNumber(stats.reorder_products) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-purple">
+                    <span class="stat-label">{{ $t('total_stock') }}</span>
+                    <strong class="stat-value">{{ formatNumber(stats.total_stock) }}</strong>
+                </el-card>
+            </div>
+
+            <div class="stat-grid mb-3">
+                <el-card shadow="never" class="stat-card stat-orange">
+                    <span class="stat-label">{{ $t('stock_value') }}</span>
+                    <strong class="stat-value">{{ formatMoney(stats.total_value) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-red">
+                    <span class="stat-label">{{ $t('movements_today') }}</span>
+                    <strong class="stat-value">{{ formatNumber(stats.today_movements) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-blue">
+                    <span class="stat-label">{{ $t('active_users') }}</span>
+                    <strong class="stat-value">{{ formatNumber(stats.active_users) }}</strong>
+                </el-card>
+                <el-card shadow="never" class="stat-card stat-green">
+                    <span class="stat-label">{{ $t('avg_utilization') }}</span>
+                    <strong class="stat-value">{{ stats.avg_utilization }}%</strong>
+                </el-card>
+            </div>
+
+            <div class="two-col mb-3">
+                <el-card shadow="never">
+                    <template #header>{{ $t('top_five_consumed_products') }}</template>
+                    <div v-if="topProducts.length" class="bar-list">
+                        <div v-for="(product, index) in topProducts" :key="product.id" class="bar-row">
+                            <span class="bar-rank">{{ index + 1 }}</span>
+                            <div class="bar-body">
+                                <div class="bar-head">
+                                    <span>{{ product.name }}</span>
+                                    <span class="bar-value">{{ formatNumber(product.consumption) }}</span>
+                                </div>
+                                <el-progress :percentage="pct(product.consumption, topProducts[0].consumption)" :show-text="false" :stroke-width="8" />
+                            </div>
+                        </div>
+                    </div>
+                    <el-empty v-else :description="$t('no_data')" :image-size="60" />
+                </el-card>
+
+                <el-card shadow="never">
+                    <template #header>{{ $t('stock_distribution_across_warehouses') }}</template>
+                    <div v-if="warehouseDistribution.length" class="bar-list">
+                        <div v-for="(warehouse, index) in warehouseDistribution" :key="warehouse.id" class="bar-row">
+                            <span class="bar-rank bar-rank-green">{{ index + 1 }}</span>
+                            <div class="bar-body">
+                                <div class="bar-head">
+                                    <span>{{ warehouse.name }}</span>
+                                    <span class="bar-value">{{ warehouse.percentage }}%</span>
+                                </div>
+                                <el-progress :percentage="warehouse.percentage" :show-text="false" :stroke-width="8" color="#67c23a" />
+                            </div>
+                        </div>
+                    </div>
+                    <el-empty v-else :description="$t('no_data')" :image-size="60" />
+                </el-card>
+            </div>
+
+            <el-card shadow="never" class="mb-3">
+                <template #header>
+                    <div class="card-header">
+                        <span>{{ $t('latest_stock_movements') }}</span>
+                        <el-button text @click="navigateTo('/admin/wms/stock/balances')">{{ $t('view_all') }}</el-button>
+                    </div>
+                </template>
+                <el-table :data="recentMovements" stripe>
+                    <el-table-column :label="$t('date')" width="150">
+                        <template #default="{ row }">{{ row.date }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('product')" min-width="160">
+                        <template #default="{ row }">{{ row.product }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('warehouse')" min-width="140">
+                        <template #default="{ row }">{{ row.warehouse }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('type')" width="110" align="center">
+                        <template #default="{ row }">
+                            <el-tag size="small" :type="{ in: 'success', out: 'danger', adjustment: 'warning' }[row.type] || 'info'">{{ row.type_text }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('quantity')" width="100" align="center">
+                        <template #default="{ row }">{{ row.quantity }}</template>
+                    </el-table-column>
+                </el-table>
+                <el-empty v-if="!recentMovements.length" :description="$t('no_movements_today')" :image-size="60" />
+            </el-card>
+
+            <el-card shadow="never">
+                <template #header>{{ $t('quick_links') }}</template>
+                <div class="quick-links-grid">
+                    <button class="quick-link" @click="navigateTo('/admin/wms/products')">
+                        <i class="fas fa-boxes-packing"></i> {{ $t('nav_products') }}
+                    </button>
+                    <button class="quick-link" @click="navigateTo('/admin/wms/warehouses')">
+                        <i class="fas fa-warehouse"></i> {{ $t('warehouses') }}
+                    </button>
+                    <button class="quick-link" @click="navigateTo('/admin/wms/stock/balances')">
+                        <i class="fas fa-scale-balanced"></i> {{ $t('balances') }}
+                    </button>
+                    <button class="quick-link" @click="navigateTo('/admin/reports/inventory')">
+                        <i class="fas fa-chart-column"></i> {{ $t('nav_reports') }}
+                    </button>
+                </div>
+            </el-card>
+        </template>
+    </div>
+</template>
+
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElNotification } from 'element-plus';
 import api from '@/api';
+import { formatNumber as formatCount, formatMoney as formatMoneyValue } from '@/utils/currency';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -25,18 +181,16 @@ const topProducts = ref([]);
 const warehouseDistribution = ref([]);
 const recentMovements = ref([]);
 const alerts = ref([]);
-const showAlerts = ref(false);
 
-// جلب البيانات
 async function fetchDashboardData() {
     loading.value = true;
     try {
         const response = await api.get('/admin/wms/dashboard');
         stats.value = response.data.stats;
-        topProducts.value = response.data.top_products;
-        warehouseDistribution.value = response.data.warehouse_distribution;
+        topProducts.value = response.data.top_products || [];
+        warehouseDistribution.value = response.data.warehouse_distribution || [];
         recentMovements.value = response.data.recent_movements || [];
-        alerts.value = response.data.alerts;
+        alerts.value = response.data.alerts || [];
     } catch (error) {
         console.error('Error fetching dashboard data:', error);
     } finally {
@@ -44,342 +198,89 @@ async function fetchDashboardData() {
     }
 }
 
-// الاستماع لتحديثات Laravel Echo
 function setupEchoListeners() {
-    if (typeof window.Echo === 'undefined') {
-        console.warn('Laravel Echo is not configured');
-        return;
-    }
-
-    // الاستماع لتنبيهات لوحة التحكم
+    if (typeof window.Echo === 'undefined') return;
     window.Echo.private('dashboard.alerts')
         .listen('StockAlert', (e) => {
             alerts.value.unshift(e.alert);
-            showNotification(e.alert.message);
+            ElNotification({ title: t('recent_alerts'), message: e.alert.message, type: 'warning', position: 'bottom-right' });
         });
-}
-
-function showNotification(message) {
-    ElNotification({
-        title: t('recent_alerts'),
-        message,
-        type: 'warning',
-        position: 'bottom-right',
-    });
 }
 
 onMounted(() => {
     fetchDashboardData();
     setupEchoListeners();
-    
-    // إغلاق قائمة التنبيهات عند النقر خارجها
-    document.addEventListener('click', closeAlertsDropdown);
 });
 
 onUnmounted(() => {
-    document.removeEventListener('click', closeAlertsDropdown);
-    if (window.Echo) {
-        window.Echo.leave('dashboard.alerts');
-    }
+    if (window.Echo) window.Echo.leave('dashboard.alerts');
 });
-
-function closeAlertsDropdown(e) {
-    if (!e.target.closest('.alerts-dropdown')) {
-        showAlerts.value = false;
-    }
-}
 
 function navigateTo(path) {
     router.push(path);
 }
+
+function pct(value, max) {
+    if (!max) return 0;
+    return Math.round((value / max) * 100);
+}
+
+function formatNumber(num) {
+    if (num === null || num === undefined) return '—';
+    return formatCount(num);
+}
+
+function formatMoney(value) {
+    return formatMoneyValue(value);
+}
 </script>
 
-<template>
-    <div class="p-6">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold">{{ $t('wms_dashboard') }}</h1>
-            
-            <!-- قائمة التنبيهات -->
-            <div class="relative alerts-dropdown">
-                <button 
-                    @click="showAlerts = !showAlerts"
-                    class="relative bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
-                >
-                    <span class="flex items-center gap-2">
-                        {{ $t('alerts_with_icon') }}
-                        <span 
-                            v-if="alerts.length > 0"
-                            class="bg-white text-red-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold"
-                        >
-                            {{ alerts.length }}
-                        </span>
-                    </span>
-                </button>
-                
-                <div 
-                    v-if="showAlerts"
-                    class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg z-10"
-                >
-                    <div class="p-4 border-b">
-                        <h3 class="font-bold">{{ $t('recent_alerts') }}</h3>
-                    </div>
-                    <div class="max-h-96 overflow-y-auto">
-                        <div 
-                            v-for="alert in alerts" 
-                            :key="alert.id"
-                            @click="navigateTo(`/admin/wms/products/${alert.product_id}`)"
-                            class="p-4 border-b hover:bg-gray-50 cursor-pointer"
-                        >
-                            <div class="flex items-start gap-3">
-                                <span class="text-2xl">⚠</span>
-                                <div class="flex-1">
-                                    <p class="text-sm">{{ alert.message }}</p>
-                                    <p class="text-xs text-gray-500 mt-1">{{ alert.created_at }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-if="alerts.length === 0" class="p-4 text-gray-500 text-center">
-                            {{ $t('no_alerts') }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<style scoped>
+.wms-dashboard-page { font-family: 'Cairo', sans-serif; }
 
-        <div v-if="loading" class="flex justify-center py-12">
-            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p class="mt-4 text-gray-600">{{ $t('loading') }}</p>
-        </div>
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; }
+.stat-card { border-radius: 12px; border-inline-start: 4px solid var(--el-color-info); }
+.stat-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 0.3rem; }
+.stat-blue { border-inline-start-color: var(--el-color-primary); }
+.stat-green { border-inline-start-color: var(--el-color-success); }
+.stat-yellow { border-inline-start-color: var(--el-color-warning); }
+.stat-purple { border-inline-start-color: #8b5cf6; }
+.stat-orange { border-inline-start-color: #f97316; }
+.stat-red { border-inline-start-color: var(--el-color-danger); }
+.stat-label { font-size: 0.8rem; color: var(--text-muted); }
+.stat-value { font-size: 1.4rem; font-weight: 800; }
 
-        <div v-else>
-            <!-- البطاقات السريعة -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('linked_products') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.linked_products }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">📦</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('active_warehouses') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.active_warehouses }} / {{ stats.total_warehouses }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">🏭</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-yellow-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('products_needing_reorder') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.reorder_products }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">⚠️</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-purple-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('total_stock') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.total_stock }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">📊</div>
-                    </div>
-                </div>
-            </div>
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-orange-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('stock_value') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ formatCurrency(stats.total_value) }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">💰</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-red-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('movements_today') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.today_movements }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">🔄</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-blue-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('active_users') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.active_users }}</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">👥</div>
-                    </div>
-                </div>
-                <div class="bg-white p-4 sm:p-6 rounded-lg shadow-lg border-l-4 border-green-500">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-xs sm:text-sm font-medium text-gray-600 mb-1">{{ $t('avg_utilization') }}</h3>
-                            <p class="text-2xl sm:text-3xl font-bold text-gray-800">{{ stats.avg_utilization }}%</p>
-                        </div>
-                        <div class="text-2xl sm:text-3xl">📈</div>
-                    </div>
-                </div>
-            </div>
+.bar-list { display: flex; flex-direction: column; gap: 0.9rem; }
+.bar-row { display: flex; align-items: center; gap: 0.75rem; }
+.bar-rank { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: var(--el-color-primary-light-8); color: var(--el-color-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+.bar-rank-green { background: var(--el-color-success-light-8); color: var(--el-color-success); }
+.bar-body { flex: 1 1 auto; min-width: 0; }
+.bar-head { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+.bar-value { color: var(--text-muted); }
 
-            <!-- الرسوم البيانية -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('top_five_consumed_products') }}</h3>
-                    <div v-if="topProducts.length > 0" class="space-y-4">
-                        <div 
-                            v-for="(product, index) in topProducts" 
-                            :key="product.id"
-                            class="flex items-center gap-3"
-                        >
-                            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
-                                {{ index + 1 }}
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex justify-between mb-1">
-                                    <span class="font-medium text-sm">{{ product.name }}</span>
-                                    <span class="text-sm text-gray-600">{{ product.quantity }}</span>
-                                </div>
-                                <div class="w-full bg-gray-200 rounded-full h-2">
-                                    <div 
-                                        class="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                                        :style="{ width: (product.quantity / topProducts[0].quantity * 100) + '%' }"
-                                    ></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-else class="text-center text-gray-500 py-8">
-                        {{ $t('no_data') }}
-                    </div>
-                </div>
+.card-header { display: flex; align-items: center; justify-content: space-between; }
 
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('stock_distribution_across_warehouses') }}</h3>
-                    <div v-if="warehouseDistribution.length > 0" class="space-y-4">
-                        <div 
-                            v-for="(warehouse, index) in warehouseDistribution" 
-                            :key="warehouse.id"
-                            class="flex items-center gap-3"
-                        >
-                            <div class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold text-sm">
-                                {{ index + 1 }}
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex justify-between mb-1">
-                                    <span class="font-medium text-sm">{{ warehouse.name }}</span>
-                                    <span class="text-sm text-gray-600">{{ warehouse.percentage }}%</span>
-                                </div>
-                                <div class="w-full bg-gray-200 rounded-full h-2">
-                                    <div 
-                                        class="bg-green-600 h-2 rounded-full transition-all duration-500"
-                                        :style="{ width: warehouse.percentage + '%' }"
-                                    ></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-else class="text-center text-gray-500 py-8">
-                        {{ $t('no_data') }}
-                    </div>
-                </div>
-            </div>
+.quick-links-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
+.quick-link {
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    padding: 1.1rem 0.5rem; border: 1px solid var(--border-color); border-radius: 10px;
+    background: var(--el-fill-color-blank); cursor: pointer; font-size: 0.85rem; font-weight: 600;
+    transition: box-shadow .15s ease, transform .15s ease;
+}
+.quick-link:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); transform: translateY(-1px); }
+.quick-link i { font-size: 1.4rem; color: var(--el-color-primary); }
 
-            <!-- آخر الحركات -->
-            <div class="bg-white p-6 rounded-lg shadow-lg">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-800">{{ $t('latest_stock_movements') }}</h3>
-                    <button 
-                        @click="navigateTo('/admin/wms/stock/balances')"
-                        class="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                    >
-                        {{ $t('view_all') }}
-                    </button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="border-b bg-gray-50">
-                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('date') }}</th>
-                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('product') }}</th>
-                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('warehouse') }}</th>
-                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('type') }}</th>
-                                <th class="text-right p-3 font-medium text-gray-700">{{ $t('quantity') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-if="recentMovements.length === 0">
-                                <td colspan="5" class="p-4 text-center text-gray-500">{{ $t('no_movements_today') }}</td>
-                            </tr>
-                            <tr v-for="movement in recentMovements" :key="movement.id" class="border-b hover:bg-gray-50">
-                                <td class="p-3 text-sm">{{ movement.date }}</td>
-                                <td class="p-3 text-sm">{{ movement.product }}</td>
-                                <td class="p-3 text-sm">{{ movement.warehouse }}</td>
-                                <td class="p-3">
-                                    <span
-                                        class="px-2 py-1 rounded-full text-xs font-medium"
-                                        :class="{
-                                            'bg-blue-100 text-blue-800': movement.type === 'in',
-                                            'bg-red-100 text-red-800': movement.type === 'out',
-                                            'bg-amber-100 text-amber-800': movement.type === 'adjustment',
-                                        }"
-                                    >
-                                        {{ movement.type_text }}
-                                    </span>
-                                </td>
-                                <td class="p-3 text-sm font-medium">{{ movement.quantity }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+.alerts-list { max-height: 360px; overflow-y: auto; }
+.alerts-title { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 700; }
+.alert-row { display: flex; gap: 0.6rem; padding: 0.6rem 0.2rem; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+.alert-row:hover { background: var(--el-fill-color-light); }
+.alert-row:last-child { border-bottom: none; }
+.alert-icon { color: var(--el-color-warning); margin-top: 0.15rem; }
+.alert-message { margin: 0; font-size: 0.82rem; }
+.alert-date { margin: 0.15rem 0 0; font-size: 0.72rem; color: var(--text-muted); }
 
-            <!-- روابط سريعة -->
-            <div class="mt-6">
-                <h3 class="text-lg font-bold mb-4 text-gray-800">{{ $t('quick_links') }}</h3>
-                <div class="grid grid-cols-4 gap-4">
-                    <button 
-                        @click="navigateTo('/admin/wms/products')"
-                        class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
-                    >
-                        <div class="text-2xl mb-2">📦</div>
-                        <div class="font-medium">{{ $t('nav_products') }}</div>
-                    </button>
-                    
-                    <button 
-                        @click="navigateTo('/admin/wms/warehouses')"
-                        class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
-                    >
-                        <div class="text-2xl mb-2">🏭</div>
-                        <div class="font-medium">{{ $t('warehouses') }}</div>
-                    </button>
-                    
-                    <button 
-                        @click="navigateTo('/admin/wms/stock/balances')"
-                        class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
-                    >
-                        <div class="text-2xl mb-2">⚖</div>
-                        <div class="font-medium">{{ $t('balances') }}</div>
-                    </button>
-                    
-                    <button 
-                        @click="navigateTo('/admin/reports/inventory')"
-                        class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow text-right"
-                    >
-                        <div class="text-2xl mb-2">📊</div>
-                        <div class="font-medium">{{ $t('nav_reports') }}</div>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
+.loading-state { padding: 2rem; }
+.mb-3 { margin-bottom: 0.75rem; }
+</style>
