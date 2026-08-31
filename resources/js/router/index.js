@@ -558,6 +558,11 @@ const routes = [
                 name: 'admin.wms.packing.index',
                 component: () => import('@/views/admin/wms/PackingLists.vue')
             },
+            {
+                path: 'wms/packing/:id',
+                name: 'admin.wms.packing.show',
+                component: () => import('@/views/admin/wms/PackingDetail.vue')
+            },
             // Packing-list create happens inline via a dialog on the list page
             // (PackingLists.vue) — there used to be a dedicated form here, but
             // it was an orphaned mock (API calls commented out, fake success
@@ -566,6 +571,11 @@ const routes = [
                 path: 'wms/cycle-counts',
                 name: 'admin.wms.cycle-counts.index',
                 component: () => import('@/views/admin/wms/CycleCounts.vue')
+            },
+            {
+                path: 'wms/cycle-counts/:id',
+                name: 'admin.wms.cycle-counts.show',
+                component: () => import('@/views/admin/wms/CycleCountDetail.vue')
             },
             // Cycle-count create happens inline via a dialog on the list page
             // (CycleCounts.vue) — there used to be a dedicated form here, but

@@ -70,14 +70,6 @@ export const wmsService = {
         return api.post(`${API_BASE_URL}/picking-lists`, data);
     },
 
-    updatePickingList(id, data) {
-        return api.put(`${API_BASE_URL}/picking-lists/${id}`, data);
-    },
-
-    deletePickingList(id) {
-        return api.delete(`${API_BASE_URL}/picking-lists/${id}`);
-    },
-
     startPicking(id) {
         return api.post(`${API_BASE_URL}/picking-lists/${id}/start`);
     },
@@ -124,6 +116,19 @@ export const wmsService = {
         return api.post(`${ADMIN_BASE_URL}/packing-lists/${id}/cancel`);
     },
 
+    /** Per-package weight/dimensions/fragile/notes. Returns the refreshed list. */
+    updatePackageDetails(itemId, data) {
+        return api.put(`${ADMIN_BASE_URL}/packing-items/${itemId}`, data);
+    },
+
+    getPackingLabels(id) {
+        return api.get(`${ADMIN_BASE_URL}/packing-lists/${id}/labels`);
+    },
+
+    validatePacking(id) {
+        return api.get(`${ADMIN_BASE_URL}/packing-lists/${id}/validate`);
+    },
+
     // Cycle Counts
     getCycleCounts(params = {}) {
         return api.get(`${ADMIN_BASE_URL}/cycle-counts`, { params });
@@ -141,8 +146,26 @@ export const wmsService = {
         return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/start`);
     },
 
+    /**
+     * Records one counted line. `expected_quantity` is intentionally not
+     * accepted here — the server always reads it from live warehouse
+     * inventory, so a count can't be gamed into showing zero variance.
+     */
+    addCycleCountItem(countId, data) {
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${countId}/items`, data);
+    },
+
     completeCycleCount(id) {
         return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/complete`);
+    },
+
+    reviewCycleCount(id) {
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/review`);
+    },
+
+    /** Writes every counted variance to warehouse_inventory. Not reversible. */
+    applyAdjustment(id) {
+        return api.post(`${ADMIN_BASE_URL}/cycle-counts/${id}/adjustment`);
     },
 
     cancelCycleCount(id) {

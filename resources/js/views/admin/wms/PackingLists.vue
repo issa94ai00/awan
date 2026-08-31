@@ -1,261 +1,257 @@
 <template>
-  <div class="packing-lists-page">
-    <div class="page-header">
-      <h1><el-icon><Open /></el-icon> {{ $t('wms.packing_lists') }}</h1>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon> {{ $t('wms.create_packing_list') }}
-      </el-button>
+    <div class="packing-lists-page">
+        <AdminPageHeader
+            icon="fas fa-box"
+            :title="$t('wms.packing_lists')"
+        >
+            <template #actions>
+                <el-select v-model="filters.status" :placeholder="$t('wms.select_status')" clearable style="width: 160px" @change="load(1)">
+                    <el-option value="pending" :label="$t('wms.pending')" />
+                    <el-option value="in_progress" :label="$t('wms.in_progress')" />
+                    <el-option value="completed" :label="$t('wms.completed')" />
+                    <el-option value="cancelled" :label="$t('wms.cancelled')" />
+                </el-select>
+                <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable style="width: 180px" @change="load(1)">
+                    <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
+                </el-select>
+                <el-button type="primary" @click="openCreateDialog">
+                    <i class="fas fa-plus"></i> {{ $t('wms.create_packing_list') }}
+                </el-button>
+            </template>
+        </AdminPageHeader>
+
+        <el-card shadow="never">
+            <div v-if="loading" class="loading-state"><el-skeleton :rows="6" animated /></div>
+
+            <template v-else>
+                <el-table v-if="lists.length" :data="lists" stripe class="custom-table">
+                    <el-table-column :label="$t('wms.list_number')" width="140">
+                        <template #default="{ row }">
+                            <span class="list-link" @click="open(row)">{{ row.list_number }}</span>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('wms.order')" min-width="150">
+                        <template #default="{ row }">
+                            <strong>{{ row.order_number || '—' }}</strong>
+                            <p class="row-sub">{{ row.customer_name || '' }}</p>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('wms.warehouse')" min-width="130">
+                        <template #default="{ row }">{{ row.warehouse_name || '—' }}</template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('wms.picking_list')" width="140">
+                        <template #default="{ row }">{{ row.picking_list_number || '—' }}</template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('common.status')" width="120" align="center">
+                        <template #default="{ row }">
+                            <el-tag :type="statusType(row.status)" size="small">{{ row.status_text }}</el-tag>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('wms.total_packages')" width="100" align="center">
+                        <template #default="{ row }">{{ row.total_packages }}</template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('wms.packer')" width="120">
+                        <template #default="{ row }">{{ row.packer_name || '—' }}</template>
+                    </el-table-column>
+
+                    <el-table-column :label="$t('common.actions')" width="200" align="center">
+                        <template #default="{ row }">
+                            <el-button-group>
+                                <el-button size="small" type="info" plain :title="$t('wms.open_list')" @click="open(row)">
+                                    <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button size="small" type="success" :disabled="!row.can_start" :title="$t('wms.start_packing')" @click="act(row, 'start')">
+                                    <i class="fas fa-play"></i>
+                                </el-button>
+                                <el-button size="small" type="primary" :disabled="!row.can_complete" :title="$t('wms.complete_packing')" @click="act(row, 'complete')">
+                                    <i class="fas fa-check"></i>
+                                </el-button>
+                                <el-button size="small" type="danger" plain :disabled="!row.can_cancel" :title="$t('common.cancel')" @click="act(row, 'cancel')">
+                                    <i class="fas fa-ban"></i>
+                                </el-button>
+                            </el-button-group>
+                        </template>
+                    </el-table-column>
+                </el-table>
+
+                <el-empty v-else :description="$t('wms.no_packing_lists')" />
+
+                <div v-if="pagination.total > pagination.per_page" class="pagination-row">
+                    <el-pagination
+                        layout="prev, pager, next, total"
+                        :total="pagination.total"
+                        :current-page="pagination.current_page"
+                        :page-size="pagination.per_page"
+                        background
+                        @current-change="load"
+                    />
+                </div>
+            </template>
+        </el-card>
+
+        <!-- Create Dialog -->
+        <el-dialog v-model="showCreateDialog" :title="$t('wms.create_packing_list')" width="520px">
+            <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="mb-3"
+                :title="$t('wms.packing_from_picking_hint')"
+            />
+            <el-form :model="form" label-position="top">
+                <el-form-item :label="$t('wms.picking_list')" required>
+                    <el-select v-model="form.picking_list_id" filterable :placeholder="$t('wms.select_picking_list')" style="width: 100%">
+                        <el-option v-for="pl in completedPickingLists" :key="pl.id" :value="pl.id" :label="`${pl.list_number} — ${pl.order_number || ''}`" />
+                    </el-select>
+                    <p v-if="!completedPickingLists.length" class="empty-hint">{{ $t('wms.no_completed_picking_lists') }}</p>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showCreateDialog = false">{{ $t('common.cancel') }}</el-button>
+                <el-button type="primary" :loading="saving" @click="create">{{ $t('common.create') }}</el-button>
+            </template>
+        </el-dialog>
     </div>
-
-    <el-card>
-      <el-form :inline="true" class="filter-form">
-        <el-form-item :label="$t('wms.status')">
-          <el-select v-model="filters.status" :placeholder="$t('wms.select_status')" clearable @change="loadPackingLists">
-            <el-option value="pending" :label="$t('wms.pending')" />
-            <el-option value="in_progress" :label="$t('wms.in_progress')" />
-            <el-option value="completed" :label="$t('wms.completed')" />
-            <el-option value="cancelled" :label="$t('wms.cancelled')" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('wms.warehouse')">
-          <el-select v-model="filters.warehouse_id" :placeholder="$t('wms.select_warehouse')" clearable @change="loadPackingLists">
-            <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadPackingLists">
-            <el-icon><Search /></el-icon> {{ $t('common.search') }}
-          </el-button>
-        </el-form-item>
-      </el-form>
-
-      <el-table :data="packingLists" v-loading="loading" stripe>
-        <el-table-column prop="list_number" :label="$t('wms.list_number')" />
-        <el-table-column prop="picking_list_number" :label="$t('wms.picking_list')" />
-        <el-table-column prop="warehouse" :label="$t('wms.warehouse')" />
-        <el-table-column prop="status" :label="$t('common.status')">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" :label="$t('common.created_at')" />
-        <el-table-column :label="$t('common.actions')" width="200">
-          <template #default="{ row }">
-            <el-button-group>
-              <el-button size="small" @click="viewPackingList(row)">
-                <el-icon><View /></el-icon>
-              </el-button>
-              <el-button size="small" type="success" @click="startPacking(row)" :disabled="row.status !== 'pending'">
-                <el-icon><VideoPlay /></el-icon>
-              </el-button>
-              <el-button size="small" type="primary" @click="completePacking(row)" :disabled="row.status !== 'in_progress'">
-                <el-icon><Check /></el-icon>
-              </el-button>
-              <el-button size="small" type="danger" @click="cancelPacking(row)" :disabled="row.status === 'completed'">
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </el-button-group>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.per_page"
-        :total="pagination.total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
-        @size-change="loadPackingLists"
-        @current-change="loadPackingLists"
-        style="margin-top: 20px"
-      />
-    </el-card>
-
-    <!-- Create Dialog -->
-    <el-dialog v-model="showCreateDialog" :title="$t('wms.create_packing_list')" width="600px">
-      <el-form :model="form" label-width="150px">
-        <el-form-item :label="$t('wms.warehouse')">
-          <el-select v-model="form.warehouse_id">
-            <el-option v-for="wh in warehouses" :key="wh.id" :value="wh.id" :label="wh.name" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('wms.picking_list')">
-          <el-select v-model="form.picking_list_id" filterable>
-            <el-option v-for="pl in pickingLists" :key="pl.id" :value="pl.id" :label="pl.list_number" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCreateDialog = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="createPackingList" :loading="saving">
-          {{ $t('common.create') }}
-        </el-button>
-      </template>
-    </el-dialog>
-  </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { Open, Plus, Search, View, VideoPlay, Check, Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { wmsService } from '@/services/wms'
+import { useI18n } from 'vue-i18n';
+import { ref, reactive, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { wmsService } from '@/services/wms';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
-const { t } = useI18n()
-const router = useRouter()
-const loading = ref(false)
-const saving = ref(false)
-const showCreateDialog = ref(false)
-const packingLists = ref([])
-const warehouses = ref([])
-const completedPickingLists = ref([])
-const filters = ref({
-  status: '',
-  warehouse_id: null
-})
-const pagination = ref({
-  page: 1,
-  per_page: 20,
-  total: 0
-})
-const form = ref({
-  warehouse_id: null,
-  picking_list_id: null
-})
+const { t } = useI18n();
+const router = useRouter();
 
-const getStatusType = (status) => {
-  const types = {
-    pending: 'warning',
-    in_progress: 'primary',
-    completed: 'success',
-    cancelled: 'danger'
-  }
-  return types[status] || 'info'
-}
+const lists = ref([]);
+const warehouses = ref([]);
+const completedPickingLists = ref([]);
+const pagination = ref({ current_page: 1, per_page: 20, total: 0 });
+
+const loading = ref(false);
+const saving = ref(false);
+const showCreateDialog = ref(false);
+
+const filters = reactive({ status: '', warehouse_id: null });
+const form = reactive({ picking_list_id: null });
+
+const statusType = (s) => ({ pending: 'warning', in_progress: 'primary', completed: 'success', cancelled: 'danger' }[s] || 'info');
+
+const load = async (page = 1) => {
+    loading.value = true;
+    try {
+        const params = { page, per_page: pagination.value.per_page };
+        if (filters.status) params.status = filters.status;
+        if (filters.warehouse_id) params.warehouse_id = filters.warehouse_id;
+
+        const res = await wmsService.getPackingLists(params);
+        const data = res.data?.data || {};
+        lists.value = data.lists || [];
+        pagination.value = data.pagination || pagination.value;
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_load_packing_lists'));
+    } finally {
+        loading.value = false;
+    }
+};
+
+const ACTIONS = {
+    start: { fn: (id) => wmsService.startPacking(id), confirm: null },
+    complete: { fn: (id) => wmsService.completePacking(id), confirm: t('wms.confirm_complete_packing') },
+    cancel: { fn: (id) => wmsService.cancelPacking(id), confirm: t('wms.confirm_cancel_packing') },
+};
+
+const act = async (row, action) => {
+    const cfg = ACTIONS[action];
+
+    if (cfg.confirm) {
+        try {
+            await ElMessageBox.confirm(cfg.confirm, t('common.confirm'), {
+                type: action === 'cancel' ? 'warning' : 'info',
+                confirmButtonText: t('common.confirm'),
+                cancelButtonText: t('common.cancel'),
+            });
+        } catch {
+            return;
+        }
+    }
+
+    try {
+        const res = await cfg.fn(row.id);
+        ElMessage.success(res.data?.message || t('operation_completed'));
+        await load(pagination.value.current_page);
+    } catch (e) {
+        // The API explains precisely why (wrong state, etc.); a generic
+        // message here would hide the reason and the way forward.
+        ElMessage.error(e.response?.data?.message || t('operation_failed'));
+    }
+};
+
+const openCreateDialog = async () => {
+    form.picking_list_id = null;
+    showCreateDialog.value = true;
+    try {
+        const res = await wmsService.getPickingLists({ status: 'completed', per_page: 100 });
+        completedPickingLists.value = res.data?.data?.lists || [];
+    } catch {
+        completedPickingLists.value = [];
+    }
+};
+
+const create = async () => {
+    if (!form.picking_list_id) {
+        ElMessage.warning(t('wms.picking_list_required'));
+        return;
+    }
+
+    saving.value = true;
+    try {
+        await wmsService.createPackingList({ ...form });
+        ElMessage.success(t('wms.packing_list_created'));
+        showCreateDialog.value = false;
+        await load(1);
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_save_packing_list'));
+    } finally {
+        saving.value = false;
+    }
+};
+
+const open = (row) => router.push(`/admin/wms/packing/${row.id}`);
 
 const loadWarehouses = async () => {
-  try {
-    const response = await wmsService.getWarehouses()
-    const data = response.data
-    warehouses.value = data.data || data || []
-  } catch (error) {
-    console.error('Failed to load warehouses:', error)
-  }
-}
-
-const loadCompletedPickingLists = async () => {
-  try {
-    const response = await wmsService.getPickingLists({ status: 'completed' })
-    const data = response.data
-    completedPickingLists.value = data.data || data || []
-  } catch (error) {
-    console.error('Failed to load picking lists:', error)
-  }
-}
-
-const loadPackingLists = async () => {
-  loading.value = true
-  try {
-    const response = await wmsService.getPackingLists({
-      status: filters.value.status,
-      warehouse_id: filters.value.warehouse_id,
-      page: pagination.value.page,
-      per_page: pagination.value.per_page
-    })
-    const data = response.data
-    packingLists.value = data.data || data || []
-    pagination.value.total = data.total || packingLists.value.length
-  } catch (error) {
-    ElMessage.error(t('failed_to_load_packing_lists'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const createPackingList = async () => {
-  saving.value = true
-  try {
-    // API expects picking_list_id, warehouse_id
-    const payload = {
-      picking_list_id: form.value.picking_list_id,
-      warehouse_id: form.value.warehouse_id
+    try {
+        const res = await wmsService.getWarehouses();
+        warehouses.value = res.data?.data || res.data || [];
+    } catch {
+        /* the filter simply stays empty */
     }
-    await wmsService.createPackingList(payload)
-    ElMessage.success(t('packing_list_created'))
-    showCreateDialog.value = false
-    await loadPackingLists()
-  } catch (error) {
-    ElMessage.error(t('failed_to_save_packing_list'))
-  } finally {
-    saving.value = false
-  }
-}
-
-const startPacking = async (packingList) => {
-  try {
-    await wmsService.startPacking(packingList.id)
-    ElMessage.success(t('packing_started'))
-    await loadPackingLists()
-  } catch (error) {
-    ElMessage.error(t('failed_to_start_packing'))
-  }
-}
-
-const completePacking = async (packingList) => {
-  try {
-    await wmsService.completePacking(packingList.id)
-    ElMessage.success(t('packing_completed'))
-    await loadPackingLists()
-  } catch (error) {
-    ElMessage.error(t('failed_to_complete_packing'))
-  }
-}
-
-const cancelPacking = async (packingList) => {
-  try {
-    await wmsService.cancelPacking(packingList.id)
-    ElMessage.success(t('packing_cancelled'))
-    await loadPackingLists()
-  } catch (error) {
-    ElMessage.error(t('failed_to_cancel_packing'))
-  }
-}
-
-const viewPackingList = (packingList) => {
-  router.push(`/admin/wms/packing/${packingList.id}`)
-}
+};
 
 onMounted(() => {
-  loadWarehouses()
-  loadCompletedPickingLists()
-  loadPackingLists()
-})
+    load(1);
+    loadWarehouses();
+});
 </script>
 
 <style scoped>
-.packing-lists-page {
-  padding: 20px;
-}
+.packing-lists-page { font-family: 'Cairo', sans-serif; }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
+.list-link { color: var(--el-color-primary); font-weight: 700; cursor: pointer; font-family: monospace; }
+.list-link:hover { text-decoration: underline; }
 
-.page-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 24px;
-  color: #333;
-}
+.row-sub { margin: 0.15rem 0 0; font-size: 0.76rem; color: var(--text-muted); }
+.empty-hint { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--text-muted); }
 
-.filter-form {
-  margin-bottom: 20px;
-}
+.pagination-row { display: flex; justify-content: flex-end; padding-top: 1rem; }
+.loading-state { padding: 2rem; }
+.mb-3 { margin-bottom: 0.75rem; }
 </style>
