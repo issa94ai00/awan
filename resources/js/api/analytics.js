@@ -220,6 +220,32 @@ const analyticsApi = {
         return api.delete(`/analytics/widgets/${id}`);
     },
 
+    /* ------------------------------ Visitors ------------------------------ */
+
+    visitorsSummary(params = {}) {
+        return api.get('/analytics/visitors/summary', { params });
+    },
+
+    visitorsTrend(params = {}) {
+        return api.get('/analytics/visitors/trend', { params });
+    },
+
+    visitorsBreakdown(params = {}) {
+        return api.get('/analytics/visitors/breakdown', { params });
+    },
+
+    visitorsTopPages(params = {}) {
+        return api.get('/analytics/visitors/top-pages', { params: { limit: 10, ...params } });
+    },
+
+    visitorsLog(params = {}) {
+        return api.get('/analytics/visitors/log', { params: { per_page: 20, page: 1, ...params } });
+    },
+
+    visitorsFilters() {
+        return api.get('/analytics/visitors/filters');
+    },
+
     /* ------------------------------ Export ------------------------------- */
 
     /**

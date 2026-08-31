@@ -33,6 +33,8 @@ class Employee extends Model
         'employment_type',
         'contract_type',
         'bonus',
+        'commission_rate',
+        'monthly_sales_target',
         'national_id',
         'nationality',
         'contract_start',
@@ -48,6 +50,8 @@ class Employee extends Model
         'hire_date' => 'date',
         'salary' => 'decimal:2',
         'bonus' => 'decimal:2',
+        'commission_rate' => 'decimal:2',
+        'monthly_sales_target' => 'decimal:2',
         'contract_start' => 'date',
         'contract_end' => 'date',
     ];
@@ -120,5 +124,10 @@ class Employee extends Model
     public function invoicesViaSalesOrders()
     {
         return $this->hasManyThrough(Invoice::class, SalesOrder::class, 'assigned_employee_id', 'sales_order_id');
+    }
+
+    public function commissionRecords()
+    {
+        return $this->hasMany(EmployeeCommission::class);
     }
 }

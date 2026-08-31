@@ -67,7 +67,18 @@ class ProductResource extends JsonResource
                     'slug' => $this->category->slug,
                 ] : null;
             }),
-            
+            'variants' => $this->when($this->relationLoaded('variants'), function () {
+                return $this->variants->map(fn ($variant) => [
+                    'id' => $variant->id,
+                    'sku' => $variant->sku,
+                    'size' => $variant->size,
+                    'color' => $variant->color,
+                    'material' => $variant->material,
+                    'price' => $variant->price,
+                    'stock_quantity' => $variant->stock_quantity,
+                ]);
+            }),
+
             // Timestamps
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

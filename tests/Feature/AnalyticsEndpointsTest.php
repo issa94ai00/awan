@@ -49,6 +49,12 @@ dataset('analytics endpoints', [
     'metrics' => ['metrics'],
     'reports' => ['reports'],
     'dashboards' => ['dashboards'],
+    'visitors summary' => ['visitors/summary'],
+    'visitors trend' => ['visitors/trend'],
+    'visitors breakdown' => ['visitors/breakdown'],
+    'visitors top pages' => ['visitors/top-pages?limit=10'],
+    'visitors log' => ['visitors/log'],
+    'visitors filters' => ['visitors/filters'],
 ]);
 
 it('answers every analytics endpoint', function (string $endpoint) {
@@ -162,6 +168,98 @@ it('gives the overview card row a real comparison window', function () {
             $metric => ['current', 'previous', 'change', 'change_percent', 'direction'],
         ]);
     }
+});
+
+it('gives the visitors summary a real comparison window', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/v1/analytics/visitors/summary?from_date=2026-03-01&to_date=2026-03-31')
+        ->assertOk();
+
+    $response->assertJsonPath('period.previous_from', '2026-01-29')
+        ->assertJsonPath('period.previous_to', '2026-02-28');
+
+    foreach (['total_visits', 'unique_visitors', 'bot_share'] as $metric) {
+        $response->assertJsonStructure([
+            $metric => ['current', 'previous', 'change', 'change_percent', 'direction'],
+        ]);
+    }
+});
+
+it('keeps API and admin polling out of the visitor traffic it reports', function () {
+    DB::table('visitors')->insert([
+        [
+            // A real storefront visit — the only row that should be counted.
+            'ip_address' => '10.0.0.1',
+            'page_url' => 'https://example.test/',
+            'device_type' => 'desktop',
+            'browser' => 'Chrome',
+            'os' => 'Windows',
+            'is_bot' => false,
+            'visited_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            // The admin SPA polling an API route — TrackVisitors records this
+            // because axios never sets the header its ajax() check looks for.
+            'ip_address' => '10.0.0.2',
+            'page_url' => 'https://example.test/api/v1/notifications/unread-count',
+            'device_type' => 'desktop',
+            'browser' => 'Chrome',
+            'os' => 'Windows',
+            'is_bot' => false,
+            'visited_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            // The bare /admin route — TrackVisitors only skips `admin/*`.
+            'ip_address' => '10.0.0.3',
+            'page_url' => 'https://example.test/admin',
+            'device_type' => 'desktop',
+            'browser' => 'Chrome',
+            'os' => 'Windows',
+            'is_bot' => false,
+            'visited_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+    ]);
+
+    $user = User::factory()->create();
+    $from = now()->subDay()->toDateString();
+    $to = now()->addDay()->toDateString();
+
+    // Without this, the test's own requests to these `/api/...` routes would
+    // be recorded by TrackVisitors and inflate the very rows being asserted on.
+    $this->withoutMiddleware(\App\Http\Middleware\TrackVisitors::class);
+
+    $summary = $this->actingAs($user)
+        ->getJson("/api/v1/analytics/visitors/summary?from_date={$from}&to_date={$to}")
+        ->assertOk()
+        ->json();
+
+    expect($summary['total_visits']['current'])->toEqual(1);
+
+    $pages = $this->actingAs($user)
+        ->getJson("/api/v1/analytics/visitors/top-pages?from_date={$from}&to_date={$to}")
+        ->assertOk()
+        ->json('pages');
+
+    expect(collect($pages)->pluck('page_url'))
+        ->toContain('https://example.test/')
+        ->not->toContain('https://example.test/api/v1/notifications/unread-count')
+        ->not->toContain('https://example.test/admin');
+
+    // The raw log is the audit trail, not the report: all three rows stay visible.
+    $logged = $this->actingAs($user)
+        ->getJson("/api/v1/analytics/visitors/log?from_date={$from}&to_date={$to}")
+        ->assertOk()
+        ->json('total');
+
+    expect($logged)->toBe(3);
 });
 
 it('exports a domain as CSV that Excel will read as UTF-8', function () {

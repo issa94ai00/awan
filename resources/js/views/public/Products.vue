@@ -100,6 +100,14 @@
                 </div>
             </transition>
 
+            <!-- Error Message -->
+            <transition name="fade-slide">
+                <div v-if="showErrorMessage" class="error-message">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>{{ errorMessage }}</span>
+                </div>
+            </transition>
+
             <div class="container">
                 <div v-if="loading && products.length === 0" class="products-loading">
                     <div class="loading-spinner"></div>
@@ -146,8 +154,14 @@
                                 <button class="btn-view-details" @click.stop="goToProduct(product.slug)">
                                     <i class="fas fa-eye"></i> {{ t('product_details') || 'عرض التفاصيل' }}
                                 </button>
-                                <button class="btn-add-cart" @click.stop="addToCart(product)">
-                                    <i class="fas fa-cart-plus"></i> {{ t('add_to_cart') || 'إضافة للسلة' }}
+                                <button 
+                                    class="btn-add-cart" 
+                                    :class="{ 'is-adding': isAddingProduct(product.id) }"
+                                    :disabled="isAddingProduct(product.id)"
+                                    @click.stop="addToCart(product)">
+                                    <i v-if="isAddingProduct(product.id)" class="fas fa-spinner fa-spin"></i>
+                                    <i v-else class="fas fa-cart-plus"></i> 
+                                    {{ isAddingProduct(product.id) ? (t('adding_to_cart') || 'جاري الإضافة...') : (t('add_to_cart') || 'إضافة للسلة') }}
                                 </button>
                             </div>
                         </div>
@@ -202,8 +216,11 @@ const priceMin = ref('');
 const priceMax = ref('');
 const viewMode = ref('grid');
 const searchTimeout = ref(null);
+const addTimer = ref(null);
 const successMessage = ref('');
 const showSuccessMessage = ref(false);
+const errorMessage = ref('');
+const showErrorMessage = ref(false);
 
 // Computed
 const settings = computed(() => settingsStore.data || {});
@@ -319,24 +336,34 @@ const goToProduct = (slug) => {
     router.push(`/product/${slug}`);
 };
 
-const addToCart = (product) => {
+const isAddingProduct = (productId) => cartStore.isAdding(productId);
+
+const addToCart = async (product) => {
+    if (isAddingProduct(product.id)) return;
+
     const localizedName = product[`name_${locale.value || 'ar'}`] || product.name_ar || '';
-    cartStore.addToCart({
-        id: product.id,
-        name: localizedName,
-        price: product.sale_price || product.price,
-        image: product.image_main,
-        quantity: 1
-    });
-    
-    // Show success message
-    successMessage.value = t('added_to_cart_success', { name: localizedName }) || `تمت إضافة "${localizedName}" إلى السلة بنجاح`;
-    showSuccessMessage.value = true;
-    
-    // Hide message after 3 seconds
-    setTimeout(() => {
-        showSuccessMessage.value = false;
-    }, 3000);
+
+    showErrorMessage.value = false;
+
+    try {
+        await cartStore.addToCart(product.id, 1);
+
+        successMessage.value = t('added_to_cart_success', { name: localizedName }) || `تمت إضافة "${localizedName}" إلى السلة بنجاح`;
+        showSuccessMessage.value = true;
+
+        clearTimeout(addTimer.value);
+        addTimer.value = setTimeout(() => {
+            showSuccessMessage.value = false;
+        }, 3000);
+    } catch (e) {
+        errorMessage.value = t('add_to_cart_error', { name: localizedName }) || `تعذرت إضافة "${localizedName}" إلى السلة، حاول مرة أخرى`;
+        showErrorMessage.value = true;
+
+        clearTimeout(addTimer.value);
+        addTimer.value = setTimeout(() => {
+            showErrorMessage.value = false;
+        }, 3000);
+    }
 };
 
 // Infinite Scroll
@@ -489,6 +516,27 @@ onUnmounted(() => {
 }
 
 .success-message i {
+    font-size: 1.2rem;
+}
+
+.error-message {
+    position: fixed;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ef4444;
+    color: #ffffff;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 1000;
+    font-weight: 600;
+}
+
+.error-message i {
     font-size: 1.2rem;
 }
 
@@ -691,6 +739,13 @@ onUnmounted(() => {
     background: var(--navbar-scrolled-bg-color, var(--mobile-primary-dark));
 }
 
+.btn-add-cart:disabled,
+.btn-add-cart.is-adding {
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none;
+}
+
 .products-pagination {
     text-align: center;
     padding: 30px 0;
@@ -775,6 +830,11 @@ onUnmounted(() => {
 [data-theme="dark"] .success-message {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+[data-theme="dark"] .error-message {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 [data-theme="dark"] .loading-spinner {

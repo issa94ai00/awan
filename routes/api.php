@@ -34,6 +34,8 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseReceiptController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EmployeeCommissionController;
+use App\Http\Controllers\Api\EmployeeCommissionWithdrawalController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\LeaveRequestController;use App\Http\Controllers\Api\TicketController;use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\SupplierController;
@@ -428,6 +430,31 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/employees/{employee}/customers', [EmployeeController::class, 'customers'])->name('api.admin.employees.customers');
             Route::post('/employees/{employee}/customers/attach', [EmployeeController::class, 'attachCustomers'])->name('api.admin.employees.customers.attach');
             Route::post('/employees/{employee}/customers/detach', [EmployeeController::class, 'detachCustomers'])->name('api.admin.employees.customers.detach');
+
+            // Employee Commission Statement API (عمولة + مسحوبات + رصيد)
+            Route::get('/employee-commissions', [EmployeeCommissionController::class, 'index'])->name('api.admin.employee-commissions.index');
+            Route::post('/employee-commissions/calculate-sales', [EmployeeCommissionController::class, 'calculateSales'])->name('api.admin.employee-commissions.calculate-sales');
+            Route::post('/employee-commissions', [EmployeeCommissionController::class, 'store'])->name('api.admin.employee-commissions.store');
+            Route::put('/employee-commissions/{employeeCommission}', [EmployeeCommissionController::class, 'update'])->name('api.admin.employee-commissions.update');
+            Route::delete('/employee-commissions/{employeeCommission}', [EmployeeCommissionController::class, 'destroy'])->name('api.admin.employee-commissions.destroy');
+
+            // Multi-currency withdrawal ledger for a commission record
+            Route::get('/employee-commissions/{employeeCommission}/withdrawals', [EmployeeCommissionWithdrawalController::class, 'index'])->name('api.admin.employee-commissions.withdrawals.index');
+            Route::post('/employee-commissions/{employeeCommission}/withdrawals', [EmployeeCommissionWithdrawalController::class, 'store'])->name('api.admin.employee-commissions.withdrawals.store');
+            Route::put('/employee-commissions/{employeeCommission}/withdrawals/{withdrawal}', [EmployeeCommissionWithdrawalController::class, 'update'])->name('api.admin.employee-commissions.withdrawals.update');
+            Route::delete('/employee-commissions/{employeeCommission}/withdrawals/{withdrawal}', [EmployeeCommissionWithdrawalController::class, 'destroy'])->name('api.admin.employee-commissions.withdrawals.destroy');
+
+            // Soft-delete review/restore — admin only, per the sub-ledger's
+            // financial nature (a restored withdrawal never re-posts its
+            // reversed ledger entry, so undoing a delete needs a human who
+            // understands the books, not any signed-in sales role).
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/employee-commissions/trashed', [EmployeeCommissionController::class, 'trashed'])->name('api.admin.employee-commissions.trashed');
+                Route::put('/employee-commissions/{trashedEmployeeCommission}/restore', [EmployeeCommissionController::class, 'restore'])->withTrashed()->name('api.admin.employee-commissions.restore');
+
+                Route::get('/employee-commissions/{employeeCommission}/withdrawals/trashed', [EmployeeCommissionWithdrawalController::class, 'trashed'])->name('api.admin.employee-commissions.withdrawals.trashed');
+                Route::put('/employee-commissions/{employeeCommission}/withdrawals/{trashedWithdrawal}/restore', [EmployeeCommissionWithdrawalController::class, 'restore'])->withTrashed()->name('api.admin.employee-commissions.withdrawals.restore');
+            });
 
             // Sales Reports API
             Route::get('/reports/sales', [SalesReportController::class, 'salesReport'])->name('api.admin.reports.sales');
@@ -955,6 +982,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/warehouse/cycle-count-accuracy', [AnalyticsController::class, 'getCycleCountAccuracy'])->name('api.analytics.warehouse.accuracy');
             Route::get('/warehouse/picker-performance', [AnalyticsController::class, 'getPickerPerformance'])->name('api.analytics.warehouse.picker');
             Route::get('/warehouse/capacity-planning', [AnalyticsController::class, 'getCapacityPlanning'])->name('api.analytics.warehouse.capacity');
+
+            // Site Visitors (إحصائيات زوار الموقع)
+            Route::get('/visitors/summary', [AnalyticsController::class, 'getVisitorsSummary'])->name('api.analytics.visitors.summary');
+            Route::get('/visitors/trend', [AnalyticsController::class, 'getVisitorsTrend'])->name('api.analytics.visitors.trend');
+            Route::get('/visitors/breakdown', [AnalyticsController::class, 'getVisitorsBreakdown'])->name('api.analytics.visitors.breakdown');
+            Route::get('/visitors/top-pages', [AnalyticsController::class, 'getVisitorsTopPages'])->name('api.analytics.visitors.top-pages');
+            Route::get('/visitors/log', [AnalyticsController::class, 'getVisitorsLog'])->name('api.analytics.visitors.log');
+            Route::get('/visitors/filters', [AnalyticsController::class, 'getVisitorsFilters'])->name('api.analytics.visitors.filters');
 
             // Financial Analytics (التحليلات المالية)
             // Profit, margins, cash flow and receivables ageing: the same

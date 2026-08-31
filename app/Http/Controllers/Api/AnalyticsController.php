@@ -12,6 +12,7 @@ use App\Services\SalesAnalyticsService;
 use App\Services\InventoryAnalyticsService;
 use App\Services\WarehouseAnalyticsService;
 use App\Services\FinancialAnalyticsService;
+use App\Services\VisitorAnalyticsService;
 use App\Services\PeriodComparison;
 use App\Services\ReportBuilderService;
 use Illuminate\Http\Request;
@@ -23,17 +24,20 @@ class AnalyticsController extends Controller
     protected InventoryAnalyticsService $inventoryAnalytics;
     protected WarehouseAnalyticsService $warehouseAnalytics;
     protected FinancialAnalyticsService $financialAnalytics;
+    protected VisitorAnalyticsService $visitorAnalytics;
 
     public function __construct(
         SalesAnalyticsService $salesAnalytics,
         InventoryAnalyticsService $inventoryAnalytics,
         WarehouseAnalyticsService $warehouseAnalytics,
-        FinancialAnalyticsService $financialAnalytics
+        FinancialAnalyticsService $financialAnalytics,
+        VisitorAnalyticsService $visitorAnalytics
     ) {
         $this->salesAnalytics = $salesAnalytics;
         $this->inventoryAnalytics = $inventoryAnalytics;
         $this->warehouseAnalytics = $warehouseAnalytics;
         $this->financialAnalytics = $financialAnalytics;
+        $this->visitorAnalytics = $visitorAnalytics;
     }
 
     // ==================== Overview ====================
@@ -121,6 +125,7 @@ class AnalyticsController extends Controller
             'inventory' => $this->inventoryAnalytics->getABCAnalysis($warehouseId)['details'] ?? [],
             'warehouse' => $this->warehouseAnalytics->getPickerPerformance($warehouseId, $fromDate, $toDate),
             'financial' => $this->financialAnalytics->getRevenueByCategory($fromDate, $toDate),
+            'visitors' => $this->visitorAnalytics->exportRows($fromDate, $toDate, $request->only(['search', 'device_type', 'browser', 'is_bot'])),
             default => abort(404, 'Unknown analytics domain.'),
         };
 
@@ -736,6 +741,90 @@ class AnalyticsController extends Controller
         $widget->delete();
 
         return response()->json(['message' => 'Widget deleted successfully']);
+    }
+
+    // ==================== Site Visitors ====================
+
+    /**
+     * Headline visitor figures, each against the equal-length period before it
+     * — same reading `getOverview()` gives the BI landing cards.
+     */
+    public function getVisitorsSummary(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+
+        $previous = PeriodComparison::previousWindow($fromDate, $toDate);
+
+        $current = $this->visitorAnalytics->summary($fromDate, $toDate);
+        $before = $this->visitorAnalytics->summary($previous['from'], $previous['to']);
+
+        return response()->json([
+            'period' => [
+                'from' => $fromDate,
+                'to' => $toDate,
+                'previous_from' => $previous['from'],
+                'previous_to' => $previous['to'],
+            ],
+            'total_visits' => PeriodComparison::compare($current['total_visits'], $before['total_visits']),
+            'unique_visitors' => PeriodComparison::compare($current['unique_visitors'], $before['unique_visitors']),
+            'bot_share' => PeriodComparison::compare($current['bot_share'], $before['bot_share']),
+            'avg_daily_visits' => $current['avg_daily_visits'],
+        ]);
+    }
+
+    public function getVisitorsTrend(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+
+        return response()->json($this->visitorAnalytics->trend($fromDate, $toDate));
+    }
+
+    public function getVisitorsBreakdown(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+
+        return response()->json($this->visitorAnalytics->breakdown($fromDate, $toDate));
+    }
+
+    public function getVisitorsTopPages(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+        $limit = (int) ($request->limit ?? 10);
+
+        return response()->json([
+            'pages' => $this->visitorAnalytics->topPages($fromDate, $toDate, $limit),
+            'referrers' => $this->visitorAnalytics->topReferrers($fromDate, $toDate, $limit),
+        ]);
+    }
+
+    public function getVisitorsLog(Request $request)
+    {
+        $fromDate = $request->from_date ?? now()->subDays(30)->toDateString();
+        $toDate = $request->to_date ?? now()->toDateString();
+        $perPage = (int) ($request->per_page ?? 20);
+        $page = (int) ($request->page ?? 1);
+
+        $log = $this->visitorAnalytics->log(
+            $fromDate,
+            $toDate,
+            $request->only(['search', 'device_type', 'browser', 'is_bot']),
+            $perPage,
+            $page
+        );
+
+        return response()->json($log);
+    }
+
+    public function getVisitorsFilters()
+    {
+        return response()->json([
+            'device_types' => $this->visitorAnalytics->distinctDeviceTypes(),
+            'browsers' => $this->visitorAnalytics->distinctBrowsers(),
+        ]);
     }
 }
 

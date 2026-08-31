@@ -6,9 +6,12 @@ export const useCartStore = defineStore('cart', () => {
     const cart = ref(null);
     const loading = ref(false);
     const error = ref(null);
+    const addingProductIds = ref(new Set());
 
     const totalItems = computed(() => cart.value?.total_items || 0);
     const totalAmount = computed(() => parseFloat(cart.value?.total || 0));
+
+    const isAdding = (productId) => addingProductIds.value.has(productId);
 
     // Fetch current cart data
     async function fetchCart() {
@@ -28,7 +31,7 @@ export const useCartStore = defineStore('cart', () => {
 
     // Add item to cart
     async function addToCart(productId, quantity = 1) {
-        loading.value = true;
+        addingProductIds.value = new Set(addingProductIds.value).add(productId);
         try {
             const res = await axios.post('/api/v1/cart/add', {
                 product_id: productId,
@@ -42,9 +45,12 @@ export const useCartStore = defineStore('cart', () => {
             }
         } catch (err) {
             console.error('Add to cart failed', err);
+            error.value = err.response?.data?.message || err.message;
             throw err;
         } finally {
-            loading.value = false;
+            const next = new Set(addingProductIds.value);
+            next.delete(productId);
+            addingProductIds.value = next;
         }
     }
 
@@ -118,6 +124,7 @@ export const useCartStore = defineStore('cart', () => {
         error,
         totalItems,
         totalAmount,
+        isAdding,
         fetchCart,
         addToCart,
         updateQuantity,

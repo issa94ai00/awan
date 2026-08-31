@@ -138,6 +138,11 @@ class Product extends Model implements Sitemapable
         return $this->hasMany(ProductUnit::class);
     }
 
+    public function variants(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
     public function warehouseAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ProductWarehouseAssignment::class);

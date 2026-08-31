@@ -72,6 +72,11 @@ const routes = [
                 component: () => import('@/views/admin/products/ProductUnits.vue')
             },
             {
+                path: 'products/price-offer',
+                name: 'admin.products.price-offer',
+                component: () => import('@/views/admin/products/PriceOffer.vue')
+            },
+            {
                 path: 'categories',
                 name: 'admin.categories.index',
                 component: () => import('@/views/admin/categories/Index.vue')
@@ -342,6 +347,11 @@ const routes = [
                 path: 'hr/payrolls',
                 name: 'admin.payrolls.index',
                 component: () => import('@/views/admin/hr/Payrolls.vue')
+            },
+            {
+                path: 'hr/commissions',
+                name: 'admin.hr.commissions',
+                component: () => import('@/views/admin/hr/CommissionStatement.vue')
             },
             // CRM
             {

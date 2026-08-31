@@ -102,6 +102,12 @@
                             </router-link>
                         </li>
                         <li>
+                            <router-link to="/admin/products/price-offer" class="nav-link" :class="{ active: isActive('/admin/products/price-offer') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!isCollapsed" class="nav-text">{{ t('price_offer') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
                             <router-link to="/admin/special-offers" class="nav-link" :class="{ active: isActive('/admin/special-offers') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!isCollapsed" class="nav-text">{{ t('special_offers') }}</span>
@@ -466,6 +472,12 @@
                             <router-link to="/admin/hr/payrolls" class="nav-link" :class="{ active: isActive('/admin/hr/payrolls') }">
                                 <span class="sub-dot"></span>
                                 <span v-if="!isCollapsed" class="nav-text">{{ t('payrolls') }}</span>
+                            </router-link>
+                        </li>
+                        <li>
+                            <router-link to="/admin/hr/commissions" class="nav-link" :class="{ active: isActive('/admin/hr/commissions') }">
+                                <span class="sub-dot"></span>
+                                <span v-if="!isCollapsed" class="nav-text">{{ t('commission_statement') }}</span>
                             </router-link>
                         </li>
                     </ul>
@@ -923,6 +935,7 @@ const navIndex = [
     { labelKey: 'categories', path: '/admin/categories', icon: Box, group: 'content', groupLabelKey: 'content_management' },
     { labelKey: 'products', path: '/admin/products', icon: Box, group: 'content', groupLabelKey: 'content_management' },
     { labelKey: 'product_units', path: '/admin/products/units', icon: Box, group: 'content', groupLabelKey: 'content_management' },
+    { labelKey: 'price_offer', path: '/admin/products/price-offer', icon: Box, group: 'content', groupLabelKey: 'content_management' },
     { labelKey: 'special_offers', path: '/admin/special-offers', icon: Box, group: 'content', groupLabelKey: 'content_management' },
     { labelKey: 'secondary_navbar', path: '/admin/secondary-navbar', icon: Box, group: 'content', groupLabelKey: 'content_management' },
     { labelKey: 'overview', path: '/admin/sales', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
@@ -972,6 +985,7 @@ const navIndex = [
     { labelKey: 'attendance', path: '/admin/hr/attendance', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
     { labelKey: 'leaves', path: '/admin/hr/leaves', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
     { labelKey: 'payrolls', path: '/admin/hr/payrolls', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
+    { labelKey: 'commission_statement', path: '/admin/hr/commissions', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
     { labelKey: 'overview', path: '/admin/crm', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },
     { labelKey: 'customers', path: '/admin/crm/customers', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },
     { labelKey: 'tickets', path: '/admin/crm/tickets', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },

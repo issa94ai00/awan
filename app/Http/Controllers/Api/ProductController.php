@@ -22,6 +22,10 @@ class ProductController extends Controller
         $query = Product::query()
             ->with('category');
 
+        if ($request->boolean('with_variants')) {
+            $query->with('variants');
+        }
+
         // Check if admin route
         $isAdmin = $request->routeIs('api.admin.*') || $request->is('*admin*');
 

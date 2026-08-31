@@ -104,7 +104,7 @@ if (! function_exists('image_url')) {
         // Some settings (site_logo, favicon, ...) hold a path that is already
         // relative to public/, e.g. "assets/images/logo.png". Prefixing those with
         // storage/ yields a 404, which broke the logo and the JSON-LD logo field.
-        foreach (['assets/', 'images/', 'img/', 'css/', 'js/', 'fonts/'] as $publicPrefix) {
+        foreach (['assets/', 'images/', 'images_items/', 'img/', 'css/', 'js/', 'fonts/'] as $publicPrefix) {
             if (str_starts_with($path, $publicPrefix)) {
                 return asset($path);
             }

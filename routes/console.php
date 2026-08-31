@@ -50,3 +50,9 @@ Schedule::command('accounting:depreciate')
 Schedule::command('accounting:accrue-end-of-service')
     ->monthlyOn(1, '01:45')
     ->withoutOverlapping();
+
+// Trash retention for commission statements/withdrawals: 90 days to review
+// or restore a soft-deleted record, then it is gone for good.
+Schedule::command('commissions:purge-trashed')
+    ->dailyAt('02:15')
+    ->withoutOverlapping();

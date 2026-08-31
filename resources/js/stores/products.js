@@ -145,7 +145,8 @@ export const useProductsStore = defineStore('products', {
                     sort_order: params.sort_order || this.filters.sort_order,
                     sort: params.sort || undefined,
                     price_min: params.price_min || undefined,
-                    price_max: params.price_max || undefined
+                    price_max: params.price_max || undefined,
+                    with_variants: params.with_variants || undefined
                 };
 
                 Object.keys(queryParams).forEach(k => {

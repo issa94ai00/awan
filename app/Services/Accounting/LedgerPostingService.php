@@ -7,6 +7,7 @@ use App\Models\AccountingPeriod;
 use App\Models\CostCenter;
 use App\Models\CreditNote;
 use App\Models\Employee;
+use App\Models\EmployeeCommissionWithdrawal;
 use App\Models\FixedAsset;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
@@ -397,6 +398,46 @@ class LedgerPostingService
                  'employee_id' => $payroll->employee_id],
             ],
             reference: $payroll,
+            module: 'payroll',
+        );
+    }
+
+    /**
+     * A cash advance handed to a sales rep against commission not yet earned.
+     *
+     *   Dr  Employee advances    what is now owed back
+     *       Cr  Cash/Bank              what physically left
+     *
+     * The same asset account a payroll deduction of type "advance" repays
+     * (see postPayrollAccrual) — this is the other half of that account's
+     * story: money going out now, expected back later either through a
+     * payroll deduction or netted against the commission it was drawn
+     * against. Recording only the withdrawal in the sub-ledger without this
+     * would leave the cash account's balance silently wrong by everything
+     * ever handed out this way.
+     */
+    public function postEmployeeCommissionWithdrawal(EmployeeCommissionWithdrawal $withdrawal): ?JournalEntryHeader
+    {
+        $amount = $this->money($withdrawal->base_amount);
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $employee = $withdrawal->employeeCommission?->employee;
+        $label = $employee?->name ?: ('#'.$withdrawal->employee_commission_id);
+        $cashRole = $withdrawal->method === 'bank' ? 'bank' : 'cash';
+
+        return $this->post(
+            key: 'employee_commission_withdrawal:'.$withdrawal->id,
+            date: $withdrawal->withdrawn_at?->toDateString() ?? now()->toDateString(),
+            description: 'سلفة على الحساب - '.$label,
+            lines: [
+                ['role' => 'employee_advances', 'debit' => $amount,
+                 'description' => 'سحب نقدي - '.$label, 'employee_id' => $employee?->id],
+                ['role' => $cashRole, 'credit' => $amount,
+                 'description' => 'صرف سلفة - '.$label, 'employee_id' => $employee?->id],
+            ],
+            reference: $withdrawal,
             module: 'payroll',
         );
     }
