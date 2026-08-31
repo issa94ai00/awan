@@ -2,13 +2,18 @@
     <div class="price-offer-page">
         <div class="print-cover"><img :src="'/cover.jpeg'" alt=""></div>
         <header class="offer-toolbar">
-            <div class="toolbar-title">
-                <span class="dot"></span>
-                <h2>{{ $t('price_offer') }}</h2>
-                <span v-if="total > 0" class="badge">{{ total }} {{ $t('product') }}</span>
+            <div class="toolbar-head">
+                <div class="toolbar-title">
+                    <span class="dot"></span>
+                    <h2>{{ $t('price_offer') }}</h2>
+                    <span v-if="total > 0" class="badge">{{ total }} {{ $t('product') }}</span>
+                </div>
+                <Transition name="status-fade">
+                    <span v-if="importMsg" class="saved-msg">{{ importMsg }}</span>
+                </Transition>
             </div>
 
-            <div class="toolbar-tools">
+            <div class="toolbar-body">
                 <div class="tools-group tools-group-filter">
                     <div class="qbox">
                         <el-icon class="qicon"><Search /></el-icon>
@@ -70,68 +75,60 @@
                     </el-popover>
                 </div>
 
-                <span class="tool-divider" aria-hidden="true"></span>
-
-                <div class="tools-group tools-group-edit">
-                    <div class="divwrap">
-                        <input
-                            v-model="divideValue"
-                            type="number"
-                            min="0.0001"
-                            step="any"
-                            :placeholder="$t('divide_all_prices')"
-                        />
-                        <button type="button" class="btn-divide" @click="divideAllPrices">{{ $t('divide') }}</button>
-                    </div>
-                    <el-tooltip :content="$t('reset_toolbar_tooltip')" placement="bottom" effect="dark">
-                        <button type="button" class="btn-ghost btn-icon" @click="resetFilters">
-                            <el-icon><Refresh /></el-icon>
-                            {{ $t('reset') }}
-                        </button>
-                    </el-tooltip>
-                    <el-tooltip :content="$t('import_csv_tooltip')" placement="bottom" effect="dark">
-                        <button type="button" class="btn-ghost btn-icon" @click="triggerImport">
-                            <el-icon><Upload /></el-icon>
-                            {{ $t('import') }}
-                        </button>
-                    </el-tooltip>
-                    <input ref="fileInput" type="file" accept=".csv,text/csv" hidden @change="handleImportFile" />
-                </div>
-
-                <span class="tool-divider" aria-hidden="true"></span>
-
-                <div class="tools-group tools-group-export">
-                    <el-popover placement="bottom-end" trigger="click" width="230" popper-class="columns-popover">
-                        <template #reference>
-                            <button type="button" class="btn-ghost btn-columns">{{ $t('print_columns') }}</button>
-                        </template>
-                        <div class="columns-menu">
-                            <p class="columns-menu-title">{{ $t('choose_columns_to_print') }}</p>
-                            <label v-for="col in columnOptions" :key="col.key" class="columns-menu-item">
-                                <el-checkbox
-                                    :model-value="visibleColumns[col.key]"
-                                    :disabled="visibleColumns[col.key] && selectedColumnCount === 1"
-                                    @update:model-value="(val) => toggleColumn(col.key, val)"
-                                />
-                                <span>{{ $t(col.label) }}</span>
-                            </label>
+                <div class="tools-actions">
+                    <div class="tools-group tools-group-edit">
+                        <div class="divwrap">
+                            <el-icon class="divwrap-icon"><Operation /></el-icon>
+                            <input
+                                v-model="divideValue"
+                                type="number"
+                                min="0.0001"
+                                step="any"
+                                :placeholder="$t('divide_all_prices')"
+                            />
+                            <button type="button" class="btn-divide" @click="divideAllPrices">{{ $t('divide') }}</button>
                         </div>
-                    </el-popover>
-                    <div class="export-actions">
-                        <button type="button" class="btn-pdf" :disabled="printLoading" @click="printPage">
-                            <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
-                            {{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}
-                        </button>
-                        <button type="button" class="btn-pdf-download" :disabled="printLoading" @click="downloadPdf">
-                            <el-icon v-if="printLoading && prepMode === 'pdf'" class="is-loading"><Loading /></el-icon>
-                            <el-icon v-else><Download /></el-icon>
-                            {{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}
-                        </button>
+                        <el-tooltip :content="$t('reset_toolbar_tooltip')" placement="bottom" effect="dark">
+                            <button type="button" class="btn-ghost btn-icon" @click="resetFilters">
+                                <el-icon><Refresh /></el-icon>
+                                {{ $t('reset') }}
+                            </button>
+                        </el-tooltip>
                     </div>
-                    <button type="button" class="btn-csv" @click="exportCsv">{{ $t('download_csv') }}</button>
-                </div>
 
-                <span v-if="importMsg" class="saved-msg">{{ importMsg }}</span>
+                    <div class="tools-group tools-group-export">
+                        <el-popover placement="bottom-end" trigger="click" width="230" popper-class="columns-popover">
+                            <template #reference>
+                                <button type="button" class="btn-ghost btn-columns btn-icon">
+                                    <el-icon><Grid /></el-icon>
+                                    {{ $t('print_columns') }}
+                                </button>
+                            </template>
+                            <div class="columns-menu">
+                                <p class="columns-menu-title">{{ $t('choose_columns_to_print') }}</p>
+                                <label v-for="col in columnOptions" :key="col.key" class="columns-menu-item">
+                                    <el-checkbox
+                                        :model-value="visibleColumns[col.key]"
+                                        :disabled="visibleColumns[col.key] && selectedColumnCount === 1"
+                                        @update:model-value="(val) => toggleColumn(col.key, val)"
+                                    />
+                                    <span>{{ $t(col.label) }}</span>
+                                </label>
+                            </div>
+                        </el-popover>
+                        <div class="export-actions">
+                            <button type="button" class="btn-pdf" :disabled="printLoading" @click="printPage">
+                                <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
+                                {{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}
+                            </button>
+                            <button type="button" class="btn-pdf-download" :disabled="printLoading" @click="downloadPdf">
+                                <el-icon v-if="printLoading && prepMode === 'pdf'" class="is-loading"><Loading /></el-icon>
+                                <el-icon v-else><Download /></el-icon>
+                                {{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -216,7 +213,7 @@ import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
-import { Search, Loading, Close, Download, Refresh, Upload } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, Operation, Grid } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
 const store = useProductsStore();
@@ -303,7 +300,6 @@ function applyServerRecord(type, rawId, record) {
     }
 }
 
-const fileInput = ref(null);
 const importMsg = ref('');
 let importMsgTimeout = null;
 
@@ -745,120 +741,6 @@ function flashMsg(msg) {
     importMsgTimeout = setTimeout(() => { importMsg.value = ''; }, 2500);
 }
 
-const exportCsv = () => {
-    const cols = visibleColumns.value;
-    const head = [];
-    if (cols.product) head.push(t('product'));
-    if (cols.details) head.push(t('details'));
-    if (cols.price) head.push(t('the_price'));
-    if (cols.inventory) head.push(t('inventory'));
-    const lines = ['﻿' + head.map(csvCell).join(',')];
-    for (const g of groupedProducts.value) {
-        const name = g.product.name_ar || g.product.name_en || '';
-        for (const item of g.items) {
-            const detail = [item.size, item.color, item.unit].filter(Boolean).join(' / ') || '—';
-            const row = [];
-            if (cols.product) row.push(csvCell(name));
-            if (cols.details) row.push(csvCell(detail));
-            if (cols.price) row.push(csvCell(item.displayPrice));
-            if (cols.inventory) row.push(csvCell(item.stock_quantity ?? 0));
-            lines.push(row.join(','));
-        }
-    }
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `price-offer-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 600);
-};
-
-function csvCell(v) {
-    let s = String(v == null ? '' : v);
-    if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
-    return s;
-}
-
-// --- CSV import: bulk price update, matching the file_with_images template ---
-
-const triggerImport = () => {
-    if (fileInput.value) {
-        fileInput.value.value = '';
-        fileInput.value.click();
-    }
-};
-
-const handleImportFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    try {
-        const text = (await file.text()).replace(/^﻿/, '');
-        const rows = parseCsv(text);
-        applyImport(rows);
-    } catch (err) {
-        ElMessage.error(t('import_failed'));
-    }
-    e.target.value = '';
-};
-
-function parseCsv(text) {
-    const rows = [];
-    let row = [], cur = '', quoted = false;
-    for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (quoted) {
-            if (ch === '"') {
-                if (text[i + 1] === '"') { cur += '"'; i++; } else quoted = false;
-            } else cur += ch;
-        } else if (ch === '"') {
-            quoted = true;
-        } else if (ch === ',') {
-            row.push(cur); cur = '';
-        } else if (ch === '\n' || ch === '\r') {
-            if (ch === '\r' && text[i + 1] === '\n') i++;
-            row.push(cur); cur = ''; rows.push(row); row = [];
-        } else cur += ch;
-    }
-    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
-    return rows.filter((r) => r.some((c) => (c || '').trim() !== ''));
-}
-
-function toNumber(raw) {
-    const s = String(raw ?? '')
-        .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-        .replace(/[,،٫]/g, '.')
-        .trim();
-    const n = parseFloat(s);
-    return isFinite(n) ? n : null;
-}
-
-const applyImport = (rows) => {
-    // Header row, if present, is skipped by not matching any product name.
-    const byKey = new Map();
-    for (const g of groupedProducts.value) {
-        const name = (g.product.name_ar || g.product.name_en || '').trim();
-        for (const item of g.items) {
-            const key = name + '' + (item.size || '');
-            if (!byKey.has(key)) byKey.set(key, item);
-        }
-    }
-
-    let updated = 0, unmatched = 0;
-    for (const row of rows) {
-        const [name = '', size = '', price = ''] = row;
-        const key = String(name).trim() + '' + String(size).trim();
-        const item = byKey.get(key) || byKey.get(String(name).trim() + '');
-        if (!item) { unmatched++; continue; }
-        const n = toNumber(price);
-        if (n !== null && n >= 0) {
-            overrides.value[item.id] = Math.round(n * 10000) / 10000;
-            updated++;
-        }
-    }
-    flashMsg(`${t('imported')} ✓ ${updated}${unmatched ? ` · ${unmatched} ${t('skipped')}` : ''}`);
-};
-
 onMounted(async () => {
     await store.fetchCategories();
     await fetchProducts();
@@ -876,19 +758,27 @@ onMounted(async () => {
     display: none;
 }
 
-/* Toolbar — matches public/file_with_images.html */
+/* Toolbar — matches public/file_with_images.html. Two stacked rows: an
+   identity row (title/count/status) and a tools row, so the action controls
+   read as their own layer instead of competing with the title for space on
+   one wrapping line. */
 .offer-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: linear-gradient(135deg, #293344 0%, #3d4d63 100%);
+    color: #fff;
+    padding: 16px 18px;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .25);
+    margin-bottom: 1.25rem;
+}
+.toolbar-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
-    background: linear-gradient(135deg, #293344 0%, #3d4d63 100%);
-    color: #fff;
-    padding: 14px 18px;
-    border-radius: 14px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, .25);
-    margin-bottom: 1.25rem;
 }
 .toolbar-title {
     display: flex;
@@ -917,33 +807,43 @@ onMounted(async () => {
     white-space: nowrap;
 }
 
-.toolbar-tools {
+/* Tools row: the filter cluster anchors the start side and can grow to fill
+   space; the edit/export clusters stay grouped together at the end so they
+   move as one block instead of drifting apart when the row wraps. */
+.toolbar-body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px 16px;
+    flex-wrap: wrap;
+}
+.tools-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    flex: 1 1 320px;
-    justify-content: flex-end;
 }
+/* Each cluster sits in its own soft panel instead of being separated by thin
+   divider lines — reads as distinct "cards" of related actions at a glance,
+   and each keeps its shape when clusters wrap onto their own row. */
 .tools-group {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 14px;
+    padding: 6px 8px;
 }
-/* Separates search/filter, bulk-edit, and export tools into three scannable
-   clusters instead of one undifferentiated row of pills. */
-.tool-divider {
-    width: 1px;
-    align-self: stretch;
-    min-height: 22px;
-    background: rgba(255, 255, 255, .18);
-    flex: 0 0 auto;
+.tools-group-filter {
+    flex: 1 1 320px;
 }
 .export-actions {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 .btn-icon {
     display: inline-flex;
@@ -1000,6 +900,11 @@ onMounted(async () => {
     align-items: center;
     gap: 6px;
 }
+.divwrap-icon {
+    color: rgba(255, 255, 255, .6);
+    font-size: 14px;
+    flex: 0 0 auto;
+}
 .divwrap input[type=number] {
     width: 110px;
     border: 1px solid rgba(255, 255, 255, .35);
@@ -1030,8 +935,7 @@ onMounted(async () => {
 .btn-divide,
 .btn-ghost,
 .btn-pdf,
-.btn-pdf-download,
-.btn-csv {
+.btn-pdf-download {
     border: none;
     cursor: pointer;
     font-size: 12.5px;
@@ -1039,7 +943,7 @@ onMounted(async () => {
     color: #fff;
     padding: 8px 16px;
     border-radius: 999px;
-    transition: transform .15s ease, box-shadow .15s ease;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
     white-space: nowrap;
 }
 .btn-divide {
@@ -1049,6 +953,10 @@ onMounted(async () => {
 .btn-ghost {
     background: transparent;
     border: 1px solid rgba(255, 255, 255, .4);
+}
+.btn-ghost:hover {
+    background: rgba(255, 255, 255, .12);
+    border-color: rgba(255, 255, 255, .6);
 }
 .btn-pdf,
 .btn-pdf-download {
@@ -1064,15 +972,18 @@ onMounted(async () => {
     background: linear-gradient(135deg, #6d28d9, #9333ea);
     box-shadow: 0 3px 10px rgba(109, 40, 217, .35);
 }
-.btn-csv {
-    background: linear-gradient(135deg, #1d4ed8, #2563eb);
-    box-shadow: 0 3px 10px rgba(29, 78, 216, .35);
-}
 .btn-divide:hover,
+.btn-ghost:hover,
 .btn-pdf:hover:not(:disabled),
-.btn-pdf-download:hover:not(:disabled),
-.btn-csv:hover {
+.btn-pdf-download:hover:not(:disabled) {
     transform: translateY(-1px);
+}
+.btn-divide:focus-visible,
+.btn-ghost:focus-visible,
+.btn-pdf:focus-visible,
+.btn-pdf-download:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, .8);
+    outline-offset: 2px;
 }
 .btn-pdf:disabled,
 .btn-pdf-download:disabled {
@@ -1085,25 +996,73 @@ onMounted(async () => {
     font-weight: 600;
     white-space: nowrap;
 }
+.status-fade-enter-active,
+.status-fade-leave-active {
+    transition: opacity .2s ease;
+}
+.status-fade-enter-from,
+.status-fade-leave-to {
+    opacity: 0;
+}
 
-/* Below the tablet break each tool cluster takes its own full-width row
-   instead of pills wrapping mid-group in an arbitrary order. */
+/* Below the tablet break the tools row stacks: the filter cluster first,
+   then the edit/export clusters as a full-width block underneath, each
+   still keeping its own panel instead of one undifferentiated column. */
 @media (max-width: 860px) {
-    .offer-toolbar {
+    .toolbar-body {
+        flex-direction: column;
         align-items: stretch;
     }
-    .toolbar-tools {
-        justify-content: flex-start;
+    .tools-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
     .tools-group {
         width: 100%;
     }
-    .tool-divider {
-        display: none;
-    }
     .qbox {
         max-width: none;
         flex: 1 1 100%;
+    }
+}
+
+/* Below phone width, controls that only fit two-to-a-row on tablet get
+   stacked and stretched to a full-width tap target instead of shrinking. */
+@media (max-width: 520px) {
+    .tools-group-filter,
+    .tools-group-edit,
+    .tools-group-export {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .btn-categories,
+    .divwrap,
+    .tools-group-edit > .btn-icon,
+    .export-actions,
+    .tools-group-export > .btn-columns {
+        width: 100%;
+    }
+    .divwrap input[type=number] {
+        flex: 1 1 auto;
+        width: auto;
+    }
+    .export-actions > button {
+        flex: 1 1 auto;
+    }
+    .btn-divide,
+    .tools-group-edit > .btn-icon,
+    .btn-columns,
+    .btn-pdf,
+    .btn-pdf-download {
+        justify-content: center;
+    }
+    .toolbar-head {
+        align-items: flex-start;
+    }
+    .saved-msg {
+        width: 100%;
+        white-space: normal;
+        text-align: start;
     }
 }
 
