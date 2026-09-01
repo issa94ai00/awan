@@ -63,6 +63,7 @@ class Invoice extends Model
     const PAYMENT_CASH = 'cash';
     const PAYMENT_CARD = 'card';
     const PAYMENT_TRANSFER = 'transfer';
+    const PAYMENT_CHECK = 'check';
 
     public static function getStatusOptions(): array
     {
@@ -82,6 +83,7 @@ class Invoice extends Model
             self::PAYMENT_CASH => 'نقدي',
             self::PAYMENT_CARD => 'بطاقة',
             self::PAYMENT_TRANSFER => 'تحويل',
+            self::PAYMENT_CHECK => 'شيك',
         ];
     }
 

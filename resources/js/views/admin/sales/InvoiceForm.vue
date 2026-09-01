@@ -141,8 +141,14 @@
                         >
                             <div class="line-main">
                                 <div class="line-identity">
-                                    <span class="line-name">{{ item.name }}</span>
-                                    <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                    <div class="line-thumb">
+                                        <img v-if="item.image" :src="getImageUrl(item.image)" alt="" />
+                                        <el-icon v-else><Box /></el-icon>
+                                    </div>
+                                    <div class="line-identity-text">
+                                        <span class="line-name">{{ item.name }}</span>
+                                        <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                    </div>
                                 </div>
 
                                 <div class="line-total">
@@ -204,6 +210,8 @@
                                             v-model.number="alloc.quantity"
                                             type="number"
                                             min="1"
+                                            step="1"
+                                            @change="sanitizeAllocQty(index, aIdx)"
                                             :ref="(el) => { if (aIdx === 0) setQtyRef(item.product_id, el); }"
                                         />
                                         <button type="button" @click="incrementAllocQty(index, aIdx)">
@@ -331,6 +339,16 @@
                             <el-input v-model.number="form.tax" type="number" min="0" step="0.01" />
                         </label>
                     </div>
+
+                    <!-- The total is clamped at zero rather than going
+                         negative, so a discount larger than what it is being
+                         taken off does not fail — it silently stops
+                         mattering past that point. Said here rather than left
+                         for the seller to notice from the total alone. -->
+                    <p v-if="discountExceedsChargeable" class="field-warning">
+                        <el-icon><WarningFilled /></el-icon>
+                        {{ t('sales.discount_exceeds_total') }}
+                    </p>
 
                     <div class="fields-row">
                         <label class="field">
@@ -629,6 +647,14 @@ const total = computed(() =>
     Math.max(0, subtotal.value - (Number(form.discount) || 0) + (Number(form.tax) || 0) + totalExpenses.value)
 );
 
+// True once the discount alone would take the total past zero — the point
+// where it stops being the discount that determines the total.
+const discountExceedsChargeable = computed(() => {
+    const discount = Number(form.discount) || 0;
+    if (discount <= 0) return false;
+    return subtotal.value + (Number(form.tax) || 0) + totalExpenses.value - discount < 0;
+});
+
 // Positive: the customer still owes this. Negative: they overpaid and the
 // difference becomes credit on their account.
 const remaining = computed(() => round2(total.value - (Number(form.paid_amount) || 0)));
@@ -731,6 +757,7 @@ const addProduct = (product) => {
             product_id: product.id,
             name: product.name_ar || product.name_en,
             sku: product.sku || '',
+            image: product.image_main || null,
             price: parseFloat(product.price) || 0,
             stock: product.stock_quantity || 0,
             unit: product.unit || '',
@@ -814,6 +841,16 @@ const incrementAllocQty = (index, allocIndex) => {
 const decrementAllocQty = (index, allocIndex) => {
     const allocation = items.value[index].allocations[allocIndex];
     if (allocation.quantity > 1) allocation.quantity -= 1;
+};
+
+// The server counts stock in whole units and rejects a fractional quantity
+// outright; rounding it here, on blur, catches what typing (rather than the
+// steppers) can produce before the mismatch turns into a submit error.
+const sanitizeAllocQty = (index, allocIndex) => {
+    const allocation = items.value[index]?.allocations?.[allocIndex];
+    if (!allocation) return;
+    const rounded = Math.round(Number(allocation.quantity));
+    allocation.quantity = Number.isFinite(rounded) && rounded > 0 ? rounded : 1;
 };
 
 // Opens a second (or third...) source on the line, defaulting to a warehouse
@@ -1030,6 +1067,7 @@ const loadInvoice = async () => {
                 product_id: item.product_id,
                 name: item.product_name || item.product?.name_ar,
                 sku: item.product?.sku || '',
+                image: item.product?.image_main || null,
                 price: parseFloat(item.unit_price) || 0,
                 stock: item.product?.stock_quantity || 0,
                 unit: item.product?.unit || '',
@@ -1379,7 +1417,24 @@ onUnmounted(() => {
     gap: 1rem;
 }
 
-.line-identity { display: flex; flex-direction: column; min-width: 0; }
+.line-identity { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+
+.line-thumb {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    overflow: hidden;
+    color: var(--ink-mute);
+}
+
+.line-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.line-identity-text { display: flex; flex-direction: column; min-width: 0; }
 .line-name { font-weight: 700; }
 .line-sku {
     font-size: 0.74rem;
@@ -1558,6 +1613,16 @@ onUnmounted(() => {
 }
 
 .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+.field-warning {
+    margin: -0.35rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--warn);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
 
 .extras { border-top: 1px dashed var(--line); padding-top: 0.85rem; }
 

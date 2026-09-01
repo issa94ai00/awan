@@ -138,6 +138,7 @@ class InvoiceController extends Controller
                 'payment_method' => match ($method) {
                     'card' => Payment::METHOD_CARD,
                     'transfer' => Payment::METHOD_BANK_TRANSFER,
+                    'check' => Payment::METHOD_CHECK,
                     default => Payment::METHOD_CASH,
                 },
                 'status' => Payment::STATUS_COMPLETED,
@@ -202,7 +203,7 @@ class InvoiceController extends Controller
                 // stays on their account as a receivable; anything over leaves
                 // them in credit.
                 'paid_amount' => 'nullable|numeric|min:0',
-                'payment_method' => 'nullable|string|in:cash,card,transfer',
+                'payment_method' => 'nullable|string|in:cash,card,transfer,check',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
                 'expenses' => 'nullable|array',
@@ -590,7 +591,7 @@ class InvoiceController extends Controller
                 'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
-                'payment_method' => 'nullable|string|in:cash,card,transfer',
+                'payment_method' => 'nullable|string|in:cash,card,transfer,check',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
                 'expenses' => 'nullable|array',
