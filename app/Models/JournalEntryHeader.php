@@ -40,8 +40,8 @@ class JournalEntryHeader extends Model
 
     protected $casts = [
         'entry_date' => 'date',
-        'total_debit' => 'decimal:2',
-        'total_credit' => 'decimal:2',
+        'total_debit' => 'decimal:5',
+        'total_credit' => 'decimal:5',
     ];
 
     public function lines(): HasMany

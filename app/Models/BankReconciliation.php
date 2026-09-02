@@ -33,7 +33,7 @@ class BankReconciliation extends Model
 
     protected $casts = [
         'statement_date' => 'date',
-        'statement_balance' => 'decimal:2',
+        'statement_balance' => 'decimal:5',
         'completed_at' => 'datetime',
     ];
 

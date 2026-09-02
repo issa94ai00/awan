@@ -323,8 +323,8 @@ class InventoryService
                 // The movement records what the units were actually worth: for
                 // an issue that is the FIFO cost just consumed, not the caller's
                 // estimate.
-                'unit_cost' => round($unitCost, 4),
-                'total_cost' => $costedTotal ?? round($unitCost * abs($signedQuantity), 2),
+                'unit_cost' => round($unitCost, 5),
+                'total_cost' => $costedTotal ?? round($unitCost * abs($signedQuantity), 5),
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
@@ -571,7 +571,7 @@ class InventoryService
             ? (($oldQuantity * $oldCost) + ($receivedQuantity * $unitCost)) / ($oldQuantity + $receivedQuantity)
             : $unitCost;
 
-        $product->cost_price = round($newCost, 2);
+        $product->cost_price = round($newCost, 5);
         $product->save();
     }
 
@@ -587,7 +587,7 @@ class InventoryService
             return;
         }
 
-        Product::whereKey($productId)->update(['price' => round($salePrice, 2)]);
+        Product::whereKey($productId)->update(['price' => round($salePrice, 5)]);
     }
 
     private function bucketColumn(string $condition): string

@@ -166,7 +166,7 @@ class FixedAssetController extends Controller
                 $fixedAsset->update([
                     'status' => FixedAsset::STATUS_DISPOSED,
                     'disposed_on' => $validated['disposed_on'] ?? now()->toDateString(),
-                    'disposal_proceeds' => round((float) ($validated['proceeds'] ?? 0), 2),
+                    'disposal_proceeds' => round((float) ($validated['proceeds'] ?? 0), 5),
                     'notes' => $validated['notes'] ?? $fixedAsset->notes,
                 ]);
 

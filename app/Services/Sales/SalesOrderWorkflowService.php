@@ -467,7 +467,7 @@ class SalesOrderWorkflowService
 
         return $pickingEffects + [
             'stock_movements' => $movements,
-            'cost_of_goods_sold' => round($cost, 2),
+            'cost_of_goods_sold' => round($cost, 5),
         ];
     }
 
@@ -773,10 +773,10 @@ class SalesOrderWorkflowService
             ->value('unit_price');
 
         if ($lastPaid !== null && (float) $lastPaid > 0) {
-            return round((float) $lastPaid, 2);
+            return round((float) $lastPaid, 5);
         }
 
-        return round((float) ($product?->cost_price ?? 0), 2);
+        return round((float) ($product?->cost_price ?? 0), 5);
     }
 
     /**
@@ -983,7 +983,7 @@ class SalesOrderWorkflowService
         // Defaults to clearing the invoice, which is what "collected on
         // delivery" almost always means; a partial amount is honoured as given.
         $amount = isset($options['settlement_amount'])
-            ? round((float) $options['settlement_amount'], 2)
+            ? round((float) $options['settlement_amount'], 5)
             : $outstanding;
 
         $payment = $this->payments->record($invoice, $amount, [
@@ -1076,7 +1076,7 @@ class SalesOrderWorkflowService
             $effects['invoice_cancelled'] = $invoice->invoice_number;
 
             $order->customer?->updateBalance(-1 * (float) $invoice->total);
-            $effects['customer_balance_reversed'] = round((float) $invoice->total, 2);
+            $effects['customer_balance_reversed'] = round((float) $invoice->total, 5);
         }
 
         return $effects;
@@ -1171,13 +1171,13 @@ class SalesOrderWorkflowService
             // card to invent one from.
             $newShipping = $type === SalesOrder::FULFILLMENT_PICKUP
                 ? 0.0
-                : round((float) ($options['shipping_cost'] ?? $order->shipping_cost ?? 0), 2);
+                : round((float) ($options['shipping_cost'] ?? $order->shipping_cost ?? 0), 5);
 
-            if (round((float) $order->shipping_cost, 2) !== $newShipping) {
-                $effects['shipping_cost'] = ['from' => round((float) $order->shipping_cost, 2), 'to' => $newShipping];
+            if (round((float) $order->shipping_cost, 5) !== $newShipping) {
+                $effects['shipping_cost'] = ['from' => round((float) $order->shipping_cost, 5), 'to' => $newShipping];
                 $order->shipping_cost = $newShipping;
                 $this->recalculateTotals($order);
-                $effects['total'] = round((float) $order->total, 2);
+                $effects['total'] = round((float) $order->total, 5);
             }
 
             $order->save();
@@ -1296,7 +1296,7 @@ class SalesOrderWorkflowService
             currency: $invoice->currency,
         );
 
-        $delta = round((float) $order->total - $previousTotal, 2);
+        $delta = round((float) $order->total - $previousTotal, 5);
         if (abs($delta) > 0.005) {
             $order->customer?->updateBalance($delta);
         }
@@ -1307,10 +1307,10 @@ class SalesOrderWorkflowService
     /** The revenue-side lines for an invoice, matching LedgerPostingService::postInvoice. */
     private function invoiceLines(Invoice $invoice): array
     {
-        $total = round((float) $invoice->total, 2);
-        $tax = round((float) $invoice->tax, 2);
-        $charges = round((float) ($invoice->additional_charges ?? 0), 2);
-        $goods = round($total - $tax - $charges, 2);
+        $total = round((float) $invoice->total, 5);
+        $tax = round((float) $invoice->tax, 5);
+        $charges = round((float) ($invoice->additional_charges ?? 0), 5);
+        $goods = round($total - $tax - $charges, 5);
 
         $label = 'فاتورة '.$invoice->invoice_number;
 
@@ -1534,10 +1534,10 @@ class SalesOrderWorkflowService
                 + (float) ($item->tax ?? 0)
         );
 
-        $order->subtotal = round($subtotal, 2);
+        $order->subtotal = round($subtotal, 5);
         $order->total = round(
             $subtotal - (float) ($order->discount ?? 0) + (float) ($order->tax ?? 0) + (float) ($order->shipping_cost ?? 0),
-            2
+            5
         );
     }
 

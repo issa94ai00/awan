@@ -48,21 +48,21 @@ class SalesOrder extends Model
     ];
 
     protected $casts = [
-        'subtotal' => 'decimal:2',
-        'tax' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'total' => 'decimal:2',
+        'subtotal' => 'decimal:5',
+        'tax' => 'decimal:5',
+        'discount' => 'decimal:5',
+        'total' => 'decimal:5',
         'order_date' => 'date',
         'expected_delivery' => 'date',
-        'paid_amount' => 'decimal:2',
-        'due_amount' => 'decimal:2',
+        'paid_amount' => 'decimal:5',
+        'due_amount' => 'decimal:5',
         'confirmed_at' => 'date',
         'shipped_at' => 'date',
         'delivered_at' => 'date',
         'actual_delivery_date' => 'datetime',
         'shipping_address' => 'array',
         'billing_address' => 'array',
-        'shipping_cost' => 'decimal:2',
+        'shipping_cost' => 'decimal:5',
         'synced_at' => 'datetime',
     ];
 

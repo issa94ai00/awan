@@ -165,7 +165,7 @@ class GoodsIssueService
 
         return [
             'movements' => $movements,
-            'cost' => round($total, 2),
+            'cost' => round($total, 5),
             'cost_by_warehouse' => $costByWarehouse,
         ];
     }

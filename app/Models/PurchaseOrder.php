@@ -28,15 +28,15 @@ class PurchaseOrder extends Model
     ];
 
     protected $casts = [
-        'total' => 'decimal:2',
-        'tax' => 'decimal:2',
-        'discount' => 'decimal:2',
+        'total' => 'decimal:5',
+        'tax' => 'decimal:5',
+        'discount' => 'decimal:5',
         'due_date' => 'date',
-        'subtotal' => 'decimal:2',
+        'subtotal' => 'decimal:5',
         'order_date' => 'date',
         'received_date' => 'date',
-        'paid_amount' => 'decimal:2',
-        'due_amount' => 'decimal:2',
+        'paid_amount' => 'decimal:5',
+        'due_amount' => 'decimal:5',
     ];
 
     public function supplier()

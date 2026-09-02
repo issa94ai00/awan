@@ -236,14 +236,14 @@ class JournalEntryController extends Controller
             $totalCredit += $credit;
         }
 
-        if (round($totalDebit, 2) !== round($totalCredit, 2)) {
+        if (round($totalDebit, 5) !== round($totalCredit, 5)) {
             throw ValidationException::withMessages([
                 'lines' => "القيد غير متوازن: إجمالي المدين ({$totalDebit}) لا يساوي إجمالي الدائن ({$totalCredit})",
             ]);
         }
 
-        $validated['total_debit'] = number_format($totalDebit, 2, '.', '');
-        $validated['total_credit'] = number_format($totalCredit, 2, '.', '');
+        $validated['total_debit'] = number_format($totalDebit, 5, '.', '');
+        $validated['total_credit'] = number_format($totalCredit, 5, '.', '');
 
         return $validated;
     }

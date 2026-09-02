@@ -206,7 +206,9 @@ class EmployeeCommissionWithdrawalController extends Controller
             return array_merge($validated, [
                 'currency_code' => $code,
                 'exchange_rate' => 1,
-                'base_amount' => round($amount, 2),
+                // Matches the converted branch below, which already defers to the
+                // currency's own configured precision instead of a literal here.
+                'base_amount' => $this->currencies->round($amount, $this->currencies->base()),
             ]);
         }
 

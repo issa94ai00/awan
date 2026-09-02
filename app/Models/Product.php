@@ -64,7 +64,7 @@ class Product extends Model implements Sitemapable
     protected $casts = [
         'show_price' => 'boolean',
         'seo' => 'array',
-        'cost_price' => 'decimal:2',
+        'cost_price' => 'decimal:5',
         'tax_rate' => 'decimal:2',
         'taxable' => 'boolean',
         'weight' => 'decimal:2',

@@ -29,10 +29,10 @@ class EmployeeCommission extends Model
     protected $casts = [
         'month' => 'date',
         'commission_rate' => 'decimal:2',
-        'total_sales' => 'decimal:2',
-        'extra_expenses' => 'decimal:2',
-        'withdrawals' => 'decimal:2',
-        'monthly_target' => 'decimal:2',
+        'total_sales' => 'decimal:5',
+        'extra_expenses' => 'decimal:5',
+        'withdrawals' => 'decimal:5',
+        'monthly_target' => 'decimal:5',
     ];
 
     const STATUS_CREDIT = 'creditor';

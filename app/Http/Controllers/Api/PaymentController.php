@@ -34,7 +34,7 @@ class PaymentController extends Controller
         $code = strtoupper(trim((string) ($code ?: $this->currencies->baseCode())));
 
         if ($code === $this->currencies->baseCode()) {
-            return ['amount' => round($amount, 2), 'currency' => $code, 'tendered_amount' => null];
+            return ['amount' => round($amount, 5), 'currency' => $code, 'tendered_amount' => null];
         }
 
         $converted = $this->currencies->convertToBase($amount, $code);
@@ -43,7 +43,7 @@ class PaymentController extends Controller
             throw new \RuntimeException("لا يوجد سعر صرف مسجّل للعملة {$code}. سجّل السعر من إدارة العملات قبل القبض بها.");
         }
 
-        return ['amount' => $converted, 'currency' => $code, 'tendered_amount' => round($amount, 2)];
+        return ['amount' => $converted, 'currency' => $code, 'tendered_amount' => round($amount, 5)];
     }
 
     /**
@@ -269,15 +269,15 @@ class PaymentController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $oldAmount = round((float) $payment->amount, 2);
-        $newAmount = round((float) $validated['amount'], 2);
+        $oldAmount = round((float) $payment->amount, 5);
+        $newAmount = round((float) $validated['amount'], 5);
         $invoice = $payment->invoice;
 
         if ($invoice && abs($newAmount - $oldAmount) > 0.009) {
             // What the invoice's other payments already cover, so the new
             // amount is checked against what is actually left rather than
             // against the total this payment used to claim.
-            $otherPaid = round((float) $invoice->paid_amount - $oldAmount, 2);
+            $otherPaid = round((float) $invoice->paid_amount - $oldAmount, 5);
 
             if ($newAmount - ((float) $invoice->total - $otherPaid) > 0.009) {
                 return response()->json([
@@ -294,10 +294,10 @@ class PaymentController extends Controller
             \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $invoice, $validated, $oldAmount, $newAmount, $otherPaid) {
                 $payment->update($validated);
 
-                $paid = round($otherPaid + $newAmount, 2);
+                $paid = round($otherPaid + $newAmount, 5);
                 $invoice->update([
                     'paid_amount' => $paid,
-                    'due_amount' => max(0, round((float) $invoice->total - $paid, 2)),
+                    'due_amount' => max(0, round((float) $invoice->total - $paid, 5)),
                     'paid_at' => $paid + 0.009 >= (float) $invoice->total ? now() : null,
                 ]);
 

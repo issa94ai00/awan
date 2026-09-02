@@ -24,8 +24,8 @@ class JournalEntryLine extends Model
     ];
 
     protected $casts = [
-        'debit' => 'decimal:2',
-        'credit' => 'decimal:2',
+        'debit' => 'decimal:5',
+        'credit' => 'decimal:5',
     ];
 
     public function header(): BelongsTo

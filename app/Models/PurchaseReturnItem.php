@@ -21,8 +21,8 @@ class PurchaseReturnItem extends Model
     ];
 
     protected $casts = [
-        'unit_price' => 'decimal:2',
-        'unit_cost' => 'decimal:4',
+        'unit_price' => 'decimal:5',
+        'unit_cost' => 'decimal:5',
     ];
 
     public function purchaseReturn(): BelongsTo

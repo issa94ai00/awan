@@ -114,7 +114,7 @@ class BudgetController extends Controller
                         'account_id' => $line['account_id'],
                         'month' => $line['month'],
                     ],
-                    ['amount' => round((float) $line['amount'], 2)]
+                    ['amount' => round((float) $line['amount'], 5)]
                 );
             }
         });

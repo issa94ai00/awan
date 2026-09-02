@@ -154,7 +154,7 @@ class InvoiceController extends Controller
 
         return [
             'payment' => $payment,
-            'customer_balance' => round((float) $customer->fresh()->balance, 2),
+            'customer_balance' => round((float) $customer->fresh()->balance, 5),
         ];
     }
 
@@ -334,9 +334,9 @@ class InvoiceController extends Controller
             // unrecorded is what made subtotal + tax - discount fall short of
             // total, and it left the ledger crediting less revenue than it
             // debited receivables.
-            $additionalCharges = round($expensesTotal, 2);
+            $additionalCharges = round($expensesTotal, 5);
 
-            $paidAmount = round((float) ($validated['paid_amount'] ?? 0), 2);
+            $paidAmount = round((float) ($validated['paid_amount'] ?? 0), 5);
 
             // The header's warehouse, when every line agrees on one. A sale
             // split across warehouses (see items.*.warehouse_id) has no single
@@ -392,7 +392,7 @@ class InvoiceController extends Controller
                 'additional_charges' => $additionalCharges,
                 'total' => $total,
                 'paid_amount' => $paidAmount,
-                'due_amount' => max(0, round($total - $paidAmount, 2)),
+                'due_amount' => max(0, round($total - $paidAmount, 5)),
                 'payment_method' => $validated['payment_method'] ?? Invoice::PAYMENT_CASH,
                 'status' => $validated['status'] ?? Invoice::STATUS_PENDING,
                 'notes' => $validated['notes'] ?? null,
@@ -516,11 +516,11 @@ class InvoiceController extends Controller
                 'message' => 'تم إنشاء الفاتورة بنجاح',
                 'data' => new InvoiceResource($invoice->fresh()->load('items.product')),
                 'settlement' => [
-                    'total' => round($total, 2),
+                    'total' => round($total, 5),
                     'paid' => $paidAmount,
                     // Positive: still owed by the customer. Negative: overpaid,
                     // so they now hold credit with us.
-                    'remaining' => round($total - $paidAmount, 2),
+                    'remaining' => round($total - $paidAmount, 5),
                     'payment_number' => $settlement['payment']?->payment_number,
                     'customer_balance' => $settlement['customer_balance'],
                 ],

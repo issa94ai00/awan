@@ -10,7 +10,7 @@ class CartItem extends Model
     protected $fillable = ['cart_id', 'product_id', 'quantity', 'price'];
 
     protected $casts = [
-        'price' => 'decimal:2',
+        'price' => 'decimal:5',
     ];
 
     public function cart(): BelongsTo

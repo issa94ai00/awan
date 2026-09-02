@@ -727,7 +727,7 @@ class RmaController extends Controller
                 // What the settlement actually produced, so the UI can point the
                 // user at the refund and the replacement order it just created.
                 'settlement' => [
-                    'refund_amount' => round($refundAmount, 2),
+                    'refund_amount' => round($refundAmount, 5),
                     'refund_method' => $refundMethod,
                     'credit_note' => $creditNote ? [
                         'id' => $creditNote->id,

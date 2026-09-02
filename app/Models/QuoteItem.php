@@ -22,10 +22,10 @@ class QuoteItem extends Model
 
     protected $casts = [
         'quantity' => 'integer',
-        'unit_price' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'tax' => 'decimal:2',
-        'total' => 'decimal:2',
+        'unit_price' => 'decimal:5',
+        'discount' => 'decimal:5',
+        'tax' => 'decimal:5',
+        'total' => 'decimal:5',
     ];
 
     public function quote()

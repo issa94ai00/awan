@@ -26,7 +26,7 @@ class Expense extends Model
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:5',
         'expense_date' => 'date',
         'exchange_rate' => 'decimal:4',
     ];

@@ -30,13 +30,13 @@ class Payroll extends Model
     ];
 
     protected $casts = [
-        'basic_salary' => 'decimal:2',
+        'basic_salary' => 'decimal:5',
         'overtime_hours' => 'decimal:2',
-        'overtime_rate' => 'decimal:2',
-        'overtime_pay' => 'decimal:2',
-        'bonuses' => 'decimal:2',
-        'deductions' => 'decimal:2',
-        'net_salary' => 'decimal:2',
+        'overtime_rate' => 'decimal:5',
+        'overtime_pay' => 'decimal:5',
+        'bonuses' => 'decimal:5',
+        'deductions' => 'decimal:5',
+        'net_salary' => 'decimal:5',
         'pay_period_start' => 'date',
         'pay_period_end' => 'date',
         'payment_date' => 'date',

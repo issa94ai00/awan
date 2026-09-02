@@ -29,7 +29,7 @@ class PurchaseReceipt extends Model
 
     protected $casts = [
         'receipt_date' => 'date',
-        'tax_amount' => 'decimal:2',
+        'tax_amount' => 'decimal:5',
     ];
 
     public function purchaseOrder()

@@ -48,10 +48,10 @@ class Employee extends Model
     protected $casts = [
         'warehouse_id' => 'integer',
         'hire_date' => 'date',
-        'salary' => 'decimal:2',
-        'bonus' => 'decimal:2',
+        'salary' => 'decimal:5',
+        'bonus' => 'decimal:5',
         'commission_rate' => 'decimal:2',
-        'monthly_sales_target' => 'decimal:2',
+        'monthly_sales_target' => 'decimal:5',
         'contract_start' => 'date',
         'contract_end' => 'date',
     ];

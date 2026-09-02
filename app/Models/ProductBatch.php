@@ -27,7 +27,7 @@ class ProductBatch extends Model
         'expiry_date' => 'date',
         'quantity' => 'integer',
         'quantity_reserved' => 'integer',
-        'unit_cost' => 'decimal:2',
+        'unit_cost' => 'decimal:5',
     ];
 
     const STATUS_AVAILABLE = 'available';

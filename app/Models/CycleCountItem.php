@@ -25,8 +25,8 @@ class CycleCountItem extends Model
     ];
 
     protected $casts = [
-        'unit_cost' => 'decimal:2',
-        'variance_value' => 'decimal:2',
+        'unit_cost' => 'decimal:5',
+        'variance_value' => 'decimal:5',
         'verified' => 'boolean',
     ];
 

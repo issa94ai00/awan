@@ -37,8 +37,8 @@ class PurchaseReturn extends Model
 
     protected $casts = [
         'return_date' => 'date',
-        'credit_amount' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
+        'credit_amount' => 'decimal:5',
+        'tax_amount' => 'decimal:5',
     ];
 
     public function items(): HasMany

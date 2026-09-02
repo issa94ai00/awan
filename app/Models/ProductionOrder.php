@@ -23,7 +23,7 @@ class ProductionOrder extends Model
 
     protected $casts = [
         'quantity' => 'integer',
-        'cost' => 'decimal:2',
+        'cost' => 'decimal:5',
         'start_date' => 'date',
         'end_date' => 'date',
     ];

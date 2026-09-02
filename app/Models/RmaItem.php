@@ -26,7 +26,7 @@ class RmaItem extends Model
     ];
 
     protected $casts = [
-        'refund_amount' => 'decimal:2',
+        'refund_amount' => 'decimal:5',
     ];
 
     const CONDITION_NEW = 'new';

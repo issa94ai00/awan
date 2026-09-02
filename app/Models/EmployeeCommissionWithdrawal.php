@@ -28,9 +28,9 @@ class EmployeeCommissionWithdrawal extends Model
 
     protected $casts = [
         'withdrawn_at' => 'datetime',
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:5',
         'exchange_rate' => 'decimal:8',
-        'base_amount' => 'decimal:2',
+        'base_amount' => 'decimal:5',
     ];
 
     const METHOD_CASH = 'cash';

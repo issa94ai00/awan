@@ -43,10 +43,10 @@ class FixedAsset extends Model
         'acquired_on' => 'date',
         'depreciated_through' => 'date',
         'disposed_on' => 'date',
-        'cost' => 'decimal:2',
-        'salvage_value' => 'decimal:2',
-        'accumulated_depreciation' => 'decimal:2',
-        'disposal_proceeds' => 'decimal:2',
+        'cost' => 'decimal:5',
+        'salvage_value' => 'decimal:5',
+        'accumulated_depreciation' => 'decimal:5',
+        'disposal_proceeds' => 'decimal:5',
     ];
 
     public const STATUS_ACTIVE = 'active';

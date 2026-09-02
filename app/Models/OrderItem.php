@@ -23,8 +23,8 @@ class OrderItem extends Model
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
-        'price_after_discount' => 'decimal:2',
+        'price' => 'decimal:5',
+        'price_after_discount' => 'decimal:5',
         'quantity' => 'integer',
     ];
 

@@ -104,7 +104,7 @@ class RmaSettlementService
                 // Only due_amount moves. total stays as issued and paid_amount
                 // still reflects real cash received; the shortfall is covered by
                 // the credit note rather than by a payment.
-                $invoice->due_amount = round($due - $appliedToInvoice, 2);
+                $invoice->due_amount = round($due - $appliedToInvoice, 5);
                 $invoice->save();
                 $remaining -= $appliedToInvoice;
             }
@@ -144,15 +144,15 @@ class RmaSettlementService
                 // where it is — the credit note covers the difference, so the
                 // customer is not put back into debt for goods they returned.
                 if ($invoice) {
-                    $invoice->paid_amount = round(max(0, (float) $invoice->paid_amount - $refunded), 2);
+                    $invoice->paid_amount = round(max(0, (float) $invoice->paid_amount - $refunded), 5);
                     $invoice->save();
                 }
             }
         }
 
-        $creditNote->applied_to_invoice = round($appliedToInvoice, 2);
-        $creditNote->refunded_amount = round($refunded, 2);
-        $creditNote->store_credit_amount = round($storeCredit, 2);
+        $creditNote->applied_to_invoice = round($appliedToInvoice, 5);
+        $creditNote->refunded_amount = round($refunded, 5);
+        $creditNote->store_credit_amount = round($storeCredit, 5);
         $creditNote->save();
         $creditNote->syncStatus();
 
@@ -171,9 +171,9 @@ class RmaSettlementService
         return [
             'credit_note' => $creditNote->fresh('items'),
             'payment' => $payment,
-            'applied_to_invoice' => round($appliedToInvoice, 2),
-            'refunded' => round($refunded, 2),
-            'store_credit' => round($storeCredit, 2),
+            'applied_to_invoice' => round($appliedToInvoice, 5),
+            'refunded' => round($refunded, 5),
+            'store_credit' => round($storeCredit, 5),
         ];
     }
 
@@ -211,7 +211,7 @@ class RmaSettlementService
                 'quantity' => $quantity,
                 // total is recomputed from unit_price * quantity on save, so the
                 // unit price is derived from the credited line value.
-                'unit_price' => round($lineTotal / $quantity, 2),
+                'unit_price' => round($lineTotal / $quantity, 5),
             ]);
         }
 
@@ -294,7 +294,7 @@ class RmaSettlementService
             $rmaRequest->customer->updateBalance(-$unusedCredit);
         }
 
-        return ['order' => $replacementOrder, 'unused_credit' => round($unusedCredit, 2)];
+        return ['order' => $replacementOrder, 'unused_credit' => round($unusedCredit, 5)];
     }
 
     /**
@@ -322,7 +322,7 @@ class RmaSettlementService
         // Last resort: derive from the credit we already calculated.
         $quantity = max(1, $item->settled_quantity);
 
-        return round($item->refundableNow() / $quantity, 2);
+        return round($item->refundableNow() / $quantity, 5);
     }
 
     private function invoiceFor(RmaRequest $rmaRequest): ?Invoice

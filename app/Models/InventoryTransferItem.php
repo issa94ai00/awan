@@ -24,7 +24,7 @@ class InventoryTransferItem extends Model
 
     protected $casts = [
         'expiry_date' => 'date',
-        'unit_cost' => 'decimal:2',
+        'unit_cost' => 'decimal:5',
     ];
 
     /** Column is `transfer_id`; the inferred `inventory_transfer_id` does not exist. */

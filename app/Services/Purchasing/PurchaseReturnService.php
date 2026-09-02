@@ -59,7 +59,7 @@ class PurchaseReturnService
                 'warehouse_id' => $warehouseId,
                 'return_date' => $attributes['return_date'] ?? now()->toDateString(),
                 'reason' => $attributes['reason'] ?? null,
-                'tax_amount' => round((float) ($attributes['tax_amount'] ?? 0), 2),
+                'tax_amount' => round((float) ($attributes['tax_amount'] ?? 0), 5),
                 'credit_amount' => 0,
                 'notes' => $attributes['notes'] ?? null,
                 'status' => 'completed',
@@ -89,11 +89,11 @@ class PurchaseReturnService
                 // What those units actually cost, drawn from the layers as they
                 // were consumed.
                 $lineCost = $movement ? (float) $movement->total_cost : 0.0;
-                $unitCost = $quantity > 0 ? round($lineCost / $quantity, 4) : 0.0;
+                $unitCost = $quantity > 0 ? round($lineCost / $quantity, 5) : 0.0;
 
                 // What the supplier credits: their price when given, otherwise
                 // what we paid, which is the honest default.
-                $unitPrice = round((float) ($line['unit_price'] ?? $unitCost), 2);
+                $unitPrice = round((float) ($line['unit_price'] ?? $unitCost), 5);
 
                 $return->items()->create([
                     'product_id' => $line['product_id'],
@@ -109,18 +109,18 @@ class PurchaseReturnService
             // An explicit figure overrides the sum of the lines: a supplier may
             // credit one agreed amount for the whole return.
             $credit = isset($attributes['credit_amount'])
-                ? round((float) $attributes['credit_amount'], 2)
-                : round($credit, 2);
+                ? round((float) $attributes['credit_amount'], 5)
+                : round($credit, 5);
 
             $return->update(['credit_amount' => $credit]);
 
-            $this->ledger->postPurchaseReturn($return->load('items'), round($cost, 2));
+            $this->ledger->postPurchaseReturn($return->load('items'), round($cost, 5));
 
             // The supplier is owed less, by what they are crediting including
             // the tax they will no longer be paid.
             if ($return->supplier_id) {
                 Supplier::find($return->supplier_id)
-                    ?->updateBalance(-round($credit + (float) $return->tax_amount, 2));
+                    ?->updateBalance(-round($credit + (float) $return->tax_amount, 5));
             }
 
             return $return->load(['items', 'supplier']);

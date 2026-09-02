@@ -33,7 +33,7 @@ class ShippingManifest extends Model
         'estimated_delivery' => 'date',
         'actual_delivery' => 'date',
         'total_weight' => 'decimal:2',
-        'shipping_cost' => 'decimal:2',
+        'shipping_cost' => 'decimal:5',
     ];
 
     const STATUS_PENDING = 'pending';

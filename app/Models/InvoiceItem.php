@@ -29,11 +29,11 @@ class InvoiceItem extends Model
 
     protected $casts = [
         'quantity' => 'integer',
-        'unit_price' => 'decimal:2',
-        'total_price' => 'decimal:2',
-        'discount' => 'decimal:2',
+        'unit_price' => 'decimal:5',
+        'total_price' => 'decimal:5',
+        'discount' => 'decimal:5',
         'tax_rate' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
+        'tax_amount' => 'decimal:5',
         'unit_multiplier' => 'decimal:2',
     ];
 

@@ -24,10 +24,10 @@ class LandedCost extends Model
     ];
 
     protected $casts = [
-        'shipping_charges' => 'decimal:2',
-        'customs_duties' => 'decimal:2',
-        'insurance_cost' => 'decimal:2',
-        'other_charges' => 'decimal:2',
+        'shipping_charges' => 'decimal:5',
+        'customs_duties' => 'decimal:5',
+        'insurance_cost' => 'decimal:5',
+        'other_charges' => 'decimal:5',
     ];
 
     public function purchaseReceipt()

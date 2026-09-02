@@ -34,7 +34,7 @@ class SupplierPayment extends Model
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:5',
         'payment_date' => 'date',
     ];
 

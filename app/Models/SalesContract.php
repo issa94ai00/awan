@@ -27,7 +27,7 @@ class SalesContract extends Model
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
-        'total_value' => 'decimal:2',
+        'total_value' => 'decimal:5',
         'discount_percentage' => 'decimal:2',
         'terms' => 'array',
         'approved_at' => 'datetime',

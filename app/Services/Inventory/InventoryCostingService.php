@@ -120,11 +120,11 @@ class InventoryCostingService
             ];
         }
 
-        $cost = round($cost, 2);
+        $cost = round($cost, 5);
 
         return [
             'cost' => $cost,
-            'unit_cost' => $quantity > 0 ? round($cost / $quantity, 4) : 0.0,
+            'unit_cost' => $quantity > 0 ? round($cost / $quantity, 5) : 0.0,
             'layers' => $consumed,
         ];
     }

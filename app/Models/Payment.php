@@ -30,12 +30,12 @@ class Payment extends Model
     protected $casts = [
         // Always the base-currency amount — what the invoice, the customer
         // balance and the ledger actually move by.
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:5',
         'payment_date' => 'date',
         'exchange_rate' => 'decimal:4',
         // What the payer handed over, in `currency`. Null when paid in the
         // base currency, where there is nothing to convert.
-        'tendered_amount' => 'decimal:2',
+        'tendered_amount' => 'decimal:5',
     ];
 
     const METHOD_CASH = 'cash';

@@ -38,7 +38,7 @@ class RmaRequest extends Model
         'approved_at' => 'datetime',
         'received_at' => 'datetime',
         'completed_at' => 'datetime',
-        'refund_amount' => 'decimal:2',
+        'refund_amount' => 'decimal:5',
     ];
 
     const REASON_DEFECTIVE = 'defective';

@@ -20,8 +20,8 @@ class CreditNoteItem extends Model
     ];
 
     protected $casts = [
-        'unit_price' => 'decimal:2',
-        'total' => 'decimal:2',
+        'unit_price' => 'decimal:5',
+        'total' => 'decimal:5',
     ];
 
     protected static function booted(): void

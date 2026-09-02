@@ -43,7 +43,7 @@ class PaymentRecorder
      */
     public function record(Invoice $invoice, float $amount, array $options = []): Payment
     {
-        $amount = round($amount, 2);
+        $amount = round($amount, 5);
 
         if ($amount <= 0) {
             throw new RuntimeException('مبلغ التحصيل يجب أن يكون أكبر من صفر.');
@@ -64,7 +64,7 @@ class PaymentRecorder
 
         return DB::transaction(function () use ($invoice, $amount, $options) {
             $currency = strtoupper((string) ($options['currency'] ?? $invoice->currency ?: base_currency_code()));
-            $tendered = isset($options['tendered_amount']) ? round((float) $options['tendered_amount'], 2) : null;
+            $tendered = isset($options['tendered_amount']) ? round((float) $options['tendered_amount'], 5) : null;
 
             $payment = Payment::create([
                 // Derived from the last id: counting reuses a number as soon as
@@ -88,11 +88,11 @@ class PaymentRecorder
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
-            $paid = round((float) $invoice->paid_amount + $amount, 2);
+            $paid = round((float) $invoice->paid_amount + $amount, 5);
 
             $invoice->update([
                 'paid_amount' => $paid,
-                'due_amount' => max(0, round((float) $invoice->total - $paid, 2)),
+                'due_amount' => max(0, round((float) $invoice->total - $paid, 5)),
                 // Stamped only when nothing is left owing. The status is left
                 // alone: whether the goods arrived is the order's business, and
                 // moving the invoice to "delivered" because it was paid is what
@@ -112,6 +112,6 @@ class PaymentRecorder
     /** What is still owed, trusting the amounts rather than the stored column. */
     public function outstanding(Invoice $invoice): float
     {
-        return max(0, round((float) $invoice->total - (float) $invoice->paid_amount, 2));
+        return max(0, round((float) $invoice->total - (float) $invoice->paid_amount, 5));
     }
 }

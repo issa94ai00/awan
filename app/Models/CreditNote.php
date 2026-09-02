@@ -41,12 +41,12 @@ class CreditNote extends Model
 
     protected $casts = [
         'issue_date' => 'date',
-        'subtotal' => 'decimal:2',
-        'tax' => 'decimal:2',
-        'total' => 'decimal:2',
-        'applied_to_invoice' => 'decimal:2',
-        'refunded_amount' => 'decimal:2',
-        'store_credit_amount' => 'decimal:2',
+        'subtotal' => 'decimal:5',
+        'tax' => 'decimal:5',
+        'total' => 'decimal:5',
+        'applied_to_invoice' => 'decimal:5',
+        'refunded_amount' => 'decimal:5',
+        'store_credit_amount' => 'decimal:5',
     ];
 
     protected $appends = ['settled_amount', 'open_amount', 'status_text'];

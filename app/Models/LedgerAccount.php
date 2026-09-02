@@ -31,9 +31,9 @@ class LedgerAccount extends Model
     ];
 
     protected $casts = [
-        'balance' => 'decimal:2',
+        'balance' => 'decimal:5',
         'is_active' => 'boolean',
-        'opening_balance' => 'decimal:2',
+        'opening_balance' => 'decimal:5',
         'is_system' => 'boolean',
     ];
 

@@ -25,7 +25,7 @@ class BudgetLine extends Model
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:5',
         'month' => 'integer',
     ];
 

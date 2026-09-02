@@ -34,9 +34,9 @@ class Customer extends Model
     ];
 
     protected $casts = [
-        'balance' => 'decimal:2',
-        'credit_limit' => 'decimal:2',
-        'total_purchases' => 'decimal:2',
+        'balance' => 'decimal:5',
+        'credit_limit' => 'decimal:5',
+        'total_purchases' => 'decimal:5',
         'last_purchase_at' => 'date',
     ];
 

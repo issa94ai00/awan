@@ -22,8 +22,8 @@ class ProductVariant extends Model
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
-        'cost_price' => 'decimal:2',
+        'price' => 'decimal:5',
+        'cost_price' => 'decimal:5',
         'stock_quantity' => 'integer',
     ];
 

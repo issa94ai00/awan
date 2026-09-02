@@ -32,7 +32,7 @@ class CycleCount extends Model
     ];
 
     protected $casts = [
-        'variance_value' => 'decimal:2',
+        'variance_value' => 'decimal:5',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'reviewed_at' => 'datetime',

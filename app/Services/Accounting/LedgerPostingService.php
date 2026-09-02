@@ -47,7 +47,7 @@ use RuntimeException;
 class LedgerPostingService
 {
     /** Rounding tolerance when comparing the two sides of an entry. */
-    private const EPSILON = 0.005;
+    private const EPSILON = 0.000005;
 
     /** @var array<string,LedgerAccount|null> resolved within a single request */
     private array $accountCache = [];
@@ -82,7 +82,7 @@ class LedgerPostingService
 
         // Goods revenue is whatever the total is not already accounted for, so
         // the entry balances even on legacy rows whose subtotal is out of step.
-        $goods = round($total - $tax - $charges, 2);
+        $goods = round($total - $tax - $charges, 5);
 
         $label = 'فاتورة ' . $invoice->invoice_number;
 
@@ -245,7 +245,7 @@ class LedgerPostingService
             (float) $payroll->basic_salary + (float) $payroll->overtime_pay + (float) $payroll->bonuses
         );
         $deductions = $this->money($payroll->deductions);
-        $net = round($gross - $deductions, 2);
+        $net = round($gross - $deductions, 5);
 
         if ($gross <= 0) {
             return null;
@@ -832,7 +832,7 @@ class LedgerPostingService
         // split above only decides which of our accounts carries each part.
         $lines[] = [
             'role' => 'accounts_payable',
-            'credit' => round($total + $tax, 2),
+            'credit' => round($total + $tax, 5),
             'description' => 'ذمم موردين - ' . $label,
         ];
 
@@ -965,7 +965,7 @@ class LedgerPostingService
         $lines[] = ['role' => 'fixed_assets', 'credit' => $cost, 'description' => 'استبعاد أصل - '.$label];
 
         // What it was still carried at, against what it fetched.
-        $result = round($proceeds - ($cost - $accumulated), 2);
+        $result = round($proceeds - ($cost - $accumulated), 5);
 
         if (abs($result) > self::EPSILON) {
             $lines[] = $result < 0
@@ -1020,7 +1020,7 @@ class LedgerPostingService
         $warehouseId = (int) ($return->warehouse_id ?? 0);
 
         $lines = [
-            ['role' => 'accounts_payable', 'debit' => round($credit + $tax, 2),
+            ['role' => 'accounts_payable', 'debit' => round($credit + $tax, 5),
              'description' => 'تخفيض ذمم مورّد - '.$label],
         ];
 
@@ -1037,7 +1037,7 @@ class LedgerPostingService
         }
 
         // What the supplier credits, against what the goods cost us.
-        $difference = round($credit - $cost, 2);
+        $difference = round($credit - $cost, 5);
 
         if (abs($difference) > self::EPSILON) {
             $lines[] = $difference > 0
@@ -1250,8 +1250,8 @@ class LedgerPostingService
                 throw new RuntimeException("لا يوجد حساب مرتبط بالدور: " . ($line['role'] ?? '?'));
             }
 
-            $debit = round((float) ($line['debit'] ?? 0), 2);
-            $credit = round((float) ($line['credit'] ?? 0), 2);
+            $debit = round((float) ($line['debit'] ?? 0), 5);
+            $credit = round((float) ($line['credit'] ?? 0), 5);
 
             if ($debit <= 0 && $credit <= 0) {
                 continue;
@@ -1307,8 +1307,8 @@ class LedgerPostingService
                 'source_module' => $module,
                 'reversal_of_id' => $reversalOfId,
                 'description' => $description,
-                'total_debit' => round($totalDebit, 2),
-                'total_credit' => round($totalCredit, 2),
+                'total_debit' => round($totalDebit, 5),
+                'total_credit' => round($totalCredit, 5),
                 // The document's own label, kept for tracing. It used to fall
                 // back to the literal 'SAR' regardless of what the books were
                 // actually kept in, which is how entries came to claim a
@@ -1397,7 +1397,7 @@ class LedgerPostingService
 
     private function money($value): float
     {
-        return round((float) $value, 2);
+        return round((float) $value, 5);
     }
 
     /** Mirrors JournalEntryController's numbering so both paths agree. */
