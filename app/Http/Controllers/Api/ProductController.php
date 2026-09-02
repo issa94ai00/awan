@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\WarehouseInventory;
+use App\Services\Inventory\InventoryService;
 use App\Services\ProductExcelService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProductController extends Controller
@@ -347,39 +350,71 @@ class ProductController extends Controller
         $targetWarehouseId = $validated['warehouse_id'] ?? null;
         unset($validated['stock_quantity'], $validated['warehouse_id']);
 
-        $product->update($validated);
+        // A caller that names a warehouse (the products screen's quick edit,
+        // which shows the count for one warehouse at a time) is recounting
+        // that warehouse specifically, not the company-wide total — so the
+        // difference is against what that warehouse row currently holds, not
+        // against `product.stock_quantity` summed across all of them.
+        $difference = null;
 
         if ($countedQuantity !== null) {
-            // A caller that names a warehouse (the products screen's quick edit,
-            // which shows the count for one warehouse at a time) is recounting
-            // that warehouse specifically, not the company-wide total — so the
-            // difference is against what that warehouse row currently holds,
-            // not against `product.stock_quantity` summed across all of them.
             if ($targetWarehouseId) {
-                $currentAtWarehouse = (int) \App\Models\WarehouseInventory::where('warehouse_id', $targetWarehouseId)
+                $row = WarehouseInventory::where('warehouse_id', $targetWarehouseId)
                     ->where('product_id', $product->id)
                     ->whereNull('product_variant_id')
-                    ->value('quantity');
+                    ->first();
+
+                $currentAtWarehouse = $row ? (int) $row->quantity : 0;
+                $reservedAtWarehouse = $row ? (int) $row->reserved_quantity : 0;
+
+                // Caught here, before anything is written, rather than left to
+                // the database's negative-balance trigger: that fires mid
+                // transaction and would otherwise leave the other field edits
+                // on this same request saved while the count silently failed.
+                if ((int) $countedQuantity < $reservedAtWarehouse) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => sprintf(
+                            'الكمية الجديدة (%d) أقل من المحجوز لطلبات قائمة في هذا المستودع (%d). عالج الطلبات أولاً أو صحّح الجرد في مستودع آخر.',
+                            $countedQuantity,
+                            $reservedAtWarehouse
+                        ),
+                        'data' => null,
+                    ], 422);
+                }
+
                 $difference = (int) $countedQuantity - $currentAtWarehouse;
             } else {
                 $difference = (int) $countedQuantity - (int) $product->stock_quantity;
             }
-
-            if ($difference !== 0) {
-                app(\App\Services\Inventory\InventoryService::class)->adjust(
-                    $product->id,
-                    $difference,
-                    $targetWarehouseId,
-                    [
-                        'source' => 'stock_count',
-                        'reason' => 'تعديل الرصيد من بطاقة المنتج',
-                        'reference' => $product->sku ?? ('#' . $product->id),
-                    ]
-                );
-
-                $product->refresh();
-            }
         }
+
+        try {
+            DB::transaction(function () use ($product, $validated, $difference, $targetWarehouseId) {
+                $product->update($validated);
+
+                if ($difference !== null && $difference !== 0) {
+                    app(InventoryService::class)->adjust(
+                        $product->id,
+                        $difference,
+                        $targetWarehouseId,
+                        [
+                            'source' => 'stock_count',
+                            'reason' => 'تعديل الرصيد من بطاقة المنتج',
+                            'reference' => $product->sku ?? ('#' . $product->id),
+                        ]
+                    );
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
+
+        $product->refresh();
 
         $product->load('category');
 
