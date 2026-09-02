@@ -41,9 +41,10 @@ class ProductController extends Controller
             $query->where('is_active', 1);
         }
 
-        // Filter by category_id or category_slug
+        // Filter by category_id (single value or array, for multi-classification
+        // filtering) or category_slug
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $query->whereIn('category_id', (array) $request->category_id);
         } elseif ($request->filled('category_slug')) {
             $cat = Category::where('slug', $request->category_slug)->first();
             if ($cat) {
@@ -406,6 +407,11 @@ class ProductController extends Controller
                     );
                 }
             });
+        } catch (\App\Exceptions\ClosedPeriodException $e) {
+            // Has its own render() with the closed-period detail the screen
+            // needs to point the user at it; catching it into the generic
+            // handler below would flatten that down to a bare message.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'success' => false,

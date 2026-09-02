@@ -16,7 +16,11 @@ export const productsApi = {
     update(id, data) {
         return api.put(`/admin/products/${id}`, data);
     },
-    
+
+    updateVariant(id, data) {
+        return api.put(`/admin/product-variants/${id}`, data);
+    },
+
     delete(id) {
         return api.delete(`/admin/products/${id}`);
     },

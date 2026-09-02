@@ -113,4 +113,26 @@ watch(mobileSidebarOpen, (open) => {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* Print views (price offer, statements, ...) build their own printable
+   content; the fixed sidebar and sticky header aren't part of that and were
+   still rendering, pushing the real content down and spilling extra blank
+   pages in front of it. */
+@media print {
+    .admin-layout {
+        display: block;
+        min-height: 0;
+    }
+    :deep(.admin-sidebar),
+    :deep(.admin-header) {
+        display: none !important;
+    }
+    .admin-main-wrapper {
+        margin: 0 !important;
+    }
+    .admin-content {
+        padding: 0;
+        min-height: 0;
+    }
+}
 </style>
