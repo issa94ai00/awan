@@ -300,6 +300,7 @@ class ProductController extends Controller
             'sale_price' => 'nullable|numeric|min:0',
             'currency' => 'sometimes|required|string|max:3',
             'stock_quantity' => 'sometimes|required|integer|min:0',
+            'warehouse_id' => 'sometimes|nullable|integer|exists:warehouses,id',
             'min_stock' => 'sometimes|nullable|integer|min:0',
             'max_stock' => 'sometimes|nullable|integer|min:0',
             'reorder_point' => 'sometimes|nullable|integer|min:0',
@@ -343,18 +344,32 @@ class ProductController extends Controller
         // what. The difference is booked as an adjustment instead, and the
         // service keeps the product total in step.
         $countedQuantity = $validated['stock_quantity'] ?? null;
-        unset($validated['stock_quantity']);
+        $targetWarehouseId = $validated['warehouse_id'] ?? null;
+        unset($validated['stock_quantity'], $validated['warehouse_id']);
 
         $product->update($validated);
 
         if ($countedQuantity !== null) {
-            $difference = (int) $countedQuantity - (int) $product->stock_quantity;
+            // A caller that names a warehouse (the products screen's quick edit,
+            // which shows the count for one warehouse at a time) is recounting
+            // that warehouse specifically, not the company-wide total — so the
+            // difference is against what that warehouse row currently holds,
+            // not against `product.stock_quantity` summed across all of them.
+            if ($targetWarehouseId) {
+                $currentAtWarehouse = (int) \App\Models\WarehouseInventory::where('warehouse_id', $targetWarehouseId)
+                    ->where('product_id', $product->id)
+                    ->whereNull('product_variant_id')
+                    ->value('quantity');
+                $difference = (int) $countedQuantity - $currentAtWarehouse;
+            } else {
+                $difference = (int) $countedQuantity - (int) $product->stock_quantity;
+            }
 
             if ($difference !== 0) {
                 app(\App\Services\Inventory\InventoryService::class)->adjust(
                     $product->id,
                     $difference,
-                    null,
+                    $targetWarehouseId,
                     [
                         'source' => 'stock_count',
                         'reason' => 'تعديل الرصيد من بطاقة المنتج',

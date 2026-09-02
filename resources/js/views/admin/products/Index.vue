@@ -268,49 +268,162 @@
         <!-- Quick Edit Dialog -->
         <el-dialog
             v-model="quickEditDialogVisible"
-            :title="$t('quick_edit')"
-            width="600px"
+            width="640px"
+            :show-close="false"
             :close-on-click-modal="false"
+            :close-on-press-escape="false"
+            class="quick-edit-dialog"
         >
-            <el-form :model="quickEditForm" label-width="120px" label-position="right">
-                <el-form-item :label="$t('name_arabic')">
-                    <el-input v-model="quickEditForm.name_ar" />
-                </el-form-item>
-                <el-form-item :label="$t('name_english')">
-                    <el-input v-model="quickEditForm.name_en" />
-                </el-form-item>
-                <el-form-item :label="$t('price')">
-                    <el-input-number v-model="quickEditForm.price" :min="0" :step="0.01" style="width: 100%" />
-                </el-form-item>
-                <el-form-item :label="$t('discounted_price')">
-                    <el-input-number v-model="quickEditForm.sale_price" :min="0" :step="0.01" style="width: 100%" />
-                </el-form-item>
-                <el-form-item :label="$t('cost_price')">
-                    <el-input-number v-model="quickEditForm.cost_price" :min="0" :step="0.01" style="width: 100%" />
-                </el-form-item>
-                <el-form-item :label="$t('quantity')">
-                    <el-input-number v-model="quickEditForm.stock_quantity" :min="0" style="width: 100%" />
-                </el-form-item>
-                <el-form-item :label="$t('the_category')">
-                    <el-select v-model="quickEditForm.category_id" :placeholder="$t('select_category')" style="width: 100%">
-                        <el-option
-                            v-for="cat in categories"
-                            :key="cat.id"
-                            :label="cat.name_ar || cat.name"
-                            :value="cat.id"
-                        />
-                    </el-select>
-                </el-form-item>
-                <el-form-item :label="$t('status')">
-                    <el-switch v-model="quickEditForm.is_active" />
-                </el-form-item>
-                <el-form-item :label="$t('featured')">
-                    <el-switch v-model="quickEditForm.is_featured" />
-                </el-form-item>
+            <template #header>
+                <div class="qe-header">
+                    <EntityImage :src="quickEditProduct?.image_main" type="product" :size="46" />
+                    <div class="qe-header-info">
+                        <span class="qe-header-name">{{ quickEditForm.name_ar || quickEditForm.name_en || $t('quick_edit') }}</span>
+                        <span v-if="quickEditProduct?.sku" class="qe-header-sku">SKU: {{ quickEditProduct.sku }}</span>
+                    </div>
+                    <el-button :icon="Close" circle text size="small" @click="closeQuickEdit" />
+                </div>
+            </template>
+
+            <el-form :model="quickEditForm" label-position="top" class="qe-form">
+                <div class="qe-section">
+                    <h4 class="qe-section-title">{{ $t('product') }}</h4>
+                    <el-row :gutter="16">
+                        <el-col :span="12">
+                            <el-form-item :label="$t('name_arabic')" required>
+                                <el-input v-model="quickEditForm.name_ar" :class="{ 'qe-input-error': nameError }" />
+                                <span v-if="nameError" class="qe-field-error">{{ nameError }}</span>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="12">
+                            <el-form-item :label="$t('name_english')">
+                                <el-input v-model="quickEditForm.name_en" />
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                </div>
+
+                <div class="qe-section">
+                    <div class="qe-section-header">
+                        <h4 class="qe-section-title">{{ $t('the_price') }}</h4>
+                        <span v-if="marginPercent !== null" class="qe-margin" :class="marginClass">
+                            <el-icon :size="13"><Coin /></el-icon>
+                            الهامش: {{ marginPercent }}%
+                        </span>
+                    </div>
+                    <el-row :gutter="16">
+                        <el-col :span="8">
+                            <el-form-item :label="$t('price')">
+                                <el-input-number v-model="quickEditForm.price" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item :label="$t('discounted_price')">
+                                <el-input-number v-model="quickEditForm.sale_price" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="8">
+                            <el-form-item :label="$t('cost_price')">
+                                <el-input-number v-model="quickEditForm.cost_price" :min="0" :step="0.5" controls-position="right" style="width: 100%" />
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <el-alert
+                        v-if="priceWarning"
+                        :title="priceWarning"
+                        type="warning"
+                        :closable="false"
+                        show-icon
+                        class="qe-alert"
+                    />
+                </div>
+
+                <div class="qe-section">
+                    <h4 class="qe-section-title">{{ $t('inventory') }}</h4>
+                    <el-row :gutter="16">
+                        <el-col :span="12">
+                            <el-form-item label="المستودع">
+                                <el-select
+                                    v-model="quickEditForm.warehouse_id"
+                                    style="width: 100%"
+                                    :loading="warehousesLoading"
+                                    :disabled="stockLoading"
+                                    @change="onWarehouseChange"
+                                >
+                                    <el-option
+                                        v-for="wh in warehouses"
+                                        :key="wh.id"
+                                        :label="wh.is_primary ? `${wh.name} (رئيسي)` : wh.name"
+                                        :value="wh.id"
+                                    />
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="12">
+                            <el-form-item :label="$t('quantity')">
+                                <el-input-number
+                                    v-model="quickEditForm.stock_quantity"
+                                    :min="0"
+                                    controls-position="right"
+                                    style="width: 100%"
+                                    :disabled="stockLoading"
+                                />
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <div class="qe-stock-hint">
+                        <span v-if="stockLoading" class="qe-stock-loading">
+                            <el-icon class="is-loading"><Loading /></el-icon> جارٍ تحميل الرصيد...
+                        </span>
+                        <template v-else>
+                            <span>الرصيد الحالي في هذا المستودع: <strong>{{ currentWarehouseQty }}</strong></span>
+                            <span v-if="stockDelta !== 0" class="qe-stock-delta" :class="stockDelta > 0 ? 'positive' : 'negative'">
+                                {{ stockDelta > 0 ? `+${stockDelta}` : stockDelta }}
+                            </span>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="qe-section">
+                    <el-row :gutter="16" align="middle">
+                        <el-col :span="12">
+                            <el-form-item :label="$t('the_category')">
+                                <el-select v-model="quickEditForm.category_id" :placeholder="$t('select_category')" style="width: 100%" filterable>
+                                    <el-option
+                                        v-for="cat in categories"
+                                        :key="cat.id"
+                                        :label="cat.name_ar || cat.name"
+                                        :value="cat.id"
+                                    />
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="12">
+                            <div class="qe-switches">
+                                <div class="qe-switch-item">
+                                    <span>{{ $t('status') }}</span>
+                                    <el-switch v-model="quickEditForm.is_active" />
+                                </div>
+                                <div class="qe-switch-item">
+                                    <span>{{ $t('featured') }}</span>
+                                    <el-switch v-model="quickEditForm.is_featured" />
+                                </div>
+                            </div>
+                        </el-col>
+                    </el-row>
+                </div>
             </el-form>
+
             <template #footer>
-                <el-button @click="quickEditDialogVisible = false">{{ $t('cancel') }}</el-button>
-                <el-button type="primary" :loading="quickEditSubmitting" @click="submitQuickEdit">{{ $t('save') }}</el-button>
+                <el-button @click="closeQuickEdit">{{ $t('cancel') }}</el-button>
+                <el-button
+                    type="primary"
+                    :loading="quickEditSubmitting"
+                    :disabled="!isDirty || !!nameError"
+                    @click="submitQuickEdit"
+                >
+                    {{ $t('save') }}
+                </el-button>
             </template>
         </el-dialog>
     </div>
@@ -322,14 +435,16 @@ import { baseCurrencyCode } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { productsApi } from '@/api/products';
+import { inventoryApi } from '@/api/inventory';
 
 const { t } = useI18n();
 import {
     Plus, Search, Refresh, View, Edit, Delete,
     Star, StarFilled, Check, Close, Picture, Box, WarningFilled,
-    Download, Upload
+    Download, Upload, Coin, Loading
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -348,6 +463,11 @@ const importing = ref(false);
 const fileInput = ref(null);
 const quickEditDialogVisible = ref(false);
 const quickEditSubmitting = ref(false);
+const quickEditProduct = ref(null);
+const warehouses = ref([]);
+const warehousesLoading = ref(false);
+const stockLoading = ref(false);
+const stockByWarehouse = ref({});
 const quickEditForm = ref({
     id: null,
     name_ar: '',
@@ -356,10 +476,12 @@ const quickEditForm = ref({
     sale_price: null,
     cost_price: null,
     stock_quantity: 0,
+    warehouse_id: null,
     category_id: null,
     is_active: true,
     is_featured: false,
 });
+let quickEditSnapshot = null;
 
 const products = computed(() => store.products);
 const categories = computed(() => store.categories);
@@ -382,6 +504,45 @@ const getStockType = (stock) => {
     if (stock <= 10) return 'warning';
     return 'success';
 };
+
+const currentWarehouseQty = computed(() => stockByWarehouse.value[quickEditForm.value.warehouse_id] || 0);
+const stockDelta = computed(() => (Number(quickEditForm.value.stock_quantity) || 0) - currentWarehouseQty.value);
+
+const nameError = computed(() => (
+    quickEditForm.value.name_ar.trim() === '' ? 'اسم المنتج مطلوب' : ''
+));
+
+const marginPercent = computed(() => {
+    const price = Number(quickEditForm.value.price) || 0;
+    const cost = quickEditForm.value.cost_price;
+    if (!price || cost === null || cost === undefined || cost === '') return null;
+    return Math.round(((price - Number(cost)) / price) * 1000) / 10;
+});
+
+const marginClass = computed(() => {
+    if (marginPercent.value === null) return '';
+    if (marginPercent.value < 0) return 'qe-margin-bad';
+    if (marginPercent.value < 15) return 'qe-margin-low';
+    return 'qe-margin-good';
+});
+
+const priceWarning = computed(() => {
+    const price = Number(quickEditForm.value.price) || 0;
+    const sale = quickEditForm.value.sale_price;
+    const cost = quickEditForm.value.cost_price;
+    if (sale !== null && sale !== undefined && sale !== '' && Number(sale) >= price) {
+        return 'السعر بعد الخصم يجب أن يكون أقل من السعر الأصلي';
+    }
+    if (cost !== null && cost !== undefined && cost !== '' && Number(cost) > price) {
+        return 'سعر التكلفة أعلى من سعر البيع — سيُباع المنتج بخسارة';
+    }
+    return null;
+});
+
+const isDirty = computed(() => {
+    if (!quickEditSnapshot) return false;
+    return JSON.stringify(quickEditForm.value) !== quickEditSnapshot;
+});
 
 const getGalleryCount = (row) => {
     if (!row.image_gallery) return 0;
@@ -525,39 +686,128 @@ const editProduct = (product) => {
     router.push({ name: 'admin.products.edit', params: { id: product.id } });
 };
 
-const quickEdit = (product) => {
+const ensureWarehousesLoaded = async () => {
+    if (warehouses.value.length) return;
+    warehousesLoading.value = true;
+    try {
+        const res = await inventoryApi.getWarehouses({ per_page: 50, is_active: true });
+        const list = res.data?.data || [];
+        warehouses.value = list.slice().sort((a, b) => {
+            if (!!a.is_primary !== !!b.is_primary) return a.is_primary ? -1 : 1;
+            return (a.name || '').localeCompare(b.name || '', 'ar');
+        });
+    } catch {
+        ElMessage.error('تعذر تحميل قائمة المستودعات');
+    } finally {
+        warehousesLoading.value = false;
+    }
+};
+
+const loadStockBreakdown = async (productId) => {
+    stockLoading.value = true;
+    try {
+        const res = await inventoryApi.getStock({ product_id: productId, per_page: 100 });
+        const rows = res.data?.data?.stock || [];
+        const map = {};
+        rows.forEach((row) => { map[row.warehouse_id] = Number(row.quantity) || 0; });
+        stockByWarehouse.value = map;
+    } catch {
+        stockByWarehouse.value = {};
+    } finally {
+        stockLoading.value = false;
+    }
+};
+
+const onWarehouseChange = (warehouseId) => {
+    // A different warehouse means a different physical count, so the field is
+    // reset to what that warehouse actually holds rather than carrying over a
+    // number that was meant to correct the previous one.
+    quickEditForm.value.stock_quantity = stockByWarehouse.value[warehouseId] || 0;
+};
+
+const quickEdit = async (product) => {
+    quickEditProduct.value = product;
+    stockByWarehouse.value = {};
     quickEditForm.value = {
         id: product.id,
         name_ar: product.name_ar || '',
         name_en: product.name_en || '',
-        price: product.price || 0,
-        sale_price: product.sale_price || null,
-        cost_price: product.cost_price || null,
-        stock_quantity: product.stock_quantity || 0,
-        category_id: product.category_id || null,
+        price: Number(product.price) || 0,
+        sale_price: product.sale_price !== null && product.sale_price !== undefined ? Number(product.sale_price) : null,
+        cost_price: product.cost_price !== null && product.cost_price !== undefined ? Number(product.cost_price) : null,
+        stock_quantity: 0,
+        warehouse_id: null,
+        category_id: product.category_id || product.category?.id || null,
         is_active: product.is_active ?? true,
         is_featured: product.is_featured ?? false,
     };
+    quickEditSnapshot = null;
     quickEditDialogVisible.value = true;
+
+    await ensureWarehousesLoaded();
+    await loadStockBreakdown(product.id);
+
+    // Default to whichever warehouse already carries the most stock for this
+    // product — usually the one an operator meant to recount — falling back
+    // to the primary warehouse for a product with no stock anywhere yet.
+    let defaultWarehouseId = warehouses.value.find(w => w.is_primary)?.id ?? warehouses.value[0]?.id ?? null;
+    let bestQty = 0;
+    for (const wh of warehouses.value) {
+        const qty = stockByWarehouse.value[wh.id] || 0;
+        if (qty > bestQty) {
+            bestQty = qty;
+            defaultWarehouseId = wh.id;
+        }
+    }
+
+    quickEditForm.value.warehouse_id = defaultWarehouseId;
+    quickEditForm.value.stock_quantity = stockByWarehouse.value[defaultWarehouseId] || 0;
+
+    quickEditSnapshot = JSON.stringify(quickEditForm.value);
+};
+
+const closeQuickEdit = () => {
+    if (isDirty.value) {
+        ElMessageBox.confirm('هناك تعديلات لم يتم حفظها. هل تريد تجاهلها؟', 'تأكيد', {
+            confirmButtonText: 'تجاهل التعديلات',
+            cancelButtonText: 'متابعة التعديل',
+            type: 'warning',
+        }).then(() => {
+            quickEditDialogVisible.value = false;
+        }).catch(() => {});
+        return;
+    }
+    quickEditDialogVisible.value = false;
 };
 
 const submitQuickEdit = async () => {
+    if (nameError.value || !isDirty.value) return;
+
     quickEditSubmitting.value = true;
     try {
-        await store.updateProduct(quickEditForm.value.id, {
-            name_ar: quickEditForm.value.name_ar,
-            name_en: quickEditForm.value.name_en,
-            price: quickEditForm.value.price,
-            sale_price: quickEditForm.value.sale_price,
-            cost_price: quickEditForm.value.cost_price,
-            stock_quantity: quickEditForm.value.stock_quantity,
-            category_id: quickEditForm.value.category_id,
-            is_active: quickEditForm.value.is_active,
-            is_featured: quickEditForm.value.is_featured,
+        const original = JSON.parse(quickEditSnapshot);
+        const payload = {};
+
+        ['name_ar', 'name_en', 'price', 'sale_price', 'cost_price', 'category_id', 'is_active', 'is_featured'].forEach((field) => {
+            if (quickEditForm.value[field] !== original[field]) {
+                payload[field] = quickEditForm.value[field];
+            }
         });
+
+        if (stockDelta.value !== 0) {
+            payload.stock_quantity = quickEditForm.value.stock_quantity;
+            payload.warehouse_id = quickEditForm.value.warehouse_id;
+        }
+
+        // Patch the row from the response directly instead of refetching the
+        // whole list: a quick edit should feel instant, not blink the table.
+        const response = await productsApi.update(quickEditForm.value.id, payload);
+        const updated = response.data.data;
+        const index = store.products.findIndex(p => p.id === updated.id);
+        if (index !== -1) store.products[index] = updated;
+
         ElMessage.success(t('the_product_has_been_updated'));
         quickEditDialogVisible.value = false;
-        fetchProducts();
     } catch (error) {
         ElMessage.error(error.response?.data?.message || t('failed_to_update_product'));
     } finally {
@@ -812,5 +1062,146 @@ onMounted(init);
     margin-top: 1.5rem;
     display: flex;
     justify-content: center;
+}
+
+/* Quick Edit dialog */
+.qe-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.qe-header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+}
+
+.qe-header-name {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #1a1a2e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.qe-header-sku {
+    font-size: 0.75rem;
+    color: #909399;
+}
+
+.qe-section {
+    padding: 0.85rem 0;
+    border-bottom: 1px solid #f0f2f5;
+}
+
+.qe-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.qe-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.qe-section-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #606266;
+}
+
+.qe-margin {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.qe-margin-good {
+    color: #3d8b40;
+    background: #e8f6e9;
+}
+
+.qe-margin-low {
+    color: #a06400;
+    background: #fdf3e0;
+}
+
+.qe-margin-bad {
+    color: #c23934;
+    background: #fce8e6;
+}
+
+.qe-alert {
+    margin-top: 0.5rem;
+}
+
+.qe-field-error {
+    display: block;
+    color: #f56c6c;
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+.qe-input-error :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px #f56c6c inset;
+}
+
+.qe-stock-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: #606266;
+    margin-top: 0.25rem;
+}
+
+.qe-stock-loading {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #909399;
+}
+
+.qe-stock-delta {
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+}
+
+.qe-stock-delta.positive {
+    color: #3d8b40;
+    background: #e8f6e9;
+}
+
+.qe-stock-delta.negative {
+    color: #c23934;
+    background: #fce8e6;
+}
+
+.qe-switches {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: 100%;
+    padding-top: 1.6rem;
+}
+
+.qe-switch-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #606266;
 }
 </style>
