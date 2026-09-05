@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Support\ImageStore;
 use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -179,24 +180,21 @@ class SettingsController extends Controller
             $this->updateSettingWithAliases($key, $value);
         }
 
-        if ($request->hasFile('logo')) {
-            $path = $request->file('logo')->store('settings', 'public');
-            $this->updateSettingWithAliases('logo', $path);
-        }
+        // Replacing a logo used to leave the old file on disk for good — the
+        // setting row was simply pointed somewhere else. Each replaced path is
+        // swept once the new one is saved, and only if nothing else still
+        // names it (site_logo and logo are aliases for the same picture).
+        foreach (['logo', 'og_image', 'favicon', 'hero_bg'] as $imageKey) {
+            if (! $request->hasFile($imageKey)) {
+                continue;
+            }
 
-        if ($request->hasFile('og_image')) {
-            $path = $request->file('og_image')->store('settings', 'public');
-            $this->updateSettingWithAliases('og_image', $path);
-        }
+            $replaced = get_setting($imageKey);
 
-        if ($request->hasFile('favicon')) {
-            $path = $request->file('favicon')->store('settings', 'public');
-            $this->updateSettingWithAliases('favicon', $path);
-        }
+            $path = $request->file($imageKey)->store('settings', 'public');
+            $this->updateSettingWithAliases($imageKey, $path);
 
-        if ($request->hasFile('hero_bg')) {
-            $path = $request->file('hero_bg')->store('settings', 'public');
-            $this->updateSettingWithAliases('hero_bg', $path);
+            ImageStore::forgetReplaced($replaced, $path);
         }
 
         $settings = Setting::all()->pluck('value', 'key')->toArray();

@@ -149,64 +149,14 @@ import { reactive, ref, computed, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
-import { getImageUrl } from '@/utils/imageUrl';
 
 const settingsStore = useSettingsStore();
 const settings = computed(() => settingsStore.data);
 const { t, locale } = useI18n();
 
-// SEO Meta Tags
-const updateSEOMetaTags = () => {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || t('site_fallback_name') || 'أوان التقدم';
-    const contactTitle = t('nav_contact') || (locale.value === 'en' ? 'Contact Us' : 'تواصل معنا');
-    const contactDescription = t('contact_desc') || (locale.value === 'en' ? 'Get in touch with us for any inquiries or support' : 'تواصل معنا لأي استفسارات أو دعم');
-    const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
-    
-    // Update document title
-    document.title = `${contactTitle} - ${siteName}`;
-    
-    // Update meta description
-    const metaDescription = document.querySelector('meta[name="description"]');
-    if (metaDescription) {
-        metaDescription.setAttribute('content', contactDescription);
-    }
-    
-    // Update og:title
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) {
-        ogTitle.setAttribute('content', `${contactTitle} - ${siteName}`);
-    }
-    
-    // Update og:description
-    const ogDescription = document.querySelector('meta[property="og:description"]');
-    if (ogDescription) {
-        ogDescription.setAttribute('content', contactDescription);
-    }
-    
-    // Update og:image
-    const ogImageMeta = document.querySelector('meta[property="og:image"]');
-    if (ogImageMeta) {
-        ogImageMeta.setAttribute('content', ogImage);
-    }
-    
-    // Update twitter:title
-    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
-    if (twitterTitle) {
-        twitterTitle.setAttribute('content', `${contactTitle} - ${siteName}`);
-    }
-    
-    // Update twitter:description
-    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
-    if (twitterDescription) {
-        twitterDescription.setAttribute('content', contactDescription);
-    }
-    
-    // Update twitter:image
-    const twitterImage = document.querySelector('meta[property="twitter:image"]');
-    if (twitterImage) {
-        twitterImage.setAttribute('content', ogImage);
-    }
-};
+// SEO <head> for this page is fully covered by PublicLayout's route defaults
+// (localized title/description/OG matching the server), so no page-level code
+// is needed here.
 
 const form = reactive({
     name: '',
@@ -240,8 +190,6 @@ const submitForm = async () => {
 // Fetch settings on mount
 onMounted(() => {
     settingsStore.fetch().catch((err) => console.warn(err));
-    // Update SEO meta tags
-    updateSEOMetaTags();
 });
 </script>
 

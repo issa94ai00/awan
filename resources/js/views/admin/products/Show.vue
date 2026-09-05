@@ -21,24 +21,62 @@
                 <el-row :gutter="24">
                     <el-col :xs="24" :md="7">
                         <el-card shadow="never" class="image-card">
-                            <EntityImage
-                                :src="product.image_main"
-                                type="product"
-                                size="100%"
-                                :height="300"
-                                show-label
-                            />
+                            <div class="product-viewer">
+                                <div class="viewer-stage" :class="{ 'is-zoomable': images.length > 0 }">
+                                    <EntityImage
+                                        :src="activeImage"
+                                        type="product"
+                                        size="100%"
+                                        :height="300"
+                                        :preview-src-list="images"
+                                        :initial-index="activeIndex"
+                                        :lazy="false"
+                                        show-label
+                                    />
+                                    <span v-if="images.length" class="viewer-hint">
+                                        <el-icon :size="13"><ZoomIn /></el-icon>
+                                        {{ $t('click_to_enlarge') }}
+                                    </span>
+                                    <span v-if="images.length > 1" class="viewer-counter">
+                                        {{ activeIndex + 1 }} / {{ images.length }}
+                                    </span>
+                                    <template v-if="images.length > 1">
+                                        <button
+                                            type="button"
+                                            class="viewer-nav viewer-nav--prev"
+                                            :aria-label="$t('previous_image')"
+                                            @click.stop="step(-1)"
+                                        >
+                                            <el-icon><ArrowLeftBold /></el-icon>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="viewer-nav viewer-nav--next"
+                                            :aria-label="$t('next_image')"
+                                            @click.stop="step(1)"
+                                        >
+                                            <el-icon><ArrowRightBold /></el-icon>
+                                        </button>
+                                    </template>
+                                </div>
 
-                            <div v-if="galleryImages.length" class="gallery-thumbs">
-                                <el-image
-                                    v-for="(img, idx) in galleryImages"
-                                    :key="idx"
-                                    :src="img"
-                                    fit="cover"
-                                    class="thumb-img"
-                                    :preview-src-list="galleryImages"
-                                    preview-teleported
-                                />
+                                <div v-if="images.length > 1" class="gallery-thumbs">
+                                    <button
+                                        v-for="(img, idx) in images"
+                                        :key="img"
+                                        type="button"
+                                        class="thumb"
+                                        :class="{ 'is-active': idx === activeIndex }"
+                                        :aria-current="idx === activeIndex"
+                                        :title="idx === 0 ? $t('main_image') : `${$t('photo_gallery')} ${idx}`"
+                                        @click="activeIndex = idx"
+                                    >
+                                        <img :src="img" alt="" loading="lazy">
+                                        <span v-if="idx === 0" class="thumb-tag">
+                                            <el-icon :size="10"><StarFilled /></el-icon>
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
                         </el-card>
 
@@ -224,11 +262,12 @@
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { baseCurrencyCode } from '@/utils/currency';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
-import { Edit, ArrowRight } from '@element-plus/icons-vue';
+import { ArrowLeftBold, ArrowRight, ArrowRightBold, Edit, StarFilled, ZoomIn } from '@element-plus/icons-vue';
+import { productImages } from '@/utils/productImages';
 
 const route = useRoute();
 const router = useRouter();
@@ -237,15 +276,25 @@ const store = useProductsStore();
 const loading = ref(true);
 const product = ref({});
 
-const galleryImages = computed(() => {
-    const p = product.value;
-    if (!p.image_gallery) return [];
-    if (Array.isArray(p.image_gallery)) return p.image_gallery;
-    try {
-        return JSON.parse(p.image_gallery);
-    } catch {
-        return [];
-    }
+// Main image first, then the gallery — one list, so the lightbox pages through
+// everything the product has instead of treating the main shot as a separate
+// picture that could not be opened at all.
+const images = computed(() => productImages(product.value));
+
+const activeIndex = ref(0);
+
+const activeImage = computed(() => images.value[activeIndex.value] || '');
+
+const step = (delta) => {
+    const total = images.value.length;
+    if (total < 2) return;
+    activeIndex.value = (activeIndex.value + delta + total) % total;
+};
+
+// A product loaded (or reloaded) after the index moved would otherwise keep
+// pointing past the end of the new list and show nothing.
+watch(images, () => {
+    activeIndex.value = 0;
 });
 
 const getStockTag = (stock) => {
@@ -334,24 +383,136 @@ onMounted(loadProduct);
     margin-bottom: 1rem;
 }
 
+.product-viewer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.viewer-stage {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.viewer-stage.is-zoomable :deep(.el-image) {
+    cursor: zoom-in;
+}
+
+.viewer-counter,
+.viewer-hint {
+    position: absolute;
+    bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    pointer-events: none;
+}
+
+.viewer-counter {
+    inset-inline-end: 8px;
+}
+
+.viewer-hint {
+    inset-inline-start: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.viewer-stage:hover .viewer-hint {
+    opacity: 1;
+}
+
+.viewer-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.viewer-stage:hover .viewer-nav,
+.viewer-nav:focus-visible {
+    opacity: 1;
+}
+
+.viewer-nav:hover {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.viewer-nav--prev {
+    inset-inline-start: 8px;
+}
+
+.viewer-nav--next {
+    inset-inline-end: 8px;
+}
+
+/* The arrows point the way the reader is going, not the way the DOM is. */
+[dir="rtl"] .viewer-nav .el-icon {
+    transform: scaleX(-1);
+}
+
 .gallery-thumbs {
     display: flex;
     gap: 8px;
-    margin-top: 12px;
     flex-wrap: wrap;
 }
 
-.thumb-img {
-    width: 70px;
-    height: 70px;
+.thumb {
+    position: relative;
+    width: 62px;
+    height: 62px;
+    padding: 0;
     border-radius: 8px;
+    overflow: hidden;
     cursor: pointer;
+    background: #f5f7fa;
     border: 2px solid #ebeef5;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
-.thumb-img:hover {
+.thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.thumb:hover {
+    border-color: #a0cfff;
+    transform: translateY(-1px);
+}
+
+.thumb.is-active {
     border-color: #409eff;
+}
+
+.thumb-tag {
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    display: flex;
+    padding: 2px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.5);
+    color: #f7ba2a;
 }
 
 .info-card {

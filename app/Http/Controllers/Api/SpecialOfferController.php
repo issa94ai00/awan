@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SpecialOffer;
+use App\Support\ImageStore;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
 
 class SpecialOfferController extends Controller
@@ -135,16 +135,19 @@ class SpecialOfferController extends Controller
         $data = $request->except(['image_file', 'is_active']);
         $data['is_active'] = $request->input('is_active') === 'true' || $request->input('is_active') === '1' || $request->input('is_active') === true;
 
+        $imageBefore = $offer->image;
+
         if ($request->hasFile('image_file')) {
-            // Delete old image if exists
-            if ($offer->image) {
-                Storage::disk('public')->delete($offer->image);
-            }
             $path = $request->file('image_file')->store('special-offers', 'public');
             $data['image'] = $path;
         }
 
         $offer->update($data);
+
+        // Swept after the save, not before it: the old path is still the
+        // offer's own image until the new one is written, and ImageStore
+        // refuses to delete a file a row still points at.
+        ImageStore::forgetReplaced($imageBefore, $offer->image);
         $offer->load('product');
 
         return response()->json([
@@ -161,11 +164,11 @@ class SpecialOfferController extends Controller
     {
         $offer = SpecialOffer::findOrFail($id);
 
-        if ($offer->image) {
-            Storage::disk('public')->delete($offer->image);
-        }
+        $image = $offer->image;
 
         $offer->delete();
+
+        ImageStore::forget($image);
 
         return response()->json([
             'success' => true,

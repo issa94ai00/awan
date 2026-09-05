@@ -302,7 +302,13 @@ class PublicPageController extends Controller
         $seo_image = $category->image ? image_url($category->image) : $siteImage;
         $seo_links = $this->productLinks(Product::where('category_id', $category->id));
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
+        $homeLabel = $locale === 'en' ? 'Home' : 'الرئيسية';
+        $seo_json_ld = $this->generateBreadcrumbJsonLd([
+            $homeLabel => url('/'),
+            $catName => route('category.show', $category->slug),
+        ]);
+
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links', 'seo_json_ld'));
     }
 
     public function productShow($productSlug)
@@ -345,12 +351,20 @@ class PublicPageController extends Controller
         // description, and link back to the category it belongs to.
         $seo_body = $this->cleanString($prodDesc, 1000);
         $seo_links = [];
+        $breadcrumbs = [
+            ($locale === 'en' ? 'Home' : 'الرئيسية') => url('/'),
+        ];
         if ($product->category && $product->category->is_active) {
             $seo_links[] = [
                 'label' => $product->category->name,
                 'url' => route('category.show', $product->category->slug),
             ];
+            $breadcrumbs[$product->category->name] = route('category.show', $product->category->slug);
         }
+        $breadcrumbs[$prodName] = url()->current();
+
+        $seo_json_ld = $this->generateProductJsonLd($product, $prodName, $seo_description, $seo_image, $siteName)
+            .$this->generateBreadcrumbJsonLd($breadcrumbs);
 
         return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld', 'seo_og_type', 'seo_body', 'seo_links'));
     }
@@ -446,6 +460,33 @@ class PublicPageController extends Controller
                 'itemCondition' => 'https://schema.org/NewCondition',
             ];
         }
+
+        return '<script type="application/ld+json">'.json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).'</script>';
+    }
+
+    /**
+     * Breadcrumb trail for navigable pages (categories, products).
+     *
+     * @param  array<string, string>  $items  label => absolute URL, ordered root-first.
+     */
+    private function generateBreadcrumbJsonLd(array $items): string
+    {
+        $itemListElement = [];
+        $position = 1;
+        foreach ($items as $label => $url) {
+            $itemListElement[] = [
+                '@type' => 'ListItem',
+                'position' => $position++,
+                'name' => $label,
+                'item' => $url,
+            ];
+        }
+
+        $data = [
+            '@context' => 'https://schema.org',
+            '@type' => 'BreadcrumbList',
+            'itemListElement' => $itemListElement,
+        ];
 
         return '<script type="application/ld+json">'.json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).'</script>';
     }

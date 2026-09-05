@@ -150,6 +150,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 
@@ -172,7 +173,11 @@ const toast = reactive({ show: false, message: '' });
 const settings = computed(() => settingsStore.data);
 const categorySlug = computed(() => route.params.slug);
 
-// SEO Meta Tags
+// SEO Meta Tags — owned by the shared useSeo composable (routed through
+// PublicLayout). Breadcrumb structured data is re-emitted here so the client-side
+// head matches the server's BreadcrumbList for category pages.
+const seo = useSeo();
+
 const dispatchSeoEvent = () => {
     if (!category.value) return;
     const currentLocale = locale.value;
@@ -181,14 +186,21 @@ const dispatchSeoEvent = () => {
     const seoTitleVal = category.value.meta_title || categoryName;
     const seoDescVal = category.value.meta_description || categoryDesc;
 
-    window.dispatchEvent(new CustomEvent('set-dynamic-seo', {
-        detail: {
-            title: seoTitleVal,
-            description: seoDescVal,
-            keywords: '',
-            image: category.value.image || ''
-        }
-    }));
+    const homeLabel = t('nav_home') || (currentLocale === 'en' ? 'Home' : 'الرئيسية');
+
+    seo.setOverride({
+        title: seoTitleVal,
+        description: seoDescVal,
+        keywords: '',
+        image: category.value.image || '',
+        ogType: 'website',
+        jsonLd: [
+            seo.breadcrumbSchema([
+                { name: homeLabel, url: '/' },
+                { name: categoryName, url: `/category/${category.value.slug}` },
+            ]),
+        ],
+    });
 };
 
 watch(locale, () => {

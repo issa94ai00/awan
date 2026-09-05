@@ -296,11 +296,12 @@ const secondaryNavItems = computed(() => {
     return getDefaultNavItems();
 });
 
-// Page-level SEO is owned by PublicLayout's updateSEOMetaTags(), which already
-// resolves meta_title / meta_description per locale. This view previously ran its
-// own copy that appended a hard-coded Arabic " - الصفحة الرئيسية" suffix on top of
-// it (in both locales) after the API calls resolved, clobbering the server-rendered
-// title. Emitting the ItemList JSON-LD is all this page needs to add.
+// Page-level SEO is owned by the shared useSeo composable (routed through
+// PublicLayout), which resolves meta_title / meta_description per locale. This
+// view previously ran its own copy that appended a hard-coded Arabic
+// " - الصفحة الرئيسية" suffix on top of it (in both locales) after the API calls
+// resolved, clobbering the server-rendered title. Emitting the ItemList JSON-LD
+// is all this page needs to add.
 
 const heroBgStyle = computed(() => {
     const bg = settings.value.hero_bg;

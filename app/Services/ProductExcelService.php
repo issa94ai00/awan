@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Support\ProductIdentifiers;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use App\Services\Inventory\InventoryService;
@@ -11,7 +12,6 @@ use DOMDocument;
 use DOMElement;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Str;
 use ZipArchive;
 
 class ProductExcelService
@@ -1131,24 +1131,11 @@ class ProductExcelService
      */
     private function uniqueSlug(string $base, ?string $nameEn = null, ?int $ignoreId = null): string
     {
-        $slug = $base !== '' ? Str::slug($base) : '';
-        if ($slug === '' && $nameEn !== null && $nameEn !== '') {
-            $slug = Str::slug($nameEn);
-        }
-        if ($slug === '') {
-            $slug = 'product-'.substr(md5($base.uniqid('', true)), 0, 10);
-        }
-
-        $candidate = $slug;
-        $counter = 2;
-        while (Product::where('slug', $candidate)
-            ->where('id', '!=', $ignoreId ?? 0)
-            ->exists()) {
-            $candidate = $slug.'-'.$counter;
-            $counter++;
-        }
-
-        return $candidate;
+        // Shared with the admin form so an imported product and a hand-added
+        // one end up with the same shape of slug. This used to call Str::slug(),
+        // which transliterates Arabic — the import and the seeded catalogue
+        // disagreed about what a slug even looks like.
+        return ProductIdentifiers::uniqueSlug($base, $nameEn, $ignoreId);
     }
 
     /**

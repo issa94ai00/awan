@@ -27,6 +27,7 @@
         :fit="fit"
         :lazy="lazy"
         :preview-src-list="previewSrcList"
+        :initial-index="initialIndex"
         :preview-teleported="true"
         class="entity-image"
         :class="shapeClass"
@@ -72,6 +73,12 @@ const props = defineProps({
     fit: { type: String, default: 'cover' },
     lazy: { type: Boolean, default: true },
     previewSrcList: { type: Array, default: () => [] },
+    /**
+     * Which entry of `previewSrcList` the viewer opens on. el-image defaults
+     * this to 0, so a thumbnail strip that passes the whole list without it
+     * opens every thumbnail on the first picture.
+     */
+    initialIndex: { type: Number, default: 0 },
     /** Shows the reason in words as well — for large panels, not table cells. */
     showLabel: { type: Boolean, default: false },
 });

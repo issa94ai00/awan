@@ -142,10 +142,10 @@
                     <template #default="{ row }">
                         <div class="product-img-cell">
                             <EntityImage
-                                :src="row.image_main"
+                                :src="rowImages(row)[0] || ''"
                                 type="product"
                                 :size="70"
-                                :preview-src-list="getPreviewList(row)"
+                                :preview-src-list="rowImages(row)"
                             />
                             <div class="img-badges">
                                 <span v-if="row.sale_price" class="badge badge-sale">Sale</span>
@@ -153,9 +153,9 @@
                                     <el-icon :size="10"><StarFilled /></el-icon>
                                 </span>
                             </div>
-                            <div v-if="getGalleryCount(row) > 0" class="gallery-count">
+                            <div v-if="rowImages(row).length > 1" class="gallery-count">
                                 <el-icon :size="10"><Picture /></el-icon>
-                                {{ getGalleryCount(row) + 1 }}
+                                {{ rowImages(row).length }}
                             </div>
                         </div>
                     </template>
@@ -432,6 +432,7 @@
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { baseCurrencyCode } from '@/utils/currency';
+import { productImages } from '@/utils/productImages';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -544,21 +545,17 @@ const isDirty = computed(() => {
     return JSON.stringify(quickEditForm.value) !== quickEditSnapshot;
 });
 
-const getGalleryCount = (row) => {
-    if (!row.image_gallery) return 0;
-    if (Array.isArray(row.image_gallery)) return row.image_gallery.length;
-    try { return JSON.parse(row.image_gallery).length; } catch { return 0; }
-};
-
-const getPreviewList = (row) => {
-    const list = [];
-    if (row.image_main) list.push(row.image_main);
-    if (row.image_gallery) {
-        const gallery = Array.isArray(row.image_gallery) ? row.image_gallery : JSON.parse(row.image_gallery || '[]');
-        list.push(...gallery);
-    }
-    return list;
-};
+/**
+ * The row's pictures, main one first.
+ *
+ * The old pair of helpers disagreed with each other: the preview list parsed
+ * `image_gallery` without a guard, so one malformed row threw mid-render and
+ * blanked the table, and the counter showed "gallery + 1" — one too many for a
+ * product that has gallery shots but no main image, and one too many again
+ * when the main image is also a gallery entry, which the lightbox then showed
+ * twice in a row.
+ */
+const rowImages = (row) => productImages(row);
 
 const formatPrice = (price) => {
     if (price === null || price === undefined) return '0.00';
@@ -1004,10 +1001,20 @@ onMounted(init);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* A row with no picture opens no lightbox, so it should not offer to. */
+.product-img-cell :deep(.entity-image--empty) {
+    cursor: default;
+}
+
+.product-img-cell :deep(.entity-image--empty:hover) {
+    transform: none;
+    box-shadow: none;
+}
+
 .img-badges {
     position: absolute;
     top: 3px;
-    left: 3px;
+    inset-inline-start: 3px;
     display: flex;
     gap: 3px;
     z-index: 2;
@@ -1039,7 +1046,7 @@ onMounted(init);
 .gallery-count {
     position: absolute;
     bottom: 3px;
-    right: 3px;
+    inset-inline-end: 3px;
     background: rgba(0,0,0,0.65);
     color: white;
     font-size: 9px;

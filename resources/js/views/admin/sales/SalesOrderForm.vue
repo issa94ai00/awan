@@ -818,6 +818,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useCustomersStore } from '@/stores/customers';
+import { getImageUrl } from '@/utils/imageUrl';
 import { useProductsStore } from '@/stores/products';
 import { posApi } from '@/api/pos';
 import { salesOrdersApi } from '@/api/salesOrders';
@@ -996,12 +997,6 @@ const paymentMethodLabel = computed(() => {
 // amount on this page named a different currency from the orders list, the
 // order detail and the invoices — all of which read the configured
 // `default_currency`. It now comes from @/utils/sales with the rest.
-
-const getImageUrl = (image) => {
-    if (!image) return '';
-    if (image.startsWith('http')) return image;
-    return `/storage/${image}`;
-};
 
 const onSearchInput = (query) => {
     clearTimeout(searchTimeout);

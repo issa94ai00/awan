@@ -123,8 +123,10 @@
     <script type="application/ld+json">{!! json_encode($orgJsonLd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}</script>
     @endif
 
-    {{-- Site-wide search action, so the brand can surface a sitelinks searchbox --}}
-    <script type="application/ld+json">{!! json_encode([
+    {{-- Site-wide search action, so the brand can surface a sitelinks searchbox.
+         Tagged data-schema="site" so the SPA's JSON-LD manager can tell the
+         stable, every-page schema apart from per-page Product/Organization blocks. --}}
+    <script type="application/ld+json" data-schema="site">{!! json_encode([
         '@context' => 'https://schema.org',
         '@type' => 'WebSite',
         'name' => $defaultSiteName,

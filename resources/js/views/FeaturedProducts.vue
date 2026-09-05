@@ -138,6 +138,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useProductsStore } from '@/stores/products';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
+import { useSeo } from '@/Composables/useSeo';
 
 import axios from 'axios';
 
@@ -146,6 +147,9 @@ const router = useRouter();
 const productsStore = useProductsStore();
 const settingsStore = useSettingsStore();
 const { t, locale } = useI18n();
+
+// Shared <head> management — routed through PublicLayout's route defaults.
+const seo = useSeo();
 
 const loading = ref(false);
 const products = ref([]);
@@ -295,25 +299,29 @@ function handleKeydown(e) {
     if (e.key === 'ArrowRight') prevImage();
 }
 
-function updateSEOMetaTags() {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
-    const title = `${pageTitle.value} - ${siteName}`;
-    document.title = title;
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.setAttribute('content', sectionSubtitle.value);
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) ogTitle.setAttribute('content', title);
+function updateSEO() {
+    seo.setOverride({
+        title: pageTitle.value,
+        description: sectionSubtitle.value,
+        keywords: '',
+        image: '',
+        ogType: 'website',
+        jsonLd: [],
+    });
 }
 
 watch(currentType, () => {
     loadProducts();
-    updateSEOMetaTags();
+    updateSEO();
 });
+
+// Keep the per-tab title in sync when the language switcher fires.
+watch(locale, () => updateSEO());
 
 onMounted(() => {
     loadProducts();
     settingsStore.fetch().catch(() => {});
-    updateSEOMetaTags();
+    updateSEO();
     document.addEventListener('keydown', handleKeydown);
 });
 

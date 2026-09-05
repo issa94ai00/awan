@@ -63,6 +63,15 @@
                         <img v-if="form.image" :src="form.image" class="uploaded-image" />
                         <el-icon v-else class="uploader-icon"><Plus /></el-icon>
                     </el-upload>
+                    <el-button
+                        v-if="form.image"
+                        link
+                        type="danger"
+                        class="remove-image-btn"
+                        @click="removeImage"
+                    >
+                        {{ $t('delete_the_image') }}
+                    </el-button>
                 </el-form-item>
 
                 <el-form-item :label="$t('status')">
@@ -94,6 +103,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useCategoriesStore } from '@/stores/categories';
 import { Plus } from '@element-plus/icons-vue';
+import { resolveImageUrl, toImagePath } from '@/utils/productImages';
 
 const router = useRouter();
 const route = useRoute();
@@ -137,29 +147,40 @@ const generateSlug = () => {
     }
 };
 
+const MAX_IMAGE_MB = 5;
+
 const beforeUpload = (file) => {
     const isImage = file.type.startsWith('image/');
-    const isLt2M = file.size / 1024 / 1024 < 2;
+    // Matched to what the endpoint accepts (max:5120). The old 2MB guard
+    // rejected files the server would have taken quite happily.
+    const isWithinLimit = file.size / 1024 / 1024 < MAX_IMAGE_MB;
 
     if (!isImage) {
         ElMessage.error(window.t('only_photos_can_be_uploaded'));
         return false;
     }
-    if (!isLt2M) {
-        ElMessage.error(window.t('image_size_must_be_less_than_2mb'));
+    if (!isWithinLimit) {
+        ElMessage.error(window.t('image_size_must_be_less_than_5mb'));
         return false;
     }
     return true;
 };
 
 const handleImageSuccess = (response) => {
-    const url = response?.data?.url || response?.url || '';
+    const url = response?.data?.full_url || response?.data?.url || response?.url || '';
     if (!url) {
         ElMessage.error(window.t('failed_to_upload_image'));
         return;
     }
-    form.value.image = url;
+    // The field holds a browsable URL while the form is open — the raw relative
+    // path the endpoint returns does not resolve in an <img> — and is folded
+    // back to a stored path on submit.
+    form.value.image = resolveImageUrl(url);
     ElMessage.success(window.t('the_image_has_been_uploaded_successfully'));
+};
+
+const removeImage = () => {
+    form.value.image = '';
 };
 
 const handleImageError = () => {
@@ -171,11 +192,16 @@ const submitForm = async () => {
         await formRef.value.validate();
         submitting.value = true;
 
+        const payload = {
+            ...form.value,
+            image: form.value.image ? toImagePath(form.value.image) : null,
+        };
+
         if (isEdit.value) {
-            await categoriesStore.updateCategory(route.params.id, form.value);
+            await categoriesStore.updateCategory(route.params.id, payload);
             ElMessage.success(window.t('the_category_has_been_updated'));
         } else {
-            await categoriesStore.createCategory(form.value);
+            await categoriesStore.createCategory(payload);
             ElMessage.success(window.t('the_category_has_been_added_successfully'));
         }
         
@@ -228,6 +254,10 @@ onMounted(async () => {
 
 .image-uploader:hover {
     border-color: #409eff;
+}
+
+.remove-image-btn {
+    margin-inline-start: 12px;
 }
 
 .uploaded-image {

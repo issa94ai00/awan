@@ -1,33 +1,20 @@
 /**
  * Utility: getImageUrl
- * 
- * Normalizes image paths returned from the API.
- * The API (via Laravel's asset()) already returns full absolute URLs,
- * so we must NOT prepend /storage/ again. We simply return absolute
- * URLs as-is, and only prepend /storage/ for relative paths.
+ *
+ * Normalizes image paths returned from the API. Thin wrapper over
+ * `resolveImageUrl` in utils/productImages.js so every screen resolves a
+ * picture the same way; this one adds the placeholder callers rely on.
+ *
+ * It used to prepend /storage/ to any relative path, which broke every image
+ * the server serves straight out of public/ — images_items/, assets/, img/ —
+ * and that is where most of the catalogue's pictures live.
  *
  * @param {string|null} path - Image path or full URL from the API
  * @param {string} [fallback] - Fallback image path
  * @returns {string}
  */
+import { resolveImageUrl } from './productImages';
+
 export function getImageUrl(path, fallback = '/assets/images/placeholder.jpg') {
-    if (!path) return fallback;
-
-    // Already an absolute URL (returned by Laravel's asset() helper)
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-        return path;
-    }
-
-    // Static assets bundled with the frontend
-    if (path.startsWith('/assets/') || path.startsWith('assets/')) {
-        return path.startsWith('/') ? path : '/' + path;
-    }
-
-    // Already has /storage/ prefix
-    if (path.startsWith('/storage/')) {
-        return path;
-    }
-
-    // Relative path — prepend /storage/
-    return '/storage/' + path;
+    return resolveImageUrl(path) || fallback;
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\CategoryResource;
 use App\Http\Resources\ProductResource;
 use App\Models\Category;
+use App\Support\ImageStore;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -134,6 +135,14 @@ class CategoryController extends Controller
             'sort_order' => 'integer|min:0'
         ]);
 
+        // The form is handed image_url()'s absolute URL and posts it back
+        // unchanged; without this the host name is baked into the row and the
+        // picture 404s the moment the domain or the scheme changes. Products
+        // already fold their images back this way.
+        if (array_key_exists('image', $validated)) {
+            $validated['image'] = image_path($validated['image']);
+        }
+
         $category = Category::create($validated);
 
         return response()->json([
@@ -165,7 +174,15 @@ class CategoryController extends Controller
             'sort_order' => 'integer|min:0'
         ]);
 
+        if (array_key_exists('image', $validated)) {
+            $validated['image'] = image_path($validated['image']);
+        }
+
+        $imageBefore = $category->image;
+
         $category->update($validated);
+
+        ImageStore::forgetReplaced($imageBefore, $category->image);
 
         return response()->json([
             'success' => true,
@@ -185,7 +202,11 @@ class CategoryController extends Controller
                 ->firstOrFail();
         }
 
+        $image = $category->image;
+
         $category->delete();
+
+        ImageStore::forget($image);
 
         return response()->json([
             'success' => true,

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
+use App\Support\ImageStore;
+use App\Support\ProductIdentifiers;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\WarehouseInventory;
@@ -183,9 +185,21 @@ class ProductController extends Controller
                 ->firstOrFail();
         }
 
-        abort_unless((int) ($product->is_active ?? 0) === 1, 404);
+        $isAdmin = $request->is('*admin*') || $request->routeIs('api.admin.*');
+
+        // Public frontend must not reach inactive products; the admin editor
+        // opens them all the time (a disabled product still needs editing).
+        if (! $isAdmin) {
+            abort_unless((int) ($product->is_active ?? 0) === 1, 404);
+        }
 
         $product->load('category');
+
+        // The admin product form's Variants tab needs the variant rows; the
+        // public product page doesn't (it relies on the base-product fields).
+        if ($isAdmin) {
+            $product->load('variants');
+        }
 
         return response()->json([
             'success' => true,
@@ -230,8 +244,8 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name_ar' => 'required|string|max:255',
-            'name_en' => 'required|string|max:255',
-            'slug' => 'required|string|max:255|unique:products,slug',
+            'name_en' => 'nullable|string|max:255',
+            'slug' => 'nullable|string|max:255|unique:products,slug',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
@@ -263,15 +277,29 @@ class ProductController extends Controller
             'show_price' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
             'in_stock' => 'boolean',
-            'image_main' => 'nullable|string',
+            'image_main' => 'nullable|string|max:2048',
             'image_gallery' => 'nullable|array',
+            'image_gallery.*' => 'nullable|string|max:2048',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',
             'seo_keywords' => 'nullable|string'
         ]);
 
-        $validated['image_gallery'] = isset($validated['image_gallery'])
-            ? json_encode($validated['image_gallery'])
+        // Slug and SKU are the catalogue's plumbing, not something an admin
+        // should have to invent: 1,600 of the products already in the table
+        // carry no SKU at all, and demanding one to add the next product only
+        // teaches people to type junk. The slug is derived when it is left
+        // blank; a blank SKU stays blank.
+        $validated['slug'] = ProductIdentifiers::uniqueSlug(
+            $this->blankToNull($validated['slug'] ?? null) ?? ($validated['name_ar'] ?? null),
+            $validated['name_en'] ?? null
+        );
+        $validated['sku'] = $this->blankToNull($validated['sku'] ?? null);
+        $validated['name_en'] = $this->blankToNull($validated['name_en'] ?? null);
+
+        $validated['image_main'] = image_path($validated['image_main'] ?? null);
+        $validated['image_gallery'] = array_key_exists('image_gallery', $validated)
+            ? json_encode($this->normalizeGallery($validated['image_gallery']))
             : null;
 
         $product = Product::create($validated);
@@ -297,8 +325,8 @@ class ProductController extends Controller
 
         $validated = $request->validate([
             'name_ar' => 'sometimes|required|string|max:255',
-            'name_en' => 'sometimes|required|string|max:255',
-            'slug' => 'sometimes|required|string|max:255|unique:products,slug,' . $product->id,
+            'name_en' => 'sometimes|nullable|string|max:255',
+            'slug' => 'sometimes|nullable|string|max:255|unique:products,slug,' . $product->id,
             'category_id' => 'sometimes|required|exists:categories,id',
             'price' => 'sometimes|required|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
@@ -320,7 +348,7 @@ class ProductController extends Controller
             'short_description_en' => 'sometimes|nullable|string|max:500',
             'brand' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
-            'sku' => 'sometimes|required|string|max:255|unique:products,sku,' . $product->id,
+            'sku' => 'sometimes|nullable|string|max:255|unique:products,sku,' . $product->id,
             'barcode' => 'sometimes|nullable|string|max:255',
             'cost_price' => 'sometimes|nullable|numeric|min:0',
             'tax_rate' => 'sometimes|nullable|numeric|min:0|max:100',
@@ -331,16 +359,54 @@ class ProductController extends Controller
             'show_price' => 'boolean',
             'sort_order' => 'sometimes|nullable|integer|min:0',
             'in_stock' => 'boolean',
-            'image_main' => 'nullable|string',
+            'image_main' => 'nullable|string|max:2048',
             'image_gallery' => 'nullable|array',
+            'image_gallery.*' => 'nullable|string|max:2048',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',
             'seo_keywords' => 'nullable|string'
         ]);
 
-        if (isset($validated['image_gallery'])) {
-            $validated['image_gallery'] = json_encode($validated['image_gallery']);
+        // Saving an existing product used to fail on fields nobody had touched:
+        // `sku` was "sometimes|required", so the 1,600 products stored without
+        // one could not be edited at all, and a blank slug meant a 422 rather
+        // than "keep the slug it already has". Neither is the admin's problem.
+        if (array_key_exists('slug', $validated)) {
+            if ($this->blankToNull($validated['slug']) === null) {
+                // A product's slug is its public URL. Clearing the field means
+                // "no change", never "mint a new address for this page".
+                unset($validated['slug']);
+            } else {
+                $validated['slug'] = ProductIdentifiers::uniqueSlug(
+                    $validated['slug'],
+                    $validated['name_ar'] ?? $product->name_ar,
+                    $product->id
+                );
+            }
         }
+
+        foreach (['sku', 'name_en'] as $optional) {
+            if (array_key_exists($optional, $validated)) {
+                $validated[$optional] = $this->blankToNull($validated[$optional]);
+            }
+        }
+
+        // The form is handed image_url()'s absolute URLs and posts them back
+        // unchanged, so an untouched image round-tripped into the row as
+        // "https://host/images_items/x.svg" — host baked in, and no longer the
+        // path any other reader (the model accessors, the import, the sitemap)
+        // expects. Both fields are folded back to their stored relative form.
+        if (array_key_exists('image_main', $validated)) {
+            $validated['image_main'] = image_path($validated['image_main']);
+        }
+
+        if (array_key_exists('image_gallery', $validated)) {
+            $validated['image_gallery'] = json_encode($this->normalizeGallery($validated['image_gallery']));
+        }
+
+        // What the product shows now, read before the update overwrites it, so
+        // the files it stops showing can be swept once the new state is saved.
+        $imagesBefore = ImageStore::paths([$product->image_main, $product->image_gallery]);
 
         // Editing the stock figure on the product form is a stock count, not a
         // field edit: writing stock_quantity straight through would leave the
@@ -422,6 +488,11 @@ class ProductController extends Controller
 
         $product->refresh();
 
+        // Pruned after the commit, never inside it: the row is the record of
+        // what the product shows, and a file that refuses to delete must not
+        // roll back an otherwise good save.
+        ImageStore::forgetReplaced($imagesBefore, [$product->image_main, $product->image_gallery]);
+
         $product->load('category');
 
         return response()->json([
@@ -434,6 +505,56 @@ class ProductController extends Controller
     /**
      * Delete a product (Admin)
      */
+    /**
+     * Hand the form the next free code, for admins who do want one.
+     *
+     * Sequential numbering has to come from the server: the browser cannot
+     * know which codes are taken.
+     */
+    public function nextSku(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'OK',
+            'data' => ['sku' => ProductIdentifiers::nextSku()],
+        ]);
+    }
+
+    /**
+     * An emptied text field means "no value", not the empty string — which
+     * would otherwise collide with the next emptied field on a unique index.
+     */
+    private function blankToNull(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * Fold a posted gallery back to the relative paths the column stores.
+     *
+     * Blanks (an upload that failed but stayed in the picker's list) and
+     * duplicates (the same file dropped twice, or a gallery entry that is also
+     * the main image) are dropped rather than written out as empty <img> src
+     * values on the storefront.
+     */
+    private function normalizeGallery(?array $gallery): array
+    {
+        return collect($gallery ?? [])
+            ->map(function ($image) {
+                if (is_array($image)) {
+                    $image = $image['url'] ?? $image['path'] ?? null;
+                }
+
+                return is_string($image) ? image_path($image) : null;
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     public function destroy($product): JsonResponse
     {
         if (! $product instanceof Product) {
@@ -442,7 +563,11 @@ class ProductController extends Controller
                 ->firstOrFail();
         }
 
+        $images = ImageStore::paths([$product->image_main, $product->image_gallery]);
+
         $product->delete();
+
+        ImageStore::forget($images);
 
         return response()->json([
             'success' => true,

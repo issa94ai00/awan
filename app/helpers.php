@@ -113,3 +113,68 @@ if (! function_exists('image_url')) {
         return asset('storage/'.$path);
     }
 }
+
+if (! function_exists('image_path')) {
+    /**
+     * The inverse of image_url(): turn whatever an admin form posts back —
+     * an absolute URL, a "/storage/..." path, or a bare relative path — into
+     * the relative form that belongs in the database.
+     *
+     * The forms round-trip images: the API hands them image_url()'s absolute
+     * URL and they save it straight back. Without this the host name gets
+     * baked into the row, so every image 404s the moment the domain or the
+     * scheme changes — and paths that live in public/ rather than storage/
+     * (images_items/..., assets/...) never matched the front end's
+     * "/storage/" stripping at all.
+     */
+    function image_path(?string $url): ?string
+    {
+        $url = trim((string) $url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://') || str_starts_with($url, '//')) {
+            $host = parse_url($url, PHP_URL_HOST);
+
+            $ownHosts = array_values(array_filter([
+                parse_url((string) config('app.url'), PHP_URL_HOST),
+                request()?->getHost(),
+            ]));
+
+            // An image genuinely hosted elsewhere (a CDN, a supplier's
+            // catalogue) has no local path — it keeps its absolute URL.
+            if ($host && ! in_array($host, $ownHosts, true)) {
+                return $url;
+            }
+
+            $url = (string) parse_url($url, PHP_URL_PATH);
+        }
+
+        // Drop any cache-busting query string the front end appended.
+        $url = explode('?', $url)[0];
+        $url = ltrim(rawurldecode($url), '/');
+
+        // An installation served from a sub-directory carries that prefix in
+        // every asset() URL; it is not part of the stored path.
+        $basePath = trim((string) parse_url((string) config('app.url'), PHP_URL_PATH), '/');
+
+        if ($basePath !== '' && str_starts_with($url, $basePath.'/')) {
+            $url = substr($url, strlen($basePath) + 1);
+        }
+
+        // image_url() prefixes storage/ for anything that is not already a
+        // public/ path, so take it back off to reach the stored form.
+        if (str_starts_with($url, 'storage/')) {
+            $url = substr($url, strlen('storage/'));
+        }
+
+        // A path that climbs out of public/ is not an image path.
+        if ($url === '' || str_contains($url, '..')) {
+            return null;
+        }
+
+        return $url;
+    }
+}

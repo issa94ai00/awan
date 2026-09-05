@@ -333,6 +333,58 @@ export const useProductsStore = defineStore('products', {
             }
         },
 
+        async createVariant(data) {
+            this.error = null;
+            try {
+                const response = await productsApi.createVariant(data);
+                const variant = response.data.data;
+                if (this.currentProduct) {
+                    if (!Array.isArray(this.currentProduct.variants)) {
+                        this.currentProduct.variants = [];
+                    }
+                    this.currentProduct.variants.push(variant);
+                }
+                return variant;
+            } catch (error) {
+                this.error = error.response?.data?.message || error.message || 'Failed to create variant';
+                console.error('Create variant error:', error);
+                throw error;
+            }
+        },
+
+        async updateVariant(id, patch) {
+            this.error = null;
+            try {
+                const response = await productsApi.updateVariant(id, patch);
+                const variant = response.data.data;
+                if (this.currentProduct && Array.isArray(this.currentProduct.variants)) {
+                    const idx = this.currentProduct.variants.findIndex(v => String(v.id) === String(id));
+                    if (idx !== -1) {
+                        this.currentProduct.variants[idx] = { ...this.currentProduct.variants[idx], ...variant };
+                    }
+                }
+                return variant;
+            } catch (error) {
+                this.error = error.response?.data?.message || error.message || 'Failed to update variant';
+                console.error('Update variant error:', error);
+                throw error;
+            }
+        },
+
+        async deleteVariant(id) {
+            this.error = null;
+            try {
+                await productsApi.deleteVariant(id);
+                if (this.currentProduct && Array.isArray(this.currentProduct.variants)) {
+                    this.currentProduct.variants = this.currentProduct.variants.filter(v => String(v.id) !== String(id));
+                }
+            } catch (error) {
+                this.error = error.response?.data?.message || error.message || 'Failed to delete variant';
+                console.error('Delete variant error:', error);
+                throw error;
+            }
+        },
+
         toggleProductSelection(productId) {
             const index = this.selectedProducts.indexOf(productId);
             if (index === -1) {

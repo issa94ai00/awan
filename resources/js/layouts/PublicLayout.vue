@@ -248,8 +248,13 @@
             <div v-if="mobileMenuOpen" class="mobile-menu-overlay" @click="mobileMenuOpen = false"></div>
         </transition>
 
+        <!-- Skip link: the first tab stop on every page jumps past the nav. -->
+        <a href="#main-content" class="glass-skip-link" @click.prevent="focusMainContent">
+            {{ t('skip_to_content') || 'تخطي إلى المحتوى' }}
+        </a>
+
         <!-- Glass Navbar -->
-        <nav class="glass-navbar" :class="{ 'scrolled': isScrolled }" id="navbar">
+        <nav class="glass-navbar" :class="{ 'scrolled': isScrolled }" id="navbar" :aria-label="t('main_menu') || 'القائمة الرئيسية'">
             <div class="glass-container">
                 <!-- Logo -->
                 <router-link to="/" class="glass-logo">
@@ -261,81 +266,164 @@
 
                 <!-- Navigation Links -->
                 <div class="glass-nav-links">
-                    <router-link to="/" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_home') || 'الرئيسية' }}</router-link>
-                    <router-link to="/categories" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_categories') || 'الفئات' }}</router-link>
-                    <router-link to="/products" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_products') || 'المنتجات' }}</router-link>
-                    <router-link to="/vision" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_vision') || 'الهوية والرؤية' }}</router-link>
-                    <router-link to="/about" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_about') || 'من نحن' }}</router-link>
-                    <router-link to="/contact" class="glass-nav-link" active-class="glass-nav-link-active">{{ t('nav_contact') || 'اتصل بنا' }}</router-link>
+                    <router-link
+                        v-for="link in navLinks"
+                        :key="link.to"
+                        :to="link.to"
+                        class="glass-nav-link"
+                        :class="{ 'glass-nav-link-active': isNavActive(link) }"
+                        :aria-current="isNavActive(link) ? 'page' : null"
+                    >{{ link.label }}</router-link>
                 </div>
 
                 <!-- Search & Actions -->
                 <div class="glass-actions">
                     <!-- Search -->
-                    <div class="glass-search">
-                        <input type="text" v-model="searchQuery" @input="handleSearchInput" @keyup.enter="triggerSearch" class="glass-search-input" :placeholder="t('search') || 'ابحث...'">
-                        <i class="fas fa-search glass-search-icon" @click="triggerSearch"></i>
-                        <div v-if="searchResults.length && searchQuery" class="glass-search-results">
-                            <div v-for="item in searchResults" :key="item.id" @click="goToProduct(item.slug)" class="glass-result-item">
-                                <img :src="getImageUrl(item.image_main)" :alt="item.name_ar" class="glass-result-img">
-                                <div class="glass-result-info">
-                                    <div class="glass-result-title">{{ $p(item, 'name') }}</div>
-                                    <div class="glass-result-category">{{ $p(item.category, 'name') || t('spare_parts') || 'قطع غيار' }}</div>
+                    <div class="glass-search" role="search" v-click-outside="closeSearchPanel">
+                        <input
+                            type="text"
+                            v-model="searchQuery"
+                            class="glass-search-input"
+                            :placeholder="t('search') || 'ابحث...'"
+                            :aria-label="t('search_product') || 'ابحث عن منتج...'"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-controls="glass-search-panel"
+                            :aria-expanded="searchPanelOpen ? 'true' : 'false'"
+                            :aria-activedescendant="searchHighlight >= 0 ? ('glass-search-option-' + searchHighlight) : null"
+                            @input="handleSearchInput"
+                            @focus="searchFocused = true"
+                            @keydown.down.prevent="moveSearchHighlight(1)"
+                            @keydown.up.prevent="moveSearchHighlight(-1)"
+                            @keydown.enter.prevent="onSearchEnter"
+                            @keydown.esc="closeSearchPanel"
+                        >
+                        <i
+                            class="fas glass-search-icon"
+                            :class="searchLoading ? 'fa-circle-notch fa-spin' : 'fa-search'"
+                            @click="triggerSearch"
+                            aria-hidden="true"
+                        ></i>
+                        <div
+                            v-if="searchPanelOpen"
+                            id="glass-search-panel"
+                            class="glass-search-results"
+                            role="listbox"
+                            :aria-label="t('search_results') || 'نتائج البحث'"
+                        >
+                            <template v-if="searchResults.length">
+                                <div
+                                    v-for="(item, index) in searchResults"
+                                    :key="item.id"
+                                    :id="'glass-search-option-' + index"
+                                    class="glass-result-item"
+                                    :class="{ 'is-highlighted': index === searchHighlight }"
+                                    role="option"
+                                    :aria-selected="index === searchHighlight ? 'true' : 'false'"
+                                    @click="goToProduct(item.slug)"
+                                    @mousemove="searchHighlight = index"
+                                >
+                                    <img :src="getImageUrl(item.image_main)" :alt="$p(item, 'name')" class="glass-result-img">
+                                    <div class="glass-result-info">
+                                        <div class="glass-result-title">{{ $p(item, 'name') }}</div>
+                                        <div class="glass-result-category">{{ $p(item.category, 'name') || t('spare_parts') || 'قطع غيار' }}</div>
+                                    </div>
                                 </div>
+                                <button type="button" class="glass-result-all" @click="triggerSearch">
+                                    <i class="fas fa-search" aria-hidden="true"></i>
+                                    {{ t('view_all_results') || 'عرض كل النتائج' }}
+                                </button>
+                            </template>
+                            <div v-else class="glass-result-empty">
+                                {{ searchLoading ? (t('searching') || 'جاري البحث...') : (t('no_results') || 'لا توجد نتائج') }}
                             </div>
                         </div>
                     </div>
 
                     <!-- Orders -->
-                    <router-link to="/customer-orders" class="glass-action-btn" :title="t('orders') || 'الطلبات'">
-                        <i class="fas fa-box-open"></i>
+                    <router-link
+                        to="/customer-orders"
+                        class="glass-action-btn"
+                        :title="t('orders') || 'الطلبات'"
+                        :aria-label="t('orders') || 'الطلبات'"
+                    >
+                        <i class="fas fa-box-open" aria-hidden="true"></i>
                     </router-link>
 
                     <!-- Cart -->
-                    <router-link to="/cart" class="glass-action-btn">
-                        <i class="fas fa-shopping-cart"></i>
-                        <span v-if="cartStore.totalItems > 0" class="glass-badge">{{ cartStore.totalItems }}</span>
+                    <router-link
+                        to="/cart"
+                        class="glass-action-btn"
+                        :title="t('cart') || 'سلة التسوق'"
+                        :aria-label="cartAriaLabel"
+                    >
+                        <i class="fas fa-shopping-cart" aria-hidden="true"></i>
+                        <span v-if="cartStore.totalItems > 0" class="glass-badge" aria-hidden="true">{{ cartBadge }}</span>
                     </router-link>
 
                     <!-- Language Switcher -->
                     <div class="glass-profile-dropdown" v-click-outside="closeLangDropdown">
-                        <button class="glass-action-btn" @click="toggleLangDropdown">
-                            <i class="fas fa-globe"></i>
+                        <button
+                            type="button"
+                            class="glass-action-btn"
+                            @click="toggleLangDropdown"
+                            :title="t('switch_language') || 'تغيير اللغة'"
+                            :aria-label="t('switch_language') || 'تغيير اللغة'"
+                            aria-haspopup="true"
+                            :aria-expanded="langDropdownOpen ? 'true' : 'false'"
+                        >
+                            <i class="fas fa-globe" aria-hidden="true"></i>
                         </button>
                         <div class="glass-dropdown-menu" :class="{ 'show': langDropdownOpen }">
-                            <button class="glass-dropdown-item" :class="{'active': currentLocale === 'ar'}" @click="changeLanguage('ar')">العربية</button>
-                            <button class="glass-dropdown-item" :class="{'active': currentLocale === 'en'}" @click="changeLanguage('en')">English</button>
+                            <button type="button" class="glass-dropdown-item" :class="{'active': currentLocale === 'ar'}" :aria-current="currentLocale === 'ar' ? 'true' : null" @click="changeLanguage('ar')">العربية</button>
+                            <button type="button" class="glass-dropdown-item" :class="{'active': currentLocale === 'en'}" :aria-current="currentLocale === 'en' ? 'true' : null" @click="changeLanguage('en')">English</button>
                         </div>
                     </div>
 
                     <!-- User -->
                     <div class="glass-profile-dropdown" v-click-outside="closeDropdown">
-                        <button class="glass-action-btn" @click="toggleDropdown">
-                            <i class="fas fa-user"></i>
+                        <button
+                            type="button"
+                            class="glass-action-btn"
+                            @click="toggleDropdown"
+                            :title="t('my_account') || 'حسابي'"
+                            :aria-label="t('my_account') || 'حسابي'"
+                            aria-haspopup="true"
+                            :aria-expanded="dropdownOpen ? 'true' : 'false'"
+                        >
+                            <i class="fas fa-user" aria-hidden="true"></i>
                         </button>
                         <div class="glass-dropdown-menu" :class="{ 'show': dropdownOpen }">
                             <div v-if="!customerAuth.isAuthenticated">
-                                <button class="glass-dropdown-item" @click="openModal('login')"><i class="fas fa-sign-in-alt"></i> {{ t('login') || 'تسجيل دخول' }}</button>
-                                <button class="glass-dropdown-item" @click="openModal('subscribe')"><i class="fas fa-bell"></i> {{ t('subscribe_with_us') || 'اشترك معنا' }}</button>
-                                <button class="glass-dropdown-item" @click="toggleTheme">
-                                    <i class="fas" :class="theme === 'dark' ? 'fa-sun' : 'fa-moon'"></i>
+                                <button type="button" class="glass-dropdown-item" @click="openModal('login')"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> {{ t('login') || 'تسجيل دخول' }}</button>
+                                <button type="button" class="glass-dropdown-item" @click="openModal('subscribe')"><i class="fas fa-bell" aria-hidden="true"></i> {{ t('subscribe_with_us') || 'اشترك معنا' }}</button>
+                                <button type="button" class="glass-dropdown-item" @click="toggleTheme">
+                                    <i class="fas" :class="theme === 'dark' ? 'fa-sun' : 'fa-moon'" aria-hidden="true"></i>
                                     {{ theme === 'dark' ? (t('light_mode') || 'الوضع الفاتح') : (t('dark_mode') || 'الوضع الداكن') }}
                                 </button>
                             </div>
                             <div v-else>
                                 <div class="glass-dropdown-header">{{ t('welcome') || 'مرحباً' }} {{ customerAuth.customer?.name }}</div>
-                                <router-link class="glass-dropdown-item" to="/customer-orders" @click="dropdownOpen = false"><i class="fas fa-user"></i> {{ t('profile') || 'ملفي الشخصي' }}</router-link>
-                                <button class="glass-dropdown-item" @click="toggleTheme">
-                                    <i class="fas" :class="theme === 'dark' ? 'fa-sun' : 'fa-moon'"></i>
+                                <router-link class="glass-dropdown-item" to="/customer-orders" @click="dropdownOpen = false"><i class="fas fa-user" aria-hidden="true"></i> {{ t('profile') || 'ملفي الشخصي' }}</router-link>
+                                <button type="button" class="glass-dropdown-item" @click="toggleTheme">
+                                    <i class="fas" :class="theme === 'dark' ? 'fa-sun' : 'fa-moon'" aria-hidden="true"></i>
                                     {{ theme === 'dark' ? (t('light_mode') || 'الوضع الفاتح') : (t('dark_mode') || 'الوضع الداكن') }}
                                 </button>
-                                <button class="glass-dropdown-item" @click="handleLogout"><i class="fas fa-sign-out-alt"></i> {{ t('logout') || 'تسجيل خروج' }}</button>
+                                <button type="button" class="glass-dropdown-item" @click="handleLogout"><i class="fas fa-sign-out-alt" aria-hidden="true"></i> {{ t('logout') || 'تسجيل خروج' }}</button>
                             </div>
                         </div>
                     </div>
 
                     <!-- Mobile Menu Toggle -->
-                    <button class="glass-menu-toggle" :class="{ 'open': mobileMenuOpen }" @click="mobileMenuOpen = !mobileMenuOpen">
+                    <button
+                        type="button"
+                        class="glass-menu-toggle"
+                        :class="{ 'open': mobileMenuOpen }"
+                        @click="mobileMenuOpen = !mobileMenuOpen"
+                        :aria-label="mobileMenuOpen ? (t('close_menu') || 'إغلاق القائمة') : (t('open_menu') || 'فتح القائمة')"
+                        :aria-expanded="mobileMenuOpen ? 'true' : 'false'"
+                        aria-controls="mobile-drawer"
+                    >
                         <span></span><span></span><span></span>
                     </button>
                 </div>
@@ -343,32 +431,58 @@
         </nav>
 
         <!-- Mobile Drawer Menu -->
-        <aside class="mobile-drawer" :class="{ 'open': mobileMenuOpen }">
+        <aside
+            id="mobile-drawer"
+            class="mobile-drawer"
+            :class="{ 'open': mobileMenuOpen }"
+            :aria-hidden="mobileMenuOpen ? 'false' : 'true'"
+            :aria-label="t('main_menu') || 'القائمة الرئيسية'"
+        >
             <div class="drawer-header">
                 <router-link to="/" class="drawer-logo" @click="mobileMenuOpen = false">
                     <img :src="getImageUrl(settings.site_logo || 'assets/images/logo.png')" :alt="$p(settings, 'site_name')" class="drawer-logo-img">
                     <span class="drawer-logo-text">{{ $p(settings, 'site_name') || 'أوان التقدم' }}</span>
                 </router-link>
+                <button
+                    type="button"
+                    class="drawer-close"
+                    @click="mobileMenuOpen = false"
+                    :aria-label="t('close_menu') || 'إغلاق القائمة'"
+                >
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
             </div>
             <div class="drawer-search">
                 <div class="drawer-search-container">
-                    <input type="text" v-model="searchQuery" @input="handleSearchInput" @keyup.enter="triggerSearchAndClose" class="drawer-search-input" :placeholder="t('search_product') || 'ابحث عن منتج...'">
-                    <i class="fas fa-search drawer-search-icon" @click="triggerSearchAndClose"></i>
+                    <input
+                        type="text"
+                        v-model="searchQuery"
+                        @input="handleSearchInput"
+                        @keyup.enter="triggerSearchAndClose"
+                        class="drawer-search-input"
+                        :placeholder="t('search_product') || 'ابحث عن منتج...'"
+                        :aria-label="t('search_product') || 'ابحث عن منتج...'"
+                    >
+                    <i class="fas fa-search drawer-search-icon" @click="triggerSearchAndClose" aria-hidden="true"></i>
                 </div>
             </div>
             <ul class="drawer-menu">
-                <li><router-link to="/" class="drawer-link" active-class="active" exact @click="mobileMenuOpen = false"><i class="fas fa-home"></i> {{ t('nav_home') || 'الرئيسية' }}</router-link></li>
-                <li><router-link to="/categories" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-th-large"></i> {{ t('nav_categories') || 'الفئات' }}</router-link></li>
-                <li><router-link to="/products" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-box"></i> {{ t('nav_products') || 'المنتجات' }}</router-link></li>
-                <li><router-link to="/customer-orders" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-file-invoice"></i> {{ t('orders') || 'الطلبات' }}</router-link></li>
-                <li><router-link to="/vision" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-eye"></i> {{ t('nav_vision') || 'الهوية والرؤية' }}</router-link></li>
-                <li><router-link to="/about" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-info-circle"></i> {{ t('nav_about') || 'من نحن' }}</router-link></li>
-                <li><router-link to="/contact" class="drawer-link" active-class="active" @click="mobileMenuOpen = false"><i class="fas fa-envelope"></i> {{ t('nav_contact') || 'إتصل بنا' }}</router-link></li>
+                <li v-for="link in drawerLinks" :key="link.to">
+                    <router-link
+                        :to="link.to"
+                        class="drawer-link"
+                        :class="{ 'active': isNavActive(link) }"
+                        :aria-current="isNavActive(link) ? 'page' : null"
+                        @click="mobileMenuOpen = false"
+                    >
+                        <i class="fas" :class="link.icon" aria-hidden="true"></i> {{ link.label }}
+                    </router-link>
+                </li>
             </ul>
         </aside>
 
         <!-- Main Content Area -->
-        <main class="main-content-spa">
+        <main class="main-content-spa" id="main-content" tabindex="-1">
             <router-view v-slot="{ Component }">
                 <transition name="page-fade" mode="out-in" @after-enter="onAfterPageEnter">
                     <component :is="Component" />
@@ -617,6 +731,7 @@ import { useCustomerAuthStore } from '@/stores/customerAuth';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
 import { updateDirection } from '@/app';
 import axios from 'axios';
@@ -639,6 +754,9 @@ const mobileMenuOpen = ref(false);
 const dropdownOpen = ref(false);
 const searchQuery = ref('');
 const searchResults = ref([]);
+const searchLoading = ref(false);
+const searchFocused = ref(false);
+const searchHighlight = ref(-1);
 const theme = ref(localStorage.getItem('theme') || 'light');
 
 // Modals State
@@ -676,6 +794,46 @@ const settings = computed(() => {
         ...systemSettings,
         ...apiSettings
     };
+});
+
+// Primary navigation — one source of truth so the desktop bar and the drawer
+// can never drift apart. `match` lists the path prefixes a link owns; detail
+// pages live under a different prefix than their index (/product/:slug vs
+// /products), which is why router-link's own active matching is not enough.
+const navLinks = computed(() => [
+    { to: '/', label: t('nav_home') || 'الرئيسية', icon: 'fa-home', exact: true },
+    { to: '/categories', label: t('nav_categories') || 'الفئات', icon: 'fa-th-large', match: ['/categories', '/category'] },
+    { to: '/products', label: t('nav_products') || 'المنتجات', icon: 'fa-box', match: ['/products', '/product', '/special-offers', '/featured-products'] },
+    { to: '/vision', label: t('nav_vision') || 'الهوية والرؤية', icon: 'fa-eye' },
+    { to: '/about', label: t('nav_about') || 'من نحن', icon: 'fa-info-circle' },
+    { to: '/contact', label: t('nav_contact') || 'إتصل بنا', icon: 'fa-envelope' },
+]);
+
+// The drawer carries one extra entry: on phones the orders icon is the only
+// way into the account area that is not behind the profile dropdown.
+const drawerLinks = computed(() => {
+    const links = [...navLinks.value];
+    const products = links.findIndex((link) => link.to === '/products');
+    links.splice(products + 1, 0, {
+        to: '/customer-orders',
+        label: t('orders') || 'الطلبات',
+        icon: 'fa-file-invoice',
+    });
+    return links;
+});
+
+const isNavActive = (link) => {
+    const path = route.path.replace(/\/+$/, '') || '/';
+    if (link.exact) return path === '/';
+    return (link.match || [link.to]).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+};
+
+// Cart chrome: a three-digit count would blow the badge out of its circle, and
+// the icon carries no text for a screen reader without an explicit label.
+const cartBadge = computed(() => (cartStore.totalItems > 99 ? '99+' : cartStore.totalItems));
+const cartAriaLabel = computed(() => {
+    const label = t('cart') || 'سلة التسوق';
+    return cartStore.totalItems > 0 ? `${label} (${cartStore.totalItems})` : label;
 });
 
 // Toggle user profile dropdown
@@ -718,6 +876,19 @@ const toggleTheme = () => {
     document.documentElement.setAttribute('data-theme', theme.value);
     localStorage.setItem('theme', theme.value);
 };
+
+// The drawer is a fixed overlay, so the page underneath should not keep
+// scrolling while it is open; the two navbar dropdowns would otherwise sit
+// under the overlay and stay stuck open.
+watch(mobileMenuOpen, (open) => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    if (open) {
+        dropdownOpen.value = false;
+        langDropdownOpen.value = false;
+        scrolledDropdownOpen.value = false;
+        closeSearchPanel();
+    }
+});
 
 // Modal handlers
 const openModal = (name) => {
@@ -794,30 +965,75 @@ const handleLogout = async () => {
 
 // Quick search suggestions
 let searchTimeout = null;
+// Every in-flight request carries a ticket; only the newest one is allowed to
+// write results, so a slow response for "va" can no longer land on top of the
+// results for "valve".
+let searchRequestId = 0;
+
+const searchPanelOpen = computed(() => searchFocused.value && !!searchQuery.value.trim());
+
+const closeSearchPanel = () => {
+    searchFocused.value = false;
+    searchHighlight.value = -1;
+};
+
 const handleSearchInput = () => {
+    searchFocused.value = !mobileMenuOpen.value;
+    searchHighlight.value = -1;
     if (searchTimeout) clearTimeout(searchTimeout);
-    if (!searchQuery.value.trim()) {
+
+    const query = searchQuery.value.trim();
+    if (!query) {
         searchResults.value = [];
+        searchLoading.value = false;
+        searchRequestId += 1;
         return;
     }
-    
+
+    searchLoading.value = true;
     searchTimeout = setTimeout(async () => {
+        const requestId = (searchRequestId += 1);
         try {
-            const res = await axios.get(`/api/v1/search/suggestions?q=${encodeURIComponent(searchQuery.value)}`);
-            if (res.data?.success) {
-                searchResults.value = res.data.data || [];
-            }
+            const res = await axios.get('/api/v1/search/suggestions', { params: { q: query } });
+            if (requestId !== searchRequestId) return;
+            searchResults.value = res.data?.success ? (res.data.data || []) : [];
         } catch (e) {
+            if (requestId !== searchRequestId) return;
+            searchResults.value = [];
             console.error('Failed to load search suggestions', e);
+        } finally {
+            if (requestId === searchRequestId) searchLoading.value = false;
         }
     }, 300);
 };
 
-const triggerSearch = () => {
-    if (searchQuery.value.trim()) {
-        router.push({ path: '/categories', query: { q: searchQuery.value } });
-        searchResults.value = [];
+// Arrow keys walk the suggestion list; the first press from an unhighlighted
+// list enters it from whichever end the user came from.
+const moveSearchHighlight = (step) => {
+    const count = searchResults.value.length;
+    if (!searchPanelOpen.value || !count) return;
+    if (searchHighlight.value < 0) {
+        searchHighlight.value = step > 0 ? 0 : count - 1;
+        return;
     }
+    searchHighlight.value = (searchHighlight.value + step + count) % count;
+};
+
+const onSearchEnter = () => {
+    const highlighted = searchResults.value[searchHighlight.value];
+    if (highlighted) {
+        goToProduct(highlighted.slug);
+        return;
+    }
+    triggerSearch();
+};
+
+const triggerSearch = () => {
+    const query = searchQuery.value.trim();
+    if (!query) return;
+    router.push({ path: '/categories', query: { q: query } });
+    searchResults.value = [];
+    closeSearchPanel();
 };
 
 const triggerSearchAndClose = () => {
@@ -829,6 +1045,7 @@ const goToProduct = (slug) => {
     router.push(`/product/${slug}`);
     searchQuery.value = '';
     searchResults.value = [];
+    closeSearchPanel();
 };
 
 // Toast utility
@@ -845,9 +1062,39 @@ const onAfterPageEnter = () => {
     triggerFadeUp();
 };
 
-// Scroll handler
+// Scroll handler — the listener fires far more often than the navbar can
+// change, so the state flip is coalesced into one frame.
+let scrollFrame = null;
 const handleScroll = () => {
-    isScrolled.value = window.scrollY > 50;
+    if (scrollFrame !== null) return;
+    scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null;
+        isScrolled.value = window.scrollY > 50;
+    });
+};
+
+// Escape closes whichever navbar surface is open, outermost first.
+const handleKeydown = (event) => {
+    if (event.key !== 'Escape') return;
+    if (mobileMenuOpen.value) {
+        mobileMenuOpen.value = false;
+        return;
+    }
+    if (dropdownOpen.value || langDropdownOpen.value) {
+        closeDropdown();
+        closeLangDropdown();
+        return;
+    }
+    if (searchPanelOpen.value) closeSearchPanel();
+};
+
+// The skip link moves focus rather than adding a #hash the router would have
+// to resolve.
+const focusMainContent = () => {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    main.focus();
+    main.scrollIntoView({ block: 'start' });
 };
 
 // Custom click outside directive
@@ -865,192 +1112,29 @@ const vClickOutside = {
     }
 };
 
-// Dynamic page title & SEO meta tags management
-const customTitle = ref('');
-const customDescription = ref('');
-const customKeywords = ref('');
-const customImage = ref('');
-
-const updateSEOMetaTags = () => {
-    const localeVal = locale.value;
-    const localeSuffix = localeVal === 'en' ? '_en' : '';
-    
-    // Resolve localized site settings
-    const siteName = settings.value[`meta_title${localeSuffix}`] 
-        || settings.value[`site_name_${localeVal}`] 
-        || settings.value.site_name 
-        || (localeVal === 'en' ? 'Awaan Altakadom' : 'أوان التقدم');
-        
-    const siteDescription = settings.value[`meta_description${localeSuffix}`] 
-        || settings.value[`site_description_${localeVal}`] 
-        || settings.value.site_description 
-        || (localeVal === 'en' ? 'At Awan Al Taqaddam, we offer building supplies that combine global quality with modern design.' : 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم.');
-        
-    const siteKeywords = settings.value[`meta_keywords${localeSuffix}`] 
-        || settings.value.meta_keywords 
-        || (localeVal === 'en' ? 'building materials, Syria, Damascus' : 'مواد بناء, سوريا, دمشق');
-        
-    const defaultOgImage = settings.value.og_image 
-        ? (settings.value.og_image.startsWith('http') ? settings.value.og_image : `/storage/${settings.value.og_image}`)
-        : '/assets/images/logo.png';
-
-    // Route titles translations
-    const routeTitles = {
-        'home': '',
-        'about': localeVal === 'en' ? 'About Us' : 'من نحن',
-        'vision': localeVal === 'en' ? 'Identity & Vision' : 'الهوية والرؤية',
-        'contact': localeVal === 'en' ? 'Contact Us' : 'اتصل بنا',
-        'inquiry': localeVal === 'en' ? 'Send Inquiry' : 'إرسال استفسار',
-        'purchase-request': localeVal === 'en' ? 'Purchase Request' : 'طلب شراء',
-        'categories': localeVal === 'en' ? 'Categories' : 'الفئات',
-        'products': localeVal === 'en' ? 'Products' : 'المنتجات',
-        'cart': localeVal === 'en' ? 'Shopping Cart' : 'سلة التسوق',
-        'customer.orders': localeVal === 'en' ? 'Orders & Invoices' : 'الطلبات والفواتير',
-        'featured.products': localeVal === 'en' ? 'Featured Products' : 'المنتجات المميزة',
-        'special.offers': localeVal === 'en' ? 'Special Offers' : 'العروض الخاصة',
-        'not-found': localeVal === 'en' ? 'Page Not Found' : 'الصفحة غير موجودة',
-    };
-
-    let pageTitle = customTitle.value;
-    if (!pageTitle) {
-        if (route.name === 'product.detail') {
-            pageTitle = localeVal === 'en' ? 'Product Details' : 'تفاصيل المنتج';
-        } else if (route.name === 'category.detail') {
-            pageTitle = localeVal === 'en' ? 'Category Details' : 'تفاصيل الفئة';
-        } else {
-            pageTitle = routeTitles[route.name] || '';
-        }
-    }
-
-    // Set Document Title.
-    // The home route has no page title of its own, so it would fall back to the
-    // bare site name and overwrite the richer server-rendered "<name> - <tagline>".
-    // Mirror PublicPageController@home so the client keeps the same title.
-    let finalTitle;
-    if (pageTitle) {
-        finalTitle = `${pageTitle} - ${siteName}`;
-    } else if (route.name === 'home') {
-        const metaTitle = settings.value[`meta_title${localeSuffix}`];
-        const tagline = settings.value[`site_tagline${localeSuffix}`] || settings.value.site_tagline;
-        finalTitle = metaTitle || (tagline ? `${siteName} - ${tagline}` : siteName);
-    } else {
-        finalTitle = siteName;
-    }
-    document.title = finalTitle;
-
-    // Resolve description, keywords, image content
-    let finalDesc = customDescription.value || siteDescription;
-    if (finalDesc) {
-        finalDesc = finalDesc.replace(/<[^>]*>/g, '').trim();
-        if (finalDesc.length > 160) {
-            finalDesc = finalDesc.substring(0, 157) + '...';
-        }
-    }
-    
-    const finalKeywords = customKeywords.value ? `${customKeywords.value}, ${siteKeywords}` : siteKeywords;
-    
-    let finalImage = defaultOgImage;
-    if (customImage.value) {
-        finalImage = customImage.value.startsWith('http') || customImage.value.startsWith('/')
-            ? customImage.value 
-            : `/storage/${customImage.value}`;
-    }
-
-    // Helper to dynamically select meta tags
-    const setMeta = (query, attr, value) => {
-        if (!value) return;
-        const el = document.querySelector(query);
-        if (el) {
-            el.setAttribute(attr, value);
-        } else {
-            const meta = document.createElement('meta');
-            if (query.includes('property=')) {
-                meta.setAttribute('property', query.split('"')[1]);
-            } else {
-                meta.setAttribute('name', query.split('"')[1]);
-            }
-            meta.setAttribute(attr, value);
-            document.head.appendChild(meta);
-        }
-    };
-
-    // Canonical/og:url must ignore the query string. Links such as
-    // /special-offers?flash and /special-offers?clearance render the same
-    // document, so self-canonicalising each one splits their ranking signals.
-    const canonicalUrl = window.location.origin + window.location.pathname;
-
-    // Keep the robots directive in sync on client-side navigation, so moving from
-    // an indexable page into a private one does not leave "index, follow" behind.
-    const noindexRoutes = ['cart', 'customer.orders', 'not-found', 'login'];
-    setMeta(
-        'meta[name="robots"]',
-        'content',
-        noindexRoutes.includes(route.name)
-            ? 'noindex, follow'
-            : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
-    );
-
-    // Update standard meta tags
-    setMeta('meta[name="description"]', 'content', finalDesc);
-    setMeta('meta[name="keywords"]', 'content', finalKeywords);
-
-    // Update Open Graph (Facebook / WhatsApp)
-    setMeta('meta[property="og:title"]', 'content', finalTitle);
-    setMeta('meta[property="og:description"]', 'content', finalDesc);
-    setMeta('meta[property="og:image"]', 'content', finalImage);
-    setMeta('meta[property="og:url"]', 'content', canonicalUrl);
-
-    // Update Twitter (name=, per the card spec)
-    setMeta('meta[name="twitter:title"]', 'content', finalTitle);
-    setMeta('meta[name="twitter:description"]', 'content', finalDesc);
-    setMeta('meta[name="twitter:image"]', 'content', finalImage);
-    setMeta('meta[name="twitter:url"]', 'content', canonicalUrl);
-
-    // Update Canonical URL
-    const canonical = document.querySelector('link[rel="canonical"]');
-    if (canonical) {
-        canonical.setAttribute('href', canonicalUrl);
-    }
-
-    // Keep hreflang alternates aligned with the canonical URL.
-    document.querySelectorAll('link[rel="alternate"][hreflang]').forEach((el) => {
-        el.setAttribute('href', canonicalUrl);
-    });
-};
-
-const handleDynamicTitle = (e) => {
-    customTitle.value = e.detail || '';
-    updateSEOMetaTags();
-};
-
-const handleDynamicSeo = (e) => {
-    const data = e.detail || {};
-    customTitle.value = data.title || '';
-    customDescription.value = data.description || '';
-    customKeywords.value = data.keywords || '';
-    customImage.value = data.image || '';
-    updateSEOMetaTags();
-};
+// SEO <head> management — owned by one shared composable. Data-driven pages
+// push their own copy via useSeo().setOverride() once content loads; this layout
+// only owns the route-level defaults and keeps them in sync with settings/locale.
+const seo = useSeo();
 
 // Watchers for navigation cleanup and modals
 watch(route, () => {
     mobileMenuOpen.value = false;
     dropdownOpen.value = false;
+    langDropdownOpen.value = false;
     scrolledDropdownOpen.value = false;
+    closeSearchPanel();
     
-    // Reset custom SEO elements on route change
-    customTitle.value = '';
-    customDescription.value = '';
-    customKeywords.value = '';
-    customImage.value = '';
+    // Any page-level SEO overrides are tied to the previous route; reset them and
+    // re-apply whatever default copy this route ships with.
+    seo.setRoute({ name: route.name });
     
     // Scroll to top smoothly on page transitions
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    updateSEOMetaTags();
 });
 
 watch([() => settings.value.site_name, () => settings.value.meta_title, locale], () => {
-    updateSEOMetaTags();
+    seo.refresh();
 });
 
 watch(activeModal, (newVal) => {
@@ -1096,11 +1180,10 @@ onMounted(() => {
     }
 
     // Fetch initial data
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('keydown', handleKeydown);
     window.addEventListener('trigger-customer-login-modal', handleLoginTrigger);
-    window.addEventListener('set-dynamic-title', handleDynamicTitle);
-    window.addEventListener('set-dynamic-seo', handleDynamicSeo);
-    updateSEOMetaTags();
+    seo.setRoute({ name: route.name });
     
     // Fetch Settings, Cart, and Customer profile in the background - wrapped to prevent blocking layout render
     try {
@@ -1115,9 +1198,11 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll);
+    window.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('trigger-customer-login-modal', handleLoginTrigger);
-    window.removeEventListener('set-dynamic-title', handleDynamicTitle);
-    window.removeEventListener('set-dynamic-seo', handleDynamicSeo);
+    if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
+    if (searchTimeout) clearTimeout(searchTimeout);
+    document.body.style.overflow = '';
     document.getElementById('public-style')?.remove();
     document.getElementById('public-rtl')?.remove();
 });
@@ -1130,11 +1215,11 @@ onUnmounted(() => {
     --content-padding-offset: 18px;
 }
 
-@media (max-width: 992px) {
+@media (max-width: 1240px) {
     :root {
-        --navbar-height: 74px;
-        --navbar-top-height: 74px;
-        --content-padding-offset: 11px;
+        --navbar-height: 80px;
+        --navbar-top-height: 80px;
+        --content-padding-offset: 12px;
     }
 }
 
@@ -1182,6 +1267,10 @@ onUnmounted(() => {
    GLASS NAVBAR — Modern Glassmorphism Design
    ==================================================================== */
 .glass-navbar {
+    /* The navbar foreground is a single token so every child (links, icons,
+       hamburger, search) follows the colour the admin picked, and so the
+       scrolled state can re-point it in one place. */
+    --nav-fg: var(--navbar-text-color, #ffffff);
     position: fixed;
     top: 0;
     left: 0;
@@ -1199,6 +1288,7 @@ onUnmounted(() => {
 }
 
 .glass-navbar.scrolled {
+    --nav-fg: var(--navbar-scrolled-text-color, var(--navbar-text-color, #ffffff));
     background: linear-gradient(135deg, 
         var(--navbar-scrolled-bg-color, var(--mobile-primary-dark)),
         rgba(0, 0, 0, calc(var(--navbar-transparency, 0.25) * 0.01 * 0.5))
@@ -1217,6 +1307,60 @@ onUnmounted(() => {
     max-width: 1400px;
     margin: 0 auto;
     gap: 2rem;
+    transition: padding 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Scrolled: give the page back some height without moving anything sideways.
+   Only above the phone breakpoint — the compact bar has nothing to give. */
+@media (min-width: 769px) {
+    .glass-navbar.scrolled .glass-container {
+        padding-block: 0.85rem;
+    }
+
+    .glass-navbar.scrolled .glass-logo-img {
+        height: 38px;
+    }
+}
+
+/* Keyboard focus was invisible on every control in the bar. */
+.glass-logo:focus-visible,
+.glass-nav-link:focus-visible,
+.glass-action-btn:focus-visible,
+.glass-menu-toggle:focus-visible,
+.glass-search-input:focus-visible,
+.glass-result-item:focus-visible,
+.glass-result-all:focus-visible {
+    outline: 2px solid var(--nav-fg, #ffffff);
+    outline-offset: 3px;
+}
+
+.glass-dropdown-item:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: -2px;
+}
+
+/* Skip link: off-screen until it takes focus as the first tab stop. */
+.glass-skip-link {
+    position: fixed;
+    top: 0;
+    inset-inline-start: 50%;
+    transform: translate(-50%, -120%);
+    z-index: 3100;
+    padding: 0.7rem 1.4rem;
+    border-radius: 0 0 12px 12px;
+    background: #ffffff;
+    color: #1a202c;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-decoration: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-skip-link:focus-visible {
+    transform: translate(-50%, 0);
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
 }
 
 /* Logo */
@@ -1226,6 +1370,7 @@ onUnmounted(() => {
     gap: 0.75rem;
     text-decoration: none;
     transition: all 0.3s ease;
+    min-width: 0;
 }
 
 .glass-logo:hover {
@@ -1237,6 +1382,7 @@ onUnmounted(() => {
     width: auto;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
     transition: all 0.3s ease;
+    flex-shrink: 0;
 }
 
 .glass-logo:hover .glass-logo-img {
@@ -1246,8 +1392,12 @@ onUnmounted(() => {
 .glass-logo-text {
     font-size: 1.25rem;
     font-weight: 700;
-    color: white;
+    color: var(--nav-fg, #ffffff);
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
 }
 
 /* Navigation Links */
@@ -1259,7 +1409,7 @@ onUnmounted(() => {
 
 .glass-nav-link {
     padding: 0.6rem 1rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: color-mix(in srgb, var(--nav-fg, #ffffff) 85%, transparent);
     text-decoration: none;
     font-weight: 600;
     font-size: 0.95rem;
@@ -1272,7 +1422,7 @@ onUnmounted(() => {
 
 .glass-nav-link:hover {
     background: rgba(255, 255, 255, 0.15);
-    color: white;
+    color: var(--nav-fg, #ffffff);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border-color: rgba(255, 255, 255, 0.2);
@@ -1280,7 +1430,7 @@ onUnmounted(() => {
 
 .glass-nav-link-active {
     background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
-    color: white;
+    color: var(--nav-fg, #ffffff);
     border-color: rgba(102, 126, 234, 0.4);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
@@ -1289,7 +1439,8 @@ onUnmounted(() => {
 .glass-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.6rem;
+    flex-shrink: 0;
 }
 
 /* Search */
@@ -1298,12 +1449,15 @@ onUnmounted(() => {
 }
 
 .glass-search-input {
-    padding: 0.6rem 2.5rem 0.6rem 1rem;
+    padding-block: 0.6rem;
+    /* Logical padding: the reserved room always sits under the icon, in both
+       reading directions. */
+    padding-inline: 1rem 2.5rem;
     border-radius: 50px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
-    color: white;
+    color: var(--nav-fg, #ffffff);
     font-size: 0.9rem;
     width: 180px;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1311,7 +1465,7 @@ onUnmounted(() => {
 }
 
 .glass-search-input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--nav-fg, #ffffff) 60%, transparent);
 }
 
 .glass-search-input:focus {
@@ -1323,12 +1477,12 @@ onUnmounted(() => {
 
 .glass-search-icon {
     position: absolute;
-    left: 0.85rem;
+    inset-inline-end: 0.85rem;
     top: 50%;
     transform: translateY(-50%);
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--nav-fg, #ffffff) 60%, transparent);
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: color 0.3s ease;
 }
 
 .glass-search-input:focus ~ .glass-search-icon {
@@ -1368,6 +1522,45 @@ onUnmounted(() => {
     border-bottom: none;
 }
 
+/* Pointer hover and keyboard arrow-down land on the same visual state. */
+.glass-result-item.is-highlighted {
+    background: rgba(102, 126, 234, 0.14);
+}
+
+.glass-result-info {
+    min-width: 0;
+}
+
+.glass-result-empty {
+    padding: 1.1rem 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.glass-result-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(102, 126, 234, 0.06);
+    color: #667eea;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.glass-result-all:hover {
+    background: rgba(102, 126, 234, 0.14);
+}
+
 .glass-result-img {
     width: 40px;
     height: 40px;
@@ -1379,11 +1572,17 @@ onUnmounted(() => {
     font-weight: 600;
     color: #1a202c;
     font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .glass-result-category {
     font-size: 0.8rem;
     color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Action Buttons */
@@ -1394,7 +1593,7 @@ onUnmounted(() => {
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
-    color: white;
+    color: var(--nav-fg, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1415,7 +1614,7 @@ onUnmounted(() => {
 .glass-badge {
     position: absolute;
     top: -4px;
-    right: -4px;
+    inset-inline-end: -4px;
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     font-size: 0.7rem;
@@ -1438,7 +1637,10 @@ onUnmounted(() => {
 
 .glass-dropdown-menu {
     position: absolute;
-    left: 0;
+    /* Anchored to the button's trailing edge: in LTR the actions cluster sits
+       against the right viewport edge, and `left: 0` pushed the 200px menu off
+       the page. */
+    inset-inline-end: 0;
     top: calc(100% + 12px);
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
@@ -1481,11 +1683,17 @@ onUnmounted(() => {
     border: none;
     background: none;
     width: 100%;
-    text-align: right;
+    text-align: start;
 }
 
 .glass-dropdown-item:hover {
     background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
+}
+
+/* The language menu marks the current locale; nothing styled it before. */
+.glass-dropdown-item.active {
+    background: rgba(102, 126, 234, 0.12);
     color: #667eea;
 }
 
@@ -1510,7 +1718,7 @@ onUnmounted(() => {
 .glass-menu-toggle span {
     width: 100%;
     height: 3px;
-    background: white;
+    background: var(--nav-fg, #ffffff);
     border-radius: 2px;
     transition: all 0.3s ease;
 }
@@ -1528,36 +1736,140 @@ onUnmounted(() => {
 }
 
 /* Responsive */
-@media (max-width: 992px) {
+/* Smaller laptops: everything is present (nav links remain), so the chrome
+   shares the space a bit more tightly instead of jumping straight from the
+   roomy desktop layout to the collapsed hamburger bar. */
+@media (max-width: 1366px) {
+    .glass-container {
+        padding: 1.25rem 1.5rem;
+        gap: 1.25rem;
+    }
+
+    .glass-nav-links {
+        gap: 0.25rem;
+    }
+
+    .glass-nav-link {
+        padding: 0.55rem 0.8rem;
+        font-size: 0.88rem;
+    }
+
+    .glass-search-input {
+        width: 150px;
+    }
+
+    .glass-search-input:focus {
+        width: 200px;
+    }
+
+    .glass-actions {
+        gap: 0.5rem;
+    }
+
+    .glass-logo-text {
+        max-width: 180px;
+    }
+}
+
+/* The nav links no longer fit comfortably below ~1200px (six links plus a
+   search box and four icon buttons), so the hamburger takes over before the
+   row has to start crushing its links. */
+@media (max-width: 1240px) {
     .glass-nav-links {
         display: none;
     }
-    
-    .glass-search-input {
-        width: 140px;
-    }
-    
-    .glass-search-input:focus {
-        width: 180px;
-    }
-    
+
     .glass-menu-toggle {
         display: flex;
+    }
+
+    .glass-container {
+        padding: 1rem 1.5rem;
+        gap: 1rem;
+    }
+
+    .glass-search-input {
+        width: 150px;
+    }
+
+    .glass-search-input:focus {
+        width: 190px;
     }
 }
 
 @media (max-width: 768px) {
     .glass-container {
-        padding: 0.75rem 1rem;
-        gap: 1rem;
+        padding: 0.65rem 0.9rem;
+        gap: 0.6rem;
     }
-    
+
     .glass-search {
         display: none;
     }
-    
+
     .glass-logo-text {
         display: none;
+    }
+
+    .glass-logo-img {
+        height: 40px;
+    }
+
+    .glass-actions {
+        gap: 0.5rem;
+    }
+}
+
+/* Phones: four icon buttons plus a hamburger still fit a 360px screen once
+   they and the gaps around them stop demanding desktop-sized space. */
+@media (max-width: 480px) {
+    .glass-container {
+        padding: 0.55rem 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .glass-logo-img {
+        height: 36px;
+    }
+
+    .glass-logo {
+        gap: 0.4rem;
+    }
+
+    .glass-actions {
+        gap: 0.35rem;
+    }
+
+    .glass-action-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 0.92rem;
+    }
+
+    .glass-badge {
+        min-width: 16px;
+        height: 16px;
+        font-size: 0.62rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .glass-container {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .glass-actions {
+        gap: 0.2rem;
+    }
+
+    .glass-action-btn {
+        width: 34px;
+        height: 34px;
+    }
+
+    .glass-menu-toggle {
+        width: 26px;
+        height: 20px;
     }
 }
 
@@ -2099,7 +2411,10 @@ onUnmounted(() => {
 
 /* ===== MOBILE DRAWER ===== */
 .mobile-drawer {
-    display: none;
+    display: block;
+    /* `visibility` (not just the off-canvas offset) is what keeps the closed
+       drawer's links out of the keyboard tab order. */
+    visibility: hidden;
     position: fixed;
     top: 0;
     right: -100%;
@@ -2116,18 +2431,53 @@ onUnmounted(() => {
     -webkit-backdrop-filter: blur(32px) saturate(180%);
     box-shadow: -12px 0 48px rgba(0, 0, 0, 0.35);
     border-left: 1px solid rgba(255, 255, 255, 0.06);
-    transition: right 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: right 0.45s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.45s;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
 
 .mobile-drawer.open {
     right: 0;
+    visibility: visible;
+    transition: right 0.45s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
 }
 
 .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     padding: 28px 24px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* The hamburger sits under the backdrop once the drawer is open, so the drawer
+   needs a close affordance of its own. */
+.drawer-close {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.drawer-close:hover {
+    background: rgba(255, 255, 255, 0.18);
+    transform: rotate(90deg);
+}
+
+.drawer-close:focus-visible,
+.drawer-link:focus-visible,
+.drawer-logo:focus-visible,
+.drawer-search-input:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
 }
 
 .drawer-logo {
@@ -2382,6 +2732,90 @@ onUnmounted(() => {
 
 [data-theme="dark"] .glass-logo {
     color: #ffffff;
+}
+
+[data-theme="dark"] .glass-search-results,
+[data-theme="dark"] .glass-dropdown-menu {
+    background: rgba(15, 23, 42, 0.96);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .glass-result-item {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .glass-result-item:hover,
+[data-theme="dark"] .glass-result-item.is-highlighted {
+    background: rgba(102, 126, 234, 0.22);
+}
+
+[data-theme="dark"] .glass-result-title {
+    color: #f8fafc;
+}
+
+[data-theme="dark"] .glass-result-category {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .glass-result-empty {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .glass-result-all {
+    border-top-color: rgba(255, 255, 255, 0.08);
+    background: rgba(102, 126, 234, 0.16);
+    color: #c7d2fe;
+}
+
+[data-theme="dark"] .glass-result-all:hover {
+    background: rgba(102, 126, 234, 0.28);
+}
+
+[data-theme="dark"] .glass-dropdown-item {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .glass-dropdown-item:hover,
+[data-theme="dark"] .glass-dropdown-item.active {
+    background: rgba(102, 126, 234, 0.22);
+    color: #ffffff;
+}
+
+[data-theme="dark"] .glass-dropdown-header {
+    color: #c7d2fe;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .glass-skip-link {
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+/* Respect the OS "reduce motion" setting: the bar keeps its colour changes but
+   drops the lifts, scales and slides. */
+@media (prefers-reduced-motion: reduce) {
+    .glass-navbar,
+    .glass-container,
+    .glass-logo,
+    .glass-logo-img,
+    .glass-nav-link,
+    .glass-action-btn,
+    .glass-search-input,
+    .glass-dropdown-menu,
+    .glass-skip-link,
+    .mobile-drawer,
+    .drawer-close {
+        transition-duration: 0.01ms !important;
+    }
+
+    .glass-logo:hover,
+    .glass-logo:hover .glass-logo-img,
+    .glass-nav-link:hover,
+    .glass-action-btn:hover,
+    .drawer-close:hover {
+        transform: none !important;
+    }
 }
 
 [data-theme="dark"] .drawer-link {

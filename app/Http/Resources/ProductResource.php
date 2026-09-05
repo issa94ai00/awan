@@ -71,10 +71,12 @@ class ProductResource extends JsonResource
                 return $this->variants->map(fn ($variant) => [
                     'id' => $variant->id,
                     'sku' => $variant->sku,
+                    'barcode' => $variant->barcode,
                     'size' => $variant->size,
                     'color' => $variant->color,
                     'material' => $variant->material,
                     'price' => $variant->price,
+                    'cost_price' => $variant->cost_price,
                     'stock_quantity' => $variant->stock_quantity,
                 ]);
             }),

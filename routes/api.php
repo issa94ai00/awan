@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\PriceOfferListController;
 use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\ProductWarehouseAssignmentController;
@@ -311,13 +312,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // Admin Products API (using Sanctum for API clients)
         Route::prefix('admin')->group(function () {
             Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
+            Route::get('/products/next-sku', [ProductController::class, 'nextSku'])->name('api.admin.products.next-sku');
             Route::get('/products/export', [ProductController::class, 'export'])->name('api.admin.products.export');
             Route::post('/products/import', [ProductController::class, 'import'])->name('api.admin.products.import');
             Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.admin.products.show');
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
             Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+            Route::post('/product-variants', [ProductVariantController::class, 'store'])->name('api.admin.product-variants.store');
             Route::put('/product-variants/{variant}', [ProductVariantController::class, 'update'])->name('api.admin.product-variants.update');
+            Route::delete('/product-variants/{variant}', [ProductVariantController::class, 'destroy'])->name('api.admin.product-variants.destroy');
 
             // Product Units API
             Route::get('/products/{product}/units', [ProductUnitController::class, 'index'])->name('api.admin.product-units.index');
@@ -325,6 +329,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/products/{product}/units/{unit}', [ProductUnitController::class, 'update'])->name('api.admin.product-units.update');
             Route::delete('/products/{product}/units/{unit}', [ProductUnitController::class, 'destroy'])->name('api.admin.product-units.destroy');
             Route::get('/units/search-barcode', [ProductUnitController::class, 'searchByBarcode'])->name('api.admin.product-units.search-barcode');
+
+            // Price-Offer selection lists — named sets of products the admin can
+            // reuse to quickly re-select the rows for a printed price list.
+            Route::get('/price-offer-lists', [PriceOfferListController::class, 'index'])->name('api.admin.price-offer-lists.index');
+            Route::post('/price-offer-lists', [PriceOfferListController::class, 'store'])->name('api.admin.price-offer-lists.store');
+            Route::get('/price-offer-lists/{list}', [PriceOfferListController::class, 'show'])->name('api.admin.price-offer-lists.show');
+            Route::put('/price-offer-lists/{list}', [PriceOfferListController::class, 'update'])->name('api.admin.price-offer-lists.update');
+            Route::delete('/price-offer-lists/{list}', [PriceOfferListController::class, 'destroy'])->name('api.admin.price-offer-lists.destroy');
 
             // Product-Warehouse Assignment API
             Route::get('/product-warehouse-assignments', [ProductWarehouseAssignmentController::class, 'index'])->name('api.admin.product-warehouse-assignments.index');

@@ -314,6 +314,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 
@@ -351,7 +352,11 @@ const inquiryState = reactive({
 const settings = computed(() => settingsStore.data);
 const productSlug = computed(() => route.params.slug);
 
-// SEO Meta Tags
+// SEO Meta Tags — owned by the shared useSeo composable (routed through
+// PublicLayout). Product + breadcrumb structured data is re-emitted here so the
+// client-side head matches the server-rendered Product/BreadcrumbList JSON-LD.
+const seo = useSeo();
+
 const dispatchSeoEvent = () => {
     if (!product.value) return;
     const currentLocale = locale.value;
@@ -359,15 +364,28 @@ const dispatchSeoEvent = () => {
     const productDesc = currentLocale === 'en' ? (product.value.short_description_en || product.value.description_en) : (product.value.short_description_ar || product.value.description_ar || product.value.description);
     const seoTitleVal = product.value.seo?.meta_title || productName;
     const seoDescVal = product.value.seo?.meta_description || productDesc;
-    
-    window.dispatchEvent(new CustomEvent('set-dynamic-seo', {
-        detail: {
-            title: seoTitleVal,
-            description: seoDescVal,
-            keywords: product.value.brand || '',
-            image: product.value.image_main || ''
-        }
-    }));
+
+    const homeLabel = t('nav_home') || (currentLocale === 'en' ? 'Home' : 'الرئيسية');
+    const crumbs = [{ name: homeLabel, url: '/' }];
+    if (product.value.category) {
+        const categoryName = currentLocale === 'en'
+            ? (product.value.category.name_en || product.value.category.name_ar)
+            : product.value.category.name_ar;
+        crumbs.push({ name: categoryName, url: `/category/${product.value.category.slug}` });
+    }
+    crumbs.push({ name: productName });
+
+    seo.setOverride({
+        title: seoTitleVal,
+        description: seoDescVal,
+        keywords: product.value.brand || '',
+        image: product.value.image_main || '',
+        ogType: 'product',
+        jsonLd: [
+            seo.productSchema(product.value),
+            seo.breadcrumbSchema(crumbs),
+        ],
+    });
 };
 
 watch(locale, () => {
@@ -528,12 +546,6 @@ const submitInquiry = async () => {
 onMounted(() => {
     loadProductDetails();
     startAutoplay();
-    // Update SEO meta tags after product is loaded
-    watch(product, () => {
-        if (product.value) {
-            updateSEOMetaTags();
-        }
-    });
 });
 
 watch(productSlug, () => {

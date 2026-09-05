@@ -485,6 +485,7 @@ import {
     lineQuantity,
     preferredSource,
 } from '@/utils/stockSources';
+import { getImageUrl } from '@/utils/imageUrl';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Search, ShoppingCart, User, Wallet, Notebook,
@@ -680,11 +681,6 @@ const stockTone = (quantity) => {
     const value = Number(quantity) || 0;
     if (value <= 0) return 'out';
     return value <= 5 ? 'low' : 'ok';
-};
-
-const getImageUrl = (image) => {
-    if (!image) return '';
-    return image.startsWith('http') ? image : `/storage/${image}`;
 };
 
 /* ------------------------------------------------------------------ *

@@ -45,70 +45,17 @@
 import { computed, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
-import { getImageUrl } from '@/utils/imageUrl';
 
 const settingsStore = useSettingsStore();
 const settings = computed(() => settingsStore.data);
 const { t, locale } = useI18n();
 
-// SEO Meta Tags
-const updateSEOMetaTags = () => {
-    const siteName = settings.value[`site_name_${locale.value}`] || settings.value.site_name || 'أوان التقدم';
-    const visionTitle = settings.value[`vision_title_${locale.value}`] || settings.value.vision_title || 'الهوية والرؤية';
-    const visionDescription = settings.value[`vision_description_${locale.value}`] || settings.value.vision_description || 'تعرف على رؤيتنا وقيمنا في تقديم أفضل قطع الغيار';
-    const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
-    
-    // Update document title
-    document.title = `${visionTitle} - ${siteName}`;
-    
-    // Update meta description
-    const metaDescription = document.querySelector('meta[name="description"]');
-    if (metaDescription) {
-        metaDescription.setAttribute('content', visionDescription);
-    }
-    
-    // Update og:title
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) {
-        ogTitle.setAttribute('content', `${visionTitle} - ${siteName}`);
-    }
-    
-    // Update og:description
-    const ogDescription = document.querySelector('meta[property="og:description"]');
-    if (ogDescription) {
-        ogDescription.setAttribute('content', visionDescription);
-    }
-    
-    // Update og:image
-    const ogImageMeta = document.querySelector('meta[property="og:image"]');
-    if (ogImageMeta) {
-        ogImageMeta.setAttribute('content', ogImage);
-    }
-    
-    // Update twitter:title
-    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
-    if (twitterTitle) {
-        twitterTitle.setAttribute('content', `${visionTitle} - ${siteName}`);
-    }
-    
-    // Update twitter:description
-    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
-    if (twitterDescription) {
-        twitterDescription.setAttribute('content', visionDescription);
-    }
-    
-    // Update twitter:image
-    const twitterImage = document.querySelector('meta[property="twitter:image"]');
-    if (twitterImage) {
-        twitterImage.setAttribute('content', ogImage);
-    }
-};
+// SEO <head> for this page is fully covered by PublicLayout's route defaults
+// (localized vision_title/vision_description copy matching the server).
 
 // Fetch settings on mount
 onMounted(() => {
     settingsStore.fetch().catch((err) => console.warn(err));
-    // Update SEO meta tags
-    updateSEOMetaTags();
 });
 </script>
 

@@ -118,58 +118,8 @@ const settings = computed(() => settingsStore.data);
 const isSearch = computed(() => !!route.query.q);
 const searchQuery = computed(() => route.query.q || '');
 
-// SEO Meta Tags
-const updateSEOMetaTags = () => {
-    const siteName = settings.value.site_name || 'أوان التقدم';
-    const categoriesTitle = locale.value === 'en' ? 'Categories' : 'فئات المنتجات';
-    const categoriesDescription = locale.value === 'en' ? 'Browse our wide range of mobile phone accessories' : 'تصفح مجموعتنا الواسعة من مستلزمات الأجهزة المحمولة';
-    const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
-    
-    // Update document title
-    document.title = `${categoriesTitle} - ${siteName}`;
-    
-    // Update meta description
-    const metaDescription = document.querySelector('meta[name="description"]');
-    if (metaDescription) {
-        metaDescription.setAttribute('content', categoriesDescription);
-    }
-    
-    // Update og:title
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) {
-        ogTitle.setAttribute('content', `${categoriesTitle} - ${siteName}`);
-    }
-    
-    // Update og:description
-    const ogDescription = document.querySelector('meta[property="og:description"]');
-    if (ogDescription) {
-        ogDescription.setAttribute('content', categoriesDescription);
-    }
-    
-    // Update og:image
-    const ogImageMeta = document.querySelector('meta[property="og:image"]');
-    if (ogImageMeta) {
-        ogImageMeta.setAttribute('content', ogImage);
-    }
-    
-    // Update twitter:title
-    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
-    if (twitterTitle) {
-        twitterTitle.setAttribute('content', `${categoriesTitle} - ${siteName}`);
-    }
-    
-    // Update twitter:description
-    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
-    if (twitterDescription) {
-        twitterDescription.setAttribute('content', categoriesDescription);
-    }
-    
-    // Update twitter:image
-    const twitterImage = document.querySelector('meta[property="twitter:image"]');
-    if (twitterImage) {
-        twitterImage.setAttribute('content', ogImage);
-    }
-};
+// SEO <head> for this page is fully covered by PublicLayout's route defaults
+// (localized categories title/description matching the server).
 
 // Helpers
 
@@ -223,8 +173,6 @@ const loadData = async () => {
 
 onMounted(() => {
     loadData();
-    // Update SEO meta tags
-    updateSEOMetaTags();
 });
 
 // Watch query search changes

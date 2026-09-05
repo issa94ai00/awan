@@ -105,58 +105,12 @@
 import { computed, onMounted, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
-import { getImageUrl } from '@/utils/imageUrl';
-
 const settingsStore = useSettingsStore();
 const settings = computed(() => settingsStore.data);
 const { t, locale } = useI18n();
 
-// SEO Meta Tags
-const updateSEOMetaTags = () => {
-    const loc = locale.value === 'en' ? '_en' : '';
-    const s = (field, fallback = '') => settings.value?.[`${field}${loc}`] || settings.value?.[field] || fallback;
-    const siteName = s('site_name', 'أوان التقدم');
-    const aboutTitle = s('about_title', 'من نحن');
-    const aboutDescription = s('about_description', 'نحن في أوان التقدم نقدم مستلزمات البناء التي تجمع بين الجودة العالمية والعصرية في التصميم، لنكون شريكك الأمثل في مشاريعك الإنشائية.');
-    const ogImage = settings.value.og_image ? getImageUrl(settings.value.og_image) : '/assets/images/logo.png';
-    
-    document.title = `${aboutTitle} - ${siteName}`;
-    
-    const metaDescription = document.querySelector('meta[name="description"]');
-    if (metaDescription) {
-        metaDescription.setAttribute('content', aboutDescription);
-    }
-    
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) {
-        ogTitle.setAttribute('content', `${aboutTitle} - ${siteName}`);
-    }
-    
-    const ogDescription = document.querySelector('meta[property="og:description"]');
-    if (ogDescription) {
-        ogDescription.setAttribute('content', aboutDescription);
-    }
-    
-    const ogImageMeta = document.querySelector('meta[property="og:image"]');
-    if (ogImageMeta) {
-        ogImageMeta.setAttribute('content', ogImage);
-    }
-    
-    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
-    if (twitterTitle) {
-        twitterTitle.setAttribute('content', `${aboutTitle} - ${siteName}`);
-    }
-    
-    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
-    if (twitterDescription) {
-        twitterDescription.setAttribute('content', aboutDescription);
-    }
-    
-    const twitterImage = document.querySelector('meta[property="twitter:image"]');
-    if (twitterImage) {
-        twitterImage.setAttribute('content', ogImage);
-    }
-};
+// SEO <head> for this page is fully covered by PublicLayout's route defaults
+// (localized about_title/about_description copy matching the server).
 
 const defaultStory = computed(() => {
     let siteName = 'أوان التقدم';
@@ -241,16 +195,10 @@ const parsedServices = computed(() => {
     });
 });
 
-// Update SEO reactively when settings or locale change
-watch([settings, locale], () => {
-    updateSEOMetaTags();
-}, { immediate: true });
-
 // Fetch settings on mount
 onMounted(async () => {
     try {
         await settingsStore.fetch();
-        updateSEOMetaTags();
     } catch (err) {
         console.warn(err);
     }
