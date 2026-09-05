@@ -10,8 +10,11 @@
                 <el-button :icon="Refresh" @click="resetFilters">
                     {{ $t('reset') }}
                 </el-button>
+                <!-- One button that exports whichever tab is open. It never said
+                     which, so naming the dataset is the difference between an
+                     export and a guess. -->
                 <el-button type="primary" :icon="Download" :loading="exporting" @click="exportActiveTab">
-                    {{ $t('export_report') }}
+                    {{ $t('export_report') }} — {{ activeTabLabel }}
                 </el-button>
             </template>
         </AdminPageHeader>
@@ -57,8 +60,10 @@
                         <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
                     </el-select>
                 </div>
+                <!-- Labelled generically: this one filter feeds both tabs, and
+                     orders and invoices share the same status vocabulary. -->
                 <div class="filter-field">
-                    <label>{{ $t('order_status') }}</label>
+                    <label>{{ $t('status') }}</label>
                     <el-select v-model="filters.status" :placeholder="$t('all_statuses')" clearable>
                         <el-option v-for="status in ORDER_STATUSES" :key="status" :label="getStatusText(status)" :value="status" />
                     </el-select>
@@ -89,88 +94,6 @@
         </AdminFilterBar>
 
         <el-tabs v-model="activeTab" class="report-tabs">
-            <el-tab-pane :label="$t('sales_orders_pipeline')" name="orders">
-                <el-alert
-                    v-if="!ordersLoading && !hasOrdersData"
-                    :title="$t('no_data_for_current_filters')"
-                    type="info"
-                    :closable="false"
-                    show-icon
-                    class="empty-alert"
-                />
-
-                <SalesReportPanel
-                    :loading="ordersLoading"
-                    :stat-cards="orderStatCards"
-                    :metrics="performanceData.summary"
-                    :chart-mode="ordersChartMode"
-                    :chart-title="ordersChartTitle"
-                    :chart-labels="ordersChartLabels"
-                    :chart-values="ordersChartValues"
-                    :dimension-data="dimensionData"
-                    dimension-value-key="total_sales"
-                    :profitability="productProfitabilityData"
-                />
-
-                <el-card shadow="hover" class="table-card">
-                    <template #header>
-                        <span>{{ $t('detailed_report') }}</span>
-                    </template>
-
-                    <el-table v-loading="ordersListLoading" :data="reportData" style="width: 100%" stripe highlight-current-row>
-                        <el-table-column prop="order_number" :label="$t('order_number')" width="120" />
-                        <el-table-column :label="$t('date')" width="120">
-                            <template #default="{ row }">{{ formatDate(row.order_date) }}</template>
-                        </el-table-column>
-                        <el-table-column :label="$t('customer')">
-                            <template #default="{ row }">{{ row.customer ? row.customer.name : '-' }}</template>
-                        </el-table-column>
-                        <el-table-column :label="$t('employee')">
-                            <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
-                        </el-table-column>
-                        <el-table-column :label="$t('status')" width="100">
-                            <template #default="{ row }">
-                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="$t('subtotal')">
-                            <template #default="{ row }">{{ formatMoney(row.subtotal) }}</template>
-                        </el-table-column>
-                        <el-table-column :label="$t('total')" width="120">
-                            <template #default="{ row }"><strong>{{ formatMoney(row.total) }}</strong></template>
-                        </el-table-column>
-                        <el-table-column :label="$t('invoiced')" width="150">
-                            <template #default="{ row }">
-                                <el-tag :type="invoiceCoverageType(row)" size="small">{{ invoiceCoverageText(row) }}</el-tag>
-                                <p v-if="Number(row.invoices_count) > 0" class="table-sub-note">{{ formatMoney(row.invoiced_total) }}</p>
-                            </template>
-                        </el-table-column>
-                    </el-table>
-
-                    <el-pagination
-                        v-if="pagination.total > 0"
-                        v-model:current-page="pagination.current_page"
-                        v-model:page-size="pagination.per_page"
-                        :page-sizes="[10, 20, 50, 100]"
-                        :total="pagination.total"
-                        layout="total, sizes, prev, pager, next, jumper"
-                        class="table-pagination"
-                        @size-change="handleOrdersSizeChange"
-                        @current-change="handleOrdersPageChange"
-                    />
-                </el-card>
-
-                <TopPerformersTable
-                    :title="$t('top_performing_employees')"
-                    :loading="loadingTopPerformers"
-                    :rows="topPerformers"
-                    count-key="total_orders"
-                    :count-label="$t('total_orders')"
-                    average-key="average_order_value"
-                    :average-label="$t('average_order_value')"
-                />
-            </el-tab-pane>
-
             <el-tab-pane :label="$t('invoices')" name="invoices">
                 <el-alert
                     v-if="!invoicesLoading && !hasInvoicesData"
@@ -196,15 +119,39 @@
                 />
 
                 <el-card shadow="hover" class="table-card">
+                    <!-- Both tabs used to head this card with a bare "detailed
+                         report", which named neither what was listed nor how much
+                         of it the filters had matched. -->
                     <template #header>
-                        <span>{{ $t('detailed_report') }}</span>
+                        <div class="table-card-header">
+                            <span>{{ $t('detailed_report') }} — {{ $t('invoices') }}</span>
+                            <span v-if="invoicePagination.total" class="table-card-count">
+                                {{ formatCount(invoicePagination.total) }}
+                            </span>
+                        </div>
                     </template>
 
                     <el-table v-loading="invoicesListLoading" :data="invoiceReportData" style="width: 100%" stripe highlight-current-row>
-                        <el-table-column prop="invoice_number" :label="$t('invoice_number')" width="130" />
+                        <!-- The identifier is the way into the record. Only the
+                             number is a link, rather than the whole row: the sole
+                             detail screen these have is the edit form, and a
+                             stray click on a report row should not land in it. -->
+                        <el-table-column :label="$t('invoice_number')" width="130">
+                            <template #default="{ row }">
+                                <router-link class="record-link" :to="`/admin/sales/invoices/${row.id}/edit`">
+                                    {{ row.invoice_number }}
+                                </router-link>
+                            </template>
+                        </el-table-column>
                         <el-table-column :label="$t('source_order')" width="120">
                             <template #default="{ row }">
-                                <span v-if="row.sales_order">{{ row.sales_order.order_number }}</span>
+                                <router-link
+                                    v-if="row.sales_order"
+                                    class="record-link"
+                                    :to="`/admin/sales/sales-orders/${row.sales_order.id}/edit`"
+                                >
+                                    {{ row.sales_order.order_number }}
+                                </router-link>
                                 <span v-else class="table-sub-note">{{ $t('direct_sale') }}</span>
                             </template>
                         </el-table-column>
@@ -260,6 +207,99 @@
                     :average-label="$t('average_invoice_value')"
                 />
             </el-tab-pane>
+
+            <el-tab-pane :label="$t('sales_orders_pipeline')" name="orders">
+                <el-alert
+                    v-if="!ordersLoading && !hasOrdersData"
+                    :title="$t('no_data_for_current_filters')"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    class="empty-alert"
+                />
+
+                <SalesReportPanel
+                    :loading="ordersLoading"
+                    :stat-cards="orderStatCards"
+                    :metrics="performanceData.summary"
+                    :chart-mode="ordersChartMode"
+                    :chart-title="ordersChartTitle"
+                    :chart-labels="ordersChartLabels"
+                    :chart-values="ordersChartValues"
+                    :dimension-data="dimensionData"
+                    dimension-value-key="total_sales"
+                    :profitability="productProfitabilityData"
+                />
+
+                <el-card shadow="hover" class="table-card">
+                    <template #header>
+                        <div class="table-card-header">
+                            <span>{{ $t('detailed_report') }} — {{ $t('sales_orders_pipeline') }}</span>
+                            <span v-if="pagination.total" class="table-card-count">
+                                {{ formatCount(pagination.total) }}
+                            </span>
+                        </div>
+                    </template>
+
+                    <el-table v-loading="ordersListLoading" :data="reportData" style="width: 100%" stripe highlight-current-row>
+                        <el-table-column :label="$t('order_number')" width="120">
+                            <template #default="{ row }">
+                                <router-link class="record-link" :to="`/admin/sales/sales-orders/${row.id}/edit`">
+                                    {{ row.order_number }}
+                                </router-link>
+                            </template>
+                        </el-table-column>
+                        <el-table-column :label="$t('date')" width="120">
+                            <template #default="{ row }">{{ formatDate(row.order_date) }}</template>
+                        </el-table-column>
+                        <el-table-column :label="$t('customer')">
+                            <template #default="{ row }">{{ row.customer ? row.customer.name : '-' }}</template>
+                        </el-table-column>
+                        <el-table-column :label="$t('employee')">
+                            <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
+                        </el-table-column>
+                        <el-table-column :label="$t('status')" width="100">
+                            <template #default="{ row }">
+                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column :label="$t('subtotal')">
+                            <template #default="{ row }">{{ formatMoney(row.subtotal) }}</template>
+                        </el-table-column>
+                        <el-table-column :label="$t('total')" width="120">
+                            <template #default="{ row }"><strong>{{ formatMoney(row.total) }}</strong></template>
+                        </el-table-column>
+                        <el-table-column :label="$t('invoiced')" width="150">
+                            <template #default="{ row }">
+                                <el-tag :type="invoiceCoverageType(row)" size="small">{{ invoiceCoverageText(row) }}</el-tag>
+                                <p v-if="Number(row.invoices_count) > 0" class="table-sub-note">{{ formatMoney(row.invoiced_total) }}</p>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+
+                    <el-pagination
+                        v-if="pagination.total > 0"
+                        v-model:current-page="pagination.current_page"
+                        v-model:page-size="pagination.per_page"
+                        :page-sizes="[10, 20, 50, 100]"
+                        :total="pagination.total"
+                        layout="total, sizes, prev, pager, next, jumper"
+                        class="table-pagination"
+                        @size-change="handleOrdersSizeChange"
+                        @current-change="handleOrdersPageChange"
+                    />
+                </el-card>
+
+                <TopPerformersTable
+                    :title="$t('top_performing_employees')"
+                    :loading="loadingTopPerformers"
+                    :rows="topPerformers"
+                    count-key="total_orders"
+                    :count-label="$t('total_orders')"
+                    average-key="average_order_value"
+                    :average-label="$t('average_order_value')"
+                />
+            </el-tab-pane>
         </el-tabs>
     </div>
 </template>
@@ -268,6 +308,7 @@
 import { formatMoney as formatMoneyWith } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
 import api from '@/api';
@@ -277,6 +318,8 @@ import SalesReportPanel from '@/components/admin/reports/SalesReportPanel.vue';
 import TopPerformersTable from '@/components/admin/reports/TopPerformersTable.vue';
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 
@@ -362,7 +405,18 @@ const baseFilterParams = () => {
  * it; it now loads once, the first time it's actually opened, and again
  * only when a filter change has made it stale.
  * ------------------------------------------------------------------ */
-const activeTab = ref('orders');
+const TABS = ['invoices', 'orders'];
+
+/**
+ * Invoices open first: they are the money actually billed, which is what this
+ * report is consulted for. The pipeline is the leading indicator you go to
+ * afterwards.
+ *
+ * The choice still lives in the URL, so the tab survives a refresh and either
+ * view can be linked to or bookmarked — without that, making invoices the
+ * default would have left the pipeline with no address at all.
+ */
+const activeTab = ref(TABS.includes(route.query.tab) ? route.query.tab : 'invoices');
 const ordersStale = ref(true);
 const invoicesStale = ref(true);
 
@@ -659,6 +713,12 @@ const loadActiveTab = () => (activeTab.value === 'invoices' ? loadInvoicesTab() 
 watch(activeTab, (tab) => {
     if (tab === 'invoices' && invoicesStale.value) loadInvoicesTab();
     if (tab === 'orders' && ordersStale.value) loadOrdersTab();
+
+    // replace, not push: flipping a tab is not a step to be walked back
+    // through, and stacking history entries would trap the back button here.
+    if (route.query.tab !== tab) {
+        router.replace({ query: { ...route.query, tab } });
+    }
 });
 
 const applyFilters = () => {
@@ -705,6 +765,14 @@ const exportActiveTab = async () => {
  * ------------------------------------------------------------------ */
 const formatMoney = (value) => formatMoneyWith(value || 0);
 
+/** Row counts read as quantities, so they get thousands separators. */
+const formatCount = (value) => Number(value || 0).toLocaleString();
+
+/** Names the dataset the export button is about to produce. */
+const activeTabLabel = computed(() =>
+    activeTab.value === 'invoices' ? t('invoices') : t('sales_orders_pipeline')
+);
+
 const formatDate = (value) => {
     if (!value) return '-';
     const date = new Date(value);
@@ -719,7 +787,10 @@ onMounted(() => {
     loadEmployees();
     loadCustomers();
     loadWarehouses();
-    loadOrdersTab();
+    // Whichever tab is actually on screen, not always the orders one: the
+    // watcher above only fires on a *change*, so loading the wrong tab here
+    // would leave the visible one empty until you clicked away and back.
+    loadActiveTab();
 });
 </script>
 
@@ -746,6 +817,40 @@ onMounted(() => {
 .table-pagination {
     margin-top: 1.25rem;
     justify-content: center;
+}
+
+.table-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.table-card-count {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The way into the underlying order or invoice. */
+.record-link {
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.record-link:hover {
+    text-decoration: underline;
+}
+
+/* Figures in a report are read down the column, not across the row, so the
+   digits have to keep the same width or the decimal points wander. */
+.table-card :deep(.el-table) {
+    font-variant-numeric: tabular-nums;
 }
 
 .table-sub-note {
