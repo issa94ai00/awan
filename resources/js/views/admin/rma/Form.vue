@@ -13,16 +13,25 @@
                     <el-icon><ArrowRight /></el-icon>
                     {{ t('back_to_home') }}
                 </el-button>
-                <el-button
-                    type="primary"
-                    size="large"
-                    :loading="saving"
-                    :disabled="!canSubmit"
-                    @click="submitForm"
-                >
-                    <el-icon><Check /></el-icon>
-                    {{ isEdit ? t('update_and_save_changes') : t('create_the_return_request') }}
-                </el-button>
+                <!-- The save button spends most of the session disabled, and on
+                     its own it never said why. Naming what is still missing turns
+                     a dead control into the next instruction. -->
+                <div class="submit-stack">
+                    <el-button
+                        type="primary"
+                        size="large"
+                        :loading="saving"
+                        :disabled="!canSubmit"
+                        @click="submitForm"
+                    >
+                        <el-icon><Check /></el-icon>
+                        {{ isEdit ? t('update_and_save_changes') : t('create_the_return_request') }}
+                    </el-button>
+                    <p v-if="blockers.length" class="submit-blockers">
+                        <el-icon><InfoFilled /></el-icon>
+                        <span>{{ t('still_needed') }}: {{ blockers.join(' · ') }}</span>
+                    </p>
+                </div>
             </div>
         </header>
 
@@ -230,7 +239,14 @@
 
                                 <label class="line-note-field" v-if="item.selected">
                                     <span class="field-label">{{ t('notes') }}</span>
-                                    <el-input v-model="item.notes" :placeholder="t('internal_notes_placeholder')" size="default" />
+                                    <!-- Server limit is 500 on a line note. -->
+                                    <el-input
+                                        v-model="item.notes"
+                                        :placeholder="t('internal_notes_placeholder')"
+                                        size="default"
+                                        maxlength="500"
+                                        show-word-limit
+                                    />
                                 </label>
                             </article>
                         </div>
@@ -243,6 +259,7 @@
                         <h3 class="rail-title">{{ t('settlement_type_and_handling') }}</h3>
 
                         <label class="field">
+                            <span class="field-label">{{ t('settlement_type') }}</span>
                             <el-select v-model="form.return_type" :placeholder="t('select_default_handling')" class="full-width">
                                 <el-option value="refund" :label="t('refund_compensation')" />
                                 <el-option value="exchange" :label="t('exchange_for_another_product')" />
@@ -267,10 +284,16 @@
                         <el-form-item prop="reason_description" class="bare-item">
                             <label class="field">
                                 <span class="field-label">{{ t('additional_return_details') }}</span>
+                                <!-- The 1000-character ceiling is enforced by both
+                                     the form rule and the server; showing it while
+                                     typing is what stops it being discovered by a
+                                     rejected save. -->
                                 <el-input
                                     v-model="form.reason_description"
                                     type="textarea"
                                     :rows="3"
+                                    maxlength="1000"
+                                    show-word-limit
                                     :placeholder="t('additional_return_details_placeholder')"
                                 />
                             </label>
@@ -278,12 +301,26 @@
                     </div>
 
                     <div class="rail-card">
-                        <button type="button" class="extras-toggle" @click="showAddress = !showAddress">
+                        <button
+                            type="button"
+                            class="extras-toggle"
+                            :aria-expanded="showAddress ? 'true' : 'false'"
+                            aria-controls="rma-return-address"
+                            @click="showAddress = !showAddress"
+                        >
                             <el-icon><component :is="showAddress ? Minus : Plus" /></el-icon>
                             {{ t('pickup_address_optional') }}
                         </button>
 
-                        <div v-if="showAddress" class="extras-body">
+                        <!-- Collapsed, whatever was entered still shows: the section
+                             folds itself away on edit only when it is empty, and a
+                             filled address hidden behind a closed toggle reads as no
+                             address at all. -->
+                        <p v-if="!showAddress && addressSummary" class="extras-summary">{{ addressSummary }}</p>
+
+                        <div v-show="showAddress" id="rma-return-address" class="extras-body">
+                            <p class="extras-hint">{{ t('address_fields_all_optional') }}</p>
+
                             <el-form-item prop="return_address.address_line1" class="bare-item">
                                 <label class="field">
                                     <span class="field-label">{{ t('main_address') }}</span>
@@ -304,12 +341,31 @@
                                     </label>
                                 </el-form-item>
                             </div>
+                            <el-form-item prop="return_address.postal_code" class="bare-item">
+                                <label class="field">
+                                    <span class="field-label">{{ t('postal_code') }}</span>
+                                    <el-input v-model="form.return_address.postal_code" :placeholder="t('postal_code')" />
+                                </label>
+                            </el-form-item>
+
+                            <button v-if="addressStarted" type="button" class="extras-clear" @click="clearAddress">
+                                {{ t('clear_address') }}
+                            </button>
                         </div>
                     </div>
 
                     <div class="rail-card">
                         <h3 class="rail-title">{{ t('handling_and_follow_up_notes') }}</h3>
-                        <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="t('internal_notes_placeholder')" />
+                        <!-- Server limit is 1000 on admin_notes; same reasoning as
+                             the reason description above. -->
+                        <el-input
+                            v-model="form.notes"
+                            type="textarea"
+                            :rows="3"
+                            maxlength="1000"
+                            show-word-limit
+                            :placeholder="t('internal_notes_placeholder')"
+                        />
                     </div>
 
                     <div class="rail-card totals-card" v-if="selectedItemsCount">
@@ -331,6 +387,7 @@
             <div class="mobile-total">
                 <span>{{ t('estimated_compensation_summary') }}</span>
                 <strong>{{ formatCurrency(estimatedRefundTotal) }}</strong>
+                <em v-if="blockers.length" class="mobile-blockers">{{ t('still_needed') }}: {{ blockers.join(' · ') }}</em>
             </div>
             <el-button type="primary" :loading="saving" :disabled="!canSubmit" @click="submitForm">
                 {{ isEdit ? t('update_and_save_changes') : t('create_the_return_request') }}
@@ -342,7 +399,7 @@
 <script setup>
 import { formatMoney } from '@/utils/currency'
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ArrowRight, Check, Minus, Plus, ShoppingCart, User, Phone, Message } from '@element-plus/icons-vue'
+import { ArrowRight, Check, InfoFilled, Minus, Plus, ShoppingCart, User, Phone, Message } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -379,6 +436,9 @@ const catalogProducts = ref([])
 const selectedCustomer = ref(null)
 const customerStats = ref({ totalOrders: 0, totalReturns: 0, availableOrders: 0 })
 
+const ADDRESS_FIELDS = ['address_line1', 'city', 'country', 'postal_code']
+const emptyAddress = () => ({ address_line1: '', city: '', country: '', postal_code: '' })
+
 const form = reactive({
     customer_id: null,
     invoice_id: null,
@@ -386,35 +446,72 @@ const form = reactive({
     return_type: 'refund',
     reason_description: '',
     notes: '',
-    return_address: { address_line1: '', city: '', country: '', postal_code: '' },
+    return_address: emptyAddress(),
 })
 
-/** Only enforced once the operator has started filling in a pickup address — the whole section is optional. */
-const addressStarted = () => {
-    const addr = form.return_address
-    return !!(addr.address_line1 || addr.city || addr.country)
-}
-const requiredIfAddressStarted = (message) => (rule, value, callback) => {
-    if (addressStarted() && !value) {
-        callback(new Error(message))
-    } else {
-        callback()
-    }
+/** Whether anything at all has been entered — drives the collapsed summary, not validation. */
+const addressStarted = computed(() => ADDRESS_FIELDS.some((field) => String(form.return_address[field] || '').trim()))
+
+/** The filled-in parts, in reading order, for the one-line collapsed preview. */
+const addressSummary = computed(() =>
+    ADDRESS_FIELDS
+        .map((field) => String(form.return_address[field] || '').trim())
+        .filter(Boolean)
+        .join(' · ')
+)
+
+const clearAddress = () => Object.assign(form.return_address, emptyAddress())
+
+/**
+ * The address as it should reach the server: trimmed, blanks dropped, and null
+ * when nothing was filled in.
+ *
+ * The form owns all four keys so the inputs have something to bind to, which
+ * meant an untouched section still posted four empty strings and stored them.
+ */
+const addressPayload = () => {
+    const clean = {}
+
+    ADDRESS_FIELDS.forEach((field) => {
+        const value = String(form.return_address[field] || '').trim()
+        if (value) clean[field] = value
+    })
+
+    return Object.keys(clean).length ? clean : null
 }
 
+/**
+ * No rule covers the address. Every field is independently optional: the goods
+ * usually change hands at the counter, and whoever raises the request may know
+ * only the city, or only a street dictated over the phone. Requiring the three
+ * together — the old behaviour — meant a half-known address either had to be
+ * invented or thrown away, so the form lost the one fact it had been given.
+ */
 const rules = {
     customer_id: [{ required: true, message: t('please_select_returning_customer'), trigger: 'change' }],
     invoice_id: [{ required: true, message: t('please_select_original_invoice'), trigger: 'change' }],
     reason: [{ required: true, message: t('return_reason_required'), trigger: 'change' }],
     reason_description: [{ max: 1000, message: t('description_max_1000'), trigger: 'blur' }],
-    'return_address.address_line1': [{ validator: requiredIfAddressStarted(t('address_required_for_pickup')), trigger: 'blur' }],
-    'return_address.city': [{ validator: requiredIfAddressStarted(t('city_required_for_pickup')), trigger: 'blur' }],
-    'return_address.country': [{ validator: requiredIfAddressStarted(t('country_required_for_pickup')), trigger: 'blur' }],
 }
 
 const selectedItemsCount = computed(() => invoiceItems.value.filter((i) => i.selected).length)
 
 const canSubmit = computed(() => !saving.value && !!form.customer_id && !!form.invoice_id && selectedItemsCount.value > 0)
+
+/**
+ * What is still missing before the request can be saved, in the order the page
+ * asks for it. Same three conditions `canSubmit` tests, said out loud — the
+ * address is deliberately absent, since it never blocks a save.
+ */
+const blockers = computed(() => {
+    const missing = []
+
+    if (!form.customer_id) missing.push(t('returning_customer'))
+    if (!form.invoice_id) missing.push(t('linked_original_invoice'))
+    if (!selectedItemsCount.value) missing.push(t('returned_products'))
+
+    return missing
+})
 
 const lineRefundEstimate = (item) => {
     const multiplier = { new: 1.0, used: 0.7, damaged: 0.5, missing: 0.0 }[item.condition] ?? 0.5
@@ -617,8 +714,10 @@ const loadRma = async () => {
         form.return_type = rma.type || 'refund'
         form.reason_description = rma.reason_description || ''
         form.notes = rma.admin_notes || ''
-        form.return_address = rma.return_address || { address_line1: '', city: '', country: '', postal_code: '' }
-        showAddress.value = addressStarted()
+        // A stored address now holds only the fields that were known, so merge
+        // it onto the full shape the inputs bind to rather than replacing it.
+        form.return_address = { ...emptyAddress(), ...(rma.return_address || {}) }
+        showAddress.value = addressStarted.value
 
         if (rma.customer) {
             selectedCustomer.value = rma.customer
@@ -717,7 +816,7 @@ const submitForm = async () => {
             type: form.return_type,
             reason_description: form.reason_description,
             admin_notes: form.notes,
-            return_address: form.return_address,
+            return_address: addressPayload(),
             items: selectedItems.map((item) => ({
                 invoice_item_id: item.invoice_item_id,
                 quantity_requested: item.quantity,
@@ -817,6 +916,25 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+}
+
+/* Keeps the "still needed" line under the save button without breaking the
+   row the header lays its actions out in. */
+.submit-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+
+.submit-blockers {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--warn);
 }
 
 /* ── Grid ───────────────────────────────────────────────────────────── */
@@ -1094,6 +1212,35 @@ onMounted(async () => {
 
 .extras-body { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem; }
 
+.extras-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--ink-mute);
+}
+
+/* What was entered, still legible once the section is folded away. */
+.extras-summary {
+    margin: 0.5rem 0 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+}
+
+.extras-clear {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--ink-mute);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.extras-clear:hover { color: var(--bad); }
+
 .totals-card { background: var(--ok-soft); border-color: #bbf7d0; }
 
 .totals { margin: 0; }
@@ -1133,6 +1280,12 @@ onMounted(async () => {
     .mobile-total { display: flex; flex-direction: column; }
     .mobile-total span { font-size: 0.72rem; color: var(--ink-mute); }
     .mobile-total strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    .mobile-total .mobile-blockers {
+        font-size: 0.7rem;
+        font-style: normal;
+        line-height: 1.4;
+        color: var(--warn);
+    }
 
     .customer-stats { margin-inline-start: 0; width: 100%; justify-content: flex-start; }
 }

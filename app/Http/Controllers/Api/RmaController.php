@@ -213,6 +213,39 @@ class RmaController extends Controller
         ]);
     }
 
+    /**
+     * The collection address as it deserves to be stored, or nothing at all.
+     *
+     * The form posts the whole address object on every save, filled in or not,
+     * so an untouched section arrived as four empty strings and was written to
+     * the JSON column verbatim. A request with no address then read as one
+     * carrying a blank address — indistinguishable, on the way back out, from
+     * an address someone had deliberately cleared, and enough to make
+     * "has an address?" checks answer yes.
+     *
+     * Blank fields are dropped and the whole thing collapses to null once
+     * nothing is left, so a partial address keeps exactly the parts that were
+     * known.
+     */
+    private function normalizedReturnAddress(mixed $address): ?array
+    {
+        if (! is_array($address)) {
+            return null;
+        }
+
+        $clean = [];
+
+        foreach (['address_line1', 'city', 'country', 'postal_code'] as $field) {
+            $value = trim((string) ($address[$field] ?? ''));
+
+            if ($value !== '') {
+                $clean[$field] = $value;
+            }
+        }
+
+        return $clean ?: null;
+    }
+
     public function store(Request $request)
     {
         $request->validate([
@@ -221,18 +254,20 @@ class RmaController extends Controller
             'reason' => 'required|in:defective,wrong_item,damaged,not_as_described,changed_mind,other',
             'type' => 'required|in:refund,exchange,store_credit',
             'reason_description' => 'nullable|string|max:1000',
+            // A collection address is a convenience, not a contract: the goods
+            // are usually handed over at the counter, and the operator raising
+            // the request often knows only the city, or only a phone-dictated
+            // street. Each field therefore stands on its own — an earlier
+            // "started it, finish it" rule made the three mutually required and
+            // turned a half-known address into a blocked save, so an operator
+            // who knew the city had to either invent a street or clear the one
+            // real fact they had. Whatever is known gets stored; the rest is
+            // simply absent (see normalizedReturnAddress()).
             'return_address' => 'nullable|array',
-            // The address is all-or-nothing: `required_with:return_address`
-            // checked whether the *parent* array was present, and the form
-            // always sends it (even fully blank), so this rejected every
-            // request that left the optional address section untouched.
-            // Requiring each field only when a sibling has a value makes the
-            // three mutually required — exactly the "started it, finish it"
-            // rule the frontend already enforces.
-            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
-            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
-            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
-            'return_address.postal_code' => 'nullable|string',
+            'return_address.address_line1' => 'nullable|string|max:255',
+            'return_address.city' => 'nullable|string|max:120',
+            'return_address.country' => 'nullable|string|max:120',
+            'return_address.postal_code' => 'nullable|string|max:32',
             'items' => 'required|array|min:1',
             'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
             'items.*.quantity_requested' => 'required|integer|min:1|max:999',
@@ -252,12 +287,6 @@ class RmaController extends Controller
             'items.min' => 'يجب إضافة منتج واحد على الأقل',
             'items.*.quantity_requested.max' => 'الكمية المطلوبة لا يمكن أن تتجاوز 999',
             'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
-            // Explicit messages: the app has no lang/ar/validation.php, so the
-            // generic required_with rule fell back to the raw "validation.
-            // required_with" translation key instead of a readable sentence.
-            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
-            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
-            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
         ]);
 
         try {
@@ -308,7 +337,7 @@ class RmaController extends Controller
                 'type' => $request->type,
                 'status' => RmaRequest::STATUS_PENDING,
                 'reason_description' => $request->reason_description,
-                'return_address' => $request->return_address,
+                'return_address' => $this->normalizedReturnAddress($request->input('return_address')),
                 'requested_at' => now(),
             ]);
 
@@ -928,13 +957,12 @@ class RmaController extends Controller
 
         $request->validate([
             'reason_description' => 'nullable|string|max:1000',
+            // Every address field is independently optional — see store().
             'return_address' => 'nullable|array',
-            // See store(): required only when a sibling address field has a
-            // value, not merely because the (always-sent) parent array exists.
-            'return_address.address_line1' => 'required_with:return_address.city,return_address.country|string',
-            'return_address.city' => 'required_with:return_address.address_line1,return_address.country|string',
-            'return_address.country' => 'required_with:return_address.address_line1,return_address.city|string',
-            'return_address.postal_code' => 'nullable|string',
+            'return_address.address_line1' => 'nullable|string|max:255',
+            'return_address.city' => 'nullable|string|max:120',
+            'return_address.country' => 'nullable|string|max:120',
+            'return_address.postal_code' => 'nullable|string|max:32',
             'admin_notes' => 'nullable|string|max:1000',
             'refund_method' => 'nullable|in:original,store_credit,bank_transfer,check',
             'items' => 'nullable|array',
@@ -946,11 +974,6 @@ class RmaController extends Controller
             'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
             'items.*.notes' => 'nullable|string|max:500',
         ], [
-            // The app has no lang/ar/validation.php, so the generic rule
-            // fell back to the raw "validation.required_with" translation key.
-            'return_address.address_line1.required_with' => 'يجب إدخال العنوان عند تحديد عنوان الاستلام',
-            'return_address.city.required_with' => 'يجب إدخال المدينة عند تحديد عنوان الاستلام',
-            'return_address.country.required_with' => 'يجب إدخال الدولة عند تحديد عنوان الاستلام',
             'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
         ]);
 
@@ -958,12 +981,19 @@ class RmaController extends Controller
             DB::beginTransaction();
 
             // Update basic fields
-            $rmaRequest->update($request->only([
+            $basicFields = $request->only([
                 'reason_description',
-                'return_address',
                 'admin_notes',
                 'refund_method',
-            ]));
+            ]);
+
+            // Only when the caller actually sent an address, so a partial
+            // update that omits it leaves the stored one alone.
+            if ($request->has('return_address')) {
+                $basicFields['return_address'] = $this->normalizedReturnAddress($request->input('return_address'));
+            }
+
+            $rmaRequest->update($basicFields);
 
             // Update items if provided
             if ($request->has('items')) {
