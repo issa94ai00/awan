@@ -133,7 +133,7 @@
                                     class="cell-name-edit"
                                     :title="$t('edit')"
                                     :aria-label="$t('edit')"
-                                    @click="$emit('edit-item', group.items[0], group)"
+                                    @click="$emit('edit-item', group, group.items[0])"
                                 >
                                     <el-icon><EditPen /></el-icon>
                                 </button>
@@ -160,7 +160,7 @@
                                     class="cell-name-edit"
                                     :title="$t('edit')"
                                     :aria-label="$t('edit')"
-                                    @click="$emit('edit-item', group.items[0], group)"
+                                    @click="$emit('edit-item', group, group.items[0])"
                                 >
                                     <el-icon><EditPen /></el-icon>
                                 </button>
@@ -194,7 +194,7 @@
                                 type="button"
                                 class="cell-edit-btn"
                                 :title="$t('edit')"
-                                @click="$emit('edit-item', item, group)"
+                                @click="$emit('edit-item', group, item)"
                             >
                                 <el-icon><EditPen /></el-icon>
                             </button>
@@ -304,6 +304,12 @@ const props = defineProps({
     someSelected: { type: Boolean, default: false },
 });
 
+/**
+ * Anything that identifies a row passes the group first, then the row within
+ * it — 'edit-item' once had them the other way round, and because this list
+ * validates nothing the parent read the item as the group and threw on the
+ * first click. Row-only events ('start-edit', ...) pass just the item.
+ */
 const emit = defineEmits([
     'start-edit', 'commit-edit', 'cancel-edit',
     'start-edit-stock', 'commit-edit-stock', 'cancel-edit-stock',
