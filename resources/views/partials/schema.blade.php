@@ -3,7 +3,7 @@
     $siteName = get_setting('site_name') ?? '';
     $description = get_setting('site_description') ?? '';
     $siteUrl = url('/');
-    $logoPath = get_setting('site_logo') ? (str_starts_with(get_setting('site_logo'), 'assets/') ? asset(get_setting('site_logo')) : asset('storage/' . get_setting('site_logo'))) : null;
+    $logoPath = image_url(get_setting('site_logo'));
 
     $telephone = get_setting('contact_phone') ?: null;
     $email = get_setting('contact_email') ?: null;

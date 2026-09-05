@@ -45,13 +45,28 @@ export function toImagePath(value) {
     return path.startsWith('storage/') ? path.slice('storage/'.length) : path;
 }
 
-/** Turn a stored path back into something the browser can load. */
+/**
+ * Turn a stored path back into something the browser can load.
+ *
+ * The query string survives on purpose. The server stamps "?v=<mtime>" onto
+ * the pictures it hosts itself, which is what lets a replaced file — or one
+ * whose 404 a browser cached while it was briefly missing — be seen at all:
+ * the cache is keyed on the whole URL. Rebuilding from the bare path threw
+ * that away and put the stale entry straight back. `toImagePath()` still
+ * drops it, because the bare path is what belongs in the database.
+ */
 export function resolveImageUrl(value) {
     const path = toImagePath(value);
     if (!path) return '';
+    // A picture hosted elsewhere comes back whole, query and all.
     if (isAbsolute(path)) return path;
 
-    return PUBLIC_PREFIXES.some(prefix => path.startsWith(prefix)) ? `/${path}` : `/storage/${path}`;
+    // A non-string never reaches here: toImagePath() returns '' for one.
+    const mark = value.trim().indexOf('?');
+    const query = mark === -1 ? '' : value.trim().slice(mark);
+    const base = PUBLIC_PREFIXES.some(prefix => path.startsWith(prefix)) ? `/${path}` : `/storage/${path}`;
+
+    return base + query;
 }
 
 /** The gallery column holds JSON; older rows and some endpoints hand back arrays. */

@@ -191,7 +191,7 @@ class DashboardController extends Controller
                         'name_en' => $product->name_en,
                         'price' => (float) $product->price,
                         'stock_quantity' => $product->stock_quantity,
-                        'image' => $product->image_main ? asset('storage/' . $product->image_main) : null,
+                        'image' => image_url($product->image_main),
                     ];
                 });
 

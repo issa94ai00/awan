@@ -19,7 +19,7 @@ class ProductController extends Controller
         // Set SEO data for the page
         $page_title = $productSeo['meta_title'] ?? $product->name_ar;
         $page_description = $productSeo['meta_description'] ?? $product->description_ar ?? strip_tags($product->description_en ?? '');
-        $page_image = $product->image_main ? asset('storage/' . $product->image_main) : asset('assets/images/hero-bg.jpg');
+        $page_image = image_url($product->image_main) ?: asset('assets/images/hero-bg.jpg');
 
         $related_products = Product::query()
             ->where('category_id', $product->category_id)

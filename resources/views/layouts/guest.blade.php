@@ -207,7 +207,7 @@
         <div class="auth-wrapper">
             <div class="auth-logo">
                 <a href="{{ url('/') }}">
-                    <img src="{{ get_setting('site_logo') ? (str_starts_with(get_setting('site_logo'), 'assets/') ? asset(get_setting('site_logo')) : asset('storage/' . get_setting('site_logo'))) : asset('assets/images/logo.png') }}" alt="{{ get_setting('site_name') ?? '' }}">
+                    <img src="{{ image_url(get_setting('site_logo')) ?: asset('assets/images/logo.png') }}" alt="{{ get_setting('site_name') ?? '' }}">
                 </a>
                 <div class="auth-logo-text">{{ get_setting('site_name') ?? '' }}</div>
             </div>

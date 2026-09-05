@@ -88,7 +88,7 @@
                 <input type="file" id="image" name="image" class="form-control-file" accept="image/*">
                 @if(isset($category) && $category->image)
                     <div class="image-preview mt-2">
-                        <img src="{{ asset('storage/' . $category->image) }}" alt="{{ $category->name_ar }}" style="max-width: 150px; border-radius: 8px;">
+                        <img src="{{ image_url($category->image) }}" alt="{{ $category->name_ar }}" style="max-width: 150px; border-radius: 8px;">
                     </div>
                 @endif
             </div>

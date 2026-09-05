@@ -3,6 +3,7 @@
 use App\Models\Setting;
 use App\Services\CurrencyService;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 if (! function_exists('get_setting')) {
     function get_setting(string $key, mixed $default = null): mixed
@@ -81,6 +82,53 @@ if (! function_exists('asset_url')) {
     }
 }
 
+if (! function_exists('image_version')) {
+    /**
+     * A short token that changes whenever the file behind an image does.
+     *
+     * Two failures make this worth appending. A picture that is briefly
+     * missing — a broken storage symlink, a half-finished restore — gets its
+     * 404 stored by the browser, and every later request is then answered
+     * from that cache without ever reaching the server; the file coming back
+     * does not clear it, and only a hard reload does. And a file replaced in
+     * place under the same name keeps serving the old bytes for as long as
+     * the cache header says. A URL that moves with the file sidesteps both.
+     *
+     * Only the public disk is stamped. Those are the files this application
+     * writes and replaces; the shipped assets under public/ (images_items/,
+     * assets/, ...) are static, and versioning them would expire the whole
+     * catalogue's pictures at once for no gain.
+     *
+     * image_path() drops the query string again, so a URL that round-trips
+     * through an admin form still stores the bare path.
+     */
+    function image_version(string $path): string
+    {
+        static $cache = [];
+
+        if (array_key_exists($path, $cache)) {
+            return $cache[$path];
+        }
+
+        $token = '';
+
+        try {
+            $file = Storage::disk('public')->path($path);
+            $mtime = is_file($file) ? filemtime($file) : false;
+
+            if ($mtime !== false) {
+                // Base 36 keeps it to six characters instead of ten.
+                $token = '?v='.base_convert((string) $mtime, 10, 36);
+            }
+        } catch (Throwable $e) {
+            // An unreachable disk is no reason to lose the URL itself: an
+            // unstamped image still loads, it just caches as it did before.
+        }
+
+        return $cache[$path] = $token;
+    }
+}
+
 if (! function_exists('image_url')) {
     function image_url(?string $path): ?string
     {
@@ -98,7 +146,7 @@ if (! function_exists('image_url')) {
 
         // If it already starts with storage/
         if (str_starts_with($path, 'storage/')) {
-            return asset($path);
+            return asset($path).image_version(substr($path, strlen('storage/')));
         }
 
         // Some settings (site_logo, favicon, ...) hold a path that is already
@@ -110,7 +158,7 @@ if (! function_exists('image_url')) {
             }
         }
 
-        return asset('storage/'.$path);
+        return asset('storage/'.$path).image_version($path);
     }
 }
 

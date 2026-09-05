@@ -75,7 +75,7 @@
                     <input type="file" id="logo" name="logo" class="form-control-file" accept="image/*">
                     @if(isset($settings['logo']) && $settings['logo'])
                         <div class="image-preview mt-2">
-                            <img src="{{ asset('storage/' . $settings['logo']) }}" alt="Logo" style="max-width: 150px; border-radius: 12px; border:1px solid var(--border-color);">
+                            <img src="{{ image_url($settings['logo']) }}" alt="Logo" style="max-width: 150px; border-radius: 12px; border:1px solid var(--border-color);">
                         </div>
                     @endif
                 </div>
@@ -85,7 +85,7 @@
                     <input type="file" id="favicon" name="favicon" class="form-control-file" accept="image/*">
                     @if(isset($settings['favicon']) && $settings['favicon'])
                         <div class="image-preview mt-2">
-                            <img src="{{ asset('storage/' . $settings['favicon']) }}" alt="Favicon" style="max-width: 60px; border-radius: 12px; border:1px solid var(--border-color);">
+                            <img src="{{ image_url($settings['favicon']) }}" alt="Favicon" style="max-width: 60px; border-radius: 12px; border:1px solid var(--border-color);">
                         </div>
                     @endif
                 </div>
@@ -235,7 +235,7 @@
                     <small class="form-text">الصورة التي تظهر عند مشاركة الموقع على وسائل التواصل.</small>
                     @if(isset($settings['og_image']) && $settings['og_image'])
                         <div class="image-preview mt-2">
-                            <img src="{{ asset('storage/' . $settings['og_image']) }}" alt="OG Image" style="max-width: 280px; border-radius: 12px; border:1px solid var(--border-color);">
+                            <img src="{{ image_url($settings['og_image']) }}" alt="OG Image" style="max-width: 280px; border-radius: 12px; border:1px solid var(--border-color);">
                         </div>
                     @endif
                 </div>

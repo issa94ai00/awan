@@ -31,7 +31,7 @@ class InvoiceItemResource extends JsonResource
                     'name_ar' => $this->product->name_ar,
                     'name_en' => $this->product->name_en,
                     'slug' => $this->product->slug,
-                    'image_main' => $this->product->image_main ? asset('storage/' . $this->product->image_main) : null,
+                    'image_main' => image_url($this->product->image_main),
                 ] : null;
             }),
 

@@ -169,7 +169,7 @@
                             <div class="gallery-images" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                                 @foreach($galleryImages as $index => $image)
                                     <div class="gallery-item" style="position: relative; display: inline-block;">
-                                        <img src="{{ filter_var($image, FILTER_VALIDATE_URL) ? $image : asset('storage/' . $image) }}" alt="Gallery image {{ $index + 1 }}" 
+                                        <img src="{{ image_url($image) }}" alt="Gallery image {{ $index + 1 }}" 
                                              style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd;">
                                         <button type="button" class="remove-gallery-image btn btn-danger btn-sm" 
                                                 style="position: absolute; top: -5px; right: -5px; border-radius: 50%; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;"
