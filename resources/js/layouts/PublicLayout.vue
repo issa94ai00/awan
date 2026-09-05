@@ -430,12 +430,28 @@
             </div>
         </nav>
 
-        <!-- Mobile Drawer Menu -->
+        <!--
+            Mobile Drawer Menu.
+
+            Closed state is `inert`, not `aria-hidden`. Tapping a drawer link
+            closes the drawer, so the link that was just activated still holds
+            focus while the panel slides out — and the closing CSS holds
+            `visibility` back for the length of that 0.45s transition. An
+            `aria-hidden="true"` laid over a subtree that still contains the
+            focused element is refused by the browser (it would hide from
+            assistive technology exactly what the keyboard is on), and it left
+            the links tabbable for the whole slide-out. `inert` drops the panel
+            from the accessibility tree *and* takes focus out of it, which is
+            what closing it should have meant all along.
+
+            Written as `null` rather than `false`: Vue drops an attribute set to
+            null, whereas `inert="false"` would still read as present.
+        -->
         <aside
             id="mobile-drawer"
             class="mobile-drawer"
             :class="{ 'open': mobileMenuOpen }"
-            :aria-hidden="mobileMenuOpen ? 'false' : 'true'"
+            :inert="mobileMenuOpen ? null : true"
             :aria-label="t('main_menu') || 'القائمة الرئيسية'"
         >
             <div class="drawer-header">
