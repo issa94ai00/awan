@@ -14,23 +14,46 @@ class PurchaseOrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = PurchaseOrder::with(['supplier', 'items.product']);
+        // receipts_count tells the list whether an order's goods already
+        // arrived, so a completed row can point at its receipt instead of
+        // offering a receive action that would double-count the stock.
+        $query = PurchaseOrder::with(['supplier', 'items.product'])->withCount('receipts');
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
         }
 
+        // Matches every spelling of the requested stage, so an order saved as
+        // 'ordered' by an older version of this screen still appears under
+        // 'confirmed' rather than falling out of every tab.
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->whereIn('status', $this->statusAliases($request->input('status')));
         }
 
-        $purchaseOrders = $query->latest()->paginate($request->input('per_page', 20));
+        // Searching hits the table rather than the twenty rows the browser
+        // happened to hold, so an order on page three can still be found.
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%")
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', "%{$search}%")
+                        ->orWhere('company', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%"));
+            });
+        }
+
+        $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
+
+        $purchaseOrders = $query->latest()->paginate($perPage);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase orders retrieved successfully',
             'data' => [
                 'orders' => $purchaseOrders->items(),
+                // Counted over the whole table: a badge that only counted the
+                // current page would say nothing about how much is waiting.
+                'status_counts' => $this->statusCounts(),
                 'pagination' => [
                     'current_page' => $purchaseOrders->currentPage(),
                     'last_page' => $purchaseOrders->lastPage(),
@@ -42,12 +65,45 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
+    /** Every stored spelling that means the given stage. */
+    private function statusAliases(string $status): array
+    {
+        $stage = PurchaseOrder::normalizeStatus($status);
+
+        $aliases = array_keys(
+            array_filter(PurchaseOrder::LEGACY_STATUSES, fn ($mapped) => $mapped === $stage)
+        );
+
+        return array_values(array_unique([$stage, ...$aliases]));
+    }
+
+    private function statusCounts(): array
+    {
+        $counts = PurchaseOrder::query()
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $byStage = array_fill_keys(PurchaseOrder::STATUSES, 0);
+
+        foreach ($counts as $status => $total) {
+            $stage = PurchaseOrder::normalizeStatus((string) $status);
+            // An unrecognised status still counts towards the total, it just
+            // has no tab of its own.
+            if (array_key_exists($stage, $byStage)) {
+                $byStage[$stage] += (int) $total;
+            }
+        }
+
+        return ['all' => (int) $counts->sum()] + $byStage;
+    }
+
     public function store(Request $request): JsonResponse
     {
         try {
             $validated = $request->validate([
                 'supplier_id' => 'required|exists:suppliers,id',
-                'status' => 'nullable|string|in:pending,confirmed,ordered,received,cancelled',
+                'status' => 'nullable|string|in:' . implode(',', $this->writableStatuses()),
                 'due_date' => 'nullable|date',
                 'discount' => 'nullable|numeric|min:0',
                 'tax' => 'nullable|numeric|min:0',
@@ -131,7 +187,8 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
-        $order->load(['supplier', 'items.product']);
+        $order->load(['supplier', 'items.product', 'receipts']);
+        $order->loadCount('receipts');
 
         return response()->json([
             'success' => true,
@@ -144,7 +201,7 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'status' => 'required|string|in:pending,confirmed,ordered,received,cancelled',
+            'status' => 'required|string|in:' . implode(',', $this->writableStatuses()),
             'due_date' => 'nullable|date',
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
@@ -195,6 +252,81 @@ class PurchaseOrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Purchase order updated successfully',
+            'data' => $order,
+        ]);
+    }
+
+    /**
+     * Statuses a full save may carry.
+     *
+     * The list used to stop at 'received', so the edit form's own options
+     * ('processing', 'completed') were rejected — and an order that a goods
+     * receipt had already marked completed could not be saved again at all,
+     * because its current status was not in the list it had to pass.
+     */
+    private function writableStatuses(): array
+    {
+        return array_values(array_unique([
+            ...PurchaseOrder::STATUSES,
+            ...array_keys(PurchaseOrder::LEGACY_STATUSES),
+        ]));
+    }
+
+    /**
+     * Move an order along the workflow without touching anything else.
+     *
+     * Approving used to mean reopening the edit form and re-saving the whole
+     * order, which rewrites every line — update() deletes them and inserts them
+     * again — just to change one word. This changes the status alone, so
+     * approval is a single click that cannot disturb the lines.
+     */
+    public function updateStatus(Request $request, PurchaseOrder $order): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|string|in:' . implode(',', PurchaseOrder::STATUSES),
+        ]);
+
+        $current = PurchaseOrder::normalizeStatus($order->status);
+        $target = PurchaseOrder::normalizeStatus($validated['status']);
+
+        if ($current === $target) {
+            $order->load(['supplier', 'items.product']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'أمر الشراء في هذه الحالة بالفعل',
+                'data' => $order,
+            ]);
+        }
+
+        // Completion is the goods receipt's to write: it is what moves the stock
+        // and posts the journal entry. Marking the order completed from here
+        // would claim goods arrived that nothing ever booked in.
+        if ($target === PurchaseOrder::STATUS_COMPLETED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'يكتمل أمر الشراء بتسجيل إيصال استلام للبضاعة، وليس بتغيير حالته يدوياً',
+                'data' => null,
+            ], 422);
+        }
+
+        if (!in_array($target, PurchaseOrder::STATUS_TRANSITIONS[$current] ?? [], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => $current === PurchaseOrder::STATUS_COMPLETED
+                    ? 'تم استلام بضاعة هذا الأمر، ولا يمكن تغيير حالته'
+                    : 'لا يمكن نقل أمر الشراء من حالته الحالية إلى الحالة المطلوبة',
+                'data' => null,
+            ], 422);
+        }
+
+        $order->update(['status' => $target]);
+        $order->load(['supplier', 'items.product']);
+        $order->loadCount('receipts');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تحديث حالة أمر الشراء بنجاح',
             'data' => $order,
         ]);
     }

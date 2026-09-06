@@ -7,12 +7,16 @@
             :subtitle="$t('follow_current_orders_and_use')"
         >
             <template #actions>
-                <el-input 
-                    v-model="searchQuery" 
-                    :placeholder="$t('search_by_order_number_or_supplier_name')" 
-                    clearable 
+                <!-- Searching hits the API, so an order on any page is found. -->
+                <el-input
+                    v-model="searchQuery"
+                    :placeholder="$t('search_by_order_number_or_supplier_name')"
+                    clearable
                     class="search-input"
                     :prefix-icon="Search"
+                    @input="onSearchInput"
+                    @keyup.enter="loadOrders(1)"
+                    @clear="loadOrders(1)"
                 />
                 <el-button type="primary" class="create-btn" @click="openCreateDrawer">
                     <i class="fas fa-plus"></i> {{ $t('new_purchase_order') }}
@@ -20,7 +24,9 @@
             </template>
         </AdminPageHeader>
 
-        <!-- Metrics cards row -->
+        <!-- Metrics cards. Counted by the API over the whole table, not over
+             the twenty rows that happen to be loaded. The two middle cards are
+             the work waiting to be done, so they double as filters. -->
         <AdminStatGrid>
             <el-card shadow="hover" class="stat-card-wrapper">
                 <div class="stat-card-inner">
@@ -28,19 +34,42 @@
                         <i class="fas fa-file-signature"></i>
                     </div>
                     <div class="stat-details">
-                        <h3>{{ store.orders.length }}</h3>
+                        <h3>{{ counts.all }}</h3>
                         <p>{{ $t('total_orders') }}</p>
                     </div>
                 </div>
             </el-card>
-            <el-card shadow="hover" class="stat-card-wrapper">
+            <el-card
+                shadow="hover"
+                class="stat-card-wrapper"
+                :class="{ 'attention-card': counts.pending > 0, clickable: counts.pending > 0 }"
+                @click="counts.pending > 0 && goToStage('pending')"
+            >
                 <div class="stat-card-inner">
                     <div class="stat-icon-box orange-grad">
-                        <i class="fas fa-clock"></i>
+                        <i class="fas fa-stamp"></i>
                     </div>
                     <div class="stat-details">
-                        <h3>{{ pendingCount }}</h3>
-                        <p>{{ $t('pending_orders') }}</p>
+                        <h3>{{ counts.pending }}</h3>
+                        <p>{{ $t('awaiting_approval') }}</p>
+                        <small v-if="counts.pending > 0" class="stat-cta">{{ $t('review_and_approve_them') }}</small>
+                    </div>
+                </div>
+            </el-card>
+            <el-card
+                shadow="hover"
+                class="stat-card-wrapper"
+                :class="{ clickable: awaitingReceiptCount > 0 }"
+                @click="awaitingReceiptCount > 0 && goToStage('confirmed')"
+            >
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box purple-grad">
+                        <i class="fas fa-truck-ramp-box"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3>{{ awaitingReceiptCount }}</h3>
+                        <p>{{ $t('awaiting_goods_receipt') }}</p>
+                        <small v-if="awaitingReceiptCount > 0" class="stat-cta">{{ $t('record_their_receipts') }}</small>
                     </div>
                 </div>
             </el-card>
@@ -50,12 +79,25 @@
                         <i class="fas fa-check-circle"></i>
                     </div>
                     <div class="stat-details">
-                        <h3>{{ completedCount }}</h3>
-                        <p>{{ $t('completed_orders') }}</p>
+                        <h3>{{ counts.completed }}</h3>
+                        <p>{{ $t('received_orders') }}</p>
                     </div>
                 </div>
             </el-card>
         </AdminStatGrid>
+
+        <!-- The workflow as a filter: each tab is a stage, badged with how many
+             orders are sitting in it across the whole table. -->
+        <el-tabs v-model="activeStage" class="stage-tabs" @tab-change="onStageChange">
+            <el-tab-pane v-for="tab in stageTabs" :key="tab.name" :name="tab.name">
+                <template #label>
+                    <span class="stage-tab-label">
+                        <i class="fas" :class="tab.icon"></i> {{ tab.label }}
+                        <el-badge v-if="tab.count" :value="tab.count" :type="tab.badge" class="stage-badge" />
+                    </span>
+                </template>
+            </el-tab-pane>
+        </el-tabs>
 
         <!-- Table Panel -->
         <el-card shadow="hover" class="table-panel">
@@ -69,13 +111,14 @@
                 <el-skeleton :rows="6" animated />
             </div>
             <div v-else>
-                <el-table 
-                    v-if="filteredOrders.length" 
-                    :data="filteredOrders" 
-                    style="width: 100%" 
-                    stripe 
+                <el-table
+                    v-if="store.orders.length"
+                    :data="store.orders"
+                    style="width: 100%"
+                    stripe
                     highlight-current-row
                     class="custom-table"
+                    :row-class-name="rowClassName"
                 >
                     <el-table-column prop="order_number" :label="$t('order_number')" width="140">
                         <template #default="{ row }">
@@ -105,42 +148,101 @@
                     </el-table-column>
                     <el-table-column prop="due_date" :label="$t('due_date')" width="160" align="center" />
                     
-                    <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="260" align="center">
+                    <!-- Actions.
+                         One labelled button for the step this order is actually
+                         waiting on — approve it, or receive its goods — with
+                         everything else folded behind a menu. The row used to
+                         show three unlabelled icons and, sometimes, a fourth
+                         green button, which left "what do I do with this order"
+                         to be worked out from the status tag; approving was not
+                         among them at all. -->
+                    <el-table-column :label="$t('actions')" width="250" align="center">
                         <template #default="{ row }">
-                            <el-button-group class="action-btn-group">
-                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
-                                    <i class="fas fa-eye"></i>
+                            <div class="row-actions">
+                                <el-button
+                                    v-if="nextStep(row).action"
+                                    size="small"
+                                    :type="nextStep(row).type"
+                                    :loading="busyOrderId === row.id"
+                                    class="next-step-btn"
+                                    @click="nextStep(row).action(row)"
+                                >
+                                    <i class="fas" :class="nextStep(row).icon"></i> {{ nextStep(row).label }}
                                 </el-button>
-                                <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
-                                    <i class="fas fa-edit"></i>
-                                </el-button>
-                                <el-button size="small" type="danger" plain @click="deleteOrder(row.id)" :title="$t('delete')">
-                                    <i class="fas fa-trash"></i>
-                                </el-button>
-                            </el-button-group>
-                            
-                            <el-button 
-                                v-if="['confirmed', 'processing'].includes(normalizeStatus(row.status))"
-                                size="small" 
-                                type="success" 
-                                plain 
-                                style="margin-right: 0.5rem;"
-                                @click="receiveGoods(row.id)"
-                            >
-                                <i class="fas fa-arrow-alt-circle-down"></i> {{ $t('receive') }}
-                            </el-button>
+                                <el-tag
+                                    v-else
+                                    :type="nextStep(row).type"
+                                    effect="plain"
+                                    size="small"
+                                    class="next-step-done"
+                                >
+                                    <i class="fas" :class="nextStep(row).icon"></i> {{ nextStep(row).label }}
+                                </el-tag>
+
+                                <el-dropdown trigger="click" @command="(cmd) => onRowCommand(cmd, row)">
+                                    <el-button size="small" plain class="more-btn" :title="$t('more_actions')">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </el-button>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <el-dropdown-item command="view">
+                                                <i class="fas fa-eye"></i> {{ $t('view_details') }}
+                                            </el-dropdown-item>
+                                            <el-dropdown-item command="edit" :disabled="!canEdit(row)">
+                                                <i class="fas fa-edit"></i> {{ $t('edit') }}
+                                            </el-dropdown-item>
+                                            <el-dropdown-item
+                                                v-if="isApproved(row)"
+                                                command="reopen"
+                                                divided
+                                            >
+                                                <i class="fas fa-rotate-left"></i> {{ $t('return_to_pending') }}
+                                            </el-dropdown-item>
+                                            <el-dropdown-item
+                                                v-if="canCancel(row)"
+                                                command="cancel"
+                                                :divided="!isApproved(row)"
+                                            >
+                                                <i class="fas fa-ban"></i> {{ $t('cancel_order') }}
+                                            </el-dropdown-item>
+                                            <!-- A received order's stock movement
+                                                 and journal entry point back at
+                                                 it; deleting it leaves both
+                                                 referring to nothing. -->
+                                            <el-dropdown-item command="delete" divided :disabled="!canDelete(row)">
+                                                <i class="fas fa-trash"></i> {{ $t('delete') }}
+                                            </el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                            </div>
                         </template>
                     </el-table-column>
                 </el-table>
 
                 <!-- Empty State -->
-                <div v-if="!filteredOrders.length" class="empty-state-box">
+                <div v-if="!store.orders.length" class="empty-state-box">
                     <i class="fas fa-file-signature empty-icon"></i>
                     <p>{{ $t('there_are_no_requests_matching') }}</p>
-                    <el-button type="primary" size="medium" @click="openCreateDrawer">
+                    <el-button v-if="isFiltered" @click="clearFilters">
+                        <i class="fas fa-rotate-left"></i> {{ $t('show_all_orders') }}
+                    </el-button>
+                    <el-button v-else type="primary" size="medium" @click="openCreateDrawer">
                         <i class="fas fa-plus"></i> {{ $t('create_first_purchase_order') }}
                     </el-button>
+                </div>
+
+                <!-- Paging is server-side: the list used to stop at the newest
+                     twenty orders with no way to reach the ones behind them. -->
+                <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-row">
+                    <el-pagination
+                        layout="prev, pager, next, total"
+                        :total="store.pagination.total"
+                        :current-page="store.pagination.current_page"
+                        :page-size="store.pagination.per_page"
+                        background
+                        @current-change="onPageChange"
+                    />
                 </div>
             </div>
         </el-card>
@@ -229,8 +331,42 @@
                         </el-card>
                     </el-col>
 
-                    <!-- Right: supplier info -->
+                    <!-- Right: the next step, then who and when -->
                     <el-col :xs="24" :lg="8">
+                        <!-- What this order is waiting on, and the button that
+                             does it. The drawer previously only ever offered the
+                             receive step, so an order still awaiting approval
+                             showed nothing to act on and had to be approved
+                             through the edit form. -->
+                        <el-card shadow="never" class="next-step-card mb-3" :class="`next-step-${drawerStep.tone}`">
+                            <div class="next-step-head">
+                                <i class="fas next-step-glyph" :class="drawerStep.icon"></i>
+                                <div>
+                                    <strong>{{ drawerStep.title }}</strong>
+                                    <p>{{ drawerStep.hint }}</p>
+                                </div>
+                            </div>
+                            <el-button
+                                v-if="drawerStep.action"
+                                :type="drawerStep.type"
+                                class="next-step-cta"
+                                :loading="busyOrderId === selectedOrder.id"
+                                @click="drawerStep.action(selectedOrder)"
+                            >
+                                <i class="fas" :class="drawerStep.actionIcon"></i> {{ drawerStep.actionLabel }}
+                            </el-button>
+                            <!-- Approving is the point of no return for the
+                                 lines, so the way back out sits next to it. -->
+                            <el-button
+                                v-if="canCancel(selectedOrder)"
+                                text
+                                class="next-step-secondary"
+                                @click="cancelOrder(selectedOrder)"
+                            >
+                                <i class="fas fa-ban"></i> {{ $t('cancel_order') }}
+                            </el-button>
+                        </el-card>
+
                         <el-card shadow="never" class="mb-3">
                             <template #header>
                                 <span class="card-title-txt"><i class="fas fa-user-tie text-muted mr-1"></i> {{ $t('supplier_details') }}</span>
@@ -266,14 +402,6 @@
                                 </div>
                             </div>
                         </el-card>
-
-                        <!-- Receive button inside drawer -->
-                        <div v-if="['confirmed', 'processing'].includes(normalizeStatus(selectedOrder.status))" class="receive-card-box">
-                            <p class="receive-tip">{{ $t('goods_can_be_received_now') }}</p>
-                            <el-button type="success" style="width: 100%; font-weight: 700;" @click="receiveGoods(selectedOrder.id)">
-                                <i class="fas fa-arrow-alt-circle-down"></i> {{ $t('record_goods_receipt') }}
-                            </el-button>
-                        </div>
                     </el-col>
                 </el-row>
             </div>
@@ -282,7 +410,7 @@
         <!-- Form Drawer (Create / Edit) -->
         <el-drawer
             v-model="formDrawerVisible"
-            :title="isEditMode ? ('edit_purchase_order') : ('create_purchase_order')"
+            :title="isEditMode ? $t('edit_purchase_order') : $t('create_purchase_order')"
             size="55%"
             direction="rtl"
             destroy-on-close
@@ -315,12 +443,22 @@
                     </el-col>
                     <el-col :span="12" v-if="isEditMode">
                         <el-form-item :label="$t('purchase_order_status')" required>
+                            <!-- These were plain <option> elements, which
+                                 el-select does not render: the list was empty,
+                                 so the status could not be changed here at all.
+                                 Completed is absent on purpose — it is written
+                                 by a goods receipt, not chosen. -->
                             <el-select v-model="form.status" :placeholder="$t('select_order_status')" style="width: 100%">
-                                <option value="pending" :label="$t('sales_status_pending')" />
-                                <option value="confirmed" :label="$t('sales_status_confirmed')" />
-                                <option value="processing" :label="$t('sales_status_processing')" />
-                                <option value="completed" :label="$t('sales_status_completed')" />
-                                <option value="cancelled" :label="$t('sales_status_cancelled')" />
+                                <el-option value="pending" :label="$t('sales_status_pending')" />
+                                <el-option value="confirmed" :label="$t('sales_status_confirmed')" />
+                                <el-option value="processing" :label="$t('sales_status_processing')" />
+                                <el-option value="cancelled" :label="$t('sales_status_cancelled')" />
+                                <el-option
+                                    v-if="normalizeStatus(form.status) === 'completed'"
+                                    value="completed"
+                                    :label="$t('sales_status_completed')"
+                                    disabled
+                                />
                             </el-select>
                         </el-form-item>
                     </el-col>
@@ -547,6 +685,7 @@ import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
 import { baseCurrencyCode } from '@/utils/currency';
+import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -627,7 +766,7 @@ const resetForm = () => {
     form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
 };
 
-const normalizeStatus = (status) => String(status || '').toLowerCase();
+const normalizeStatus = normalizePurchaseOrderStatus;
 
 const statusTagType = (status) => {
     const value = normalizeStatus(status);
@@ -679,28 +818,70 @@ const isStepCompleted = (currentStatus, step) => {
     return stepIndex <= currentIndex;
 };
 
-const filteredOrders = computed(() => {
-    if (!searchQuery.value.trim()) return store.orders;
-    const query = searchQuery.value.toLowerCase();
-    return store.orders.filter((order) => {
-        return [
-            order.order_number,
-            order.supplier?.name,
-            order.status,
-            order.due_date
-        ].some((field) => String(field || '').toLowerCase().includes(query));
-    });
-});
+/* ------------------------------------------------------------------ *
+ * The list
+ *
+ * Filtering, searching and counting used to happen in the browser over the
+ * twenty rows the store held — so an order on page two could not be found, let
+ * alone approved, and "pending orders" really meant "pending orders on screen".
+ * All three are now the server's answers over the whole table.
+ * ------------------------------------------------------------------ */
 
-const pendingCount = computed(() => store.orders.filter((order) => {
-    const value = normalizeStatus(order.status);
-    return ['pending', 'processing'].includes(value);
-}).length);
+const activeStage = ref('all');
+const counts = computed(() => store.statusCounts);
 
-const completedCount = computed(() => store.orders.filter((order) => {
-    const value = normalizeStatus(order.status);
-    return ['completed', 'complete', 'paid', 'delivered'].includes(value);
-}).length);
+// Confirmed and processing are both "approved, goods not in yet" — the queue
+// the receipts screen exists to drain.
+const awaitingReceiptCount = computed(() => counts.value.confirmed + counts.value.processing);
+
+const stageTabs = computed(() => [
+    { name: 'all', label: t('all'), icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
+    { name: 'pending', label: t('awaiting_approval'), icon: 'fa-stamp', count: counts.value.pending, badge: 'warning' },
+    { name: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', count: counts.value.confirmed, badge: 'primary' },
+    { name: 'processing', label: t('sales_status_processing'), icon: 'fa-gears', count: counts.value.processing, badge: 'primary' },
+    { name: 'completed', label: t('received_orders'), icon: 'fa-boxes-packing', count: counts.value.completed, badge: 'success' },
+    { name: 'cancelled', label: t('sales_status_cancelled'), icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
+]);
+
+const loadOrders = (page = 1) => {
+    const params = { page, per_page: store.pagination.per_page || 20 };
+
+    if (activeStage.value !== 'all') params.status = activeStage.value;
+    if (searchQuery.value.trim()) params.search = searchQuery.value.trim();
+
+    return store.fetchOrders(params).catch(() => {});
+};
+
+const onStageChange = () => loadOrders(1);
+const onPageChange = (page) => loadOrders(page);
+
+// Debounced, so typing a nine-character order number is one request, not nine.
+let searchTimer = null;
+const onSearchInput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadOrders(1), 400);
+};
+
+const goToStage = (stage) => {
+    activeStage.value = stage;
+    loadOrders(1);
+};
+
+const isFiltered = computed(() => activeStage.value !== 'all' || !!searchQuery.value.trim());
+
+const clearFilters = () => {
+    activeStage.value = 'all';
+    searchQuery.value = '';
+    loadOrders(1);
+};
+
+// Rows still waiting on someone are worth spotting from across the table.
+const rowClassName = ({ row }) => {
+    const stage = normalizeStatus(row.status);
+    if (stage === 'pending') return 'row-awaiting-approval';
+    if (['confirmed', 'processing'].includes(stage)) return 'row-awaiting-receipt';
+    return '';
+};
 
 // Drawer Actions
 const openDetailDrawer = async (id) => {
@@ -918,12 +1099,12 @@ const saveOrder = async () => {
             await purchaseOrdersApi.update(editingOrderId.value, form);
             ElMessage.success(t('purchase_order_updated'));
             formDrawerVisible.value = false;
-            await store.fetchOrders();
+            await loadOrders(store.pagination.current_page);
         } else {
             const { data } = await purchaseOrdersApi.create(form);
             ElMessage.success(t('purchase_order_saved'));
             formDrawerVisible.value = false;
-            await store.fetchOrders();
+            await loadOrders(1);
             promptCreateGoodsReceipt(data.data?.id);
         }
     } catch (e) {
@@ -936,13 +1117,13 @@ const saveOrder = async () => {
 // Asks the operator, right after a new order is placed, whether to jump
 // straight into recording the goods receipt for it — skips the extra trip
 // back through the list once the supplier confirms delivery.
-const promptCreateGoodsReceipt = async (orderId) => {
+const promptCreateGoodsReceipt = async (orderId, message) => {
     if (!orderId) return;
     try {
         await ElMessageBox.confirm(
-            t('create_goods_receipt_now_message'),
+            message || t('create_goods_receipt_now_message'),
             t('record_goods_receipt'),
-            { type: 'success', confirmButtonText: t('yes'), cancelButtonText: t('no') }
+            { type: 'success', confirmButtonText: t('yes'), cancelButtonText: t('not_now') }
         );
         receiveGoods(orderId);
     } catch {
@@ -951,20 +1132,236 @@ const promptCreateGoodsReceipt = async (orderId) => {
 };
 
 const deleteOrder = async (id) => {
-    if (confirm(t('confirm_delete_purchase_order'))) {
-        try {
-            await purchaseOrdersApi.delete(id);
-            ElMessage.success(t('purchase_order_deleted'));
-            await store.fetchOrders();
-        } catch (error) {
-            ElMessage.error(t('failed_to_delete_purchase_order'));
-        }
+    // A native confirm() next to Element Plus dialogs everywhere else on this
+    // screen; it also blocks the whole tab and cannot be styled or translated
+    // beyond its message.
+    try {
+        await ElMessageBox.confirm(
+            t('confirm_delete_purchase_order'),
+            t('delete'),
+            {
+                type: 'warning',
+                confirmButtonText: t('delete'),
+                cancelButtonText: t('cancel'),
+                confirmButtonClass: 'el-button--danger',
+            }
+        );
+    } catch {
+        return;
+    }
+
+    try {
+        await purchaseOrdersApi.delete(id);
+        ElMessage.success(t('purchase_order_deleted'));
+        await loadOrders(store.pagination.current_page);
+    } catch (error) {
+        ElMessage.error(t('failed_to_delete_purchase_order'));
     }
 };
 
-const receiveGoods = (id) => {
+const receiveGoods = (order) => {
+    const id = typeof order === 'object' ? order.id : order;
     router.push(`/admin/purchases/receipts?create_for_order=${id}`);
 };
+
+/* ------------------------------------------------------------------ *
+ * Workflow actions
+ *
+ * Approving an order meant opening the edit form, picking a status, and saving
+ * the whole thing again — which rewrites every line — and the status field was
+ * an empty select, so in practice it could not be done from this screen at all.
+ * These call the status endpoint, which changes the one word and nothing else.
+ * ------------------------------------------------------------------ */
+
+const busyOrderId = ref(null);
+
+const isApproved = (order) => ['confirmed', 'processing'].includes(normalizeStatus(order?.status));
+const isClosed = (order) => ['completed', 'cancelled'].includes(normalizeStatus(order?.status));
+
+// A received order's lines are what the stock and the ledger were built from,
+// so editing them after the fact would describe goods that never arrived.
+const canEdit = (order) => !isClosed(order);
+const canCancel = (order) => !isClosed(order);
+const canDelete = (order) => normalizeStatus(order?.status) !== 'completed';
+
+const moveToStatus = async (order, status) => {
+    busyOrderId.value = order.id;
+    try {
+        const updated = await store.updateStatus(order.id, status);
+        // The drawer holds its own copy of the order, fetched separately.
+        if (selectedOrder.value?.id === order.id && updated) {
+            selectedOrder.value = { ...selectedOrder.value, ...updated };
+        }
+        return updated;
+    } finally {
+        busyOrderId.value = null;
+    }
+};
+
+const approveOrder = async (order) => {
+    try {
+        await ElMessageBox.confirm(
+            t('approve_purchase_order_message', {
+                number: order.order_number,
+                supplier: order.supplier?.name || '-',
+                total: parseFloat(order.total || 0).toFixed(2),
+            }),
+            t('approve_purchase_order'),
+            {
+                type: 'success',
+                confirmButtonText: t('approve_and_continue'),
+                cancelButtonText: t('cancel'),
+            }
+        );
+    } catch {
+        return; // Operator backed out.
+    }
+
+    try {
+        await moveToStatus(order, 'confirmed');
+        // Approval exists so the goods can be received, so offer that next
+        // instead of leaving the operator to find the receipts screen.
+        ElMessage.success(t('purchase_order_approved'));
+        promptCreateGoodsReceipt(order.id, t('order_approved_receive_now_message'));
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_update_order_status'));
+    }
+};
+
+const reopenOrder = async (order) => {
+    try {
+        await moveToStatus(order, 'pending');
+        ElMessage.success(t('purchase_order_returned_to_pending'));
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_update_order_status'));
+    }
+};
+
+const cancelOrder = async (order) => {
+    try {
+        await ElMessageBox.confirm(
+            t('cancel_purchase_order_message', { number: order.order_number }),
+            t('cancel_order'),
+            {
+                type: 'warning',
+                confirmButtonText: t('cancel_order'),
+                cancelButtonText: t('back'),
+                confirmButtonClass: 'el-button--danger',
+            }
+        );
+    } catch {
+        return;
+    }
+
+    try {
+        await moveToStatus(order, 'cancelled');
+        ElMessage.success(t('purchase_order_cancelled'));
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || t('failed_to_update_order_status'));
+    }
+};
+
+/**
+ * The one thing this order is waiting on, as a button.
+ *
+ * Every stage answers "what now?" the same way in the table and in the drawer,
+ * so the row never asks the operator to infer the next step from a status tag.
+ */
+const nextStep = (order) => {
+    const stage = normalizeStatus(order.status);
+
+    if (stage === 'pending') {
+        return {
+            label: t('approve'),
+            icon: 'fa-circle-check',
+            type: 'success',
+            action: approveOrder,
+        };
+    }
+
+    if (stage === 'confirmed' || stage === 'processing') {
+        return {
+            label: t('receive'),
+            icon: 'fa-truck-ramp-box',
+            type: 'primary',
+            action: receiveGoods,
+        };
+    }
+
+    if (stage === 'completed') {
+        return { label: t('received_state'), icon: 'fa-boxes-packing', type: 'success', action: null };
+    }
+
+    if (stage === 'cancelled') {
+        return { label: t('sales_status_cancelled'), icon: 'fa-ban', type: 'info', action: null };
+    }
+
+    return { label: getArabicStatus(order.status), icon: 'fa-circle', type: 'info', action: null };
+};
+
+const onRowCommand = (command, row) => {
+    if (command === 'view') return openDetailDrawer(row.id);
+    if (command === 'edit') return canEdit(row) ? openEditDrawer(row.id) : undefined;
+    if (command === 'reopen') return reopenOrder(row);
+    if (command === 'cancel') return cancelOrder(row);
+    if (command === 'delete') return canDelete(row) ? deleteOrder(row.id) : undefined;
+};
+
+/** The drawer's version of nextStep — same steps, with room to explain them. */
+const drawerStep = computed(() => {
+    const order = selectedOrder.value;
+    if (!order) return {};
+
+    const stage = normalizeStatus(order.status);
+
+    if (stage === 'pending') {
+        return {
+            tone: 'warning',
+            type: 'success',
+            icon: 'fa-stamp',
+            title: t('awaiting_your_approval'),
+            hint: t('approve_to_allow_receiving'),
+            actionLabel: t('approve_purchase_order'),
+            actionIcon: 'fa-circle-check',
+            action: approveOrder,
+        };
+    }
+
+    if (stage === 'confirmed' || stage === 'processing') {
+        return {
+            tone: 'primary',
+            type: 'primary',
+            icon: 'fa-truck-ramp-box',
+            title: t('approved_awaiting_goods'),
+            hint: t('goods_can_be_received_now'),
+            actionLabel: t('record_goods_receipt'),
+            actionIcon: 'fa-arrow-alt-circle-down',
+            action: receiveGoods,
+        };
+    }
+
+    if (stage === 'completed') {
+        return {
+            tone: 'success',
+            type: 'success',
+            icon: 'fa-boxes-packing',
+            title: t('goods_received'),
+            hint: order.received_date
+                ? t('received_on_date', { date: String(order.received_date).slice(0, 10) })
+                : t('quantities_booked_into_stock'),
+            action: null,
+        };
+    }
+
+    return {
+        tone: 'muted',
+        type: 'info',
+        icon: 'fa-ban',
+        title: t('sales_status_cancelled'),
+        hint: t('cancelled_order_hint'),
+        action: null,
+    };
+});
 
 /**
  * Opens the create drawer already filled in from a sales order's shortfall.
@@ -1005,10 +1402,15 @@ const prefillFromShortage = async (salesOrderId) => {
 };
 
 onMounted(async () => {
+    // The purchases hub links here with ?search=<order number>; without this the
+    // parameter was dropped and the operator landed on an unfiltered list.
+    if (route.query.search) searchQuery.value = String(route.query.search);
+    if (route.query.status) activeStage.value = String(route.query.status);
+
     // Products first: the item rows bind to product ids, and the selects would
     // render blank if the drawer opened before the catalogue arrived.
     await Promise.all([
-        store.fetchOrders().catch(() => {}),
+        loadOrders(1),
         suppliersStore.fetchSuppliers().catch(() => {}),
         productsStore.fetchProducts({ per_page: 100 }).catch(() => {}),
     ]);
@@ -1190,6 +1592,85 @@ onMounted(async () => {
     padding: 0.4rem 0.6rem;
 }
 
+/* One labelled step per row, with the rest behind the menu beside it. */
+.row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.next-step-btn {
+    font-weight: 600;
+    min-width: 108px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.next-step-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 108px;
+    justify-content: center;
+    height: 24px;
+}
+
+.more-btn {
+    padding: 0.4rem 0.55rem;
+}
+
+/* Rows with something outstanding, marked down the leading edge rather than
+   with a full-row tint that would fight the striping. */
+.custom-table :deep(.row-awaiting-approval) td:first-child {
+    box-shadow: inset 3px 0 0 var(--el-color-warning, #e6a23c);
+}
+
+.custom-table :deep(.row-awaiting-receipt) td:first-child {
+    box-shadow: inset 3px 0 0 var(--el-color-primary, #409eff);
+}
+
+.pagination-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.stage-tabs {
+    margin-bottom: 0.5rem;
+}
+
+.stage-tab-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.stage-badge {
+    margin-inline-start: 0.5rem;
+}
+
+.purple-grad {
+    background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+}
+
+.stat-card-wrapper.clickable {
+    cursor: pointer;
+}
+
+.stat-card-wrapper.attention-card {
+    border: 1px solid #fcd34d;
+}
+
+.stat-cta {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--el-color-warning, #b45309);
+}
+
 .loading-state {
     padding: 2rem;
 }
@@ -1360,19 +1841,87 @@ onMounted(async () => {
     color: var(--text-dark);
 }
 
-.receive-card-box {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    padding: 1.25rem;
+/* The drawer's next-step panel: says what the order is waiting on, then
+   offers the button that does it. Tinted by stage so it reads before it is
+   read. */
+.next-step-card {
     border-radius: var(--radius-md);
-    text-align: center;
+    border: 1px solid var(--border-color);
 }
 
-.receive-tip {
-    font-size: 0.85rem;
-    color: #1e3a8a;
-    margin: 0 0 1rem 0;
+.next-step-card :deep(.el-card__body) {
+    padding: 1.15rem;
+}
+
+.next-step-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.next-step-head strong {
+    display: block;
+    font-size: 0.95rem;
+    color: var(--text-dark);
+}
+
+.next-step-head p {
+    margin: 0.3rem 0 0;
+    font-size: 0.82rem;
     line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.next-step-glyph {
+    font-size: 1.35rem;
+    margin-top: 0.15rem;
+}
+
+.next-step-cta {
+    width: 100%;
+    font-weight: 700;
+}
+
+.next-step-secondary {
+    width: 100%;
+    margin: 0.5rem 0 0;
+    color: var(--text-muted);
+}
+
+.next-step-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.next-step-warning .next-step-glyph {
+    color: #b45309;
+}
+
+.next-step-primary {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.next-step-primary .next-step-glyph {
+    color: #1d4ed8;
+}
+
+.next-step-success {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+
+.next-step-success .next-step-glyph {
+    color: #047857;
+}
+
+.next-step-muted {
+    background: var(--bg-light, #f8fafc);
+}
+
+.next-step-muted .next-step-glyph {
+    color: var(--text-muted);
 }
 
 .quick-add-hint {

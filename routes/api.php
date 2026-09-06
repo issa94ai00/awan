@@ -314,6 +314,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::prefix('admin')->group(function () {
             Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
             Route::get('/products/next-sku', [ProductController::class, 'nextSku'])->name('api.admin.products.next-sku');
+            // Manual print priority within one classification. Declared before
+            // /products/{product} so "reorder" is never read as a product id.
+            Route::put('/products/reorder', [ProductController::class, 'reorder'])->name('api.admin.products.reorder');
             Route::get('/products/export', [ProductController::class, 'export'])->name('api.admin.products.export');
             Route::post('/products/import', [ProductController::class, 'import'])->name('api.admin.products.import');
             Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.admin.products.show');
@@ -520,6 +523,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
                 Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
                 Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->name('api.admin.purchase-orders.update');
+                // Approving is a one-word change, so it does not go through
+                // update() — that endpoint rewrites every line of the order.
+                Route::put('/purchase-orders/{order}/status', [PurchaseOrderController::class, 'updateStatus'])->name('api.admin.purchase-orders.update-status');
                 Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->name('api.admin.purchase-orders.destroy');
             });
 
