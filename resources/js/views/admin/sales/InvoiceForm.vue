@@ -289,24 +289,97 @@
             <!-- ── Summary rail: who, how it settles, what is owed ─────────── -->
             <aside class="summary-rail">
                 <div class="rail-card">
-                    <h3 class="rail-title"><el-icon><User /></el-icon> {{ t('client') }}</h3>
+                    <div class="rail-head">
+                        <h3 class="rail-title"><el-icon><User /></el-icon> {{ t('client') }}</h3>
+                        <button type="button" class="rail-action" @click="openClientDialog()">
+                            <el-icon><Plus /></el-icon>
+                            {{ t('new_client') }}
+                        </button>
+                    </div>
 
                     <label class="field">
                         <span class="field-label">{{ t('client') }}</span>
+                        <!-- Searched on the server. The list used to be the
+                             twenty most recent clients and nothing else, so a
+                             client outside that window could not be picked at
+                             all — the field looked like it was filtering the
+                             whole book when it was filtering a page of it. -->
                         <el-select
+                            ref="customerSelectRef"
                             v-model="form.customer_id"
                             filterable
                             clearable
-                            :placeholder="t('choose_client')"
+                            remote
+                            reserve-keyword
+                            :remote-method="searchCustomers"
+                            :loading="customersLoading"
+                            :placeholder="t('search_or_choose_client')"
+                            popper-class="client-popper"
+                            @change="onCustomerPicked"
                         >
                             <el-option
-                                v-for="customer in customers"
+                                v-for="customer in customerOptions"
                                 :key="customer.id"
                                 :label="customer.name"
                                 :value="customer.id"
-                            />
+                            >
+                                <div class="client-option">
+                                    <span class="client-option-name">{{ customer.name }}</span>
+                                    <span v-if="clientContactLine(customer)" class="client-option-meta">
+                                        {{ clientContactLine(customer) }}
+                                    </span>
+                                </div>
+                            </el-option>
+
+                            <!-- Element Plus falls back to the empty slot
+                                 while a remote search is in flight, so an
+                                 answer still on its way would otherwise read
+                                 as "nobody by that name". -->
+                            <template #loading>
+                                <div class="select-state">
+                                    <el-icon class="is-loading"><Loading /></el-icon>
+                                    {{ t('searching') }}…
+                                </div>
+                            </template>
+
+                            <!-- A search that found nobody is the moment the
+                                 client is most likely to be new: the offer to
+                                 add them carries the words already typed. -->
+                            <template #empty>
+                                <div class="select-empty">
+                                    <p>{{ t('no_clients_found') }}</p>
+                                    <el-button type="primary" text @click="openClientDialog(customerQuery)">
+                                        <el-icon><Plus /></el-icon>
+                                        {{ customerQuery ? t('add_client_named', { name: customerQuery }) : t('new_client') }}
+                                    </el-button>
+                                </div>
+                            </template>
+
+                            <template #footer>
+                                <button type="button" class="select-add" @click="openClientDialog(customerQuery)">
+                                    <el-icon><Plus /></el-icon>
+                                    {{ t('new_client') }}
+                                </button>
+                            </template>
                         </el-select>
                     </label>
+
+                    <!-- Who was actually picked, and what their account says
+                         before this invoice touches it — the paid-now figure
+                         further down is decided on exactly that. -->
+                    <div v-if="selectedCustomer" class="client-card">
+                        <span class="client-avatar">{{ clientInitial }}</span>
+                        <div class="client-body">
+                            <span class="client-name">{{ selectedCustomer.name }}</span>
+                            <span v-if="clientContactLine(selectedCustomer)" class="client-meta">
+                                {{ clientContactLine(selectedCustomer) }}
+                            </span>
+                        </div>
+                        <span v-if="clientBalance" class="client-balance" :class="clientBalance.tone">
+                            <span class="client-balance-label">{{ clientBalance.label }}</span>
+                            <span class="client-balance-value">{{ money(clientBalance.amount) }}</span>
+                        </span>
+                    </div>
 
                     <label class="field">
                         <span class="field-label">{{ t('sales_representative') }}</span>
@@ -464,15 +537,121 @@
                 {{ isEdit ? t('save_changes') : t('create_invoice') }}
             </el-button>
         </div>
+
+        <!-- ── Quick client ───────────────────────────────────────────────
+             A client who walks in unknown used to cost the seller the whole
+             invoice: leave for the clients page, add them there, come back to
+             an empty form. This asks for the little that a sale needs and
+             hands the invoice back with them already selected. -->
+        <el-dialog
+            v-model="clientDialogVisible"
+            :title="t('new_client')"
+            width="min(480px, 92vw)"
+            align-center
+            append-to-body
+            :close-on-click-modal="false"
+            class="client-dialog"
+            @opened="focusClientField"
+            @closed="resetClientDraft"
+        >
+            <p class="dialog-lede">{{ t('quick_client_hint') }}</p>
+
+            <form class="client-form" @submit.prevent="saveClient">
+                <label class="field">
+                    <span class="field-label">{{ t('name') }} <em class="req">*</em></span>
+                    <el-input
+                        ref="clientNameRef"
+                        v-model="clientDraft.name"
+                        size="large"
+                        :placeholder="t('client_name_placeholder')"
+                    />
+                    <span v-if="clientErrors.name" class="field-error">{{ clientErrors.name }}</span>
+                </label>
+
+                <div class="fields-row">
+                    <label class="field">
+                        <span class="field-label">{{ t('phone') }}</span>
+                        <el-input ref="clientPhoneRef" v-model="clientDraft.phone" dir="ltr" inputmode="tel" />
+                        <span v-if="clientErrors.phone" class="field-error">{{ clientErrors.phone }}</span>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">{{ t('company') }}</span>
+                        <el-input v-model="clientDraft.company" />
+                    </label>
+                </div>
+
+                <!-- The API folds a new client into an existing one when the
+                     phone or email is already somebody's, overwriting their
+                     record. Said here, while it can still be avoided. -->
+                <div v-if="duplicateClient" class="dup-hint">
+                    <el-icon><WarningFilled /></el-icon>
+                    <span>{{ t('client_contact_already_used', { name: duplicateClient.name }) }}</span>
+                    <el-button text type="primary" size="small" @click="useDuplicateClient">
+                        {{ t('use_this_client') }}
+                    </el-button>
+                </div>
+
+                <label class="field">
+                    <span class="field-label">{{ t('address') }}</span>
+                    <el-input v-model="clientDraft.address" type="textarea" :rows="2" />
+                </label>
+
+                <div class="extras">
+                    <button type="button" class="extras-toggle" @click="showClientExtras = !showClientExtras">
+                        <el-icon><component :is="showClientExtras ? Minus : Plus" /></el-icon>
+                        {{ t('more_client_details') }}
+                    </button>
+
+                    <div v-if="showClientExtras" class="client-extras">
+                        <label class="field">
+                            <span class="field-label">{{ t('email') }}</span>
+                            <el-input v-model="clientDraft.email" dir="ltr" inputmode="email" />
+                            <span v-if="clientErrors.email" class="field-error">{{ clientErrors.email }}</span>
+                        </label>
+                        <label class="field">
+                            <span class="field-label">{{ t('city') }}</span>
+                            <el-input v-model="clientDraft.city" />
+                        </label>
+                        <label class="field">
+                            <span class="field-label">{{ t('tax_number') }}</span>
+                            <el-input v-model="clientDraft.tax_number" dir="ltr" />
+                        </label>
+                        <label class="field">
+                            <span class="field-label">{{ t('credit_limit') }}</span>
+                            <el-input v-model.number="clientDraft.credit_limit" type="number" min="0" step="0.01" />
+                        </label>
+                    </div>
+                </div>
+
+                <el-alert v-if="clientError" :title="clientError" type="error" show-icon :closable="false" />
+
+                <!-- Enter anywhere in the form saves it. -->
+                <button type="submit" class="sr-submit" tabindex="-1" aria-hidden="true"></button>
+            </form>
+
+            <template #footer>
+                <el-button @click="clientDialogVisible = false">{{ t('cancel') }}</el-button>
+                <el-button
+                    type="primary"
+                    :loading="savingClient"
+                    :disabled="!clientDraft.name.trim()"
+                    @click="saveClient"
+                >
+                    <el-icon><Check /></el-icon>
+                    {{ t('save_and_select') }}
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useInvoicesStore } from '@/stores/invoices';
 import { useCustomersStore } from '@/stores/customers';
+import { customersApi } from '@/api/customers';
 import { posApi } from '@/api/pos';
 import api from '@/api';
 import { formatNumber } from '@/utils/currency';
@@ -556,8 +735,316 @@ const showResults = ref(false);
 const highlightedIndex = ref(-1);
 let searchTimeout = null;
 
-const customers = ref([]);
 const salesEmployees = ref([]);
+
+/* ------------------------------------------------------------------ *
+ * The client
+ *
+ * Three separate lists, because they answer different questions:
+ * `recentCustomers` is what the field offers before anything is typed,
+ * `customers` is whatever the last server search returned, and
+ * `selectedCustomer` is the one actually on the invoice — kept apart from
+ * both so the chosen name survives a search that no longer lists them.
+ * ------------------------------------------------------------------ */
+
+const customers = ref([]);
+const recentCustomers = ref([]);
+const selectedCustomer = ref(null);
+const customersLoading = ref(false);
+const customerQuery = ref('');
+const customerSelectRef = ref(null);
+// Only the newest answer may write the list; a slow early request must not
+// land on top of the letters typed after it.
+let customerSearchToken = 0;
+
+// The chosen client is kept at the head of the unsearched list so the field
+// can always show who is on the invoice. It is deliberately absent from a
+// search that did not ask for them — otherwise a query matching nobody would
+// still leave one row standing, and the offer to add a new client, which the
+// dropdown only makes when it is empty, would never appear.
+const customerOptions = computed(() => {
+    const chosen = selectedCustomer.value;
+    if (!chosen || customerQuery.value) return customers.value;
+    return customers.value.some((customer) => customer.id === chosen.id)
+        ? customers.value
+        : [chosen, ...customers.value];
+});
+
+const clientContactLine = (customer) =>
+    [customer?.phone, customer?.company].filter(Boolean).join(' · ');
+
+const clientInitial = computed(() =>
+    (selectedCustomer.value?.name || '?').trim().charAt(0).toUpperCase()
+);
+
+// What the client's account says before this invoice is added to it.
+// Positive is owed to us; negative is money already sitting with us.
+const clientBalance = computed(() => {
+    const balance = Number(selectedCustomer.value?.balance) || 0;
+    if (Math.abs(balance) < 0.005) return null;
+    return balance > 0
+        ? { tone: 'owing', label: t('remaining_on_customer'), amount: balance }
+        : { tone: 'credit', label: t('customer_credit'), amount: Math.abs(balance) };
+});
+
+const readCustomers = (payload) => payload?.data?.customers ?? payload?.customers ?? [];
+
+// Element Plus debounces a remote field's keystrokes itself, so this asks the
+// server as soon as it is called.
+const searchCustomers = async (query) => {
+    customerQuery.value = (query || '').trim();
+
+    if (!customerQuery.value) {
+        customerSearchToken += 1;
+        customers.value = recentCustomers.value;
+        customersLoading.value = false;
+        return;
+    }
+
+    customersLoading.value = true;
+    const token = ++customerSearchToken;
+
+    try {
+        const { data } = await posApi.customers({ search: customerQuery.value, per_page: 20 });
+        if (token !== customerSearchToken) return;
+        customers.value = readCustomers(data);
+    } catch (error) {
+        if (token === customerSearchToken) customers.value = [];
+    } finally {
+        if (token === customerSearchToken) customersLoading.value = false;
+    }
+};
+
+const selectCustomer = (customer) => {
+    if (!customer) return;
+    selectedCustomer.value = customer;
+    form.customer_id = customer.id;
+    recentCustomers.value = [customer, ...recentCustomers.value.filter((row) => row.id !== customer.id)];
+    // The field reads its own label off the listed options, so the list is put
+    // back to the one that holds this client — a leftover search would leave
+    // the field showing a bare id.
+    customerQuery.value = '';
+    customers.value = recentCustomers.value;
+};
+
+const onCustomerPicked = (id) => {
+    if (!id) {
+        selectedCustomer.value = null;
+        return;
+    }
+    const picked = customerOptions.value.find((customer) => customer.id === id);
+    if (picked) selectedCustomer.value = picked;
+};
+
+// Reopening an invoice restores a client_id whose record may be nowhere in
+// the recent list — without this the field would sit blank over a client the
+// invoice does actually name.
+const ensureSelectedCustomer = async (id, fallback = null) => {
+    if (!id) return;
+
+    const known = [...recentCustomers.value, ...customers.value].find((customer) => customer.id === id);
+    if (known) {
+        selectedCustomer.value = known;
+        return;
+    }
+
+    try {
+        const { data } = await customersApi.getById(id);
+        selectedCustomer.value = data?.data ?? data ?? fallback;
+    } catch (error) {
+        selectedCustomer.value = fallback;
+    }
+};
+
+/* ── Quick add ──────────────────────────────────────────────────────── */
+
+const clientDialogVisible = ref(false);
+const savingClient = ref(false);
+const showClientExtras = ref(false);
+const clientError = ref('');
+const clientErrors = reactive({});
+const clientNameRef = ref(null);
+const clientPhoneRef = ref(null);
+const duplicateClient = ref(null);
+let duplicateTimeout = null;
+let duplicateToken = 0;
+
+const emptyClientDraft = () => ({
+    name: '',
+    phone: '',
+    company: '',
+    address: '',
+    email: '',
+    city: '',
+    tax_number: '',
+    credit_limit: null,
+});
+
+const clientDraft = reactive(emptyClientDraft());
+
+const resetClientDraft = () => {
+    Object.assign(clientDraft, emptyClientDraft());
+    Object.keys(clientErrors).forEach((key) => delete clientErrors[key]);
+    clientError.value = '';
+    showClientExtras.value = false;
+    duplicateClient.value = null;
+    clearTimeout(duplicateTimeout);
+    duplicateToken += 1;
+};
+
+// Whatever was typed into the search is a name already — it opens the form
+// filled in, so the words are not typed twice.
+const openClientDialog = (prefillName = '') => {
+    customerSelectRef.value?.blur();
+    resetClientDraft();
+    clientDraft.name = (prefillName || '').trim();
+    clientDialogVisible.value = true;
+};
+
+// Waits for the dialog's own focus trap to settle, then hands the caret to
+// the first field still worth typing into.
+const focusClientField = () => {
+    const target = clientDraft.name ? clientPhoneRef.value : clientNameRef.value;
+    target?.focus();
+};
+
+const normalisePhone = (value) => (value || '').replace(/[\s\-()]/g, '');
+
+// The one client already holding this phone or email, if there is one.
+const findExistingClient = async (term, match) => {
+    const needle = (term || '').trim();
+    if (needle.length < 3) return null;
+
+    try {
+        const { data } = await posApi.customers({ search: needle, per_page: 10 });
+        return readCustomers(data).find(match) || null;
+    } catch (error) {
+        return null;
+    }
+};
+
+const findDuplicateClient = async () => {
+    const phone = normalisePhone(clientDraft.phone);
+    if (phone.length >= 5) {
+        const byPhone = await findExistingClient(
+            clientDraft.phone,
+            (customer) => normalisePhone(customer.phone) === phone
+        );
+        if (byPhone) return byPhone;
+    }
+
+    const email = (clientDraft.email || '').trim().toLowerCase();
+    if (email.includes('@')) {
+        const byEmail = await findExistingClient(
+            email,
+            (customer) => (customer.email || '').toLowerCase() === email
+        );
+        if (byEmail) return byEmail;
+    }
+
+    return null;
+};
+
+watch(
+    () => [clientDraft.phone, clientDraft.email],
+    () => {
+        clearTimeout(duplicateTimeout);
+        const token = ++duplicateToken;
+        duplicateTimeout = setTimeout(async () => {
+            const match = await findDuplicateClient();
+            if (token === duplicateToken) duplicateClient.value = match;
+        }, 400);
+    }
+);
+
+const useDuplicateClient = () => {
+    if (!duplicateClient.value) return;
+    selectCustomer(duplicateClient.value);
+    clientDialogVisible.value = false;
+    ElMessage.success(t('client_selected', { name: duplicateClient.value.name }));
+};
+
+const saveClient = async () => {
+    if (savingClient.value) return;
+
+    Object.keys(clientErrors).forEach((key) => delete clientErrors[key]);
+    clientError.value = '';
+
+    const name = clientDraft.name.trim();
+    if (!name) {
+        clientErrors.name = t('client_name_required');
+        clientNameRef.value?.focus();
+        return;
+    }
+
+    savingClient.value = true;
+
+    try {
+        // Saving over somebody else's record is not something to discover
+        // afterwards, so the match is confirmed before anything is written.
+        const existing = duplicateClient.value || await findDuplicateClient();
+        if (existing) {
+            duplicateClient.value = existing;
+
+            try {
+                await ElMessageBox.confirm(
+                    t('client_exists_body', { name: existing.name }),
+                    t('client_already_exists'),
+                    {
+                        confirmButtonText: t('use_this_client'),
+                        cancelButtonText: t('cancel'),
+                        type: 'warning',
+                    }
+                );
+                selectCustomer(existing);
+                clientDialogVisible.value = false;
+                ElMessage.success(t('client_selected', { name: existing.name }));
+            } catch (error) {
+                /* Cancelled: the form stays open with what was typed. */
+            }
+
+            return;
+        }
+
+        const payload = {
+            name,
+            phone: clientDraft.phone.trim() || null,
+            company: clientDraft.company.trim() || null,
+            address: clientDraft.address.trim() || null,
+            email: clientDraft.email.trim() || null,
+            city: clientDraft.city.trim() || null,
+            tax_number: clientDraft.tax_number.trim() || null,
+            credit_limit: Number(clientDraft.credit_limit) || 0,
+            status: 'active',
+            source: 'invoice',
+        };
+
+        const { data } = await customersApi.store(payload);
+        const customer = data?.data ?? data;
+
+        selectCustomer(customer);
+        customersStore.customers = [customer, ...customersStore.customers.filter((row) => row.id !== customer.id)];
+        clientDialogVisible.value = false;
+        ElMessage.success(t('client_added_and_selected', { name: customer.name }));
+    } catch (error) {
+        if (error.response?.status === 422) {
+            const errors = error.response?.data?.errors ?? {};
+            Object.entries(errors).forEach(([field, messages]) => {
+                clientErrors[field] = Array.isArray(messages) ? messages[0] : messages;
+            });
+            // A refusal about a field that is folded away is invisible until
+            // the fold is opened for it.
+            if (clientErrors.email || clientErrors.tax_number || clientErrors.credit_limit) {
+                showClientExtras.value = true;
+            }
+            if (!Object.keys(clientErrors).length) clientError.value = t('failed_to_save_client');
+        } else {
+            clientError.value = error.response?.data?.message || t('failed_to_save_client');
+        }
+    } finally {
+        savingClient.value = false;
+    }
+};
 
 /* ------------------------------------------------------------------ *
  * Where each line comes from
@@ -874,6 +1361,16 @@ const removeExpense = (index) => form.expenses.splice(index, 1);
  * ------------------------------------------------------------------ */
 
 const handleKeyboardShortcuts = (e) => {
+    // While the client form is open it owns the keyboard: Ctrl+Enter there
+    // means save the client, not issue the invoice behind it.
+    if (clientDialogVisible.value) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            saveClient();
+        }
+        return;
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         searchInputRef.value?.focus();
@@ -1037,6 +1534,9 @@ const loadInvoice = async () => {
     if (!invoice) return;
 
     form.customer_id = invoice.customer_id;
+    ensureSelectedCustomer(invoice.customer_id, invoice.customer_id
+        ? { id: invoice.customer_id, name: invoice.customer_name, phone: invoice.customer_phone }
+        : null);
     form.assigned_employee_id = invoice.assigned_employee_id ?? null;
     form.payment_method = invoice.payment_method || 'cash';
     form.discount = parseFloat(invoice.discount) || 0;
@@ -1100,10 +1600,15 @@ onMounted(async () => {
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeyboardShortcuts);
 
+    // What the field offers before a search: the most recent clients, which
+    // is a starting point rather than the whole book — anyone past it is
+    // reached by typing, which asks the server.
     try {
-        await customersStore.fetchCustomers();
-        customers.value = customersStore.customers;
+        await customersStore.fetchCustomers({ per_page: 50 });
+        recentCustomers.value = customersStore.customers;
+        customers.value = recentCustomers.value;
     } catch (error) {
+        recentCustomers.value = [];
         customers.value = [];
     }
 
@@ -1134,6 +1639,7 @@ onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
     document.removeEventListener('keydown', handleKeyboardShortcuts);
     clearTimeout(searchTimeout);
+    clearTimeout(duplicateTimeout);
 });
 </script>
 
@@ -1608,6 +2114,206 @@ onUnmounted(() => {
     color: var(--ink);
 }
 
+.rail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.rail-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px dashed var(--line);
+    border-radius: 999px;
+    background: var(--ground);
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.rail-action:hover {
+    border-color: var(--gold);
+    border-style: solid;
+    color: var(--ink);
+}
+
+/* ── Client ─────────────────────────────────────────────────────────── */
+.client-option {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+}
+
+.client-option-name { font-weight: 600; }
+
+.client-option-meta {
+    font-size: 0.75rem;
+    color: var(--ink-mute);
+    font-variant-numeric: tabular-nums;
+}
+
+.select-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.9rem 1rem;
+    font-size: 0.85rem;
+    color: var(--ink-mute);
+}
+
+/* The dead end of a search, and the way out of it. */
+.select-empty {
+    padding: 0.9rem 1rem;
+    text-align: center;
+}
+
+.select-empty p {
+    margin: 0 0 0.4rem;
+    font-size: 0.85rem;
+    color: var(--ink-mute);
+}
+
+.select-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.4rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gold);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.select-add:hover { background: var(--ground); }
+
+.client-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--ground);
+}
+
+.client-avatar {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--gold);
+    color: #fff;
+    font-weight: 800;
+}
+
+.client-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.client-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.client-meta {
+    font-size: 0.76rem;
+    color: var(--ink-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.client-balance {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.client-balance-label { font-size: 0.66rem; font-weight: 600; }
+.client-balance-value { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.client-balance.owing { background: var(--warn-soft); color: var(--warn); }
+.client-balance.credit { background: #eef2fb; color: #22406e; }
+
+/* ── Quick client dialog ────────────────────────────────────────────── */
+.dialog-lede {
+    margin: 0 0 1rem;
+    font-size: 0.84rem;
+    color: var(--ink-mute);
+    line-height: 1.6;
+}
+
+.client-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.client-form .req { color: var(--bad); font-style: normal; }
+
+.field-error {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--bad);
+}
+
+.client-extras {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.dup-hint {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.sr-submit {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
 .field-warning {
@@ -1714,6 +2420,12 @@ onUnmounted(() => {
     .summary-rail { position: static; }
 }
 
+@media (max-width: 520px) {
+    /* Two columns of inputs stop being readable before the dialog does. */
+    .client-form .fields-row,
+    .client-extras { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 720px) {
     .line-fields { grid-template-columns: 1fr 1fr; }
 
@@ -1754,4 +2466,32 @@ onUnmounted(() => {
     .extra-row .expense-desc { flex-basis: 100%; }
     .extra-row .expense-amount { flex: 1; width: auto; }
 }
+</style>
+
+<!-- The dialog and the client dropdown are appended to the body, so they sit
+     outside .invoice-builder and inherit none of its palette. Scoped rules
+     still reach their contents — the custom properties those rules read do
+     not, and are restated here. -->
+<style>
+.client-dialog,
+.client-popper {
+    --ink: #121c2c;
+    --ink-soft: #475569;
+    --ink-mute: #7c8798;
+    --line: #e2e8f0;
+    --ground: #f8fafc;
+    --gold: #d4a84b;
+    --warn: #8a6212;
+    --warn-soft: #fbf3e0;
+    --bad: #9b2c2c;
+
+    font-family: 'Cairo', sans-serif;
+    color: var(--ink);
+}
+
+.client-dialog .el-dialog__body { padding-top: 0.5rem; }
+.client-dialog .el-dialog__footer { padding-top: 0.75rem; }
+
+/* The footer sits under the list rather than floating over its last row. */
+.client-popper .el-select-dropdown__footer { padding: 0; border-top: 1px solid var(--line); }
 </style>
