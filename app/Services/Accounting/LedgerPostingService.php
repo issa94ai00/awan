@@ -118,6 +118,144 @@ class LedgerPostingService
     }
 
     /**
+     * The difference an edit made to a sale already on the books.
+     *
+     * An invoice that is corrected is not un-issued: the entry that recorded it
+     * stands, and this one records what changed. That is how a correction is
+     * normally kept — the original document remains addressable and the audit
+     * trail reads as the sale, then the amendment, rather than as an entry that
+     * silently became a different entry.
+     *
+     * Every figure is a delta and may be negative, so each line is placed on
+     * whichever side its sign calls for: a total that fell credits the
+     * receivable it once debited.
+     *
+     * @param  array{total: float, tax: float, charges: float}  $before
+     * @param  array{total: float, tax: float, charges: float}  $after
+     */
+    public function postInvoiceCorrection(
+        Invoice $invoice,
+        string $key,
+        array $before,
+        array $after,
+    ): ?JournalEntryHeader {
+        $goodsOf = fn (array $figures) => round(
+            $this->money($figures['total']) - $this->money($figures['tax']) - $this->money($figures['charges']),
+            5
+        );
+
+        $receivable = round($this->money($after['total']) - $this->money($before['total']), 5);
+        $goods = round($goodsOf($after) - $goodsOf($before), 5);
+        $charges = round($this->money($after['charges']) - $this->money($before['charges']), 5);
+        $tax = round($this->money($after['tax']) - $this->money($before['tax']), 5);
+
+        $label = 'تعديل فاتورة ' . $invoice->invoice_number;
+        $center = CostCenter::forWarehouse($invoice->warehouse_id ? (int) $invoice->warehouse_id : null);
+
+        $lines = [];
+
+        // Debit where the original credited, or the other way about, according
+        // to which way the figure moved.
+        $add = function (string $role, float $delta, bool $debitWhenPositive, string $description) use (&$lines, $center) {
+            if (abs($delta) < 0.000005) {
+                return;
+            }
+
+            $side = ($delta > 0) === $debitWhenPositive ? 'debit' : 'credit';
+
+            $lines[] = [
+                'role' => $role,
+                $side => abs($delta),
+                'description' => $description,
+                'cost_center_id' => $center,
+            ];
+        };
+
+        $add('accounts_receivable', $receivable, true, 'تعديل ذمم مدينة - ' . $label);
+        $add('sales_revenue', $goods, false, 'تعديل إيراد مبيعات - ' . $label);
+        $add('additional_charges_revenue', $charges, false, 'تعديل إيراد شحن وخدمات - ' . $label);
+        $add('tax_payable', $tax, false, 'تعديل ضريبة مستحقة - ' . $label);
+
+        // Nothing moved: an edit that changed the notes, or swapped one line
+        // for another of the same value. Writing a zero entry would add noise
+        // without moving a balance.
+        if ($lines === []) {
+            return null;
+        }
+
+        return $this->post(
+            key: $key,
+            date: now()->toDateString(),
+            description: 'تعديل فاتورة مبيعات ' . $invoice->invoice_number,
+            lines: $lines,
+            reference: $invoice,
+            module: 'sales',
+            currency: $invoice->currency,
+        );
+    }
+
+    /**
+     * The difference an edit made to what a sale's goods cost.
+     *
+     * Split by warehouse as the original was, and signed the same way as
+     * postInvoiceCorrection(): a warehouse that gave up more stock is credited
+     * further, one that took stock back is debited.
+     *
+     * @param  array<int,float>  $deltaByWarehouse  warehouse id => change in cost
+     */
+    public function postCostOfGoodsSoldCorrection(
+        string $key,
+        array $deltaByWarehouse,
+        string $label,
+        $reference = null,
+        ?string $currency = null,
+    ): ?JournalEntryHeader {
+        $lines = [];
+
+        foreach ($deltaByWarehouse as $warehouseId => $delta) {
+            $delta = $this->money($delta);
+
+            if (abs($delta) < 0.000005) {
+                continue;
+            }
+
+            $warehouseId = (int) $warehouseId;
+            $name = Warehouse::find($warehouseId)?->name ?? ('#' . $warehouseId);
+            $amount = abs($delta);
+            $costSide = $delta > 0 ? 'debit' : 'credit';
+            $inventorySide = $delta > 0 ? 'credit' : 'debit';
+
+            $lines[] = [
+                'role' => 'cogs',
+                $costSide => $amount,
+                'description' => 'تعديل تكلفة مبيعات (' . $name . ') - ' . $label,
+                'warehouse_id' => $warehouseId,
+            ];
+
+            $lines[] = [
+                'account_id' => $this->inventoryAccountIdFor($warehouseId),
+                $inventorySide => $amount,
+                'description' => 'تعديل مخزون (' . $name . ') - ' . $label,
+                'warehouse_id' => $warehouseId,
+            ];
+        }
+
+        if ($lines === []) {
+            return null;
+        }
+
+        return $this->post(
+            key: $key,
+            date: now()->toDateString(),
+            description: 'تعديل تكلفة البضاعة المباعة - ' . $label,
+            lines: $lines,
+            reference: $reference,
+            module: 'sales',
+            currency: $currency,
+        );
+    }
+
+    /**
      * Payment against a customer account.
      *
      * A refund is stored as a negative payment, so the same method handles both

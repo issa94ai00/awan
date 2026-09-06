@@ -11,7 +11,10 @@ use App\Models\ProductUnit;
 use App\Models\Expense;
 use App\Models\Customer;
 use App\Models\Payment;
+use App\Models\JournalEntryHeader;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\GoodsIssueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -580,8 +583,13 @@ class InvoiceController extends Controller
     /**
      * Update an invoice with items
      */
-    public function update(Request $request, Invoice $invoice): JsonResponse
+    public function update(Request $request, Invoice $invoice, GoodsIssueService $goods): JsonResponse
     {
+        // Filled by the re-issue below when a shelf cannot cover the edited
+        // lines. The refusal has to travel out through the rollback, so it is
+        // read again in the catch rather than returned from inside it.
+        $shortages = [];
+
         try {
             $validated = $request->validate([
                 'customer_id' => 'nullable|integer|exists:customers,id',
@@ -687,38 +695,99 @@ class InvoiceController extends Controller
                 $total = $subtotal + $tax - $discount + $expensesTotal;
                 if ($total < 0) $total = 0;
 
-                // Update invoice with items
+                // Folded into the total on creation and never on edit, which
+                // left subtotal + tax - discount short of total and the ledger
+                // crediting less revenue than it debited receivables.
+                $additionalCharges = round($expensesTotal, 5);
+
+                // The sale as the books currently have it. The correction
+                // posted at the end is the difference between this and what
+                // the edit leaves behind.
+                $before = [
+                    'total' => (float) $invoice->total,
+                    'tax' => (float) $invoice->tax,
+                    'charges' => (float) ($invoice->additional_charges ?? 0),
+                ];
+
+                // See store(): a sale split across warehouses has no single
+                // warehouse to report at the header, so it stays null.
+                $lineWarehouseIds = collect($itemsData)->pluck('warehouse_id')->filter()->unique();
+                $headerWarehouseId = $lineWarehouseIds->count() === 1 ? $lineWarehouseIds->first() : null;
+
+                // A cancelled invoice has already given its goods back and had
+                // its entries reversed. Re-issuing against it would take the
+                // stock out again for a sale that is not happening.
+                $settles = $invoice->status !== Invoice::STATUS_CANCELLED
+                    && ($validated['status'] ?? $invoice->status) !== Invoice::STATUS_CANCELLED;
+
+                /*
+                 * Everything the edit touches, or none of it.
+                 *
+                 * Editing used to rewrite the rows and stop there: the goods
+                 * stayed off the shelves in the quantities first rung up, and
+                 * the ledger went on carrying the original revenue, receivable
+                 * and cost. Changing a quantity therefore left the invoice, the
+                 * warehouse and the books each describing a different sale, and
+                 * nothing anywhere said so.
+                 *
+                 * So the goods that actually left come back, the edited lines
+                 * are issued in their place, and the books are told the
+                 * difference. Unlike creation, none of this is allowed to fail
+                 * into a warning: an edit that cannot be settled must leave the
+                 * invoice exactly as it was rather than half-applied.
+                 */
+                DB::transaction(function () use (
+                    $invoice, $itemsData, $validated, $goods, $settles, $before,
+                    $subtotal, $tax, $discount, $additionalCharges, $total, $headerWarehouseId, &$shortages
+                ) {
+                // Put back exactly what left, at what it cost when it left, and
+                // dated so it returns to its own place in the queue.
+                $returned = $settles ? $this->returnIssuedGoods($invoice, $goods) : ['cost_by_warehouse' => []];
+
+                // The rewritten lines start uncosted. Where the edit
+                // settles, the reissue below measures them again; where it does
+                // not — a cancelled invoice, whose goods are already back — no
+                // issue stands behind them, and the report saying so is more
+                // use than a figure carried over from a sale that was undone.
+                $invoice->items()->delete();
+                foreach ($itemsData as $itemData) {
+                    $itemData['invoice_id'] = $invoice->id;
+                    InvoiceItem::create($itemData);
+                }
+
                 $invoice->update([
                     'customer_id' => $validated['customer_id'] ?? $invoice->customer_id,
+                    'warehouse_id' => $headerWarehouseId,
                     'subtotal' => $subtotal,
                     'tax' => $tax,
                     'discount' => $discount,
+                    'additional_charges' => $additionalCharges,
                     'total' => $total,
+                    'due_amount' => max(0, round($total - (float) $invoice->paid_amount, 5)),
                     'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
                     'status' => $validated['status'] ?? $invoice->status,
                     'notes' => $validated['notes'] ?? $invoice->notes,
                 ]);
 
-                // Replacing the lines is destructive without a transaction: the
-                // old ones are gone the moment the delete runs, so a failure
-                // before the last insert leaves the invoice short of lines it
-                // had a second earlier, with nothing to restore them from.
-                DB::transaction(function () use ($invoice, $itemsData, $validated) {
-                // What the goods on each line actually cost, measured by the
-                // issue that moved them. Editing an invoice replaces its rows
-                // wholesale, so without this the figure was thrown away on
-                // every edit and the report fell back to valuing the sale at
-                // today's catalogue price — quietly turning a measurement into
-                // an estimate, on an invoice nobody had reason to think had
-                // changed in that way.
-                $measured = $this->measuredLineCosts($invoice);
+                if ($settles) {
+                    // Checked after the return, so the units this invoice is
+                    // giving back count towards covering what it now asks for.
+                    $shortages = $goods->shortagesFor(array_map(
+                        fn (array $line) => [
+                            'product_id' => (int) $line['product_id'],
+                            'quantity' => (int) $line['quantity'],
+                            'warehouse_id' => (int) $line['warehouse_id'],
+                        ],
+                        $itemsData
+                    ));
 
-                // Delete old items and create new ones
-                $invoice->items()->delete();
-                foreach ($itemsData as $itemData) {
-                    $itemData['invoice_id'] = $invoice->id;
-                    $item = InvoiceItem::create($itemData);
-                    $this->restoreLineCost($item, $measured);
+                    if ($shortages !== []) {
+                        // Unwinds the return and the rewritten lines with it.
+                        throw new RuntimeException('المخزون لا يغطي هذا البيع في المستودعات المحددة.');
+                    }
+
+                    $this->resettleGoods($invoice, $goods, $returned['cost_by_warehouse']);
+                    $this->correctInvoicePosting($invoice, $before);
                 }
 
                 // Delete old expenses and create new ones
@@ -767,6 +836,18 @@ class InvoiceController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
+            // The edit was refused because a shelf could not cover it, and the
+            // rollback has already put the invoice back as it was. Named per
+            // product and warehouse, as creation does, so the screen can point
+            // at the line rather than making the seller hunt for it.
+            if ($shortages !== []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'المخزون لا يغطي هذا البيع في المستودعات المحددة.',
+                    'data' => ['shortages' => $this->describeShortages($shortages)],
+                ], 422);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'خطأ في تحديث الفاتورة',
@@ -811,62 +892,149 @@ class InvoiceController extends Controller
     }
 
     /**
-     * What each of an invoice's current lines was costed at, keyed by the
-     * goods it describes.
+     * Puts back what this invoice actually took, ready for it to be reissued.
      *
-     * Keyed by product and warehouse rather than by line id, because the rows
-     * are about to be replaced and the new ones will not carry the old ids.
+     * Driven by the stock movements rather than the invoice lines, because
+     * those are what really happened: a line whose issue failed at the time
+     * moved nothing, and returning goods against it would credit the warehouse
+     * with units it never gave up. Each return is dated as the goods first
+     * arrived, so they go back to their own place in the FIFO queue and a
+     * reissue of the same units takes the same batch at the same cost.
      *
-     * @return array<string,array{unit_cost: float, quantity: int}>
+     * @return array{cost: float, cost_by_warehouse: array<int,float>}
      */
-    private function measuredLineCosts(Invoice $invoice): array
+    private function returnIssuedGoods(Invoice $invoice, GoodsIssueService $goods): array
     {
-        $measured = [];
+        $lines = $invoice->items()->get();
 
-        foreach ($invoice->items()->get() as $line) {
-            if ($line->total_cost === null) {
+        if ($lines->isEmpty()) {
+            return ['cost' => 0.0, 'cost_by_warehouse' => []];
+        }
+
+        $issued = StockMovement::whereIn(
+            'movement_key',
+            $lines->map(fn ($line) => 'invoice:'.$invoice->id.':item:'.$line->id)->all()
+        )->where('movement_type', StockMovement::TYPE_OUT)->get()->keyBy('movement_key');
+
+        $returns = [];
+
+        foreach ($lines as $line) {
+            $movement = $issued->get('invoice:'.$invoice->id.':item:'.$line->id);
+
+            if (! $movement) {
                 continue;
             }
 
-            $measured[$line->product_id.':'.((int) $line->warehouse_id)] = [
-                'unit_cost' => (float) $line->unit_cost,
-                'quantity' => (int) $line->quantity,
+            $returns[] = [
+                'product_id' => (int) $movement->product_id,
+                'quantity' => (int) $movement->quantity,
+                'warehouse_id' => (int) $movement->warehouse_id,
+                'unit_cost' => (float) $movement->unit_cost,
+                'received_at' => $movement->created_at,
+                // Line ids are never reused, so this is unique however many
+                // times the invoice is edited.
+                'movement_key' => 'invoice_edit:'.$invoice->id.':item:'.$line->id,
             ];
         }
 
-        return $measured;
+        return $returns === []
+            ? ['cost' => 0.0, 'cost_by_warehouse' => []]
+            : $goods->returnGoods($returns, 'تعديل فاتورة '.$invoice->invoice_number, 'تعديل بيع - فاتورة '.$invoice->invoice_number);
     }
 
     /**
-     * Gives a rewritten line back the cost its goods were measured at.
+     * Issues the edited lines and tells the books what the cost did.
      *
-     * Only for goods that actually moved: the same product off the same shelf,
-     * and no more units than were issued. A line whose quantity has grown, or
-     * that names a product or warehouse the invoice did not have before,
-     * describes goods no issue has costed — so it is left uncosted and the
-     * report projects it at catalogue price and flags it, rather than being
-     * handed a measurement of something that never happened.
+     * The issue posts nothing itself: the original cost entry stands, and what
+     * is recorded here is the difference between what the goods cost then and
+     * what they cost now, warehouse by warehouse.
      *
-     * @param  array<string,array{unit_cost: float, quantity: int}>  $measured
+     * @param  array<int,float>  $returnedByWarehouse  what came back, per warehouse
      */
-    private function restoreLineCost(InvoiceItem $item, array $measured): void
+    private function resettleGoods(Invoice $invoice, GoodsIssueService $goods, array $returnedByWarehouse): void
     {
-        $previous = $measured[$item->product_id.':'.((int) $item->warehouse_id)] ?? null;
+        $issued = $goods->issueAndPostCost(
+            lines: $invoice->items()->get()->map(fn ($line) => [
+                'product_id' => (int) $line->product_id,
+                'quantity' => (int) $line->quantity,
+                'warehouse_id' => (int) $line->warehouse_id,
+                'unit_cost' => (float) ($line->product?->cost_price ?? 0),
+                'movement_key' => 'invoice:'.$invoice->id.':item:'.$line->id,
+            ])->all(),
+            postingKey: 'invoice_cogs:'.$invoice->id,
+            label: 'فاتورة '.$invoice->invoice_number,
+            reference: $invoice,
+            currency: $invoice->currency,
+            reason: 'بيع - فاتورة '.$invoice->invoice_number,
+            movementReference: 'invoice',
+            movementSource: $invoice->id,
+            // The correction below says what changed; posting the whole cost
+            // again would state it twice.
+            postCost: false,
+        );
 
-        if ($previous === null) {
-            return;
+        $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+
+        $delta = $issued['cost_by_warehouse'];
+
+        foreach ($returnedByWarehouse as $warehouseId => $cost) {
+            $delta[$warehouseId] = ($delta[$warehouseId] ?? 0) - $cost;
         }
 
-        $quantity = (int) $item->quantity;
+        app(LedgerPostingService::class)->postCostOfGoodsSoldCorrection(
+            key: $this->correctionKey($invoice, 'invoice_cogs_adjust'),
+            deltaByWarehouse: $delta,
+            label: 'فاتورة '.$invoice->invoice_number,
+            reference: $invoice,
+            currency: $invoice->currency,
+        );
+    }
 
-        if ($quantity <= 0 || $quantity > $previous['quantity']) {
-            return;
+    /**
+     * Records what the edit did to the sale itself — the receivable, the
+     * revenue, the charges and the tax — and to the customer's account.
+     *
+     * @param  array{total: float, tax: float, charges: float}  $before
+     */
+    private function correctInvoicePosting(Invoice $invoice, array $before): void
+    {
+        $invoice->refresh();
+
+        $after = [
+            'total' => (float) $invoice->total,
+            'tax' => (float) $invoice->tax,
+            'charges' => (float) ($invoice->additional_charges ?? 0),
+        ];
+
+        // The customer owes the difference, or is owed it. Skipped for an
+        // invoice raised from a sales order, which is where its balance was
+        // accounted for — the same condition creation settles under.
+        $difference = round($after['total'] - $before['total'], 5);
+
+        if (abs($difference) >= 0.000005 && ! $invoice->sales_order_id && $invoice->customer_id) {
+            Customer::find($invoice->customer_id)?->updateBalance($difference);
         }
 
-        $item->forceFill([
-            'unit_cost' => round($previous['unit_cost'], 5),
-            'total_cost' => round($previous['unit_cost'] * $quantity, 5),
-        ])->save();
+        app(LedgerPostingService::class)->postInvoiceCorrection(
+            invoice: $invoice,
+            key: $this->correctionKey($invoice, 'invoice_adjust'),
+            before: $before,
+            after: $after,
+        );
+    }
+
+    /**
+     * A key for the next correction on this invoice.
+     *
+     * Numbered from what is already posted rather than from a counter on the
+     * invoice, so it stays right however the document got here — and so an
+     * edit that is rolled back leaves no gap behind it.
+     */
+    private function correctionKey(Invoice $invoice, string $prefix): string
+    {
+        $posted = JournalEntryHeader::where('posting_key', 'like', $prefix.':'.$invoice->id.':%')->count();
+
+        return $prefix.':'.$invoice->id.':'.($posted + 1);
     }
 
     /**

@@ -109,6 +109,10 @@ class GoodsIssueService
         // label themselves differently and reports group on these.
         string $movementReference = 'sales',
         string|int|null $movementSource = null,
+        // An edit re-issues goods that were already costed once, and the books
+        // record the difference rather than the whole cost a second time. Such
+        // a caller takes the returned figures and posts its own correction.
+        bool $postCost = true,
     ): array {
         $movements = [];
         $costByWarehouse = [];
@@ -171,13 +175,15 @@ class GoodsIssueService
             ];
         }
 
-        $this->ledger->postCostOfGoodsSoldBySource(
-            key: $postingKey,
-            costByWarehouse: $costByWarehouse,
-            label: $label,
-            reference: $reference,
-            currency: $currency,
-        );
+        if ($postCost) {
+            $this->ledger->postCostOfGoodsSoldBySource(
+                key: $postingKey,
+                costByWarehouse: $costByWarehouse,
+                label: $label,
+                reference: $reference,
+                currency: $currency,
+            );
+        }
 
         return [
             'movements' => $movements,
@@ -203,16 +209,47 @@ class GoodsIssueService
         string $label,
         string $reason = '',
     ): void {
+        $this->returnGoods($lines, $label, $reason);
+
+        $this->ledger->reverseFor($postingKey);
+    }
+
+    /**
+     * Puts issued goods back on the shelves they left, and reports what came
+     * back — without touching the ledger.
+     *
+     * Split out of returnAndReverseCost() because an edit undoes the goods but
+     * not the entry: the books record the difference between the sale as it
+     * was and as it now stands, rather than voiding it and stating it again.
+     *
+     * `received_at` is worth passing. A layer reopened with today's date sits
+     * behind everything received since, so re-issuing the same units would
+     * consume some other batch and quietly restate what the sale cost. Dated
+     * as the goods originally arrived, they go back where they were in the
+     * queue and the same units are taken again.
+     *
+     * @param  list<array{product_id:int, quantity:int, warehouse_id:int, unit_cost?:float,
+     *                    movement_key:string, received_at?:mixed}>  $lines
+     * @return array{cost: float, cost_by_warehouse: array<int,float>}
+     */
+    public function returnGoods(array $lines, string $label, string $reason = ''): array
+    {
+        $total = 0.0;
+        $costByWarehouse = [];
+
         foreach ($lines as $line) {
             $quantity = (int) $line['quantity'];
             if ($quantity <= 0) {
                 continue;
             }
 
-            $this->inventory->receive(
+            $warehouseId = (int) $line['warehouse_id'];
+            $unitCost = (float) ($line['unit_cost'] ?? 0);
+
+            $movement = $this->inventory->receive(
                 (int) $line['product_id'],
                 $quantity,
-                (int) $line['warehouse_id'],
+                $warehouseId,
                 [
                     // A distinct key from the issue, or the movement would be
                     // read as a repeat of it and skipped.
@@ -220,12 +257,21 @@ class GoodsIssueService
                     'source' => 'sales',
                     'reference' => $label,
                     'reason' => $reason ?: $label,
-                    'unit_cost' => (float) ($line['unit_cost'] ?? 0),
+                    'unit_cost' => $unitCost,
+                    'received_at' => $line['received_at'] ?? null,
                 ]
             );
+
+            $cost = $movement ? (float) $movement->total_cost : $unitCost * $quantity;
+
+            $total += $cost;
+            $costByWarehouse[$warehouseId] = ($costByWarehouse[$warehouseId] ?? 0) + $cost;
         }
 
-        $this->ledger->reverseFor($postingKey);
+        return [
+            'cost' => round($total, 5),
+            'cost_by_warehouse' => $costByWarehouse,
+        ];
     }
 
     /**

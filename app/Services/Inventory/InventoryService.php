@@ -284,6 +284,14 @@ class InventoryService
                 $costing->addLayer($productId, $warehouseId, $signedQuantity, $unitCost, [
                     'source' => $options['source'] ?? null,
                     'reference' => $options['reference'] ?? null,
+                    // Goods coming back belong where they were in the queue,
+                    // not at the end of it. A return dated now would sit behind
+                    // everything received since, so re-issuing the same units
+                    // would consume some other batch and quietly restate what
+                    // the sale cost. Callers returning stock pass the date it
+                    // originally arrived; everything else leaves this alone and
+                    // the layer is dated now.
+                    'received_at' => $options['received_at'] ?? null,
                 ]);
 
                 // A purchase moves the reference price, not just the FIFO layers:
