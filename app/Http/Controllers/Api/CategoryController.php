@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\CategoryResource;
 use App\Http\Resources\ProductResource;
 use App\Models\Category;
+use App\Models\Product;
 use App\Support\ImageStore;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -19,9 +20,7 @@ class CategoryController extends Controller
     {
         $categoriesQuery = Category::query()
             ->where('is_active', 1)
-            ->withCount(['products as product_count' => function ($query) {
-                $query->where('is_active', 1);
-            }])
+            ->withProductCount()
             // include a single sample active product to help clients show thumbnails
             ->with(['products' => function ($q) {
                 $q->where('is_active', 1)
@@ -57,9 +56,9 @@ class CategoryController extends Controller
 
         abort_unless((int) ($category->is_active ?? 0) === 1, 404);
 
-        $category->loadCount(['products as product_count' => function ($query) {
-            $query->where('is_active', 1);
-        }]);
+        $category->product_count = Product::whereIn('category_id', $category->descendantIds())
+            ->where('is_active', 1)
+            ->count();
 
         return response()->json([
             'success' => true,
@@ -84,7 +83,8 @@ class CategoryController extends Controller
         $perPage = (int) $request->get('per_page', 12);
         $perPage = $perPage > 0 ? min($perPage, 100) : 12;
 
-        $productsQuery = $category->products()
+        $productsQuery = Product::query()
+            ->whereIn('category_id', $category->descendantIds())
             ->where('is_active', 1)
             ->with('category')
             ->orderByDesc('created_at');

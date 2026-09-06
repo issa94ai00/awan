@@ -20,6 +20,32 @@ use Symfony\Component\HttpFoundation\Response;
 class ProductController extends Controller
 {
     /**
+     * Expand a set of selected classification ids to the ids a product filter
+     * should actually match: the categories themselves plus their subcategories.
+     *
+     * A parent section (Bahsas, say) holds no products of its own — every item
+     * is filed under one of its subcategories — so a literal `whereIn` on the
+     * parent id alone returns nothing, which reads to the user as "this
+     * classification is empty". The taxonomy is two levels deep, so one child
+     * lookup covers the whole subtree.
+     *
+     * @param  array<int, mixed>  $ids
+     * @return array<int, int>
+     */
+    private function categoryFilterIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+
+        if (empty($ids)) {
+            return [0];
+        }
+
+        $children = Category::query()->whereIn('parent_id', $ids)->pluck('id')->all();
+
+        return array_values(array_unique(array_merge($ids, $children)));
+    }
+
+    /**
      * Build the shared filtered product query.
      */
     private function baseQuery(Request $request): Builder
@@ -46,11 +72,11 @@ class ProductController extends Controller
         // Filter by category_id (single value or array, for multi-classification
         // filtering) or category_slug
         if ($request->filled('category_id')) {
-            $query->whereIn('category_id', (array) $request->category_id);
+            $query->whereIn('category_id', $this->categoryFilterIds((array) $request->category_id));
         } elseif ($request->filled('category_slug')) {
             $cat = Category::where('slug', $request->category_slug)->first();
             if ($cat) {
-                $query->where('category_id', $cat->id);
+                $query->whereIn('category_id', $cat->descendantIds());
             } else {
                 // No such category -> empty result
                 return $query->whereRaw('1 = 0');
@@ -561,6 +587,35 @@ class ProductController extends Controller
             $product = Product::where('id', $product)
                 ->orWhere('slug', $product)
                 ->firstOrFail();
+        }
+
+        // Two things follow a deleted product off the edge with it, both by
+        // ON DELETE CASCADE: the stock it is holding, and — worse — every
+        // stock movement ever recorded against it. The movements are the
+        // audit trail behind inventory valuation and the accounting health
+        // checks, and nothing warns that deleting a catalogue row erases
+        // them. A product with a history is retired by deactivating it, which
+        // takes it out of the catalogue and leaves the record standing.
+        $onHand = (float) DB::table('warehouse_inventory')
+            ->where('product_id', $product->id)
+            ->sum('quantity');
+
+        if ($onHand > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن حذف صنف ما زال في المخزون. أخرج الكمية أو سوِّها أولاً، أو عطّل الصنف بدل حذفه.',
+                'data' => ['reason' => 'has_stock', 'stock_on_hand' => $onHand],
+            ], 422);
+        }
+
+        $movements = DB::table('stock_movements')->where('product_id', $product->id)->count();
+
+        if ($movements > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لهذا الصنف سجل حركة مخزنية ('.$movements.' حركة) سيُمحى معه نهائياً. عطّل الصنف بدل حذفه ليبقى سجلّه سليماً.',
+                'data' => ['reason' => 'has_history', 'movements' => $movements],
+            ], 422);
         }
 
         $images = ImageStore::paths([$product->image_main, $product->image_gallery]);

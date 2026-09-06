@@ -17,9 +17,7 @@ class HomeController extends Controller
     {
         \Log::info('API HomeController index method called');
         $categories = \App\Models\Category::where('is_active', 1)
-            ->withCount(['products as product_count' => function ($query) {
-                $query->where('is_active', 1);
-            }])
+            ->withProductCount()
             ->orderBy('sort_order')
             ->limit(10)
             ->get();

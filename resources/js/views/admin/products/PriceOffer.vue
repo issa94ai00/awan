@@ -7,7 +7,7 @@
                     <span class="dot"></span>
                     <h2>{{ $t('price_offer') }}</h2>
                     <span v-if="total > 0" class="badge">{{ total }} {{ $t('product') }}</span>
-                    <span v-if="printReadyCount > 0" class="badge selection-badge" :class="{ 'is-empty': printReadyCount === 0 }">
+                    <span v-if="total > 0" class="badge selection-badge" :class="{ 'is-empty': printReadyCount === 0 }">
                         {{ $t('selected_products_count', { count: printReadyCount }) }}
                     </span>
                 </div>
@@ -33,7 +33,7 @@
                         v-model:visible="categoryPopoverVisible"
                         placement="bottom-start"
                         trigger="click"
-                        width="260"
+                        width="330"
                         popper-class="categories-popover"
                     >
                         <template #reference>
@@ -63,17 +63,85 @@
                                     autocomplete="off"
                                 />
                             </div>
-                            <div class="categories-list">
-                                <label v-for="cat in filteredCategoryOptions" :key="cat.id" class="categories-menu-item">
+                            <div class="cat-subtools">
+                                <label class="cat-toggle">
                                     <el-checkbox
-                                        :model-value="selectedCategoryIds.includes(cat.id)"
-                                        @update:model-value="(val) => toggleCategory(cat.id, val)"
+                                        :model-value="hideEmptyCategories"
+                                        @update:model-value="toggleHideEmptyCategories"
                                     />
-                                    <span class="cat-name">{{ cat.name_ar || cat.name }}</span>
-                                    <span v-if="cat.product_count !== undefined && cat.product_count !== null" class="cat-count">{{ cat.product_count }}</span>
+                                    <span>{{ $t('hide_empty_classifications') }}</span>
                                 </label>
-                                <p v-if="filteredCategoryOptions.length === 0" class="cat-empty">{{ $t('no_matching_classifications') }}</p>
+                                <button
+                                    v-if="parentCategoryCount > 0"
+                                    type="button"
+                                    class="link-btn"
+                                    @click="toggleAllCategoryBranches"
+                                >
+                                    {{ allBranchesExpanded ? $t('collapse_all_classifications') : $t('expand_all_classifications') }}
+                                </button>
                             </div>
+                            <div class="categories-list">
+                                <div
+                                    v-for="node in categoryTree"
+                                    :key="node.id"
+                                    class="cat-node"
+                                    :class="{ 'has-children': node.children.length > 0, 'is-open': isBranchExpanded(node.id) }"
+                                >
+                                    <div class="categories-menu-item cat-row cat-row-parent" :class="{ 'is-on': isCategoryChecked(node.id) }">
+                                        <button
+                                            v-if="node.children.length"
+                                            type="button"
+                                            class="cat-twisty"
+                                            :aria-expanded="isBranchExpanded(node.id)"
+                                            :aria-label="$t('show_subcategories')"
+                                            :title="$t('show_subcategories')"
+                                            @click="toggleBranch(node.id)"
+                                        >
+                                            <el-icon><ArrowDown /></el-icon>
+                                        </button>
+                                        <span v-else class="cat-twisty is-leaf" aria-hidden="true"></span>
+                                        <el-checkbox
+                                            :model-value="isCategoryChecked(node.id)"
+                                            :indeterminate="isCategoryPartiallyChecked(node)"
+                                            @update:model-value="(val) => toggleCategory(node.id, val)"
+                                        />
+                                        <button
+                                            type="button"
+                                            class="cat-name cat-name-btn"
+                                            @click="node.children.length ? toggleBranch(node.id) : toggleCategory(node.id, !isCategoryChecked(node.id))"
+                                        >
+                                            {{ categoryLabel(node) }}
+                                        </button>
+                                        <span v-if="node.children.length" class="cat-sub-count">
+                                            {{ $t('subcategories_count', { n: node.children.length }) }}
+                                        </span>
+                                        <span v-if="node.product_count !== undefined && node.product_count !== null" class="cat-count">{{ node.product_count }}</span>
+                                    </div>
+                                    <div v-if="node.children.length && isBranchExpanded(node.id)" class="cat-children">
+                                        <label
+                                            v-for="child in node.children"
+                                            :key="child.id"
+                                            class="categories-menu-item cat-row cat-row-child"
+                                            :class="{ 'is-covered': isCoveredByParent(child), 'is-on': isCategoryChecked(child.id) }"
+                                            :title="isCoveredByParent(child) ? $t('included_via_parent_classification') : ''"
+                                        >
+                                            <el-checkbox
+                                                :model-value="isCategoryChecked(child.id)"
+                                                :disabled="isCoveredByParent(child)"
+                                                @update:model-value="(val) => toggleCategory(child.id, val)"
+                                            />
+                                            <span class="cat-name">{{ categoryLabel(child) }}</span>
+                                            <span v-if="child.product_count !== undefined && child.product_count !== null" class="cat-count">{{ child.product_count }}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <p v-if="categoryTree.length === 0" class="cat-empty">{{ $t('no_matching_classifications') }}</p>
+                            </div>
+                            <p class="categories-menu-footer">
+                                {{ selectedCategoryIds.length === 0
+                                    ? $t('all_classifications_included')
+                                    : $t('classifications_filter_summary', { cats: effectiveCategoryCount, items: selectedCategoryProductCount }) }}
+                            </p>
                         </div>
                     </el-popover>
                 </div>
@@ -113,34 +181,54 @@
                                 <button
                                     type="button"
                                     class="btn-ghost btn-icon"
-                                    :class="{ active: deselectedKeys.length === 0 }"
+                                    :class="{ active: isEverythingSelected }"
+                                    :disabled="isEverythingSelected"
                                     @click="selectAllProducts"
                                 >
                                     <el-icon><Select /></el-icon>
                                     {{ $t('common.select_all') }}
                                 </button>
                             </el-tooltip>
-                            <button v-if="deselectedKeys.length > 0" type="button" class="btn-ghost btn-icon" @click="clearSelection">
-                                <el-icon><Close /></el-icon>
-                                {{ $t('clear') }}
-                            </button>
+                            <el-tooltip :content="$t('clear_print_selection')" placement="bottom" effect="dark">
+                                <button
+                                    type="button"
+                                    class="btn-ghost btn-icon"
+                                    :disabled="isSelectionEmpty"
+                                    @click="clearSelection"
+                                >
+                                    <el-icon><Close /></el-icon>
+                                    {{ $t('clear') }}
+                                </button>
+                            </el-tooltip>
                             <el-popover
                                 v-model:visible="listsPopoverVisible"
                                 placement="bottom-end"
                                 trigger="click"
-                                width="320"
+                                width="360"
                                 popper-class="lists-popover"
+                                @show="loadLists"
                             >
                                 <template #reference>
-                                    <button type="button" class="btn-ghost btn-icon" :class="{ active: savedLists.length > 0 }" :title="$t('saved_lists_tooltip')" @click="loadLists">
+                                    <button
+                                        type="button"
+                                        class="btn-ghost btn-icon btn-lists"
+                                        :class="{ active: activeList !== null }"
+                                        :title="$t('saved_lists_tooltip')"
+                                    >
                                         <el-icon><Collection /></el-icon>
-                                        {{ $t('saved_lists') }}
-                                        <span v-if="savedLists.length > 0" class="lists-badge">{{ savedLists.length }}</span>
+                                        <span class="btn-lists-label">{{ activeList ? listLabel(activeList) : $t('saved_lists') }}</span>
+                                        <span v-if="activeList && activeListDirty" class="lists-dot" :title="$t('list_modified')"></span>
+                                        <span v-else-if="savedLists.length > 0" class="lists-badge">{{ savedLists.length }}</span>
                                     </button>
                                 </template>
                                 <div class="lists-menu" @click.stop>
-                                    <p class="lists-menu-title">{{ $t('saved_lists') }}</p>
+                                    <div class="lists-menu-head">
+                                        <p class="lists-menu-title">{{ $t('saved_lists') }}</p>
+                                        <span class="lists-menu-sub">{{ $t('selected_products_count', { count: printReadyCount }) }}</span>
+                                    </div>
 
+                                    <!-- Save the live selection under a new name. Reusing an existing
+                                         name offers to update that list instead of duplicating it. -->
                                     <div class="lists-create">
                                         <input
                                             v-model="listName"
@@ -150,40 +238,147 @@
                                             autocomplete="off"
                                             @keyup.enter="saveCurrentSelection"
                                         />
+                                        <el-tooltip :content="saveListHint" placement="top" effect="dark">
+                                            <span class="btn-list-save-wrap">
+                                                <button
+                                                    type="button"
+                                                    class="btn-list-save"
+                                                    :disabled="savingList || printReadyCount === 0"
+                                                    :aria-label="saveListHint"
+                                                    @click="saveCurrentSelection"
+                                                >
+                                                    <el-icon v-if="savingList" class="is-loading"><Loading /></el-icon>
+                                                    <el-icon v-else><Plus /></el-icon>
+                                                </button>
+                                            </span>
+                                        </el-tooltip>
+                                    </div>
+
+                                    <!-- Which list is live, and whether the selection has drifted from it. -->
+                                    <div v-if="activeList" class="lists-active" :class="{ 'is-dirty': activeListDirty }">
+                                        <el-icon class="lists-active-icon">
+                                            <Clock v-if="activeListDirty" />
+                                            <CircleCheck v-else />
+                                        </el-icon>
+                                        <span class="lists-active-name">{{ listLabel(activeList) }}</span>
+                                        <span class="lists-active-state">
+                                            {{ activeListDirty ? $t('list_modified') : $t('list_applied') }}
+                                        </span>
                                         <button
+                                            v-if="activeListDirty"
                                             type="button"
-                                            class="btn-list-save"
-                                            :disabled="savingList || selectedCount === 0"
-                                            @click="saveCurrentSelection"
+                                            class="lists-active-btn"
+                                            :disabled="busyListId !== null"
+                                            @click="overwriteList(activeList)"
                                         >
-                                            <el-icon v-if="savingList" class="is-loading"><Loading /></el-icon>
-                                            <el-icon v-else><Plus /></el-icon>
+                                            {{ $t('update_list') }}
+                                        </button>
+                                        <button type="button" class="lists-active-btn is-plain" @click="detachActiveList">
+                                            {{ $t('stop_tracking_list') }}
                                         </button>
                                     </div>
 
-                                    <el-empty
-                                        v-if="!loadingLists && savedLists.length === 0"
-                                        :image-size="52"
-                                        :description="$t('no_saved_lists')"
-                                    />
+                                    <div v-if="savedLists.length > 5" class="lists-search">
+                                        <el-icon class="lists-search-icon"><Search /></el-icon>
+                                        <input
+                                            v-model="listSearch"
+                                            type="search"
+                                            class="lists-search-input"
+                                            :placeholder="$t('search_saved_lists')"
+                                            autocomplete="off"
+                                        />
+                                    </div>
+
                                     <div v-loading="loadingLists" class="lists-scroll">
-                                        <div v-for="lst in savedLists" :key="lst.id" class="lists-item">
-                                            <span class="lists-item-name">{{ lst.name_ar || lst.name_en }}</span>
-                                            <span class="lists-item-count">{{ lst.items_count }} {{ $t('product') }}</span>
-                                            <span class="lists-item-actions">
-                                                <el-tooltip :content="$t('load_selection')" placement="top" effect="dark">
-                                                    <button type="button" class="lists-act" @click="loadSavedList(lst.id)">
-                                                        <el-icon><Download /></el-icon>
-                                                    </button>
-                                                </el-tooltip>
-                                                <el-popconfirm :title="$t('confirm_delete_list')" :confirm-button-text="$t('delete')" :cancel-button-text="$t('cancel')" @confirm="deleteSavedList(lst.id)">
-                                                    <template #reference>
-                                                        <button type="button" class="lists-act lists-act-danger">
-                                                            <el-icon><Delete /></el-icon>
+                                        <el-empty
+                                            v-if="!loadingLists && savedLists.length === 0"
+                                            :image-size="52"
+                                            :description="$t('no_saved_lists')"
+                                        />
+                                        <p v-else-if="filteredLists.length === 0" class="lists-empty-hint">
+                                            {{ $t('no_matching_lists') }}
+                                        </p>
+                                        <div
+                                            v-for="lst in filteredLists"
+                                            :key="lst.id"
+                                            class="lists-item"
+                                            :class="{ 'is-active': lst.id === activeListId, 'is-renaming': renamingListId === lst.id }"
+                                        >
+                                            <template v-if="renamingListId === lst.id">
+                                                <input
+                                                    ref="renameInputRef"
+                                                    v-model="renameValue"
+                                                    type="text"
+                                                    class="lists-name-input lists-rename-input"
+                                                    autocomplete="off"
+                                                    @keyup.enter="commitRename(lst)"
+                                                    @keyup.esc="cancelRename"
+                                                />
+                                                <span class="lists-item-actions">
+                                                    <el-tooltip :content="$t('common.save')" placement="top" effect="dark">
+                                                        <button type="button" class="lists-act lists-act-ok" @click="commitRename(lst)">
+                                                            <el-icon><Check /></el-icon>
                                                         </button>
-                                                    </template>
-                                                </el-popconfirm>
-                                            </span>
+                                                    </el-tooltip>
+                                                    <el-tooltip :content="$t('cancel')" placement="top" effect="dark">
+                                                        <button type="button" class="lists-act" @click="cancelRename">
+                                                            <el-icon><Close /></el-icon>
+                                                        </button>
+                                                    </el-tooltip>
+                                                </span>
+                                            </template>
+                                            <template v-else>
+                                                <button
+                                                    type="button"
+                                                    class="lists-item-main"
+                                                    :disabled="busyListId !== null"
+                                                    :title="$t('load_selection')"
+                                                    @click="loadSavedList(lst.id)"
+                                                >
+                                                    <span class="lists-item-name">{{ listLabel(lst) }}</span>
+                                                    <span class="lists-item-meta">
+                                                        <span class="lists-item-count">{{ $t('list_items_count', { n: lst.items_count ?? 0 }) }}</span>
+                                                        <span v-if="formatListDate(lst.updated_at)" class="lists-item-date">
+                                                            {{ formatListDate(lst.updated_at) }}
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                                <span class="lists-item-actions">
+                                                    <el-tooltip :content="$t('load_selection')" placement="top" effect="dark">
+                                                        <button
+                                                            type="button"
+                                                            class="lists-act"
+                                                            :disabled="busyListId !== null"
+                                                            @click="loadSavedList(lst.id)"
+                                                        >
+                                                            <el-icon v-if="busyListId === lst.id" class="is-loading"><Loading /></el-icon>
+                                                            <el-icon v-else><Download /></el-icon>
+                                                        </button>
+                                                    </el-tooltip>
+                                                    <el-tooltip :content="$t('overwrite_with_current_selection')" placement="top" effect="dark">
+                                                        <button
+                                                            type="button"
+                                                            class="lists-act"
+                                                            :disabled="busyListId !== null || printReadyCount === 0"
+                                                            @click="overwriteList(lst, { confirm: true })"
+                                                        >
+                                                            <el-icon><Upload /></el-icon>
+                                                        </button>
+                                                    </el-tooltip>
+                                                    <el-tooltip :content="$t('rename_list')" placement="top" effect="dark">
+                                                        <button type="button" class="lists-act" @click="startRename(lst)">
+                                                            <el-icon><EditPen /></el-icon>
+                                                        </button>
+                                                    </el-tooltip>
+                                                    <el-popconfirm :title="$t('confirm_delete_list')" :confirm-button-text="$t('delete')" :cancel-button-text="$t('cancel')" @confirm="deleteSavedList(lst.id)">
+                                                        <template #reference>
+                                                            <button type="button" class="lists-act lists-act-danger" :title="$t('delete')">
+                                                                <el-icon><Delete /></el-icon>
+                                                            </button>
+                                                        </template>
+                                                    </el-popconfirm>
+                                                </span>
+                                            </template>
                                         </div>
                                     </div>
                                 </div>
@@ -270,16 +465,20 @@
                 <span v-else class="summary-value">—</span>
                 <span class="summary-label">{{ $t('sum_of_selected') }}</span>
             </div>
-            <p v-if="deselectedKeys.length > 0" class="summary-note">
+            <p v-if="!isEverythingSelected" class="summary-note">
                 {{ $t('selected_count_note') }}
             </p>
         </div>
 
-        <div v-if="selectedCategoryIds.length" class="active-filters screen-only">
+        <div v-if="selectedCategoryChips.length" class="active-filters screen-only">
             <span class="active-filters-label">{{ $t('classifications') }}:</span>
-            <span v-for="id in selectedCategoryIds" :key="id" class="filter-chip">
-                {{ categoryNameById(id) }}
-                <button type="button" class="filter-chip-remove" :aria-label="$t('clear')" @click="toggleCategory(id, false)">×</button>
+            <span v-for="chip in selectedCategoryChips" :key="chip.id" class="filter-chip" :class="{ 'is-branch': chip.subCount > 0 }">
+                <!-- A subcategory carries its section name so "Mixers" reads as
+                     "Bahsas > Mixers" instead of floating free of its parent. -->
+                <span v-if="chip.parentName" class="filter-chip-parent">{{ chip.parentName }}</span>
+                {{ chip.name }}
+                <span v-if="chip.subCount > 0" class="filter-chip-sub">{{ $t('subcategories_count', { n: chip.subCount }) }}</span>
+                <button type="button" class="filter-chip-remove" :aria-label="$t('clear')" @click="toggleCategory(chip.id, false)">&times;</button>
             </span>
             <button type="button" class="filter-clear-all" @click="clearCategories">{{ $t('clear') }}</button>
         </div>
@@ -287,7 +486,7 @@
         <div v-loading="loading" class="offer-table-wrap screen-only">
             <ProductOfferTable :groups="groupedProducts" :loading="loading" :editing-id="editingId" :edit-value="editValue" :visible-columns="visibleColumns"
                 :editing-stock-id="editingStockId" :edit-stock-value="editStockValue" :item-status="itemStatus"
-                :selected-keys="deselectedKeys"
+                :selected-keys="selectedGroupKeys"
                 :all-selected="allSelected"
                 :some-selected="someSelected"
                 @toggle-all="toggleSelectAll"
@@ -295,9 +494,11 @@
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
                 @start-edit-stock="startEditStock" @commit-edit-stock="commitEditStock" @cancel-edit-stock="cancelEditStock"
                 @edit-item="openEditItemDialog"
+                @remove-variant="removeVariant"
+                @remove-item="removeItem"
                 @update-image="updateItemImage" @clear-image="clearItemImage"
                 @add-variant="openAddVariantDialog" />
-            <div v-if="selectedCount === 0" class="selection-empty screen-only">
+            <div v-if="printReadyCount === 0" class="selection-empty screen-only">
                 <el-icon><WarningFilled /></el-icon>
                 {{ $t('no_products_selected_for_print') }}
             </div>
@@ -548,31 +749,65 @@ import { useProductsStore } from '@/stores/products';
 import { productsApi, priceOfferListsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, Operation, Grid, Select, WarningFilled, Collection, Plus, Delete, Connection, Clock, CircleCheck, MagicStick, Check } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, Operation, Grid, Select, WarningFilled, Collection, Plus, Delete, Connection, Clock, CircleCheck, MagicStick, Check, ArrowDown, Upload, EditPen } from '@element-plus/icons-vue';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const store = useProductsStore();
 
 const searchQuery = ref('');
 // Multi-classification filter — empty means every classification is included.
+// Only *explicitly* picked ids live here: ticking a parent section stores the
+// parent alone and the API expands it to the subcategories underneath, so the
+// filter stays readable ("Bahsas") instead of listing 27 child ids.
 const selectedCategoryIds = ref([]);
 const categorySearch = ref('');
 const categoryPopoverVisible = ref(false);
-// Per-product print selection. Tracks excluded group keys (see the selection
-// helpers below); empty means every product is selected/included. The last
-// used selection is remembered across reloads via localStorage.
+// Which parent sections are expanded in the picker. A search temporarily
+// expands every branch that has a match, without disturbing this set.
+const expandedCategoryIds = ref([]);
+const HIDE_EMPTY_CATEGORIES_KEY = 'price_offer_hide_empty_categories';
+function loadHideEmptyCategories() {
+    try {
+        return localStorage.getItem(HIDE_EMPTY_CATEGORIES_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+// Roughly a third of the classifications hold no products at all; hiding them
+// keeps the list short without losing the ability to see them again.
+const hideEmptyCategories = ref(loadHideEmptyCategories());
+// Per-product print selection. A selection is a *mode* plus a set of exception
+// group keys, so it stays exact across pagination: in 'all' mode every product
+// prints except the exceptions, in 'none' mode only the exceptions print. The
+// second mode is what lets "clear" and "apply a saved list" mean the same thing
+// on page 1 as on page 9 — an excluded-keys-only model can never say "just
+// these forty products" without first enumerating the whole catalogue.
+// The last used selection is remembered across reloads via localStorage.
 const SELECTION_STORAGE_KEY = 'price_offer_selection';
 function loadStoredSelection() {
     try {
         const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            // Legacy shape: a bare array of excluded group keys.
+            if (Array.isArray(parsed)) return { mode: 'all', keys: parsed, listId: null, listKeys: [] };
+            if (parsed && (parsed.mode === 'all' || parsed.mode === 'none')) {
+                return {
+                    mode: parsed.mode,
+                    keys: Array.isArray(parsed.keys) ? parsed.keys : [],
+                    listId: typeof parsed.listId === 'number' ? parsed.listId : null,
+                    listKeys: Array.isArray(parsed.listKeys) ? parsed.listKeys : [],
+                };
+            }
+        }
     } catch {
-        return [];
+        // Private mode / corrupt entry — fall through to "everything selected".
     }
+    return { mode: 'all', keys: [], listId: null, listKeys: [] };
 }
-const deselectedKeys = ref(loadStoredSelection());
+const storedSelection = loadStoredSelection();
+const selectionMode = ref(storedSelection.mode);
+const selectionExceptions = ref(storedSelection.keys);
 const currentPage = ref(1);
 const pageSize = ref(50);
 const divideValue = ref(null);
@@ -585,6 +820,17 @@ const listsPopoverVisible = ref(false);
 const loadingLists = ref(false);
 const savingList = ref(false);
 const listName = ref('');
+const listSearch = ref('');
+// The saved list currently applied, plus the group keys it resolved to, so the
+// menu can show which list is live and whether the selection has drifted from
+// it since.
+const activeListId = ref(storedSelection.listId ?? null);
+const activeListKeys = ref(storedSelection.listKeys ?? []);
+// Id of the list whose apply/overwrite request is in flight (per-row spinner).
+const busyListId = ref(null);
+const renamingListId = ref(null);
+const renameValue = ref('');
+const renameInputRef = ref(null);
 
 // Price/stock overrides keyed by row id (`p-{productId}` or `v-{variantId}`).
 // They keep the screen table, the print/PDF table and the CSV export all
@@ -784,6 +1030,127 @@ function suggestVariantSku(product) {
     const prefix = base.includes('-') ? base.replace(/-\d+$/, '') : base;
     const count = Array.isArray(product.variants) ? product.variants.length : 0;
     return `${prefix}-${count + 1}`;
+}
+
+/* ---- Removing a row -----------------------------------------------------
+ *
+ * Neither of these is reversible: the catalogue has no soft deletes, so a
+ * removed record is gone. Both therefore confirm, name the thing by name, and
+ * say what else goes with it — and the server refuses the cases that would
+ * take something else down quietly (a variant still on a shelf, a product
+ * whose stock-movement history would cascade away with it).
+ * ----------------------------------------------------------------------- */
+
+/** The product record as the store currently holds it, so the row can be dropped in place. */
+const storedProduct = (group) => store.products.find((p) => String(p.id) === String(group.product.id));
+
+async function removeVariant(group, item) {
+    const variantId = Number(String(item.id).slice(2));
+    const label = [item.size, item.color, item.unit].filter(Boolean).join(' · ') || `#${variantId}`;
+
+    try {
+        await ElMessageBox.confirm(
+            t('confirm_remove_variant_message', { variant: label }),
+            t('remove_variant'),
+            {
+                type: 'warning',
+                confirmButtonText: t('remove_variant'),
+                cancelButtonText: t('cancel'),
+                confirmButtonClass: 'el-button--danger',
+            }
+        );
+    } catch {
+        return; // dismissed
+    }
+
+    try {
+        await productsApi.deleteVariant(variantId);
+
+        // Drop it from the store so the row goes without a full refetch.
+        const product = storedProduct(group);
+        if (product && Array.isArray(product.variants)) {
+            product.variants = product.variants.filter((v) => Number(v.id) !== variantId);
+        }
+
+        flashMsg(t('variant_removed'));
+    } catch (error) {
+        // The server refuses a variant still in stock or held by other
+        // records, and says which; that sentence is more use than a generic
+        // failure, so it is shown as-is.
+        ElMessage.error(error?.response?.data?.message || t('failed_to_remove_variant'));
+    }
+}
+
+async function removeItem(group) {
+    const product = group.product;
+    const name = product.name_ar || product.name_en || `#${product.id}`;
+    const variantCount = Array.isArray(product.variants) ? product.variants.length : 0;
+
+    try {
+        await ElMessageBox.confirm(
+            variantCount > 0
+                ? t('confirm_remove_item_with_variants_message', { product: name, count: variantCount })
+                : t('confirm_remove_item_message', { product: name }),
+            t('remove_item'),
+            {
+                type: 'warning',
+                confirmButtonText: t('remove_item'),
+                cancelButtonText: t('cancel'),
+                confirmButtonClass: 'el-button--danger',
+            }
+        );
+    } catch {
+        return;
+    }
+
+    try {
+        await productsApi.delete(product.id);
+
+        const index = store.products.findIndex((p) => String(p.id) === String(product.id));
+        if (index !== -1) store.products.splice(index, 1);
+
+        flashMsg(t('item_removed'));
+    } catch (error) {
+        const message = error?.response?.data?.message;
+        const reason = error?.response?.data?.data?.reason;
+
+        // A product with stock or a movement history is not deleted — it is
+        // retired. Offering that here means the refusal ends in a way forward
+        // rather than a dead end.
+        if (reason === 'has_history' || reason === 'has_stock') {
+            offerDeactivation(group, message);
+            return;
+        }
+
+        ElMessage.error(message || t('failed_to_remove_item'));
+    }
+}
+
+/**
+ * What to do with a product that cannot be deleted without erasing its own
+ * record: take it out of the catalogue and leave the history standing.
+ */
+async function offerDeactivation(group, reasonMessage) {
+    try {
+        await ElMessageBox.confirm(
+            `${reasonMessage}\n\n${t('deactivate_instead_question')}`,
+            t('remove_item'),
+            {
+                type: 'warning',
+                confirmButtonText: t('deactivate_item'),
+                cancelButtonText: t('cancel'),
+            }
+        );
+    } catch {
+        return;
+    }
+
+    await saveField(`p-${group.product.id}`, { is_active: false });
+
+    const index = store.products.findIndex((p) => String(p.id) === String(group.product.id));
+    if (index !== -1) store.products.splice(index, 1);
+
+    flashMsg(t('item_deactivated'));
 }
 
 function openAddVariantDialog(group) {
@@ -1294,30 +1661,179 @@ const categoryButtonLabel = computed(() => {
     return t('classifications_selected', { n });
 });
 
-const filteredCategoryOptions = computed(() => {
-    const q = categorySearch.value.trim().toLowerCase();
-    if (!q) return categories.value;
-    return categories.value.filter((c) =>
-        (c.name_ar || '').toLowerCase().includes(q) || (c.name_en || '').toLowerCase().includes(q)
-    );
+// --- Classification tree ---
+// The taxonomy is two levels deep: sections at the top and the subcategories
+// filed under them. The picker used to flatten both into one list, which made
+// a section indistinguishable from a subcategory and — because a section like
+// Bahsas holds no products directly — made ticking it look like an empty
+// classification. Here the children hang under their parent instead.
+
+const categoryById = computed(() => {
+    const map = new Map();
+    for (const c of categories.value) map.set(c.id, c);
+    return map;
 });
 
-function categoryNameById(id) {
-    const cat = categories.value.find((c) => c.id === id);
-    return cat ? (cat.name_ar || cat.name_en || '') : '';
+function categoryLabel(cat) {
+    return cat ? (cat.name_ar || cat.name_en || cat.name || '') : '';
 }
 
+function categoryMatches(cat, q) {
+    if (!q) return true;
+    return (cat.name_ar || '').toLowerCase().includes(q)
+        || (cat.name_en || '').toLowerCase().includes(q);
+}
+
+function categoryProductCount(cat) {
+    const n = Number(cat?.product_count);
+    return Number.isFinite(n) ? n : 0;
+}
+
+// Full tree, before search/empty filtering. A child whose parent is missing
+// from the payload (inactive, or filtered out server-side) is promoted to the
+// top level so it can never silently disappear from the picker.
+const fullCategoryTree = computed(() => {
+    const nodes = new Map();
+    for (const c of categories.value) nodes.set(c.id, { ...c, children: [] });
+    const roots = [];
+    for (const node of nodes.values()) {
+        const parent = node.parent_id != null ? nodes.get(node.parent_id) : null;
+        if (parent && parent.id !== node.id) parent.children.push(node);
+        else roots.push(node);
+    }
+    return roots;
+});
+
+const parentCategoryCount = computed(() => fullCategoryTree.value.filter((n) => n.children.length > 0).length);
+
+// Search keeps a section visible when the section itself matches (all of its
+// children come along) or when any child matches (only the matching children
+// are shown), so a hit is always shown in the context it lives in.
+const categoryTree = computed(() => {
+    const q = categorySearch.value.trim().toLowerCase();
+    const hideEmpty = hideEmptyCategories.value;
+    const out = [];
+    for (const node of fullCategoryTree.value) {
+        const selfMatch = categoryMatches(node, q);
+        let children = selfMatch ? node.children : node.children.filter((c) => categoryMatches(c, q));
+        if (hideEmpty) {
+            children = children.filter((c) => categoryProductCount(c) > 0 || isCategoryChecked(c.id));
+        }
+        if (!selfMatch && children.length === 0) continue;
+        if (hideEmpty && children.length === 0 && categoryProductCount(node) === 0 && !isCategoryChecked(node.id)) continue;
+        out.push({ ...node, children });
+    }
+    return out;
+});
+
+const isSearchingCategories = computed(() => categorySearch.value.trim().length > 0);
+
+function isBranchExpanded(id) {
+    // While searching, every branch left standing is one with a match in it.
+    if (isSearchingCategories.value) return true;
+    return expandedCategoryIds.value.includes(id);
+}
+
+function toggleBranch(id) {
+    if (isSearchingCategories.value) return;
+    expandedCategoryIds.value = expandedCategoryIds.value.includes(id)
+        ? expandedCategoryIds.value.filter((x) => x !== id)
+        : [...expandedCategoryIds.value, id];
+}
+
+const allBranchesExpanded = computed(() => {
+    const branches = categoryTree.value.filter((n) => n.children.length > 0);
+    return branches.length > 0 && branches.every((n) => isBranchExpanded(n.id));
+});
+
+function toggleAllCategoryBranches() {
+    if (isSearchingCategories.value) return;
+    expandedCategoryIds.value = allBranchesExpanded.value
+        ? []
+        : categoryTree.value.filter((n) => n.children.length > 0).map((n) => n.id);
+}
+
+function toggleHideEmptyCategories(val) {
+    hideEmptyCategories.value = !!val;
+    try {
+        localStorage.setItem(HIDE_EMPTY_CATEGORIES_KEY, val ? '1' : '0');
+    } catch {
+        // Private mode / quota exceeded — the preference just won't persist.
+    }
+}
+
+// A subcategory is included when it is picked itself *or* when its parent
+// section is picked; the second case is shown ticked-but-locked so it is clear
+// the products are in without implying the row can be removed on its own.
+function isCoveredByParent(cat) {
+    return cat?.parent_id != null && selectedCategoryIds.value.includes(cat.parent_id);
+}
+
+function isCategoryChecked(id) {
+    if (selectedCategoryIds.value.includes(id)) return true;
+    return isCoveredByParent(categoryById.value.get(id));
+}
+
+function isCategoryPartiallyChecked(node) {
+    if (selectedCategoryIds.value.includes(node.id)) return false;
+    return node.children.some((c) => selectedCategoryIds.value.includes(c.id));
+}
+
+function categoryNameById(id) {
+    return categoryLabel(categoryById.value.get(id));
+}
+
+const selectedCategoryChips = computed(() => selectedCategoryIds.value.map((id) => {
+    const cat = categoryById.value.get(id);
+    const parent = cat?.parent_id != null ? categoryById.value.get(cat.parent_id) : null;
+    const node = fullCategoryTree.value.find((n) => n.id === id);
+    return {
+        id,
+        name: categoryLabel(cat) || `#${id}`,
+        parentName: categoryLabel(parent),
+        subCount: node ? node.children.length : 0,
+    };
+}));
+
+// How many classifications the filter really covers (a picked section counts
+// its subcategories too) and how many products that adds up to.
+const effectiveCategoryCount = computed(() => {
+    const ids = new Set();
+    for (const id of selectedCategoryIds.value) {
+        ids.add(id);
+        const node = fullCategoryTree.value.find((n) => n.id === id);
+        if (node) for (const c of node.children) ids.add(c.id);
+    }
+    return ids.size;
+});
+
+const selectedCategoryProductCount = computed(() => selectedCategoryIds.value.reduce((sum, id) => {
+    // `product_count` on a section already covers its subcategories, so the
+    // section's own number is the whole subtree — don't add the children again.
+    const cat = categoryById.value.get(id);
+    return sum + categoryProductCount(cat);
+}, 0));
+
 function toggleCategory(id, checked) {
+    const node = fullCategoryTree.value.find((n) => n.id === id);
+    const childIds = node ? node.children.map((c) => c.id) : [];
     if (checked) {
-        if (!selectedCategoryIds.value.includes(id)) selectedCategoryIds.value = [...selectedCategoryIds.value, id];
+        // Picking a section supersedes any of its subcategories already picked.
+        const next = selectedCategoryIds.value.filter((x) => !childIds.includes(x));
+        if (!next.includes(id)) next.push(id);
+        selectedCategoryIds.value = next;
+        if (childIds.length && !expandedCategoryIds.value.includes(id)) {
+            expandedCategoryIds.value = [...expandedCategoryIds.value, id];
+        }
     } else {
-        selectedCategoryIds.value = selectedCategoryIds.value.filter((x) => x !== id);
+        selectedCategoryIds.value = selectedCategoryIds.value.filter((x) => x !== id && !childIds.includes(x));
     }
     onCategoryChange();
 }
 
 function selectAllCategories() {
-    selectedCategoryIds.value = filteredCategoryOptions.value.map((c) => c.id);
+    // Top-level rows only: a section already pulls in everything beneath it.
+    selectedCategoryIds.value = categoryTree.value.map((c) => c.id);
     onCategoryChange();
 }
 
@@ -1327,55 +1843,129 @@ function clearCategories() {
 }
 
 // --- Per-product print selection ---
-// Tracks the products the user has *excluded* from printing, keyed by the
-// same product-name group key `buildGroups` produces. Empty means every
-// product is included/selected (the default).
+// Products are keyed by the same product-name group key `buildGroups` produces.
+// `selectionMode` says what the default is and `selectionExceptions` lists the
+// rows that go against it, so the answer for a product is the same whether or
+// not its page is currently loaded.
+
+function isGroupSelected(key) {
+    const isException = selectionExceptions.value.includes(key);
+    return selectionMode.value === 'all' ? !isException : isException;
+}
+
+function setSelection(mode, keys) {
+    selectionMode.value = mode;
+    selectionExceptions.value = keys;
+}
+
+// The two extremes, catalogue-wide: nothing has been unticked, or nothing is
+// ticked at all. Both toolbar buttons key off these instead of a key count
+// that only ever described the page on screen.
+const isEverythingSelected = computed(
+    () => selectionMode.value === 'all' && selectionExceptions.value.length === 0
+);
+const isSelectionEmpty = computed(
+    () => selectionMode.value === 'none' && selectionExceptions.value.length === 0
+);
 
 function toggleSelected(key, checked) {
-    const list = [...deselectedKeys.value];
-    if (!checked) {
-        if (!list.includes(key)) list.push(key);
-    } else {
-        const idx = list.indexOf(key);
-        if (idx !== -1) list.splice(idx, 1);
-    }
-    deselectedKeys.value = list;
+    if (checked === isGroupSelected(key)) return;
+    const list = [...selectionExceptions.value];
+    const idx = list.indexOf(key);
+    if (idx === -1) list.push(key); else list.splice(idx, 1);
+    selectionExceptions.value = list;
 }
 
 function selectAllProducts() {
-    deselectedKeys.value = [];
-    flashMsg(t('reset'));
+    setSelection('all', []);
+    flashMsg(t('all_products_selected'));
 }
 
 function clearSelection() {
-    const all = allGroupKeys();
-    deselectedKeys.value = all;
+    setSelection('none', []);
+    flashMsg(t('selection_cleared'));
 }
 
-function allGroupKeys() {
-    const keys = new Set();
-    for (const g of buildGroups(products.value)) keys.add(g.key);
-    return Array.from(keys);
+// Filters built groups down to just the products the user wants printed.
+function filterSelected(groups) {
+    if (selectionMode.value === 'all' && selectionExceptions.value.length === 0) return groups;
+    return groups.filter((g) => isGroupSelected(g.key));
 }
 
-// Remember the current print selection so it survives a page reload.
-watch(deselectedKeys, (val) => {
+// Remember the current print selection so it survives a page reload, and keep
+// the print/PDF table in step with it for a native Ctrl+P.
+watch([selectionMode, selectionExceptions, activeListId, activeListKeys], () => {
+    if (fullPrintGroups.value.length) printGroups.value = filterSelected(fullPrintGroups.value);
     try {
-        localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(val));
+        localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify({
+            mode: selectionMode.value,
+            keys: selectionExceptions.value,
+            listId: activeListId.value,
+            listKeys: activeListKeys.value,
+        }));
     } catch {
         // Private mode / quota exceeded — the selection just won't persist.
     }
-});
+}, { deep: true });
 
 // --- Saved print-selection lists ---
+// A saved list is a named set of row ids. Saving and applying both work off
+// the *whole* filtered catalogue (`fullPrintGroups`), never the page on
+// screen, so a list saved from page 1 still describes all 900 products.
 
-// The item ids (`p-{id}` / `v-{id}`) of the rows currently selected for print.
+// The item ids (`p-{id}` / `v-{id}`) of every row currently selected for print.
 function currentSelectedItemIds() {
+    const source = fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
     const ids = new Set();
-    for (const g of groupedProducts.value) {
+    for (const g of filterSelected(source)) {
         for (const item of g.items) ids.add(item.id);
     }
     return Array.from(ids);
+}
+
+const listLabel = (lst) => (lst?.name_ar || lst?.name_en || t('default_list_name'));
+
+const activeList = computed(() => savedLists.value.find((l) => l.id === activeListId.value) || null);
+
+// Every selected group key across the whole filtered catalogue — the canonical
+// shape of "what is selected", independent of mode and of the page on screen.
+function selectedGroupKeysAll() {
+    const source = fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
+    return filterSelected(source).map((g) => g.key);
+}
+
+// The applied list is "modified" once the live selection no longer matches the
+// group keys it resolved to, which is the cue to offer an overwrite.
+const activeListDirty = computed(() => {
+    if (!activeList.value) return false;
+    const current = selectedGroupKeysAll();
+    if (current.length !== activeListKeys.value.length) return true;
+    const saved = new Set(activeListKeys.value);
+    return current.some((k) => !saved.has(k));
+});
+
+const filteredLists = computed(() => {
+    const q = listSearch.value.trim().toLowerCase();
+    if (!q) return savedLists.value;
+    return savedLists.value.filter((l) => listLabel(l).toLowerCase().includes(q));
+});
+
+const saveListHint = computed(() => (
+    printReadyCount.value === 0 ? t('select_products_before_saving') : t('save_selection_as_list')
+));
+
+function formatListDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(locale.value === 'ar' ? 'ar-SY' : 'en-GB', { day: '2-digit', month: 'short' });
+}
+
+// Anything that saves or applies a list needs the full catalogue in hand; the
+// background hydration usually has it already, otherwise we wait for it here.
+async function ensureFullCatalog() {
+    if (!fullPrintGroups.value.length) await hydratePrintCatalog();
+    return fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
 }
 
 async function loadLists() {
@@ -1383,6 +1973,10 @@ async function loadLists() {
     try {
         const res = await priceOfferListsApi.getAll();
         savedLists.value = res.data?.data ?? [];
+        // A list deleted from another tab shouldn't stay flagged as applied.
+        if (activeListId.value !== null && !savedLists.value.some((l) => l.id === activeListId.value)) {
+            activeListId.value = null;
+        }
     } catch {
         ElMessage.error(t('failed_to_load_saved_lists'));
     } finally {
@@ -1390,15 +1984,52 @@ async function loadLists() {
     }
 }
 
+// Picks a default name that doesn't collide with an existing one ("List 3").
+function nextDefaultListName() {
+    const base = t('default_list_name');
+    const taken = new Set(savedLists.value.map((l) => listLabel(l).toLowerCase()));
+    let n = savedLists.value.length + 1;
+    while (taken.has(`${base} ${n}`.toLowerCase())) n += 1;
+    return `${base} ${n}`;
+}
+
 async function saveCurrentSelection() {
-    const key = t('default_list_name');
-    const useName = (listName.value || '').trim();
-    const name = useName || `${key} ${savedLists.value.length + 1}`;
-    const items = currentSelectedItemIds();
+    if (savingList.value) return;
+    const typed = (listName.value || '').trim();
+    const name = typed || nextDefaultListName();
+
+    // Saving over a name that already exists is almost always meant as an
+    // update, so offer that instead of quietly creating a second "Riyadh".
+    const clash = savedLists.value.find((l) => listLabel(l).toLowerCase() === name.toLowerCase());
+    if (clash) {
+        try {
+            await ElMessageBox.confirm(t('list_name_exists', { name }), t('saved_lists'), {
+                confirmButtonText: t('update_list'),
+                cancelButtonText: t('cancel'),
+                type: 'warning',
+            });
+        } catch {
+            return;
+        }
+        listName.value = '';
+        await overwriteList(clash);
+        return;
+    }
+
     savingList.value = true;
     try {
+        await ensureFullCatalog();
+        const items = currentSelectedItemIds();
+        if (items.length === 0) {
+            ElMessage.warning(t('select_products_before_saving'));
+            return;
+        }
         const res = await priceOfferListsApi.create({ name, items });
-        savedLists.value.unshift(res.data?.data ?? { name_ar: name, name_en: name, items_count: items.length });
+        const created = res.data?.data;
+        if (created) {
+            savedLists.value.unshift(created);
+            adoptList(created.id);
+        }
         listName.value = '';
         flashMsg(t('list_saved'));
     } catch {
@@ -1408,22 +2039,128 @@ async function saveCurrentSelection() {
     }
 }
 
-// Applies a saved list to the current view: a group stays selected only when
-// every one of its rows is present in the saved list.
-async function loadSavedList(id) {
+// Replaces a list's items with what is selected right now.
+async function overwriteList(lst, { confirm = false } = {}) {
+    if (busyListId.value !== null) return;
+    if (confirm) {
+        try {
+            await ElMessageBox.confirm(
+                t('confirm_overwrite_list', { name: listLabel(lst), count: printReadyCount.value }),
+                t('update_list'),
+                { confirmButtonText: t('update_list'), cancelButtonText: t('cancel'), type: 'warning' },
+            );
+        } catch {
+            return;
+        }
+    }
+    busyListId.value = lst.id;
     try {
-        const res = await priceOfferListsApi.show(id);
+        await ensureFullCatalog();
+        const items = currentSelectedItemIds();
+        if (items.length === 0) {
+            ElMessage.warning(t('select_products_before_saving'));
+            return;
+        }
+        const res = await priceOfferListsApi.update(lst.id, { items });
+        const updated = res.data?.data;
+        const idx = savedLists.value.findIndex((l) => l.id === lst.id);
+        if (idx !== -1) savedLists.value[idx] = updated ?? { ...lst, items_count: items.length };
+        adoptList(lst.id);
+        flashMsg(t('list_updated'));
+    } catch {
+        ElMessage.error(t('failed_to_update_list'));
+    } finally {
+        busyListId.value = null;
+    }
+}
+
+function startRename(lst) {
+    renamingListId.value = lst.id;
+    renameValue.value = listLabel(lst);
+    // The ref lives inside a v-for, so Vue hands back an array even though only
+    // the row being renamed renders the input.
+    nextTick(() => {
+        const el = Array.isArray(renameInputRef.value) ? renameInputRef.value[0] : renameInputRef.value;
+        el?.focus();
+        el?.select();
+    });
+}
+
+function cancelRename() {
+    renamingListId.value = null;
+    renameValue.value = '';
+}
+
+async function commitRename(lst) {
+    const name = renameValue.value.trim();
+    if (!name || name === listLabel(lst)) {
+        cancelRename();
+        return;
+    }
+    try {
+        const res = await priceOfferListsApi.update(lst.id, { name });
+        const updated = res.data?.data;
+        const idx = savedLists.value.findIndex((l) => l.id === lst.id);
+        if (idx !== -1) savedLists.value[idx] = updated ?? { ...lst, name_ar: name, name_en: name };
+        flashMsg(t('list_renamed'));
+    } catch {
+        ElMessage.error(t('failed_to_rename_list'));
+    } finally {
+        cancelRename();
+    }
+}
+
+// Marks a list as the one currently applied and snapshots the group keys it
+// maps to, so later edits can be detected as drift.
+function adoptList(id) {
+    activeListId.value = id;
+    activeListKeys.value = selectedGroupKeysAll();
+}
+
+// Stops tracking the applied list without touching the selection itself.
+function detachActiveList() {
+    activeListId.value = null;
+    activeListKeys.value = [];
+}
+
+// Applies a saved list across the whole filtered catalogue: a group is
+// selected when every one of its rows is present in the saved list.
+async function loadSavedList(id) {
+    if (busyListId.value !== null) return;
+    busyListId.value = id;
+    try {
+        const [res, groups] = await Promise.all([
+            priceOfferListsApi.show(id),
+            ensureFullCatalog(),
+        ]);
         const itemKeys = res.data?.data?.item_keys ?? [];
         const set = new Set(itemKeys);
-        const exclude = [];
-        for (const g of buildGroups(products.value)) {
-            const selected = g.items.every((item) => set.has(item.id));
-            if (!selected) exclude.push(g.key);
+        const include = [];
+        let matchedItems = 0;
+        for (const g of groups) {
+            if (g.items.every((item) => set.has(item.id))) {
+                include.push(g.key);
+                matchedItems += g.items.length;
+            }
         }
-        deselectedKeys.value = exclude;
-        flashMsg(t('selection_loaded'));
+        setSelection('none', include);
+        adoptList(id);
+        listsPopoverVisible.value = false;
+
+        if (include.length === 0) {
+            ElMessage.warning(t('saved_list_matched_nothing'));
+        } else if (matchedItems < set.size) {
+            ElMessage.warning(t('saved_list_partially_matched', {
+                matched: matchedItems,
+                total: set.size,
+            }));
+        } else {
+            flashMsg(t('selection_loaded'));
+        }
     } catch {
         ElMessage.error(t('failed_to_load_selection'));
+    } finally {
+        busyListId.value = null;
     }
 }
 
@@ -1432,32 +2169,38 @@ async function deleteSavedList(id) {
         await priceOfferListsApi.remove(id);
         const idx = savedLists.value.findIndex((l) => l.id === id);
         if (idx !== -1) savedLists.value.splice(idx, 1);
+        if (activeListId.value === id) detachActiveList();
         flashMsg(t('list_deleted'));
     } catch {
         ElMessage.error(t('failed_to_delete_list'));
     }
 }
 
-const selectedCount = computed(() => {
-    if (deselectedKeys.value.length === 0) return groupedProducts.value.length;
-    return groupedProducts.value.filter((g) => !deselectedKeys.value.includes(g.key)).length;
-});
+// --- On-screen selection state (drives the table's header checkbox) ---
 
-// Whether every on-screen group is selected (used by the header checkbox).
-const someSelected = computed(
-    () => deselectedKeys.value.length > 0 && selectedCount.value > 0
+const selectedCount = computed(() => groupedProducts.value.filter((g) => isGroupSelected(g.key)).length);
+// The group keys on screen that are selected — the table renders a tick from
+// this list rather than re-deriving the mode/exception rules itself.
+const selectedGroupKeys = computed(
+    () => groupedProducts.value.filter((g) => isGroupSelected(g.key)).map((g) => g.key)
 );
 const allSelected = computed(
-    () => groupedProducts.value.length > 0 && deselectedKeys.value.length === 0
+    () => groupedProducts.value.length > 0 && selectedCount.value === groupedProducts.value.length
+);
+// Indeterminate: some but not all of the rows on screen are ticked.
+const someSelected = computed(
+    () => selectedCount.value > 0 && selectedCount.value < groupedProducts.value.length
 );
 
-// Toggles the whole on-screen table: checking every group or clearing them.
+// Toggles every group on screen, leaving products on other pages untouched.
 function toggleSelectAll(checked) {
-    if (checked) {
-        selectAllProducts();
-    } else {
-        deselectedKeys.value = allGroupKeys();
+    const keys = groupedProducts.value.map((g) => g.key);
+    const exceptions = new Set(selectionExceptions.value);
+    for (const key of keys) {
+        const shouldBeException = selectionMode.value === 'all' ? !checked : checked;
+        if (shouldBeException) exceptions.add(key); else exceptions.delete(key);
     }
+    selectionExceptions.value = Array.from(exceptions);
 }
 
 const formatSummaryPrice = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1477,7 +2220,7 @@ const printReadySum = computed(() => {
     const groups = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
     let sum = 0;
     for (const group of groups) {
-        if (deselectedKeys.value.length > 0 && deselectedKeys.value.includes(group.key)) continue;
+        if (!isGroupSelected(group.key)) continue;
         for (const item of group.items) {
             const p = Number(item.displayPrice);
             if (Number.isFinite(p)) sum += p;
@@ -1485,12 +2228,6 @@ const printReadySum = computed(() => {
     }
     return sum;
 });
-
-// Filters built groups down to just the products the user wants printed.
-function filterSelected(groups) {
-    if (deselectedKeys.value.length === 0) return groups;
-    return groups.filter((g) => !deselectedKeys.value.includes(g.key));
-}
 
 // Full catalog snapshot for printing/PDF — every page, grouped by product name.
 const printGroups = ref([]);
@@ -1559,7 +2296,9 @@ function buildGroups(list) {
     return order.map((k) => map.get(k));
 }
 
-const groupedProducts = computed(() => filterSelected(buildGroups(products.value)));
+// Every group on the current page, selected or not: unticking a product must
+// grey its row out, not make it disappear with no way back.
+const groupedProducts = computed(() => buildGroups(products.value));
 
 function makeItem(id, base) {
     const override = overrides.value[id];
@@ -1603,29 +2342,35 @@ const fetchProducts = async () => {
 // Print/Download PDF buttons) still shows real images and prices instead of
 // an empty table. The buttons still do their own guaranteed, visible fetch on
 // click — this is just a best-effort head start.
-let hydrating = false;
-async function hydratePrintCatalog() {
-    if (hydrating) return;
-    hydrating = true;
+// A second caller (saving or applying a list) joins the in-flight run instead
+// of returning early to an empty catalogue.
+let hydrating = null;
+function hydratePrintCatalog() {
+    if (hydrating) return hydrating;
     printCancelled.value = false;
-    try {
-        const groups = buildGroups(await fetchAllProductsFlat());
-        fullPrintGroups.value = groups;
-        printGroups.value = filterSelected(groups);
-    } catch {
-        // Silent — Print/Download PDF still fetch fresh, visibly, on demand.
-    } finally {
-        hydrating = false;
-    }
+    hydrating = (async () => {
+        try {
+            const groups = buildGroups(await fetchAllProductsFlat());
+            fullPrintGroups.value = groups;
+            printGroups.value = filterSelected(groups);
+        } catch {
+            // Silent — Print/Download PDF still fetch fresh, visibly, on demand.
+        } finally {
+            hydrating = null;
+        }
+    })();
+    return hydrating;
 }
 
 const resetFilters = () => {
     searchQuery.value = '';
     selectedCategoryIds.value = [];
     categorySearch.value = '';
+    expandedCategoryIds.value = [];
     divideValue.value = null;
     currentPage.value = 1;
-    deselectedKeys.value = [];
+    setSelection('all', []);
+    detachActiveList();
     overrides.value = {};
     divideValueApplied.value = null;
     stockOverrides.value = {};
@@ -1728,7 +2473,10 @@ const divideAllPrices = () => {
         ElMessage.warning(t('please_enter_positive_number'));
         return;
     }
-    for (const group of groupedProducts.value) {
+    // Every selected row in the filtered catalogue, not just the page on
+    // screen — otherwise pages 2+ print at their undivided price.
+    const source = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
+    for (const group of filterSelected(source)) {
         for (const item of group.items) {
             overrides.value[item.id] = Math.round((item.originalPrice / v) * 10) / 10;
         }
@@ -1864,6 +2612,7 @@ onMounted(async () => {
     await store.fetchCategories();
     await fetchProducts();
     hydratePrintCatalog();
+    loadLists();
     // Restore any edits queued before a reload / while offline, and push them
     // if the connection has already returned.
     applyPendingStatuses();
@@ -2403,16 +3152,46 @@ onMounted(async () => {
     background: #c00000;
     border-radius: 999px;
 }
+.btn-lists {
+    max-width: 210px;
+}
+.btn-lists-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Amber pip on the toolbar button: a list is applied but has been edited. */
+.lists-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    margin-inline-start: 2px;
+    border-radius: 50%;
+    background: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, .25);
+}
 .lists-menu {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+.lists-menu-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
 }
 .lists-menu-title {
     margin: 0;
     font-size: 13px;
     font-weight: 700;
     color: #111c2c;
+}
+.lists-menu-sub {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
 }
 .lists-create {
     display: flex;
@@ -2452,25 +3231,154 @@ onMounted(async () => {
     opacity: .5;
     cursor: not-allowed;
 }
+/* A disabled button swallows pointer events, so the tooltip explaining *why*
+   it is disabled needs a live wrapper to hang off. */
+.btn-list-save-wrap {
+    display: inline-flex;
+}
+
+/* Strip naming the list currently applied, and whether it has drifted. */
+.lists-active {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(16, 185, 129, .35);
+    background: rgba(16, 185, 129, .08);
+}
+.lists-active.is-dirty {
+    border-color: rgba(245, 158, 11, .45);
+    background: rgba(245, 158, 11, .1);
+}
+.lists-active-icon {
+    flex: 0 0 auto;
+    font-size: 14px;
+    color: #0f766e;
+}
+.lists-active.is-dirty .lists-active-icon {
+    color: #b45309;
+}
+.lists-active-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #111c2c;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lists-active-state {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    color: #0f766e;
+    white-space: nowrap;
+}
+.lists-active.is-dirty .lists-active-state {
+    color: #b45309;
+}
+.lists-active-btn {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: #b45309;
+    cursor: pointer;
+}
+.lists-active-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+.lists-active-btn.is-plain {
+    background: transparent;
+    color: #64748b;
+    text-decoration: underline;
+    padding-inline: 2px;
+}
+
+.lists-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.lists-search-icon {
+    position: absolute;
+    inset-inline-start: 9px;
+    font-size: 13px;
+    color: #94a3b8;
+    pointer-events: none;
+}
+.lists-search-input {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    padding-inline-start: 28px;
+    font-size: 12px;
+    outline: none;
+}
+.lists-search-input:focus {
+    border-color: #2563eb;
+}
+
 .lists-scroll {
-    max-height: 240px;
+    max-height: 260px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 6px;
     min-height: 40px;
 }
+.lists-empty-hint {
+    margin: 0;
+    padding: 14px 4px;
+    text-align: center;
+    font-size: 12px;
+    color: #94a3b8;
+}
 .lists-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 8px;
+    gap: 6px;
+    padding: 6px 8px;
     border: 1px solid rgba(15, 23, 42, .08);
     background: #f8fafc;
     border-radius: 8px;
+    transition: border-color .15s ease, background .15s ease;
+}
+.lists-item:hover {
+    border-color: rgba(37, 99, 235, .35);
+    background: #f1f5f9;
+}
+.lists-item.is-active {
+    border-color: rgba(16, 185, 129, .5);
+    background: rgba(16, 185, 129, .07);
+}
+/* The whole name block is the "apply" target, so the row reads as one click. */
+.lists-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+}
+.lists-item-main:disabled {
+    cursor: progress;
 }
 .lists-item-name {
-    flex: 1;
+    max-width: 100%;
     font-size: 12.5px;
     font-weight: 600;
     color: #111c2c;
@@ -2478,14 +3386,40 @@ onMounted(async () => {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.lists-item-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
 .lists-item-count {
     font-size: 11px;
     color: #64748b;
     white-space: nowrap;
 }
+.lists-item-date {
+    font-size: 10.5px;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+.lists-item-date::before {
+    content: '·';
+    margin-inline-end: 6px;
+}
+.lists-rename-input {
+    flex: 1;
+    min-width: 0;
+}
 .lists-item-actions {
     display: inline-flex;
-    gap: 4px;
+    gap: 2px;
+}
+.lists-act:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+.lists-act-ok:hover {
+    background: #d1fae5;
+    color: #0f766e;
 }
 .lists-act {
     display: inline-flex;
@@ -2638,6 +3572,120 @@ onMounted(async () => {
     text-align: center;
 }
 
+/* Classification tree: sections, their twisty, and the subcategories under it */
+.cat-subtools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 2px 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.cat-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+}
+.categories-list {
+    padding-inline-end: 2px;
+}
+.cat-node + .cat-node {
+    border-top: 1px solid #f8fafc;
+}
+.cat-row {
+    border-radius: 6px;
+}
+.cat-row.is-on {
+    background: #eef2ff;
+}
+.cat-row.is-on:hover {
+    background: #e0e7ff;
+}
+.cat-twisty {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    padding: 0;
+    color: #94a3b8;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: transform .15s ease, color .15s ease;
+}
+.cat-twisty:hover {
+    color: #2563eb;
+    background: #e2e8f0;
+}
+.cat-twisty.is-leaf {
+    cursor: default;
+    pointer-events: none;
+}
+/* Collapsed sections point along the reading direction, open ones point down. */
+.cat-node.has-children:not(.is-open) .cat-twisty {
+    transform: rotate(-90deg);
+}
+[dir="rtl"] .cat-node.has-children:not(.is-open) .cat-twisty {
+    transform: rotate(90deg);
+}
+.cat-name-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+.cat-row-parent .cat-name {
+    font-weight: 700;
+}
+.cat-sub-count {
+    flex: 0 0 auto;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #4f46e5;
+    background: #eef2ff;
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+}
+.cat-children {
+    /* A hairline rail down the group ties the subcategories to their section. */
+    margin-inline-start: 12px;
+    padding-inline-start: 12px;
+    border-inline-start: 2px solid #e2e8f0;
+}
+.cat-row-child {
+    font-size: 12.5px;
+    color: #475569;
+}
+.cat-row-child.is-covered {
+    opacity: .72;
+}
+.cat-row-child.is-covered .cat-name {
+    color: #64748b;
+}
+.categories-menu-footer {
+    margin: 8px 0 0;
+    padding-top: 7px;
+    border-top: 1px solid #f1f5f9;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    text-align: center;
+}
+
 /* Summary statistics strip shown under the toolbar */
 .summary-strip {
     display: flex;
@@ -2718,6 +3766,30 @@ onMounted(async () => {
     font-weight: 600;
     padding: 4px 6px 4px 10px;
     border-radius: 999px;
+}
+.filter-chip.is-branch {
+    background: #e0e7ff;
+}
+.filter-chip-parent {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #6366f1;
+    opacity: .85;
+}
+.filter-chip-parent::after {
+    content: '\203A';
+    margin-inline-start: 4px;
+}
+[dir="rtl"] .filter-chip-parent::after {
+    content: '\2039';
+}
+.filter-chip-sub {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4338ca;
+    background: rgba(255, 255, 255, .7);
+    border-radius: 999px;
+    padding: 0 6px;
 }
 .filter-chip-remove {
     border: none;

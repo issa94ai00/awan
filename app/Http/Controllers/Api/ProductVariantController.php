@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProductVariant;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ProductVariantController extends Controller
@@ -98,21 +100,43 @@ class ProductVariantController extends Controller
      */
     public function destroy($variant): JsonResponse
     {
-        try {
-            $variant = ProductVariant::findOrFail($variant);
-            $variant->delete();
+        $variant = ProductVariant::findOrFail($variant);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'تم حذف المتغير بنجاح',
-                'data' => null,
-            ]);
-        } catch (\Exception $e) {
+        // warehouse_inventory cascades off a deleted variant, so deleting one
+        // that is still on a shelf silently drops the stock with it and the
+        // count on the floor stops matching the count in the system. Whoever
+        // holds the goods has to issue or adjust them first — deliberately,
+        // through the screen that records why.
+        $onHand = (float) DB::table('warehouse_inventory')
+            ->where('product_variant_id', $variant->id)
+            ->sum('quantity');
+
+        if ($onHand > 0) {
             return response()->json([
                 'success' => false,
-                'message' => 'خطأ في حذف المتغير',
-                'error' => $e->getMessage(),
-            ], 500);
+                'message' => 'لا يمكن حذف متغيّر ما زال في المخزون (المتوفر '.rtrim(rtrim(number_format($onHand, 2, '.', ''), '0'), '.').'). أخرج الكمية أو سوِّها أولاً.',
+                'data' => null,
+            ], 422);
         }
+
+        try {
+            $variant->delete();
+        } catch (QueryException $e) {
+            // Picking lists, batches and serial numbers hold the variant with
+            // ON DELETE NO ACTION, so the database refuses. That refusal used
+            // to surface as a 500 carrying raw SQL; it is an ordinary, and
+            // correct, answer to the request.
+            return response()->json([
+                'success' => false,
+                'message' => 'هذا المتغيّر مرتبط بسجلات أخرى (أوامر تجهيز أو دفعات أو أرقام تسلسلية)، فلا يمكن حذفه.',
+                'data' => null,
+            ], 409);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم حذف المتغير بنجاح',
+            'data' => null,
+        ]);
     }
 }

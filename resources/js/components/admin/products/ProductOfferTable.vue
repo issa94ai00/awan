@@ -32,7 +32,7 @@
                 <tr
                     v-for="(item, iIdx) in group.items"
                     :key="item.id"
-                    :class="{ first: iIdx === 0 }"
+                    :class="{ first: iIdx === 0, 'is-unselected': !printMode && !isSelected(group.key) }"
                     :style="{ background: gIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }"
                     :id="!printMode && iIdx === 0 ? `item-${group.product.id}` : undefined"
                 >
@@ -148,6 +148,16 @@
                                 <el-icon><Plus /></el-icon>
                                 {{ $t('add_variant') }}
                             </button>
+                            <button
+                                v-if="!printMode && !visibleColumns.product"
+                                type="button"
+                                class="remove-item-btn"
+                                :title="$t('remove_item')"
+                                @click="$emit('remove-item', group)"
+                            >
+                                <el-icon><Delete /></el-icon>
+                                {{ $t('remove_item') }}
+                            </button>
                         </div>
                     </td>
                     <td v-if="visibleColumns.product && iIdx === 0" :rowspan="group.items.length" class="cell-product">
@@ -170,6 +180,13 @@
                             </div>
                             <div v-if="group.product.sku" class="cell-product-sku">SKU: {{ group.product.sku }}</div>
                             <div v-if="group.product.brand" class="cell-product-brand">{{ group.product.brand }}</div>
+                            <!-- Which subcategory the row came from. Only on screen:
+                                 with a parent section selected the table mixes items
+                                 from 27 subcategories, and the printed offer has no
+                                 room (or need) for the internal taxonomy. -->
+                            <div v-if="!printMode && categoryLabel(group.product)" class="cell-product-category">
+                                {{ categoryLabel(group.product) }}
+                            </div>
                             <button
                                 v-if="!printMode && visibleColumns.product"
                                 type="button"
@@ -180,25 +197,64 @@
                             >
                                 <el-icon><Plus /></el-icon>
                             </button>
+                            <button
+                                v-if="!printMode && visibleColumns.product"
+                                type="button"
+                                class="add-item-variant-icon remove-item-icon"
+                                :title="$t('remove_item')"
+                                :aria-label="$t('remove_item')"
+                                @click="$emit('remove-item', group)"
+                            >
+                                <el-icon><Delete /></el-icon>
+                            </button>
                         </div>
                     </td>
-                    <td v-if="visibleColumns.details" class="cell-detail">
+                    <td
+                        v-if="visibleColumns.details"
+                        class="cell-detail"
+                        :class="{ 'has-two-actions': !printMode && isVariantRow(item) }"
+                    >
                         <div class="cell-detail-view">
                             <div v-if="item.size" class="detail-size">{{ item.size }}</div>
                             <div v-if="item.color" class="detail-color">{{ item.color }}</div>
                             <div v-if="item.unit" class="detail-unit">{{ item.unit }}</div>
                             <div v-if="!item.size && !item.color && !item.unit" class="detail-na">&mdash;</div>
                         </div>
-                        <el-tooltip v-if="!printMode" :content="$t('edit')" placement="top" effect="dark">
-                            <button
-                                type="button"
-                                class="cell-edit-btn"
-                                :title="$t('edit')"
-                                @click="$emit('edit-item', group, item)"
+                        <!-- Both row actions live in one strip. They used to be
+                             two absolutely-positioned buttons claiming the same
+                             corner, so the delete sat exactly on top of the edit
+                             and the edit could not be clicked at all. -->
+                        <div v-if="!printMode" class="cell-row-actions">
+                            <el-tooltip :content="$t('edit')" placement="top" effect="dark">
+                                <button
+                                    type="button"
+                                    class="cell-edit-btn"
+                                    :aria-label="$t('edit')"
+                                    @click="$emit('edit-item', group, item)"
+                                >
+                                    <el-icon><EditPen /></el-icon>
+                                </button>
+                            </el-tooltip>
+                            <!-- Only a variant row can be removed on its own. The
+                                 base row is the product itself, and taking it away
+                                 is a different act with different consequences —
+                                 offered on the product cell, not here. -->
+                            <el-tooltip
+                                v-if="isVariantRow(item)"
+                                :content="$t('remove_variant')"
+                                placement="top"
+                                effect="dark"
                             >
-                                <el-icon><EditPen /></el-icon>
-                            </button>
-                        </el-tooltip>
+                                <button
+                                    type="button"
+                                    class="cell-edit-btn cell-remove-btn"
+                                    :aria-label="$t('remove_variant')"
+                                    @click="$emit('remove-variant', group, item)"
+                                >
+                                    <el-icon><Delete /></el-icon>
+                                </button>
+                            </el-tooltip>
+                        </div>
                     </td>
                     <td
                         v-if="visibleColumns.price"
@@ -299,6 +355,7 @@ const props = defineProps({
         type: Object,
         default: () => ({ image: true, product: true, details: true, price: true, inventory: true }),
     },
+    // Group keys that are ticked for printing (on-screen rows only).
     selectedKeys: { type: Array, default: () => [] },
     allSelected: { type: Boolean, default: false },
     someSelected: { type: Boolean, default: false },
@@ -317,7 +374,26 @@ const emit = defineEmits([
     'update-image', 'clear-image',
     'add-variant',
     'edit-item',
+    // Removal is split by what is being removed, because the two are not the
+    // same act: a variant is one line of a product, an item is the product.
+    'remove-variant',
+    'remove-item',
 ]);
+
+/**
+ * A row backed by a ProductVariant rather than the product itself.
+ *
+ * The table keys variant rows `v-{id}` and the base row `p-{id}`, which is the
+ * same test openEditItemDialog makes to decide which record an edit belongs to.
+ */
+const isVariantRow = (item) => String(item?.id ?? '').startsWith('v-');
+
+/** Display name of the classification a product is filed under, if it came through. */
+const categoryLabel = (product) => {
+    const cat = product?.category;
+    if (!cat) return '';
+    return cat.name_ar || cat.name_en || '';
+};
 
 const localEditValue = ref(props.editValue);
 watch(() => props.editValue, (v) => { localEditValue.value = v; });
@@ -387,14 +463,10 @@ const removeItemImage = (group) => {
     emit('clear-image', group);
 };
 
-// A product is selected for printing when nothing has been explicitly
-// unselected yet (empty list) or when its group key is in the selection.
-// The print/PDF table never shows selection, so it always counts everything.
-const isSelected = (key) => {
-    if (props.printMode) return true;
-    if (!props.selectedKeys || props.selectedKeys.length === 0) return true;
-    return props.selectedKeys.includes(key);
-};
+// `selectedKeys` lists exactly the on-screen groups that are ticked, so an
+// empty list means nothing is selected — not everything. The print/PDF table
+// is already filtered down to the selection, so it always renders everything.
+const isSelected = (key) => props.printMode || props.selectedKeys.includes(key);
 
 const getPreviewList = (product) => productImages(product);
 
@@ -646,6 +718,22 @@ const formatPrice = (price) => {
     color: #64748b;
     font-weight: 600;
 }
+.cell-product-category {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    margin-top: 3px;
+    max-width: 100%;
+    font-size: 8pt;
+    font-weight: 700;
+    color: #4338ca;
+    background: #eef2ff;
+    border-radius: 999px;
+    padding: 1px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 .cell-detail {
     position: relative;
@@ -653,9 +741,21 @@ const formatPrice = (price) => {
     font-size: 9.5pt;
     font-weight: 700;
     white-space: pre-wrap;
-    padding: 5px 22px 5px 8px;
+    /* Logical, to match the action strip's `inset-inline-end`. The gutter was
+       reserved with a physical `padding-right` while the button anchored to the
+       inline end — the same side only in a left-to-right document, so in Arabic
+       the space was held open on one side and the button sat on the other. */
+    padding: 5px 8px;
+    padding-inline-end: 26px;
     text-align: center;
     vertical-align: middle;
+}
+
+/* A variant row carries edit *and* remove, so it needs a wider gutter than a
+   row that only carries edit. Reserved per row rather than for the whole
+   column, which is 120px wide and cannot spare it everywhere. */
+.cell-detail.has-two-actions {
+    padding-inline-end: 50px;
 }
 .detail-size { color: #1e293b; }
 .detail-color { color: #6366f1; font-size: 8.5pt; }
@@ -699,6 +799,77 @@ const formatPrice = (price) => {
 .cell-edit-btn:hover {
     background: #e0e7ff;
     color: #2563eb;
+}
+
+/* The details cell's action strip.
+   `.cell-edit-btn` positions itself absolutely in the cell corner, which is
+   right while there is one of them — the price and stock cells still work that
+   way. Two of them claimed the same corner and stacked, hiding the edit under
+   the delete. Inside the strip they go back to normal flow and sit side by
+   side; the strip takes the corner instead. */
+.cell-row-actions {
+    position: absolute;
+    top: 2px;
+    inset-inline-end: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.cell-row-actions .cell-edit-btn {
+    position: static;
+    /* Bigger than the lone 18px button: two adjacent targets, one of them
+       destructive, need room not to be hit by accident. */
+    width: 22px;
+    height: 22px;
+}
+
+/* Removal shares the edit button's shape, so they read as one family — but it
+   only turns red on hover. A destructive control that is red at rest drags the
+   eye to the one action on the row that cannot be undone. */
+.cell-remove-btn:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* Keyboard users get the same affordance the mouse gets: the strip is
+   hover-revealed, which would otherwise leave a focused button invisible. */
+.cell-row-actions .cell-edit-btn:focus-visible {
+    opacity: 1;
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+}
+
+.cell-row-actions .cell-remove-btn:focus-visible {
+    outline-color: #dc2626;
+}
+
+.remove-item-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 3px 8px;
+    border: 1px dashed #e2c8c8;
+    border-radius: 999px;
+    background: #fff;
+    color: #94a3b8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.remove-item-btn:hover {
+    border-color: #fca5a5;
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.remove-item-icon:hover {
+    border-color: #fca5a5;
+    background: #fef2f2;
+    color: #dc2626;
 }
 .cell-price.editing {
     padding: 0;
@@ -923,5 +1094,16 @@ const formatPrice = (price) => {
         break-inside: avoid;
         page-break-inside: avoid;
     }
+}
+
+/* A product left out of the print run stays in place, greyed back, so it can
+   be ticked again — it used to vanish from the table entirely. */
+.offer-table tbody tr.is-unselected > td {
+    opacity: .4;
+    filter: saturate(.35);
+}
+.offer-table tbody tr.is-unselected > td.cell-select {
+    opacity: 1;
+    filter: none;
 }
 </style>

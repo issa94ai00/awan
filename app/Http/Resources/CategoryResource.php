@@ -16,6 +16,10 @@ class CategoryResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            // Exposed so clients can render the two-level classification tree
+            // (a parent section and the subcategories filed under it) instead of
+            // one flat list where a child is indistinguishable from a section.
+            'parent_id' => $this->parent_id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
             'slug' => $this->slug,

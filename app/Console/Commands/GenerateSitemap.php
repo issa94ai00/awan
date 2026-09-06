@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\URL as UrlGenerator;
 use Spatie\Sitemap\Sitemap;
+use Spatie\Sitemap\SitemapIndex;
+use Spatie\Sitemap\Tags\Sitemap as SitemapTag;
 use Spatie\Sitemap\Tags\Url;
 use App\Models\Product;
 use App\Models\Category;
@@ -62,7 +64,52 @@ class GenerateSitemap extends Command
 
         $this->info("Generating sitemap for {$baseUrl} ...");
 
-        $sitemap = Sitemap::create()
+        // Only advertise URLs that actually render: PublicPageController 404s on
+        // inactive categories/products, so listing them here would create dead entries.
+        $categories = Category::where('is_active', 1)->get();
+        $products = Product::where('is_active', 1)->get();
+
+        $publicDir = public_path();
+
+        // Content is split into per-type child sitemaps and a sitemap index at
+        // /sitemap.xml. Crawlers read only the index; Search Console then
+        // reports indexing status separately for pages, categories and products.
+        $this->buildPagesSitemap()->writeToFile($publicDir.'/sitemap-pages.xml');
+
+        Sitemap::create()
+            ->add($categories)
+            ->writeToFile($publicDir.'/sitemap-categories.xml');
+
+        Sitemap::create()
+            ->add($products)
+            ->writeToFile($publicDir.'/sitemap-products.xml');
+
+        SitemapIndex::create()
+            ->add(SitemapTag::create("{$baseUrl}/sitemap-pages.xml")
+                ->setLastModificationDate(now()))
+            ->add(SitemapTag::create("{$baseUrl}/sitemap-categories.xml")
+                ->setLastModificationDate(now()))
+            ->add(SitemapTag::create("{$baseUrl}/sitemap-products.xml")
+                ->setLastModificationDate(now()))
+            ->writeToFile($publicDir.'/sitemap.xml');
+
+        $this->info(sprintf(
+            'Sitemap generated successfully! (%d pages, %d categories, %d products)',
+            10,
+            $categories->count(),
+            $products->count()
+        ));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * The handful of hand-written Blade-routed pages, unchanged from before —
+     * they barely change, so they carry no <lastmod>.
+     */
+    private function buildPagesSitemap(): Sitemap
+    {
+        return Sitemap::create()
             ->add(Url::create(route('home'))
                 ->setChangeFrequency('daily')
                 ->setPriority(1.0))
@@ -93,23 +140,6 @@ class GenerateSitemap extends Command
             ->add(Url::create(route('purchase-request.create'))
                 ->setChangeFrequency('monthly')
                 ->setPriority(0.5));
-
-        // Only advertise URLs that actually render: PublicPageController 404s on
-        // inactive categories/products, so listing them here would create dead entries.
-        $categories = Category::where('is_active', 1)->get();
-        $products = Product::where('is_active', 1)->get();
-
-        $sitemap->add($categories)
-            ->add($products)
-            ->writeToFile(public_path('sitemap.xml'));
-
-        $this->info(sprintf(
-            'Sitemap generated successfully! (%d categories, %d products)',
-            $categories->count(),
-            $products->count()
-        ));
-
-        return self::SUCCESS;
     }
 
     /**

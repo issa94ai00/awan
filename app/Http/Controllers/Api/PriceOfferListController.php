@@ -131,6 +131,10 @@ class PriceOfferListController extends Controller
             if (array_key_exists('items', $validated)) {
                 DB::transaction(function () use ($list, $validated) {
                     $this->syncItems($list, $validated['items']);
+                    // Replacing the items leaves the parent row untouched, so
+                    // touch it explicitly: `index` orders by `updated_at` and
+                    // the UI shows that date as "last changed".
+                    $list->touch();
                 });
             }
 

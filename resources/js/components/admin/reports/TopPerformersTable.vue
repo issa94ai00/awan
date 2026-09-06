@@ -7,7 +7,9 @@
         <el-table v-loading="loading" :data="rows" style="width: 100%" stripe>
             <el-table-column :label="$t('rank')" width="80">
                 <template #default="{ $index }">
-                    <el-tag :type="rankType($index)" size="small">{{ $index + 1 }}</el-tag>
+                    <el-tag :type="rankType($index)" :effect="rankEffect($index)" size="small">
+                        {{ $index + 1 }}
+                    </el-tag>
                 </template>
             </el-table-column>
             <el-table-column prop="employee_name" :label="$t('employee')" />
@@ -49,11 +51,21 @@ defineProps({
 
 const formatMoney = (value) => formatMoneyWith(value);
 
-const rankType = (index) => {
-    if (index === 0) return 'danger';
-    if (index === 1) return 'warning';
-    if (index === 2) return 'success';
-    return 'info';
+/**
+ * The podium reads top-down, not as an alert.
+ *
+ * First place used to be tagged 'danger' — red, the colour this admin uses
+ * everywhere else for a loss or a failure — with second in warning amber and
+ * third in green. So the best performer on the page was the one flagged in
+ * red, and the ranking ran through three unrelated hues in no order the eye
+ * could follow. One colour, descending in emphasis, says "ranked" instead.
+ */
+const rankType = (index) => (index < 3 ? 'primary' : 'info');
+
+/** Emphasis carries the order the hue no longer has to: solid, light, plain. */
+const rankEffect = (index) => {
+    if (index === 0) return 'dark';
+    return index < 3 ? 'light' : 'plain';
 };
 </script>
 

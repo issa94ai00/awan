@@ -67,6 +67,22 @@
                     <template v-if="!check.ok">
                         <p class="check-detail">{{ check.detail }}</p>
                         <p class="check-action"><i class="fas fa-arrow-turn-down"></i> {{ check.action }}</p>
+                        <!-- The one finding that can be cleared without leaving
+                             the page. Everything else here still points at the
+                             screen that owns the repair; this check's advice was
+                             "go to the inventory screen and price them", without
+                             ever saying which items it meant. -->
+                        <el-button
+                            v-if="check.code === 'products_without_cost'"
+                            class="check-fix"
+                            size="small"
+                            type="primary"
+                            plain
+                            @click="openPricingDialog"
+                        >
+                            <i class="fas fa-tags"></i>
+                            {{ $t('price_stocked_items_now') }}
+                        </el-button>
                     </template>
                 </div>
             </div>
@@ -209,16 +225,112 @@
                 </el-card>
             </el-col>
         </el-row>
+
+        <!-- Pricing the stocked items the health check is complaining about.
+             The check knows exactly which products it counted; this shows that
+             list and takes the missing number, instead of sending the reader to
+             another screen to work it out again. -->
+        <el-dialog
+            v-model="pricingVisible"
+            :title="$t('set_cost_for_stocked_items')"
+            width="820px"
+            top="6vh"
+            destroy-on-close
+        >
+            <p class="pricing-intro">{{ $t('why_cost_price_matters') }}</p>
+
+            <el-table
+                v-loading="pricingLoading"
+                :data="pricingRows"
+                stripe
+                max-height="420"
+                style="width: 100%"
+            >
+                <el-table-column :label="$t('product')" min-width="200">
+                    <template #default="{ row }">
+                        <div class="pricing-name">{{ row.name }}</div>
+                        <div class="pricing-sku">{{ row.sku || '—' }}</div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('stock_on_hand')" width="110">
+                    <template #default="{ row }">
+                        {{ formatQty(row.stock_on_hand) }}<span v-if="row.unit" class="pricing-unit"> {{ row.unit }}</span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('selling_price')" width="110">
+                    <template #default="{ row }">{{ formatMoney(row.price) }}</template>
+                </el-table-column>
+
+                <!-- What it last actually cost to buy: the answer to the very
+                     question being asked, whenever a purchase exists for it. -->
+                <el-table-column :label="$t('last_purchase_cost')" width="160">
+                    <template #default="{ row }">
+                        <el-button
+                            v-if="row.suggested_cost"
+                            size="small"
+                            text
+                            type="primary"
+                            @click="row.cost_price = row.suggested_cost"
+                        >
+                            {{ formatMoney(row.suggested_cost) }} · {{ $t('use_this_cost') }}
+                        </el-button>
+                        <span v-else class="pricing-none">{{ $t('no_purchase_recorded') }}</span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('cost_price')" width="150">
+                    <template #default="{ row }">
+                        <el-input-number
+                            v-model="row.cost_price"
+                            :min="0"
+                            :step="0.01"
+                            :controls="false"
+                            size="small"
+                            class="pricing-input"
+                        />
+                    </template>
+                </el-table-column>
+
+                <template #empty>
+                    <span class="pricing-none">{{ $t('nothing_left_to_price') }}</span>
+                </template>
+            </el-table>
+
+            <template #footer>
+                <div class="pricing-footer">
+                    <span class="pricing-count">{{ $t('items_ready_to_price', { count: pricedCount }) }}</span>
+                    <span>
+                        <el-button @click="pricingVisible = false">{{ $t('cancel') }}</el-button>
+                        <el-button
+                            type="primary"
+                            :loading="pricingSaving"
+                            :disabled="pricedCount === 0"
+                            @click="savePricing"
+                        >
+                            {{ $t('save') }}
+                        </el-button>
+                    </span>
+                </div>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { ElMessage } from 'element-plus';
+import { useI18n } from 'vue-i18n';
+import api from '@/api';
+import { formatMoney as formatMoneyWith } from '@/utils/currency';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { useJournalEntriesStore } from '@/stores/journalEntries';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+
+const { t } = useI18n();
 
 const accountsStore = useLedgerAccountsStore();
 const journalStore = useJournalEntriesStore();
@@ -304,6 +416,74 @@ const loadHealth = async () => {
         healthLoading.value = false;
     }
 };
+
+/* ------------------------------------------------------------------ *
+ * Pricing the stocked items that have no cost
+ *
+ * The check above stays read-only; this is the deliberate repair it points
+ * at, kept on its own endpoint precisely because it writes. The check said
+ * how many items were unpriced and told the reader to go and price them
+ * somewhere else — without naming one of them.
+ * ------------------------------------------------------------------ */
+
+const pricingVisible = ref(false);
+const pricingLoading = ref(false);
+const pricingSaving = ref(false);
+const pricingRows = ref([]);
+
+/** Only rows actually given a cost are sent; a blank row is "not now", not zero. */
+const pricedRows = computed(() => pricingRows.value.filter((row) => Number(row.cost_price) > 0));
+const pricedCount = computed(() => pricedRows.value.length);
+
+const openPricingDialog = async () => {
+    pricingVisible.value = true;
+    pricingLoading.value = true;
+    try {
+        const response = await api.get('/admin/accounting/unpriced-stock');
+        pricingRows.value = (response.data?.data?.products || []).map((product) => ({
+            ...product,
+            // Left empty rather than pre-filled with the suggestion: a cost
+            // nobody chose is how the books ended up unable to say what
+            // anything cost. The suggestion is one click away.
+            cost_price: null,
+        }));
+    } catch (error) {
+        ElMessage.error(t('failed_to_load_unpriced_items'));
+        pricingRows.value = [];
+    } finally {
+        pricingLoading.value = false;
+    }
+};
+
+const savePricing = async () => {
+    pricingSaving.value = true;
+    try {
+        const response = await api.put('/admin/accounting/unpriced-stock', {
+            items: pricedRows.value.map((row) => ({ id: row.id, cost_price: Number(row.cost_price) })),
+        });
+
+        const updated = response.data?.data?.updated ?? 0;
+        const skipped = response.data?.data?.skipped || [];
+
+        ElMessage.success(t('cost_prices_saved', { count: updated }));
+
+        // Someone else priced these while the dialog sat open. Saying so beats
+        // letting the count quietly disagree with what was typed.
+        if (skipped.length) {
+            ElMessage.warning(t('items_already_priced_elsewhere', { count: skipped.length }));
+        }
+
+        pricingVisible.value = false;
+        loadHealth();
+    } catch (error) {
+        ElMessage.error(error.response?.data?.message || t('failed_to_save_cost_prices'));
+    } finally {
+        pricingSaving.value = false;
+    }
+};
+
+const formatMoney = (value) => formatMoneyWith(value || 0);
+const formatQty = (value) => Number(value || 0).toLocaleString();
 
 onMounted(async () => {
     loadingData.value = true;
@@ -531,5 +711,52 @@ onMounted(async () => {
     font-weight: 600;
     color: var(--el-color-danger);
     overflow-wrap: anywhere;
+}
+
+.check-fix {
+    margin-top: 0.6rem;
+}
+
+/* ── Pricing dialog ─────────────────────────────────────────────────── */
+.pricing-intro {
+    margin: 0 0 1rem;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: var(--el-text-color-regular);
+}
+
+.pricing-name {
+    font-weight: 700;
+}
+
+.pricing-sku {
+    font-size: 0.75rem;
+    color: var(--el-text-color-secondary);
+}
+
+.pricing-unit {
+    font-size: 0.75rem;
+    color: var(--el-text-color-secondary);
+}
+
+.pricing-none {
+    font-size: 0.78rem;
+    color: var(--el-text-color-secondary);
+}
+
+.pricing-input {
+    width: 100%;
+}
+
+.pricing-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.pricing-count {
+    font-size: 0.82rem;
+    color: var(--el-text-color-secondary);
 }
 </style>

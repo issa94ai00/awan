@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\EnhancedSalesOrderController;
 use App\Http\Controllers\Api\CreditNoteController;
 use App\Http\Controllers\Api\CustomerOverviewController;
 use App\Http\Controllers\Api\RmaController;
+use App\Http\Controllers\Api\UnpricedStockController;
 use App\Http\Controllers\Api\WmsController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
@@ -604,6 +605,11 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // Cross-module consistency: whether the books still agree with the
                 // operational records. Read-only — repairs stay deliberate.
                 Route::get('/accounting/system-health', [AccountingReportController::class, 'systemHealth'])->name('api.admin.accounting.system-health');
+                // Clearing one of those findings. Separate from the check itself
+                // precisely because this one writes: the report stays read-only,
+                // and pricing stock is an explicit act with its own endpoint.
+                Route::get('/accounting/unpriced-stock', [UnpricedStockController::class, 'index'])->name('api.admin.accounting.unpriced-stock.index');
+                Route::put('/accounting/unpriced-stock', [UnpricedStockController::class, 'update'])->name('api.admin.accounting.unpriced-stock.update');
                 Route::get('/accounting/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('api.admin.accounting.balance-sheet');
                 // One account's movements with an opening balance, and who owes
                 // what for how long — both read straight from the ledger.

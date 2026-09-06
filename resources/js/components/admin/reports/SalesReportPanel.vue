@@ -67,43 +67,80 @@
                 </div>
             </template>
 
+            <!-- A chart that cannot be drawn should hand over the grouping that
+                 would draw it. The note already named the remedy, but "group by"
+                 lives in the collapsed advanced filters, so acting on it meant
+                 going to look for it. -->
             <div v-if="chartMode === 'none'" class="chart-empty">
-                {{ chartNote || $t('no_chart_for_this_grouping') }}
+                <p class="chart-empty-note">{{ chartNote || $t('no_chart_for_this_grouping') }}</p>
+                <div v-if="chartSuggestions.length" class="chart-empty-actions">
+                    <el-button
+                        v-for="suggestion in chartSuggestions"
+                        :key="suggestion.value"
+                        size="small"
+                        @click="emit('select-grouping', suggestion.value)"
+                    >
+                        {{ suggestion.label }}
+                    </el-button>
+                </div>
             </div>
             <div v-else ref="chartRef" class="chart-canvas"></div>
         </el-card>
 
+        <!-- One block, three dimensions. These were three copy-pasted cards
+             showing a name and a total, which threw away four of the six fields
+             the API already returns for each row — the invoice count and the
+             outstanding balance among them. Driving them from one config keeps
+             them honest with each other, and gives every dimension the same
+             drill-through. -->
         <el-row :gutter="20" class="dimension-panels">
-            <el-col :xs="24" :md="8">
+            <el-col v-for="card in dimensionCards" :key="card.key" :xs="24" :md="8">
                 <el-card shadow="hover">
-                    <template #header><span>{{ $t('employees') }}</span></template>
-                    <el-table :data="dimensionData?.employee_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="employee_name" :label="$t('employee')" />
-                        <el-table-column :label="$t('total_sales')">
+                    <template #header>
+                        <div class="dimension-header">
+                            <span>{{ card.title }}</span>
+                            <el-button
+                                v-if="card.activeId"
+                                size="small"
+                                text
+                                type="primary"
+                                @click="emit('select-dimension', { type: card.key, id: null })"
+                            >
+                                {{ $t('clear_filter') }}
+                            </el-button>
+                        </div>
+                    </template>
+
+                    <el-table
+                        :data="card.rows"
+                        stripe
+                        style="width: 100%"
+                        :row-class-name="({ row }) => dimensionRowClass(card, row)"
+                        @row-click="(row) => selectDimensionRow(card, row)"
+                    >
+                        <el-table-column :prop="card.nameKey" :label="card.rowLabel" min-width="120" />
+
+                        <el-table-column v-if="dimensionCountKey" :label="countLabel" width="72" align="center">
+                            <template #default="{ row }">{{ formatCount(row[dimensionCountKey]) }}</template>
+                        </el-table-column>
+
+                        <el-table-column :label="valueLabel" min-width="100">
                             <template #default="{ row }">{{ formatMoney(row[dimensionValueKey]) }}</template>
                         </el-table-column>
-                    </el-table>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :md="8">
-                <el-card shadow="hover">
-                    <template #header><span>{{ $t('customers') }}</span></template>
-                    <el-table :data="dimensionData?.customer_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="customer_name" :label="$t('customer')" />
-                        <el-table-column :label="$t('total_sales')">
-                            <template #default="{ row }">{{ formatMoney(row[dimensionValueKey]) }}</template>
+
+                        <!-- Only the invoice report knows what is still owed;
+                             a sales order has no such figure. -->
+                        <el-table-column v-if="dimensionDueKey" :label="dueLabel" min-width="100">
+                            <template #default="{ row }">
+                                <span :class="Number(row[dimensionDueKey]) > 0 ? 'profit-negative' : 'profit-positive'">
+                                    {{ formatMoney(row[dimensionDueKey]) }}
+                                </span>
+                            </template>
                         </el-table-column>
-                    </el-table>
-                </el-card>
-            </el-col>
-            <el-col :xs="24" :md="8">
-                <el-card shadow="hover">
-                    <template #header><span>{{ $t('warehouses') }}</span></template>
-                    <el-table :data="dimensionData?.warehouse_summary || []" stripe style="width: 100%">
-                        <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
-                        <el-table-column :label="$t('total_sales')">
-                            <template #default="{ row }">{{ formatMoney(row[dimensionValueKey]) }}</template>
-                        </el-table-column>
+
+                        <template #empty>
+                            <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
+                        </template>
                     </el-table>
                 </el-card>
             </el-col>
@@ -171,13 +208,17 @@
                 <el-table-column :label="$t('margin')">
                     <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
                 </el-table-column>
+
+                <template #empty>
+                    <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
+                </template>
             </el-table>
         </el-card>
     </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import * as echarts from 'echarts';
 import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
@@ -212,8 +253,96 @@ const props = defineProps({
     chartValues: { type: Array, default: () => [] },
     dimensionData: { type: Object, default: null },
     dimensionValueKey: { type: String, default: 'total_sales' },
+    /**
+     * What that column of figures is called. It used to be hardcoded to
+     * "total sales" while the *value* was parameterised, so the invoices tab
+     * showed three tables of `total_invoiced` under a heading that said sales.
+     * Two different numbers, one name.
+     */
+    dimensionValueLabel: { type: String, default: '' },
+    /**
+     * How many documents each breakdown row stands for. The API has always
+     * returned it (`total_invoices` / `total_orders`); the panel just never
+     * showed it, so "3,400 through the main warehouse" never said whether that
+     * was two invoices or forty.
+     */
+    dimensionCountKey: { type: String, default: '' },
+    dimensionCountLabel: { type: String, default: '' },
+    /** Outstanding balance per row. Invoices only — an order has no due figure. */
+    dimensionDueKey: { type: String, default: '' },
+    dimensionDueLabel: { type: String, default: '' },
+    /**
+     * Which row of each breakdown is currently filtered on, so the panel can
+     * show the report is scoped rather than leaving the reader to infer it
+     * from the collapsed filter bar: { employee, customer, warehouse }.
+     */
+    activeDimensions: { type: Object, default: () => ({}) },
+    /** Groupings offered when this tab cannot chart the current one: [{ value, label }]. */
+    chartSuggestions: { type: Array, default: () => [] },
     profitability: { type: Object, default: null },
 });
+
+const emit = defineEmits(['select-grouping', 'select-dimension']);
+
+const valueLabel = computed(() => props.dimensionValueLabel || t('total_sales'));
+const countLabel = computed(() => props.dimensionCountLabel || t('count'));
+const dueLabel = computed(() => props.dimensionDueLabel || t('due_amount'));
+
+const formatCount = (value) => Number(value || 0).toLocaleString();
+
+/**
+ * The three breakdowns, described once.
+ *
+ * `idKey` is what a row drills through on. A row with no id — the "unknown"
+ * bucket the API returns for documents with no warehouse or no rep assigned —
+ * cannot be filtered on, so it stays inert rather than pretending to be a link
+ * that quietly does nothing.
+ */
+const dimensionCards = computed(() => [
+    {
+        key: 'employee',
+        title: t('employees'),
+        rowLabel: t('employee'),
+        nameKey: 'employee_name',
+        idKey: 'employee_id',
+        rows: props.dimensionData?.employee_summary || [],
+        activeId: props.activeDimensions?.employee || null,
+    },
+    {
+        key: 'customer',
+        title: t('customers'),
+        rowLabel: t('customer'),
+        nameKey: 'customer_name',
+        idKey: 'customer_id',
+        rows: props.dimensionData?.customer_summary || [],
+        activeId: props.activeDimensions?.customer || null,
+    },
+    {
+        key: 'warehouse',
+        title: t('warehouses'),
+        rowLabel: t('warehouse'),
+        nameKey: 'warehouse_name',
+        idKey: 'warehouse_id',
+        rows: props.dimensionData?.warehouse_summary || [],
+        activeId: props.activeDimensions?.warehouse || null,
+    },
+]);
+
+const selectDimensionRow = (card, row) => {
+    const id = row?.[card.idKey];
+    if (!id) return;
+
+    // Clicking the row already filtered on clears it, so the same gesture
+    // both narrows and widens.
+    emit('select-dimension', { type: card.key, id: String(card.activeId) === String(id) ? null : id });
+};
+
+const dimensionRowClass = (card, row) => {
+    const id = row?.[card.idKey];
+    if (!id) return 'dimension-row-inert';
+
+    return String(card.activeId) === String(id) ? 'dimension-row is-active' : 'dimension-row';
+};
 
 const chartRef = ref(null);
 let chart = null;
@@ -414,6 +543,44 @@ const formatValue = (value, format) => {
 .profit-positive { color: #16a34a; }
 .profit-negative { color: #dc2626; }
 
+/* Figures in a report are read down the column, not across the row, so the
+   digits have to keep the same width or the decimal points wander. */
+.sales-report-panel :deep(.el-table) {
+    font-variant-numeric: tabular-nums;
+}
+
+.table-empty {
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.dimension-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* A row that drills through says so before it is clicked. */
+.dimension-panels :deep(.dimension-row) {
+    cursor: pointer;
+}
+
+.dimension-panels :deep(.dimension-row:hover) td {
+    background: #eff6ff;
+}
+
+.dimension-panels :deep(.dimension-row.is-active) td {
+    background: #dbeafe;
+    font-weight: 700;
+}
+
+/* The "unknown" bucket has nothing to filter on, so it does not offer to. */
+.dimension-panels :deep(.dimension-row-inert) {
+    cursor: default;
+    color: #94a3b8;
+}
+
 .chart-card,
 .profitability-table-card {
     border-radius: 1rem;
@@ -432,12 +599,27 @@ const formatValue = (value, format) => {
 
 .chart-empty {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.75rem;
     height: 160px;
     color: #94a3b8;
     font-size: 0.9rem;
     text-align: center;
+}
+
+.chart-empty-note {
+    margin: 0;
+    max-width: 42ch;
+    line-height: 1.6;
+}
+
+.chart-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
 }
 
 .dimension-panels {

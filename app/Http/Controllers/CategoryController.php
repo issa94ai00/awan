@@ -12,9 +12,7 @@ class CategoryController extends Controller
     {
         $categories = Category::query()
             ->where('is_active', 1)
-            ->withCount(['products as product_count' => function ($query) {
-                $query->where('is_active', 1);
-            }])
+            ->withProductCount()
             ->orderBy('sort_order')
             ->get();
 
@@ -26,7 +24,7 @@ class CategoryController extends Controller
         abort_unless((int) ($category->is_active ?? 0) === 1, 404);
 
         $products = Product::query()
-            ->where('category_id', $category->id)
+            ->whereIn('category_id', $category->descendantIds())
             ->where('is_active', 1)
             ->with('category')
             ->orderByDesc('created_at')

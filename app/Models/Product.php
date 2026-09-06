@@ -95,10 +95,28 @@ class Product extends Model implements Sitemapable
 
     public function toSitemapTag(): Url|string
     {
-        return Url::create(route('product.show', $this))
+        $tag = Url::create(route('product.show', $this))
             ->setLastModificationDate($this->updated_at)
             ->setChangeFrequency('weekly')
             ->setPriority(0.8);
+
+        // Surface the product photos to Google Images via <image:image>.
+        // image_url() resolves storage-relative paths to absolute URLs; gallery
+        // entries cap at 8 per product so a heavily-photographed item cannot
+        // bloat the sitemap (Google allows up to 1000, but more is rarely worth it).
+        $gallery = json_decode($this->image_gallery ?? '[]', true) ?: [];
+        $images = collect([$this->image_main])
+            ->merge($gallery)
+            ->filter()
+            ->map(fn (string $path) => image_url($path))
+            ->filter()
+            ->take(9);
+
+        foreach ($images as $imageUrl) {
+            $tag->addImage($imageUrl);
+        }
+
+        return $tag;
     }
 
     public function getImageMainUrlAttribute(): ?string

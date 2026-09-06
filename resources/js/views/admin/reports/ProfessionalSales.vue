@@ -115,7 +115,16 @@
                     :chart-values="invoicesChartValues"
                     :dimension-data="invoiceDimensionData"
                     dimension-value-key="total_invoiced"
+                    :dimension-value-label="$t('total_invoiced')"
+                    dimension-count-key="total_invoices"
+                    :dimension-count-label="$t('count')"
+                    dimension-due-key="due_amount"
+                    :dimension-due-label="$t('due_amount')"
+                    :active-dimensions="activeDimensions"
+                    :chart-suggestions="invoiceChartSuggestions"
                     :profitability="invoiceProductProfitabilityData"
+                    @select-grouping="applyGrouping"
+                    @select-dimension="applyDimensionFilter"
                 />
 
                 <el-card shadow="hover" class="table-card">
@@ -163,6 +172,16 @@
                         </el-table-column>
                         <el-table-column :label="$t('employee')">
                             <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
+                        </el-table-column>
+                        <!-- The warehouse breakdown ranks by this and the row was
+                             already eager-loaded, but the detail table never
+                             showed it — so drilling into a warehouse produced a
+                             list with nothing on it naming the warehouse. -->
+                        <el-table-column :label="$t('warehouse')" min-width="130">
+                            <template #default="{ row }">
+                                <span v-if="row.warehouse">{{ row.warehouse.name }}</span>
+                                <span v-else class="table-sub-note">{{ $t('unassigned') }}</span>
+                            </template>
                         </el-table-column>
                         <el-table-column :label="$t('status')" width="100">
                             <template #default="{ row }">
@@ -228,7 +247,11 @@
                     :chart-values="ordersChartValues"
                     :dimension-data="dimensionData"
                     dimension-value-key="total_sales"
+                    dimension-count-key="total_orders"
+                    :dimension-count-label="$t('count')"
+                    :active-dimensions="activeDimensions"
                     :profitability="productProfitabilityData"
+                    @select-dimension="applyDimensionFilter"
                 />
 
                 <el-card shadow="hover" class="table-card">
@@ -623,9 +646,23 @@ const BREAKDOWN_GROUPINGS = ['employee', 'customer', 'warehouse'];
 
 const invoicesChartMode = computed(() => (BREAKDOWN_GROUPINGS.includes(filters.group_by) ? 'bar' : 'none'));
 
+/**
+ * The groupings this tab *can* chart, offered from the empty chart itself.
+ *
+ * The default grouping is 'day' — a trend, which the invoice report has no
+ * series for — so the tab that now opens the page also opens with a blank
+ * chart. The note explained that; these make it one click to fix instead of a
+ * hunt through the collapsed advanced filters.
+ */
+const GROUPING_LABELS = { employee: 'by_employee', customer: 'by_customer', warehouse: 'by_warehouse' };
+
+const invoiceChartSuggestions = computed(() =>
+    BREAKDOWN_GROUPINGS.map((value) => ({ value, label: t(GROUPING_LABELS[value]) }))
+);
+
 const invoicesChartTitle = computed(() => {
-    const labels = { employee: t('by_employee'), customer: t('by_customer'), warehouse: t('by_warehouse') };
-    return labels[filters.group_by] || t('distribution_by_criteria');
+    const key = GROUPING_LABELS[filters.group_by];
+    return key ? t(key) : t('distribution_by_criteria');
 });
 
 const invoicesChartLabels = computed(() => {
@@ -727,6 +764,46 @@ const applyFilters = () => {
     ordersStale.value = true;
     invoicesStale.value = true;
     loadActiveTab();
+};
+
+/**
+ * Switch grouping from the empty chart's own suggestion.
+ *
+ * Goes through applyFilters() rather than only setting the value: the orders
+ * trend is fetched *with* group_by, so changing it without a reload would
+ * leave that tab charting the previous grouping's rows.
+ */
+const applyGrouping = (grouping) => {
+    if (filters.group_by === grouping) return;
+
+    filters.group_by = grouping;
+    applyFilters();
+};
+
+/** Which breakdown row each panel should show as the current scope. */
+const activeDimensions = computed(() => ({
+    employee: filters.employee_id,
+    customer: filters.customer_id,
+    warehouse: filters.warehouse_id,
+}));
+
+/**
+ * Drill into one row of a breakdown.
+ *
+ * The breakdown could say a warehouse had billed 884.88 across six invoices
+ * but not which six. The filters that answer that already existed — they were
+ * just in the collapsed advanced panel, to be found and set by hand. Clicking
+ * the row sets the same filter, so the detail table underneath becomes exactly
+ * the documents behind the number that was clicked.
+ */
+const DIMENSION_FILTERS = { employee: 'employee_id', customer: 'customer_id', warehouse: 'warehouse_id' };
+
+const applyDimensionFilter = ({ type, id }) => {
+    const field = DIMENSION_FILTERS[type];
+    if (!field) return;
+
+    filters[field] = id ?? null;
+    applyFilters();
 };
 
 const resetFilters = () => {

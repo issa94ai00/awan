@@ -56,9 +56,7 @@ class SearchController extends Controller
                   ->orWhere('name_en', 'like', $searchTerm)
                   ->orWhere('description', 'like', $searchTerm);
             })
-            ->withCount(['products as product_count' => function ($query) {
-                $query->where('is_active', 1);
-            }])
+            ->withProductCount()
             ->limit(10)
             ->get();
 

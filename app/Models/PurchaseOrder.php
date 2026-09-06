@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RecordsInBaseCurrency;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class PurchaseOrder extends Model
 {
     use HasFactory;
+    use RecordsInBaseCurrency;
 
     protected $fillable = [
         'supplier_id',

@@ -50,6 +50,42 @@ class Category extends Model implements Sitemapable
         return $this->hasMany(Category::class, 'parent_id');
     }
 
+    /**
+     * The category itself plus its children. The taxonomy is two levels deep —
+     * top-level sections with one row of subcategories under them — so a single
+     * child lookup covers every product filed anywhere under this category.
+     *
+     * @return array<int, int>
+     */
+    public function descendantIds(): array
+    {
+        return array_merge(
+            [$this->id],
+            static::query()->where('parent_id', $this->id)->pluck('id')->all()
+        );
+    }
+
+    /**
+     * Selects `product_count` as the number of active products in the category
+     * *and* its children, so a parent that only holds subcategories (Bahsas)
+     * still reports the products the visitor will find under it.
+     */
+    public function scopeWithProductCount($query)
+    {
+        $table = $this->getTable();
+
+        if (is_null($query->getQuery()->columns)) {
+            $query->select($table . '.*');
+        }
+
+        return $query->selectRaw(
+            '(SELECT COUNT(*) FROM products p WHERE p.is_active = 1'
+            . ' AND (p.category_id = ' . $table . '.id'
+            . ' OR p.category_id IN (SELECT sub.id FROM ' . $table . ' sub WHERE sub.parent_id = ' . $table . '.id))'
+            . ') as product_count'
+        );
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';
