@@ -349,7 +349,16 @@
                         </div>
                     </template>
 
-                    <el-table v-loading="ordersListLoading" :data="reportData" style="width: 100%" stripe highlight-current-row>
+                    <el-table
+                        ref="ordersTableRef"
+                        v-loading="ordersListLoading"
+                        :data="reportData"
+                        style="width: 100%"
+                        stripe
+                        highlight-current-row
+                        :row-class-name="orderRowClass"
+                        @sort-change="handleOrdersSortChange"
+                    >
                         <el-table-column :label="$t('order_number')" width="120">
                             <template #default="{ row }">
                                 <router-link class="record-link" :to="`/admin/sales/sales-orders/${row.id}/edit`">
@@ -375,7 +384,70 @@
                             <template #default="{ row }">{{ formatMoney(row.subtotal) }}</template>
                         </el-table-column>
                         <el-table-column :label="$t('total')" width="120">
-                            <template #default="{ row }"><strong>{{ formatMoney(row.total) }}</strong></template>
+                            <template #default="{ row }">
+                                <strong>{{ formatMoney(row.total) }}</strong>
+                                <p v-if="Number(row.tax) > 0" class="table-sub-note">
+                                    {{ $t('net_of_tax') }} {{ formatMoney(row.net_revenue) }}
+                                </p>
+                            </template>
+                        </el-table-column>
+                        <el-table-column width="120">
+                            <template #header>
+                                <el-tooltip :content="$t('order_cost_basis_hint')" placement="top">
+                                    <span class="hinted-header">
+                                        {{ $t('cost_of_goods') }}
+                                        <i class="fas fa-circle-info"></i>
+                                    </span>
+                                </el-tooltip>
+                            </template>
+                            <template #default="{ row }">
+                                <!-- Nothing costs anything until it ships, so on
+                                     a pipeline of pending orders this is a
+                                     projection far more often than not — which
+                                     the figure alone would not admit. -->
+                                <el-tooltip
+                                    v-if="Number(row.estimated_lines) > 0"
+                                    :content="$t('projected_cost_hint', { count: row.estimated_lines, total: row.line_count })"
+                                    placement="top"
+                                >
+                                    <span class="cost-cell is-estimated">≈ {{ formatMoney(row.total_cost) }}</span>
+                                </el-tooltip>
+                                <span v-else class="cost-cell">{{ formatMoney(row.total_cost) }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column
+                            :label="$t('gross_profit')"
+                            prop="gross_profit"
+                            width="140"
+                            sortable="custom"
+                        >
+                            <template #default="{ row }">
+                                <strong :class="profitClass(row)">{{ formatMoney(row.gross_profit) }}</strong>
+                            </template>
+                        </el-table-column>
+                        <el-table-column
+                            :label="$t('profit_margin')"
+                            prop="gross_margin"
+                            width="170"
+                            sortable="custom"
+                        >
+                            <template #default="{ row }">
+                                <div class="margin-cell">
+                                    <div class="margin-cell-top">
+                                        <span :class="profitClass(row)">{{ formatMarginPercent(row.gross_margin) }}</span>
+                                        <el-tooltip
+                                            v-if="Number(row.uncosted_lines) > 0"
+                                            :content="$t('uncosted_lines_hint', { count: row.uncosted_lines, total: row.line_count })"
+                                            placement="top"
+                                        >
+                                            <i class="fas fa-triangle-exclamation margin-warning"></i>
+                                        </el-tooltip>
+                                    </div>
+                                    <div class="margin-bar" :class="profitClass(row)">
+                                        <span :style="{ width: marginBarWidth(row.gross_margin) }"></span>
+                                    </div>
+                                </div>
+                            </template>
                         </el-table-column>
                         <el-table-column :label="$t('invoiced')" width="150">
                             <template #default="{ row }">
@@ -619,6 +691,27 @@ const invoiceCoverageText = (row) => {
     return Number(row.invoiced_total || 0) >= Number(row.total || 0) ? t('fully_invoiced') : t('partially_invoiced');
 };
 
+/* ------------------------------------------------------------------ *
+ * Per-order profit
+ *
+ * The same question the invoice tab answers, asked of the pipeline: which
+ * orders are worth having. Sorted server-side for the same reason — profit is
+ * not a column, and the orders being sold at a loss are never the newest rows.
+ * ------------------------------------------------------------------ */
+const ordersSort = ref(null);
+const ordersTableRef = ref(null);
+
+const handleOrdersSortChange = ({ prop, order }) => {
+    const field = SORTABLE_PROPS[prop];
+    ordersSort.value = field && order ? `${field}_${order === 'ascending' ? 'asc' : 'desc'}` : null;
+    pagination.current_page = 1;
+    loadOrdersList();
+};
+
+// An order being filled at a loss is the finding these columns exist to
+// surface, so it is marked on the row rather than left to be spotted.
+const orderRowClass = ({ row }) => (Number(row.gross_profit) < 0 ? 'row-loss' : '');
+
 /** Just the paginated list — used for page/size changes, which don't need
  *  the charts, dimensions or performance figures re-fetched. */
 const loadOrdersList = async () => {
@@ -626,7 +719,12 @@ const loadOrdersList = async () => {
     const token = ++ordersListToken;
     try {
         const response = await api.get('/admin/reports/sales', {
-            params: { ...baseFilterParams(), page: pagination.current_page, per_page: pagination.per_page },
+            params: {
+                ...baseFilterParams(),
+                page: pagination.current_page,
+                per_page: pagination.per_page,
+                ...(ordersSort.value ? { sort: ordersSort.value } : {}),
+            },
         });
         if (token !== ordersListToken) return;
         const data = response.data?.data;
@@ -935,9 +1033,11 @@ const resetFilters = () => {
         date_filter_type: 'all', start_date: null, end_date: null, group_by: 'day',
     });
     invoiceSort.value = null;
+    ordersSort.value = null;
     // The header arrow is the table's own state; clearing ours would otherwise
     // leave it pointing at a sort no longer being applied.
     invoiceTableRef.value?.clearSort();
+    ordersTableRef.value?.clearSort();
     applyFilters();
 };
 

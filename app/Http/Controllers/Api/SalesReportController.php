@@ -27,6 +27,7 @@ class SalesReportController extends Controller
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
+            'sort' => 'nullable|in:profit_asc,profit_desc,margin_asc,margin_desc',
         ]);
 
         // invoiced_total/invoices_count ride on the same query as the listing so
@@ -53,15 +54,50 @@ class SalesReportController extends Controller
             $query->where('sales_orders.status', $request->status);
         }
 
+        // Snapshotted before the sort join: the summary sums over this, and a
+        // join to the line items would multiply every order's total by its
+        // line count.
+        $filtered = $query->clone();
+
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
-        $salesOrders = $query->latest('order_date')->latest('id')->paginate($perPage);
+        $sort = $request->input('sort');
+
+        // Ordering by profit is why it is reported per order at all: the
+        // orders being sold at a loss are what the operator is looking for, and
+        // they are never the newest rows. Profit is not a column — it is
+        // revenue net of tax less what the lines cost — so the cost has to be
+        // joined in to sort on it.
+        if (in_array($sort, ['profit_asc', 'profit_desc', 'margin_asc', 'margin_desc'], true)) {
+            $direction = str_ends_with($sort, '_asc') ? 'asc' : 'desc';
+            $expression = str_starts_with($sort, 'margin')
+                // Margin is undefined without revenue; those rows sort as zero
+                // rather than dividing by it. The * 100.0 forces a real: without
+                // it SQLite divides two integers and truncates every margin
+                // between -100% and 100% to zero.
+                ? 'CASE WHEN (sales_orders.total - sales_orders.tax) > 0
+                        THEN (((sales_orders.total - sales_orders.tax) - COALESCE(line_costs.total_cost, 0)) * 100.0)
+                             / (sales_orders.total - sales_orders.tax)
+                        ELSE 0 END'
+                : '(sales_orders.total - sales_orders.tax) - COALESCE(line_costs.total_cost, 0)';
+
+            $query->select('sales_orders.*')
+                ->leftJoinSub($this->salesOrderLineCostQuery(), 'line_costs', 'line_costs.sales_order_id', '=', 'sales_orders.id')
+                ->orderByRaw($expression.' '.$direction)
+                ->orderBy('sales_orders.id', 'desc');
+        } else {
+            $query->latest('order_date')->latest('id');
+        }
+
+        $salesOrders = $query->paginate($perPage);
+
+        $this->attachOrderProfitability($salesOrders->items());
 
         return response()->json([
             'success' => true,
             'message' => 'Sales report retrieved successfully',
             'data' => [
                 'sales_orders' => $salesOrders->items(),
-                'summary' => $this->calculateSummary($query->clone()),
+                'summary' => $this->calculateSummary($filtered),
                 'pagination' => [
                     'current_page' => $salesOrders->currentPage(),
                     'last_page' => $salesOrders->lastPage(),
@@ -71,6 +107,86 @@ class SalesReportController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * What each order's lines cost, as a joinable subquery.
+     *
+     * Mirrors invoiceLineCostQuery() on the order side, and prefers the same
+     * thing: the cost the shipment recorded, out of the stock layers it
+     * actually consumed. Where a line has none it falls back to quantity
+     * against the product's current cost_price.
+     *
+     * On an order that fallback is usually not a gap in the records but the
+     * ordinary state of the document — nothing has cost anything until the
+     * goods ship, so a pending order's margin is a projection. That is worth
+     * saying rather than implying, which is what `estimated_lines` is for;
+     * `uncosted_lines` is the narrower case of a line that could not even be
+     * projected, because its product has no cost price on file.
+     */
+    private function salesOrderLineCostQuery()
+    {
+        return DB::table('sales_order_items')
+            ->leftJoin('products', 'products.id', '=', 'sales_order_items.product_id')
+            ->groupBy('sales_order_items.sales_order_id')
+            ->select('sales_order_items.sales_order_id')
+            ->selectRaw($this->salesOrderLineCostExpression().' as total_cost')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN sales_order_items.total_cost IS NULL THEN 1 ELSE 0 END) as estimated_lines')
+            ->selectRaw('SUM(CASE WHEN sales_order_items.total_cost IS NULL
+                                   AND COALESCE(products.cost_price, 0) <= 0
+                                  THEN 1 ELSE 0 END) as uncosted_lines');
+    }
+
+    /**
+     * The recorded cost of a set of order lines, projected where it is
+     * missing. Needs sales_order_items joined to products.
+     */
+    private function salesOrderLineCostExpression(): string
+    {
+        return 'SUM(COALESCE(
+            sales_order_items.total_cost,
+            sales_order_items.quantity * COALESCE(products.cost_price, 0)
+        ))';
+    }
+
+    /**
+     * Hangs cost, profit and margin on the orders of one page.
+     *
+     * One grouped query for the whole page rather than a relation walk per
+     * row: the table pages at up to 500.
+     *
+     * Revenue is taken net of tax, for the reason given in
+     * attachInvoiceProfitability(): tax is collected for the authority and
+     * owed straight back, so counting it credits an order with profit it
+     * never made.
+     */
+    private function attachOrderProfitability(array $orders): void
+    {
+        if ($orders === []) {
+            return;
+        }
+
+        $costs = $this->salesOrderLineCostQuery()
+            ->whereIn('sales_order_items.sales_order_id', array_map(fn ($order) => $order->id, $orders))
+            ->get()
+            ->keyBy('sales_order_id');
+
+        foreach ($orders as $order) {
+            $row = $costs->get($order->id);
+
+            $netRevenue = (float) $order->total - (float) $order->tax;
+            $cost = (float) ($row->total_cost ?? 0);
+            $profit = $netRevenue - $cost;
+
+            $order->setAttribute('net_revenue', round($netRevenue, 5));
+            $order->setAttribute('total_cost', round($cost, 5));
+            $order->setAttribute('gross_profit', round($profit, 5));
+            $order->setAttribute('gross_margin', $netRevenue > 0 ? round(($profit / $netRevenue) * 100, 2) : 0);
+            $order->setAttribute('line_count', (int) ($row->line_count ?? 0));
+            $order->setAttribute('estimated_lines', (int) ($row->estimated_lines ?? 0));
+            $order->setAttribute('uncosted_lines', (int) ($row->uncosted_lines ?? 0));
+        }
     }
 
     public function salesSummary(Request $request)
@@ -225,9 +341,17 @@ class SalesReportController extends Controller
             ->join('sales_order_items', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
             ->leftJoin('products', 'products.id', '=', 'sales_order_items.product_id');
 
-        $totalRevenue = (float) (clone $query)->sum('total');
+        // Net of tax, as on the invoice side: tax charged on a sale is
+        // collected for the authority and owed straight back, so counting it
+        // credited every taxed order with profit it never made.
+        $totalRevenue = (float) (clone $query)->sum(DB::raw('total - tax'));
         $totalOrders = (int) (clone $query)->count();
-        $totalCost = (float) $costQuery()->sum(DB::raw('sales_order_items.quantity * COALESCE(products.cost_price, 0)'));
+        // What the shipment recorded, and the catalogue only where it recorded
+        // nothing — see salesOrderLineCostQuery().
+        $totalCost = (float) $costQuery()->sum(DB::raw('COALESCE(
+            sales_order_items.total_cost,
+            sales_order_items.quantity * COALESCE(products.cost_price, 0)
+        )'));
         $grossProfit = $totalRevenue - $totalCost;
 
         $summary = [
@@ -263,14 +387,14 @@ class SalesReportController extends Controller
         $revenueRows = (clone $query)
             ->select($column)
             ->selectRaw('COUNT(*) as total_orders')
-            ->selectRaw('SUM(total) as total_revenue')
+            ->selectRaw('SUM(total - tax) as total_revenue')
             ->groupBy($column)
             ->get()
             ->keyBy($column);
 
         $costByGroup = $costQuery()
             ->select('sales_orders.'.$column)
-            ->selectRaw('SUM(sales_order_items.quantity * COALESCE(products.cost_price, 0)) as total_cost')
+            ->selectRaw($this->salesOrderLineCostExpression().' as total_cost')
             ->groupBy('sales_orders.'.$column)
             ->pluck('total_cost', $column);
 
@@ -351,7 +475,14 @@ class SalesReportController extends Controller
             return $order->items->flatMap(function ($item) use ($order) {
                 $product = $item->product;
                 $unitRevenue = (float) $item->unit_price;
-                $unitCost = (float) ($product?->cost_price ?? 0);
+                // What the shipment costed this line at, per unit, falling back
+                // to the catalogue for a line that has not shipped. Per unit
+                // because an allocation takes its share of the line the same
+                // way it takes its share of the revenue.
+                $orderedQuantity = (float) ($item->quantity ?: 0);
+                $unitCost = $item->total_cost !== null && $orderedQuantity > 0
+                    ? (float) $item->total_cost / $orderedQuantity
+                    : (float) ($product?->cost_price ?? 0);
 
                 // An item split across warehouses (see SalesOrderItem::allocations)
                 // has its revenue and cost split the same way, so each
@@ -1174,8 +1305,17 @@ class SalesReportController extends Controller
         }
 
         $rows = $query->latest('order_date')->get();
+        // The screen reports profit per order; an export that drops it forces
+        // the reader to rebuild the column that was the point of looking.
+        $this->attachOrderProfitability($rows->all());
+
         $csv = fopen('php://temp', 'w+');
-        fputcsv($csv, ['Order #', 'Date', 'Customer', 'Employee', 'Status', 'Subtotal', 'Discount', 'Tax', 'Total']);
+        fputcsv($csv, [
+            'order_number', 'date', 'customer_name', 'employee_name', 'status',
+            'subtotal', 'discount', 'tax', 'total',
+            'net_revenue', 'total_cost', 'gross_profit', 'gross_margin_percent',
+            'estimated_lines', 'uncosted_lines',
+        ]);
 
         foreach ($rows as $row) {
             fputcsv($csv, [
@@ -1188,6 +1328,12 @@ class SalesReportController extends Controller
                 (float) $row->discount,
                 (float) $row->tax,
                 (float) $row->total,
+                (float) $row->net_revenue,
+                (float) $row->total_cost,
+                (float) $row->gross_profit,
+                (float) $row->gross_margin,
+                (int) $row->estimated_lines,
+                (int) $row->uncosted_lines,
             ]);
         }
 
@@ -1491,6 +1637,40 @@ class SalesReportController extends Controller
             ->join('invoices', 'invoices.sales_order_id', '=', 'sales_orders.id')
             ->sum('invoices.total');
 
+        // Cost over the whole filtered set rather than the page, so the profit
+        // under the table describes the same orders as the count beside it.
+        // Grouped per order in a subquery and then summed, so joining the lines
+        // cannot multiply an order's total by its line count.
+        $totalTax = (float) $query->sum('tax');
+        $cost = (float) DB::query()
+            ->fromSub(
+                (clone $query)->getQuery()
+                    ->join('sales_order_items', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+                    ->leftJoin('products', 'products.id', '=', 'sales_order_items.product_id')
+                    ->select('sales_orders.id')
+                    ->selectRaw($this->salesOrderLineCostExpression().' as order_cost')
+                    ->groupBy('sales_orders.id'),
+                'per_order'
+            )
+            ->sum('order_cost');
+
+        // How much of that cost was measured on a shipment and how much is
+        // still a projection. On a pipeline of pending orders the second
+        // number is the larger one, and the profit line means something
+        // different because of it.
+        $lineBasis = (clone $query)->getQuery()
+            ->join('sales_order_items', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
+            ->leftJoin('products', 'products.id', '=', 'sales_order_items.product_id')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN sales_order_items.total_cost IS NULL THEN 1 ELSE 0 END) as estimated_lines')
+            ->selectRaw('SUM(CASE WHEN sales_order_items.total_cost IS NULL
+                                   AND COALESCE(products.cost_price, 0) <= 0
+                                  THEN 1 ELSE 0 END) as uncosted_lines')
+            ->first();
+
+        $netRevenue = $totalSales - $totalTax;
+        $profit = $netRevenue - $cost;
+
         return [
             'total_orders' => $totalOrders,
             'total_sales' => $totalSales,
@@ -1503,6 +1683,13 @@ class SalesReportController extends Controller
             'uninvoiced_orders' => max(0, $totalOrders - $invoicedOrders),
             'total_invoiced' => $invoicedTotal,
             'uninvoiced_amount' => max(0, $totalSales - $invoicedTotal),
+            'net_revenue' => round($netRevenue, 5),
+            'total_cost' => round($cost, 5),
+            'gross_profit' => round($profit, 5),
+            'gross_margin' => $netRevenue > 0 ? round(($profit / $netRevenue) * 100, 2) : 0,
+            'line_count' => (int) ($lineBasis->line_count ?? 0),
+            'estimated_lines' => (int) ($lineBasis->estimated_lines ?? 0),
+            'uncosted_lines' => (int) ($lineBasis->uncosted_lines ?? 0),
         ];
     }
 

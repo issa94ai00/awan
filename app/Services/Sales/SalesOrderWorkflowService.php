@@ -394,12 +394,19 @@ class SalesOrderWorkflowService
         // main warehouse. Where a plan exists it decides the sources; a line
         // without one ships whole from the order's fulfilment warehouse.
         $lines = [];
+        // Which sources each line drew on, kept so the cost that comes back can
+        // be put on the line it belongs to rather than only on the ledger.
+        $sourcesByItem = [];
 
         foreach ($order->items as $item) {
+            $sourcesByItem[$item->id] = [];
+
             foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceWarehouseId => $quantity) {
                 if ($quantity <= 0) {
                     continue;
                 }
+
+                $sourcesByItem[$item->id][(int) $sourceWarehouseId] = (int) $quantity;
 
                 $lines[] = [
                     'product_id' => (int) $item->product_id,
@@ -433,6 +440,8 @@ class SalesOrderWorkflowService
 
         $movements = $issued['movements'];
         $cost = $issued['cost'];
+
+        $this->recordLineCosts($order, $sourcesByItem, $issued['cost_by_key'] ?? []);
 
         // A shipment with items but no OUT movements means the stock settlement
         // never ran — status alone would say the goods left while the shelves
@@ -914,6 +923,62 @@ class SalesOrderWorkflowService
      *
      * @return array<int,int>
      */
+    /**
+     * Writes what the shipped goods cost onto the lines that ordered them.
+     *
+     * The cost comes out of the FIFO layers the issue consumed, so it is what
+     * these units really cost rather than what the catalogue says the product
+     * costs today — and recording it fixes the figure, so re-pricing the
+     * product later cannot rewrite the margin of an order already shipped.
+     *
+     * Movements are keyed by product and source warehouse, not by line, so two
+     * lines of the same product on one order share a key. Each takes the share
+     * of that key's cost matching the quantity it drew from that source.
+     *
+     * @param  array<int,array<int,int>>  $sourcesByItem  item id => [warehouse id => quantity]
+     * @param  array<string,array{quantity:int, cost:float}>  $costByKey
+     */
+    private function recordLineCosts(SalesOrder $order, array $sourcesByItem, array $costByKey): void
+    {
+        if ($costByKey === []) {
+            return;
+        }
+
+        foreach ($order->items as $item) {
+            $sources = $sourcesByItem[$item->id] ?? [];
+            $cost = 0.0;
+            $shipped = 0;
+
+            foreach ($sources as $sourceWarehouseId => $quantity) {
+                $issued = $costByKey['SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId] ?? null;
+
+                if ($issued === null) {
+                    continue;
+                }
+
+                // What that key moved in total, against what this line asked of
+                // it. Equal in every ordinary order — they differ only where a
+                // product appears on two lines of the same order.
+                $issuedQuantity = (int) ($issued['quantity'] ?: $quantity);
+                $share = $issuedQuantity > 0 ? min(1, $quantity / $issuedQuantity) : 1;
+
+                $cost += (float) $issued['cost'] * $share;
+                $shipped += (int) $quantity;
+            }
+
+            if ($shipped <= 0) {
+                continue;
+            }
+
+            $cost = round($cost, 5);
+
+            $item->forceFill([
+                'total_cost' => $cost,
+                'unit_cost' => round($cost / $shipped, 5),
+            ])->save();
+        }
+    }
+
     private function shipmentSourcesFor($item, int $fallbackWarehouseId): array
     {
         $allocations = $item->allocations ?? collect();
