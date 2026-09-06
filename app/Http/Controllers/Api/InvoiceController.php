@@ -591,6 +591,12 @@ class InvoiceController extends Controller
                 'items.*.unit_price' => 'required_with:items|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
                 'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+                // Accepted here as it is on creation. The client has always
+                // sent it; this end never read it, so every edit silently
+                // stripped the warehouse off every line — losing the record of
+                // which shelf the goods left, which is the only thing tying a
+                // line to the stock movement that filled it.
+                'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
                 'payment_method' => 'nullable|string|in:cash,card,transfer,check',
@@ -654,6 +660,7 @@ class InvoiceController extends Controller
 
                     $itemsData[] = [
                         'product_id' => $item['product_id'],
+                        'warehouse_id' => $item['warehouse_id'] ?? $invoice->warehouse_id,
                         'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
@@ -697,11 +704,21 @@ class InvoiceController extends Controller
                 // before the last insert leaves the invoice short of lines it
                 // had a second earlier, with nothing to restore them from.
                 DB::transaction(function () use ($invoice, $itemsData, $validated) {
+                // What the goods on each line actually cost, measured by the
+                // issue that moved them. Editing an invoice replaces its rows
+                // wholesale, so without this the figure was thrown away on
+                // every edit and the report fell back to valuing the sale at
+                // today's catalogue price — quietly turning a measurement into
+                // an estimate, on an invoice nobody had reason to think had
+                // changed in that way.
+                $measured = $this->measuredLineCosts($invoice);
+
                 // Delete old items and create new ones
                 $invoice->items()->delete();
                 foreach ($itemsData as $itemData) {
                     $itemData['invoice_id'] = $invoice->id;
-                    InvoiceItem::create($itemData);
+                    $item = InvoiceItem::create($itemData);
+                    $this->restoreLineCost($item, $measured);
                 }
 
                 // Delete old expenses and create new ones
@@ -791,6 +808,65 @@ class InvoiceController extends Controller
                 'unit_cost' => $quantity > 0 ? round($cost / $quantity, 5) : 0,
             ])->save();
         }
+    }
+
+    /**
+     * What each of an invoice's current lines was costed at, keyed by the
+     * goods it describes.
+     *
+     * Keyed by product and warehouse rather than by line id, because the rows
+     * are about to be replaced and the new ones will not carry the old ids.
+     *
+     * @return array<string,array{unit_cost: float, quantity: int}>
+     */
+    private function measuredLineCosts(Invoice $invoice): array
+    {
+        $measured = [];
+
+        foreach ($invoice->items()->get() as $line) {
+            if ($line->total_cost === null) {
+                continue;
+            }
+
+            $measured[$line->product_id.':'.((int) $line->warehouse_id)] = [
+                'unit_cost' => (float) $line->unit_cost,
+                'quantity' => (int) $line->quantity,
+            ];
+        }
+
+        return $measured;
+    }
+
+    /**
+     * Gives a rewritten line back the cost its goods were measured at.
+     *
+     * Only for goods that actually moved: the same product off the same shelf,
+     * and no more units than were issued. A line whose quantity has grown, or
+     * that names a product or warehouse the invoice did not have before,
+     * describes goods no issue has costed — so it is left uncosted and the
+     * report projects it at catalogue price and flags it, rather than being
+     * handed a measurement of something that never happened.
+     *
+     * @param  array<string,array{unit_cost: float, quantity: int}>  $measured
+     */
+    private function restoreLineCost(InvoiceItem $item, array $measured): void
+    {
+        $previous = $measured[$item->product_id.':'.((int) $item->warehouse_id)] ?? null;
+
+        if ($previous === null) {
+            return;
+        }
+
+        $quantity = (int) $item->quantity;
+
+        if ($quantity <= 0 || $quantity > $previous['quantity']) {
+            return;
+        }
+
+        $item->forceFill([
+            'unit_cost' => round($previous['unit_cost'], 5),
+            'total_cost' => round($previous['unit_cost'] * $quantity, 5),
+        ])->save();
     }
 
     /**
