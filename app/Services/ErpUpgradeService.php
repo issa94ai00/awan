@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\LandedCost;
 use App\Models\PurchaseReceipt;
 use App\Models\PurchaseReceiptItem;
+use App\Services\Purchasing\PurchaseOrderCostSync;
 use App\Models\WarehouseInventory;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
@@ -138,6 +139,13 @@ class ErpUpgradeService
             }
 
             $this->postLandedCost($landedCost, $receipt, round($onShelf, 2), round($alreadySold, 2), $settlement, $supplierId);
+
+            // The layers now hold a higher figure than the supplier charged,
+            // which is the point of the exercise — but the order those goods
+            // arrived against would still report the price it was placed at,
+            // and its planned margin would still be overstated by every penny
+            // of this charge. Recompute it from the layers.
+            app(PurchaseOrderCostSync::class)->syncFromReceipt($receipt);
 
             return $landedCost;
         });

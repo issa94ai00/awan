@@ -20,8 +20,16 @@ class PurchaseOrderItem extends Model
         'notes',
     ];
 
+    /*
+     * The received_* columns stay out of $fillable: what a line cost to land
+     * is settled by its receipts and the stock layers they opened, and is
+     * never something a request may state.
+     */
     protected $casts = [
         'quantity' => 'integer',
+        'received_quantity' => 'integer',
+        'received_unit_cost' => 'decimal:5',
+        'received_cost' => 'decimal:5',
         'unit_price' => 'decimal:5',
         'sale_price' => 'decimal:5',
         'total_price' => 'decimal:5',

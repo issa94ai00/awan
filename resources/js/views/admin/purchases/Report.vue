@@ -274,7 +274,16 @@
                 </div>
             </template>
 
-            <el-table v-loading="loading" :data="reportData" style="width: 100%" stripe highlight-current-row>
+            <el-table
+                ref="ordersTableRef"
+                v-loading="loading"
+                :data="reportData"
+                style="width: 100%"
+                stripe
+                highlight-current-row
+                :row-class-name="orderRowClass"
+                @sort-change="handleSortChange"
+            >
                 <el-table-column prop="order_number" :label="$t('order_number')" width="120" />
                 <el-table-column :label="$t('date')" width="120">
                     <template #default="{ row }">{{ formatDate(row.order_date) }}</template>
@@ -298,6 +307,50 @@
                 </el-table-column>
                 <el-table-column :label="$t('total')" width="120">
                     <template #default="{ row }"><strong>{{ formatCurrency(row.total) }}</strong></template>
+                </el-table-column>
+                <el-table-column
+                    prop="landed_cost"
+                    width="140"
+                    sortable="custom"
+                >
+                    <template #header>
+                        <el-tooltip :content="$t('landed_cost_basis_hint')" placement="top">
+                            <span class="hinted-header">
+                                {{ $t('landed_cost') }}
+                                <i class="fas fa-circle-info"></i>
+                            </span>
+                        </el-tooltip>
+                    </template>
+                    <template #default="{ row }">
+                        <!-- Nothing is settled until the goods arrive, so a
+                             line still on order carries the price it was
+                             placed at — which the figure alone would not
+                             admit to. -->
+                        <el-tooltip
+                            v-if="Number(row.pending_lines) > 0"
+                            :content="$t('pending_receipt_hint', { count: row.pending_lines, total: row.line_count })"
+                            placement="top"
+                        >
+                            <span class="cost-cell is-estimated">≈ {{ formatCurrency(row.landed_cost) }}</span>
+                        </el-tooltip>
+                        <span v-else class="cost-cell">{{ formatCurrency(row.landed_cost) }}</span>
+                    </template>
+                </el-table-column>
+                <el-table-column
+                    :label="$t('cost_variance')"
+                    prop="cost_variance"
+                    width="160"
+                    sortable="custom"
+                >
+                    <template #default="{ row }">
+                        <span v-if="Math.abs(Number(row.cost_variance)) < 0.005" class="variance-none">—</span>
+                        <span v-else :class="varianceClass(row)">
+                            <strong>{{ signedCurrency(row.cost_variance) }}</strong>
+                            <small v-if="Number(row.ordered_cost) > 0">
+                                {{ signedPercent(row.cost_variance_percent) }}
+                            </small>
+                        </span>
+                    </template>
                 </el-table-column>
             </el-table>
 
@@ -523,10 +576,51 @@ const resetFilters = () => {
     loadTopSuppliers();
 };
 
+/* ------------------------------------------------------------------ *
+ * Ordered against landed
+ *
+ * A purchase order is a promise to buy at a price; what the goods cost is
+ * settled by the receipt, and raised again by any freight allocated to it.
+ * The gap between the two is the finding — an order that quietly cost more
+ * than it agreed to — and it is never the newest row, so the sort is
+ * server-side.
+ * ------------------------------------------------------------------ */
+const ordersSort = ref(null);
+const ordersTableRef = ref(null);
+
+const SORTABLE_PROPS = { landed_cost: 'landed', cost_variance: 'variance' };
+
+const handleSortChange = ({ prop, order }) => {
+    const field = SORTABLE_PROPS[prop];
+    ordersSort.value = field && order ? `${field}_${order === 'ascending' ? 'asc' : 'desc'}` : null;
+    pagination.value.current_page = 1;
+    loadReport();
+};
+
+// Over budget is the case worth spotting, so it is marked on the row rather
+// than left to be found in a column of numbers. Coming in under is welcome
+// news, not a finding.
+const orderRowClass = ({ row }) => (Number(row.cost_variance) > 0.005 ? 'row-over-budget' : '');
+
+const varianceClass = (row) => (Number(row.cost_variance) > 0 ? 'variance-over' : 'variance-under');
+
+const signedCurrency = (value) => {
+    const amount = Number(value) || 0;
+    return `${amount > 0 ? '+' : '−'} ${formatCurrency(Math.abs(amount))}`;
+};
+
+const signedPercent = (value) => {
+    const percent = Number(value) || 0;
+    return `${percent > 0 ? '+' : '−'}${Math.abs(percent).toFixed(1)}%`;
+};
+
 const loadReport = async () => {
     loading.value = true;
     try {
-        const params = getFilterParams();
+        const params = {
+            ...getFilterParams(),
+            ...(ordersSort.value ? { sort: ordersSort.value } : {}),
+        };
         const response = await api.get('/admin/reports/purchases', { params });
 
         if (response.data.success && response.data.data) {
@@ -916,5 +1010,51 @@ onMounted(() => {
 
 .top-performers-card {
     border-radius: 1rem;
+}
+
+/* ── Ordered against landed ─────────────────────────────────────────── */
+.hinted-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: help;
+}
+
+.hinted-header i {
+    font-size: 0.75rem;
+    opacity: 0.55;
+}
+
+.cost-cell { color: #64748b; }
+
+/* Marked rather than coloured: a line still on order is not a problem with
+   the purchase, only a statement about where the number came from. */
+.cost-cell.is-estimated {
+    border-bottom: 1px dashed currentColor;
+    cursor: help;
+    opacity: 0.75;
+}
+
+.variance-none { color: #94a3b8; }
+
+.variance-over,
+.variance-under {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.variance-over small,
+.variance-under small { opacity: 0.75; }
+
+/* Over budget is the finding; under it is welcome news, so the two are not
+   given the same weight. */
+.variance-over { color: #dc2626; }
+.variance-under { color: #16a34a; }
+
+/* Marked down the leading edge rather than tinted across the row, which would
+   fight the striping. */
+:deep(.row-over-budget) td:first-child {
+    box-shadow: inset 3px 0 0 #dc2626;
 }
 </style>

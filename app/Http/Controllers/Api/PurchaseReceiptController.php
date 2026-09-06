@@ -8,6 +8,7 @@ use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\Product;
 use App\Services\Accounting\LedgerPostingService;
+use App\Services\Purchasing\PurchaseOrderCostSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -155,6 +156,12 @@ class PurchaseReceiptController extends Controller
                         'status' => 'completed',
                         'received_date' => $receipt->receipt_date ?? now(),
                     ]);
+
+                // And it settles what the order cost. Until now the only
+                // record of that was the receipt, so purchase reporting went
+                // on costing the order at the price it was placed at, however
+                // much of it actually turned up or at whatever price.
+                app(PurchaseOrderCostSync::class)->syncFromReceipt($receipt);
             }
 
             return $receipt;

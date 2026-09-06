@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Mirrors SalesReportController's shape for the buying side. PurchaseOrder
@@ -26,21 +27,48 @@ class PurchaseReportController extends Controller
             'status' => 'nullable|string|max:50',
             'per_page' => 'nullable|integer|min:1|max:500',
             'group_by' => 'nullable|in:day,week,month,supplier,status',
+            'sort' => 'nullable|in:variance_asc,variance_desc,landed_asc,landed_desc',
         ]);
 
         $query = PurchaseOrder::with(['supplier', 'items.product']);
         $this->applyDateFilters($query, $request);
         $this->applyCommonFilters($query, $request);
 
+        // Snapshotted before any sort join: the summary sums over this, and a
+        // join to the lines would multiply every order's total by its line
+        // count.
+        $filtered = $query->clone();
+
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
-        $orders = $query->latest('order_date')->latest('id')->paginate($perPage);
+        $sort = $request->input('sort');
+
+        // An order that cost more than it promised to is the thing worth
+        // finding, and it is never the newest row. Neither figure is a column
+        // — both come off the lines — so the costs have to be joined in.
+        if (in_array($sort, ['variance_asc', 'variance_desc', 'landed_asc', 'landed_desc'], true)) {
+            $direction = str_ends_with($sort, '_asc') ? 'asc' : 'desc';
+            $expression = str_starts_with($sort, 'variance')
+                ? 'COALESCE(line_costs.landed_cost, 0) - COALESCE(line_costs.ordered_cost, 0)'
+                : 'COALESCE(line_costs.landed_cost, 0)';
+
+            $query->select('purchase_orders.*')
+                ->leftJoinSub($this->purchaseLineCostQuery(), 'line_costs', 'line_costs.purchase_order_id', '=', 'purchase_orders.id')
+                ->orderByRaw($expression.' '.$direction)
+                ->orderBy('purchase_orders.id', 'desc');
+        } else {
+            $query->latest('order_date')->latest('id');
+        }
+
+        $orders = $query->paginate($perPage);
+
+        $this->attachPurchaseCosts($orders->items());
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase report retrieved successfully',
             'data' => [
                 'purchase_orders' => $orders->items(),
-                'summary' => $this->calculateSummary($query->clone()),
+                'summary' => $this->calculateSummary($filtered),
                 'pagination' => [
                     'current_page' => $orders->currentPage(),
                     'last_page' => $orders->lastPage(),
@@ -50,6 +78,80 @@ class PurchaseReportController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * What each order promised to pay and what its goods actually cost to
+     * land, as a joinable subquery.
+     *
+     * `ordered_cost` is the commitment: quantity against the price agreed.
+     * `landed_cost` is what the receipts settled it at — the quantity that
+     * actually arrived, valued at what the stock layers hold, which includes
+     * any freight or customs allocated to the delivery afterwards. A line with
+     * nothing received against it falls back to its ordered figure, and
+     * `pending_lines` says how many did, so the difference between the two
+     * columns is never mistaken for a delivery that came in exactly on price.
+     */
+    private function purchaseLineCostQuery()
+    {
+        return DB::table('purchase_order_items')
+            ->groupBy('purchase_order_items.purchase_order_id')
+            ->select('purchase_order_items.purchase_order_id')
+            ->selectRaw('SUM(purchase_order_items.quantity * purchase_order_items.unit_price) as ordered_cost')
+            ->selectRaw($this->purchaseLandedCostExpression().' as landed_cost')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN purchase_order_items.received_cost IS NULL THEN 1 ELSE 0 END) as pending_lines')
+            ->selectRaw('SUM(COALESCE(purchase_order_items.received_quantity, 0)) as received_quantity')
+            ->selectRaw('SUM(purchase_order_items.quantity) as ordered_quantity');
+    }
+
+    /**
+     * The settled cost of a set of order lines, falling back to what each was
+     * ordered at where nothing has been received against it.
+     */
+    private function purchaseLandedCostExpression(): string
+    {
+        return 'SUM(COALESCE(
+            purchase_order_items.received_cost,
+            purchase_order_items.quantity * purchase_order_items.unit_price
+        ))';
+    }
+
+    /**
+     * Hangs the ordered and landed figures on the orders of one page.
+     *
+     * One grouped query for the whole page rather than a walk over each
+     * order's lines: the table pages at up to 500.
+     */
+    private function attachPurchaseCosts(array $orders): void
+    {
+        if ($orders === []) {
+            return;
+        }
+
+        $costs = $this->purchaseLineCostQuery()
+            ->whereIn('purchase_order_items.purchase_order_id', array_map(fn ($order) => $order->id, $orders))
+            ->get()
+            ->keyBy('purchase_order_id');
+
+        foreach ($orders as $order) {
+            $row = $costs->get($order->id);
+
+            $ordered = (float) ($row->ordered_cost ?? 0);
+            $landed = (float) ($row->landed_cost ?? 0);
+
+            $order->setAttribute('ordered_cost', round($ordered, 5));
+            $order->setAttribute('landed_cost', round($landed, 5));
+            // Positive means the goods cost more than the order promised —
+            // short-shipped lines, a price changed at the door, or freight
+            // loaded on afterwards.
+            $order->setAttribute('cost_variance', round($landed - $ordered, 5));
+            $order->setAttribute('cost_variance_percent', $ordered > 0 ? round((($landed - $ordered) / $ordered) * 100, 2) : 0);
+            $order->setAttribute('line_count', (int) ($row->line_count ?? 0));
+            $order->setAttribute('pending_lines', (int) ($row->pending_lines ?? 0));
+            $order->setAttribute('ordered_quantity', (int) ($row->ordered_quantity ?? 0));
+            $order->setAttribute('received_quantity', (int) ($row->received_quantity ?? 0));
+        }
     }
 
     public function purchaseSummary(Request $request)
@@ -143,10 +245,16 @@ class PurchaseReportController extends Controller
 
         $orders = $query->get();
 
+        // Cost is what the goods settled at, not what the order asked. Using
+        // the asking price left every planned margin overstated by whatever
+        // freight had been loaded onto the delivery, and by any difference
+        // between what was ordered and what turned up.
         $lineTotals = function ($order) {
             return $order->items->reduce(function ($carry, $item) {
                 $qty = (float) ($item->quantity ?? 0);
-                $carry['cost'] += (float) ($item->unit_price ?? 0) * $qty;
+                $carry['cost'] += $item->received_cost !== null
+                    ? (float) $item->received_cost
+                    : (float) ($item->unit_price ?? 0) * $qty;
                 $carry['revenue'] += (float) ($item->sale_price ?? $item->unit_price ?? 0) * $qty;
 
                 return $carry;
@@ -221,7 +329,11 @@ class PurchaseReportController extends Controller
         $rows = $orders->flatMap(function ($order) {
             return $order->items->map(function ($item) {
                 $qty = (float) ($item->quantity ?? 0);
-                $cost = (float) ($item->unit_price ?? 0) * $qty;
+                // As in purchasePerformance(): what it settled at, or what
+                // it was ordered at while nothing has been received.
+                $cost = $item->received_cost !== null
+                    ? (float) $item->received_cost
+                    : (float) ($item->unit_price ?? 0) * $qty;
                 $revenue = (float) ($item->sale_price ?? $item->unit_price ?? 0) * $qty;
 
                 return [
@@ -338,8 +450,18 @@ class PurchaseReportController extends Controller
         $this->applyCommonFilters($query, $request);
 
         $rows = $query->latest('order_date')->get();
+        // The screen reports what each order settled at against what it
+        // promised; an export that drops it forces the reader to rebuild the
+        // column that was the point of looking.
+        $this->attachPurchaseCosts($rows->all());
+
         $csv = fopen('php://temp', 'w+');
-        fputcsv($csv, ['Order #', 'Date', 'Supplier', 'Status', 'Subtotal', 'Discount', 'Tax', 'Total']);
+        fputcsv($csv, [
+            'order_number', 'date', 'supplier_name', 'status',
+            'subtotal', 'discount', 'tax', 'total',
+            'ordered_cost', 'landed_cost', 'cost_variance', 'cost_variance_percent',
+            'ordered_quantity', 'received_quantity', 'pending_lines',
+        ]);
 
         foreach ($rows as $row) {
             fputcsv($csv, [
@@ -351,6 +473,13 @@ class PurchaseReportController extends Controller
                 (float) $row->discount,
                 (float) $row->tax,
                 (float) $row->total,
+                (float) $row->ordered_cost,
+                (float) $row->landed_cost,
+                (float) $row->cost_variance,
+                (float) $row->cost_variance_percent,
+                (int) $row->ordered_quantity,
+                (int) $row->received_quantity,
+                (int) $row->pending_lines,
             ]);
         }
 
@@ -436,9 +565,46 @@ class PurchaseReportController extends Controller
     {
         $totalOrders = (int) $query->count();
 
+        // Ordered against landed over the whole filtered set rather than the
+        // page, so the variance under the table describes the same orders as
+        // the count beside it. Grouped per order in a subquery and then summed,
+        // so joining the lines cannot multiply an order's total.
+        $costs = DB::query()
+            ->fromSub(
+                (clone $query)->getQuery()
+                    ->join('purchase_order_items', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+                    ->select('purchase_orders.id')
+                    ->selectRaw('SUM(purchase_order_items.quantity * purchase_order_items.unit_price) as ordered_cost')
+                    ->selectRaw($this->purchaseLandedCostExpression().' as landed_cost')
+                    ->groupBy('purchase_orders.id'),
+                'per_order'
+            )
+            ->selectRaw('SUM(ordered_cost) as ordered_cost')
+            ->selectRaw('SUM(landed_cost) as landed_cost')
+            ->first();
+
+        // How much of the landed figure is settled and how much is still the
+        // order's own asking price. A variance computed largely from
+        // undelivered lines is a different claim from one computed from
+        // deliveries, and the number alone cannot say which it is.
+        $lineBasis = (clone $query)->getQuery()
+            ->join('purchase_order_items', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN purchase_order_items.received_cost IS NULL THEN 1 ELSE 0 END) as pending_lines')
+            ->first();
+
+        $orderedCost = (float) ($costs->ordered_cost ?? 0);
+        $landedCost = (float) ($costs->landed_cost ?? 0);
+
         return [
             'total_orders' => $totalOrders,
             'total_spend' => (float) $query->sum('total'),
+            'ordered_cost' => round($orderedCost, 5),
+            'landed_cost' => round($landedCost, 5),
+            'cost_variance' => round($landedCost - $orderedCost, 5),
+            'cost_variance_percent' => $orderedCost > 0 ? round((($landedCost - $orderedCost) / $orderedCost) * 100, 2) : 0,
+            'line_count' => (int) ($lineBasis->line_count ?? 0),
+            'pending_lines' => (int) ($lineBasis->pending_lines ?? 0),
             'total_subtotal' => (float) $query->sum('subtotal'),
             'total_discount' => (float) $query->sum('discount'),
             'total_tax' => (float) $query->sum('tax'),
