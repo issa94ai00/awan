@@ -456,7 +456,7 @@ class InvoiceController extends Controller
             $stockWarnings = [];
 
             try {
-                $goods->issueAndPostCost(
+                $issued = $goods->issueAndPostCost(
                     lines: $invoice->items()->get()->map(fn ($line) => [
                         'product_id' => (int) $line->product_id,
                         'quantity' => (int) $line->quantity,
@@ -474,6 +474,8 @@ class InvoiceController extends Controller
                     movementReference: 'invoice',
                     movementSource: $invoice->id,
                 );
+
+                $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
             } catch (\Throwable $e) {
                 // Coverage was checked before the invoice was written, so this
                 // is an unexpected failure rather than a routine shortfall. It
@@ -753,6 +755,41 @@ class InvoiceController extends Controller
                 'message' => 'خطأ في تحديث الفاتورة',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Writes what the goods actually cost onto the lines that sold them.
+     *
+     * The cost comes out of the FIFO layers the issue consumed, so it is what
+     * this sale really took off the shelf rather than what the catalogue says
+     * the product costs today. Recording it here is what lets profit be
+     * reported from the invoice itself, and keeps that figure fixed once the
+     * document is closed — re-pricing a product afterwards no longer rewrites
+     * the margin of every sale it ever appeared in.
+     *
+     * @param  array<string,array{quantity:int, cost:float}>  $costByKey
+     */
+    private function recordLineCosts(Invoice $invoice, array $costByKey): void
+    {
+        if ($costByKey === []) {
+            return;
+        }
+
+        foreach ($invoice->items()->get() as $line) {
+            $issued = $costByKey['invoice:'.$invoice->id.':item:'.$line->id] ?? null;
+
+            if ($issued === null) {
+                continue;
+            }
+
+            $quantity = (int) ($issued['quantity'] ?: $line->quantity);
+            $cost = round((float) $issued['cost'], 5);
+
+            $line->forceFill([
+                'total_cost' => $cost,
+                'unit_cost' => $quantity > 0 ? round($cost / $quantity, 5) : 0,
+            ])->save();
         }
     }
 

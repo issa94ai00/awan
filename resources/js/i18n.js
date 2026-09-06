@@ -2668,6 +2668,11 @@ const messages = {
         professional_sales_report: 'Professional sales report',
         sales_revenue: 'Sales revenue',
         cost_of_goods: 'Cost of goods',
+        // Per-invoice profitability in the sales report.
+        net_of_tax: 'Net of tax',
+        invoice_cost_basis_hint: 'What the goods actually cost when they left the warehouse, taken from the stock batches the sale consumed and recorded on the invoice at the moment it was issued. Re-pricing a product afterwards does not change it. A line the sale never costed falls back to the product\'s current cost price and is marked ≈.',
+        estimated_cost_hint: '{count} of {total} lines were never costed at the till, so they are valued at the product\'s current cost price rather than what was paid for the stock that shipped.',
+        uncosted_lines_hint: '{count} of {total} lines are on products with no cost price on file, so this margin is understated in cost and overstated in profit.',
         gross_profit: 'Gross profit',
         product_profitability_by_warehouse: 'Product profitability by warehouse',
         no_data_for_current_filters: 'No data for the current filters',
@@ -7019,6 +7024,11 @@ const messages = {
         professional_sales_report: 'تقرير المبيعات الاحترافي',
         sales_revenue: 'إيراد المبيعات',
         cost_of_goods: 'تكلفة البضاعة',
+        // ربحية كل فاتورة في تقرير المبيعات.
+        net_of_tax: 'صافي بعد الضريبة',
+        invoice_cost_basis_hint: 'التكلفة الفعلية للبضاعة عند خروجها من المستودع، مأخوذة من دفعات المخزون التي استهلكها البيع ومسجَّلة على الفاتورة لحظة إصدارها، فتغيير سعر التكلفة لاحقاً لا يغيّرها. أما البند الذي لم تُحتسب تكلفته عند البيع فيُقيَّم بسعر التكلفة الحالي للمنتج ويُعلَّم بالرمز ≈.',
+        estimated_cost_hint: '{count} من أصل {total} بنود لم تُحتسب تكلفتها عند البيع، فقُيّمت بسعر التكلفة الحالي للمنتج لا بما دُفع فعلاً في البضاعة التي شُحنت.',
+        uncosted_lines_hint: '{count} من أصل {total} بنود على منتجات بلا سعر تكلفة مسجّل، فالتكلفة هنا أقل من حقيقتها والربح أعلى.',
         gross_profit: 'الربح الإجمالي',
         product_profitability_by_warehouse: 'ربحية المنتجات حسب المستودع',
         no_data_for_current_filters: 'لا توجد بيانات في الفلاتر الحالية',

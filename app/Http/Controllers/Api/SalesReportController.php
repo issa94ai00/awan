@@ -639,6 +639,7 @@ class SalesReportController extends Controller
             'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
+            'sort' => 'nullable|in:profit_asc,profit_desc,margin_asc,margin_desc',
         ]);
 
         // salesOrder is the reverse of salesReport()'s invoices relation — lets
@@ -663,15 +664,50 @@ class SalesReportController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Snapshotted before any sort join: the summary runs SUM() over this,
+        // and a join to the line items would multiply every invoice's total by
+        // its line count.
+        $filtered = clone $query;
+
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
-        $invoices = $query->latest('created_at')->latest('id')->paginate($perPage);
+        $sort = $request->input('sort');
+
+        // Ordering by profit is the whole point of reporting it per invoice:
+        // the loss-makers are what the operator is looking for, and they are
+        // never the newest rows. Needs the cost joined in, because profit is
+        // not a column — it is revenue net of tax minus what the lines cost.
+        if (in_array($sort, ['profit_asc', 'profit_desc', 'margin_asc', 'margin_desc'], true)) {
+            $direction = str_ends_with($sort, '_asc') ? 'asc' : 'desc';
+            $expression = str_starts_with($sort, 'margin')
+                // Margin is undefined without revenue; those rows sort as zero
+                // rather than dividing by it. The * 100.0 is not cosmetic: it
+                // makes the numerator a real, and without it SQLite divides two
+                // integers and truncates every margin between -100% and 100% to
+                // zero — which is to say, orders the column by nothing at all.
+                ? 'CASE WHEN (invoices.total - invoices.tax) > 0
+                        THEN (((invoices.total - invoices.tax) - COALESCE(line_costs.total_cost, 0)) * 100.0)
+                             / (invoices.total - invoices.tax)
+                        ELSE 0 END'
+                : '(invoices.total - invoices.tax) - COALESCE(line_costs.total_cost, 0)';
+
+            $query->select('invoices.*')
+                ->leftJoinSub($this->invoiceLineCostQuery(), 'line_costs', 'line_costs.invoice_id', '=', 'invoices.id')
+                ->orderByRaw($expression.' '.$direction)
+                ->orderBy('invoices.id', 'desc');
+        } else {
+            $query->latest('created_at')->latest('id');
+        }
+
+        $invoices = $query->paginate($perPage);
+
+        $this->attachInvoiceProfitability($invoices->items());
 
         return response()->json([
             'success' => true,
             'message' => 'Invoice report retrieved successfully',
             'data' => [
                 'invoices' => $invoices->items(),
-                'summary' => $this->calculateInvoiceSummary($query->clone()),
+                'summary' => $this->calculateInvoiceSummary($filtered),
                 'pagination' => [
                     'current_page' => $invoices->currentPage(),
                     'last_page' => $invoices->lastPage(),
@@ -681,6 +717,91 @@ class SalesReportController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * What each invoice's lines cost, as a joinable subquery.
+     *
+     * Prefers the cost recorded on the line itself: the goods issue consumes
+     * FIFO stock layers and writes what the units actually cost, so a batch
+     * bought at 20 and one bought at 30 are costed as they were bought, and
+     * closing the sale fixes the figure. Re-pricing a product afterwards used
+     * to rewrite the reported margin of every invoice it had ever appeared in.
+     *
+     * A line with no cost on it falls back to quantity against the product's
+     * current cost_price. That is a valuation rather than a cost, so the two
+     * are counted separately: `estimated_lines` says how much of the figure is
+     * a fallback, and `uncosted_lines` how much of it is nothing at all —
+     * a product with no cost on file contributes zero, which reads as pure
+     * profit. 1038 of 1805 products currently have no cost.
+     */
+    private function invoiceLineCostQuery()
+    {
+        return DB::table('invoice_items')
+            ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id')
+            ->groupBy('invoice_items.invoice_id')
+            ->select('invoice_items.invoice_id')
+            ->selectRaw($this->invoiceLineCostExpression().' as total_cost')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN invoice_items.total_cost IS NULL THEN 1 ELSE 0 END) as estimated_lines')
+            ->selectRaw('SUM(CASE WHEN invoice_items.total_cost IS NULL
+                                   AND COALESCE(products.cost_price, 0) <= 0
+                                  THEN 1 ELSE 0 END) as uncosted_lines');
+    }
+
+    /**
+     * The measured cost of a set of invoice lines, estimated where it is
+     * missing. Needs invoice_items joined to products.
+     */
+    private function invoiceLineCostExpression(): string
+    {
+        return 'SUM(COALESCE(
+            invoice_items.total_cost,
+            invoice_items.quantity * COALESCE(products.cost_price, 0)
+        ))';
+    }
+
+    /**
+     * Hangs cost, profit and margin on the invoices of one page.
+     *
+     * One grouped query for the whole page rather than a relation walk per row:
+     * the table pages at up to 500.
+     *
+     * Revenue is taken net of tax. Tax charged on a sale is collected on behalf
+     * of the authority and owed straight back to it, so counting it as revenue
+     * inflates both the profit and the margin of every taxed invoice.
+     *
+     * Cost comes off the lines where the sale recorded it; see
+     * invoiceLineCostQuery() for what happens where it did not.
+     */
+    private function attachInvoiceProfitability(array $invoices): void
+    {
+        if ($invoices === []) {
+            return;
+        }
+
+        $costs = $this->invoiceLineCostQuery()
+            ->whereIn('invoice_items.invoice_id', array_map(fn ($invoice) => $invoice->id, $invoices))
+            ->get()
+            ->keyBy('invoice_id');
+
+        foreach ($invoices as $invoice) {
+            $row = $costs->get($invoice->id);
+
+            $netRevenue = (float) $invoice->total - (float) $invoice->tax;
+            $cost = (float) ($row->total_cost ?? 0);
+            $profit = $netRevenue - $cost;
+
+            $invoice->setAttribute('net_revenue', round($netRevenue, 5));
+            $invoice->setAttribute('total_cost', round($cost, 5));
+            $invoice->setAttribute('gross_profit', round($profit, 5));
+            $invoice->setAttribute('gross_margin', $netRevenue > 0 ? round(($profit / $netRevenue) * 100, 2) : 0);
+            $invoice->setAttribute('line_count', (int) ($row->line_count ?? 0));
+            // How much of that cost was measured at the moment of sale, and
+            // how much the report had to fill in for itself.
+            $invoice->setAttribute('estimated_lines', (int) ($row->estimated_lines ?? 0));
+            $invoice->setAttribute('uncosted_lines', (int) ($row->uncosted_lines ?? 0));
+        }
     }
 
     /**
@@ -731,9 +852,18 @@ class SalesReportController extends Controller
             ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
             ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id');
 
-        $totalRevenue = (float) (clone $query)->sum('total');
+        // Net of tax. Charging tax does not make a sale more profitable — the
+        // money is collected for the authority and owed straight back — but
+        // counting it here credited every taxed invoice with profit it never
+        // made, and inflated the margin on top.
+        $totalRevenue = (float) (clone $query)->sum(DB::raw('total - tax'));
         $totalInvoices = (int) (clone $query)->count();
-        $totalCost = (float) $costQuery()->sum(DB::raw('invoice_items.quantity * COALESCE(products.cost_price, 0)'));
+        // Same basis as the invoice table: what the sale recorded, and the
+        // catalogue only where it recorded nothing.
+        $totalCost = (float) $costQuery()->sum(DB::raw('COALESCE(
+            invoice_items.total_cost,
+            invoice_items.quantity * COALESCE(products.cost_price, 0)
+        )'));
         $grossProfit = $totalRevenue - $totalCost;
 
         return response()->json([
@@ -760,7 +890,7 @@ class SalesReportController extends Controller
         $revenueRows = (clone $query)
             ->select($column)
             ->selectRaw('COUNT(*) as total_invoices')
-            ->selectRaw('SUM(total) as total_revenue')
+            ->selectRaw('SUM(total - tax) as total_revenue')
             ->groupBy($column)
             ->get()
             ->keyBy($column);
@@ -769,7 +899,7 @@ class SalesReportController extends Controller
             ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
             ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id')
             ->select('invoices.'.$column)
-            ->selectRaw('SUM(invoice_items.quantity * COALESCE(products.cost_price, 0)) as total_cost')
+            ->selectRaw($this->invoiceLineCostExpression().' as total_cost')
             ->groupBy('invoices.'.$column)
             ->pluck('total_cost', $column);
 
@@ -836,7 +966,11 @@ class SalesReportController extends Controller
             return $invoice->items->map(function ($item) use ($invoice) {
                 $product = $item->product;
                 $revenue = (float) ($item->unit_price * $item->quantity);
-                $cost = (float) (($product?->cost_price ?? 0) * ($item->quantity ?? 0));
+                // What the line was costed at when it sold, falling back to
+                // the catalogue for lines that were never costed.
+                $cost = $item->total_cost !== null
+                    ? (float) $item->total_cost
+                    : (float) (($product?->cost_price ?? 0) * ($item->quantity ?? 0));
                 $grossProfit = $revenue - $cost;
 
                 // Each line knows which warehouse actually shipped it — a
@@ -1132,6 +1266,13 @@ class SalesReportController extends Controller
         $query = Invoice::query()->with(['customer', 'warehouse']);
         $this->applyInvoiceDateFilters($query, $request);
 
+        // employee_id was validated and then never applied, so exporting while
+        // filtered to one rep silently handed back the whole team's invoices —
+        // a spreadsheet that disagrees with the screen it was exported from.
+        if ($request->filled('employee_id')) {
+            $query->where('assigned_employee_id', $request->employee_id);
+        }
+
         if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
@@ -1145,8 +1286,17 @@ class SalesReportController extends Controller
         }
 
         $rows = $query->latest('created_at')->get();
+        // The screen reports profit per invoice; an export that drops it forces
+        // the reader to rebuild the column that was the point of looking.
+        $this->attachInvoiceProfitability($rows->all());
+
         $csv = fopen('php://temp', 'w+');
-        fputcsv($csv, ['invoice_number', 'customer_name', 'warehouse_name', 'created_at', 'status', 'subtotal', 'tax', 'discount', 'total', 'paid_amount', 'due_amount']);
+        fputcsv($csv, [
+            'invoice_number', 'customer_name', 'warehouse_name', 'created_at', 'status',
+            'subtotal', 'tax', 'discount', 'total', 'paid_amount', 'due_amount',
+            'net_revenue', 'total_cost', 'gross_profit', 'gross_margin_percent',
+            'estimated_lines', 'uncosted_lines',
+        ]);
 
         foreach ($rows as $row) {
             fputcsv($csv, [
@@ -1161,6 +1311,12 @@ class SalesReportController extends Controller
                 (float) ($row->total ?? 0),
                 (float) ($row->paid_amount ?? 0),
                 (float) ($row->due_amount ?? 0),
+                (float) $row->net_revenue,
+                (float) $row->total_cost,
+                (float) $row->gross_profit,
+                (float) $row->gross_margin,
+                (int) $row->estimated_lines,
+                (int) $row->uncosted_lines,
             ]);
         }
 
@@ -1352,15 +1508,61 @@ class SalesReportController extends Controller
 
     private function calculateInvoiceSummary($query)
     {
+        $count = (int) $query->count();
+        $invoiced = (float) $query->sum('total');
+        $tax = (float) $query->sum('tax');
+
+        // Cost over the whole filtered set, not just the page — otherwise the
+        // profit under the table would describe twenty rows while the table
+        // says it matched two hundred. Grouped per invoice in a subquery and
+        // then summed, so joining the lines cannot multiply an invoice's total.
+        $cost = (float) DB::query()
+            ->fromSub(
+                (clone $query)->getQuery()
+                    ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
+                    ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id')
+                    ->select('invoices.id')
+                    ->selectRaw($this->invoiceLineCostExpression().' as invoice_cost')
+                    ->groupBy('invoices.id'),
+                'per_invoice'
+            )
+            ->sum('invoice_cost');
+
+        // How much of the cost above was measured at the moment of sale. A
+        // profit line resting mostly on catalogue prices is a different claim
+        // from one resting on what the goods actually cost, and the reader
+        // cannot tell them apart from the figure alone.
+        $lineBasis = (clone $query)->getQuery()
+            ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
+            ->leftJoin('products', 'products.id', '=', 'invoice_items.product_id')
+            ->selectRaw('COUNT(*) as line_count')
+            ->selectRaw('SUM(CASE WHEN invoice_items.total_cost IS NULL THEN 1 ELSE 0 END) as estimated_lines')
+            ->selectRaw('SUM(CASE WHEN invoice_items.total_cost IS NULL
+                                   AND COALESCE(products.cost_price, 0) <= 0
+                                  THEN 1 ELSE 0 END) as uncosted_lines')
+            ->first();
+
+        // Net of tax: see attachInvoiceProfitability() for why tax is not
+        // revenue.
+        $netRevenue = $invoiced - $tax;
+        $profit = $netRevenue - $cost;
+
         return [
-            'total_invoices' => (int) $query->count(),
-            'total_invoiced' => (float) $query->sum('total'),
+            'total_invoices' => $count,
+            'total_invoiced' => $invoiced,
             'total_subtotal' => (float) $query->sum('subtotal'),
             'total_discount' => (float) $query->sum('discount'),
-            'total_tax' => (float) $query->sum('tax'),
+            'total_tax' => $tax,
             'paid_amount' => (float) $query->sum('paid_amount'),
             'due_amount' => (float) $query->sum('due_amount'),
-            'average_invoice_value' => $query->count() > 0 ? (float) $query->avg('total') : 0,
+            'average_invoice_value' => $count > 0 ? (float) $query->avg('total') : 0,
+            'net_revenue' => round($netRevenue, 5),
+            'total_cost' => round($cost, 5),
+            'gross_profit' => round($profit, 5),
+            'gross_margin' => $netRevenue > 0 ? round(($profit / $netRevenue) * 100, 2) : 0,
+            'line_count' => (int) ($lineBasis->line_count ?? 0),
+            'estimated_lines' => (int) ($lineBasis->estimated_lines ?? 0),
+            'uncosted_lines' => (int) ($lineBasis->uncosted_lines ?? 0),
         ];
     }
 

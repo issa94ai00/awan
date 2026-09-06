@@ -27,10 +27,17 @@ class InvoiceItem extends Model
         'unit_multiplier',
     ];
 
+    /*
+     * unit_cost and total_cost are deliberately absent from $fillable: what a
+     * line cost is measured by the goods issue, out of the stock layers it
+     * consumed, and is never something a request may state.
+     */
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:5',
         'total_price' => 'decimal:5',
+        'unit_cost' => 'decimal:5',
+        'total_cost' => 'decimal:5',
         'discount' => 'decimal:5',
         'tax_rate' => 'decimal:2',
         'tax_amount' => 'decimal:5',

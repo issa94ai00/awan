@@ -93,7 +93,8 @@ class GoodsIssueService
      *   must spend that reservation rather than demand fresh availability —
      *   otherwise the order's own hold would be what blocks it from shipping. A
      *   direct sale reserves nothing, so it takes from what is free.
-     * @return array{movements: list<int>, cost: float, cost_by_warehouse: array<int,float>}
+     * @return array{movements: list<int>, cost: float, cost_by_warehouse: array<int,float>,
+     *               cost_by_key: array<string,array{quantity:int, cost:float}>}
      */
     public function issueAndPostCost(
         array $lines,
@@ -111,6 +112,12 @@ class GoodsIssueService
     ): array {
         $movements = [];
         $costByWarehouse = [];
+        // Keyed by the caller's own movement key, so the document that asked
+        // for the issue can write what each of its lines actually cost back
+        // onto that line. Without it the figure exists only in the warehouse
+        // ledger, and every report is left to re-derive cost from the
+        // catalogue — which is a valuation of today's prices, not this sale.
+        $costByKey = [];
         $total = 0.0;
 
         foreach ($lines as $line) {
@@ -153,6 +160,15 @@ class GoodsIssueService
 
             $total += $lineCost;
             $costByWarehouse[$warehouseId] = ($costByWarehouse[$warehouseId] ?? 0) + $lineCost;
+
+            // A line split across two warehouses issues twice under two keys;
+            // one that is retried resolves to the same key and must not be
+            // counted again.
+            $existing = $costByKey[$line['movement_key']] ?? ['quantity' => 0, 'cost' => 0.0];
+            $costByKey[$line['movement_key']] = [
+                'quantity' => $existing['quantity'] + $quantity,
+                'cost' => $existing['cost'] + $lineCost,
+            ];
         }
 
         $this->ledger->postCostOfGoodsSoldBySource(
@@ -167,6 +183,7 @@ class GoodsIssueService
             'movements' => $movements,
             'cost' => round($total, 5),
             'cost_by_warehouse' => $costByWarehouse,
+            'cost_by_key' => $costByKey,
         ];
     }
 

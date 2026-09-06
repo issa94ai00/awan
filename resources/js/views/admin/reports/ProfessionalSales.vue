@@ -140,7 +140,16 @@
                         </div>
                     </template>
 
-                    <el-table v-loading="invoicesListLoading" :data="invoiceReportData" style="width: 100%" stripe highlight-current-row>
+                    <el-table
+                        ref="invoiceTableRef"
+                        v-loading="invoicesListLoading"
+                        :data="invoiceReportData"
+                        style="width: 100%"
+                        stripe
+                        highlight-current-row
+                        :row-class-name="invoiceRowClass"
+                        @sort-change="handleInvoiceSortChange"
+                    >
                         <!-- The identifier is the way into the record. Only the
                              number is a link, rather than the whole row: the sole
                              detail screen these have is the edit form, and a
@@ -189,8 +198,84 @@
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('total')" width="120">
-                            <template #default="{ row }"><strong>{{ formatMoney(row.total) }}</strong></template>
+                            <template #default="{ row }">
+                                <strong>{{ formatMoney(row.total) }}</strong>
+                                <!-- Profit is measured against revenue net of
+                                     tax, so a taxed invoice needs to show which
+                                     of the two numbers the margin is off. -->
+                                <p v-if="Number(row.tax) > 0" class="table-sub-note">
+                                    {{ $t('net_of_tax') }} {{ formatMoney(row.net_revenue) }}
+                                </p>
+                            </template>
                         </el-table-column>
+
+                        <!-- Cost, profit and margin per invoice. The report
+                             carried profit only in aggregate and per product,
+                             so "which sale actually made money" could not be
+                             answered from the document it was made on. -->
+                        <el-table-column width="120">
+                            <template #header>
+                                <el-tooltip :content="$t('invoice_cost_basis_hint')" placement="top">
+                                    <span class="hinted-header">
+                                        {{ $t('cost_of_goods') }}
+                                        <i class="fas fa-circle-info"></i>
+                                    </span>
+                                </el-tooltip>
+                            </template>
+                            <template #default="{ row }">
+                                <!-- A cost the sale measured and one the report
+                                     had to work out from today's catalogue are
+                                     different claims, and the figure alone
+                                     cannot tell them apart. -->
+                                <el-tooltip
+                                    v-if="Number(row.estimated_lines) > 0"
+                                    :content="$t('estimated_cost_hint', { count: row.estimated_lines, total: row.line_count })"
+                                    placement="top"
+                                >
+                                    <span class="cost-cell is-estimated">≈ {{ formatMoney(row.total_cost) }}</span>
+                                </el-tooltip>
+                                <span v-else class="cost-cell">{{ formatMoney(row.total_cost) }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column
+                            :label="$t('gross_profit')"
+                            prop="gross_profit"
+                            width="140"
+                            sortable="custom"
+                        >
+                            <template #default="{ row }">
+                                <strong :class="profitClass(row)">{{ formatMoney(row.gross_profit) }}</strong>
+                            </template>
+                        </el-table-column>
+                        <el-table-column
+                            :label="$t('profit_margin')"
+                            prop="gross_margin"
+                            width="170"
+                            sortable="custom"
+                        >
+                            <template #default="{ row }">
+                                <div class="margin-cell">
+                                    <div class="margin-cell-top">
+                                        <span :class="profitClass(row)">{{ formatMarginPercent(row.gross_margin) }}</span>
+                                        <!-- A margin computed over lines whose
+                                             product has no cost on file is not a
+                                             high margin, it is an unknown one.
+                                             Without this the two look alike. -->
+                                        <el-tooltip
+                                            v-if="Number(row.uncosted_lines) > 0"
+                                            :content="$t('uncosted_lines_hint', { count: row.uncosted_lines, total: row.line_count })"
+                                            placement="top"
+                                        >
+                                            <i class="fas fa-triangle-exclamation margin-warning"></i>
+                                        </el-tooltip>
+                                    </div>
+                                    <div class="margin-bar" :class="profitClass(row)">
+                                        <span :style="{ width: marginBarWidth(row.gross_margin) }"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </el-table-column>
+
                         <el-table-column :label="$t('paid_amount')" width="120">
                             <template #default="{ row }">{{ formatMoney(row.paid_amount) }}</template>
                         </el-table-column>
@@ -676,12 +761,50 @@ const invoicesChartValues = computed(() => {
     return (invoiceDimensionData.value[key] || []).map((row) => Number(row.total_invoiced) || 0);
 });
 
+/* ------------------------------------------------------------------ *
+ * Per-invoice profit
+ *
+ * The report knew what the whole filtered set earned and what each product
+ * earned, but nothing about the document in between — so the invoice that lost
+ * money was invisible unless someone re-derived it by hand. Sorting is
+ * server-side because profit is not a column: it is revenue net of tax less
+ * what the lines cost, and the loss-makers are never the newest rows.
+ * ------------------------------------------------------------------ */
+const invoiceSort = ref(null);
+const invoiceTableRef = ref(null);
+
+const SORTABLE_PROPS = { gross_profit: 'profit', gross_margin: 'margin' };
+
+const handleInvoiceSortChange = ({ prop, order }) => {
+    const field = SORTABLE_PROPS[prop];
+    invoiceSort.value = field && order ? `${field}_${order === 'ascending' ? 'asc' : 'desc'}` : null;
+    invoicePagination.current_page = 1;
+    loadInvoicesList();
+};
+
+const profitClass = (row) => (Number(row.gross_profit) < 0 ? 'profit-negative' : 'profit-positive');
+
+// An invoice sold below cost is the finding this column exists to surface, so
+// it is marked on the row rather than left to be spotted in a column of numbers.
+const invoiceRowClass = ({ row }) => (Number(row.gross_profit) < 0 ? 'row-loss' : '');
+
+const formatMarginPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
+
+// Clamped: a margin can exceed 100% only when cost is missing, and can run far
+// negative on a bad sale — neither should draw a bar off the end of the cell.
+const marginBarWidth = (value) => `${Math.min(Math.abs(Number(value) || 0), 100)}%`;
+
 const loadInvoicesList = async () => {
     invoicesListLoading.value = true;
     const token = ++invoicesListToken;
     try {
         const response = await api.get('/admin/reports/invoices', {
-            params: { ...baseFilterParams(), page: invoicePagination.current_page, per_page: invoicePagination.per_page },
+            params: {
+                ...baseFilterParams(),
+                page: invoicePagination.current_page,
+                per_page: invoicePagination.per_page,
+                ...(invoiceSort.value ? { sort: invoiceSort.value } : {}),
+            },
         });
         if (token !== invoicesListToken) return;
         const data = response.data?.data;
@@ -811,6 +934,10 @@ const resetFilters = () => {
         employee_id: null, customer_id: null, warehouse_id: null, status: '',
         date_filter_type: 'all', start_date: null, end_date: null, group_by: 'day',
     });
+    invoiceSort.value = null;
+    // The header arrow is the table's own state; clearing ours would otherwise
+    // leave it pointing at a sort no longer being applied.
+    invoiceTableRef.value?.clearSort();
     applyFilters();
 };
 
@@ -934,6 +1061,72 @@ onMounted(() => {
     margin: 0.2rem 0 0;
     font-size: 0.78rem;
     color: #94a3b8;
+}
+
+/* Per-invoice profitability cells. */
+.hinted-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: help;
+}
+
+.hinted-header i {
+    font-size: 0.75rem;
+    opacity: 0.55;
+}
+
+.cost-cell {
+    color: var(--text-muted);
+}
+
+.margin-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.margin-cell-top {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+
+/* The bar is the column's whole reason for existing at a glance: a page of
+   percentages all read the same until one of them is drawn shorter. */
+.margin-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--el-fill-color-light, #f0f2f5);
+    overflow: hidden;
+}
+
+.margin-bar span {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.margin-warning {
+    color: #d97706;
+    font-size: 0.8rem;
+    cursor: help;
+}
+
+/* Marked rather than coloured: an estimated cost is not a problem with the
+   invoice, only a statement about where the number came from. */
+.cost-cell.is-estimated {
+    border-bottom: 1px dashed currentColor;
+    cursor: help;
+    opacity: 0.75;
+}
+
+/* An invoice sold below cost, marked down the leading edge rather than tinted
+   across the row, which would fight the striping. */
+:deep(.row-loss) td:first-child {
+    box-shadow: inset 3px 0 0 #dc2626;
 }
 
 .profit-positive { color: #16a34a; }
