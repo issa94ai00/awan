@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProductController extends Controller
@@ -122,6 +123,70 @@ class ProductController extends Controller
     }
 
     /**
+     * Set the manual print priority of products inside one classification.
+     *
+     * Takes the product ids in the order they should read and writes that
+     * position to `sort_order`. Positions are per-classification: `catalogue`
+     * ordering groups by category first, so two categories both starting at 1
+     * never interleave.
+     *
+     * Ids that do not belong to `category_id` are ignored rather than
+     * rejected — a product moved to another classification in a second tab
+     * should not fail the whole drag.
+     */
+    public function reorder(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'category_id' => 'nullable|integer|exists:categories,id',
+                'product_ids' => 'required|array|min:1',
+                'product_ids.*' => 'integer',
+            ]);
+
+            $categoryId = $validated['category_id'] ?? null;
+            $ids = array_values(array_unique(array_map('intval', $validated['product_ids'])));
+
+            $owned = Product::whereIn('id', $ids)
+                ->when($categoryId === null,
+                    fn ($q) => $q->whereNull('category_id'),
+                    fn ($q) => $q->where('category_id', $categoryId))
+                ->pluck('id')
+                ->all();
+            $owned = array_flip($owned);
+
+            $position = 0;
+            $updated = 0;
+            DB::transaction(function () use ($ids, $owned, &$position, &$updated) {
+                foreach ($ids as $id) {
+                    if (!isset($owned[$id])) {
+                        continue;
+                    }
+                    $position++;
+                    $updated += Product::where('id', $id)->update(['sort_order' => $position]);
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تحديث ترتيب المنتجات بنجاح',
+                'data' => ['updated' => $updated],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ في التحقق من البيانات',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطأ في تحديث ترتيب المنتجات',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get all products with optional filters
      */
     public function index(Request $request): JsonResponse
@@ -156,6 +221,20 @@ class ProductController extends Controller
                 case 'name_desc':
                     $sortBy = 'name_ar';
                     $sortOrder = 'desc';
+                    break;
+                // The order a price list reads in: sections in the order the
+                // classifications are arranged, and within a section the manual
+                // priority the admin set by dragging rows. Correlated subquery
+                // rather than a join, because `categories` shares column names
+                // (is_active, slug, sort_order, name_ar) with `products` and a
+                // join would make every unqualified filter above ambiguous.
+                case 'catalogue':
+                    $useRawSort = true;
+                    $rawSortQuery = 'COALESCE((SELECT c.sort_order FROM categories c WHERE c.id = products.category_id), 999999) asc'
+                        . ', products.category_id asc'
+                        . ', products.sort_order asc'
+                        . ', products.name_ar asc'
+                        . ', products.id asc';
                     break;
                 case 'latest':
                 default:

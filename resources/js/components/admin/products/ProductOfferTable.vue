@@ -1,7 +1,6 @@
 <template>
     <table class="offer-table">
         <colgroup>
-            <col v-if="!printMode" class="col-select">
             <col v-if="visibleColumns.image" class="col-image">
             <col v-if="visibleColumns.product" class="col-product">
             <col v-if="visibleColumns.details" class="col-details">
@@ -10,16 +9,6 @@
         </colgroup>
         <thead>
             <tr>
-                <th v-if="!printMode" class="col-select">
-                    <span class="select-head" :class="{ 'is-mixed': someSelected }">
-                        <span class="select-head-label">{{ $t('select_for_print') }}</span>
-                        <el-checkbox
-                            :model-value="allSelected"
-                            :indeterminate="someSelected"
-                            @update:model-value="(val) => $emit('toggle-all', val)"
-                        />
-                    </span>
-                </th>
                 <th v-if="visibleColumns.image">{{ $t('image') }}</th>
                 <th v-if="visibleColumns.product">{{ $t('product') }}</th>
                 <th v-if="visibleColumns.details">{{ $t('details') }}</th>
@@ -29,19 +18,21 @@
         </thead>
         <tbody>
             <template v-for="(group, gIdx) in groups" :key="group.key">
+                <!-- Classification heading. It belongs to the group that opens
+                     the section so the PDF's page-break walk, which counts rows
+                     group by group, keeps its place. -->
+                <tr v-if="group.sectionLabel" class="section-row">
+                    <th :colspan="visibleColumnCount" scope="colgroup">
+                        <span class="section-name">{{ group.sectionLabel }}</span>
+                    </th>
+                </tr>
                 <tr
                     v-for="(item, iIdx) in group.items"
                     :key="item.id"
-                    :class="{ first: iIdx === 0, 'is-unselected': !printMode && !isSelected(group.key) }"
+                    :class="{ first: iIdx === 0 }"
                     :style="{ background: gIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }"
                     :id="!printMode && iIdx === 0 ? `item-${group.product.id}` : undefined"
                 >
-                    <td v-if="!printMode && iIdx === 0" :rowspan="group.items.length" class="cell-select">
-                        <el-checkbox
-                            :model-value="isSelected(group.key)"
-                            @update:model-value="(val) => $emit('toggle-select', group.key, val)"
-                        />
-                    </td>
                     <td v-if="visibleColumns.image && iIdx === 0" :rowspan="group.items.length" class="cell-image">
                         <div class="cell-image-inner">
                             <div class="cell-image-frame">
@@ -275,7 +266,10 @@
                         />
                         <template v-else>
                             <span class="price-value">{{ formatPrice(item.displayPrice) }}</span>
-                            <span v-if="item.originalPrice !== item.displayPrice" class="price-original">
+                            <!-- Struck-through pre-division price is a screen-only
+                                 reference: the printed offer and the PDF must show
+                                 the customer one price, not the one it came from. -->
+                            <span v-if="!printMode && item.originalPrice !== item.displayPrice" class="price-original">
                                 {{ formatPrice(item.originalPrice) }}
                             </span>
                         </template>
@@ -355,10 +349,6 @@ const props = defineProps({
         type: Object,
         default: () => ({ image: true, product: true, details: true, price: true, inventory: true }),
     },
-    // Group keys that are ticked for printing (on-screen rows only).
-    selectedKeys: { type: Array, default: () => [] },
-    allSelected: { type: Boolean, default: false },
-    someSelected: { type: Boolean, default: false },
 });
 
 /**
@@ -370,7 +360,6 @@ const props = defineProps({
 const emit = defineEmits([
     'start-edit', 'commit-edit', 'cancel-edit',
     'start-edit-stock', 'commit-edit-stock', 'cancel-edit-stock',
-    'toggle-select', 'toggle-all',
     'update-image', 'clear-image',
     'add-variant',
     'edit-item',
@@ -463,11 +452,6 @@ const removeItemImage = (group) => {
     emit('clear-image', group);
 };
 
-// `selectedKeys` lists exactly the on-screen groups that are ticked, so an
-// empty list means nothing is selected — not everything. The print/PDF table
-// is already filtered down to the selection, so it always renders everything.
-const isSelected = (key) => props.printMode || props.selectedKeys.includes(key);
-
 const getPreviewList = (product) => productImages(product);
 
 const formatPrice = (price) => {
@@ -482,13 +466,19 @@ const formatPrice = (price) => {
     width: 100%;
     font-size: 10pt;
     min-width: 720px;
+    /* How wide the picture actually renders in this medium, plus the breathing
+       room around it. Everything about the image column derives from these, so
+       the column tracks the picture instead of being stretched by whatever the
+       longest product name happens to be. Print overrides the size below. */
+    --offer-image-size: 160px;
+    --offer-image-pad: 10px;
+    --offer-image-col: calc(var(--offer-image-size) + var(--offer-image-pad) * 2);
 }
 .offer-table th,
 .offer-table td {
     border: 1px solid #cbd5e1;
 }
-.col-image { width: 180px; }
-.col-select { width: 46px; }
+.col-image { width: var(--offer-image-col); }
 .col-product { width: 200px; }
 .col-details { width: 120px; }
 .col-price { width: 120px; }
@@ -510,40 +500,18 @@ const formatPrice = (price) => {
 .cell-image {
     text-align: center;
     vertical-align: middle;
-    padding: 10px;
+    padding: var(--offer-image-pad);
+    width: var(--offer-image-col);
 }
-.cell-select {
-    text-align: center;
-    vertical-align: middle;
-    padding: 6px;
-}
-.select-head {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-.select-head-label {
-    font-size: 8pt;
-    font-weight: 500;
-    color: rgba(255,255,255,.85);
-}
-.select-head :deep(.el-checkbox__inner) {
-    background: rgba(255,255,255,.12);
-    border-color: rgba(255,255,255,.55);
-}
-.select-head :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-    background: #fff;
-    border-color: #fff;
-}
-.select-head :deep(.el-checkbox__inner::after) {
-    border-color: #293344;
-}
+/* The caption is held to the picture's width. Without this the table's auto
+   layout takes the cell's min-content width from the product name, and a long
+   name widens the whole column past the image it is captioning. */
 .cell-image-inner {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    width: var(--offer-image-size);
 }
 .cell-image-frame {
     position: relative;
@@ -591,7 +559,7 @@ const formatPrice = (price) => {
     align-items: flex-start;
     justify-content: center;
     gap: 4px;
-    max-width: 200px;
+    max-width: 100%;
 }
 .cell-image-name {
     font-weight: 600;
@@ -1077,33 +1045,59 @@ const formatPrice = (price) => {
            and US Letter (216mm), whichever the print dialog picks. */
         table-layout: fixed;
     }
-    .col-image { width: 25%; }
-    .col-product { width: 28%; }
-    .col-details { width: 17%; }
-    .col-price { width: 17%; }
-    .col-inventory { width: 13%; }
+    .offer-table {
+        --offer-image-size: 112px;
+    }
+    /* The picture column takes exactly the picture plus its padding; the other
+       four split what is left of the page in their previous proportions
+       (28:17:17:13 of the remaining 75). */
+    .col-image { width: var(--offer-image-col); }
+    .col-product { width: calc((100% - var(--offer-image-col)) * 28 / 75); }
+    .col-details { width: calc((100% - var(--offer-image-col)) * 17 / 75); }
+    .col-price { width: calc((100% - var(--offer-image-col)) * 17 / 75); }
+    .col-inventory { width: calc((100% - var(--offer-image-col)) * 13 / 75); }
     .offer-table thead th {
         position: static;
     }
+    /* EntityImage sets its box as an inline style from the `size` prop, so the
+       medium's own size has to win on specificity. */
     .cell-image :deep(.entity-image) {
-        width: 112px !important;
-        height: 112px !important;
+        width: var(--offer-image-size) !important;
+        height: var(--offer-image-size) !important;
         cursor: default;
     }
     .offer-table tr {
         break-inside: avoid;
         page-break-inside: avoid;
     }
+    /* Never leave a classification heading alone at the foot of a page. The
+       PDF path already keeps it with its first group; this is for a native
+       Ctrl+P, where the browser chooses the breaks. */
+    .offer-table tbody tr.section-row {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
 }
 
-/* A product left out of the print run stays in place, greyed back, so it can
-   be ticked again — it used to vanish from the table entirely. */
-.offer-table tbody tr.is-unselected > td {
-    opacity: .4;
-    filter: saturate(.35);
+
+/* Classification heading inside the table body. Reads as a divider rather than
+   another column header, so it is never mistaken for the sticky thead. */
+.offer-table tbody tr.section-row th {
+    position: static;
+    text-align: start;
+    padding: 9px 12px;
+    background: #eef2f7;
+    color: #1f2937;
+    font-size: 11pt;
+    font-weight: 800;
+    letter-spacing: .01em;
+    border-top: 2px solid #293344;
+    border-bottom: 1px solid #cbd5e1;
 }
-.offer-table tbody tr.is-unselected > td.cell-select {
-    opacity: 1;
-    filter: none;
+.offer-table tbody tr.section-row:hover th {
+    background: #eef2f7;
+}
+.section-name {
+    display: inline-block;
 }
 </style>

@@ -54,6 +54,11 @@ export const productsApi = {
     
     getPublicById(id) {
         return api.get(`/products/${id}`);
+    },
+    // Manual print priority inside one classification: the product ids in the
+    // order they should read.
+    reorder(data) {
+        return api.put('/admin/products/reorder', data);
     }
 };
 

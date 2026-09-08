@@ -62,8 +62,10 @@ function loadImage(src) {
 
 /**
  * @param {HTMLTableElement} table - the rendered <table> to capture.
- * @param {{items: any[]}[]} groups - same array used to render `table`, so
- *   row counts line up with the DOM and page breaks land between groups.
+ * @param {{items: any[], rowCount?: number}[]} groups - same array used to
+ *   render `table`, so row counts line up with the DOM and page breaks land
+ *   between groups. `rowCount` overrides `items.length` for a group that also
+ *   renders a classification heading row.
  * @param {string} filename
  * @param {string} [coverSrc] - optional full-bleed cover page, drawn "contain"-fit.
  * @param {(loaded: number, total: number) => void} [onPageProgress]
@@ -82,12 +84,16 @@ export async function renderTableToPdf({ table, groups, filename, coverSrc, onPa
     const theadHeight = theadEl ? theadEl.getBoundingClientRect().height : 0;
 
     // Every group's rows are contiguous <tr>s in the same order as `groups`,
-    // so we can slice the DOM row list without inspecting classes.
+    // so we can slice the DOM row list without inspecting classes. A group that
+    // opens a classification section also owns the heading row above it, which
+    // is why the count comes from `rowCount` rather than the item count — get
+    // this wrong and every page break after the first section lands short.
     const rowEls = Array.from(table.querySelectorAll('tbody tr'));
     let rowIdx = 0;
     const chunkRects = groups.map((g) => {
-        const groupRows = rowEls.slice(rowIdx, rowIdx + g.items.length);
-        rowIdx += g.items.length;
+        const rowsInGroup = g.rowCount ?? g.items.length;
+        const groupRows = rowEls.slice(rowIdx, rowIdx + rowsInGroup);
+        rowIdx += rowsInGroup;
         const first = groupRows[0];
         const last = groupRows[groupRows.length - 1] || first;
         return {

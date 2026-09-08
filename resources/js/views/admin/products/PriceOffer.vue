@@ -7,9 +7,6 @@
                     <span class="dot"></span>
                     <h2>{{ $t('price_offer') }}</h2>
                     <span v-if="total > 0" class="badge">{{ total }} {{ $t('product') }}</span>
-                    <span v-if="total > 0" class="badge selection-badge" :class="{ 'is-empty': printReadyCount === 0 }">
-                        {{ $t('selected_products_count', { count: printReadyCount }) }}
-                    </span>
                 </div>
                 <Transition name="status-fade">
                     <span v-if="importMsg" class="saved-msg">{{ importMsg }}</span>
@@ -26,6 +23,8 @@
                             class="qinput"
                             :placeholder="$t('search_for_a_product')"
                             autocomplete="off"
+                            :disabled="arrangeMode"
+                            :title="arrangeMode ? $t('finish_arranging_first') : ''"
                             @input="onSearchInput"
                         />
                     </div>
@@ -41,6 +40,8 @@
                                 type="button"
                                 class="btn-ghost btn-categories"
                                 :class="{ active: selectedCategoryIds.length > 0 }"
+                                :disabled="arrangeMode"
+                                :title="arrangeMode ? $t('finish_arranging_first') : ''"
                             >
                                 {{ categoryButtonLabel }}
                             </button>
@@ -170,220 +171,26 @@
                                 </button>
                             </el-tooltip>
                         </div>
+                        <el-tooltip :content="arrangeTooltip" placement="bottom" effect="dark">
+                            <span class="arrange-toggle-wrap">
+                                <button
+                                    type="button"
+                                    class="btn-ghost btn-icon"
+                                    :class="{ active: arrangeMode }"
+                                    :disabled="!arrangeMode && !canArrange"
+                                    @click="toggleArrangeMode"
+                                >
+                                    <el-icon><Sort /></el-icon>
+                                    {{ arrangeMode ? $t('done') : $t('arrange_order') }}
+                                </button>
+                            </span>
+                        </el-tooltip>
                         <el-tooltip :content="$t('reset_toolbar_tooltip')" placement="bottom" effect="dark">
                             <button type="button" class="btn-ghost btn-icon" @click="resetFilters">
                                 <el-icon><Refresh /></el-icon>
                                 {{ $t('reset') }}
                             </button>
                         </el-tooltip>
-                        <div class="selection-actions">
-                            <el-tooltip :content="$t('select_products_for_print')" placement="bottom" effect="dark">
-                                <button
-                                    type="button"
-                                    class="btn-ghost btn-icon"
-                                    :class="{ active: isEverythingSelected }"
-                                    :disabled="isEverythingSelected"
-                                    @click="selectAllProducts"
-                                >
-                                    <el-icon><Select /></el-icon>
-                                    {{ $t('common.select_all') }}
-                                </button>
-                            </el-tooltip>
-                            <el-tooltip :content="$t('clear_print_selection')" placement="bottom" effect="dark">
-                                <button
-                                    type="button"
-                                    class="btn-ghost btn-icon"
-                                    :disabled="isSelectionEmpty"
-                                    @click="clearSelection"
-                                >
-                                    <el-icon><Close /></el-icon>
-                                    {{ $t('clear') }}
-                                </button>
-                            </el-tooltip>
-                            <el-popover
-                                v-model:visible="listsPopoverVisible"
-                                placement="bottom-end"
-                                trigger="click"
-                                width="360"
-                                popper-class="lists-popover"
-                                @show="loadLists"
-                            >
-                                <template #reference>
-                                    <button
-                                        type="button"
-                                        class="btn-ghost btn-icon btn-lists"
-                                        :class="{ active: activeList !== null }"
-                                        :title="$t('saved_lists_tooltip')"
-                                    >
-                                        <el-icon><Collection /></el-icon>
-                                        <span class="btn-lists-label">{{ activeList ? listLabel(activeList) : $t('saved_lists') }}</span>
-                                        <span v-if="activeList && activeListDirty" class="lists-dot" :title="$t('list_modified')"></span>
-                                        <span v-else-if="savedLists.length > 0" class="lists-badge">{{ savedLists.length }}</span>
-                                    </button>
-                                </template>
-                                <div class="lists-menu" @click.stop>
-                                    <div class="lists-menu-head">
-                                        <p class="lists-menu-title">{{ $t('saved_lists') }}</p>
-                                        <span class="lists-menu-sub">{{ $t('selected_products_count', { count: printReadyCount }) }}</span>
-                                    </div>
-
-                                    <!-- Save the live selection under a new name. Reusing an existing
-                                         name offers to update that list instead of duplicating it. -->
-                                    <div class="lists-create">
-                                        <input
-                                            v-model="listName"
-                                            type="text"
-                                            class="lists-name-input"
-                                            :placeholder="$t('save_current_selection')"
-                                            autocomplete="off"
-                                            @keyup.enter="saveCurrentSelection"
-                                        />
-                                        <el-tooltip :content="saveListHint" placement="top" effect="dark">
-                                            <span class="btn-list-save-wrap">
-                                                <button
-                                                    type="button"
-                                                    class="btn-list-save"
-                                                    :disabled="savingList || printReadyCount === 0"
-                                                    :aria-label="saveListHint"
-                                                    @click="saveCurrentSelection"
-                                                >
-                                                    <el-icon v-if="savingList" class="is-loading"><Loading /></el-icon>
-                                                    <el-icon v-else><Plus /></el-icon>
-                                                </button>
-                                            </span>
-                                        </el-tooltip>
-                                    </div>
-
-                                    <!-- Which list is live, and whether the selection has drifted from it. -->
-                                    <div v-if="activeList" class="lists-active" :class="{ 'is-dirty': activeListDirty }">
-                                        <el-icon class="lists-active-icon">
-                                            <Clock v-if="activeListDirty" />
-                                            <CircleCheck v-else />
-                                        </el-icon>
-                                        <span class="lists-active-name">{{ listLabel(activeList) }}</span>
-                                        <span class="lists-active-state">
-                                            {{ activeListDirty ? $t('list_modified') : $t('list_applied') }}
-                                        </span>
-                                        <button
-                                            v-if="activeListDirty"
-                                            type="button"
-                                            class="lists-active-btn"
-                                            :disabled="busyListId !== null"
-                                            @click="overwriteList(activeList)"
-                                        >
-                                            {{ $t('update_list') }}
-                                        </button>
-                                        <button type="button" class="lists-active-btn is-plain" @click="detachActiveList">
-                                            {{ $t('stop_tracking_list') }}
-                                        </button>
-                                    </div>
-
-                                    <div v-if="savedLists.length > 5" class="lists-search">
-                                        <el-icon class="lists-search-icon"><Search /></el-icon>
-                                        <input
-                                            v-model="listSearch"
-                                            type="search"
-                                            class="lists-search-input"
-                                            :placeholder="$t('search_saved_lists')"
-                                            autocomplete="off"
-                                        />
-                                    </div>
-
-                                    <div v-loading="loadingLists" class="lists-scroll">
-                                        <el-empty
-                                            v-if="!loadingLists && savedLists.length === 0"
-                                            :image-size="52"
-                                            :description="$t('no_saved_lists')"
-                                        />
-                                        <p v-else-if="filteredLists.length === 0" class="lists-empty-hint">
-                                            {{ $t('no_matching_lists') }}
-                                        </p>
-                                        <div
-                                            v-for="lst in filteredLists"
-                                            :key="lst.id"
-                                            class="lists-item"
-                                            :class="{ 'is-active': lst.id === activeListId, 'is-renaming': renamingListId === lst.id }"
-                                        >
-                                            <template v-if="renamingListId === lst.id">
-                                                <input
-                                                    ref="renameInputRef"
-                                                    v-model="renameValue"
-                                                    type="text"
-                                                    class="lists-name-input lists-rename-input"
-                                                    autocomplete="off"
-                                                    @keyup.enter="commitRename(lst)"
-                                                    @keyup.esc="cancelRename"
-                                                />
-                                                <span class="lists-item-actions">
-                                                    <el-tooltip :content="$t('common.save')" placement="top" effect="dark">
-                                                        <button type="button" class="lists-act lists-act-ok" @click="commitRename(lst)">
-                                                            <el-icon><Check /></el-icon>
-                                                        </button>
-                                                    </el-tooltip>
-                                                    <el-tooltip :content="$t('cancel')" placement="top" effect="dark">
-                                                        <button type="button" class="lists-act" @click="cancelRename">
-                                                            <el-icon><Close /></el-icon>
-                                                        </button>
-                                                    </el-tooltip>
-                                                </span>
-                                            </template>
-                                            <template v-else>
-                                                <button
-                                                    type="button"
-                                                    class="lists-item-main"
-                                                    :disabled="busyListId !== null"
-                                                    :title="$t('load_selection')"
-                                                    @click="loadSavedList(lst.id)"
-                                                >
-                                                    <span class="lists-item-name">{{ listLabel(lst) }}</span>
-                                                    <span class="lists-item-meta">
-                                                        <span class="lists-item-count">{{ $t('list_items_count', { n: lst.items_count ?? 0 }) }}</span>
-                                                        <span v-if="formatListDate(lst.updated_at)" class="lists-item-date">
-                                                            {{ formatListDate(lst.updated_at) }}
-                                                        </span>
-                                                    </span>
-                                                </button>
-                                                <span class="lists-item-actions">
-                                                    <el-tooltip :content="$t('load_selection')" placement="top" effect="dark">
-                                                        <button
-                                                            type="button"
-                                                            class="lists-act"
-                                                            :disabled="busyListId !== null"
-                                                            @click="loadSavedList(lst.id)"
-                                                        >
-                                                            <el-icon v-if="busyListId === lst.id" class="is-loading"><Loading /></el-icon>
-                                                            <el-icon v-else><Download /></el-icon>
-                                                        </button>
-                                                    </el-tooltip>
-                                                    <el-tooltip :content="$t('overwrite_with_current_selection')" placement="top" effect="dark">
-                                                        <button
-                                                            type="button"
-                                                            class="lists-act"
-                                                            :disabled="busyListId !== null || printReadyCount === 0"
-                                                            @click="overwriteList(lst, { confirm: true })"
-                                                        >
-                                                            <el-icon><Upload /></el-icon>
-                                                        </button>
-                                                    </el-tooltip>
-                                                    <el-tooltip :content="$t('rename_list')" placement="top" effect="dark">
-                                                        <button type="button" class="lists-act" @click="startRename(lst)">
-                                                            <el-icon><EditPen /></el-icon>
-                                                        </button>
-                                                    </el-tooltip>
-                                                    <el-popconfirm :title="$t('confirm_delete_list')" :confirm-button-text="$t('delete')" :cancel-button-text="$t('cancel')" @confirm="deleteSavedList(lst.id)">
-                                                        <template #reference>
-                                                            <button type="button" class="lists-act lists-act-danger" :title="$t('delete')">
-                                                                <el-icon><Delete /></el-icon>
-                                                            </button>
-                                                        </template>
-                                                    </el-popconfirm>
-                                                </span>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </div>
-                            </el-popover>
-                        </div>
                     </div>
 
                     <div class="tools-group tools-group-export">
@@ -407,11 +214,11 @@
                             </div>
                         </el-popover>
                         <div class="export-actions">
-                            <button type="button" class="btn-pdf" :disabled="printLoading || printReadyCount === 0" @click="printPage">
+                            <button type="button" class="btn-pdf" :disabled="printLoading || total === 0" @click="printPage">
                                 <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
                                 {{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}
                             </button>
-                            <button type="button" class="btn-pdf-download" :disabled="printLoading || printReadyCount === 0" @click="downloadPdf">
+                            <button type="button" class="btn-pdf-download" :disabled="printLoading || total === 0" @click="downloadPdf">
                                 <el-icon v-if="printLoading && prepMode === 'pdf'" class="is-loading"><Loading /></el-icon>
                                 <el-icon v-else><Download /></el-icon>
                                 {{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}
@@ -455,19 +262,10 @@
                 <span class="summary-label">{{ $t('in_table') }}</span>
             </div>
             <div class="summary-divider"></div>
-            <div class="summary-item" :class="{ 'is-muted': printReadyCount === 0 }">
-                <span class="summary-value">{{ printReadyCount.toLocaleString('en-US') }}</span>
-                <span class="summary-label">{{ $t('selected_totals') }}</span>
+            <div class="summary-item is-price">
+                <span class="summary-value">{{ formatSummaryPrice(printableSum) }}</span>
+                <span class="summary-label">{{ $t('sum_of_prices') }}</span>
             </div>
-            <div class="summary-divider"></div>
-            <div class="summary-item is-price" :class="{ 'is-muted': printReadyCount === 0 }">
-                <span v-if="printReadyCount > 0" class="summary-value">{{ formatSummaryPrice(printReadySum) }}</span>
-                <span v-else class="summary-value">—</span>
-                <span class="summary-label">{{ $t('sum_of_selected') }}</span>
-            </div>
-            <p v-if="!isEverythingSelected" class="summary-note">
-                {{ $t('selected_count_note') }}
-            </p>
         </div>
 
         <div v-if="selectedCategoryChips.length" class="active-filters screen-only">
@@ -483,14 +281,114 @@
             <button type="button" class="filter-clear-all" @click="clearCategories">{{ $t('clear') }}</button>
         </div>
 
-        <div v-loading="loading" class="offer-table-wrap screen-only">
+        <!-- Arrange mode: the order the printed sheet reads in, set by dragging.
+             It works off the whole filtered catalogue rather than the page on
+             screen, so a product can be moved past a page boundary, and it drops
+             the price/stock columns because none of that is being decided here. -->
+        <div v-if="arrangeMode" class="arrange-panel screen-only">
+            <div class="arrange-head">
+                <div class="arrange-head-text">
+                    <h3>{{ $t('arrange_print_order') }}</h3>
+                    <p>{{ $t('arrange_print_order_hint') }}</p>
+                </div>
+                <button type="button" class="btn-arrange-done" @click="exitArrangeMode">
+                    <el-icon><Check /></el-icon>
+                    {{ $t('done') }}
+                </button>
+            </div>
+
+            <div v-if="arrangeLoading" class="arrange-loading">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                {{ $t('loading_full_catalogue') }}
+            </div>
+
+            <el-empty
+                v-else-if="arrangeSections.length === 0"
+                :image-size="60"
+                :description="$t('no_products_to_arrange')"
+            />
+
+            <template v-else>
+            <div
+                v-for="section in arrangeSections"
+                :key="sectionKey(section)"
+                class="arrange-section"
+                :class="{ 'is-collapsed': !isSectionOpen(section) }"
+            >
+                <div class="arrange-section-head">
+                    <button
+                        type="button"
+                        class="arrange-twisty"
+                        :aria-expanded="isSectionOpen(section)"
+                        :aria-label="section.name"
+                        @click="toggleSection(section)"
+                    >
+                        <el-icon><ArrowDown /></el-icon>
+                    </button>
+                    <span class="arrange-section-name">{{ section.name }}</span>
+                    <span class="arrange-section-count">
+                        {{ $t('section_products_count', { n: section.groups.length }) }}
+                    </span>
+                    <span class="arrange-section-status" :class="`is-${sectionStatus[sectionKey(section)] || 'idle'}`">
+                        <template v-if="sectionStatus[sectionKey(section)] === 'saving'">
+                            <el-icon class="is-loading"><Loading /></el-icon>{{ $t('saving') }}
+                        </template>
+                        <template v-else-if="sectionStatus[sectionKey(section)] === 'saved'">
+                            <el-icon><CircleCheck /></el-icon>{{ $t('order_saved') }}
+                        </template>
+                        <template v-else-if="sectionStatus[sectionKey(section)] === 'error'">
+                            <el-icon><WarningFilled /></el-icon>{{ $t('failed_to_save_order') }}
+                        </template>
+                    </span>
+                    <el-tooltip :content="$t('sort_alphabetically')" placement="top" effect="dark">
+                        <button type="button" class="arrange-section-btn" @click="sortSectionAlphabetically(section)">
+                            {{ $t('a_to_z') }}
+                        </button>
+                    </el-tooltip>
+                </div>
+
+                <draggable
+                    v-if="isSectionOpen(section)"
+                    v-model="section.groups"
+                    item-key="key"
+                    handle=".arrange-handle"
+                    ghost-class="arrange-ghost"
+                    :animation="150"
+                    class="arrange-list"
+                    @end="saveSectionOrder(section)"
+                >
+                    <template #item="{ element, index }">
+                        <div class="arrange-row">
+                            <span class="arrange-handle" :title="$t('drag_to_reorder')">
+                                <el-icon><Rank /></el-icon>
+                            </span>
+                            <span class="arrange-pos">{{ index + 1 }}</span>
+                            <EntityImage
+                                :src="element.product.image_main"
+                                type="product"
+                                :size="34"
+                                shape="square"
+                                :lazy="false"
+                            />
+                            <span class="arrange-name">
+                                {{ element.product.name_ar || element.product.name_en }}
+                            </span>
+                            <span v-if="element.items.length > 1" class="arrange-variants">
+                                {{ $t('section_variants_count', { n: element.items.length }) }}
+                            </span>
+                            <span class="arrange-price">
+                                {{ formatSummaryPrice(element.items[0]?.displayPrice ?? 0) }}
+                            </span>
+                        </div>
+                    </template>
+                </draggable>
+            </div>
+            </template>
+        </div>
+
+        <div v-else v-loading="loading" class="offer-table-wrap screen-only">
             <ProductOfferTable :groups="groupedProducts" :loading="loading" :editing-id="editingId" :edit-value="editValue" :visible-columns="visibleColumns"
                 :editing-stock-id="editingStockId" :edit-stock-value="editStockValue" :item-status="itemStatus"
-                :selected-keys="selectedGroupKeys"
-                :all-selected="allSelected"
-                :some-selected="someSelected"
-                @toggle-all="toggleSelectAll"
-                @toggle-select="toggleSelected"
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
                 @start-edit-stock="startEditStock" @commit-edit-stock="commitEditStock" @cancel-edit-stock="cancelEditStock"
                 @edit-item="openEditItemDialog"
@@ -498,10 +396,6 @@
                 @remove-item="removeItem"
                 @update-image="updateItemImage" @clear-image="clearItemImage"
                 @add-variant="openAddVariantDialog" />
-            <div v-if="printReadyCount === 0" class="selection-empty screen-only">
-                <el-icon><WarningFilled /></el-icon>
-                {{ $t('no_products_selected_for_print') }}
-            </div>
         </div>
 
         <!-- Print/PDF-only table: holds every product across every page, grouped by product name -->
@@ -724,7 +618,7 @@
             </template>
         </el-dialog>
 
-        <div v-if="total > 0" class="pagination-wrapper screen-only">
+        <div v-if="total > 0 && !arrangeMode" class="pagination-wrapper screen-only">
             <el-pagination
                 v-model:current-page="currentPage"
                 v-model:page-size="pageSize"
@@ -743,15 +637,20 @@
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue';
+import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
-import { productsApi, priceOfferListsApi } from '@/api/products';
+import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, Operation, Grid, Select, WarningFilled, Collection, Plus, Delete, Connection, Clock, CircleCheck, MagicStick, Check, ArrowDown, Upload, EditPen } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
 
-const { t, locale } = useI18n();
+// vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
+// bundling it statically costs every visit to this screen ~200 kB for a control
+// only used when someone deliberately rearranges the sheet. Loaded on demand.
+const draggable = defineAsyncComponent(() => import('vuedraggable'));
+
+const { t } = useI18n();
 const store = useProductsStore();
 
 const searchQuery = ref('');
@@ -776,61 +675,9 @@ function loadHideEmptyCategories() {
 // Roughly a third of the classifications hold no products at all; hiding them
 // keeps the list short without losing the ability to see them again.
 const hideEmptyCategories = ref(loadHideEmptyCategories());
-// Per-product print selection. A selection is a *mode* plus a set of exception
-// group keys, so it stays exact across pagination: in 'all' mode every product
-// prints except the exceptions, in 'none' mode only the exceptions print. The
-// second mode is what lets "clear" and "apply a saved list" mean the same thing
-// on page 1 as on page 9 — an excluded-keys-only model can never say "just
-// these forty products" without first enumerating the whole catalogue.
-// The last used selection is remembered across reloads via localStorage.
-const SELECTION_STORAGE_KEY = 'price_offer_selection';
-function loadStoredSelection() {
-    try {
-        const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            // Legacy shape: a bare array of excluded group keys.
-            if (Array.isArray(parsed)) return { mode: 'all', keys: parsed, listId: null, listKeys: [] };
-            if (parsed && (parsed.mode === 'all' || parsed.mode === 'none')) {
-                return {
-                    mode: parsed.mode,
-                    keys: Array.isArray(parsed.keys) ? parsed.keys : [],
-                    listId: typeof parsed.listId === 'number' ? parsed.listId : null,
-                    listKeys: Array.isArray(parsed.listKeys) ? parsed.listKeys : [],
-                };
-            }
-        }
-    } catch {
-        // Private mode / corrupt entry — fall through to "everything selected".
-    }
-    return { mode: 'all', keys: [], listId: null, listKeys: [] };
-}
-const storedSelection = loadStoredSelection();
-const selectionMode = ref(storedSelection.mode);
-const selectionExceptions = ref(storedSelection.keys);
 const currentPage = ref(1);
 const pageSize = ref(50);
 const divideValue = ref(null);
-
-// Saved print-selection lists. A list is a named set of item ids
-// (`p-{productId}` / `v-{variantId}`) the admin can reload to re-apply a
-// product selection instead of picking rows from scratch each time.
-const savedLists = ref([]);
-const listsPopoverVisible = ref(false);
-const loadingLists = ref(false);
-const savingList = ref(false);
-const listName = ref('');
-const listSearch = ref('');
-// The saved list currently applied, plus the group keys it resolved to, so the
-// menu can show which list is live and whether the selection has drifted from
-// it since.
-const activeListId = ref(storedSelection.listId ?? null);
-const activeListKeys = ref(storedSelection.listKeys ?? []);
-// Id of the list whose apply/overwrite request is in flight (per-row spinner).
-const busyListId = ref(null);
-const renamingListId = ref(null);
-const renameValue = ref('');
-const renameInputRef = ref(null);
 
 // Price/stock overrides keyed by row id (`p-{productId}` or `v-{variantId}`).
 // They keep the screen table, the print/PDF table and the CSV export all
@@ -1842,387 +1689,134 @@ function clearCategories() {
     onCategoryChange();
 }
 
-// --- Per-product print selection ---
-// Products are keyed by the same product-name group key `buildGroups` produces.
-// `selectionMode` says what the default is and `selectionExceptions` lists the
-// rows that go against it, so the answer for a product is the same whether or
-// not its page is currently loaded.
+const formatSummaryPrice = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function isGroupSelected(key) {
-    const isException = selectionExceptions.value.includes(key);
-    return selectionMode.value === 'all' ? !isException : isException;
-}
+// --- Arrange mode: the order the printed sheet reads in ---------------------
+// `products.sort_order` already existed and was editable one product at a time
+// on the product form; nothing had ever sorted by it. The API now offers a
+// `catalogue` ordering (classification, then this priority) and this screen is
+// where the priority actually gets set — by dragging, over the whole filtered
+// catalogue rather than the fifty rows that happen to be on screen.
 
-function setSelection(mode, keys) {
-    selectionMode.value = mode;
-    selectionExceptions.value = keys;
-}
+const arrangeMode = ref(false);
+const arrangeLoading = ref(false);
+// A mutable copy of `catalogueSections`; vuedraggable reorders the array it is
+// given, and a computed is not that array.
+const arrangeSections = ref([]);
+const collapsedSections = ref([]);
+// Per-section save state: 'saving' | 'saved' | 'error'.
+const sectionStatus = ref({});
 
-// The two extremes, catalogue-wide: nothing has been unticked, or nothing is
-// ticked at all. Both toolbar buttons key off these instead of a key count
-// that only ever described the page on screen.
-const isEverythingSelected = computed(
-    () => selectionMode.value === 'all' && selectionExceptions.value.length === 0
-);
-const isSelectionEmpty = computed(
-    () => selectionMode.value === 'none' && selectionExceptions.value.length === 0
-);
+const sectionKey = (section) => String(section.id ?? 'none');
 
-function toggleSelected(key, checked) {
-    if (checked === isGroupSelected(key)) return;
-    const list = [...selectionExceptions.value];
-    const idx = list.indexOf(key);
-    if (idx === -1) list.push(key); else list.splice(idx, 1);
-    selectionExceptions.value = list;
-}
-
-function selectAllProducts() {
-    setSelection('all', []);
-    flashMsg(t('all_products_selected'));
-}
-
-function clearSelection() {
-    setSelection('none', []);
-    flashMsg(t('selection_cleared'));
-}
-
-// Filters built groups down to just the products the user wants printed.
-function filterSelected(groups) {
-    if (selectionMode.value === 'all' && selectionExceptions.value.length === 0) return groups;
-    return groups.filter((g) => isGroupSelected(g.key));
-}
-
-// Remember the current print selection so it survives a page reload, and keep
-// the print/PDF table in step with it for a native Ctrl+P.
-watch([selectionMode, selectionExceptions, activeListId, activeListKeys], () => {
-    if (fullPrintGroups.value.length) printGroups.value = filterSelected(fullPrintGroups.value);
-    try {
-        localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify({
-            mode: selectionMode.value,
-            keys: selectionExceptions.value,
-            listId: activeListId.value,
-            listKeys: activeListKeys.value,
-        }));
-    } catch {
-        // Private mode / quota exceeded — the selection just won't persist.
-    }
-}, { deep: true });
-
-// --- Saved print-selection lists ---
-// A saved list is a named set of row ids. Saving and applying both work off
-// the *whole* filtered catalogue (`fullPrintGroups`), never the page on
-// screen, so a list saved from page 1 still describes all 900 products.
-
-// The item ids (`p-{id}` / `v-{id}`) of every row currently selected for print.
-function currentSelectedItemIds() {
-    const source = fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
-    const ids = new Set();
-    for (const g of filterSelected(source)) {
-        for (const item of g.items) ids.add(item.id);
-    }
-    return Array.from(ids);
-}
-
-const listLabel = (lst) => (lst?.name_ar || lst?.name_en || t('default_list_name'));
-
-const activeList = computed(() => savedLists.value.find((l) => l.id === activeListId.value) || null);
-
-// Every selected group key across the whole filtered catalogue — the canonical
-// shape of "what is selected", independent of mode and of the page on screen.
-function selectedGroupKeysAll() {
-    const source = fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
-    return filterSelected(source).map((g) => g.key);
-}
-
-// The applied list is "modified" once the live selection no longer matches the
-// group keys it resolved to, which is the cue to offer an overwrite.
-const activeListDirty = computed(() => {
-    if (!activeList.value) return false;
-    const current = selectedGroupKeysAll();
-    if (current.length !== activeListKeys.value.length) return true;
-    const saved = new Set(activeListKeys.value);
-    return current.some((k) => !saved.has(k));
-});
-
-const filteredLists = computed(() => {
-    const q = listSearch.value.trim().toLowerCase();
-    if (!q) return savedLists.value;
-    return savedLists.value.filter((l) => listLabel(l).toLowerCase().includes(q));
-});
-
-const saveListHint = computed(() => (
-    printReadyCount.value === 0 ? t('select_products_before_saving') : t('save_selection_as_list')
+// A search returns part of a classification, and renumbering part of one would
+// hoist those products above every sibling the search filtered out. A
+// classification filter is fine: it selects whole sections.
+const canArrange = computed(() => searchQuery.value.trim() === '');
+const arrangeTooltip = computed(() => (
+    canArrange.value ? t('arrange_print_order_tooltip') : t('arrange_needs_no_search')
 ));
 
-function formatListDate(value) {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(locale.value === 'ar' ? 'ar-SY' : 'en-GB', { day: '2-digit', month: 'short' });
+const isSectionOpen = (section) => !collapsedSections.value.includes(sectionKey(section));
+
+function toggleSection(section) {
+    const key = sectionKey(section);
+    collapsedSections.value = collapsedSections.value.includes(key)
+        ? collapsedSections.value.filter((k) => k !== key)
+        : [...collapsedSections.value, key];
 }
 
-// Anything that saves or applies a list needs the full catalogue in hand; the
-// background hydration usually has it already, otherwise we wait for it here.
-async function ensureFullCatalog() {
+async function ensureCatalogue() {
     if (!fullPrintGroups.value.length) await hydratePrintCatalog();
-    return fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
 }
 
-async function loadLists() {
-    loadingLists.value = true;
+function toggleArrangeMode() {
+    if (arrangeMode.value) exitArrangeMode(); else enterArrangeMode();
+}
+
+async function enterArrangeMode() {
+    arrangeMode.value = true;
+    arrangeLoading.value = true;
     try {
-        const res = await priceOfferListsApi.getAll();
-        savedLists.value = res.data?.data ?? [];
-        // A list deleted from another tab shouldn't stay flagged as applied.
-        if (activeListId.value !== null && !savedLists.value.some((l) => l.id === activeListId.value)) {
-            activeListId.value = null;
-        }
+        await ensureCatalogue();
+        arrangeSections.value = catalogueSections.value.map((s) => ({ ...s, groups: [...s.groups] }));
     } catch {
-        ElMessage.error(t('failed_to_load_saved_lists'));
+        ElMessage.error(t('failed_to_bring_products'));
     } finally {
-        loadingLists.value = false;
+        arrangeLoading.value = false;
     }
 }
 
-// Picks a default name that doesn't collide with an existing one ("List 3").
-function nextDefaultListName() {
-    const base = t('default_list_name');
-    const taken = new Set(savedLists.value.map((l) => listLabel(l).toLowerCase()));
-    let n = savedLists.value.length + 1;
-    while (taken.has(`${base} ${n}`.toLowerCase())) n += 1;
-    return `${base} ${n}`;
+async function exitArrangeMode() {
+    arrangeMode.value = false;
+    arrangeSections.value = [];
+    sectionStatus.value = {};
+    // Re-read so the table and the print sheet come back in the saved order
+    // rather than the one they were fetched in.
+    await fetchProducts();
+    hydratePrintCatalog();
 }
 
-async function saveCurrentSelection() {
-    if (savingList.value) return;
-    const typed = (listName.value || '').trim();
-    const name = typed || nextDefaultListName();
-
-    // Saving over a name that already exists is almost always meant as an
-    // update, so offer that instead of quietly creating a second "Riyadh".
-    const clash = savedLists.value.find((l) => listLabel(l).toLowerCase() === name.toLowerCase());
-    if (clash) {
-        try {
-            await ElMessageBox.confirm(t('list_name_exists', { name }), t('saved_lists'), {
-                confirmButtonText: t('update_list'),
-                cancelButtonText: t('cancel'),
-                type: 'warning',
-            });
-        } catch {
-            return;
-        }
-        listName.value = '';
-        await overwriteList(clash);
-        return;
-    }
-
-    savingList.value = true;
-    try {
-        await ensureFullCatalog();
-        const items = currentSelectedItemIds();
-        if (items.length === 0) {
-            ElMessage.warning(t('select_products_before_saving'));
-            return;
-        }
-        const res = await priceOfferListsApi.create({ name, items });
-        const created = res.data?.data;
-        if (created) {
-            savedLists.value.unshift(created);
-            adoptList(created.id);
-        }
-        listName.value = '';
-        flashMsg(t('list_saved'));
-    } catch {
-        ElMessage.error(t('failed_to_save_list'));
-    } finally {
-        savingList.value = false;
-    }
-}
-
-// Replaces a list's items with what is selected right now.
-async function overwriteList(lst, { confirm = false } = {}) {
-    if (busyListId.value !== null) return;
-    if (confirm) {
-        try {
-            await ElMessageBox.confirm(
-                t('confirm_overwrite_list', { name: listLabel(lst), count: printReadyCount.value }),
-                t('update_list'),
-                { confirmButtonText: t('update_list'), cancelButtonText: t('cancel'), type: 'warning' },
-            );
-        } catch {
-            return;
-        }
-    }
-    busyListId.value = lst.id;
-    try {
-        await ensureFullCatalog();
-        const items = currentSelectedItemIds();
-        if (items.length === 0) {
-            ElMessage.warning(t('select_products_before_saving'));
-            return;
-        }
-        const res = await priceOfferListsApi.update(lst.id, { items });
-        const updated = res.data?.data;
-        const idx = savedLists.value.findIndex((l) => l.id === lst.id);
-        if (idx !== -1) savedLists.value[idx] = updated ?? { ...lst, items_count: items.length };
-        adoptList(lst.id);
-        flashMsg(t('list_updated'));
-    } catch {
-        ElMessage.error(t('failed_to_update_list'));
-    } finally {
-        busyListId.value = null;
-    }
-}
-
-function startRename(lst) {
-    renamingListId.value = lst.id;
-    renameValue.value = listLabel(lst);
-    // The ref lives inside a v-for, so Vue hands back an array even though only
-    // the row being renamed renders the input.
-    nextTick(() => {
-        const el = Array.isArray(renameInputRef.value) ? renameInputRef.value[0] : renameInputRef.value;
-        el?.focus();
-        el?.select();
-    });
-}
-
-function cancelRename() {
-    renamingListId.value = null;
-    renameValue.value = '';
-}
-
-async function commitRename(lst) {
-    const name = renameValue.value.trim();
-    if (!name || name === listLabel(lst)) {
-        cancelRename();
-        return;
-    }
-    try {
-        const res = await priceOfferListsApi.update(lst.id, { name });
-        const updated = res.data?.data;
-        const idx = savedLists.value.findIndex((l) => l.id === lst.id);
-        if (idx !== -1) savedLists.value[idx] = updated ?? { ...lst, name_ar: name, name_en: name };
-        flashMsg(t('list_renamed'));
-    } catch {
-        ElMessage.error(t('failed_to_rename_list'));
-    } finally {
-        cancelRename();
-    }
-}
-
-// Marks a list as the one currently applied and snapshots the group keys it
-// maps to, so later edits can be detected as drift.
-function adoptList(id) {
-    activeListId.value = id;
-    activeListKeys.value = selectedGroupKeysAll();
-}
-
-// Stops tracking the applied list without touching the selection itself.
-function detachActiveList() {
-    activeListId.value = null;
-    activeListKeys.value = [];
-}
-
-// Applies a saved list across the whole filtered catalogue: a group is
-// selected when every one of its rows is present in the saved list.
-async function loadSavedList(id) {
-    if (busyListId.value !== null) return;
-    busyListId.value = id;
-    try {
-        const [res, groups] = await Promise.all([
-            priceOfferListsApi.show(id),
-            ensureFullCatalog(),
-        ]);
-        const itemKeys = res.data?.data?.item_keys ?? [];
-        const set = new Set(itemKeys);
-        const include = [];
-        let matchedItems = 0;
-        for (const g of groups) {
-            if (g.items.every((item) => set.has(item.id))) {
-                include.push(g.key);
-                matchedItems += g.items.length;
+function flashSectionStatus(key, state) {
+    sectionStatus.value = { ...sectionStatus.value, [key]: state };
+    if (state === 'saved') {
+        setTimeout(() => {
+            if (sectionStatus.value[key] === 'saved') {
+                const next = { ...sectionStatus.value };
+                delete next[key];
+                sectionStatus.value = next;
             }
-        }
-        setSelection('none', include);
-        adoptList(id);
-        listsPopoverVisible.value = false;
-
-        if (include.length === 0) {
-            ElMessage.warning(t('saved_list_matched_nothing'));
-        } else if (matchedItems < set.size) {
-            ElMessage.warning(t('saved_list_partially_matched', {
-                matched: matchedItems,
-                total: set.size,
-            }));
-        } else {
-            flashMsg(t('selection_loaded'));
-        }
-    } catch {
-        ElMessage.error(t('failed_to_load_selection'));
-    } finally {
-        busyListId.value = null;
+        }, 2000);
     }
 }
 
-async function deleteSavedList(id) {
+// Reflects the new order back into the catalogue snapshot, so the print table
+// and the summary follow a drag without waiting for a refetch.
+function syncCatalogueOrder() {
+    const flat = arrangeSections.value.flatMap((sec) => sec.groups);
+    fullPrintGroups.value = flat;
+    printGroups.value = withSections(flat);
+}
+
+async function saveSectionOrder(section) {
+    const key = sectionKey(section);
+    // A group can cover several product rows merged under one name, and all of
+    // them move together. Inactive products are not in this list and keep the
+    // priority they had — they never print, so their position is moot.
+    const productIds = section.groups.flatMap((g) => g.productIds);
+    if (productIds.length === 0) return;
+    flashSectionStatus(key, 'saving');
     try {
-        await priceOfferListsApi.remove(id);
-        const idx = savedLists.value.findIndex((l) => l.id === id);
-        if (idx !== -1) savedLists.value.splice(idx, 1);
-        if (activeListId.value === id) detachActiveList();
-        flashMsg(t('list_deleted'));
+        await productsApi.reorder({ category_id: section.id, product_ids: productIds });
+        syncCatalogueOrder();
+        flashSectionStatus(key, 'saved');
     } catch {
-        ElMessage.error(t('failed_to_delete_list'));
+        flashSectionStatus(key, 'error');
+        ElMessage.error(t('failed_to_save_order'));
     }
 }
 
-// --- On-screen selection state (drives the table's header checkbox) ---
-
-const selectedCount = computed(() => groupedProducts.value.filter((g) => isGroupSelected(g.key)).length);
-// The group keys on screen that are selected — the table renders a tick from
-// this list rather than re-deriving the mode/exception rules itself.
-const selectedGroupKeys = computed(
-    () => groupedProducts.value.filter((g) => isGroupSelected(g.key)).map((g) => g.key)
-);
-const allSelected = computed(
-    () => groupedProducts.value.length > 0 && selectedCount.value === groupedProducts.value.length
-);
-// Indeterminate: some but not all of the rows on screen are ticked.
-const someSelected = computed(
-    () => selectedCount.value > 0 && selectedCount.value < groupedProducts.value.length
-);
-
-// Toggles every group on screen, leaving products on other pages untouched.
-function toggleSelectAll(checked) {
-    const keys = groupedProducts.value.map((g) => g.key);
-    const exceptions = new Set(selectionExceptions.value);
-    for (const key of keys) {
-        const shouldBeException = selectionMode.value === 'all' ? !checked : checked;
-        if (shouldBeException) exceptions.add(key); else exceptions.delete(key);
-    }
-    selectionExceptions.value = Array.from(exceptions);
+function sortSectionAlphabetically(section) {
+    const name = (g) => (g.product.name_ar || g.product.name_en || '');
+    section.groups = [...section.groups].sort((a, b) => name(a).localeCompare(name(b), 'ar'));
+    saveSectionOrder(section);
 }
-
-const formatSummaryPrice = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // --- Counts/sums that reflect what will *actually* print ---
 // These use the full filtered catalog (all pages across the active category
-// filter) so the selected count matches the number of printed groups, instead
-// of only counting the page currently on screen. Falls back to the on-screen
-// figures only while the full catalog is still being hydrated.
-const printReadyCount = computed(() => {
-    if (fullPrintGroups.value.length) {
-        return filterSelected(fullPrintGroups.value).length;
-    }
-    return selectedCount.value;
-});
-const printReadySum = computed(() => {
+// filter) rather than the page on screen, so the figures match the printed
+// sheet. They fall back to the on-screen groups only while the full catalog is
+// still being hydrated.
+const printableSum = computed(() => {
     const groups = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
     let sum = 0;
     for (const group of groups) {
-        if (!isGroupSelected(group.key)) continue;
         for (const item of group.items) {
-            const p = Number(item.displayPrice);
+            // fullPrintGroups is a snapshot taken at hydration, so read through
+            // the live override map — otherwise dividing prices leaves the
+            // total showing the undivided figures.
+            const override = overrides.value[item.id];
+            const p = Number(override !== undefined ? override : item.displayPrice);
             if (Number.isFinite(p)) sum += p;
         }
     }
@@ -2231,9 +1825,8 @@ const printReadySum = computed(() => {
 
 // Full catalog snapshot for printing/PDF — every page, grouped by product name.
 const printGroups = ref([]);
-// The same full-catalog groups BEFORE deselection, so the "selected for print"
-// count/sum can reflect every row that would actually print (all pages across
-// the active category filter), not just the page on screen.
+// The same groups, kept around so the summary total and the divide tool can
+// work off every page in the active filter rather than the one on screen.
 const fullPrintGroups = ref([]);
 const printTableRef = ref(null);
 const printLoading = ref(false);
@@ -2258,12 +1851,20 @@ function buildGroups(list) {
     const order = [];
     for (const p of list) {
         const name = (p.name_ar || p.name_en || '').trim();
-        const key = name || `id-${p.id}`;
+        // Keyed by classification as well as name: the sheet reads in sections
+        // now, so two products that happen to share a name in different
+        // sections are two entries, not one merged row filed under whichever
+        // section came first.
+        const catId = p.category?.id ?? null;
+        const key = `${catId ?? 'none'}|${name || `id-${p.id}`}`;
         if (!map.has(key)) {
-            map.set(key, { key, product: p, items: [] });
+            // `productIds` is every row merged under this name — dragging the
+            // entry has to move all of them, not just the first.
+            map.set(key, { key, product: p, category: p.category ?? null, productIds: [], items: [] });
             seenDetails.set(key, new Set());
             order.push(key);
         }
+        if (!map.get(key).productIds.includes(p.id)) map.get(key).productIds.push(p.id);
         const variants = Array.isArray(p.variants) ? p.variants : [];
         const items = variants.length
             ? variants.map((v) => makeItem(`v-${v.id}`, {
@@ -2296,9 +1897,50 @@ function buildGroups(list) {
     return order.map((k) => map.get(k));
 }
 
-// Every group on the current page, selected or not: unticking a product must
-// grey its row out, not make it disappear with no way back.
-const groupedProducts = computed(() => buildGroups(products.value));
+// Marks the first group of each classification run with the heading the table
+// should print above it. `rowCount` is what that group occupies in the DOM —
+// the PDF renderer walks rows group by group to choose its page breaks, so a
+// heading row has to be declared or every break after the first lands short.
+function withSections(groups) {
+    let currentId;
+    return groups.map((g) => {
+        const id = g.category?.id ?? null;
+        const opensSection = id !== currentId;
+        currentId = id;
+        return opensSection
+            ? {
+                ...g,
+                sectionLabel: g.category
+                    ? (g.category.name_ar || g.category.name_en)
+                    : t('uncategorised'),
+                rowCount: g.items.length + 1,
+            }
+            : { ...g, sectionLabel: null, rowCount: g.items.length };
+    });
+}
+
+const groupedProducts = computed(() => withSections(buildGroups(products.value)));
+
+// The full filtered catalogue split into classification sections — what the
+// arrange screen drags and what the section counts are read from.
+const catalogueSections = computed(() => {
+    const source = fullPrintGroups.value.length ? fullPrintGroups.value : buildGroups(products.value);
+    const sections = [];
+    let current = null;
+    for (const g of source) {
+        const id = g.category?.id ?? null;
+        if (!current || current.id !== id) {
+            current = {
+                id,
+                name: g.category ? (g.category.name_ar || g.category.name_en) : t('uncategorised'),
+                groups: [],
+            };
+            sections.push(current);
+        }
+        current.groups.push(g);
+    }
+    return sections;
+});
 
 function makeItem(id, base) {
     const override = overrides.value[id];
@@ -2331,6 +1973,7 @@ const fetchProducts = async () => {
             category_id: selectedCategoryIds.value.length ? selectedCategoryIds.value : undefined,
             is_active: true,
             with_variants: true,
+            sort: 'catalogue',
         });
     } catch {
         ElMessage.error(t('failed_to_bring_products'));
@@ -2352,7 +1995,7 @@ function hydratePrintCatalog() {
         try {
             const groups = buildGroups(await fetchAllProductsFlat());
             fullPrintGroups.value = groups;
-            printGroups.value = filterSelected(groups);
+            printGroups.value = withSections(groups);
         } catch {
             // Silent — Print/Download PDF still fetch fresh, visibly, on demand.
         } finally {
@@ -2363,14 +2006,17 @@ function hydratePrintCatalog() {
 }
 
 const resetFilters = () => {
+    if (arrangeMode.value) {
+        arrangeMode.value = false;
+        arrangeSections.value = [];
+        sectionStatus.value = {};
+    }
     searchQuery.value = '';
     selectedCategoryIds.value = [];
     categorySearch.value = '';
     expandedCategoryIds.value = [];
     divideValue.value = null;
     currentPage.value = 1;
-    setSelection('all', []);
-    detachActiveList();
     overrides.value = {};
     divideValueApplied.value = null;
     stockOverrides.value = {};
@@ -2473,10 +2119,10 @@ const divideAllPrices = () => {
         ElMessage.warning(t('please_enter_positive_number'));
         return;
     }
-    // Every selected row in the filtered catalogue, not just the page on
-    // screen — otherwise pages 2+ print at their undivided price.
+    // Every row in the filtered catalogue, not just the page on screen —
+    // otherwise pages 2+ print at their undivided price.
     const source = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
-    for (const group of filterSelected(source)) {
+    for (const group of source) {
         for (const item of group.items) {
             overrides.value[item.id] = Math.round((item.originalPrice / v) * 10) / 10;
         }
@@ -2505,6 +2151,7 @@ async function fetchAllProductsFlat(onProgress) {
         category_id: selectedCategoryIds.value.length ? selectedCategoryIds.value : undefined,
         is_active: true,
         with_variants: true,
+        sort: 'catalogue',
         per_page: 100,
     };
     const all = [];
@@ -2537,7 +2184,7 @@ async function prepareFullCatalog() {
 
     const groups = buildGroups(all);
     fullPrintGroups.value = groups;
-    printGroups.value = filterSelected(groups);
+    printGroups.value = withSections(groups);
     await nextTick();
 
     const tableEl = printTableRef.value?.$el;
@@ -2612,7 +2259,6 @@ onMounted(async () => {
     await store.fetchCategories();
     await fetchProducts();
     hydratePrintCatalog();
-    loadLists();
     // Restore any edits queued before a reload / while offline, and push them
     // if the connection has already returned.
     applyPendingStatuses();
@@ -3122,341 +2768,6 @@ onMounted(async () => {
     }
 }
 
-/* Per-product print selection in the toolbar. */
-.selection-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.selection-actions .btn-ghost.active {
-    background: rgba(16, 185, 129, .3);
-    border-color: rgba(16, 185, 129, .6);
-}
-.selection-badge.is-empty {
-    background: rgba(220, 38, 38, .4);
-    border-color: rgba(220, 38, 38, .7);
-}
-
-/* Saved print-selection lists popover. */
-.lists-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    margin-inline-start: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    color: #fff;
-    background: #c00000;
-    border-radius: 999px;
-}
-.btn-lists {
-    max-width: 210px;
-}
-.btn-lists-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-/* Amber pip on the toolbar button: a list is applied but has been edited. */
-.lists-dot {
-    flex: 0 0 auto;
-    width: 8px;
-    height: 8px;
-    margin-inline-start: 2px;
-    border-radius: 50%;
-    background: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, .25);
-}
-.lists-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.lists-menu-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-.lists-menu-title {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 700;
-    color: #111c2c;
-}
-.lists-menu-sub {
-    font-size: 11px;
-    font-weight: 600;
-    color: #64748b;
-    white-space: nowrap;
-}
-.lists-create {
-    display: flex;
-    gap: 6px;
-}
-.lists-name-input {
-    flex: 1;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 7px 10px;
-    font-size: 12.5px;
-    outline: none;
-}
-.lists-name-input:focus {
-    border-color: #2563eb;
-}
-.btn-list-save {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border: none;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #0f766e, #14b8a6);
-    color: #fff;
-    cursor: pointer;
-    font-size: 15px;
-    transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
-}
-.btn-list-save:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(15, 118, 110, .35);
-}
-.btn-list-save:disabled {
-    opacity: .5;
-    cursor: not-allowed;
-}
-/* A disabled button swallows pointer events, so the tooltip explaining *why*
-   it is disabled needs a live wrapper to hang off. */
-.btn-list-save-wrap {
-    display: inline-flex;
-}
-
-/* Strip naming the list currently applied, and whether it has drifted. */
-.lists-active {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border-radius: 8px;
-    border: 1px solid rgba(16, 185, 129, .35);
-    background: rgba(16, 185, 129, .08);
-}
-.lists-active.is-dirty {
-    border-color: rgba(245, 158, 11, .45);
-    background: rgba(245, 158, 11, .1);
-}
-.lists-active-icon {
-    flex: 0 0 auto;
-    font-size: 14px;
-    color: #0f766e;
-}
-.lists-active.is-dirty .lists-active-icon {
-    color: #b45309;
-}
-.lists-active-name {
-    flex: 1;
-    min-width: 0;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #111c2c;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.lists-active-state {
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .02em;
-    color: #0f766e;
-    white-space: nowrap;
-}
-.lists-active.is-dirty .lists-active-state {
-    color: #b45309;
-}
-.lists-active-btn {
-    flex: 0 0 auto;
-    border: none;
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    background: #b45309;
-    cursor: pointer;
-}
-.lists-active-btn:disabled {
-    opacity: .5;
-    cursor: not-allowed;
-}
-.lists-active-btn.is-plain {
-    background: transparent;
-    color: #64748b;
-    text-decoration: underline;
-    padding-inline: 2px;
-}
-
-.lists-search {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-.lists-search-icon {
-    position: absolute;
-    inset-inline-start: 9px;
-    font-size: 13px;
-    color: #94a3b8;
-    pointer-events: none;
-}
-.lists-search-input {
-    width: 100%;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 6px 10px;
-    padding-inline-start: 28px;
-    font-size: 12px;
-    outline: none;
-}
-.lists-search-input:focus {
-    border-color: #2563eb;
-}
-
-.lists-scroll {
-    max-height: 260px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-height: 40px;
-}
-.lists-empty-hint {
-    margin: 0;
-    padding: 14px 4px;
-    text-align: center;
-    font-size: 12px;
-    color: #94a3b8;
-}
-.lists-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: 1px solid rgba(15, 23, 42, .08);
-    background: #f8fafc;
-    border-radius: 8px;
-    transition: border-color .15s ease, background .15s ease;
-}
-.lists-item:hover {
-    border-color: rgba(37, 99, 235, .35);
-    background: #f1f5f9;
-}
-.lists-item.is-active {
-    border-color: rgba(16, 185, 129, .5);
-    background: rgba(16, 185, 129, .07);
-}
-/* The whole name block is the "apply" target, so the row reads as one click. */
-.lists-item-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    text-align: start;
-    cursor: pointer;
-}
-.lists-item-main:disabled {
-    cursor: progress;
-}
-.lists-item-name {
-    max-width: 100%;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: #111c2c;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.lists-item-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.lists-item-count {
-    font-size: 11px;
-    color: #64748b;
-    white-space: nowrap;
-}
-.lists-item-date {
-    font-size: 10.5px;
-    color: #94a3b8;
-    white-space: nowrap;
-}
-.lists-item-date::before {
-    content: '·';
-    margin-inline-end: 6px;
-}
-.lists-rename-input {
-    flex: 1;
-    min-width: 0;
-}
-.lists-item-actions {
-    display: inline-flex;
-    gap: 2px;
-}
-.lists-act:disabled {
-    opacity: .4;
-    cursor: not-allowed;
-}
-.lists-act-ok:hover {
-    background: #d1fae5;
-    color: #0f766e;
-}
-.lists-act {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    padding: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: #475569;
-    cursor: pointer;
-    transition: background .15s ease, color .15s ease;
-}
-.lists-act:hover {
-    background: #e0e7ff;
-    color: #2563eb;
-}
-.lists-act-danger:hover {
-    background: #fee2e2;
-    color: #dc2626;
-}
-.selection-empty {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 14px 16px;
-    color: #b00e0e;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-radius: 12px;
-    font-size: 13px;
-    font-weight: 600;
-    margin: 12px 0 0;
-}
-
 .columns-menu-title {
     margin: 0 0 8px;
     font-size: 12px;
@@ -3708,10 +3019,6 @@ onMounted(async () => {
 .summary-item.is-price .summary-value {
     color: #b00e0e;
 }
-.summary-item.is-muted .summary-value,
-.summary-item.is-muted .summary-label {
-    color: #b6c2d0;
-}
 .summary-value {
     font-size: 19px;
     font-weight: 800;
@@ -3729,14 +3036,198 @@ onMounted(async () => {
     background: rgba(15, 23, 42, .1);
     margin: 2px 2px;
 }
-.summary-note {
-    margin: 0 4px 0 auto;
-    font-size: 11.5px;
-    color: #b45309;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    padding: 4px 10px;
+
+/* Arrange mode — the printed sheet's reading order, set by dragging. */
+.arrange-toggle-wrap {
+    display: inline-flex;
+}
+.arrange-panel {
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .1);
+    border-radius: 14px;
+    padding: 14px 16px 18px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .06);
+}
+.arrange-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(15, 23, 42, .08);
+    margin-bottom: 12px;
+}
+.arrange-head-text h3 {
+    margin: 0 0 3px;
+    font-size: 15px;
+    font-weight: 800;
+    color: #111c2c;
+}
+.arrange-head-text p {
+    margin: 0;
+    font-size: 12.5px;
+    color: #64748b;
+}
+.btn-arrange-done {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: 9px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #0f766e, #14b8a6);
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.btn-arrange-done:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 118, 110, .35);
+}
+.arrange-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 0;
+    color: #64748b;
+    font-size: 13px;
+}
+.arrange-section + .arrange-section {
+    margin-top: 10px;
+}
+.arrange-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #eef2f7;
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 9px;
+}
+.arrange-section.is-collapsed .arrange-section-head {
+    background: #f8fafc;
+}
+.arrange-twisty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    transition: transform .15s ease;
+}
+.arrange-section.is-collapsed .arrange-twisty {
+    transform: rotate(-90deg);
+}
+.arrange-section-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #111c2c;
+}
+.arrange-section-count {
+    font-size: 11px;
+    color: #64748b;
+}
+.arrange-section-status {
+    margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.arrange-section-status.is-saving { color: #64748b; }
+.arrange-section-status.is-saved { color: #0f766e; }
+.arrange-section-status.is-error { color: #b00e0e; }
+.arrange-section-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    cursor: pointer;
+}
+.arrange-section-btn:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+}
+.arrange-list {
+    padding: 6px 0 2px;
+}
+.arrange-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .08);
+    border-radius: 8px;
+}
+.arrange-row:hover {
+    border-color: rgba(37, 99, 235, .35);
+    background: #f8fafc;
+}
+/* The placeholder vuedraggable leaves where the row will land. */
+.arrange-ghost {
+    opacity: .45;
+    background: #e0e7ff;
+    border-style: dashed;
+    border-color: #6366f1;
+}
+.arrange-handle {
+    display: inline-flex;
+    align-items: center;
+    color: #94a3b8;
+    cursor: grab;
+    padding: 2px;
+}
+.arrange-handle:active {
+    cursor: grabbing;
+}
+.arrange-pos {
+    min-width: 24px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+.arrange-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #111c2c;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.arrange-variants {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #64748b;
+    background: #f1f5f9;
     border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+.arrange-price {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #b00e0e;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 /* Active classification chips shown under the toolbar */
