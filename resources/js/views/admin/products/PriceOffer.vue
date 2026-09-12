@@ -194,23 +194,95 @@
                     </div>
 
                     <div class="tools-group tools-group-export">
-                        <el-popover placement="bottom-end" trigger="click" width="230" popper-class="columns-popover">
+                        <el-popover placement="bottom-end" trigger="click" width="336" popper-class="columns-popover">
                             <template #reference>
                                 <button type="button" class="btn-ghost btn-columns btn-icon">
                                     <el-icon><Grid /></el-icon>
-                                    {{ $t('print_columns') }}
+                                    {{ $t('columns_and_sizes') }}
                                 </button>
                             </template>
                             <div class="columns-menu">
-                                <p class="columns-menu-title">{{ $t('choose_columns_to_print') }}</p>
-                                <label v-for="col in columnOptions" :key="col.key" class="columns-menu-item">
-                                    <el-checkbox
-                                        :model-value="visibleColumns[col.key]"
-                                        :disabled="visibleColumns[col.key] && selectedColumnCount === 1"
-                                        @update:model-value="(val) => toggleColumn(col.key, val)"
+                                <div class="columns-menu-head">
+                                    <p class="columns-menu-title">{{ $t('choose_columns_to_print') }}</p>
+                                    <button
+                                        type="button"
+                                        class="columns-menu-reset"
+                                        :disabled="!sizesCustomised"
+                                        :title="$t('reset_sizes')"
+                                        @click="resetSizes"
+                                    >
+                                        <el-icon><RefreshLeft /></el-icon>
+                                        {{ $t('reset_sizes') }}
+                                    </button>
+                                </div>
+
+                                <!-- One row per column: whether it prints, and how
+                                     much of the table's width it takes. The width
+                                     is a share of whatever columns are showing, so
+                                     a hidden column's slider would mean nothing. -->
+                                <div v-for="col in columnOptions" :key="col.key" class="columns-menu-item">
+                                    <div class="columns-menu-item-head">
+                                        <!-- The width readout sits outside the
+                                             label, or reading the number would
+                                             switch the column off. -->
+                                        <label class="columns-menu-toggle">
+                                            <el-checkbox
+                                                :model-value="visibleColumns[col.key]"
+                                                :disabled="visibleColumns[col.key] && selectedColumnCount === 1"
+                                                @update:model-value="(val) => toggleColumn(col.key, val)"
+                                            />
+                                            <span class="columns-menu-label">{{ $t(col.label) }}</span>
+                                        </label>
+                                        <span v-if="visibleColumns[col.key]" class="columns-menu-pct">{{ columnPct(col.key) }}%</span>
+                                    </div>
+                                    <el-slider
+                                        v-if="visibleColumns[col.key]"
+                                        class="columns-menu-slider"
+                                        :model-value="columnPct(col.key)"
+                                        :min="MIN_COLUMN_PCT"
+                                        :max="MAX_COLUMN_PCT"
+                                        :step="1"
+                                        :disabled="selectedColumnCount === 1"
+                                        :show-tooltip="false"
+                                        size="small"
+                                        @input="(val) => setColumnPct(col.key, val)"
                                     />
-                                    <span>{{ $t(col.label) }}</span>
-                                </label>
+                                </div>
+                                <p class="columns-menu-hint">{{ $t('drag_column_edge_hint') }}</p>
+
+                                <div class="columns-menu-section">
+                                    <div class="columns-menu-item-head">
+                                        <span class="columns-menu-label">{{ $t('row_height') }}</span>
+                                        <span class="columns-menu-pct">{{ effectiveRowHeight }} px</span>
+                                    </div>
+                                    <el-slider
+                                        class="columns-menu-slider"
+                                        :model-value="effectiveRowHeight"
+                                        :min="MIN_ROW_HEIGHT"
+                                        :max="MAX_ROW_HEIGHT"
+                                        :step="5"
+                                        :show-tooltip="false"
+                                        size="small"
+                                        @input="setRowHeight"
+                                    />
+                                    <!-- Height is really a question of how many
+                                         products land on a printed page, so the
+                                         panel answers in those terms and offers
+                                         the round numbers as one click. -->
+                                    <div class="rows-per-page">
+                                        <span class="rows-per-page-label">{{ $t('rows_per_page_estimate', { n: rowsPerPage }) }}</span>
+                                        <span class="rows-per-page-chips">
+                                            <button
+                                                v-for="n in [3, 4, 5, 6]"
+                                                :key="n"
+                                                type="button"
+                                                class="rows-per-page-chip"
+                                                :class="{ active: rowsPerPage === n }"
+                                                @click="setRowsPerPage(n)"
+                                            >{{ n }}</button>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </el-popover>
                         <div class="export-actions">
@@ -388,6 +460,7 @@
 
         <div v-else v-loading="loading" class="offer-table-wrap screen-only">
             <ProductOfferTable :groups="groupedProducts" :loading="loading" :editing-id="editingId" :edit-value="editValue" :visible-columns="visibleColumns"
+                :column-widths="columnWidths" :row-height="rowHeight" @update:column-widths="applyColumnWidths"
                 :editing-stock-id="editingStockId" :edit-stock-value="editStockValue" :item-status="itemStatus"
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
                 @start-edit-stock="startEditStock" @commit-edit-stock="commitEditStock" @cancel-edit-stock="cancelEditStock"
@@ -400,7 +473,8 @@
 
         <!-- Print/PDF-only table: holds every product across every page, grouped by product name -->
         <div class="offer-table-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
-            <ProductOfferTable ref="printTableRef" :groups="printGroups" :loading="false" :editing-id="null" :edit-value="''" print-mode :visible-columns="visibleColumns" />
+            <ProductOfferTable ref="printTableRef" :groups="printGroups" :loading="false" :editing-id="null" :edit-value="''" print-mode
+                :visible-columns="visibleColumns" :column-widths="columnWidths" :row-height="rowHeight" />
         </div>
 
         <!-- Print/PDF-prep overlay: shows progress while every page is pulled, images are loaded, and (for PDF) pages are rendered -->
@@ -643,7 +717,7 @@ import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
 
 // vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
 // bundling it statically costs every visit to this screen ~200 kB for a control
@@ -1494,6 +1568,117 @@ function toggleColumn(key, val) {
     } catch {
         // Private mode / quota exceeded — selection just won't persist.
     }
+}
+
+// ---- Column widths and row height --------------------------------------
+// Widths are shares of the table, matching COLUMN_SHARES in ProductOfferTable:
+// they are re-normalised over the columns that are showing, so one stored set
+// keeps its meaning when a column is switched off. The row height is the
+// height of one product group, in the CSS pixels the PDF capture measures in;
+// null means "leave it to the default fifth of a page".
+const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
+const defaultColumnWidths = { image: 50, product: 35, details: 35, price: 15, inventory: 15 };
+const DEFAULT_ROW_HEIGHT = 295;
+const MIN_ROW_HEIGHT = 150;
+const MAX_ROW_HEIGHT = 520;
+const MIN_COLUMN_PCT = 6;
+const MAX_COLUMN_PCT = 80;
+/**
+ * Body height of one exported page, in those same CSS pixels: A4 less its 24pt
+ * margins is 793.89pt, the capture is scaled 547.28pt / 960px = 0.5701pt per
+ * pixel, and the header re-drawn on every page costs about 42px of what is
+ * left. Only used to tell the user roughly how many products a page will hold.
+ */
+const PAGE_BODY_PX = 1350;
+
+function loadSizes() {
+    const fallback = { widths: { ...defaultColumnWidths }, rowHeight: null };
+    try {
+        const raw = localStorage.getItem(SIZES_STORAGE_KEY);
+        if (!raw) return fallback;
+        const saved = JSON.parse(raw) || {};
+        return {
+            widths: { ...defaultColumnWidths, ...(saved.widths || {}) },
+            rowHeight: Number(saved.rowHeight) > 0 ? Number(saved.rowHeight) : null,
+        };
+    } catch {
+        return fallback;
+    }
+}
+
+const savedSizes = loadSizes();
+const columnWidths = ref(savedSizes.widths);
+const rowHeight = ref(savedSizes.rowHeight);
+
+const effectiveRowHeight = computed(() => rowHeight.value || DEFAULT_ROW_HEIGHT);
+const rowsPerPage = computed(() => Math.max(1, Math.floor(PAGE_BODY_PX / effectiveRowHeight.value)));
+const sizesCustomised = computed(() => rowHeight.value !== null
+    || Object.keys(defaultColumnWidths).some((key) => columnWidths.value[key] !== defaultColumnWidths[key]));
+
+// A drag on a header edge (or on a slider) reports a new size on every pointer
+// move, so the write to storage waits for the gesture to settle rather than
+// running dozens of times a second.
+let sizesPersistTimeout = null;
+function persistSizes() {
+    clearTimeout(sizesPersistTimeout);
+    sizesPersistTimeout = setTimeout(() => {
+        try {
+            localStorage.setItem(SIZES_STORAGE_KEY, JSON.stringify({
+                widths: columnWidths.value,
+                rowHeight: rowHeight.value,
+            }));
+        } catch {
+            // Private mode / quota exceeded — the sizes just won't outlive the visit.
+        }
+    }, 250);
+}
+
+/** What share of the visible table a column actually occupies, as a percentage. */
+function columnPct(key) {
+    const total = Object.keys(defaultColumnWidths)
+        .filter((col) => visibleColumns.value[col])
+        .reduce((sum, col) => sum + (columnWidths.value[col] || 0), 0);
+    if (!total) return 0;
+    return Math.round((columnWidths.value[key] || 0) / total * 100);
+}
+
+/**
+ * Gives a column `pct` of the table. The others hold their proportions to each
+ * other and share out what is left, which is the same arithmetic a drag on the
+ * header edge performs — the slider and the handle are two ways into it.
+ */
+function setColumnPct(key, pct) {
+    const others = Object.keys(defaultColumnWidths)
+        .filter((col) => col !== key && visibleColumns.value[col])
+        .reduce((sum, col) => sum + (columnWidths.value[col] || 0), 0);
+    if (others <= 0) return;
+    const share = Math.min(Math.max(Number(pct) || 0, MIN_COLUMN_PCT), MAX_COLUMN_PCT) / 100;
+    columnWidths.value = {
+        ...columnWidths.value,
+        [key]: Number((share * others / (1 - share)).toFixed(3)),
+    };
+    persistSizes();
+}
+
+/** Applies a whole share map — what a drag on a header edge hands back. */
+function applyColumnWidths(next) {
+    columnWidths.value = { ...columnWidths.value, ...next };
+    persistSizes();
+}
+
+function setRowHeight(px) {
+    rowHeight.value = Math.min(Math.max(Math.round(Number(px) || 0), MIN_ROW_HEIGHT), MAX_ROW_HEIGHT);
+    persistSizes();
+}
+
+function setRowsPerPage(n) {
+    setRowHeight(Math.floor(PAGE_BODY_PX / n));
+}
+
+function resetSizes() {
+    columnWidths.value = { ...defaultColumnWidths };
+    rowHeight.value = null;
+    persistSizes();
 }
 
 const products = computed(() => store.products);
@@ -2768,20 +2953,124 @@ onMounted(async () => {
     }
 }
 
+.columns-menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
 .columns-menu-title {
-    margin: 0 0 8px;
+    margin: 0;
     font-size: 12px;
     font-weight: 700;
     color: #64748b;
 }
+.columns-menu-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: none;
+    padding: 2px 4px;
+    border-radius: 6px;
+    color: #2563eb;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.columns-menu-reset:hover:not(:disabled) {
+    background: #eef2ff;
+}
+.columns-menu-reset:disabled {
+    color: #cbd5e1;
+    cursor: default;
+}
+/* One block per column: the print checkbox on top, its width underneath. The
+   slider is indented under the label so the two read as one setting. */
 .columns-menu-item {
+    padding: 3px 2px;
+    font-size: 13px;
+    color: #1e293b;
+}
+.columns-menu-item-head {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 2px;
-    font-size: 13px;
-    color: #1e293b;
+}
+.columns-menu-toggle {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
     cursor: pointer;
+}
+.columns-menu-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.columns-menu-pct {
+    flex: 0 0 auto;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+}
+.columns-menu-slider {
+    margin: -2px 0 0;
+    padding-inline-start: 24px;
+}
+.columns-menu-slider :deep(.el-slider__runway) {
+    margin: 8px 0;
+}
+.columns-menu-hint {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+.columns-menu-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+}
+.rows-per-page {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 2px;
+}
+.rows-per-page-label {
+    font-size: 11.5px;
+    color: #64748b;
+}
+.rows-per-page-chips {
+    display: inline-flex;
+    gap: 4px;
+}
+.rows-per-page-chip {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    color: #475569;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.rows-per-page-chip:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+}
+.rows-per-page-chip.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
 }
 
 /* Classification (category) multi-select popover */
