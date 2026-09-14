@@ -719,11 +719,19 @@ const formatPrice = (price) => {
     /* The resize handle hangs off the header's trailing edge. Sticky already
        establishes the positioning context the handle is placed against. */
     z-index: 5;
-    background: #293344;
-    color: #fff;
+    /* A light, unmistakably blue band with near-black lettering on it. The
+       header is read on paper as often as on screen, and a printer that drops
+       background graphics would have left white type on white — so the ink is
+       dark and the band is pale enough that the words stand whether the colour
+       lands or not. `print-color-adjust` asks for it to land. */
+    background: #bcdcfb;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
     padding: 10px 12px;
-    font-weight: 800;
+    font-weight: 900;
     text-align: center;
+    border-bottom: 2px solid #1d4ed8;
 }
 .offer-table tbody tr:hover td {
     background: #e2e9f2 !important;
@@ -750,7 +758,7 @@ const formatPrice = (price) => {
     width: 2px;
     height: 58%;
     border-radius: 2px;
-    background: rgba(255, 255, 255, .22);
+    background: rgba(15, 23, 42, .25);
     transition: background .15s ease, height .15s ease;
 }
 .col-resizer:focus-visible {
@@ -758,7 +766,7 @@ const formatPrice = (price) => {
 }
 .col-resizer:hover::after,
 .col-resizer:focus-visible::after {
-    background: #60a5fa;
+    background: #1d4ed8;
     height: 78%;
 }
 /* While a drag is running the whole table follows the pointer, so the cursor
@@ -768,7 +776,7 @@ const formatPrice = (price) => {
     user-select: none;
 }
 .offer-table.is-resizing .col-resizer::after {
-    background: #60a5fa;
+    background: #1d4ed8;
     height: 100%;
 }
 
@@ -1389,6 +1397,10 @@ const formatPrice = (price) => {
     }
     .offer-table thead th {
         position: static;
+        background: #bcdcfb;
+        color: #000;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     /* The box itself is sized by the screen rule above, which reads the same
        variable this medium has just overridden. */
