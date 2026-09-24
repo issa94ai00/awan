@@ -165,7 +165,7 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم إنشاء أمر الشراء بنجاح',
+                'message' => 'تم إنشاء طلب الشراء بنجاح',
                 'data' => $order,
             ], 201);
 
@@ -178,7 +178,7 @@ class PurchaseOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'حدث خطأ أثناء إنشاء أمر الشراء',
+                'message' => 'حدث خطأ أثناء إنشاء طلب الشراء',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -253,7 +253,7 @@ class PurchaseOrderController extends Controller
             if ($target !== $current && !in_array($target, PurchaseOrder::STATUS_TRANSITIONS[$current] ?? [], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'لا يمكن نقل أمر الشراء من حالته الحالية إلى الحالة المطلوبة',
+                    'message' => 'لا يمكن نقل طلب الشراء من حالته الحالية إلى الحالة المطلوبة',
                     'data' => null,
                 ], 422);
             }
@@ -317,7 +317,7 @@ class PurchaseOrderController extends Controller
 
         if ($discount > $subtotal + $tax) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'discount' => 'الخصم أكبر من قيمة الأمر',
+                'discount' => 'الخصم أكبر من قيمة الطلب',
             ]);
         }
 
@@ -382,7 +382,7 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'أمر الشراء في هذه الحالة بالفعل',
+                'message' => 'طلب الشراء في هذه الحالة بالفعل',
                 'data' => $order,
             ]);
         }
@@ -393,7 +393,7 @@ class PurchaseOrderController extends Controller
         if ($target === PurchaseOrder::STATUS_COMPLETED) {
             return response()->json([
                 'success' => false,
-                'message' => 'يكتمل أمر الشراء بتسجيل إيصال استلام للبضاعة، وليس بتغيير حالته يدوياً',
+                'message' => 'يكتمل طلب الشراء بتسجيل إيصال استلام للبضاعة، وليس بتغيير حالته يدوياً',
                 'data' => null,
             ], 422);
         }
@@ -402,8 +402,8 @@ class PurchaseOrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $current === PurchaseOrder::STATUS_COMPLETED
-                    ? 'تم استلام بضاعة هذا الأمر، ولا يمكن تغيير حالته'
-                    : 'لا يمكن نقل أمر الشراء من حالته الحالية إلى الحالة المطلوبة',
+                    ? 'تم استلام بضاعة هذا الطلب، ولا يمكن تغيير حالته'
+                    : 'لا يمكن نقل طلب الشراء من حالته الحالية إلى الحالة المطلوبة',
                 'data' => null,
             ], 422);
         }
@@ -414,7 +414,7 @@ class PurchaseOrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تحديث حالة أمر الشراء بنجاح',
+            'message' => 'تم تحديث حالة طلب الشراء بنجاح',
             'data' => $order,
         ]);
     }
@@ -428,7 +428,7 @@ class PurchaseOrderController extends Controller
             || $order->receipts()->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن حذف أمر شراء تم استلام بضاعته. يمكنك إلغاؤه قبل الاستلام فقط',
+                'message' => 'لا يمكن حذف طلب شراء تم استلام بضاعته. يمكنك إلغاؤه قبل الاستلام فقط',
                 'data' => null,
             ], 422);
         }

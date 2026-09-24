@@ -215,6 +215,9 @@
                                             <el-dropdown-item command="edit" :disabled="!canEdit(row)">
                                                 <i class="fas fa-edit"></i> {{ $t('edit') }}
                                             </el-dropdown-item>
+                                            <el-dropdown-item command="duplicate">
+                                                <i class="fas fa-copy"></i> {{ $t('po_duplicate_order') }}
+                                            </el-dropdown-item>
                                             <el-dropdown-item
                                                 v-if="isApproved(row)"
                                                 command="reopen"
@@ -290,9 +293,14 @@
                             {{ getArabicStatus(selectedOrder.status) }}
                         </el-tag>
                     </div>
-                    <el-button v-if="canEdit(selectedOrder)" plain @click="editFromDrawer">
-                        <i class="fas fa-edit"></i> {{ $t('edit') }}
-                    </el-button>
+                    <div class="drawer-head-actions">
+                        <el-button plain @click="duplicateFromDrawer">
+                            <i class="fas fa-copy"></i> {{ $t('po_duplicate_order') }}
+                        </el-button>
+                        <el-button v-if="canEdit(selectedOrder)" plain @click="editFromDrawer">
+                            <i class="fas fa-edit"></i> {{ $t('edit') }}
+                        </el-button>
+                    </div>
                 </div>
 
                 <!-- A cancelled order has no position on the track; drawing it
@@ -499,8 +507,11 @@
             destroy-on-close
             class="form-drawer"
             :before-close="confirmCloseForm"
+            @opened="focusFirstField"
         >
-            <div v-loading="loadingForm">
+            <!-- Ctrl+Enter saves from anywhere in the form, with the drawer's
+                 main action (save and approve, for a new request). -->
+            <div v-loading="loadingForm" @keydown.ctrl.enter.prevent="savePrimary" @keydown.meta.enter.prevent="savePrimary">
             <el-form :model="form" label-position="top">
                 <!-- A received or cancelled order keeps its lines as they were
                      booked; the API only takes its dates and notes now, so the
@@ -519,7 +530,7 @@
                     <el-col :span="24">
                         <el-form-item :label="$t('supplier')" required>
                             <div style="display: flex; gap: 0.5rem; width: 100%;">
-                                <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable :disabled="formLocked">
+                                <el-select ref="supplierSelectRef" v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable :disabled="formLocked">
                                     <el-option
                                         v-for="s in suppliersStore.suppliers"
                                         :key="s.id"
@@ -579,6 +590,7 @@
                                      filtering only the first page already in memory, so
                                      a product outside that page is still found. -->
                                 <el-select
+                                    :ref="(el) => setProductSelectRef(item.key, el)"
                                     v-model="item.product_id"
                                     :placeholder="$t('select_item')"
                                     filterable
@@ -607,7 +619,15 @@
                                         </div>
                                     </el-option>
                                 </el-select>
-                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" />
+                                <!-- Enter on the last line's quantity starts the next line, so a
+                                     long request can be typed without the mouse. -->
+                                <el-input-number
+                                    v-model="item.quantity"
+                                    :min="1"
+                                    :placeholder="$t('quantity')"
+                                    style="flex: 1; min-width: 120px;"
+                                    @keyup.enter.exact="idx === form.items.length - 1 && addItemRow()"
+                                />
                                 <el-button
                                     type="success"
                                     circle
@@ -682,23 +702,36 @@
                     </div>
                 </div>
 
-                <div class="form-footer">
-                    <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
-                    <template v-if="!isEditMode">
-                        <el-button :loading="submittingForm" @click="saveOrder({ approve: false })">
-                            {{ $t('po_save_as_pending') }}
-                        </el-button>
-                        <!-- Most orders are placed by the person who approves
-                             them; saving and approving in one go spares them
-                             finding the row again to click Approve. -->
-                        <el-button type="primary" :loading="submittingForm" @click="saveOrder({ approve: true })">
-                            <i class="fas fa-circle-check"></i> {{ $t('po_save_and_approve') }}
-                        </el-button>
-                    </template>
-                    <el-button v-else type="primary" :loading="submittingForm" @click="saveOrder()">{{ $t('save_purchase_order') }}</el-button>
-                </div>
             </el-form>
             </div>
+
+            <!-- Pinned under the form: on a request of twenty lines the save
+                 buttons sat below all of them, and the total with them. -->
+            <template #footer>
+                <div class="form-footer">
+                    <div v-if="!formLocked" class="footer-total">
+                        <span>{{ $t('grand_total_label') }}</span>
+                        <strong :class="{ 'total-invalid': discountTooLarge }">{{ money(formTotal) }}</strong>
+                        <small>{{ $t('po_items_count', filledItemCount) }}</small>
+                    </div>
+                    <div class="footer-actions">
+                        <small class="shortcut-hint">{{ $t('po_shortcut_hint') }}</small>
+                        <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
+                        <template v-if="!isEditMode">
+                            <el-button :loading="submittingForm" @click="saveOrder({ approve: false })">
+                                {{ $t('po_save_as_pending') }}
+                            </el-button>
+                            <!-- Most requests are placed by the person who approves
+                                 them; saving and approving in one go spares them
+                                 finding the row again to click Approve. -->
+                            <el-button type="primary" :loading="submittingForm" @click="saveOrder({ approve: true })">
+                                <i class="fas fa-circle-check"></i> {{ $t('po_save_and_approve') }}
+                            </el-button>
+                        </template>
+                        <el-button v-else type="primary" :loading="submittingForm" @click="saveOrder()">{{ $t('save_purchase_order') }}</el-button>
+                    </div>
+                </div>
+            </template>
         </el-drawer>
 
         <!-- Quick Add Product Dialog: creates a missing item and drops it
@@ -803,7 +836,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, onBeforeUnmount, computed, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
@@ -1151,6 +1184,81 @@ const openCreateDrawer = () => {
     formDrawerVisible.value = true;
 };
 
+/**
+ * A new request with the same supplier and lines as an existing one.
+ *
+ * Restocking is mostly the same order placed again; building it line by line
+ * each time was the slow part of this screen. Dated today and left pending,
+ * with a note saying where it came from.
+ */
+const duplicateOrder = async (id) => {
+    try {
+        const { data } = await purchaseOrdersApi.getById(id);
+        const order = data.data;
+
+        isEditMode.value = false;
+        editingStatus.value = '';
+        resetForm();
+        form.supplier_id = order.supplier_id;
+        form.discount = num(order.discount);
+        form.tax = num(order.tax);
+        form.notes = t('po_duplicated_from', { number: order.order_number });
+        form.items = (order.items || [])
+            // A line whose product left the catalogue cannot be ordered again.
+            .filter((item) => item.product_id)
+            .map((item) => blankRow({
+                product_id: item.product_id,
+                quantity: item.quantity,
+                unit_price: num(item.unit_price),
+                sale_price: item.sale_price != null ? num(item.sale_price) : '',
+            }));
+        if (!form.items.length) form.items = [blankRow()];
+        rememberProducts(order.items);
+
+        markFormClean();
+        formDrawerVisible.value = true;
+    } catch (e) {
+        ElMessage.error(apiError(e, t('failed_to_load_order_details_msg')));
+    }
+};
+
+const duplicateFromDrawer = () => {
+    const id = selectedOrder.value?.id;
+    detailDrawerVisible.value = false;
+    if (id) duplicateOrder(id);
+};
+
+// Lines that already name a product (edit, duplicate) need it among the
+// options, or the remote select shows the bare id.
+const rememberProducts = (items = []) => {
+    const known = new Set(productOptions.value.map((p) => p.id));
+    const missing = items.map((item) => item.product).filter((p) => p && !known.has(p.id));
+    if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+};
+
+/* Focus follows the work: the supplier first on a new request, and each new
+ * line's product as soon as the line is added. */
+const supplierSelectRef = ref(null);
+const productSelectRefs = new Map();
+const setProductSelectRef = (key, el) => {
+    if (el) productSelectRefs.set(key, el);
+    else productSelectRefs.delete(key);
+};
+
+const focusFirstField = () => {
+    if (formLocked.value) return;
+    if (!form.supplier_id) return supplierSelectRef.value?.focus?.();
+    const firstEmpty = form.items.find((item) => !item.product_id);
+    if (firstEmpty) productSelectRefs.get(firstEmpty.key)?.focus?.();
+};
+
+const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
+
+const savePrimary = () => {
+    if (submittingForm.value || loadingForm.value) return;
+    return isEditMode.value ? saveOrder() : saveOrder({ approve: true });
+};
+
 const openEditDrawer = async (id) => {
     isEditMode.value = true;
     editingOrderId.value = id;
@@ -1178,9 +1286,7 @@ const openEditDrawer = async (id) => {
 
         // A remote select shows the raw id for a value it has no option for,
         // so a product outside the first hundred rendered as a bare number.
-        const known = new Set(productOptions.value.map((p) => p.id));
-        const missing = order.items.map((item) => item.product).filter((p) => p && !known.has(p.id));
-        if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+        rememberProducts(order.items);
 
         markFormClean();
     } catch (e) {
@@ -1199,7 +1305,9 @@ const editFromDrawer = () => {
 
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push(blankRow());
+    const row = blankRow();
+    form.items.push(row);
+    nextTick(() => productSelectRefs.get(row.key)?.focus?.());
 };
 
 const removeItemRow = (idx) => {
@@ -1618,6 +1726,7 @@ const nextStep = (order) => {
 
 const onRowCommand = (command, row) => {
     if (command === 'view') return openDetailDrawer(row.id);
+    if (command === 'duplicate') return duplicateOrder(row.id);
     if (command === 'edit') return canEdit(row) ? openEditDrawer(row.id) : undefined;
     if (command === 'reopen') return reopenOrder(row);
     if (command === 'cancel') return cancelOrder(row);
@@ -2401,20 +2510,71 @@ onMounted(async () => {
 }
 
 .form-footer {
-    border-top: 1px solid var(--border-color);
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.75rem 1.25rem;
+    font-family: 'Cairo', sans-serif;
 }
 
-.form-footer .el-button + .el-button {
+.footer-total {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    color: var(--text-muted);
+}
+
+.footer-total strong {
+    font-size: 1.25rem;
+    color: var(--accent-blue);
+}
+
+.footer-total strong.total-invalid {
+    color: var(--el-color-danger, #dc2626);
+}
+
+.footer-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+}
+
+.footer-actions .el-button + .el-button {
     margin-inline-start: 0;
 }
 
+.shortcut-hint {
+    color: var(--text-light, #94a3b8);
+    font-size: 0.75rem;
+}
+
+.form-drawer :deep(.el-drawer__footer) {
+    border-top: 1px solid var(--border-color);
+    padding: 0.9rem 1.5rem;
+    background: var(--bg-white, #fff);
+}
+
+.drawer-head-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 @media (max-width: 640px) {
+    .shortcut-hint {
+        display: none;
+    }
+
+    .footer-actions {
+        width: 100%;
+    }
+
+    .footer-actions .el-button {
+        flex: 1;
+    }
+
     .item-row-top,
     .item-row-prices {
         flex-wrap: wrap;
