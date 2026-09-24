@@ -56,12 +56,40 @@ class PurchaseReceiptController extends Controller
             // value.
             'tax_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items' => 'required|array|min:1',
+            // Stock is taken in once per product per receipt (the intake key
+            // is receipt + product), so a product's second line was silently
+            // dropped from the warehouse while still being billed.
+            'items.*.product_id' => 'required|distinct|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
+        ], [
+            'items.*.product_id.distinct' => 'المنتج مكرر في أكثر من سطر — اجمعه في سطر واحد',
         ]);
+
+        // The receipt credits the supplier it names and completes the order it
+        // links, so the two have to agree — and a cancelled order was promised
+        // never to be received against.
+        if (!empty($validated['purchase_order_id'])) {
+            $order = PurchaseOrder::find($validated['purchase_order_id']);
+
+            if ((int) $order->supplier_id !== (int) $validated['supplier_id']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'طلب الشراء المرتبط يخص مورداً آخر',
+                    'errors' => ['purchase_order_id' => ['طلب الشراء المرتبط يخص مورداً آخر']],
+                ], 422);
+            }
+
+            if (PurchaseOrder::normalizeStatus($order->status) === PurchaseOrder::STATUS_CANCELLED) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'لا يمكن استلام بضاعة لطلب شراء ملغى',
+                    'errors' => ['purchase_order_id' => ['لا يمكن استلام بضاعة لطلب شراء ملغى']],
+                ], 422);
+            }
+        }
 
         // Derived from the last id: counting reuses a number as soon as any
         // receipt is deleted, and two concurrent requests always collide.
@@ -192,27 +220,40 @@ class PurchaseReceiptController extends Controller
      */
     public function getPurchaseOrderDetails($purchaseOrderId)
     {
-        $purchaseOrder = PurchaseOrder::with(['items.product', 'supplier'])->find($purchaseOrderId);
+        $purchaseOrder = PurchaseOrder::with(['items.product', 'supplier'])
+            ->withCount('receipts')
+            ->find($purchaseOrderId);
 
         if (!$purchaseOrder) {
             return response()->json([
                 'success' => false,
-                'message' => 'أمر الشراء المحدد غير موجود',
+                'message' => 'طلب الشراء المحدد غير موجود',
                 'data' => null
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'تم جلب بيانات أمر الشراء بنجاح',
+            'message' => 'تم جلب بيانات طلب الشراء بنجاح',
             'data' => [
                 'purchase_order' => $purchaseOrder,
                 'supplier_id' => $purchaseOrder->supplier_id,
+                // Whether goods may still come in against it, so the form can
+                // say so before the operator fills anything in.
+                'receivable' => PurchaseOrder::normalizeStatus($purchaseOrder->status) !== PurchaseOrder::STATUS_CANCELLED,
+                // What an earlier receipt already brought in — the cost sync
+                // settles it onto each line — so a second delivery is
+                // prefilled with what is still owed, not the whole order again.
                 'items' => $purchaseOrder->items->map(function ($item) {
+                    $received = (int) ($item->received_quantity ?? 0);
+
                     return [
+                        'id' => $item->id,
                         'product_id' => $item->product_id,
                         'product_name' => $item->product_name,
                         'quantity' => $item->quantity,
+                        'received_quantity' => $received,
+                        'remaining_quantity' => max(0, (int) $item->quantity - $received),
                         'unit_price' => $item->unit_price,
                         'sale_price' => $item->sale_price,
                         'total_price' => $item->total_price,

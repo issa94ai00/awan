@@ -115,7 +115,7 @@
         <el-drawer
             v-model="detailDrawerVisible"
             :title="$t('goods_receipt_details')"
-            size="55%"
+            :size="drawerSize"
             direction="rtl"
             destroy-on-close
             class="detail-drawer"
@@ -243,91 +243,150 @@
         <!-- Form Drawer (Create / Edit) -->
         <el-drawer
             v-model="formDrawerVisible"
-            :title="isEditMode ? ('edit_goods_receipt') : ('create_goods_receipt')"
-            size="55%"
+            :title="isEditMode ? $t('edit_goods_receipt') : $t('create_goods_receipt')"
+            :size="drawerSize"
             direction="rtl"
             destroy-on-close
             class="form-drawer"
+            :before-close="confirmCloseForm"
         >
+            <div v-loading="loadingForm" @keydown.ctrl.enter.prevent="saveReceipt" @keydown.meta.enter.prevent="saveReceipt">
             <el-form :model="form" label-position="top">
-                <el-row :gutter="20">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('supplier')" required>
-                            <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable @change="handleSupplierChange">
-                                <el-option
-                                    v-for="s in suppliersStore.suppliers"
-                                    :key="s.id"
-                                    :label="s.name"
-                                    :value="s.id"
-                                />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <!-- A supplier's own orders are the only ones that can ever
-                             be received against, so the list is scoped to whichever
-                             supplier is chosen instead of listing every order in
-                             the system and letting a mismatch slip through. -->
-                        <el-form-item :label="$t('linked_purchase_order')">
-                            <el-select
-                                v-model="form.purchase_order_id"
-                                :placeholder="form.supplier_id ? $t('select_purchase_order_or_direct') : $t('select_supplier_first')"
-                                style="width: 100%"
-                                filterable
-                                clearable
-                                :disabled="!form.supplier_id"
-                                :loading="purchaseOrdersStore.loading"
-                                @change="handlePurchaseOrderChange"
-                            >
-                                <el-option
-                                    v-for="o in purchaseOrdersStore.orders"
-                                    :key="o.id"
-                                    :label="o.order_number"
-                                    :value="o.id"
-                                />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
+                <!-- Step 1: who delivered, and against which request. Picking the
+                     request fills everything below from it. -->
+                <div class="form-step">
+                    <div class="form-step-head">
+                        <span class="step-num">1</span>
+                        <h3>{{ $t('rc_step_source') }}</h3>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :sm="12">
+                            <el-form-item :label="$t('supplier')" required>
+                                <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="width: 100%" filterable :disabled="isEditMode" @change="handleSupplierChange">
+                                    <el-option
+                                        v-for="s in suppliersStore.suppliers"
+                                        :key="s.id"
+                                        :label="s.company ? `${s.name} — ${s.company}` : s.name"
+                                        :value="s.id"
+                                    />
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :xs="24" :sm="12">
+                            <!-- Scoped to the chosen supplier, and to requests that can
+                                 still take goods: listing received and cancelled ones
+                                 invited receiving the same delivery twice. -->
+                            <el-form-item :label="$t('linked_purchase_order')">
+                                <el-select
+                                    v-model="form.purchase_order_id"
+                                    :placeholder="!form.supplier_id ? $t('select_supplier_first') : (openOrders.length ? $t('select_purchase_order_or_direct') : $t('rc_no_open_orders'))"
+                                    style="width: 100%"
+                                    filterable
+                                    clearable
+                                    :disabled="!form.supplier_id || isEditMode"
+                                    :loading="ordersLoading"
+                                    @change="handlePurchaseOrderChange"
+                                >
+                                    <el-option
+                                        v-for="o in openOrders"
+                                        :key="o.id"
+                                        :label="o.order_number"
+                                        :value="o.id"
+                                    >
+                                        <div class="order-option">
+                                            <span class="order-option-main">
+                                                <strong>{{ o.order_number }}</strong>
+                                                <el-tag size="small" :type="orderStageTag(o.status)" effect="light">{{ orderStageLabel(o.status) }}</el-tag>
+                                            </span>
+                                            <small>{{ formatDate(o.order_date || o.created_at) }} · {{ money(o.total) }}</small>
+                                        </div>
+                                    </el-option>
+                                </el-select>
+                                <small v-if="form.supplier_id && !isEditMode && openOrders.length" class="field-hint">
+                                    {{ $t('rc_open_orders_hint', openOrders.length) }}
+                                </small>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
 
-                <el-row :gutter="20" class="mt-3">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('actual_receipt_date')">
-                            <el-date-picker v-model="form.receipt_date" type="date" :placeholder="$t('receipt_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <!-- The receipt puts the goods on the balance sheet, so where
-                             they land is the operator's call rather than a silent
-                             fallback to whichever warehouse happens to be first. -->
-                        <el-form-item :label="$t('receiving_warehouse')" required>
-                            <el-select v-model="form.warehouse_id" :placeholder="$t('choose_warehouse')" style="width: 100%" :disabled="isEditMode">
-                                <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
+                    <!-- What the request asked for, beside the form that records
+                         what came, so the two can be checked against each other. -->
+                    <div v-if="linkedOrder" class="linked-order-card">
+                        <div class="linked-order-head">
+                            <div>
+                                <i class="fas fa-file-signature"></i>
+                                <strong>{{ linkedOrder.order_number }}</strong>
+                                <el-tag size="small" :type="orderStageTag(linkedOrder.status)" effect="light">{{ orderStageLabel(linkedOrder.status) }}</el-tag>
+                            </div>
+                            <div class="linked-order-actions">
+                                <el-button v-if="!isEditMode" size="small" text type="primary" @click="refillFromOrder">
+                                    <i class="fas fa-rotate"></i> {{ $t('rc_refill_from_order') }}
+                                </el-button>
+                                <router-link :to="{ path: '/admin/purchases/orders', query: { search: linkedOrder.order_number } }" class="linked-order-link">
+                                    {{ $t('view_details') }} <i class="fas fa-arrow-up-right-from-square"></i>
+                                </router-link>
+                            </div>
+                        </div>
+                        <div class="linked-order-facts">
+                            <div><span>{{ $t('po_order_date') }}</span><strong>{{ formatDate(linkedOrder.order_date || linkedOrder.created_at) }}</strong></div>
+                            <div><span>{{ $t('due_date') }}</span><strong :class="{ 'text-danger': linkedOrderOverdue }">{{ formatDate(linkedOrder.due_date) }}</strong></div>
+                            <div><span>{{ $t('rc_order_total') }}</span><strong>{{ money(linkedOrder.total) }}</strong></div>
+                            <div><span>{{ $t('items_count') }}</span><strong>{{ linkedOrder.items?.length || 0 }}</strong></div>
+                        </div>
+                        <el-alert v-if="orderPendingApproval" type="warning" :closable="false" show-icon class="mt-2" :title="$t('rc_order_not_approved')" />
+                        <el-alert v-if="orderAlreadyReceived" type="info" :closable="false" show-icon class="mt-2" :title="$t('rc_order_already_received')" />
+                        <!-- The receipt carries no discount of its own, so an order
+                             discount is not in the supplier's balance unless it is
+                             priced into the lines. -->
+                        <el-alert
+                            v-if="num(linkedOrder.discount) > 0"
+                            type="info"
+                            :closable="false"
+                            show-icon
+                            class="mt-2"
+                            :title="$t('rc_order_discount_note', { amount: money(linkedOrder.discount) })"
+                        />
+                    </div>
+                </div>
 
-                <!-- Kept out of the item prices on purpose: tax paid to a
-                     supplier is recoverable from the authority, so booking it
-                     into the cost of the goods overstates the stock and hides
-                     the claim. -->
-                <el-form-item :label="$t('purchase_tax_amount')" class="mt-3">
-                    <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" :disabled="isEditMode" />
-                    <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
-                </el-form-item>
+                <!-- Step 2: when and where it arrived. -->
+                <div class="form-step">
+                    <div class="form-step-head">
+                        <span class="step-num">2</span>
+                        <h3>{{ $t('shipment_details') }}</h3>
+                    </div>
+                    <el-row :gutter="20">
+                        <el-col :xs="24" :sm="12">
+                            <el-form-item :label="$t('actual_receipt_date')">
+                                <el-date-picker v-model="form.receipt_date" type="date" :placeholder="$t('receipt_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                            </el-form-item>
+                        </el-col>
+                        <el-col :xs="24" :sm="12">
+                            <!-- The receipt puts the goods on the balance sheet, so where
+                                 they land is the operator's call rather than a silent
+                                 fallback to whichever warehouse happens to be first. -->
+                            <el-form-item :label="$t('receiving_warehouse')" required>
+                                <el-select v-model="form.warehouse_id" :placeholder="$t('choose_warehouse')" style="width: 100%" :disabled="isEditMode">
+                                    <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                </div>
 
-                <el-form-item :label="$t('receipt_notes')" class="mt-3">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('receipt_notes_placeholder')" />
-                </el-form-item>
-
-                <!-- Dynamic items grid -->
-                <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> {{ $t('incoming_items_and_quantities') }}</h3>
-                        <el-button v-if="!isEditMode" type="primary" size="small" plain @click="addItemRow">
-                            <i class="fas fa-plus"></i> {{ $t('add_item') }}
-                        </el-button>
+                <!-- Step 3: what came. -->
+                <div class="form-step">
+                    <div class="form-step-head">
+                        <span class="step-num">3</span>
+                        <h3>{{ $t('incoming_items_and_quantities') }}</h3>
+                        <div class="form-step-tools">
+                            <el-button v-if="!isEditMode && linkedOrder" size="small" plain @click="receiveAllAsOrdered">
+                                <i class="fas fa-check-double"></i> {{ $t('rc_all_arrived') }}
+                            </el-button>
+                            <el-button v-if="!isEditMode" type="primary" size="small" plain @click="addItemRow">
+                                <i class="fas fa-plus"></i> {{ $t('add_item') }}
+                            </el-button>
+                        </div>
                     </div>
 
                     <!-- Lines are locked once the receipt exists: the stock was taken
@@ -344,17 +403,34 @@
                     />
 
                     <div class="items-grid-wrapper">
-                        <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
+                        <div
+                            v-for="(item, idx) in form.items"
+                            :key="item.key"
+                            class="item-grid-row"
+                            :class="{ 'item-duplicate': duplicateProductIds.has(item.product_id), 'item-off-order': linkedOrder && item.product_id && lineVsOrder(item).state === 'extra' }"
+                        >
                             <div class="item-row-top">
-                                <el-select v-model="item.product_id" :placeholder="$t('select_item')" filterable style="flex: 2.5;" :disabled="isEditMode" @change="(val) => updateItemPrice(val, idx)">
+                                <span class="item-index">{{ idx + 1 }}</span>
+                                <el-select
+                                    v-model="item.product_id"
+                                    :placeholder="$t('select_item')"
+                                    filterable
+                                    remote
+                                    reserve-keyword
+                                    :remote-method="searchProducts"
+                                    :loading="productSearchLoading"
+                                    style="flex: 2.5; min-width: 0;"
+                                    :disabled="isEditMode"
+                                    @change="(val) => updateItemPrice(val, idx)"
+                                >
                                     <el-option
-                                        v-for="p in productsStore.products"
+                                        v-for="p in productOptions"
                                         :key="p.id"
-                                        :label="p.name_ar + ' (SKU: ' + p.sku + ')'"
+                                        :label="[p.name_ar || p.name, p.sku].filter(Boolean).join(' — ')"
                                         :value="p.id"
                                     />
                                 </el-select>
-                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" :disabled="isEditMode" />
+                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" :disabled="isEditMode" />
                                 <el-button
                                     v-if="!isEditMode"
                                     type="success"
@@ -365,10 +441,36 @@
                                 >
                                     <i class="fas fa-plus"></i>
                                 </el-button>
-                                <el-button v-if="!isEditMode" type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                <el-button v-if="!isEditMode" type="danger" circle plain @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </div>
+
+                            <!-- Against the request: how much was asked for, how much
+                                 earlier deliveries brought, and whether this one is
+                                 short or over. -->
+                            <div v-if="linkedOrder && item.product_id && !isEditMode" class="line-vs-order">
+                                <template v-if="lineVsOrder(item).state === 'extra'">
+                                    <el-tag size="small" type="warning" effect="plain">{{ $t('rc_not_in_order') }}</el-tag>
+                                </template>
+                                <template v-else>
+                                    <span>{{ $t('rc_ordered_n', { n: lineVsOrder(item).ordered }) }}</span>
+                                    <span v-if="lineVsOrder(item).before">· {{ $t('rc_received_before_n', { n: lineVsOrder(item).before }) }}</span>
+                                    <el-tag v-if="lineVsOrder(item).state === 'short'" size="small" type="warning" effect="plain">
+                                        {{ $t('rc_short_n', { n: lineVsOrder(item).diff }) }}
+                                    </el-tag>
+                                    <el-tag v-else-if="lineVsOrder(item).state === 'over'" size="small" type="danger" effect="plain">
+                                        {{ $t('rc_over_n', { n: lineVsOrder(item).diff }) }}
+                                    </el-tag>
+                                    <el-tag v-else size="small" type="success" effect="plain">
+                                        <i class="fas fa-check"></i> {{ $t('rc_matches_order') }}
+                                    </el-tag>
+                                    <span v-if="lineVsOrder(item).priceChanged" class="price-changed">
+                                        · {{ $t('rc_price_was', { price: money(lineVsOrder(item).orderPrice) }) }}
+                                    </span>
+                                </template>
+                            </div>
+
                             <!-- Cost is rolled into the product's weighted-average
                                  cost on save; sale price, if set, replaces the
                                  product's shelf price outright — receiving this
@@ -376,22 +478,93 @@
                             <div class="item-row-prices">
                                 <div class="price-field">
                                     <label>{{ $t('purchase_cost') }}</label>
-                                    <el-input v-model="item.unit_price" placeholder="0.00" :disabled="isEditMode" />
+                                    <el-input v-model="item.unit_price" type="number" min="0" step="0.01" placeholder="0.00" :disabled="isEditMode" />
                                 </div>
                                 <div class="price-field">
                                     <label>{{ $t('sale_price') }}</label>
-                                    <el-input v-model="item.sale_price" placeholder="0.00" :disabled="isEditMode" />
+                                    <el-input v-model="item.sale_price" type="number" min="0" step="0.01" placeholder="0.00" :disabled="isEditMode" />
+                                </div>
+                                <div class="price-field line-total-field">
+                                    <label>{{ $t('po_line_total') }}</label>
+                                    <strong>{{ money(num(item.quantity) * num(item.unit_price)) }}</strong>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Ordered lines nothing on this receipt covers yet, one
+                         click each to bring back. -->
+                    <div v-if="missingOrderLines.length && !isEditMode" class="missing-lines">
+                        <span>{{ $t('rc_missing_lines') }}</span>
+                        <el-button
+                            v-for="line in missingOrderLines"
+                            :key="line.product_id"
+                            size="small"
+                            plain
+                            @click="restoreOrderLine(line)"
+                        >
+                            <i class="fas fa-plus"></i> {{ line.product?.name_ar || line.product_name }} ({{ line.remaining_quantity }})
+                        </el-button>
+                    </div>
                 </div>
 
-                <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <el-button @click="formDrawerVisible = false">{{ $t('cancel') }}</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveReceipt">{{ $t('save_receipt') }}</el-button>
+                <!-- Step 4: tax and notes. -->
+                <div class="form-step">
+                    <div class="form-step-head">
+                        <span class="step-num">4</span>
+                        <h3>{{ $t('rc_step_finish') }}</h3>
+                    </div>
+                    <!-- Kept out of the item prices on purpose: tax paid to a
+                         supplier is recoverable from the authority, so booking it
+                         into the cost of the goods overstates the stock and hides
+                         the claim. -->
+                    <el-form-item :label="$t('purchase_tax_amount')">
+                        <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" :disabled="isEditMode" />
+                        <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
+                    </el-form-item>
+
+                    <el-form-item :label="$t('receipt_notes')">
+                        <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('receipt_notes_placeholder')" />
+                    </el-form-item>
+
+                    <div v-if="!isEditMode" class="financial-summary-block">
+                        <div class="financial-row">
+                            <span>{{ $t('rc_goods_value') }}</span>
+                            <span>{{ money(goodsTotal) }}</span>
+                        </div>
+                        <div class="financial-row">
+                            <span>{{ $t('tax_label') }}</span>
+                            <span>+ {{ money(form.tax_amount) }}</span>
+                        </div>
+                        <div class="financial-row grand-total">
+                            <span>{{ $t('rc_owed_to_supplier') }}</span>
+                            <span>{{ money(receiptTotal) }}</span>
+                        </div>
+                        <div v-if="linkedOrder && Math.abs(receiptTotal - num(linkedOrder.total)) >= 0.01" class="financial-row order-diff">
+                            <span>{{ $t('rc_vs_order_total') }}</span>
+                            <span>{{ receiptTotal > num(linkedOrder.total) ? '+' : '−' }} {{ money(Math.abs(receiptTotal - num(linkedOrder.total))) }}</span>
+                        </div>
+                    </div>
                 </div>
             </el-form>
+            </div>
+
+            <template #footer>
+                <div class="form-footer">
+                    <div v-if="!isEditMode" class="footer-total">
+                        <span>{{ $t('rc_owed_to_supplier') }}</span>
+                        <strong>{{ money(receiptTotal) }}</strong>
+                        <small>{{ $t('po_items_count', filledItemCount) }} · {{ $t('rc_units_n', { n: totalUnits }) }}</small>
+                    </div>
+                    <div class="footer-actions">
+                        <small class="shortcut-hint">{{ $t('po_shortcut_hint') }}</small>
+                        <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
+                        <el-button type="primary" :loading="submittingForm" @click="saveReceipt">
+                            <i class="fas fa-truck-ramp-box"></i> {{ $t('save_receipt') }}
+                        </el-button>
+                    </div>
+                </div>
+            </template>
         </el-drawer>
 
         <!-- Quick Add Product Dialog: lets an unlisted item be created and
@@ -460,16 +633,17 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
-import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
-import { baseCurrencyCode } from '@/utils/currency';
+import { baseCurrencyCode, formatMoney } from '@/utils/currency';
+import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
+import { productsApi } from '@/api/products';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -481,7 +655,6 @@ const route = useRoute();
 const router = useRouter();
 const store = usePurchaseReceiptsStore();
 const suppliersStore = useSuppliersStore();
-const purchaseOrdersStore = usePurchaseOrdersStore();
 const productsStore = useProductsStore();
 const inventoryStore = useInventoryStore();
 
@@ -495,7 +668,14 @@ const selectedReceipt = ref(null);
 const formDrawerVisible = ref(false);
 const isEditMode = ref(false);
 const submittingForm = ref(false);
+// Loading a receipt into the form is not saving it.
+const loadingForm = ref(false);
 const editingReceiptId = ref(null);
+
+// A 55% drawer on a phone left too narrow a column to receive into.
+const viewportWidth = ref(window.innerWidth);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+const drawerSize = computed(() => (viewportWidth.value < 900 ? '100%' : '55%'));
 
 // Quick-add-product state: lets a missing item be created without leaving
 // the receipt form, then drops straight into the row that needed it.
@@ -512,6 +692,18 @@ const quickAddForm = reactive({
     unit: ''
 });
 
+// Rows are keyed by this rather than by index, so removing a middle line does
+// not hand its neighbour's product to the wrong row.
+let rowSeq = 0;
+const blankRow = (overrides = {}) => ({
+    key: ++rowSeq,
+    product_id: '',
+    quantity: 1,
+    unit_price: '',
+    sale_price: '',
+    ...overrides,
+});
+
 const form = reactive({
     supplier_id: '',
     purchase_order_id: '',
@@ -524,16 +716,317 @@ const form = reactive({
 
 const warehouses = computed(() => inventoryStore.warehouses);
 
+// The primary warehouse, or the only one — otherwise the operator chooses.
+const defaultWarehouseId = () => {
+    const list = warehouses.value;
+    if (list.length === 1) return list[0].id;
+    return list.find((w) => w.is_primary)?.id || '';
+};
+
+const num = (value) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+const money = (value) => formatMoney(value);
+const formatDate = (value) => (value ? String(value).slice(0, 10) : '-');
+
+// Local date: toISOString() is UTC, which dated a delivery booked just after
+// midnight in Damascus to the day before.
+const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const resetForm = () => {
     form.supplier_id = '';
     form.purchase_order_id = '';
-    // A single active warehouse is not a choice worth asking for.
-    form.warehouse_id = warehouses.value.length === 1 ? warehouses.value[0].id : '';
-    form.receipt_date = new Date().toISOString().split('T')[0];
+    form.warehouse_id = defaultWarehouseId();
+    form.receipt_date = todayIso();
     form.tax_amount = 0;
     form.notes = '';
-    form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
+    form.items = [blankRow()];
+    linkedOrder.value = null;
+    orderLines.value = [];
 };
+
+// Warehouses load alongside the page; a drawer opened first (from a request's
+// "receive" button) would otherwise stay without one.
+watch(warehouses, () => {
+    if (formDrawerVisible.value && !isEditMode.value && !form.warehouse_id) {
+        form.warehouse_id = defaultWarehouseId();
+    }
+});
+
+/* Unsaved-changes guard: a stray click outside the drawer used to discard a
+ * half-counted delivery without a word. */
+let formSnapshot = '';
+const snapshotForm = () => JSON.stringify({ ...form, items: form.items.map(({ key, ...rest }) => rest) });
+const markFormClean = () => { formSnapshot = snapshotForm(); };
+const formIsDirty = () => formSnapshot !== '' && snapshotForm() !== formSnapshot;
+
+const confirmCloseForm = async (done) => {
+    const close = () => (typeof done === 'function' ? done() : (formDrawerVisible.value = false));
+    if (!formIsDirty()) return close();
+    try {
+        await ElMessageBox.confirm(t('rc_unsaved_changes'), t('cancel'), {
+            type: 'warning',
+            confirmButtonText: t('po_discard_changes'),
+            cancelButtonText: t('po_keep_editing'),
+        });
+        close();
+    } catch {
+        // Kept editing.
+    }
+};
+
+/* ------------------------------------------------------------------ *
+ * The request a receipt is recorded against
+ * ------------------------------------------------------------------ */
+
+// Fetched straight from the API rather than through the purchase-orders
+// store: that store backs the orders screen, and loading one supplier's
+// requests into it replaced that screen's list and its stage counts.
+const supplierOrders = ref([]);
+const ordersLoading = ref(false);
+
+const linkedOrder = ref(null);
+// The request's lines with what earlier receipts already brought in.
+const orderLines = ref([]);
+
+const stageOf = (order) => normalizePurchaseOrderStatus(order?.status);
+
+const remainingOf = (order) => (order?.items || [])
+    .reduce((sum, item) => sum + Math.max(0, num(item.quantity) - num(item.received_quantity)), 0);
+
+// Requests that can still take goods, the approved ones first. A received
+// request stays listed only while part of it is still owed.
+const openOrders = computed(() => {
+    const rank = { confirmed: 0, processing: 0, pending: 1, completed: 2 };
+    const list = supplierOrders.value.filter((order) => {
+        const stage = stageOf(order);
+        if (stage === 'cancelled') return false;
+        if (stage === 'completed') return remainingOf(order) > 0;
+        return true;
+    });
+    // The request this receipt already links must stay selectable.
+    if (linkedOrder.value && !list.some((o) => o.id === linkedOrder.value.id)) list.push(linkedOrder.value);
+    return list.sort((a, b) => (rank[stageOf(a)] ?? 3) - (rank[stageOf(b)] ?? 3) || b.id - a.id);
+});
+
+const orderStageLabel = (status) => ({
+    pending: t('awaiting_approval'),
+    confirmed: t('sales_status_confirmed'),
+    processing: t('sales_status_processing'),
+    completed: t('received_state'),
+    cancelled: t('sales_status_cancelled'),
+}[normalizePurchaseOrderStatus(status)] || status);
+
+const orderStageTag = (status) => ({
+    pending: 'warning',
+    confirmed: 'primary',
+    processing: 'primary',
+    completed: 'success',
+    cancelled: 'danger',
+}[normalizePurchaseOrderStatus(status)] || 'info');
+
+const orderPendingApproval = computed(() => stageOf(linkedOrder.value) === 'pending');
+const orderAlreadyReceived = computed(() => orderLines.value.some((line) => line.received_quantity > 0));
+const linkedOrderOverdue = computed(() => {
+    const due = linkedOrder.value?.due_date;
+    return !!due && formatDate(due) < todayIso() && stageOf(linkedOrder.value) !== 'completed';
+});
+
+const loadSupplierOrders = async (supplierId) => {
+    if (!supplierId) {
+        supplierOrders.value = [];
+        return;
+    }
+    ordersLoading.value = true;
+    try {
+        const res = await purchaseOrdersApi.getAll({ supplier_id: supplierId, per_page: 100 });
+        supplierOrders.value = res.data?.data?.orders || [];
+    } catch (e) {
+        ElMessage.error(t('failed_to_load_purchase_order_data'));
+    } finally {
+        ordersLoading.value = false;
+    }
+};
+
+const orderLineFor = (productId) => orderLines.value.find((line) => line.product_id === productId);
+
+/** How a receipt line compares with what the request still expects. */
+const lineVsOrder = (item) => {
+    const line = orderLineFor(item.product_id);
+    if (!line) return { state: 'extra' };
+    const expected = line.remaining_quantity || line.quantity;
+    const diff = Math.abs(num(item.quantity) - expected);
+    return {
+        ordered: line.quantity,
+        before: line.received_quantity,
+        diff,
+        state: num(item.quantity) < expected ? 'short' : (num(item.quantity) > expected ? 'over' : 'match'),
+        orderPrice: line.unit_price,
+        priceChanged: item.unit_price !== '' && Math.abs(num(item.unit_price) - num(line.unit_price)) >= 0.005,
+    };
+};
+
+// Requested lines still owed that nothing on this receipt covers.
+const missingOrderLines = computed(() => orderLines.value.filter((line) => line.product_id
+    && line.remaining_quantity > 0
+    && !form.items.some((item) => item.product_id === line.product_id)));
+
+const rowFromOrderLine = (line, quantity) => blankRow({
+    product_id: line.product_id,
+    quantity: Math.max(1, quantity),
+    unit_price: num(line.unit_price),
+    sale_price: line.sale_price != null ? num(line.sale_price) : '',
+});
+
+const fillLinesFromOrder = () => {
+    const owed = orderLines.value.filter((line) => line.product_id && line.remaining_quantity > 0);
+    // Nothing left owed (a repeat delivery): offer the whole request again
+    // rather than an empty receipt, and let the lines say "over".
+    const source = owed.length ? owed : orderLines.value.filter((line) => line.product_id);
+    form.items = source.length
+        ? source.map((line) => rowFromOrderLine(line, owed.length ? line.remaining_quantity : line.quantity))
+        : [blankRow()];
+};
+
+const hasEnteredLines = () => form.items.some((item) => item.product_id);
+
+/**
+ * Fills the receipt from its request: supplier, lines at the quantities still
+ * owed and the prices agreed, the request's tax on a first delivery, a note
+ * naming the request, and the receiving warehouse.
+ */
+const applyOrder = async (orderId, { askBeforeReplacing = true } = {}) => {
+    const response = await purchaseReceiptsApi.getPurchaseOrderDetails(orderId);
+    const data = response.data?.data;
+    if (!data) return;
+
+    if (data.receivable === false) {
+        ElMessage.warning(t('rc_order_cancelled'));
+        form.purchase_order_id = '';
+        return;
+    }
+
+    if (askBeforeReplacing && hasEnteredLines()) {
+        try {
+            await ElMessageBox.confirm(t('rc_replace_lines_message'), t('linked_purchase_order'), {
+                type: 'warning',
+                confirmButtonText: t('rc_replace_lines'),
+                cancelButtonText: t('rc_keep_lines'),
+            });
+        } catch {
+            // Keep what was typed; still link the request and compare against it.
+            askBeforeReplacing = 'keep';
+        }
+    }
+
+    linkedOrder.value = data.purchase_order;
+    orderLines.value = (data.items || []).map((line) => ({
+        ...line,
+        quantity: num(line.quantity),
+        received_quantity: num(line.received_quantity),
+        remaining_quantity: num(line.remaining_quantity ?? line.quantity),
+    }));
+    rememberProducts(orderLines.value);
+
+    if (data.supplier_id && !form.supplier_id) form.supplier_id = data.supplier_id;
+    if (askBeforeReplacing !== 'keep') fillLinesFromOrder();
+
+    // Tax belongs to the delivery it was invoiced on; a later delivery of the
+    // same request would book it twice.
+    if (!orderAlreadyReceived.value && !(data.purchase_order?.receipts_count > 0)) {
+        form.tax_amount = num(data.purchase_order?.tax);
+    }
+    if (!form.notes) form.notes = t('rc_default_note', { number: data.purchase_order?.order_number });
+    if (!form.warehouse_id) form.warehouse_id = defaultWarehouseId();
+
+    ElMessage.success(t('items_filled_from_purchase_order'));
+};
+
+const refillFromOrder = async () => {
+    try {
+        await ElMessageBox.confirm(t('rc_replace_lines_message'), t('rc_refill_from_order'), {
+            type: 'warning',
+            confirmButtonText: t('rc_replace_lines'),
+            cancelButtonText: t('cancel'),
+        });
+    } catch {
+        return;
+    }
+    fillLinesFromOrder();
+};
+
+// The common case — everything came as asked — in one click.
+const receiveAllAsOrdered = () => {
+    form.items.forEach((item) => {
+        const line = orderLineFor(item.product_id);
+        if (line) item.quantity = Math.max(1, line.remaining_quantity || line.quantity);
+    });
+    missingOrderLines.value.forEach((line) => restoreOrderLine(line));
+};
+
+const restoreOrderLine = (line) => {
+    const empty = form.items.findIndex((item) => !item.product_id);
+    const row = rowFromOrderLine(line, line.remaining_quantity);
+    if (empty !== -1) form.items.splice(empty, 1, row);
+    else form.items.push(row);
+};
+
+/* ------------------------------------------------------------------ *
+ * Lines
+ * ------------------------------------------------------------------ */
+
+// A remote search over the whole catalogue: the list used to be the first
+// hundred products, so a request's line for any other product showed its id.
+const productOptions = ref([]);
+const productSearchLoading = ref(false);
+let productSearchTimer = null;
+
+const rememberProducts = (items = []) => {
+    const known = new Set(productOptions.value.map((p) => p.id));
+    const missing = items.map((item) => item.product).filter((p) => p && !known.has(p.id));
+    if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+};
+
+const searchProducts = (query) => {
+    clearTimeout(productSearchTimer);
+    if (!query) {
+        productOptions.value = productsStore.products;
+        rememberProducts(orderLines.value);
+        return;
+    }
+    productSearchLoading.value = true;
+    productSearchTimer = setTimeout(async () => {
+        try {
+            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            productOptions.value = res.data.data || [];
+        } catch (e) {
+            // Keep whatever was showing on a transient failure.
+        } finally {
+            productSearchLoading.value = false;
+        }
+    }, 300);
+};
+
+const goodsTotal = computed(() => form.items.reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
+const receiptTotal = computed(() => goodsTotal.value + num(form.tax_amount));
+const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
+const totalUnits = computed(() => form.items.reduce((sum, item) => sum + (item.product_id ? num(item.quantity) : 0), 0));
+
+// Stock is taken in once per product per receipt, so a second line for the
+// same product never reached the warehouse.
+const duplicateProductIds = computed(() => {
+    const seen = new Set();
+    const dupes = new Set();
+    form.items.forEach(({ product_id: id }) => {
+        if (!id) return;
+        (seen.has(id) ? dupes : seen).add(id);
+    });
+    return dupes;
+});
 
 const filteredReceipts = computed(() => {
     if (!searchQuery.value.trim()) return store.receipts;
@@ -542,6 +1035,7 @@ const filteredReceipts = computed(() => {
         return [
             receipt.receipt_number,
             receipt.supplier?.name,
+            receipt.purchase_order?.order_number,
             receipt.receipt_date,
             receipt.notes
         ].some((field) => String(field || '').toLowerCase().includes(query));
@@ -567,90 +1061,94 @@ const openDetailDrawer = async (id) => {
 const openCreateDrawer = () => {
     isEditMode.value = false;
     resetForm();
+    markFormClean();
+    supplierOrders.value = [];
     formDrawerVisible.value = true;
 };
 
-// Reached via the "record a goods receipt" prompt shown right after a
-// purchase order is placed: opens the create drawer pre-bound to that order
-// instead of leaving the operator to search for it in the picker.
+// Reached from a request's "receive" button: opens already filled from it
+// instead of leaving the operator to find it in the picker.
 const openCreateDrawerForOrder = async (orderId) => {
     isEditMode.value = false;
     resetForm();
+    formSnapshot = '';
     formDrawerVisible.value = true;
+    loadingForm.value = true;
     try {
         const res = await purchaseOrdersApi.getById(orderId);
         const order = res.data.data;
-        if (order?.supplier_id) {
-            form.supplier_id = order.supplier_id;
-            await purchaseOrdersStore.fetchOrders({ supplier_id: order.supplier_id, per_page: 100 }).catch(() => {});
-        }
-        form.purchase_order_id = orderId;
-        await handlePurchaseOrderChange(orderId);
+        form.supplier_id = order.supplier_id;
+        await loadSupplierOrders(order.supplier_id);
+        form.purchase_order_id = order.id;
+        await applyOrder(order.id, { askBeforeReplacing: false });
+        // Filled from the request is the starting point, not unsaved work.
+        markFormClean();
     } catch (e) {
         ElMessage.error(t('failed_to_load_purchase_order_data'));
+    } finally {
+        loadingForm.value = false;
     }
 };
 
 const openEditDrawer = async (id) => {
     isEditMode.value = true;
     editingReceiptId.value = id;
-    formDrawerVisible.value = true;
     resetForm();
-    submittingForm.value = true;
+    formSnapshot = '';
+    formDrawerVisible.value = true;
+    loadingForm.value = true;
     try {
         const res = await purchaseReceiptsApi.getById(id);
         const receipt = res.data.data;
         form.supplier_id = receipt.supplier_id;
-        form.purchase_order_id = receipt.purchase_order_id;
+        form.purchase_order_id = receipt.purchase_order_id || '';
         form.warehouse_id = receipt.warehouse_id;
-        form.receipt_date = receipt.receipt_date;
+        form.receipt_date = formatDate(receipt.receipt_date);
         // Shown but locked, like the lines: the tax was posted with them.
         form.tax_amount = receipt.tax_amount ?? 0;
-        form.notes = receipt.notes;
-        form.items = receipt.items.map(item => ({
+        form.notes = receipt.notes || '';
+        form.items = receipt.items.map(item => blankRow({
             product_id: item.product_id,
             quantity: item.quantity,
             unit_price: item.unit_price,
             sale_price: item.sale_price
         }));
+        rememberProducts(receipt.items);
+        if (receipt.purchase_order) linkedOrder.value = receipt.purchase_order;
 
-        // Populate the order list scoped to this receipt's supplier so the
-        // already-linked order (if any) shows up as a valid option.
-        if (form.supplier_id) {
-            await purchaseOrdersStore.fetchOrders({ supplier_id: form.supplier_id, per_page: 100 }).catch(() => {});
-        }
+        if (form.supplier_id) await loadSupplierOrders(form.supplier_id);
+        markFormClean();
     } catch (e) {
         ElMessage.error(t('failed_to_load_receipt_for_edit'));
         formDrawerVisible.value = false;
     } finally {
-        submittingForm.value = false;
+        loadingForm.value = false;
     }
 };
 
-// Purchase orders are scoped to the chosen supplier: an order belonging to a
-// different supplier could never be received against this receipt anyway,
-// so listing every order in the system just invited picking the wrong one.
+// Purchase requests are scoped to the chosen supplier: another supplier's
+// request could never be received against this receipt (the API refuses it).
 const handleSupplierChange = async (supplierId) => {
     if (form.purchase_order_id) {
         form.purchase_order_id = '';
-        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
+        linkedOrder.value = null;
+        orderLines.value = [];
+        form.items = [blankRow()];
     }
 
-    if (!supplierId) {
-        purchaseOrdersStore.orders = [];
-        return;
-    }
+    await loadSupplierOrders(supplierId);
 
-    try {
-        await purchaseOrdersStore.fetchOrders({ supplier_id: supplierId, per_page: 100 });
-    } catch (e) {
-        ElMessage.error(t('failed_to_load_purchase_order_data'));
+    // One request waiting on this supplier is almost certainly this delivery.
+    const receivable = openOrders.value.filter((o) => ['confirmed', 'processing'].includes(stageOf(o)));
+    if (receivable.length === 1 && !hasEnteredLines()) {
+        form.purchase_order_id = receivable[0].id;
+        await handlePurchaseOrderChange(receivable[0].id);
     }
 };
 
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push({ product_id: '', quantity: 1, unit_price: '', sale_price: '' });
+    form.items.push(blankRow());
 };
 
 const removeItemRow = (idx) => {
@@ -658,7 +1156,17 @@ const removeItemRow = (idx) => {
 };
 
 const updateItemPrice = (productId, idx) => {
-    const prod = productsStore.products.find(p => p.id === productId);
+    // A product on the request is priced as agreed there, not at its
+    // catalogue cost.
+    const line = orderLineFor(productId);
+    if (line) {
+        form.items[idx].unit_price = num(line.unit_price);
+        form.items[idx].sale_price = line.sale_price != null ? num(line.sale_price) : '';
+        if (line.remaining_quantity > 0) form.items[idx].quantity = line.remaining_quantity;
+        return;
+    }
+    const prod = productOptions.value.find(p => p.id === productId)
+        || productsStore.products.find(p => p.id === productId);
     if (prod) {
         // The receipt's price is what the supplier is paid, so it starts
         // from the product's cost — not its retail price, which is what the
@@ -717,6 +1225,9 @@ const submitQuickAddProduct = async () => {
             stock_quantity: 0
         });
 
+        // Into the options the row renders from, or it shows the new id.
+        productOptions.value = [product, ...productOptions.value];
+
         const idx = quickAddTargetIndex.value;
         if (idx !== null && form.items[idx]) {
             form.items[idx].product_id = product.id;
@@ -739,44 +1250,62 @@ const submitQuickAddProduct = async () => {
 
 const handlePurchaseOrderChange = async (purchaseOrderId) => {
     if (!purchaseOrderId) {
-        // If cleared, reset items to empty
-        form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
+        // Unlinked: a direct purchase. What was typed stays.
+        linkedOrder.value = null;
+        orderLines.value = [];
         return;
     }
 
     try {
-        const response = await purchaseReceiptsApi.getPurchaseOrderDetails(purchaseOrderId);
-        if (response.data.success) {
-            const data = response.data.data;
-            
-            // Auto-fill supplier_id if not set
-            if (data.supplier_id && !form.supplier_id) {
-                form.supplier_id = data.supplier_id;
-            }
-            
-            // Auto-fill items from purchase order, sale price included — it
-            // was already decided when the order was made.
-            if (data.items && data.items.length > 0) {
-                form.items = data.items.map(item => ({
-                    product_id: item.product_id,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    sale_price: item.sale_price
-                }));
-
-                ElMessage.success(t('items_filled_from_purchase_order'));
-            }
-        }
+        await applyOrder(purchaseOrderId);
     } catch (error) {
-        ElMessage.error(t('failed_to_load_purchase_order_data'));
-        console.error('Error fetching purchase order details:', error);
+        ElMessage.error(error.response?.data?.message || t('failed_to_load_purchase_order_data'));
     }
 };
 
+const apiError = (e, fallback) => {
+    const errors = e?.response?.data?.errors;
+    const first = errors && Object.values(errors).flat()[0];
+    return first || e?.response?.data?.message || fallback;
+};
+
 const saveReceipt = async () => {
+    if (submittingForm.value || loadingForm.value) return;
     if (!form.supplier_id) {
         ElMessage.warning(t('please_select_supplier_first'));
         return;
+    }
+
+    if (!isEditMode.value) {
+        if (!form.warehouse_id) {
+            ElMessage.warning(t('please_select_receiving_warehouse'));
+            return;
+        }
+        if (form.items.some(item => !item.product_id || !item.quantity || item.unit_price === '' || item.unit_price == null)) {
+            ElMessage.warning(t('please_fill_all_item_fields'));
+            return;
+        }
+        if (duplicateProductIds.value.size) {
+            const id = [...duplicateProductIds.value][0];
+            const product = productOptions.value.find((p) => p.id === id);
+            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || id }));
+            return;
+        }
+
+        // A delivery that differs from its request is normal, but it should
+        // be a decision rather than a slip.
+        const off = form.items.filter((item) => linkedOrder.value && lineVsOrder(item).state !== 'match');
+        if (off.length || missingOrderLines.value.length) {
+            try {
+                await ElMessageBox.confirm(
+                    t('rc_differs_from_order_message', { lines: off.length + missingOrderLines.value.length }),
+                    t('rc_differs_from_order'),
+                    { type: 'warning', confirmButtonText: t('save_receipt'), cancelButtonText: t('rc_review_lines') }
+                );
+            } catch {
+                return;
+            }
+        }
     }
 
     submittingForm.value = true;
@@ -791,24 +1320,23 @@ const saveReceipt = async () => {
             });
             ElMessage.success(t('receipt_updated'));
         } else {
-            if (!form.warehouse_id) {
-                ElMessage.warning(t('please_select_receiving_warehouse'));
-                return;
-            }
-            if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
-                ElMessage.warning(t('please_fill_all_item_fields'));
-                return;
-            }
-
-            await purchaseReceiptsApi.create(form);
+            await purchaseReceiptsApi.create({
+                ...form,
+                purchase_order_id: form.purchase_order_id || null,
+                items: form.items.map(({ key, ...item }) => ({
+                    ...item,
+                    sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
+                })),
+            });
             ElMessage.success(t('receipt_saved_stock_and_entry'));
         }
+        markFormClean();
         formDrawerVisible.value = false;
         await store.fetchReceipts();
     } catch (e) {
-        // The API explains precisely why a receipt cannot be rewritten; echoing
-        // a generic failure here would hide the reason and the way forward.
-        ElMessage.error(e.response?.data?.message || t('failed_to_save_receipt'));
+        // The API explains precisely why a receipt cannot be saved; echoing a
+        // generic failure here would hide the reason and the way forward.
+        ElMessage.error(apiError(e, t('failed_to_save_receipt')));
     } finally {
         submittingForm.value = false;
     }
@@ -834,7 +1362,10 @@ const deleteReceipt = async (id) => {
     }
 };
 
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+
 onMounted(async () => {
+    window.addEventListener('resize', onResize);
     // A purchase order's detail links here with ?search=<receipt number>.
     if (route.query.search) searchQuery.value = String(route.query.search);
     store.fetchReceipts().catch(() => {});
@@ -842,7 +1373,12 @@ onMounted(async () => {
     // Purchase orders load once a supplier is chosen (handleSupplierChange) or
     // when editing a receipt that already has one, so the list is always
     // scoped to a supplier instead of dumping every order in the system.
-    productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
+    productsStore.fetchProducts({ per_page: 100 })
+        .then(() => {
+            productOptions.value = productsStore.products;
+            rememberProducts(orderLines.value);
+        })
+        .catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
 
     const orderId = route.query.create_for_order;
@@ -1223,5 +1759,282 @@ onMounted(async () => {
     background: var(--bg-light);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
+}
+/* The form in four numbered steps, in the order a delivery is checked. */
+.form-step {
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.form-step:last-child {
+    border-bottom: 0;
+    margin-bottom: 0;
+}
+
+.form-step-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+.form-step-head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.form-step-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+}
+
+.form-step-tools .el-button + .el-button {
+    margin-inline-start: 0;
+}
+
+.step-num {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.field-hint {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.order-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.order-option-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.order-option small {
+    color: var(--text-muted);
+}
+
+.linked-order-card {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1rem;
+}
+
+.linked-order-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.linked-order-head > div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.linked-order-head i.fa-file-signature {
+    color: #1d4ed8;
+}
+
+.linked-order-link {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    text-decoration: none;
+}
+
+.linked-order-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.linked-order-facts div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.linked-order-facts span {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.linked-order-facts strong {
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.text-danger {
+    color: var(--el-color-danger, #dc2626) !important;
+}
+
+.item-index {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--border-color);
+    color: var(--text-medium);
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-grid-row.item-duplicate {
+    border-color: var(--el-color-warning, #e6a23c);
+    background: #fffbeb;
+}
+
+.item-grid-row.item-off-order {
+    border-style: dashed;
+}
+
+.line-vs-order {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.price-changed {
+    color: var(--el-color-warning-dark-2, #b45309);
+    font-weight: 600;
+}
+
+.line-total-field strong {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    color: var(--text-dark);
+}
+
+.missing-lines {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px dashed var(--el-color-warning, #e6a23c);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    color: var(--text-medium);
+}
+
+.missing-lines .el-button + .el-button {
+    margin-inline-start: 0;
+}
+
+.financial-row.order-diff {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.form-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    font-family: 'Cairo', sans-serif;
+}
+
+.footer-total {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    color: var(--text-muted);
+}
+
+.footer-total strong {
+    font-size: 1.25rem;
+    color: var(--accent-blue);
+}
+
+.footer-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+}
+
+.footer-actions .el-button + .el-button {
+    margin-inline-start: 0;
+}
+
+.shortcut-hint {
+    color: var(--text-light, #94a3b8);
+    font-size: 0.75rem;
+}
+
+.form-drawer :deep(.el-drawer__footer) {
+    border-top: 1px solid var(--border-color);
+    padding: 0.9rem 1.5rem;
+    background: var(--bg-white, #fff);
+}
+
+@media (max-width: 640px) {
+    .linked-order-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .item-row-top,
+    .item-row-prices {
+        flex-wrap: wrap;
+    }
+
+    .price-field {
+        max-width: none;
+        min-width: 45%;
+    }
+
+    .shortcut-hint {
+        display: none;
+    }
+
+    .footer-actions {
+        width: 100%;
+    }
+
+    .footer-actions .el-button {
+        flex: 1;
+    }
+
+    .financial-row {
+        width: 100%;
+    }
 }
 </style>
