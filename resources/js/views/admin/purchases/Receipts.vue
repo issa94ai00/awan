@@ -835,6 +835,8 @@ const deleteReceipt = async (id) => {
 };
 
 onMounted(async () => {
+    // A purchase order's detail links here with ?search=<receipt number>.
+    if (route.query.search) searchQuery.value = String(route.query.search);
     store.fetchReceipts().catch(() => {});
     suppliersStore.fetchSuppliers().catch(() => {});
     // Purchase orders load once a supplier is chosen (handleSupplierChange) or

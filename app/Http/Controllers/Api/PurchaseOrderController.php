@@ -103,8 +103,13 @@ class PurchaseOrderController extends Controller
         try {
             $validated = $request->validate([
                 'supplier_id' => 'required|exists:suppliers,id',
-                'status' => 'nullable|string|in:' . implode(',', $this->writableStatuses()),
-                'due_date' => 'nullable|date',
+                // A new order starts pending or approved; completion is a
+                // goods receipt's to write, and a cancelled order is not new.
+                'status' => 'nullable|string|in:' . PurchaseOrder::STATUS_PENDING . ',' . PurchaseOrder::STATUS_CONFIRMED,
+                // Sent by the form all along, but never validated — so
+                // validated() dropped it and every order was saved undated.
+                'order_date' => 'nullable|date',
+                'due_date' => 'nullable|date|after_or_equal:order_date',
                 'discount' => 'nullable|numeric|min:0',
                 'tax' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
@@ -126,18 +131,12 @@ class PurchaseOrderController extends Controller
                 'items.*.unit_price.min' => 'سعر الوحدة يجب أن يكون 0 على الأقل',
             ]);
 
-            $orderNumber = 'PO-' . str_pad(PurchaseOrder::count() + 1, 6, '0', STR_PAD_LEFT);
-            $validated['order_number'] = $orderNumber;
+            $validated['order_number'] = $this->nextOrderNumber();
             $validated['status'] = $validated['status'] ?? 'pending';
+            $validated['order_date'] = $validated['order_date'] ?? now()->toDateString();
             $validated['created_by'] = auth()->id();
 
-            $subtotal = 0;
-            foreach ($validated['items'] as $item) {
-                $subtotal += $item['unit_price'] * $item['quantity'];
-            }
-
-            $validated['subtotal'] = $subtotal;
-            $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
+            $this->applyTotals($validated);
 
             // The header carries totals computed from the lines, so the two must
             // land together. Written separately, a failure inside the loop left
@@ -199,10 +198,41 @@ class PurchaseOrderController extends Controller
 
     public function update(Request $request, PurchaseOrder $order): JsonResponse
     {
+        $current = PurchaseOrder::normalizeStatus($order->status);
+
+        /*
+         * A received order's lines are what its receipt booked into stock, and
+         * carry the landed cost the receipt settled onto them. Rewriting them —
+         * update() deletes every line and inserts it again — threw that cost
+         * away and let the order describe goods other than the ones that came.
+         * A cancelled order has nothing left to change either. Both may still
+         * have their notes and dates corrected, and nothing else.
+         */
+        if (in_array($current, [PurchaseOrder::STATUS_COMPLETED, PurchaseOrder::STATUS_CANCELLED], true)) {
+            $validated = $request->validate([
+                'order_date' => 'nullable|date',
+                'due_date' => 'nullable|date',
+                'notes' => 'nullable|string|max:1000',
+            ]);
+
+            $order->update($validated);
+            $order->load(['supplier', 'items.product']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Purchase order updated successfully',
+                'data' => $order,
+            ]);
+        }
+
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'status' => 'required|string|in:' . implode(',', $this->writableStatuses()),
-            'due_date' => 'nullable|date',
+            // Optional: the form no longer carries a status, since approving
+            // and cancelling have their own endpoint. When one is sent it has
+            // to be a move the workflow allows, checked below.
+            'status' => 'sometimes|nullable|string|in:' . implode(',', $this->writableStatuses()),
+            'order_date' => 'nullable|date',
+            'due_date' => 'nullable|date|after_or_equal:order_date',
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
@@ -214,13 +244,26 @@ class PurchaseOrderController extends Controller
             'items.*.notes' => 'nullable|string|max:500',
         ]);
 
-        $subtotal = 0;
-        foreach ($validated['items'] as $item) {
-            $subtotal += $item['unit_price'] * $item['quantity'];
+        // A full save used to accept any status at all, so the rules the
+        // status endpoint enforces — no completing by hand, no reviving a
+        // cancelled order — could be walked around by saving the form.
+        if (!empty($validated['status'])) {
+            $target = PurchaseOrder::normalizeStatus($validated['status']);
+
+            if ($target !== $current && !in_array($target, PurchaseOrder::STATUS_TRANSITIONS[$current] ?? [], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'لا يمكن نقل أمر الشراء من حالته الحالية إلى الحالة المطلوبة',
+                    'data' => null,
+                ], 422);
+            }
+
+            $validated['status'] = $target;
+        } else {
+            unset($validated['status']);
         }
 
-        $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal + ($validated['tax'] ?? 0) - ($validated['discount'] ?? 0);
+        $this->applyTotals($validated);
 
         /*
          * Editing an order clears its lines and writes them again. Without a
@@ -254,6 +297,51 @@ class PurchaseOrderController extends Controller
             'message' => 'Purchase order updated successfully',
             'data' => $order,
         ]);
+    }
+
+    /**
+     * Subtotal and total from the lines, in place.
+     *
+     * A discount larger than the goods plus tax left an order owing the
+     * supplier a negative amount, which then flowed into purchase reporting.
+     */
+    private function applyTotals(array &$validated): void
+    {
+        $subtotal = 0;
+        foreach ($validated['items'] as $item) {
+            $subtotal += $item['unit_price'] * $item['quantity'];
+        }
+
+        $tax = (float) ($validated['tax'] ?? 0);
+        $discount = (float) ($validated['discount'] ?? 0);
+
+        if ($discount > $subtotal + $tax) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'discount' => 'الخصم أكبر من قيمة الأمر',
+            ]);
+        }
+
+        $validated['subtotal'] = $subtotal;
+        $validated['total'] = $subtotal + $tax - $discount;
+    }
+
+    /**
+     * The next free PO number.
+     *
+     * Counting rows reused a number as soon as any order was deleted — the
+     * count drops, the next order is given a number that is still taken, and
+     * the unique index turns the save into a 500. The highest id only grows,
+     * and every existing number was issued at or below its own id.
+     */
+    private function nextOrderNumber(): string
+    {
+        $next = ((int) PurchaseOrder::max('id')) + 1;
+
+        do {
+            $number = 'PO-' . str_pad((string) $next++, 6, '0', STR_PAD_LEFT);
+        } while (PurchaseOrder::where('order_number', $number)->exists());
+
+        return $number;
     }
 
     /**
@@ -333,6 +421,18 @@ class PurchaseOrderController extends Controller
 
     public function destroy(PurchaseOrder $order): JsonResponse
     {
+        // A receipt booked stock and posted a journal entry against this
+        // order; deleting it leaves both pointing at nothing. The screen only
+        // greyed the option out, so the API itself did not refuse.
+        if (PurchaseOrder::normalizeStatus($order->status) === PurchaseOrder::STATUS_COMPLETED
+            || $order->receipts()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن حذف أمر شراء تم استلام بضاعته. يمكنك إلغاؤه قبل الاستلام فقط',
+                'data' => null,
+            ], 422);
+        }
+
         $order->delete();
 
         return response()->json([

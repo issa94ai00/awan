@@ -120,22 +120,31 @@
                     class="custom-table"
                     :row-class-name="rowClassName"
                 >
-                    <el-table-column prop="order_number" :label="$t('order_number')" width="140">
+                    <el-table-column prop="order_number" :label="$t('order_number')" width="150">
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
+                            <small class="cell-sub">{{ formatDate(row.order_date || row.created_at) }}</small>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="supplier.name" :label="$t('supplier')">
+                    <el-table-column prop="supplier.name" :label="$t('supplier')" min-width="200">
                         <template #default="{ row }">
                             <div class="supplier-cell">
                                 <i class="fas fa-user-tie text-muted"></i>
-                                <span>{{ row.supplier?.name || '-' }}</span>
+                                <div>
+                                    <span>{{ row.supplier?.name || '-' }}</span>
+                                    <!-- What was ordered, at a glance, so telling two
+                                         orders to the same supplier apart does not
+                                         mean opening both. -->
+                                    <small v-if="row.items?.length" class="cell-sub" :title="itemsPreview(row)">
+                                        {{ $t('po_items_count', row.items.length) }} · {{ itemsPreview(row) }}
+                                    </small>
+                                </div>
                             </div>
                         </template>
                     </el-table-column>
                     <el-table-column prop="total" :label="$t('total')" width="160">
                         <template #default="{ row }">
-                            <strong class="amount-txt">${{ parseFloat(row.total || 0).toFixed(2) }}</strong>
+                            <strong class="amount-txt">{{ money(row.total) }}</strong>
                         </template>
                     </el-table-column>
                     <el-table-column :label="$t('status')" width="150" align="center">
@@ -146,7 +155,22 @@
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="due_date" :label="$t('due_date')" width="160" align="center" />
+                    <!-- A due date only matters while the goods are still
+                         outstanding, so lateness is flagged on open orders alone. -->
+                    <el-table-column prop="due_date" :label="$t('due_date')" width="150" align="center">
+                        <template #default="{ row }">
+                            <span v-if="!row.due_date" class="text-muted">-</span>
+                            <template v-else>
+                                <span :class="{ 'due-late': dueState(row) === 'overdue' }">{{ formatDate(row.due_date) }}</span>
+                                <el-tag v-if="dueState(row) === 'overdue'" type="danger" size="small" effect="plain" class="due-tag">
+                                    {{ $t('po_overdue') }}
+                                </el-tag>
+                                <el-tag v-else-if="dueState(row) === 'today'" type="warning" size="small" effect="plain" class="due-tag">
+                                    {{ $t('po_due_today') }}
+                                </el-tag>
+                            </template>
+                        </template>
+                    </el-table-column>
                     
                     <!-- Actions.
                          One labelled button for the step this order is actually
@@ -251,35 +275,53 @@
         <el-drawer
             v-model="detailDrawerVisible"
             :title="$t('purchase_order_details')"
-            size="55%"
+            :size="drawerSize"
             direction="rtl"
             destroy-on-close
             class="detail-drawer"
         >
             <div v-if="loadingDetail" v-loading="loadingDetail" style="min-height: 250px;"></div>
             <div v-else-if="selectedOrder" class="drawer-detail-content">
-                <!-- Timeline status tracker -->
-                <div class="timeline-step-tracker mb-4">
+                <div class="drawer-order-head mb-3">
+                    <div>
+                        <h3>{{ selectedOrder.order_number }}</h3>
+                        <el-tag :type="statusTagType(selectedOrder.status)" effect="light" class="status-tag">
+                            <i class="fas status-dot-icon" :class="statusIconClass(selectedOrder.status)"></i>
+                            {{ getArabicStatus(selectedOrder.status) }}
+                        </el-tag>
+                    </div>
+                    <el-button v-if="canEdit(selectedOrder)" plain @click="editFromDrawer">
+                        <i class="fas fa-edit"></i> {{ $t('edit') }}
+                    </el-button>
+                </div>
+
+                <!-- A cancelled order has no position on the track; drawing it
+                     at "created" read as though it were still waiting. -->
+                <el-alert
+                    v-if="isCancelled(selectedOrder)"
+                    type="info"
+                    :title="$t('po_cancelled_banner')"
+                    :closable="false"
+                    show-icon
+                    class="mb-4"
+                />
+                <div v-else class="timeline-step-tracker mb-4">
                     <div class="visual-progress-timeline">
                         <div class="progress-base-bar"></div>
-                        <div class="progress-fill-bar" :style="{ width: getTimelineProgressWidth(selectedOrder.status) }"></div>
-                        
+                        <!-- Anchored to the inline start and scaled to the track
+                             between the first and last node: it used to be pinned
+                             to the left, so in Arabic it filled from the end. -->
+                        <div class="progress-fill-bar" :style="{ width: timelineFillWidth }"></div>
+
                         <div class="timeline-nodes-wrapper">
-                            <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'pending') }">
-                                <div class="node-icon"><i class="fas fa-clock"></i></div>
-                                <span>{{ $t('sales_status_pending') }}</span>
-                            </div>
-                            <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'confirmed') }">
-                                <div class="node-icon"><i class="fas fa-check-circle"></i></div>
-                                <span>{{ $t('sales_status_confirmed') }}</span>
-                            </div>
-                            <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'processing') }">
-                                <div class="node-icon"><i class="fas fa-sync-alt"></i></div>
-                                <span>{{ $t('process') }}</span>
-                            </div>
-                            <div class="timeline-node" :class="{ completed: isStepCompleted(selectedOrder.status, 'completed') }">
-                                <div class="node-icon"><i class="fas fa-check-double"></i></div>
-                                <span>{{ $t('sales_status_completed') }}</span>
+                            <div
+                                v-for="(step, i) in timelineSteps"
+                                :key="step.key"
+                                class="timeline-node"
+                                :class="{ completed: i <= timelineIndex, current: i === timelineIndex }"
+                            >
+                                <div class="node-icon"><i class="fas" :class="step.icon"></i></div>
+                                <span>{{ step.label }}</span>
                             </div>
                         </div>
                     </div>
@@ -293,31 +335,55 @@
                                 <span class="card-title-txt"><i class="fas fa-boxes text-muted mr-1"></i> {{ $t('items_requested_for_purchase') }}</span>
                             </template>
                             <el-table :data="selectedOrder.items || []" style="width: 100%" stripe>
-                                <el-table-column prop="product.name_ar" :label="$t('item_product')" />
-                                <el-table-column prop="quantity" :label="$t('quantity_ordered')" width="130" align="center" />
-                                <el-table-column prop="unit_price" :label="$t('purchase_cost')" width="120">
-                                    <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
+                                <el-table-column :label="$t('item_product')" min-width="160">
+                                    <template #default="{ row }">
+                                        <!-- The stored name survives the product being
+                                             deleted from the catalogue. -->
+                                        <span>{{ row.product?.name_ar || row.product_name || '-' }}</span>
+                                        <small v-if="row.product?.sku" class="cell-sub">{{ $t('po_sku_label', { sku: row.product.sku }) }}</small>
+                                    </template>
                                 </el-table-column>
-                                <el-table-column prop="sale_price" :label="$t('sale_price')" width="120">
-                                    <template #default="{ row }">{{ row.sale_price != null ? '$' + parseFloat(row.sale_price).toFixed(2) : '-' }}</template>
+                                <el-table-column :label="showReceived ? $t('po_ordered') : $t('quantity_ordered')" width="100" align="center">
+                                    <template #default="{ row }">{{ row.quantity }}</template>
                                 </el-table-column>
-                                <el-table-column :label="$t('grand_total')" width="120">
-                                    <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
+                                <!-- What actually arrived, beside what was asked
+                                     for, so a short delivery shows up here instead
+                                     of only in the receipt. -->
+                                <el-table-column v-if="showReceived" :label="$t('po_received')" width="110" align="center">
+                                    <template #default="{ row }">
+                                        <span :class="{ 'qty-short': (row.received_quantity || 0) < row.quantity }">{{ row.received_quantity || 0 }}</span>
+                                        <small v-if="(row.received_quantity || 0) < row.quantity" class="cell-sub qty-short">
+                                            {{ $t('po_receipt_short', { count: row.quantity - (row.received_quantity || 0) }) }}
+                                        </small>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column :label="$t('purchase_cost')" width="120">
+                                    <template #default="{ row }">{{ money(row.unit_price) }}</template>
+                                </el-table-column>
+                                <el-table-column :label="$t('sale_price')" width="120">
+                                    <template #default="{ row }">{{ row.sale_price != null ? money(row.sale_price) : '-' }}</template>
+                                </el-table-column>
+                                <el-table-column :label="$t('po_line_total')" width="130">
+                                    <template #default="{ row }">{{ money(row.quantity * row.unit_price) }}</template>
                                 </el-table-column>
                             </el-table>
 
                             <div class="financial-summary-block mt-4">
                                 <div class="financial-row">
+                                    <span>{{ $t('subtotal') }}</span>
+                                    <span>{{ money(selectedOrder.subtotal ?? detailSubtotal) }}</span>
+                                </div>
+                                <div class="financial-row">
                                     <span>{{ $t('discount_label') }}</span>
-                                    <span>${{ parseFloat(selectedOrder.discount || 0).toFixed(2) }}</span>
+                                    <span>{{ money(selectedOrder.discount) }}</span>
                                 </div>
                                 <div class="financial-row">
                                     <span>{{ $t('tax_label') }}</span>
-                                    <span>${{ parseFloat(selectedOrder.tax || 0).toFixed(2) }}</span>
+                                    <span>{{ money(selectedOrder.tax) }}</span>
                                 </div>
                                 <div class="financial-row grand-total">
                                     <span>{{ $t('grand_total_label') }}</span>
-                                    <span>${{ parseFloat(selectedOrder.total || 0).toFixed(2) }}</span>
+                                    <span>{{ money(selectedOrder.total) }}</span>
                                 </div>
                             </div>
                         </el-card>
@@ -394,13 +460,30 @@
                             <div class="info-list">
                                 <div class="info-item">
                                     <span class="lbl">{{ $t('order_date_label') }}</span>
-                                    <strong>{{ selectedOrder.order_date || '-' }}</strong>
+                                    <strong>{{ formatDate(selectedOrder.order_date || selectedOrder.created_at) }}</strong>
                                 </div>
                                 <div class="info-item">
                                     <span class="lbl">{{ $t('due_date_label') }}</span>
-                                    <strong>{{ selectedOrder.due_date || '-' }}</strong>
+                                    <strong :class="{ 'due-late': dueState(selectedOrder) === 'overdue' }">{{ formatDate(selectedOrder.due_date) }}</strong>
                                 </div>
                             </div>
+                        </el-card>
+
+                        <!-- The receipts that booked this order's goods in, so the
+                             trail from order to stock is one click either way. -->
+                        <el-card v-if="!isCancelled(selectedOrder)" shadow="never" class="mb-3">
+                            <template #header>
+                                <span class="card-title-txt"><i class="fas fa-receipt text-muted mr-1"></i> {{ $t('po_linked_receipts') }}</span>
+                            </template>
+                            <div v-if="selectedOrder.receipts?.length" class="info-list">
+                                <div v-for="r in selectedOrder.receipts" :key="r.id" class="info-item">
+                                    <router-link :to="{ path: '/admin/purchases/receipts', query: { search: r.receipt_number } }" class="order-number-link">
+                                        {{ r.receipt_number }}
+                                    </router-link>
+                                    <strong>{{ formatDate(r.receipt_date || r.created_at) }}</strong>
+                                </div>
+                            </div>
+                            <p v-else class="notes-txt-view text-muted">{{ $t('po_no_receipts_yet') }}</p>
                         </el-card>
                     </el-col>
                 </el-row>
@@ -411,25 +494,41 @@
         <el-drawer
             v-model="formDrawerVisible"
             :title="isEditMode ? $t('edit_purchase_order') : $t('create_purchase_order')"
-            size="55%"
+            :size="drawerSize"
             direction="rtl"
             destroy-on-close
             class="form-drawer"
+            :before-close="confirmCloseForm"
         >
+            <div v-loading="loadingForm">
             <el-form :model="form" label-position="top">
+                <!-- A received or cancelled order keeps its lines as they were
+                     booked; the API only takes its dates and notes now, so the
+                     form stops offering the rest. -->
+                <el-alert
+                    v-if="formLocked"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    class="mb-3"
+                    :title="$t('po_edit_locked_hint', { status: getArabicStatus(editingStatus) })"
+                />
+                <p v-else-if="!isEditMode" class="quick-add-hint">{{ $t('po_new_order_hint') }}</p>
+
                 <el-row :gutter="20">
-                    <el-col :span="12">
+                    <el-col :span="24">
                         <el-form-item :label="$t('supplier')" required>
                             <div style="display: flex; gap: 0.5rem; width: 100%;">
-                                <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable>
+                                <el-select v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable :disabled="formLocked">
                                     <el-option
                                         v-for="s in suppliersStore.suppliers"
                                         :key="s.id"
-                                        :label="s.name"
+                                        :label="s.company ? `${s.name} — ${s.company}` : s.name"
                                         :value="s.id"
                                     />
                                 </el-select>
                                 <el-button
+                                    v-if="!formLocked"
                                     type="success"
                                     circle
                                     plain
@@ -441,75 +540,41 @@
                             </div>
                         </el-form-item>
                     </el-col>
-                    <el-col :span="12" v-if="isEditMode">
-                        <el-form-item :label="$t('purchase_order_status')" required>
-                            <!-- These were plain <option> elements, which
-                                 el-select does not render: the list was empty,
-                                 so the status could not be changed here at all.
-                                 Completed is absent on purpose — it is written
-                                 by a goods receipt, not chosen. -->
-                            <el-select v-model="form.status" :placeholder="$t('select_order_status')" style="width: 100%">
-                                <el-option value="pending" :label="$t('sales_status_pending')" />
-                                <el-option value="confirmed" :label="$t('sales_status_confirmed')" />
-                                <el-option value="processing" :label="$t('sales_status_processing')" />
-                                <el-option value="cancelled" :label="$t('sales_status_cancelled')" />
-                                <el-option
-                                    v-if="normalizeStatus(form.status) === 'completed'"
-                                    value="completed"
-                                    :label="$t('sales_status_completed')"
-                                    disabled
-                                />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
                 </el-row>
 
-                <el-row :gutter="20" class="mt-3">
-                    <el-col :span="12">
+                <el-row :gutter="20">
+                    <el-col :xs="24" :sm="12">
                         <el-form-item :label="$t('purchase_order_date')">
-                            <el-date-picker v-model="form.order_date" type="date" :placeholder="$t('order_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                            <el-date-picker v-model="form.order_date" type="date" :placeholder="$t('po_order_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
                         </el-form-item>
                     </el-col>
-                    <el-col :span="12">
+                    <el-col :xs="24" :sm="12">
                         <el-form-item :label="$t('due_date')">
-                            <el-date-picker v-model="form.due_date" type="date" :placeholder="$t('due_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
+                            <!-- Goods cannot be due before they were ordered; the
+                                 API refuses it, so the picker does not offer it. -->
+                            <el-date-picker v-model="form.due_date" type="date" :placeholder="$t('due_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" :disabled-date="isBeforeOrderDate" />
                         </el-form-item>
                     </el-col>
                 </el-row>
-
-                <el-row :gutter="20" class="mt-3">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('discount')">
-                            <el-input v-model="form.discount" type="number" :placeholder="$t('discount_amount_placeholder')" style="width: 100%">
-                                <template #suffix>$</template>
-                            </el-input>
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('tax')">
-                            <el-input v-model="form.tax" type="number" :placeholder="$t('tax_amount_placeholder')" style="width: 100%">
-                                <template #suffix>$</template>
-                            </el-input>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <el-form-item :label="$t('notes')" class="mt-3">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="$t('purchase_order_notes_placeholder')" />
-                </el-form-item>
 
                 <!-- Dynamic items grid -->
-                <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;"><i class="fas fa-boxes text-primary"></i> {{ $t('items_and_quantities') }}</h3>
+                <div v-if="!formLocked" class="form-section">
+                    <div class="form-section-head">
+                        <h3><i class="fas fa-boxes text-primary"></i> {{ $t('items_and_quantities') }}</h3>
                         <el-button type="primary" size="small" plain @click="addItemRow">
                             <i class="fas fa-plus"></i> {{ $t('add_item') }}
                         </el-button>
                     </div>
 
                     <div class="items-grid-wrapper">
-                        <div v-for="(item, idx) in form.items" :key="idx" class="item-grid-row">
+                        <div
+                            v-for="(item, idx) in form.items"
+                            :key="item.key"
+                            class="item-grid-row"
+                            :class="{ 'item-duplicate': duplicateProductIds.has(item.product_id) }"
+                        >
                             <div class="item-row-top">
+                                <span class="item-index">{{ idx + 1 }}</span>
                                 <!-- Searches the whole catalog on the server instead of
                                      filtering only the first page already in memory, so
                                      a product outside that page is still found. -->
@@ -521,17 +586,28 @@
                                     reserve-keyword
                                     :remote-method="searchProducts"
                                     :loading="productSearchLoading"
-                                    style="flex: 2.5;"
+                                    style="flex: 2.5; min-width: 0;"
                                     @change="(val) => updateItemPrice(val, idx)"
                                 >
+                                    <!-- Labelled by name and code, with the cost the
+                                         line will default to: this is a purchase, so
+                                         the retail price it used to show was the
+                                         wrong figure to choose by. -->
                                     <el-option
                                         v-for="p in productOptions"
                                         :key="p.id"
-                                        :label="p.name_ar + ' - $' + p.price"
+                                        :label="productLabel(p)"
                                         :value="p.id"
-                                    />
+                                    >
+                                        <div class="product-option">
+                                            <span>{{ p.name_ar || p.name }}</span>
+                                            <small>
+                                                <template v-if="p.sku">{{ p.sku }} · </template>{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}
+                                            </small>
+                                        </div>
+                                    </el-option>
                                 </el-select>
-                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1;" />
+                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" />
                                 <el-button
                                     type="success"
                                     circle
@@ -541,7 +617,7 @@
                                 >
                                     <i class="fas fa-plus"></i>
                                 </el-button>
-                                <el-button type="danger" circle @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                <el-button type="danger" circle plain @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </div>
@@ -552,26 +628,77 @@
                             <div class="item-row-prices">
                                 <div class="price-field">
                                     <label>{{ $t('purchase_cost') }}</label>
-                                    <el-input v-model="item.unit_price" placeholder="0.00">
-                                        <template #suffix>$</template>
-                                    </el-input>
+                                    <el-input v-model="item.unit_price" type="number" min="0" step="0.01" placeholder="0.00" />
                                 </div>
                                 <div class="price-field">
                                     <label>{{ $t('sale_price') }}</label>
-                                    <el-input v-model="item.sale_price" placeholder="0.00">
-                                        <template #suffix>$</template>
-                                    </el-input>
+                                    <el-input v-model="item.sale_price" type="number" min="0" step="0.01" placeholder="0.00" />
+                                </div>
+                                <div class="price-field line-total-field">
+                                    <label>{{ $t('po_line_total') }}</label>
+                                    <strong>{{ money(lineTotal(item)) }}</strong>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div style="border-top: 1px solid var(--border-color); margin-top: 2rem; padding-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <el-button @click="formDrawerVisible = false">{{ $t('cancel') }}</el-button>
-                    <el-button type="primary" :loading="submittingForm" @click="saveOrder">{{ $t('save_purchase_order') }}</el-button>
+                <el-row v-if="!formLocked" :gutter="20" class="mt-3">
+                    <el-col :xs="24" :sm="12">
+                        <el-form-item :label="$t('discount')" :error="discountTooLarge ? $t('po_discount_exceeds_total') : ''">
+                            <el-input v-model="form.discount" type="number" min="0" :placeholder="$t('discount_amount_placeholder')" style="width: 100%" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :xs="24" :sm="12">
+                        <el-form-item :label="$t('tax')">
+                            <el-input v-model="form.tax" type="number" min="0" :placeholder="$t('tax_amount_placeholder')" style="width: 100%" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-form-item :label="$t('notes')" class="mt-3">
+                    <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('purchase_order_notes_placeholder')" />
+                </el-form-item>
+
+                <!-- The running total, so what the supplier will be owed is on
+                     screen while the lines are entered rather than only after
+                     saving. -->
+                <div v-if="!formLocked" class="financial-summary-block form-totals">
+                    <div class="financial-row">
+                        <span>{{ $t('subtotal') }}</span>
+                        <span>{{ money(formSubtotal) }}</span>
+                    </div>
+                    <div class="financial-row">
+                        <span>{{ $t('discount_label') }}</span>
+                        <span>− {{ money(form.discount) }}</span>
+                    </div>
+                    <div class="financial-row">
+                        <span>{{ $t('tax_label') }}</span>
+                        <span>+ {{ money(form.tax) }}</span>
+                    </div>
+                    <div class="financial-row grand-total" :class="{ 'total-invalid': discountTooLarge }">
+                        <span>{{ $t('grand_total_label') }}</span>
+                        <span>{{ money(formTotal) }}</span>
+                    </div>
+                </div>
+
+                <div class="form-footer">
+                    <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
+                    <template v-if="!isEditMode">
+                        <el-button :loading="submittingForm" @click="saveOrder({ approve: false })">
+                            {{ $t('po_save_as_pending') }}
+                        </el-button>
+                        <!-- Most orders are placed by the person who approves
+                             them; saving and approving in one go spares them
+                             finding the row again to click Approve. -->
+                        <el-button type="primary" :loading="submittingForm" @click="saveOrder({ approve: true })">
+                            <i class="fas fa-circle-check"></i> {{ $t('po_save_and_approve') }}
+                        </el-button>
+                    </template>
+                    <el-button v-else type="primary" :loading="submittingForm" @click="saveOrder()">{{ $t('save_purchase_order') }}</el-button>
                 </div>
             </el-form>
+            </div>
         </el-drawer>
 
         <!-- Quick Add Product Dialog: creates a missing item and drops it
@@ -676,7 +803,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
@@ -684,7 +811,7 @@ import { useSuppliersStore } from '@/stores/suppliers';
 import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
-import { baseCurrencyCode } from '@/utils/currency';
+import { baseCurrencyCode, formatMoney } from '@/utils/currency';
 import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -701,6 +828,11 @@ const productsStore = useProductsStore();
 
 const searchQuery = ref('');
 
+// A 55% drawer on a phone left a column too narrow to type an item into.
+const viewportWidth = ref(window.innerWidth);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+const drawerSize = computed(() => (viewportWidth.value < 900 ? '100%' : '55%'));
+
 // Drawers and actions state
 const detailDrawerVisible = ref(false);
 const loadingDetail = ref(false);
@@ -709,7 +841,15 @@ const selectedOrder = ref(null);
 const formDrawerVisible = ref(false);
 const isEditMode = ref(false);
 const submittingForm = ref(false);
+// Loading the order into the form is not saving it; sharing the flag spun the
+// save button while the fields were still empty.
+const loadingForm = ref(false);
 const editingOrderId = ref(null);
+const editingStatus = ref('');
+
+// Received and cancelled orders keep their lines as booked: the form only
+// offers their dates and notes, which is all the API will take for them.
+const formLocked = computed(() => isEditMode.value && ['completed', 'cancelled'].includes(normalizeStatus(editingStatus.value)));
 
 // Item-row product search: starts as whatever page loaded on mount, then
 // becomes the live server search results once the operator types. Shared
@@ -744,9 +884,20 @@ const quickAddSupplierForm = reactive({
     company: ''
 });
 
+// Rows are keyed by this rather than by their index, so removing a line from
+// the middle does not hand its neighbour's selected product to the wrong row.
+let rowSeq = 0;
+const blankRow = (overrides = {}) => ({
+    key: ++rowSeq,
+    product_id: '',
+    quantity: 1,
+    unit_price: '',
+    sale_price: '',
+    ...overrides,
+});
+
 const form = reactive({
     supplier_id: '',
-    status: 'pending',
     order_date: '',
     due_date: '',
     discount: 0,
@@ -755,15 +906,94 @@ const form = reactive({
     items: []
 });
 
+const todayIso = () => {
+    // Local date, not toISOString(): that is UTC, so in Damascus an order
+    // opened just after midnight was dated the day before.
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const resetForm = () => {
     form.supplier_id = '';
-    form.status = 'pending';
-    form.order_date = new Date().toISOString().split('T')[0];
+    form.order_date = todayIso();
     form.due_date = '';
     form.discount = 0;
     form.tax = 0;
     form.notes = '';
-    form.items = [{ product_id: '', quantity: 1, unit_price: '', sale_price: '' }];
+    form.items = [blankRow()];
+};
+
+/* Unsaved-changes guard: the drawer closes on a stray click outside it, and
+ * that used to throw away a half-entered order without a word. */
+let formSnapshot = '';
+const snapshotForm = () => JSON.stringify({ ...form, items: form.items.map(({ key, ...rest }) => rest) });
+const markFormClean = () => { formSnapshot = snapshotForm(); };
+const formIsDirty = () => formSnapshot !== '' && snapshotForm() !== formSnapshot;
+
+const confirmCloseForm = async (done) => {
+    const close = () => (typeof done === 'function' ? done() : (formDrawerVisible.value = false));
+    if (!formIsDirty()) return close();
+    try {
+        await ElMessageBox.confirm(t('po_unsaved_changes'), t('cancel'), {
+            type: 'warning',
+            confirmButtonText: t('po_discard_changes'),
+            cancelButtonText: t('po_keep_editing'),
+        });
+        close();
+    } catch {
+        // Kept editing.
+    }
+};
+
+/* Money and dates, written the way the rest of the admin writes them — this
+ * screen alone printed a hardcoded "$" over figures kept in the base currency. */
+const money = (value) => formatMoney(value);
+const num = (value) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+const formatDate = (value) => (value ? String(value).slice(0, 10) : '-');
+
+const lineTotal = (item) => num(item.quantity) * num(item.unit_price);
+const formSubtotal = computed(() => form.items.reduce((sum, item) => sum + lineTotal(item), 0));
+const formTotal = computed(() => formSubtotal.value + num(form.tax) - num(form.discount));
+const discountTooLarge = computed(() => num(form.discount) > formSubtotal.value + num(form.tax));
+
+// Two lines for one product split what is really one order line, and the
+// receipt then matches its quantity against only one of them.
+const duplicateProductIds = computed(() => {
+    const seen = new Set();
+    const dupes = new Set();
+    form.items.forEach(({ product_id: id }) => {
+        if (!id) return;
+        (seen.has(id) ? dupes : seen).add(id);
+    });
+    return dupes;
+});
+
+const isBeforeOrderDate = (date) => {
+    if (!form.order_date) return false;
+    const [y, m, d] = form.order_date.split('-').map(Number);
+    return date < new Date(y, m - 1, d);
+};
+
+const productLabel = (p) => [p.name_ar || p.name, p.sku].filter(Boolean).join(' — ');
+
+// Names of what was ordered, for the list row.
+const itemsPreview = (order) => (order.items || [])
+    .map((item) => item.product?.name_ar || item.product_name)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('، ') + ((order.items?.length || 0) > 3 ? '…' : '');
+
+// Only an order still waiting on its goods can be late.
+const dueState = (order) => {
+    if (!order?.due_date || isClosed(order)) return null;
+    const due = formatDate(order.due_date);
+    const today = todayIso();
+    if (due < today) return 'overdue';
+    if (due === today) return 'today';
+    return null;
 };
 
 const normalizeStatus = normalizePurchaseOrderStatus;
@@ -781,7 +1011,7 @@ const statusIconClass = (status) => {
     const value = normalizeStatus(status);
     if (['completed', 'complete', 'paid', 'delivered'].includes(value)) return 'fa-check-circle';
     if (['pending', 'processing'].includes(value)) return 'fa-clock';
-    if (['cancelled', 'cancelled'].includes(value)) return 'fa-times-circle';
+    if (value === 'cancelled') return 'fa-times-circle';
     return 'fa-sync-alt';
 };
 
@@ -800,23 +1030,39 @@ const getArabicStatus = (status) => {
     return mapping[value] || status;
 };
 
-// Timeline progress
-const getTimelineProgressWidth = (status) => {
-    const val = normalizeStatus(status);
-    if (val === 'pending') return '0%';
-    if (val === 'confirmed') return '33%';
-    if (val === 'processing') return '66%';
-    if (val === 'completed' || val === 'delivered') return '100%';
-    return '0%';
-};
+// Timeline. 'processing' only appears on the track for an order that is in it:
+// most orders go straight from approved to received, and a permanent middle
+// step they never visit read as though every one of them had skipped it.
+const timelineSteps = computed(() => {
+    const steps = [
+        { key: 'pending', label: t('po_step_created'), icon: 'fa-file-signature' },
+        { key: 'confirmed', label: t('po_step_approved'), icon: 'fa-circle-check' },
+    ];
+    if (normalizeStatus(selectedOrder.value?.status) === 'processing') {
+        steps.push({ key: 'processing', label: t('po_step_processing'), icon: 'fa-gears' });
+    }
+    steps.push({ key: 'completed', label: t('po_step_received'), icon: 'fa-boxes-packing' });
+    return steps;
+});
 
-const isStepCompleted = (currentStatus, step) => {
-    const val = normalizeStatus(currentStatus);
-    const steps = ['pending', 'confirmed', 'processing', 'completed'];
-    const currentIndex = steps.indexOf(val);
-    const stepIndex = steps.indexOf(step);
-    return stepIndex <= currentIndex;
-};
+const timelineIndex = computed(() => {
+    const stage = normalizeStatus(selectedOrder.value?.status);
+    return Math.max(0, timelineSteps.value.findIndex((step) => step.key === stage));
+});
+
+// The bar runs between the first and last node (see .progress-base-bar).
+const TIMELINE_TRACK = '76%';
+const timelineFillWidth = computed(() => {
+    const segments = timelineSteps.value.length - 1;
+    return `calc(${TIMELINE_TRACK} * ${segments ? timelineIndex.value / segments : 0})`;
+});
+
+const detailSubtotal = computed(() => (selectedOrder.value?.items || [])
+    .reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
+
+// Received quantities are only meaningful once a receipt has been recorded.
+const showReceived = computed(() => (selectedOrder.value?.receipts?.length || 0) > 0
+    || normalizeStatus(selectedOrder.value?.status) === 'completed');
 
 /* ------------------------------------------------------------------ *
  * The list
@@ -899,43 +1145,61 @@ const openDetailDrawer = async (id) => {
 
 const openCreateDrawer = () => {
     isEditMode.value = false;
+    editingStatus.value = '';
     resetForm();
+    markFormClean();
     formDrawerVisible.value = true;
 };
 
 const openEditDrawer = async (id) => {
     isEditMode.value = true;
     editingOrderId.value = id;
-    formDrawerVisible.value = true;
+    editingStatus.value = '';
+    formSnapshot = '';
     resetForm();
-    submittingForm.value = true;
+    formDrawerVisible.value = true;
+    loadingForm.value = true;
     try {
         const res = await purchaseOrdersApi.getById(id);
         const order = res.data.data;
+        editingStatus.value = order.status;
         form.supplier_id = order.supplier_id;
-        form.status = order.status;
-        form.order_date = order.order_date;
-        form.due_date = order.due_date;
-        form.discount = order.discount;
-        form.tax = order.tax;
-        form.notes = order.notes;
-        form.items = order.items.map(item => ({
+        form.order_date = formatDate(order.order_date || order.created_at);
+        form.due_date = order.due_date ? formatDate(order.due_date) : '';
+        form.discount = num(order.discount);
+        form.tax = num(order.tax);
+        form.notes = order.notes || '';
+        form.items = order.items.map(item => blankRow({
             product_id: item.product_id,
             quantity: item.quantity,
-            unit_price: item.unit_price,
-            sale_price: item.sale_price
+            unit_price: num(item.unit_price),
+            sale_price: item.sale_price != null ? num(item.sale_price) : '',
         }));
+
+        // A remote select shows the raw id for a value it has no option for,
+        // so a product outside the first hundred rendered as a bare number.
+        const known = new Set(productOptions.value.map((p) => p.id));
+        const missing = order.items.map((item) => item.product).filter((p) => p && !known.has(p.id));
+        if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+
+        markFormClean();
     } catch (e) {
         ElMessage.error(t('failed_to_load_order_for_edit'));
         formDrawerVisible.value = false;
     } finally {
-        submittingForm.value = false;
+        loadingForm.value = false;
     }
+};
+
+const editFromDrawer = () => {
+    const id = selectedOrder.value?.id;
+    detailDrawerVisible.value = false;
+    if (id) openEditDrawer(id);
 };
 
 // Form Dynamic items grid actions
 const addItemRow = () => {
-    form.items.push({ product_id: '', quantity: 1, unit_price: '', sale_price: '' });
+    form.items.push(blankRow());
 };
 
 const removeItemRow = (idx) => {
@@ -1083,32 +1347,78 @@ const submitQuickAddSupplier = async () => {
     }
 };
 
-const saveOrder = async () => {
-    if (!form.supplier_id) {
-        ElMessage.warning(t('please_select_supplier_first'));
-        return;
+// The API's own reason, where it gave one, rather than a generic failure.
+const apiError = (e, fallback) => {
+    const errors = e?.response?.data?.errors;
+    const first = errors && Object.values(errors).flat()[0];
+    return first || e?.response?.data?.message || fallback;
+};
+
+const orderPayload = () => {
+    if (formLocked.value) {
+        return { order_date: form.order_date || null, due_date: form.due_date || null, notes: form.notes || null };
     }
-    if (form.items.some(item => !item.product_id || !item.quantity || !item.unit_price)) {
-        ElMessage.warning(t('please_fill_all_item_fields'));
-        return;
+    return {
+        supplier_id: form.supplier_id,
+        order_date: form.order_date || null,
+        due_date: form.due_date || null,
+        discount: num(form.discount),
+        tax: num(form.tax),
+        notes: form.notes || null,
+        items: form.items.map(({ key, ...item }) => ({
+            ...item,
+            sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
+        })),
+    };
+};
+
+const saveOrder = async ({ approve = false } = {}) => {
+    if (!formLocked.value) {
+        if (!form.supplier_id) {
+            ElMessage.warning(t('please_select_supplier_first'));
+            return;
+        }
+        if (form.items.some(item => !item.product_id || !item.quantity || item.unit_price === '' || item.unit_price == null)) {
+            ElMessage.warning(t('please_fill_all_item_fields'));
+            return;
+        }
+        if (duplicateProductIds.value.size) {
+            const id = [...duplicateProductIds.value][0];
+            const product = productOptions.value.find((p) => p.id === id);
+            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || id }));
+            return;
+        }
+        if (discountTooLarge.value) {
+            ElMessage.warning(t('po_discount_exceeds_total'));
+            return;
+        }
     }
-    
+
     submittingForm.value = true;
     try {
         if (isEditMode.value) {
-            await purchaseOrdersApi.update(editingOrderId.value, form);
+            await purchaseOrdersApi.update(editingOrderId.value, orderPayload());
             ElMessage.success(t('purchase_order_updated'));
+            markFormClean();
             formDrawerVisible.value = false;
             await loadOrders(store.pagination.current_page);
         } else {
-            const { data } = await purchaseOrdersApi.create(form);
-            ElMessage.success(t('purchase_order_saved'));
+            const payload = { ...orderPayload(), status: approve ? 'confirmed' : 'pending' };
+            const { data } = await purchaseOrdersApi.create(payload);
+            markFormClean();
             formDrawerVisible.value = false;
             await loadOrders(1);
-            promptCreateGoodsReceipt(data.data?.id);
+            // Only an approved order can be received, so offering the receipt
+            // for one still pending sent the goods in ahead of the approval.
+            if (approve) {
+                ElMessage.success(t('purchase_order_approved'));
+                promptCreateGoodsReceipt(data.data?.id, t('order_approved_receive_now_message'));
+            } else {
+                ElMessage.success(t('purchase_order_saved'));
+            }
         }
     } catch (e) {
-        ElMessage.error(t('failed_to_save_purchase_order'));
+        ElMessage.error(apiError(e, t('failed_to_save_purchase_order')));
     } finally {
         submittingForm.value = false;
     }
@@ -1153,9 +1463,12 @@ const deleteOrder = async (id) => {
     try {
         await purchaseOrdersApi.delete(id);
         ElMessage.success(t('purchase_order_deleted'));
-        await loadOrders(store.pagination.current_page);
+        // Stepping back a page when the last row on this one went, instead of
+        // landing on an empty page past the end.
+        const { current_page: page } = store.pagination;
+        await loadOrders(store.orders.length === 1 && page > 1 ? page - 1 : page);
     } catch (error) {
-        ElMessage.error(t('failed_to_delete_purchase_order'));
+        ElMessage.error(apiError(error, t('failed_to_delete_purchase_order')));
     }
 };
 
@@ -1178,11 +1491,15 @@ const busyOrderId = ref(null);
 const isApproved = (order) => ['confirmed', 'processing'].includes(normalizeStatus(order?.status));
 const isClosed = (order) => ['completed', 'cancelled'].includes(normalizeStatus(order?.status));
 
-// A received order's lines are what the stock and the ledger were built from,
-// so editing them after the fact would describe goods that never arrived.
-const canEdit = (order) => !isClosed(order);
+const isCancelled = (order) => normalizeStatus(order?.status) === 'cancelled';
+
+// Every order can be opened for editing; a received or cancelled one opens
+// with its lines locked (see formLocked), since those are what the stock and
+// the ledger were built from.
+const canEdit = (order) => !!order;
 const canCancel = (order) => !isClosed(order);
-const canDelete = (order) => normalizeStatus(order?.status) !== 'completed';
+// A receipt's stock movement and journal entry point back at the order.
+const canDelete = (order) => normalizeStatus(order?.status) !== 'completed' && !(order?.receipts_count > 0);
 
 const moveToStatus = async (order, status) => {
     busyOrderId.value = order.id;
@@ -1204,7 +1521,7 @@ const approveOrder = async (order) => {
             t('approve_purchase_order_message', {
                 number: order.order_number,
                 supplier: order.supplier?.name || '-',
-                total: parseFloat(order.total || 0).toFixed(2),
+                total: money(order.total),
             }),
             t('approve_purchase_order'),
             {
@@ -1384,16 +1701,18 @@ const prefillFromShortage = async (salesOrderId) => {
 
         resetForm();
         isEditMode.value = false;
-        form.items = shortages.map((row) => ({
+        form.items = shortages.map((row) => blankRow({
             product_id: row.product_id,
             quantity: row.suggested_quantity,
             unit_price: row.unit_price,
-            sale_price: '',
         }));
         // Says where these lines came from, so whoever approves the order later
         // can trace it back to the sale that needed them.
         form.notes = t('sales.prefilled_from_order', { order: orderNumber });
 
+        // Clean from here: the prefill is a starting point, not the
+        // operator's unsaved work.
+        markFormClean();
         formDrawerVisible.value = true;
         ElMessage.success(t('sales.prefilled_from_order', { order: orderNumber }));
     } catch (err) {
@@ -1401,7 +1720,10 @@ const prefillFromShortage = async (salesOrderId) => {
     }
 };
 
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+
 onMounted(async () => {
+    window.addEventListener('resize', onResize);
     // The purchases hub links here with ?search=<order number>; without this the
     // parameter was dropped and the operator landed on an unfiltered list.
     if (route.query.search) searchQuery.value = String(route.query.search);
@@ -1721,8 +2043,7 @@ onMounted(async () => {
 .progress-base-bar {
     position: absolute;
     top: 20px;
-    left: 12%;
-    right: 12%;
+    inset-inline: 12%;
     height: 4px;
     background: var(--border-color);
     z-index: 1;
@@ -1731,7 +2052,7 @@ onMounted(async () => {
 .progress-fill-bar {
     position: absolute;
     top: 20px;
-    left: 12%;
+    inset-inline-start: 12%;
     height: 4px;
     background: var(--success);
     z-index: 2;
@@ -1740,12 +2061,18 @@ onMounted(async () => {
 
 .timeline-nodes-wrapper {
     display: flex;
-    justify-content: space-around;
+    /* Evenly spread with the end nodes centred on 12% and 88%, where the bar
+       starts and stops. */
+    justify-content: space-between;
+    padding-inline: calc(12% - 40px);
     width: 100%;
     z-index: 3;
 }
 
 .timeline-node {
+    /* Fixed width, so each icon's centre sits exactly where the bar expects. */
+    width: 80px;
+    text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1953,6 +2280,154 @@ onMounted(async () => {
     font-weight: 600;
     color: var(--text-muted);
     margin-bottom: 0.35rem;
+}
+
+/* Secondary line under a cell's main value. */
+.cell-sub {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.supplier-cell > div {
+    min-width: 0;
+}
+
+.due-late {
+    color: var(--el-color-danger, #dc2626);
+    font-weight: 700;
+}
+
+.due-tag {
+    display: table;
+    margin: 0.2rem auto 0;
+}
+
+.qty-short {
+    color: var(--el-color-warning-dark-2, #b45309);
+    font-weight: 700;
+}
+
+.drawer-order-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.drawer-order-head > div {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.drawer-order-head h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.timeline-node.current .node-icon {
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.25);
+}
+
+.form-section {
+    border-top: 1px solid var(--border-color);
+    margin-top: 1rem;
+    padding-top: 1.5rem;
+}
+
+.form-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.form-section-head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.item-index {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--border-color);
+    color: var(--text-medium);
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-grid-row.item-duplicate {
+    border-color: var(--el-color-warning, #e6a23c);
+    background: #fffbeb;
+}
+
+.product-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.product-option small {
+    color: var(--text-muted);
+}
+
+.line-total-field strong {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    color: var(--text-dark);
+}
+
+.form-totals {
+    margin-top: 1rem;
+}
+
+.financial-row.total-invalid {
+    color: var(--el-color-danger, #dc2626);
+}
+
+.form-footer {
+    border-top: 1px solid var(--border-color);
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.form-footer .el-button + .el-button {
+    margin-inline-start: 0;
+}
+
+@media (max-width: 640px) {
+    .item-row-top,
+    .item-row-prices {
+        flex-wrap: wrap;
+    }
+
+    .price-field {
+        max-width: none;
+        min-width: 45%;
+    }
+
+    .financial-row {
+        width: 100%;
+    }
 }
 
 /* Form Grid row */
