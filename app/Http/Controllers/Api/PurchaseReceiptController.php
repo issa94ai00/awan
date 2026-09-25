@@ -10,19 +10,23 @@ use App\Models\Supplier;
 use App\Models\Product;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Purchasing\PurchaseOrderCostSync;
+use App\Services\Purchasing\SupplierPaymentRecorder;
+use App\Models\SupplierPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseReceiptController extends Controller
 {
-    public function __construct(private LedgerPostingService $ledger)
-    {
+    public function __construct(
+        private LedgerPostingService $ledger,
+        private SupplierPaymentRecorder $payments,
+    ) {
     }
 
     public function index(Request $request)
     {
-        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
+        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse', 'payments']);
 
         if ($request->has('supplier_id') && $request->supplier_id) {
             $query->where('supplier_id', $request->supplier_id);
@@ -34,7 +38,8 @@ class PurchaseReceiptController extends Controller
             'success' => true,
             'message' => 'Purchase receipts retrieved successfully',
             'data' => [
-                'receipts' => $receipts->items(),
+                // Each with what it cost, what was paid and how.
+                'receipts' => collect($receipts->items())->map->toArrayWithPayments()->all(),
                 'pagination' => [
                     'current_page' => $receipts->currentPage(),
                     'last_page' => $receipts->lastPage(),
@@ -64,7 +69,48 @@ class PurchaseReceiptController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
+            // Paid as the goods are booked in, in part or in full. Recorded as
+            // a supplier payment linked to this receipt, in the same
+            // transaction — so the receipt and the payment stand or fall
+            // together.
+            'paid_amount' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|in:'.implode(',', SupplierPayment::METHODS),
+            'payment_reference' => 'nullable|string|max:100',
         ]);
+
+        $paid = round((float) ($validated['paid_amount'] ?? 0), 2);
+        if ($paid > 0 && empty($validated['payment_method'])) {
+            throw ValidationException::withMessages(['payment_method' => 'اختر طريقة الدفع للمبلغ المدفوع']);
+        }
+        $payment = [
+            'payment_method' => $validated['payment_method'] ?? null,
+            'reference' => $validated['payment_reference'] ?? null,
+        ];
+        unset($validated['paid_amount'], $validated['payment_method'], $validated['payment_reference']);
+
+        // Paying suppliers is an admin task — the payments screen is behind
+        // role:admin — and receiving goods is not. A receipt must not become
+        // the way round that.
+        if ($paid > 0 && ! $request->user()?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'تسجيل الدفع للمورّد من صلاحيات المدير — احفظ الإيصال دون مبلغ مدفوع.',
+                'errors' => ['paid_amount' => ['تسجيل الدفع للمورّد من صلاحيات المدير']],
+            ], 403);
+        }
+
+        $receiptTotal = round(
+            collect($validated['items'])->sum(fn ($item) => (int) $item['quantity'] * (float) $item['unit_price'])
+            + (float) ($validated['tax_amount'] ?? 0),
+            2
+        );
+        if ($paid > $receiptTotal + 0.01) {
+            return response()->json([
+                'success' => false,
+                'message' => 'المبلغ المدفوع أكبر من قيمة الإيصال',
+                'errors' => ['paid_amount' => ['المبلغ المدفوع أكبر من قيمة الإيصال ('.number_format($receiptTotal, 2).')']],
+            ], 422);
+        }
 
         $variants = ProductVariant::forLines($validated['items']);
 
@@ -118,134 +164,157 @@ class PurchaseReceiptController extends Controller
 
         $inventory = app(\App\Services\Inventory\InventoryService::class);
 
-        $receipt = DB::transaction(function () use ($validated, $inventory, $variants) {
-            $receipt = PurchaseReceipt::create($validated);
+        try {
+            $receipt = DB::transaction(function () use ($validated, $inventory, $variants, $paid, $payment) {
+                $receipt = PurchaseReceipt::create($validated);
 
-            $products = Product::whereIn('id', collect($validated['items'])->pluck('product_id'))->get()->keyBy('id');
+                $products = Product::whereIn('id', collect($validated['items'])->pluck('product_id'))->get()->keyBy('id');
 
-            foreach ($validated['items'] as $item) {
-                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
-                $product = $products->get($item['product_id']);
+                foreach ($validated['items'] as $item) {
+                    $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+                    $product = $products->get($item['product_id']);
 
-                $receipt->items()->create([
-                    'product_id' => $item['product_id'],
-                    'product_variant_id' => $variant?->id,
-                    // Says which size came in, on the receipt and its print.
-                    'description' => $variant ? $variant->displayName($product?->name_ar ?? $product?->name_en) : null,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'sale_price' => $item['sale_price'] ?? null,
-                    'total' => $item['quantity'] * $item['unit_price'],
-                ]);
-            }
-
-            // Take the goods into stock. Previously a model hook on the receipt
-            // item did this on every save — including updates, so editing a
-            // receipt re-added the whole quantity. Receiving now runs once per
-            // receipt, keyed per item so a resubmit is a no-op, and flows
-            // through InventoryService so the warehouse row and the product
-            // total agree.
-            $warehouseId = $receipt->warehouse_id ?: $inventory->defaultWarehouseId();
-
-            foreach ($validated['items'] as $item) {
-                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
-
-                // Warehouse stock and the product's average cost stay per
-                // product. What belongs to one size — its own count, what it
-                // cost and what it sells for — goes on the variant below.
-                if ($variant) {
-                    $this->receiveIntoVariant($variant, $item);
+                    $receipt->items()->create([
+                        'product_id' => $item['product_id'],
+                        'product_variant_id' => $variant?->id,
+                        // Says which size came in, on the receipt and its print.
+                        'description' => $variant ? $variant->displayName($product?->name_ar ?? $product?->name_en) : null,
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'sale_price' => $item['sale_price'] ?? null,
+                        'total' => $item['quantity'] * $item['unit_price'],
+                    ]);
                 }
 
-                $inventory->receive(
-                    $item['product_id'],
-                    $item['quantity'],
-                    $warehouseId,
-                    [
-                        'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id']
-                            . ($variant ? ':variant:' . $variant->id : ''),
-                        'reference' => $receipt->receipt_number,
-                        'source' => 'purchase_receipt',
-                        'reason' => 'استلام من أمر شراء',
-                        'unit_cost' => $item['unit_price'],
-                        'created_by' => auth()->id(),
-                        // A purchase is real money paid, so it should move the
-                        // product's reference cost — a weighted average with
-                        // what was already on hand — not just open a FIFO
-                        // layer for this warehouse.
-                        'update_average_cost' => true,
-                        // If the operator set a shelf price on this line, receiving
-                        // the goods is what puts it into effect. A variant's
-                        // price is its own, set above — not the product's.
-                        'sale_price' => $variant ? null : ($item['sale_price'] ?? null),
-                    ]
+                // Take the goods into stock. Previously a model hook on the receipt
+                // item did this on every save — including updates, so editing a
+                // receipt re-added the whole quantity. Receiving now runs once per
+                // receipt, keyed per item so a resubmit is a no-op, and flows
+                // through InventoryService so the warehouse row and the product
+                // total agree.
+                $warehouseId = $receipt->warehouse_id ?: $inventory->defaultWarehouseId();
+
+                foreach ($validated['items'] as $item) {
+                    $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
+                    // Warehouse stock and the product's average cost stay per
+                    // product. What belongs to one size — its own count, what it
+                    // cost and what it sells for — goes on the variant below.
+                    if ($variant) {
+                        $this->receiveIntoVariant($variant, $item);
+                    }
+
+                    $inventory->receive(
+                        $item['product_id'],
+                        $item['quantity'],
+                        $warehouseId,
+                        [
+                            'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id']
+                                . ($variant ? ':variant:' . $variant->id : ''),
+                            'reference' => $receipt->receipt_number,
+                            'source' => 'purchase_receipt',
+                            'reason' => 'استلام من أمر شراء',
+                            'unit_cost' => $item['unit_price'],
+                            'created_by' => auth()->id(),
+                            // A purchase is real money paid, so it should move the
+                            // product's reference cost — a weighted average with
+                            // what was already on hand — not just open a FIFO
+                            // layer for this warehouse.
+                            'update_average_cost' => true,
+                            // If the operator set a shelf price on this line, receiving
+                            // the goods is what puts it into effect. A variant's
+                            // price is its own, set above — not the product's.
+                            'sale_price' => $variant ? null : ($item['sale_price'] ?? null),
+                        ]
+                    );
+                }
+
+                // Persist the warehouse actually used, so this receipt can be
+                // reversed later without guessing — and so the posting below knows
+                // which warehouse's inventory account to debit. This used to happen
+                // after the posting, which left a receipt that arrived without an
+                // explicit warehouse booked to the pooled account while its stock
+                // went into the default one: the very mismatch the per-warehouse
+                // debit exists to prevent.
+                if (!$receipt->warehouse_id && $warehouseId) {
+                    $receipt->update(['warehouse_id' => $warehouseId]);
+                }
+
+                // The receipt is what puts the goods on the balance sheet. Without
+                // this the inventory account was only ever credited — by sales —
+                // and drifted negative no matter how full the warehouse was.
+                $receipt->load('items');
+                $this->ledger->postGoodsReceipt($receipt);
+
+                // Bought on account, so the supplier is now owed for it — including
+                // the tax, which is part of what the invoice has to be paid at even
+                // though the books carry it separately from the goods.
+                $receipt->supplier?->updateBalance(
+                    $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
+                    + (float) ($receipt->tax_amount ?? 0)
                 );
-            }
 
-            // Persist the warehouse actually used, so this receipt can be
-            // reversed later without guessing — and so the posting below knows
-            // which warehouse's inventory account to debit. This used to happen
-            // after the posting, which left a receipt that arrived without an
-            // explicit warehouse booked to the pooled account while its stock
-            // went into the default one: the very mismatch the per-warehouse
-            // debit exists to prevent.
-            if (!$receipt->warehouse_id && $warehouseId) {
-                $receipt->update(['warehouse_id' => $warehouseId]);
-            }
+                // Receiving goods against a linked order is what completes it: the
+                // order was a promise to buy, and this receipt is that promise
+                // kept. Skips a cancelled order rather than resurrecting it —
+                // goods should never have been received against one anyway.
+                if ($receipt->purchase_order_id) {
+                    PurchaseOrder::whereKey($receipt->purchase_order_id)
+                        ->where('status', '!=', 'cancelled')
+                        ->update([
+                            'status' => 'completed',
+                            'received_date' => $receipt->receipt_date ?? now(),
+                        ]);
 
-            // The receipt is what puts the goods on the balance sheet. Without
-            // this the inventory account was only ever credited — by sales —
-            // and drifted negative no matter how full the warehouse was.
-            $receipt->load('items');
-            $this->ledger->postGoodsReceipt($receipt);
+                    // And it settles what the order cost. Until now the only
+                    // record of that was the receipt, so purchase reporting went
+                    // on costing the order at the price it was placed at, however
+                    // much of it actually turned up or at whatever price.
+                    app(PurchaseOrderCostSync::class)->syncFromReceipt($receipt);
+                }
 
-            // Bought on account, so the supplier is now owed for it — including
-            // the tax, which is part of what the invoice has to be paid at even
-            // though the books carry it separately from the goods.
-            $receipt->supplier?->updateBalance(
-                $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
-                + (float) ($receipt->tax_amount ?? 0)
-            );
-
-            // Receiving goods against a linked order is what completes it: the
-            // order was a promise to buy, and this receipt is that promise
-            // kept. Skips a cancelled order rather than resurrecting it —
-            // goods should never have been received against one anyway.
-            if ($receipt->purchase_order_id) {
-                PurchaseOrder::whereKey($receipt->purchase_order_id)
-                    ->where('status', '!=', 'cancelled')
-                    ->update([
-                        'status' => 'completed',
-                        'received_date' => $receipt->receipt_date ?? now(),
+                // What was paid on the spot comes straight off what was just owed.
+                if ($paid > 0 && $receipt->supplier) {
+                    $this->payments->record($receipt->supplier, $payment + [
+                        'amount' => $paid,
+                        'purchase_receipt_id' => $receipt->id,
+                        'purchase_order_id' => $receipt->purchase_order_id,
+                        'payment_date' => $receipt->receipt_date?->toDateString(),
+                        'notes' => 'دفعة عند استلام '.$receipt->receipt_number,
                     ]);
+                }
 
-                // And it settles what the order cost. Until now the only
-                // record of that was the receipt, so purchase reporting went
-                // on costing the order at the price it was placed at, however
-                // much of it actually turned up or at whatever price.
-                app(PurchaseOrderCostSync::class)->syncFromReceipt($receipt);
-            }
+                return $receipt;
+            });
+        } catch (\RuntimeException $e) {
+            // The ledger could not post the receipt or its payment: nothing
+            // was kept, stock included.
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 422);
+        }
 
-            return $receipt;
-        });
-
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse', 'payments']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إنشاء إيصال الاستلام بنجاح، وأُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي',
-            'data' => $receipt
+            'message' => $paid > 0
+                ? 'تم إنشاء إيصال الاستلام وتسجيل الدفعة، وأُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي'
+                : 'تم إنشاء إيصال الاستلام بنجاح، وأُدخلت البضاعة للمخزون ورُحّل قيدها المحاسبي',
+            'data' => $receipt->toArrayWithPayments(),
         ], 201);
     }
 
     public function show(PurchaseReceipt $receipt)
     {
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'payments']);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase receipt retrieved successfully',
-            'data' => $receipt
+            'data' => $receipt->toArrayWithPayments(),
         ]);
     }
 
@@ -356,12 +425,12 @@ class PurchaseReceiptController extends Controller
         }
 
         $receipt->update(collect($validated)->except('items')->all());
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse', 'payments']);
 
         return response()->json([
             'success' => true,
             'message' => 'تم تحديث بيانات إيصال الاستلام',
-            'data' => $receipt
+            'data' => $receipt->toArrayWithPayments(),
         ]);
     }
 

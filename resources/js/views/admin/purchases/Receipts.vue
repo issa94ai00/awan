@@ -79,8 +79,28 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="receipt_date" :label="$t('the_date')" width="180" align="center" />
-                    <el-table-column prop="notes" :label="$t('comments')" min-width="200" show-overflow-tooltip />
+                    <el-table-column prop="receipt_date" :label="$t('the_date')" width="120" align="center">
+                        <template #default="{ row }">{{ formatDate(row.receipt_date) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('rc_total')" width="120" align="center">
+                        <template #default="{ row }">{{ money(row.total_amount) }}</template>
+                    </el-table-column>
+                    <!-- What was paid against it, how, and what is still owed. -->
+                    <el-table-column :label="$t('rc_paid')" width="150" align="center">
+                        <template #default="{ row }">
+                            <div class="paid-cell">
+                                <strong>{{ money(row.paid_amount) }}</strong>
+                                <small v-if="row.payment_methods?.length">{{ methodsText(row.payment_methods) }}</small>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('rc_due')" width="130" align="center">
+                        <template #default="{ row }">
+                            <el-tag v-if="num(row.due_amount) < 0.01" type="success" size="small" effect="plain">{{ $t('fully_paid') }}</el-tag>
+                            <el-tag v-else :type="num(row.paid_amount) > 0 ? 'warning' : 'danger'" size="small" effect="plain">{{ money(row.due_amount) }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="notes" :label="$t('comments')" min-width="160" show-overflow-tooltip />
                     
                     <!-- Actions Column -->
                     <el-table-column :label="$t('actions')" width="220" align="center">
@@ -88,6 +108,16 @@
                             <el-button-group class="action-btn-group">
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button
+                                    v-if="mayPay && num(row.due_amount) >= 0.01"
+                                    size="small"
+                                    type="success"
+                                    plain
+                                    @click="openPayDialog(row)"
+                                    :title="$t('rc_pay_remaining')"
+                                >
+                                    <i class="fas fa-money-bill-wave"></i>
                                 </el-button>
                                 <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
                                     <i class="fas fa-edit"></i>
@@ -176,7 +206,15 @@
                             <div class="financial-summary-block mt-4">
                                 <div class="financial-row grand-total">
                                     <span>{{ $t('grand_total_label') }}</span>
-                                    <span>${{ parseFloat(selectedReceipt.total || 0).toFixed(2) }}</span>
+                                    <span>{{ money(selectedReceipt.total_amount) }}</span>
+                                </div>
+                                <div class="financial-row">
+                                    <span>{{ $t('rc_paid') }}</span>
+                                    <span>{{ money(selectedReceipt.paid_amount) }}</span>
+                                </div>
+                                <div class="financial-row" :class="num(selectedReceipt.due_amount) >= 0.01 ? 'text-danger' : 'text-success'">
+                                    <span>{{ $t('rc_due') }}</span>
+                                    <span>{{ num(selectedReceipt.due_amount) >= 0.01 ? money(selectedReceipt.due_amount) : $t('fully_paid') }}</span>
                                 </div>
                             </div>
                         </el-card>
@@ -234,6 +272,33 @@
                                     <strong v-else>{{ $t('direct_receipt') }}</strong>
                                 </div>
                             </div>
+                        </el-card>
+
+                        <el-card shadow="never" class="mb-3">
+                            <template #header>
+                                <div class="payments-card-head">
+                                    <span class="card-title-txt"><i class="fas fa-money-bill-wave text-muted mr-1"></i> {{ $t('rc_payments') }}</span>
+                                    <el-button
+                                        v-if="mayPay && num(selectedReceipt.due_amount) >= 0.01"
+                                        size="small"
+                                        type="success"
+                                        plain
+                                        @click="openPayDialog(selectedReceipt)"
+                                    >
+                                        {{ $t('rc_pay_remaining') }}
+                                    </el-button>
+                                </div>
+                            </template>
+                            <div v-if="selectedReceipt.payments?.length" class="info-list">
+                                <div v-for="p in selectedReceipt.payments" :key="p.id" class="info-item">
+                                    <span class="lbl">
+                                        {{ formatDate(p.payment_date) }} · {{ paymentMethodLabel(p.payment_method) }}
+                                        <template v-if="p.reference"> · {{ p.reference }}</template>
+                                    </span>
+                                    <strong>{{ money(p.amount) }}</strong>
+                                </div>
+                            </div>
+                            <p v-else class="muted-txt">{{ $t('rc_no_payments') }}</p>
                         </el-card>
 
                         <el-card v-if="selectedReceipt.notes" shadow="never">
@@ -540,6 +605,41 @@
                         <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
                     </el-form-item>
 
+                    <!-- Paid as the goods come in, in part or in full. Recorded as a
+                         supplier payment linked to this receipt; the rest stays
+                         owed to the supplier. Paying is an admin task. -->
+                    <template v-if="!isEditMode && mayPay">
+                        <el-row :gutter="12">
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('rc_paid_now')">
+                                    <div class="paid-now-row">
+                                        <el-input-number
+                                            v-model="form.paid_amount"
+                                            :min="0"
+                                            :max="receiptTotal"
+                                            :precision="2"
+                                            :controls="false"
+                                            class="paid-now-input"
+                                        />
+                                        <el-button size="default" plain @click="form.paid_amount = Math.round(receiptTotal * 100) / 100">
+                                            {{ $t('rc_pay_in_full') }}
+                                        </el-button>
+                                    </div>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('payment_method')" :required="num(form.paid_amount) > 0">
+                                    <el-radio-group v-model="form.payment_method" :disabled="num(form.paid_amount) <= 0">
+                                        <el-radio-button v-for="m in PAY_METHODS" :key="m" :value="m">{{ paymentMethodLabel(m) }}</el-radio-button>
+                                    </el-radio-group>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+                        <el-form-item v-if="num(form.paid_amount) > 0 && form.payment_method !== 'cash'" :label="$t('rc_payment_reference')">
+                            <el-input v-model="form.payment_reference" maxlength="100" :placeholder="$t('rc_payment_reference_hint')" />
+                        </el-form-item>
+                    </template>
+
                     <el-form-item :label="$t('receipt_notes')">
                         <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('receipt_notes_placeholder')" />
                     </el-form-item>
@@ -554,8 +654,16 @@
                             <span>+ {{ money(form.tax_amount) }}</span>
                         </div>
                         <div class="financial-row grand-total">
-                            <span>{{ $t('rc_owed_to_supplier') }}</span>
+                            <span>{{ $t('rc_total') }}</span>
                             <span>{{ money(receiptTotal) }}</span>
+                        </div>
+                        <div v-if="num(form.paid_amount) > 0" class="financial-row">
+                            <span>{{ $t('rc_paid_now') }} ({{ paymentMethodLabel(form.payment_method) }})</span>
+                            <span>− {{ money(form.paid_amount) }}</span>
+                        </div>
+                        <div class="financial-row grand-total">
+                            <span>{{ $t('rc_owed_to_supplier') }}</span>
+                            <span>{{ money(owedAfterPayment) }}</span>
                         </div>
                         <div v-if="linkedOrder && Math.abs(receiptTotal - num(linkedOrder.total)) >= 0.01" class="financial-row order-diff">
                             <span>{{ $t('rc_vs_order_total') }}</span>
@@ -569,8 +677,8 @@
             <template #footer>
                 <div class="form-footer">
                     <div v-if="!isEditMode" class="footer-total">
-                        <span>{{ $t('rc_owed_to_supplier') }}</span>
-                        <strong>{{ money(receiptTotal) }}</strong>
+                        <span>{{ num(form.paid_amount) > 0 ? $t('rc_owed_to_supplier') : $t('rc_total') }}</span>
+                        <strong>{{ money(num(form.paid_amount) > 0 ? owedAfterPayment : receiptTotal) }}</strong>
                         <small>{{ $t('po_items_count', filledItemCount) }} · {{ $t('rc_units_n', { n: totalUnits }) }}</small>
                     </div>
                     <div class="footer-actions">
@@ -583,6 +691,37 @@
                 </div>
             </template>
         </el-drawer>
+
+        <!-- Paying what is left on a receipt: a supplier payment linked to it. -->
+        <el-dialog v-model="payDialog.visible" :title="$t('rc_pay_remaining')" width="440px" append-to-body>
+            <el-form label-position="top" @submit.prevent="submitPayment">
+                <p class="pay-dialog-meta">
+                    {{ payDialog.receipt?.receipt_number }} · {{ payDialog.receipt?.supplier?.name }}
+                    <br />
+                    {{ $t('rc_due') }}: <strong>{{ money(payDialog.receipt?.due_amount) }}</strong>
+                </p>
+                <el-form-item :label="$t('amount')" required>
+                    <el-input-number v-model="payDialog.amount" :min="0.01" :max="num(payDialog.receipt?.due_amount)" :precision="2" :controls="false" style="width: 100%" />
+                </el-form-item>
+                <el-form-item :label="$t('payment_method')" required>
+                    <el-radio-group v-model="payDialog.payment_method">
+                        <el-radio-button v-for="m in PAY_METHODS" :key="m" :value="m">{{ paymentMethodLabel(m) }}</el-radio-button>
+                    </el-radio-group>
+                </el-form-item>
+                <el-form-item :label="$t('rc_payment_date')">
+                    <el-date-picker v-model="payDialog.payment_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+                </el-form-item>
+                <el-form-item v-if="payDialog.payment_method !== 'cash'" :label="$t('rc_payment_reference')">
+                    <el-input v-model="payDialog.reference" maxlength="100" :placeholder="$t('rc_payment_reference_hint')" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="payDialog.visible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="success" :loading="payDialog.saving" :disabled="!(num(payDialog.amount) > 0)" @click="submitPayment">
+                    {{ $t('rc_record_payment') }}
+                </el-button>
+            </template>
+        </el-dialog>
 
         <!-- Quick Add Product Dialog: lets an unlisted item be created and
              dropped straight into the receipt line that needed it, so a
@@ -667,6 +806,9 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
+import { paymentMethodLabel } from '@/utils/sales';
+import { supplierPaymentsApi } from '@/api/supplierPayments';
+import { useStockShortage } from '@/Composables/useStockShortage';
 
 const { t } = useI18n();
 
@@ -733,8 +875,23 @@ const form = reactive({
     receipt_date: '',
     tax_amount: 0,
     notes: '',
+    // Paid on the spot, if anything; the rest stays owed.
+    paid_amount: 0,
+    payment_method: 'cash',
+    payment_reference: '',
     items: []
 });
+
+// As on the supplier-payments screen: no card, which this business does not
+// pay suppliers by.
+const PAY_METHODS = ['cash', 'bank_transfer', 'check'];
+
+// Paying a supplier is an admin task (the payments API is behind role:admin),
+// so only an admin is offered it — here and on the receipt.
+const { canRaisePurchaseOrder: isPurchasingAdmin } = useStockShortage();
+const mayPay = computed(() => isPurchasingAdmin());
+
+const methodsText = (methods = []) => methods.map(paymentMethodLabel).join(' + ');
 
 const warehouses = computed(() => inventoryStore.warehouses);
 
@@ -766,6 +923,9 @@ const resetForm = () => {
     form.receipt_date = todayIso();
     form.tax_amount = 0;
     form.notes = '';
+    form.paid_amount = 0;
+    form.payment_method = 'cash';
+    form.payment_reference = '';
     form.items = [blankRow()];
     linkedOrder.value = null;
     orderLines.value = [];
@@ -1055,6 +1215,7 @@ const searchProducts = (query) => {
 
 const goodsTotal = computed(() => form.items.reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
 const receiptTotal = computed(() => goodsTotal.value + num(form.tax_amount));
+const owedAfterPayment = computed(() => Math.max(0, receiptTotal.value - num(form.paid_amount)));
 const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
 const totalUnits = computed(() => form.items.reduce((sum, item) => sum + (item.product_id ? num(item.quantity) : 0), 0));
 
@@ -1372,8 +1533,12 @@ const saveReceipt = async () => {
             });
             ElMessage.success(t('receipt_updated'));
         } else {
+            const paid = mayPay.value ? num(form.paid_amount) : 0;
             await purchaseReceiptsApi.create({
                 ...form,
+                paid_amount: paid > 0 ? paid : null,
+                payment_method: paid > 0 ? form.payment_method : null,
+                payment_reference: paid > 0 ? (form.payment_reference || null) : null,
                 purchase_order_id: form.purchase_order_id || null,
                 items: form.items.map(({ key, pick, ...item }) => ({
                     ...item,
@@ -1391,6 +1556,60 @@ const saveReceipt = async () => {
         ElMessage.error(apiError(e, t('failed_to_save_receipt')));
     } finally {
         submittingForm.value = false;
+    }
+};
+
+/* ------------------------------------------------------------------ *
+ * Paying what is left on a receipt
+ * ------------------------------------------------------------------ */
+
+const payDialog = reactive({
+    visible: false,
+    saving: false,
+    receipt: null,
+    amount: 0,
+    payment_method: 'cash',
+    payment_date: '',
+    reference: '',
+});
+
+const openPayDialog = (receipt) => {
+    Object.assign(payDialog, {
+        visible: true,
+        saving: false,
+        receipt,
+        amount: num(receipt.due_amount),
+        payment_method: 'cash',
+        payment_date: todayIso(),
+        reference: '',
+    });
+};
+
+const submitPayment = async () => {
+    const receipt = payDialog.receipt;
+    if (!receipt || payDialog.saving || !(num(payDialog.amount) > 0)) return;
+    payDialog.saving = true;
+    try {
+        await supplierPaymentsApi.create({
+            supplier_id: receipt.supplier_id,
+            purchase_receipt_id: receipt.id,
+            purchase_order_id: receipt.purchase_order_id || null,
+            amount: num(payDialog.amount),
+            payment_method: payDialog.payment_method,
+            payment_date: payDialog.payment_date || null,
+            reference: payDialog.reference || null,
+        });
+        payDialog.visible = false;
+        ElMessage.success(t('rc_payment_recorded'));
+        await store.fetchReceipts();
+        if (detailDrawerVisible.value && selectedReceipt.value?.id === receipt.id) {
+            await openDetailDrawer(receipt.id);
+        }
+    } catch (error) {
+        const errors = error.response?.data?.errors;
+        ElMessage.error((errors && Object.values(errors).flat()[0]) || error.response?.data?.message || t('rc_payment_failed'));
+    } finally {
+        payDialog.saving = false;
     }
 };
 
@@ -2114,4 +2333,15 @@ onMounted(async () => {
         width: 100%;
     }
 }
+
+/* ---- Payment on the receipt ---- */
+.paid-cell { display: flex; flex-direction: column; line-height: 1.25; }
+.paid-cell small { color: var(--el-text-color-secondary); font-size: 0.75rem; }
+.paid-now-row { display: flex; gap: 0.5rem; width: 100%; }
+.paid-now-input { flex: 1; }
+.payments-card-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.muted-txt { color: var(--el-text-color-secondary); margin: 0; font-size: 0.85rem; }
+.pay-dialog-meta { margin: 0 0 1rem; color: var(--el-text-color-regular); line-height: 1.7; }
+.financial-row.text-danger { color: var(--el-color-danger); font-weight: 600; }
+.financial-row.text-success { color: var(--el-color-success); font-weight: 600; }
 </style>
