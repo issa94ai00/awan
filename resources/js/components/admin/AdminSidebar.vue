@@ -18,6 +18,8 @@
                 v-if="!mobileOpen"
                 class="collapse-btn"
                 :icon="collapsed ? Expand : Fold"
+                :aria-label="collapsed ? t('expand_sidebar') : t('collapse_sidebar')"
+                :title="collapsed ? t('expand_sidebar') : t('collapse_sidebar')"
                 circle
                 size="small"
                 @click="toggleSidebar"
@@ -26,36 +28,51 @@
                 v-if="mobileOpen"
                 class="collapse-btn mobile-close-btn"
                 :icon="Close"
+                :aria-label="t('close_menu')"
                 circle
                 size="small"
                 @click="closeMobile"
             />
         </div>
 
-        <nav class="sidebar-nav">
+        <nav ref="navRef" class="sidebar-nav" :aria-label="t('main_navigation')">
             <div v-if="!isCollapsed" class="nav-search">
                 <el-icon class="nav-search-icon"><Search /></el-icon>
                 <input
+                    ref="searchInputRef"
                     v-model="searchQuery"
                     type="text"
                     class="nav-search-input"
                     :placeholder="t('search_menu')"
-                    @keydown.esc="searchQuery = ''"
+                    :aria-label="t('search_menu')"
+                    @keydown="onSearchKeydown"
                 />
                 <button
                     v-if="searchQuery"
                     type="button"
                     class="nav-search-clear"
                     :aria-label="t('clear')"
-                    @click="searchQuery = ''"
+                    @click="clearSearch"
                 >
                     <el-icon><Close /></el-icon>
                 </button>
+                <kbd v-else class="nav-search-kbd" aria-hidden="true">/</kbd>
             </div>
+            <el-tooltip v-else :content="t('search_menu')" :placement="flyoutPlacement" :show-after="150">
+                <button type="button" class="nav-search-trigger" :aria-label="t('search_menu')" @click="openSearch">
+                    <el-icon><Search /></el-icon>
+                </button>
+            </el-tooltip>
 
-            <ul v-if="searchQuery.trim()" class="nav-list search-results">
-                <li v-for="item in filteredNavItems" :key="item.path + item.labelKey" class="nav-item">
-                    <router-link :to="item.path" class="nav-link" :class="{ active: isActive(item.path) }" @click="onSearchNavigate">
+            <ul v-if="hasQuery" class="nav-list search-results">
+                <li v-for="(item, index) in filteredNavItems" :key="item.path + item.labelKey" class="nav-item">
+                    <router-link
+                        :to="item.path"
+                        class="nav-link"
+                        :class="{ active: isActive(item.path), highlighted: index === highlightedIndex }"
+                        @mouseenter="highlightedIndex = index"
+                        @click="onSearchNavigate"
+                    >
                         <el-icon class="nav-ic"><component :is="item.icon" /></el-icon>
                         <span class="nav-text search-result-text">
                             {{ t(item.labelKey) }}
@@ -67,698 +84,88 @@
             </ul>
 
             <ul v-else class="nav-list">
-                <li class="nav-section-label">{{ t('nav_label_main') }}</li>
-                <li class="nav-item">
-                    <router-link to="/admin/dashboard" class="nav-link" :class="{ active: isActive('/admin/dashboard') }">
-                        <el-icon class="nav-ic"><Odometer /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('dashboard') }}</span>
-                    </router-link>
-                </li>
+                <template v-for="section in visibleMenu" :key="section.labelKey">
+                    <li class="nav-section-label">{{ t(section.labelKey) }}</li>
+                    <template v-for="entry in section.items" :key="entry.key">
+                        <li v-if="!entry.children" class="nav-item">
+                            <el-tooltip :disabled="!isCollapsed" :content="t(entry.labelKey)" :placement="flyoutPlacement" :show-after="150">
+                                <router-link
+                                    :to="entry.path"
+                                    class="nav-link"
+                                    :class="{ active: isActive(entry.path) }"
+                                    :aria-current="isActive(entry.path) ? 'page' : undefined"
+                                >
+                                    <el-icon class="nav-ic"><component :is="entry.icon" /></el-icon>
+                                    <span v-if="!isCollapsed" class="nav-text">{{ t(entry.labelKey) }}</span>
+                                </router-link>
+                            </el-tooltip>
+                        </li>
 
-                <li class="nav-section-label">{{ t('nav_label_content') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('content'), 'has-active-child': isGroupActiveRoute('content') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('content')" @keydown.enter.prevent="toggleGroup('content')" @keydown.space.prevent="toggleGroup('content')">
-                        <el-icon class="nav-ic"><Box /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('content_management') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('content') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('content')">
-                        <li>
-                            <router-link to="/admin/categories" class="nav-link">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('categories') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/products" class="nav-link">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('products') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/products/units" class="nav-link" :class="{ active: isActive('/admin/products/units') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('product_units') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/products/price-offer" class="nav-link" :class="{ active: isActive('/admin/products/price-offer') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('price_offer') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/special-offers" class="nav-link" :class="{ active: isActive('/admin/special-offers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('special_offers') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/secondary-navbar" class="nav-link" :class="{ active: isActive('/admin/secondary-navbar') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('secondary_navbar') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
+                        <li
+                            v-else
+                            class="nav-group"
+                            :class="{ open: isGroupOpen(entry.key), 'has-active-child': isGroupActiveRoute(entry.key) }"
+                        >
+                            <!-- Collapsed sidebar: hovering a group shows its pages in a flyout
+                                 instead of forcing the whole sidebar open. -->
+                            <el-popover
+                                :disabled="!isCollapsed"
+                                trigger="hover"
+                                :placement="flyoutPlacement"
+                                :width="230"
+                                :offset="14"
+                                :show-after="60"
+                                :hide-after="120"
+                                :show-arrow="false"
+                                popper-class="sidebar-flyout"
+                            >
+                                <template #reference>
+                                    <div
+                                        class="nav-group-header"
+                                        tabindex="0"
+                                        role="button"
+                                        :aria-expanded="isGroupOpen(entry.key)"
+                                        @click="toggleGroup(entry.key)"
+                                        @keydown.enter.prevent="toggleGroup(entry.key)"
+                                        @keydown.space.prevent="toggleGroup(entry.key)"
+                                    >
+                                        <el-icon class="nav-ic"><component :is="entry.icon" /></el-icon>
+                                        <span v-if="!isCollapsed" class="nav-text">{{ t(entry.labelKey) }}</span>
+                                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen(entry.key) }"><ArrowDown /></el-icon>
+                                        <span v-if="isCollapsed && isGroupActiveRoute(entry.key)" class="collapsed-active-dot"></span>
+                                    </div>
+                                </template>
+                                <div class="flyout-title">{{ t(entry.labelKey) }}</div>
+                                <router-link
+                                    v-for="child in entry.children"
+                                    :key="child.path + child.labelKey"
+                                    :to="child.path"
+                                    class="flyout-link"
+                                    :class="{ active: isActive(child.path) }"
+                                >
+                                    <span class="flyout-dot"></span>
+                                    {{ t(child.labelKey) }}
+                                </router-link>
+                            </el-popover>
 
-                <li class="nav-section-label">{{ t('nav_label_commerce') }}</li>
-                <li v-if="canAccessGroup('sales')" class="nav-group" :class="{ open: isGroupOpen('sales'), 'has-active-child': isGroupActiveRoute('sales') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('sales')" @keydown.enter.prevent="toggleGroup('sales')" @keydown.space.prevent="toggleGroup('sales')">
-                        <el-icon class="nav-ic"><ShoppingCart /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('sales') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('sales') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('sales')">
-                        <li>
-                            <router-link to="/admin/sales" class="nav-link" :class="{ active: isActive('/admin/sales') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/invoices" class="nav-link" :class="{ active: isActive('/admin/sales/invoices') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('invoices') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/invoices/create" class="nav-link" :class="{ active: isActive('/admin/sales/invoices/create') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('create_invoice') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/customers" class="nav-link" :class="{ active: isActive('/admin/sales/customers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('customers') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/quotes" class="nav-link" :class="{ active: isActive('/admin/sales/quotes') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('quotes') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/sales-orders" class="nav-link" :class="{ active: isActive('/admin/sales/sales-orders') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('sales_orders') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/payments" class="nav-link" :class="{ active: isActive('/admin/sales/payments') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('payments') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/sales/reports" class="nav-link" :class="{ active: isActive('/admin/sales/reports') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('professional_sales_reports') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-group" :class="{ open: isGroupOpen('rma'), 'has-active-child': isGroupActiveRoute('rma') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('rma')" @keydown.enter.prevent="toggleGroup('rma')" @keydown.space.prevent="toggleGroup('rma')">
-                        <el-icon class="nav-ic"><Refresh /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('rma') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('rma') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('rma')">
-                        <li>
-                            <router-link to="/admin/rma" class="nav-link" :class="{ active: isActive('/admin/rma') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/rma/create" class="nav-link" :class="{ active: isActive('/admin/rma/create') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('create') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li v-if="canAccessGroup('purchases')" class="nav-group" :class="{ open: isGroupOpen('purchases'), 'has-active-child': isGroupActiveRoute('purchases') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('purchases')" @keydown.enter.prevent="toggleGroup('purchases')" @keydown.space.prevent="toggleGroup('purchases')">
-                        <el-icon class="nav-ic"><ShoppingBag /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('purchases') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('purchases') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('purchases')">
-                        <li>
-                            <router-link to="/admin/purchases" class="nav-link" :class="{ active: isActive('/admin/purchases') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/suppliers" class="nav-link" :class="{ active: isActive('/admin/purchases/suppliers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('suppliers') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/orders" class="nav-link" :class="{ active: isActive('/admin/purchases/orders') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('purchase_orders') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/receipts" class="nav-link" :class="{ active: isActive('/admin/purchases/receipts') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('receipts') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/payments" class="nav-link" :class="{ active: isActive('/admin/purchases/payments') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('supplier_payments') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/returns" class="nav-link" :class="{ active: isActive('/admin/purchases/returns') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('purchase_returns') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/purchases/report" class="nav-link" :class="{ active: isActive('/admin/purchases/report') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('purchase_report') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li v-if="canAccessGroup('accounting')" class="nav-group" :class="{ open: isGroupOpen('accounting'), 'has-active-child': isGroupActiveRoute('accounting') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('accounting')" @keydown.enter.prevent="toggleGroup('accounting')" @keydown.space.prevent="toggleGroup('accounting')">
-                        <el-icon class="nav-ic"><Coin /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('accounting') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('accounting') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('accounting')">
-                        <li>
-                            <router-link to="/admin/accounting" class="nav-link" :class="{ active: isActive('/admin/accounting') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/journal" class="nav-link" :class="{ active: isActive('/admin/accounting/journal') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('journal') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/ledger" class="nav-link" :class="{ active: isActive('/admin/accounting/ledger') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('ledger') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/trial-balance" class="nav-link" :class="{ active: isActive('/admin/accounting/trial-balance') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('trial_balance') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/income-statement" class="nav-link" :class="{ active: isActive('/admin/accounting/income-statement') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('income_statement') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/balance-sheet" class="nav-link" :class="{ active: isActive('/admin/accounting/balance-sheet') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('balance_sheet') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/aging" class="nav-link" :class="{ active: isActive('/admin/accounting/aging') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('aging_report') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/cash-flow" class="nav-link" :class="{ active: isActive('/admin/accounting/cash-flow') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('cash_flow_statement') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/party-statement" class="nav-link" :class="{ active: isActive('/admin/accounting/party-statement') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('party_statement') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/fixed-assets" class="nav-link" :class="{ active: isActive('/admin/accounting/fixed-assets') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('fixed_assets') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/bank-reconciliation" class="nav-link" :class="{ active: isActive('/admin/accounting/bank-reconciliation') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('bank_reconciliation') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/cost-centers" class="nav-link" :class="{ active: isActive('/admin/accounting/cost-centers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('cost_centers') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/vat-return" class="nav-link" :class="{ active: isActive('/admin/accounting/vat-return') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('vat_return') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/accounting/periods" class="nav-link" :class="{ active: isActive('/admin/accounting/periods') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('accounting_periods') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-section-label">{{ t('nav_label_inventory') }}</li>
-                <li v-if="canAccessGroup('inventory')" class="nav-group" :class="{ open: isGroupOpen('inventory'), 'has-active-child': isGroupActiveRoute('inventory') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('inventory')" @keydown.enter.prevent="toggleGroup('inventory')" @keydown.space.prevent="toggleGroup('inventory')">
-                        <el-icon class="nav-ic"><Box /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('inventory') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('inventory') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('inventory')">
-                        <li>
-                            <router-link to="/admin/inventory" class="nav-link" :class="{ active: isActive('/admin/inventory') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/stock" class="nav-link" :class="{ active: isActive('/admin/stock') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ $t('inventory_management') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/inventory/movements" class="nav-link" :class="{ active: isActive('/admin/inventory/movements') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('stock_movements') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li v-if="canAccessGroup('wms')" class="nav-group" :class="{ open: isGroupOpen('wms'), 'has-active-child': isGroupActiveRoute('wms') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('wms')" @keydown.enter.prevent="toggleGroup('wms')" @keydown.space.prevent="toggleGroup('wms')">
-                        <el-icon class="nav-ic"><Location /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('wms') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('wms') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('wms')">
-                        <li>
-                            <router-link to="/admin/wms" class="nav-link" :class="{ active: isActive('/admin/wms') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/warehouses" class="nav-link" :class="{ active: isActive('/admin/wms/warehouses') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('warehouses') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/bins" class="nav-link" :class="{ active: isActive('/admin/wms/bins') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('bins') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/picking" class="nav-link" :class="{ active: isActive('/admin/wms/picking') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('picking_lists') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/packing" class="nav-link" :class="{ active: isActive('/admin/wms/packing') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('packing_lists') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/cycle-counts" class="nav-link" :class="{ active: isActive('/admin/wms/cycle-counts') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('cycle_counts') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/wms/performance" class="nav-link" :class="{ active: isActive('/admin/wms/performance') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('wms_performance') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-section-label">{{ t('nav_label_hr') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('hr'), 'has-active-child': isGroupActiveRoute('hr') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('hr')" @keydown.enter.prevent="toggleGroup('hr')" @keydown.space.prevent="toggleGroup('hr')">
-                        <el-icon class="nav-ic"><UserFilled /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('hr') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('hr') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('hr')">
-                        <li>
-                            <router-link to="/admin/hr" class="nav-link" :class="{ active: isActive('/admin/hr') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/employees" class="nav-link" :class="{ active: isActive('/admin/hr/employees') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('employees') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/employee-customers" class="nav-link" :class="{ active: isActive('/admin/hr/employee-customers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ $t('employee_customer_relationship') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/attendance" class="nav-link" :class="{ active: isActive('/admin/hr/attendance') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('attendance') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/leaves" class="nav-link" :class="{ active: isActive('/admin/hr/leaves') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('leaves') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/payrolls" class="nav-link" :class="{ active: isActive('/admin/hr/payrolls') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('payrolls') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/hr/commissions" class="nav-link" :class="{ active: isActive('/admin/hr/commissions') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('commission_statement') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li v-if="canAccessGroup('crm')" class="nav-group" :class="{ open: isGroupOpen('crm'), 'has-active-child': isGroupActiveRoute('crm') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('crm')" @keydown.enter.prevent="toggleGroup('crm')" @keydown.space.prevent="toggleGroup('crm')">
-                        <el-icon class="nav-ic"><ChatDotRound /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('crm') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('crm') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('crm')">
-                        <li>
-                            <router-link to="/admin/crm" class="nav-link" :class="{ active: isActive('/admin/crm') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/crm/customers" class="nav-link" :class="{ active: isActive('/admin/crm/customers') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('customers') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/crm/tickets" class="nav-link" :class="{ active: isActive('/admin/crm/tickets') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('tickets') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-group" :class="{ open: isGroupOpen('production'), 'has-active-child': isGroupActiveRoute('production') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('production')" @keydown.enter.prevent="toggleGroup('production')" @keydown.space.prevent="toggleGroup('production')">
-                        <el-icon class="nav-ic"><Tools /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('production') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('production') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('production')">
-                        <li>
-                            <router-link to="/admin/production" class="nav-link" :class="{ active: isActive('/admin/production') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-section-label">{{ t('nav_label_reports') }}</li>
-                <li v-if="canAccessGroup('reports')" class="nav-group" :class="{ open: isGroupOpen('reports'), 'has-active-child': isGroupActiveRoute('reports') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('reports')" @keydown.enter.prevent="toggleGroup('reports')" @keydown.space.prevent="toggleGroup('reports')">
-                        <el-icon class="nav-ic"><DataAnalysis /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('reports') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('reports') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('reports')">
-                        <li>
-                            <router-link to="/admin/reports" class="nav-link" :class="{ active: isActive('/admin/reports') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/reports/sales" class="nav-link" :class="{ active: isActive('/admin/reports/sales') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('sales_report') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/reports/inventory" class="nav-link" :class="{ active: isActive('/admin/reports/inventory') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('inventory_report') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/reports/financial" class="nav-link" :class="{ active: isActive('/admin/reports/financial') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('financial_report') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/reports/payroll" class="nav-link" :class="{ active: isActive('/admin/reports/payroll') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('payroll_report') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li v-if="canAccessGroup('bi_analytics')" class="nav-group" :class="{ open: isGroupOpen('bi_analytics'), 'has-active-child': isGroupActiveRoute('bi_analytics') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('bi_analytics')" @keydown.enter.prevent="toggleGroup('bi_analytics')" @keydown.space.prevent="toggleGroup('bi_analytics')">
-                        <el-icon class="nav-ic"><DataAnalysis /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('bi_analytics') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('bi_analytics') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('bi_analytics')">
-                        <li>
-                            <router-link to="/admin/analytics" class="nav-link" :class="{ active: isActive('/admin/analytics') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/sales" class="nav-link" :class="{ active: isActive('/admin/analytics/sales') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_sales') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/inventory" class="nav-link" :class="{ active: isActive('/admin/analytics/inventory') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_inventory') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/warehouse" class="nav-link" :class="{ active: isActive('/admin/analytics/warehouse') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_warehouse') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/financial" class="nav-link" :class="{ active: isActive('/admin/analytics/financial') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_financial') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/metrics" class="nav-link" :class="{ active: isActive('/admin/analytics/metrics') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_metrics') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/reports" class="nav-link" :class="{ active: isActive('/admin/analytics/reports') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_reports') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/analytics/dashboards" class="nav-link" :class="{ active: isActive('/admin/analytics/dashboards') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('analytics_dashboards') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-group" :class="{ open: isGroupOpen('workflows'), 'has-active-child': isGroupActiveRoute('workflows') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('workflows')" @keydown.enter.prevent="toggleGroup('workflows')" @keydown.space.prevent="toggleGroup('workflows')">
-                        <el-icon class="nav-ic"><Cpu /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('workflows') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('workflows') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('workflows')">
-                        <li>
-                            <router-link to="/admin/workflows" class="nav-link" :class="{ active: isActive('/admin/workflows') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('workflow_list') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/workflows/create" class="nav-link" :class="{ active: isActive('/admin/workflows/create') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('create') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-section-label">{{ t('nav_label_system') }}</li>
-                <li class="nav-group" :class="{ open: isGroupOpen('notifications_management'), 'has-active-child': isGroupActiveRoute('notifications_management') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('notifications_management')" @keydown.enter.prevent="toggleGroup('notifications_management')" @keydown.space.prevent="toggleGroup('notifications_management')">
-                        <el-icon class="nav-ic"><Bell /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('notifications_management') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('notifications_management') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('notifications_management')">
-                        <li>
-                            <router-link to="/admin/notifications" class="nav-link" :class="{ active: isActive('/admin/notifications') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('notification_logs') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/notifications/templates" class="nav-link" :class="{ active: isActive('/admin/notifications/templates') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('notification_templates') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/notifications/preferences" class="nav-link" :class="{ active: isActive('/admin/notifications/preferences') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('notification_preferences') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-group" :class="{ open: isGroupOpen('audit_logs'), 'has-active-child': isGroupActiveRoute('audit_logs') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('audit_logs')" @keydown.enter.prevent="toggleGroup('audit_logs')" @keydown.space.prevent="toggleGroup('audit_logs')">
-                        <el-icon class="nav-ic"><View /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('audit_logs') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('audit_logs') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('audit_logs')">
-                        <li>
-                            <router-link to="/admin/audit" class="nav-link" :class="{ active: isActive('/admin/audit') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('overview') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/audit/entity-logs" class="nav-link" :class="{ active: isActive('/admin/audit/entity-logs') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('entity_logs') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/audit" class="nav-link" :class="{ active: isActive('/admin/audit') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ $t('risk_monitoring') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/audit/statistics" class="nav-link" :class="{ active: isActive('/admin/audit/statistics') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('audit_statistics') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class="nav-item">
-                    <router-link to="/admin/pos" class="nav-link" :class="{ active: isActive('/admin/pos') }">
-                        <el-icon class="nav-ic"><Monitor /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('pos') }}</span>
-                    </router-link>
-                </li>
-
-                <li class="nav-item">
-                    <router-link to="/admin/inquiries" class="nav-link" :class="{ active: isActive('/admin/inquiries') }">
-                        <el-icon class="nav-ic"><ChatLineRound /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('inquiries') }}</span>
-                    </router-link>
-                </li>
-
-                <li class="nav-item">
-                    <router-link to="/admin/visitors" class="nav-link" :class="{ active: isActive('/admin/visitors') }">
-                        <el-icon class="nav-ic"><View /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('visitors') }}</span>
-                    </router-link>
-                </li>
-
-                <li class="nav-group" :class="{ open: isGroupOpen('system'), 'has-active-child': isGroupActiveRoute('system') }">
-                    <div class="nav-group-header" tabindex="0" role="button" @click="toggleGroup('system')" @keydown.enter.prevent="toggleGroup('system')" @keydown.space.prevent="toggleGroup('system')">
-                        <el-icon class="nav-ic"><Setting /></el-icon>
-                        <span v-if="!isCollapsed" class="nav-text">{{ t('system') }}</span>
-                        <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen('system') }"><ArrowDown /></el-icon>
-                    </div>
-                    <ul class="nav-group-items" v-show="isGroupOpen('system')">
-                        <li>
-                            <router-link to="/admin/roles" class="nav-link" :class="{ active: isActive('/admin/roles') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('roles') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/permissions" class="nav-link" :class="{ active: isActive('/admin/permissions') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('permissions') }}</span>
-                            </router-link>
-                        </li>
-                        <li>
-                            <router-link to="/admin/currencies" class="nav-link" :class="{ active: isActive('/admin/currencies') }">
-                                <span class="sub-dot"></span>
-                                <span v-if="!isCollapsed" class="nav-text">{{ t('currencies') }}</span>
-                            </router-link>
-                        </li>
-                    </ul>
-                </li>
+                            <div class="nav-group-body" :class="{ open: isGroupOpen(entry.key) }" :inert="!isGroupOpen(entry.key)">
+                                <ul class="nav-group-items">
+                                    <li v-for="child in entry.children" :key="child.path + child.labelKey">
+                                        <router-link
+                                            :to="child.path"
+                                            class="nav-link"
+                                            :class="{ active: isActive(child.path) }"
+                                            :aria-current="isActive(child.path) ? 'page' : undefined"
+                                        >
+                                            <span class="sub-dot"></span>
+                                            <span class="nav-text">{{ t(child.labelKey) }}</span>
+                                        </router-link>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                    </template>
+                </template>
             </ul>
         </nav>
 
@@ -773,7 +180,9 @@
                     v-if="!isCollapsed"
                     to="/admin/settings"
                     class="user-action"
-                    :class="{ active: isActive('/admin/settings') }"
+                    :class="{ active: matchesRoute('/admin/settings') }"
+                    :aria-label="t('settings')"
+                    :title="t('settings')"
                     @click.stop
                 >
                     <el-icon :size="15"><Setting /></el-icon>
@@ -784,21 +193,18 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, watch, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import {
-    Box, Fold, Expand, Close, Odometer, Folder, ShoppingCart,
-    TrendCharts, Document, ArrowDown, Setting, ShoppingBag,
-    Coin, Wallet, UserFilled, User, ChatDotRound, Tools,
-    DataAnalysis, Monitor, ChatLineRound, View, Lock, Key,
-    Clock, Calendar, Ticket, Refresh, Discount, Bell, Location,
-    List, Checked, Cpu, Search
+    Box, Fold, Expand, Close, Odometer, ShoppingCart, ArrowDown, Setting,
+    ShoppingBag, Coin, UserFilled, ChatDotRound, Tools, DataAnalysis, Monitor,
+    ChatLineRound, View, Refresh, Bell, Location, Cpu, Search
 } from '@element-plus/icons-vue';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
 const siteName = computed(() => settingsStore.data?.site_name || t('site_fallback_name'));
@@ -818,52 +224,257 @@ const emit = defineEmits(['update:collapsed', 'update:mobileOpen']);
 
 const isCollapsed = computed(() => props.collapsed && !props.mobileOpen);
 
+// The sidebar sits on the start edge, so flyouts open towards the content.
+const flyoutPlacement = computed(() => (locale.value === 'ar' ? 'left-start' : 'right-start'));
+
 const closeMobile = () => {
     emit('update:mobileOpen', false);
 };
 
 const route = useRoute();
+const router = useRouter();
 
-const groupRoutePrefixes = {
-    content: ['/admin/categories', '/admin/products', '/admin/special-offers', '/admin/secondary-navbar'],
-    sales: ['/admin/sales'],
-    rma: ['/admin/rma'],
-    purchases: ['/admin/purchases'],
-    accounting: ['/admin/accounting'],
-    inventory: ['/admin/inventory'],
-    wms: ['/admin/wms'],
-    hr: ['/admin/hr'],
-    crm: ['/admin/crm'],
-    production: ['/admin/production'],
-    reports: ['/admin/reports'],
-    bi_analytics: ['/admin/analytics'],
-    workflows: ['/admin/workflows'],
-    notifications_management: ['/admin/notifications'],
-    audit_logs: ['/admin/audit'],
-    system: ['/admin/roles', '/admin/permissions']
-};
+// Single source of truth for the menu: the rendered tree, the search index,
+// active-route matching and the group a route belongs to are all derived
+// from it. Entries with `children` are collapsible groups gated by
+// canAccessGroup(key); plain entries are visible to everyone.
+const menu = [
+    {
+        labelKey: 'nav_label_main',
+        items: [
+            { key: 'dashboard', labelKey: 'dashboard', path: '/admin/dashboard', icon: Odometer },
+        ],
+    },
+    {
+        labelKey: 'nav_label_content',
+        items: [
+            {
+                key: 'content', labelKey: 'content_management', icon: Box,
+                children: [
+                    { labelKey: 'categories', path: '/admin/categories' },
+                    { labelKey: 'products', path: '/admin/products' },
+                    { labelKey: 'product_units', path: '/admin/products/units' },
+                    { labelKey: 'price_offer', path: '/admin/products/price-offer' },
+                    { labelKey: 'special_offers', path: '/admin/special-offers' },
+                    { labelKey: 'secondary_navbar', path: '/admin/secondary-navbar' },
+                ],
+            },
+        ],
+    },
+    {
+        labelKey: 'nav_label_commerce',
+        items: [
+            {
+                key: 'sales', labelKey: 'sales', icon: ShoppingCart,
+                children: [
+                    { labelKey: 'overview', path: '/admin/sales' },
+                    { labelKey: 'invoices', path: '/admin/sales/invoices' },
+                    { labelKey: 'create_invoice', path: '/admin/sales/invoices/create' },
+                    { labelKey: 'customers', path: '/admin/sales/customers' },
+                    { labelKey: 'quotes', path: '/admin/sales/quotes' },
+                    { labelKey: 'sales_orders', path: '/admin/sales/sales-orders' },
+                    { labelKey: 'payments', path: '/admin/sales/payments' },
+                    { labelKey: 'professional_sales_reports', path: '/admin/sales/reports' },
+                ],
+            },
+            {
+                key: 'rma', labelKey: 'rma', icon: Refresh,
+                children: [
+                    { labelKey: 'overview', path: '/admin/rma' },
+                    { labelKey: 'create', path: '/admin/rma/create' },
+                ],
+            },
+            {
+                key: 'purchases', labelKey: 'purchases', icon: ShoppingBag,
+                children: [
+                    { labelKey: 'overview', path: '/admin/purchases' },
+                    { labelKey: 'suppliers', path: '/admin/purchases/suppliers' },
+                    { labelKey: 'purchase_orders', path: '/admin/purchases/orders' },
+                    { labelKey: 'receipts', path: '/admin/purchases/receipts' },
+                    { labelKey: 'supplier_payments', path: '/admin/purchases/payments' },
+                    { labelKey: 'purchase_returns', path: '/admin/purchases/returns' },
+                    { labelKey: 'purchase_report', path: '/admin/purchases/report' },
+                ],
+            },
+            {
+                key: 'accounting', labelKey: 'accounting', icon: Coin,
+                children: [
+                    { labelKey: 'overview', path: '/admin/accounting' },
+                    { labelKey: 'journal', path: '/admin/accounting/journal' },
+                    { labelKey: 'ledger', path: '/admin/accounting/ledger' },
+                    { labelKey: 'trial_balance', path: '/admin/accounting/trial-balance' },
+                    { labelKey: 'income_statement', path: '/admin/accounting/income-statement' },
+                    { labelKey: 'balance_sheet', path: '/admin/accounting/balance-sheet' },
+                    { labelKey: 'aging_report', path: '/admin/accounting/aging' },
+                    { labelKey: 'cash_flow_statement', path: '/admin/accounting/cash-flow' },
+                    { labelKey: 'party_statement', path: '/admin/accounting/party-statement' },
+                    { labelKey: 'fixed_assets', path: '/admin/accounting/fixed-assets' },
+                    { labelKey: 'bank_reconciliation', path: '/admin/accounting/bank-reconciliation' },
+                    { labelKey: 'cost_centers', path: '/admin/accounting/cost-centers' },
+                    { labelKey: 'vat_return', path: '/admin/accounting/vat-return' },
+                    { labelKey: 'accounting_periods', path: '/admin/accounting/periods' },
+                ],
+            },
+        ],
+    },
+    {
+        labelKey: 'nav_label_inventory',
+        items: [
+            {
+                key: 'inventory', labelKey: 'inventory', icon: Box,
+                children: [
+                    { labelKey: 'overview', path: '/admin/inventory' },
+                    { labelKey: 'inventory_management', path: '/admin/stock' },
+                    { labelKey: 'stock_movements', path: '/admin/inventory/movements' },
+                ],
+            },
+            {
+                key: 'wms', labelKey: 'wms', icon: Location,
+                children: [
+                    { labelKey: 'overview', path: '/admin/wms' },
+                    { labelKey: 'warehouses', path: '/admin/wms/warehouses' },
+                    { labelKey: 'bins', path: '/admin/wms/bins' },
+                    { labelKey: 'picking_lists', path: '/admin/wms/picking' },
+                    { labelKey: 'packing_lists', path: '/admin/wms/packing' },
+                    { labelKey: 'cycle_counts', path: '/admin/wms/cycle-counts' },
+                    { labelKey: 'wms_performance', path: '/admin/wms/performance' },
+                ],
+            },
+        ],
+    },
+    {
+        labelKey: 'nav_label_hr',
+        items: [
+            {
+                key: 'hr', labelKey: 'hr', icon: UserFilled,
+                children: [
+                    { labelKey: 'overview', path: '/admin/hr' },
+                    { labelKey: 'employees', path: '/admin/hr/employees' },
+                    { labelKey: 'employee_customer_relationship', path: '/admin/hr/employee-customers' },
+                    { labelKey: 'attendance', path: '/admin/hr/attendance' },
+                    { labelKey: 'leaves', path: '/admin/hr/leaves' },
+                    { labelKey: 'payrolls', path: '/admin/hr/payrolls' },
+                    { labelKey: 'commission_statement', path: '/admin/hr/commissions' },
+                ],
+            },
+            {
+                key: 'crm', labelKey: 'crm', icon: ChatDotRound,
+                children: [
+                    { labelKey: 'overview', path: '/admin/crm' },
+                    { labelKey: 'customers', path: '/admin/crm/customers' },
+                    { labelKey: 'tickets', path: '/admin/crm/tickets' },
+                ],
+            },
+            {
+                key: 'production', labelKey: 'production', icon: Tools,
+                children: [
+                    { labelKey: 'overview', path: '/admin/production' },
+                ],
+            },
+        ],
+    },
+    {
+        labelKey: 'nav_label_reports',
+        items: [
+            {
+                key: 'reports', labelKey: 'reports', icon: DataAnalysis,
+                children: [
+                    { labelKey: 'overview', path: '/admin/reports' },
+                    { labelKey: 'sales_report', path: '/admin/reports/sales' },
+                    { labelKey: 'inventory_report', path: '/admin/reports/inventory' },
+                    { labelKey: 'financial_report', path: '/admin/reports/financial' },
+                    { labelKey: 'payroll_report', path: '/admin/reports/payroll' },
+                ],
+            },
+            {
+                key: 'bi_analytics', labelKey: 'bi_analytics', icon: DataAnalysis,
+                children: [
+                    { labelKey: 'overview', path: '/admin/analytics' },
+                    { labelKey: 'analytics_sales', path: '/admin/analytics/sales' },
+                    { labelKey: 'analytics_inventory', path: '/admin/analytics/inventory' },
+                    { labelKey: 'analytics_warehouse', path: '/admin/analytics/warehouse' },
+                    { labelKey: 'analytics_financial', path: '/admin/analytics/financial' },
+                    { labelKey: 'analytics_metrics', path: '/admin/analytics/metrics' },
+                    { labelKey: 'analytics_reports', path: '/admin/analytics/reports' },
+                    { labelKey: 'analytics_dashboards', path: '/admin/analytics/dashboards' },
+                ],
+            },
+            {
+                key: 'workflows', labelKey: 'workflows', icon: Cpu,
+                children: [
+                    { labelKey: 'workflow_list', path: '/admin/workflows' },
+                    { labelKey: 'create', path: '/admin/workflows/create' },
+                ],
+            },
+        ],
+    },
+    {
+        labelKey: 'nav_label_system',
+        items: [
+            {
+                key: 'notifications_management', labelKey: 'notifications_management', icon: Bell,
+                children: [
+                    { labelKey: 'notification_logs', path: '/admin/notifications' },
+                    { labelKey: 'notification_templates', path: '/admin/notifications/templates' },
+                    { labelKey: 'notification_preferences', path: '/admin/notifications/preferences' },
+                ],
+            },
+            {
+                key: 'audit_logs', labelKey: 'audit_logs', icon: View,
+                children: [
+                    { labelKey: 'overview', path: '/admin/audit' },
+                    { labelKey: 'entity_logs', path: '/admin/audit/entity-logs' },
+                    { labelKey: 'audit_statistics', path: '/admin/audit/statistics' },
+                ],
+            },
+            { key: 'pos', labelKey: 'pos', path: '/admin/pos', icon: Monitor },
+            { key: 'inquiries', labelKey: 'inquiries', path: '/admin/inquiries', icon: ChatLineRound },
+            { key: 'visitors', labelKey: 'visitors', path: '/admin/visitors', icon: View },
+            {
+                key: 'system', labelKey: 'system', icon: Setting,
+                children: [
+                    { labelKey: 'roles', path: '/admin/roles' },
+                    { labelKey: 'permissions', path: '/admin/permissions' },
+                    { labelKey: 'currencies', path: '/admin/currencies' },
+                ],
+            },
+        ],
+    },
+];
 
-const groupForPath = (path) => {
-    for (const [group, prefixes] of Object.entries(groupRoutePrefixes)) {
-        if (prefixes.some((prefix) => path.startsWith(prefix))) {
-            return group;
+// Flat list of every navigable page, used for search and route matching.
+const navIndex = menu.flatMap((section) => section.items.flatMap((entry) => (
+    entry.children
+        ? entry.children.map((child) => ({ ...child, icon: entry.icon, group: entry.key, groupLabelKey: entry.labelKey }))
+        : [{ labelKey: entry.labelKey, path: entry.path, icon: entry.icon }]
+)));
+
+const matchesRoute = (path) => route.path === path || route.path.startsWith(path + '/');
+
+// Only the most specific menu entry is highlighted, so e.g. "Create invoice"
+// doesn't also light up "Invoices" and the sales "Overview".
+const activeEntry = computed(() => {
+    let best = null;
+    for (const item of navIndex) {
+        if (matchesRoute(item.path) && (!best || item.path.length > best.path.length)) {
+            best = item;
         }
     }
-    return null;
-};
+    return best;
+});
 
-const openGroups = ref([groupForPath(route.path) || 'content']);
+const isActive = (path) => activeEntry.value?.path === path;
 
-const isActive = (path) => {
-    return route.path === path || route.path.startsWith(path + '/');
-};
+const activeGroup = computed(() => activeEntry.value?.group || null);
+
+const openGroups = ref(activeGroup.value ? [activeGroup.value] : ['content']);
 
 const isGroupOpen = (group) => {
     return openGroups.value.includes(group);
 };
 
 const isGroupActiveRoute = (group) => {
-    return groupForPath(route.path) === group;
+    return activeGroup.value === group;
 };
 
 const toggleGroup = (group) => {
@@ -882,11 +493,25 @@ const toggleGroup = (group) => {
     }
 };
 
-watch(() => route.path, (path) => {
-    const group = groupForPath(path);
-    if (group && !openGroups.value.includes(group)) {
+const navRef = ref(null);
+
+const scrollActiveIntoView = () => {
+    nextTick(() => {
+        // Wait for the group's expand transition before measuring.
+        setTimeout(() => {
+            navRef.value?.querySelector('.nav-link.active')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 240);
+    });
+};
+
+watch(() => route.path, () => {
+    const group = activeGroup.value;
+    if (group && !openGroups.value.includes(group) && !isCollapsed.value) {
         openGroups.value = [group];
     }
+    // The mobile drawer covers the page, so close it once a link is followed.
+    closeMobile();
+    scrollActiveIntoView();
 });
 
 const toggleSidebar = () => {
@@ -897,6 +522,8 @@ const toggleSidebar = () => {
 watch(() => props.collapsed, (newVal) => {
     if (newVal) {
         openGroups.value = [];
+    } else if (activeGroup.value && openGroups.value.length === 0) {
+        openGroups.value = [activeGroup.value];
     }
 });
 
@@ -928,100 +555,30 @@ const canAccessGroup = (group) => {
     return (allowedGroups[group] || ['admin']).includes(userRole.value);
 };
 
-const searchQuery = ref('');
+// Sections whose groups are all hidden for this role drop their label too.
+const visibleMenu = computed(() => menu
+    .map((section) => ({
+        ...section,
+        items: section.items.filter((entry) => !entry.children || canAccessGroup(entry.key)),
+    }))
+    .filter((section) => section.items.length > 0));
 
-const navIndex = [
-    { labelKey: 'dashboard', path: '/admin/dashboard', icon: Odometer },
-    { labelKey: 'categories', path: '/admin/categories', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'products', path: '/admin/products', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'product_units', path: '/admin/products/units', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'price_offer', path: '/admin/products/price-offer', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'special_offers', path: '/admin/special-offers', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'secondary_navbar', path: '/admin/secondary-navbar', icon: Box, group: 'content', groupLabelKey: 'content_management' },
-    { labelKey: 'overview', path: '/admin/sales', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'invoices', path: '/admin/sales/invoices', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'create_invoice', path: '/admin/sales/invoices/create', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'customers', path: '/admin/sales/customers', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'quotes', path: '/admin/sales/quotes', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'sales_orders', path: '/admin/sales/sales-orders', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'payments', path: '/admin/sales/payments', icon: ShoppingCart, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'professional_sales_reports', path: '/admin/sales/reports', icon: DataAnalysis, group: 'sales', groupLabelKey: 'sales' },
-    { labelKey: 'overview', path: '/admin/rma', icon: Refresh, group: 'rma', groupLabelKey: 'rma' },
-    { labelKey: 'create', path: '/admin/rma/create', icon: Refresh, group: 'rma', groupLabelKey: 'rma' },
-    { labelKey: 'overview', path: '/admin/purchases', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'suppliers', path: '/admin/purchases/suppliers', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'purchase_orders', path: '/admin/purchases/orders', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'receipts', path: '/admin/purchases/receipts', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'supplier_payments', path: '/admin/purchases/payments', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'purchase_returns', path: '/admin/purchases/returns', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'purchase_report', path: '/admin/purchases/report', icon: ShoppingBag, group: 'purchases', groupLabelKey: 'purchases' },
-    { labelKey: 'overview', path: '/admin/accounting', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'journal', path: '/admin/accounting/journal', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'ledger', path: '/admin/accounting/ledger', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'trial_balance', path: '/admin/accounting/trial-balance', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'income_statement', path: '/admin/accounting/income-statement', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'balance_sheet', path: '/admin/accounting/balance-sheet', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'aging_report', path: '/admin/accounting/aging', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'cash_flow_statement', path: '/admin/accounting/cash-flow', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'party_statement', path: '/admin/accounting/party-statement', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'fixed_assets', path: '/admin/accounting/fixed-assets', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'bank_reconciliation', path: '/admin/accounting/bank-reconciliation', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'cost_centers', path: '/admin/accounting/cost-centers', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'vat_return', path: '/admin/accounting/vat-return', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'accounting_periods', path: '/admin/accounting/periods', icon: Coin, group: 'accounting', groupLabelKey: 'accounting' },
-    { labelKey: 'overview', path: '/admin/inventory', icon: Box, group: 'inventory', groupLabelKey: 'inventory' },
-    { labelKey: 'inventory_management', path: '/admin/stock', icon: Box, group: 'inventory', groupLabelKey: 'inventory' },
-    { labelKey: 'stock_movements', path: '/admin/inventory/movements', icon: Box, group: 'inventory', groupLabelKey: 'inventory' },
-    { labelKey: 'overview', path: '/admin/wms', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'warehouses', path: '/admin/wms/warehouses', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'bins', path: '/admin/wms/bins', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'picking_lists', path: '/admin/wms/picking', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'packing_lists', path: '/admin/wms/packing', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'cycle_counts', path: '/admin/wms/cycle-counts', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'wms_performance', path: '/admin/wms/performance', icon: Location, group: 'wms', groupLabelKey: 'wms' },
-    { labelKey: 'overview', path: '/admin/hr', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'employees', path: '/admin/hr/employees', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'employee_customer_relationship', path: '/admin/hr/employee-customers', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'attendance', path: '/admin/hr/attendance', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'leaves', path: '/admin/hr/leaves', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'payrolls', path: '/admin/hr/payrolls', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'commission_statement', path: '/admin/hr/commissions', icon: UserFilled, group: 'hr', groupLabelKey: 'hr' },
-    { labelKey: 'overview', path: '/admin/crm', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },
-    { labelKey: 'customers', path: '/admin/crm/customers', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },
-    { labelKey: 'tickets', path: '/admin/crm/tickets', icon: ChatDotRound, group: 'crm', groupLabelKey: 'crm' },
-    { labelKey: 'overview', path: '/admin/production', icon: Tools, group: 'production', groupLabelKey: 'production' },
-    { labelKey: 'overview', path: '/admin/reports', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'sales_report', path: '/admin/reports/sales', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'inventory_report', path: '/admin/reports/inventory', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'financial_report', path: '/admin/reports/financial', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'payroll_report', path: '/admin/reports/payroll', icon: DataAnalysis, group: 'reports', groupLabelKey: 'reports' },
-    { labelKey: 'overview', path: '/admin/analytics', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_sales', path: '/admin/analytics/sales', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_inventory', path: '/admin/analytics/inventory', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_warehouse', path: '/admin/analytics/warehouse', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_financial', path: '/admin/analytics/financial', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_metrics', path: '/admin/analytics/metrics', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_reports', path: '/admin/analytics/reports', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'analytics_dashboards', path: '/admin/analytics/dashboards', icon: DataAnalysis, group: 'bi_analytics', groupLabelKey: 'bi_analytics' },
-    { labelKey: 'workflow_list', path: '/admin/workflows', icon: Cpu, group: 'workflows', groupLabelKey: 'workflows' },
-    { labelKey: 'create', path: '/admin/workflows/create', icon: Cpu, group: 'workflows', groupLabelKey: 'workflows' },
-    { labelKey: 'notification_logs', path: '/admin/notifications', icon: Bell, group: 'notifications_management', groupLabelKey: 'notifications_management' },
-    { labelKey: 'notification_templates', path: '/admin/notifications/templates', icon: Bell, group: 'notifications_management', groupLabelKey: 'notifications_management' },
-    { labelKey: 'notification_preferences', path: '/admin/notifications/preferences', icon: Bell, group: 'notifications_management', groupLabelKey: 'notifications_management' },
-    { labelKey: 'overview', path: '/admin/audit', icon: View, group: 'audit_logs', groupLabelKey: 'audit_logs' },
-    { labelKey: 'entity_logs', path: '/admin/audit/entity-logs', icon: View, group: 'audit_logs', groupLabelKey: 'audit_logs' },
-    { labelKey: 'risk_monitoring', path: '/admin/audit', icon: View, group: 'audit_logs', groupLabelKey: 'audit_logs' },
-    { labelKey: 'audit_statistics', path: '/admin/audit/statistics', icon: View, group: 'audit_logs', groupLabelKey: 'audit_logs' },
-    { labelKey: 'pos', path: '/admin/pos', icon: Monitor },
-    { labelKey: 'inquiries', path: '/admin/inquiries', icon: ChatLineRound },
-    { labelKey: 'visitors', path: '/admin/visitors', icon: View },
-    { labelKey: 'roles', path: '/admin/roles', icon: Setting, group: 'system', groupLabelKey: 'system' },
-    { labelKey: 'permissions', path: '/admin/permissions', icon: Setting, group: 'system', groupLabelKey: 'system' },
-    { labelKey: 'currencies', path: '/admin/currencies', icon: Setting, group: 'system', groupLabelKey: 'system' },
-];
+const searchQuery = ref('');
+const searchInputRef = ref(null);
+const highlightedIndex = ref(0);
+const hasQuery = computed(() => searchQuery.value.trim() !== '');
+
+// Fold Arabic letter variants and diacritics so "اصناف" finds "أصناف".
+const normalize = (value) => String(value)
+    .toLowerCase()
+    .replace(/[ً-ْـ]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .trim();
 
 const filteredNavItems = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    const query = normalize(searchQuery.value);
     if (!query) {
         return [];
     }
@@ -1030,16 +587,98 @@ const filteredNavItems = computed(() => {
         if (item.group && !canAccessGroup(item.group)) {
             return false;
         }
-        const label = t(item.labelKey).toLowerCase();
-        const groupLabel = item.groupLabelKey ? t(item.groupLabelKey).toLowerCase() : '';
+        const label = normalize(t(item.labelKey));
+        const groupLabel = item.groupLabelKey ? normalize(t(item.groupLabelKey)) : '';
         return label.includes(query) || groupLabel.includes(query);
     });
 });
+
+watch(searchQuery, () => {
+    highlightedIndex.value = 0;
+});
+
+const clearSearch = () => {
+    searchQuery.value = '';
+    searchInputRef.value?.focus();
+};
 
 const onSearchNavigate = () => {
     searchQuery.value = '';
     closeMobile();
 };
+
+const moveHighlight = (step) => {
+    const count = filteredNavItems.value.length;
+    if (!count) {
+        return;
+    }
+    highlightedIndex.value = (highlightedIndex.value + step + count) % count;
+    nextTick(() => {
+        navRef.value?.querySelector('.search-results .nav-link.highlighted')?.scrollIntoView({ block: 'nearest' });
+    });
+};
+
+const onSearchKeydown = (event) => {
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveHighlight(1);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveHighlight(-1);
+    } else if (event.key === 'Enter') {
+        const item = filteredNavItems.value[highlightedIndex.value];
+        if (item) {
+            event.preventDefault();
+            router.push(item.path);
+            onSearchNavigate();
+            searchInputRef.value?.blur();
+        }
+    } else if (event.key === 'Escape') {
+        if (searchQuery.value) {
+            searchQuery.value = '';
+        } else {
+            searchInputRef.value?.blur();
+        }
+    }
+};
+
+const openSearch = () => {
+    if (isCollapsed.value) {
+        emit('update:collapsed', false);
+        localStorage.setItem('sidebarCollapsed', 'false');
+    }
+    nextTick(() => searchInputRef.value?.focus());
+};
+
+// "/" jumps to the menu search from anywhere that isn't a text field.
+// Matching on the physical key keeps it working on the Arabic layout.
+const onGlobalKeydown = (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+    }
+    if (event.key !== '/' && event.code !== 'Slash') {
+        return;
+    }
+    const target = event.target;
+    if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) {
+        return;
+    }
+    // Hidden off-canvas on small screens unless the drawer is open.
+    if (!props.mobileOpen && window.matchMedia('(max-width: 992px)').matches) {
+        return;
+    }
+    event.preventDefault();
+    openSearch();
+};
+
+onMounted(() => {
+    document.addEventListener('keydown', onGlobalKeydown);
+    scrollActiveIntoView();
+});
+
+onBeforeUnmount(() => {
+    document.removeEventListener('keydown', onGlobalKeydown);
+});
 
 const userName = computed(() => authStore.user?.name || t('system_administrator'));
 const userEmail = computed(() => authStore.user?.email || '');
@@ -1280,6 +919,54 @@ const userInitials = computed(() => {
     color: rgba(148, 163, 184, 0.55);
 }
 
+.nav-search-kbd {
+    flex-shrink: 0;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 0.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(148, 163, 184, 0.6);
+    font-family: inherit;
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
+.nav-search:focus-within .nav-search-kbd {
+    display: none;
+}
+
+.nav-search-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 38px;
+    margin: 0.35rem 0 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(148, 163, 184, 0.75);
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.nav-search-trigger:hover {
+    background: var(--sb-accent-soft);
+    border-color: var(--sb-accent-border);
+    color: var(--sb-accent);
+}
+
+.search-results .nav-link.highlighted:not(.active) {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--sb-text-strong);
+}
+
 .nav-empty {
     padding: 1.2rem 0.85rem;
     text-align: center;
@@ -1400,6 +1087,7 @@ const userInitials = computed(() => {
 .nav-group-header:focus-visible,
 .nav-search-input:focus-visible,
 .nav-search-clear:focus-visible,
+.nav-search-trigger:focus-visible,
 .collapse-btn:focus-visible {
     outline: 2px solid var(--sb-accent);
     outline-offset: 2px;
@@ -1417,11 +1105,57 @@ const userInitials = computed(() => {
     color: var(--sb-accent);
 }
 
+.nav-group-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-group-body.open {
+    grid-template-rows: 1fr;
+}
+
 .nav-group-items {
     list-style: none;
     padding: 0;
-    margin: 0.15rem 0 0.4rem;
+    margin: 0;
     position: relative;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.nav-group-body.open .nav-group-items {
+    padding: 0.15rem 0 0.4rem;
+}
+
+/* Vertical guide line tying sub-items to their group. */
+.nav-group-items::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.35rem 0.6rem;
+    inset-inline-start: calc(0.8rem + 0.5rem);
+    width: 1px;
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.nav-group-items .sub-dot {
+    position: relative;
+    margin-inline-start: 0.34rem;
+}
+
+.admin-sidebar.collapsed .nav-group-body {
+    display: none;
+}
+
+.collapsed-active-dot {
+    position: absolute;
+    top: 7px;
+    inset-inline-end: 12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--sb-accent);
+    box-shadow: 0 0 8px var(--sb-glow);
 }
 
 .nav-group-items .nav-link {
@@ -1623,6 +1357,10 @@ const userInitials = computed(() => {
         padding-inline: 0.8rem;
     }
 
+    .admin-sidebar.collapsed .nav-group-body {
+        display: grid;
+    }
+
     .admin-sidebar.collapsed .nav-text,
     .admin-sidebar.collapsed .toggle-icon {
         display: inline-flex;
@@ -1648,5 +1386,66 @@ const userInitials = computed(() => {
     .admin-sidebar.collapsed .user-action {
         display: inline-flex;
     }
+}
+</style>
+
+<style>
+/* Flyout for groups while the sidebar is collapsed. Element Plus teleports
+   poppers to <body>, so these can't live in the scoped block above. */
+.el-popover.el-popper.sidebar-flyout {
+    padding: 0.45rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #0f1a2e;
+    box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+    color: rgba(203, 213, 225, 0.75);
+}
+
+.sidebar-flyout .flyout-title {
+    padding: 0.35rem 0.6rem 0.45rem;
+    margin-bottom: 0.2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgba(241, 245, 249, 0.94);
+}
+
+.sidebar-flyout .flyout-link {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    color: rgba(148, 163, 184, 0.8);
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-flyout .flyout-link:hover,
+.sidebar-flyout .flyout-link:focus-visible {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(241, 245, 249, 0.94);
+    outline: none;
+}
+
+.sidebar-flyout .flyout-link.active {
+    color: #2dd4bf;
+    background: rgba(45, 212, 191, 0.12);
+    font-weight: 600;
+}
+
+.sidebar-flyout .flyout-dot {
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.4);
+}
+
+.sidebar-flyout .flyout-link.active .flyout-dot,
+.sidebar-flyout .flyout-link:hover .flyout-dot {
+    background: #2dd4bf;
 }
 </style>
