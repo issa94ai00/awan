@@ -435,7 +435,7 @@ import { baseCurrencyCode } from '@/utils/currency';
 import { productImages } from '@/utils/productImages';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
@@ -449,6 +449,7 @@ import {
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
+const route = useRoute();
 const store = useProductsStore();
 
 const searchQuery = ref('');
@@ -869,6 +870,10 @@ const bulkDelete = async () => {
 };
 
 const init = async () => {
+    // Opened from a category's product count on the categories screen.
+    if (route.query.category_id) {
+        filterCategory.value = Number(route.query.category_id) || null;
+    }
     await store.fetchCategories();
     await fetchProducts();
 };

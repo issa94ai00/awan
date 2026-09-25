@@ -406,8 +406,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/inquiries/bulk-delete', [InquiryAdminController::class, 'bulkDelete'])->name('api.admin.inquiries.bulk-delete');
             
             // Admin Categories API
-            Route::get('/categories', [CategoryController::class, 'index'])->name('api.admin.categories.index');
-            Route::get('/categories/{category:id}', [CategoryController::class, 'show'])->name('api.admin.categories.show');
+            Route::get('/categories', [CategoryController::class, 'adminIndex'])->name('api.admin.categories.index');
+            Route::get('/categories/{category:id}', [CategoryController::class, 'adminShow'])->name('api.admin.categories.show');
             Route::post('/categories', [CategoryController::class, 'store'])->name('api.admin.categories.store');
             Route::put('/categories/{category:id}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
             Route::delete('/categories/{category:id}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');

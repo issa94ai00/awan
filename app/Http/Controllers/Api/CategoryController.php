@@ -132,6 +132,76 @@ class CategoryController extends Controller
     }
 
     /**
+     * Every category for the admin list, inactive ones included.
+     *
+     * The admin screen used to share the storefront's index, which filters on
+     * `is_active` — so switching a category off made it vanish from the one
+     * screen that could switch it back on.
+     */
+    public function adminIndex(): JsonResponse
+    {
+        $categories = Category::query()
+            ->withCount([
+                'products',
+                'products as active_products_count' => fn ($q) => $q->where('is_active', 1),
+                'children',
+            ])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Categories retrieved successfully',
+            'data' => CategoryResource::collection($categories)
+        ]);
+    }
+
+    /**
+     * One category for the admin form, whether or not it is live.
+     */
+    public function adminShow(Category $category): JsonResponse
+    {
+        $category->loadCount('children');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category retrieved successfully',
+            'data' => new CategoryResource($category)
+        ]);
+    }
+
+    /**
+     * Keeps the taxonomy two levels deep, which descendantIds() and the
+     * product-count scope both rely on: a parent must itself be top-level, and
+     * a category that already has subcategories cannot be filed under another.
+     */
+    private function parentRules(?Category $category = null): array
+    {
+        return [
+            'nullable',
+            'integer',
+            function (string $attribute, $value, \Closure $fail) use ($category) {
+                if ($value === null) {
+                    return;
+                }
+
+                $parent = Category::find($value);
+
+                if (! $parent) {
+                    $fail(__('The selected parent category does not exist.'));
+                } elseif ($category && (int) $value === $category->id) {
+                    $fail(__('A category cannot be its own parent.'));
+                } elseif ($parent->parent_id !== null) {
+                    $fail(__('Subcategories can only be filed under a top-level category.'));
+                } elseif ($category && $category->children()->exists()) {
+                    $fail(__('A category that has subcategories cannot be moved under another category.'));
+                }
+            },
+        ];
+    }
+
+    /**
      * Store a new category (Admin)
      */
     public function store(Request $request): JsonResponse
@@ -140,6 +210,7 @@ class CategoryController extends Controller
             'name_ar' => 'required|string|max:255',
             'name_en' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:categories,slug',
+            'parent_id' => $this->parentRules(),
             'description_ar' => 'nullable|string',
             'description_en' => 'nullable|string',
             'image' => 'nullable|string',
@@ -179,6 +250,7 @@ class CategoryController extends Controller
             'name_ar' => 'sometimes|required|string|max:255',
             'name_en' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|required|string|max:255|unique:categories,slug,' . $category->id,
+            'parent_id' => $this->parentRules($category),
             'description_ar' => 'nullable|string',
             'description_en' => 'nullable|string',
             'image' => 'nullable|string',
