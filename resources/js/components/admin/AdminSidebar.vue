@@ -170,7 +170,7 @@
         </nav>
 
         <div class="sidebar-footer" :class="{ collapsed: collapsed }">
-            <div class="user-card" :title="userName" @click="collapsed && toggleSidebar()">
+            <div class="user-card" :title="userName" @click="collapsed ? toggleSidebar() : router.push('/admin/profile')">
                 <div class="user-avatar">{{ userInitials }}</div>
                 <div v-if="!isCollapsed" class="user-meta">
                     <span class="user-name">{{ userName }}</span>

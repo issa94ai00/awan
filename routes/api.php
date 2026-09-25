@@ -243,6 +243,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user'])->middleware('auth:sanctum')->name('api.auth.user');
     Route::put('/auth/profile', [AuthController::class, 'updateProfile'])->middleware('auth:sanctum')->name('api.auth.profile');
     Route::post('/auth/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum')->name('api.auth.change-password');
+    Route::get('/auth/sessions', [AuthController::class, 'sessions'])->middleware('auth:sanctum')->name('api.auth.sessions');
+    Route::delete('/auth/sessions', [AuthController::class, 'revokeOtherSessions'])->middleware('auth:sanctum')->name('api.auth.sessions.revoke-others');
+    Route::delete('/auth/sessions/{id}', [AuthController::class, 'revokeSession'])->whereNumber('id')->middleware('auth:sanctum')->name('api.auth.sessions.revoke');
     
     // Protected Routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {

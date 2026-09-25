@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -234,12 +235,13 @@ class AuthController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'current_password' => 'required',
-                'password' => 'required|string|min:8|confirmed',
+                'password' => 'required|string|min:8|confirmed|different:current_password',
             ], [
                 'current_password.required' => 'كلمة المرور الحالية مطلوبة',
                 'password.required' => 'كلمة المرور الجديدة مطلوبة',
                 'password.min' => 'كلمة المرور يجب أن تكون 8 أحرف على الأقل',
                 'password.confirmed' => 'تأكيد كلمة المرور غير متطابق',
+                'password.different' => 'كلمة المرور الجديدة يجب أن تختلف عن الحالية',
             ]);
 
             if ($validator->fails()) {
@@ -253,24 +255,32 @@ class AuthController extends Controller
 
             $user = $request->user();
 
+            // A wrong current password is a validation error, not an auth
+            // failure: answering 401 made the client treat the session as
+            // expired and log the user out over a typo.
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'كلمة المرور الحالية غير صحيحة',
-                    'data' => null
-                ], 401);
+                    'data' => null,
+                    'errors' => ['current_password' => ['كلمة المرور الحالية غير صحيحة']],
+                ], 422);
             }
 
             $user->update([
                 'password' => Hash::make($request->password)
             ]);
 
-            // Revoke all tokens to force re-login
-            $user->tokens()->delete();
+            // Sign out every other device; the one that made the change stays
+            // signed in so the user isn't bounced to the login screen.
+            $currentId = $this->currentTokenId($request);
+            $user->tokens()
+                ->when($currentId, fn ($query) => $query->where('id', '!=', $currentId))
+                ->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'تم تغيير كلمة المرور بنجاح، يرجى تسجيل الدخول مرة أخرى',
+                'message' => 'تم تغيير كلمة المرور بنجاح وتسجيل الخروج من الأجهزة الأخرى',
                 'data' => null
             ]);
 
@@ -281,5 +291,91 @@ class AuthController extends Controller
                 'data' => null
             ], 500);
         }
+    }
+
+    /**
+     * List the devices (API tokens) the user is signed in on.
+     */
+    public function sessions(Request $request): JsonResponse
+    {
+        $currentId = $this->currentTokenId($request);
+
+        $sessions = $request->user()->tokens()
+            ->orderByDesc('last_used_at')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (PersonalAccessToken $token) => [
+                'id' => $token->id,
+                'device' => $token->name,
+                'last_used_at' => $token->last_used_at?->toIso8601String(),
+                'created_at' => $token->created_at?->toIso8601String(),
+                'is_current' => $token->id === $currentId,
+            ])
+            ->sortByDesc('is_current')
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => null,
+            'data' => ['sessions' => $sessions],
+        ]);
+    }
+
+    /**
+     * Sign out one of the user's other devices.
+     */
+    public function revokeSession(Request $request, int $id): JsonResponse
+    {
+        if ($id === $this->currentTokenId($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن إنهاء الجلسة الحالية من هنا، استخدم تسجيل الخروج',
+                'data' => null,
+            ], 422);
+        }
+
+        $deleted = $request->user()->tokens()->where('id', $id)->delete();
+
+        if (!$deleted) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الجلسة غير موجودة',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تسجيل الخروج من الجهاز',
+            'data' => null,
+        ]);
+    }
+
+    /**
+     * Sign out every device except the current one.
+     */
+    public function revokeOtherSessions(Request $request): JsonResponse
+    {
+        $currentId = $this->currentTokenId($request);
+
+        $count = $request->user()->tokens()
+            ->when($currentId, fn ($query) => $query->where('id', '!=', $currentId))
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم تسجيل الخروج من الأجهزة الأخرى',
+            'data' => ['revoked' => $count],
+        ]);
+    }
+
+    /**
+     * The bearer token behind this request, or null for cookie (SPA) auth.
+     */
+    private function currentTokenId(Request $request): ?int
+    {
+        $token = $request->user()->currentAccessToken();
+
+        return $token instanceof PersonalAccessToken ? $token->id : null;
     }
 }

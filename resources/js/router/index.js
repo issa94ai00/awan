@@ -92,6 +92,11 @@ const routes = [
                 component: () => import('@/views/admin/categories/Form.vue')
             },
             {
+                path: 'profile',
+                name: 'admin.profile',
+                component: () => import('@/views/admin/Profile.vue')
+            },
+            {
                 path: 'settings',
                 name: 'admin.settings',
                 component: () => import('@/views/admin/Settings.vue')
