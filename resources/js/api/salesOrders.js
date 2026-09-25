@@ -13,6 +13,11 @@ export const salesOrdersApi = {
         return api.post('/sales-orders', data);
     },
 
+    // Where each line of an order not yet saved should come from.
+    suggestRouting(data) {
+        return api.post('/sales-orders/suggest-routing', data);
+    },
+
     update(id, data) {
         return api.put(`/sales-orders/${id}`, data);
     },

@@ -81,11 +81,35 @@
             </div>
         </el-dialog>
 
+        <!-- New customer, without leaving the order -->
+        <el-dialog v-model="quickCustomer.visible" :title="$t('so_new_customer')" width="440px" append-to-body>
+            <el-form label-position="top" @submit.prevent="saveQuickCustomer">
+                <el-form-item :label="$t('name')" required>
+                    <el-input v-model="quickCustomer.name" autofocus />
+                </el-form-item>
+                <el-form-item :label="$t('phone')">
+                    <el-input v-model="quickCustomer.phone" dir="ltr" />
+                </el-form-item>
+                <el-form-item :label="$t('address_label')">
+                    <el-input v-model="quickCustomer.address" type="textarea" :rows="2" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="quickCustomer.visible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" :loading="quickCustomer.saving" :disabled="!quickCustomer.name.trim()" @click="saveQuickCustomer">
+                    {{ $t('save') }}
+                </el-button>
+            </template>
+        </el-dialog>
+
         <!-- Steps Indicator -->
         <el-steps :active="activeStep" finish-status="success" align-center class="mb-4 sales-steps">
             <el-step :title="$t('choose_products')" :description="$t('set_products_units_quantities')" />
             <el-step :title="$t('customer_and_shipping_data')" :description="$t('assign_customer_delivery_finance')" />
-            <el-step :title="$t('preview_and_confirm')" :description="$t('review_totals_and_save')" />
+            <!-- Where the goods come from, decided while the seller still has
+                 the order in front of them rather than at confirmation. -->
+            <el-step :title="$t('so_wizard_routing')" :description="$t('so_wizard_routing_hint')" />
+            <el-step :title="$t('so_wizard_review')" :description="$t('so_wizard_review_hint')" />
         </el-steps>
 
         <!-- Validation Errors -->
@@ -417,21 +441,29 @@
                             </div>
                         </template>
 
-                        <el-select
-                            v-model="form.customer_id"
-                            :placeholder="$t('search_and_choose_customer')"
-                            filterable
-                            clearable
-                            size="large"
-                            class="w-full"
-                        >
-                            <el-option
-                                v-for="customer in customers"
-                                :key="customer.id"
-                                :label="`${customer.name} - ${customer.phone || customer.email}`"
-                                :value="customer.id"
-                            />
-                        </el-select>
+                        <div class="customer-pick-row">
+                            <el-select
+                                v-model="form.customer_id"
+                                :placeholder="$t('search_and_choose_customer')"
+                                filterable
+                                clearable
+                                size="large"
+                                class="w-full"
+                                @change="onCustomerChosen"
+                            >
+                                <el-option
+                                    v-for="customer in customers"
+                                    :key="customer.id"
+                                    :label="`${customer.name} - ${customer.phone || customer.email || ''}`"
+                                    :value="customer.id"
+                                />
+                            </el-select>
+                            <!-- A walk-in who is not on the books yet is added
+                                 here, without leaving the order half-built. -->
+                            <el-button size="large" type="primary" plain @click="openQuickCustomer">
+                                <i class="fas fa-user-plus"></i>&nbsp;{{ $t('so_new_customer') }}
+                            </el-button>
+                        </div>
 
                         <!-- Selected Customer Profile Card (WOW effect!) -->
                         <Transition name="fade-slide">
@@ -498,6 +530,15 @@
                                     </div>
                                 </el-col>
                             </el-row>
+                            <div class="summary-input-row mb-3">
+                                <label>{{ $t('so_fulfillment_type') }}</label>
+                                <el-radio-group v-model="form.fulfillment_type" class="fulfillment-choice">
+                                    <el-radio-button value="ship"><i class="fas fa-truck"></i> {{ $t('so_fulfillment_ship') }}</el-radio-button>
+                                    <el-radio-button value="delivery"><i class="fas fa-motorcycle"></i> {{ $t('so_fulfillment_delivery') }}</el-radio-button>
+                                    <el-radio-button value="pickup"><i class="fas fa-store"></i> {{ $t('so_fulfillment_pickup') }}</el-radio-button>
+                                </el-radio-group>
+                                <small v-if="form.fulfillment_type === 'pickup'" class="field-hint">{{ $t('so_pickup_one_branch') }}</small>
+                            </div>
                             <div class="summary-input-row">
                                 <label>{{ $t('delivery_and_shipping_address') }}</label>
                                 <el-input
@@ -580,21 +621,6 @@
                             
                             <div class="summary-inputs">
                                 <div class="summary-input-row">
-                                    <label>{{ $t('order_status') }}</label>
-                                    <el-select v-model="form.status" size="small" class="status-select">
-                                        <el-option
-                                            v-for="status in availableStatuses"
-                                            :key="status"
-                                            :value="status"
-                                            :label="statusLabels[status]"
-                                        >
-                                            <div class="status-option">
-                                                <el-tag :type="statusColors[status]" size="small">{{ statusLabels[status] }}</el-tag>
-                                            </div>
-                                        </el-option>
-                                    </el-select>
-                                </div>
-                                <div class="summary-input-row">
                                     <label>{{ $t('extra_discount') }}</label>
                                     <el-input-number
                                         v-model="form.discount"
@@ -613,14 +639,6 @@
                                         size="small"
                                         @change="updateTotals"
                                     />
-                                </div>
-                                <div class="summary-input-row">
-                                    <label>{{ $t('payment_method') }}</label>
-                                    <el-select v-model="form.payment_method" size="small">
-                                        <el-option :label="$t('payment_method_cash')" value="cash" />
-                                        <el-option :label="$t('credit_card')" value="card" />
-                                        <el-option :label="$t('bank_transfer')" value="transfer" />
-                                    </el-select>
                                 </div>
                             </div>
 
@@ -659,7 +677,7 @@
                                     :disabled="!form.customer_id"
                                     @click="goToStep(2)"
                                 >
-                                    {{ $t('next_review_and_confirm') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                                    {{ $t('so_next_routing') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
                                 </el-button>
                             </div>
                         </div>
@@ -667,8 +685,117 @@
                 </div>
             </div>
 
-            <!-- Step 3: Preview & Confirm -->
-            <div v-else-if="activeStep === 2" :key="2" class="step-3-container preview-layout">
+            <!-- Step 3: Where each line comes from -->
+            <div v-else-if="activeStep === 2" :key="2" class="routing-step">
+                <el-card shadow="hover" class="routing-card">
+                    <template #header>
+                        <div class="card-header routing-head">
+                            <div>
+                                <el-icon><Location /></el-icon>
+                                <span>{{ $t('so_routing_title') }}</span>
+                            </div>
+                            <el-radio-group v-model="routingMode" size="small">
+                                <el-radio-button value="plan">{{ $t('so_routing_plan_now') }}</el-radio-button>
+                                <el-radio-button value="later">{{ $t('so_routing_later') }}</el-radio-button>
+                            </el-radio-group>
+                        </div>
+                    </template>
+
+                    <el-alert v-if="routingMode === 'later'" type="info" show-icon :closable="false" :title="$t('so_routing_later_hint')" />
+
+                    <template v-else>
+                        <el-skeleton v-if="routingLoading" :rows="4" animated />
+
+                        <template v-else>
+                            <!-- The one-glance answer: can a single place fill it all? -->
+                            <div class="routing-summary" :class="{ ok: routingSummary.state === 'single', warn: routingSummary.state === 'short' }">
+                                <i class="fas" :class="routingSummary.state === 'short' ? 'fa-triangle-exclamation' : (routingSummary.state === 'single' ? 'fa-circle-check' : 'fa-code-branch')"></i>
+                                <span>{{ routingSummary.text }}</span>
+                                <div class="routing-summary-actions">
+                                    <el-select
+                                        v-model="routeAllTarget"
+                                        size="small"
+                                        :placeholder="$t('so_route_all_to')"
+                                        class="route-all-select"
+                                        @change="routeAllTo"
+                                    >
+                                        <el-option v-for="w in routingWarehouses" :key="w.id" :value="w.id" :label="w.name">
+                                            <span>{{ w.name }}</span>
+                                            <small class="route-all-cover" :class="{ short: !warehouseCoversAll(w.id) }">
+                                                {{ warehouseCoversAll(w.id) ? $t('so_covers_all') : $t('so_covers_part') }}
+                                            </small>
+                                        </el-option>
+                                    </el-select>
+                                    <el-button size="small" plain :loading="routingLoading" @click="loadRoutingSuggestion(true)">
+                                        <i class="fas fa-wand-magic-sparkles"></i>&nbsp;{{ $t('so_resuggest') }}
+                                    </el-button>
+                                </div>
+                            </div>
+
+                            <div class="routing-lines">
+                                <article v-for="item in items" :key="item.pick" class="routing-line" :class="'is-' + lineRoutingState(item)">
+                                    <header class="routing-line-head">
+                                        <div class="routing-line-name">
+                                            <strong>{{ item.name }}</strong>
+                                            <VariantChip v-if="item.product_variant_id" :label="item.variant_label" />
+                                        </div>
+                                        <div class="routing-line-qty">
+                                            <span>{{ $t('so_routing_placed', { placed: allocatedTotal(item), total: item.quantity }) }}</span>
+                                            <el-tag v-if="lineRoutingState(item) === 'ok'" type="success" size="small" effect="plain"><i class="fas fa-check"></i></el-tag>
+                                            <el-tag v-else-if="lineRoutingState(item) === 'short'" type="warning" size="small" effect="plain">{{ $t('so_routing_short') }}</el-tag>
+                                            <el-tag v-else type="danger" size="small" effect="plain">{{ $t('so_routing_mismatch', { n: item.quantity - allocatedTotal(item) }) }}</el-tag>
+                                        </div>
+                                    </header>
+
+                                    <div v-for="(alloc, aIdx) in item.allocations" :key="aIdx" class="routing-source">
+                                        <el-select v-model="alloc.warehouse_id" size="small" class="routing-source-wh" :placeholder="$t('so_choose_warehouse')">
+                                            <el-option
+                                                v-for="w in routingWarehouses"
+                                                :key="w.id"
+                                                :value="w.id"
+                                                :label="w.name"
+                                                :disabled="item.allocations.some((a, i) => i !== aIdx && a.warehouse_id === w.id)"
+                                            >
+                                                <span>{{ w.name }}</span>
+                                                <small class="route-all-cover">{{ $t('available') }} {{ freeFor(item, w.id, aIdx) }}</small>
+                                            </el-option>
+                                        </el-select>
+                                        <el-input-number v-model="alloc.quantity" :min="1" :max="item.quantity" size="small" controls-position="right" />
+                                        <span class="routing-source-free" :class="{ short: alloc.warehouse_id && alloc.quantity > freeFor(item, alloc.warehouse_id, aIdx) }">
+                                            {{ $t('so_free_here', { n: alloc.warehouse_id ? freeFor(item, alloc.warehouse_id, aIdx) : '—' }) }}
+                                        </span>
+                                        <el-button v-if="item.allocations.length > 1" text type="danger" size="small" @click="item.allocations.splice(aIdx, 1)">
+                                            <el-icon><Delete /></el-icon>
+                                        </el-button>
+                                    </div>
+
+                                    <el-button
+                                        v-if="item.allocations.length < routingWarehouses.length"
+                                        text
+                                        type="primary"
+                                        size="small"
+                                        @click="addSource(item)"
+                                    >
+                                        <i class="fas fa-plus"></i>&nbsp;{{ $t('so_add_source') }}
+                                    </el-button>
+                                </article>
+                            </div>
+                        </template>
+                    </template>
+
+                    <div class="step-3-nav-bar mt-4">
+                        <el-button @click="goToStep(1)" size="large" class="step-back-btn">
+                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_edit_data') }}
+                        </el-button>
+                        <el-button type="primary" size="large" @click="goToStep(3)">
+                            {{ $t('next_review_and_confirm') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                        </el-button>
+                    </div>
+                </el-card>
+            </div>
+
+            <!-- Step 4: Preview & Confirm -->
+            <div v-else-if="activeStep === 3" :key="3" class="step-3-container preview-layout">
                 <el-card shadow="hover" class="preview-card mb-4">
                     <template #header>
                         <div class="card-header">
@@ -715,12 +842,8 @@
                                         <strong>{{ form.expected_delivery || $t('not_specified') }}</strong>
                                     </div>
                                     <div class="preview-detail-row">
-                                        <span class="lbl">{{ $t('payment_method_label') }}</span>
-                                        <el-tag size="small" type="info">{{ paymentMethodLabel }}</el-tag>
-                                    </div>
-                                    <div class="preview-detail-row">
-                                        <span class="lbl">{{ $t('order_status_label') }}</span>
-                                        <el-tag size="small" :type="statusColors[form.status]">{{ statusLabels[form.status] }}</el-tag>
+                                        <span class="lbl">{{ $t('so_fulfillment_type') }}</span>
+                                        <el-tag size="small" type="info">{{ fulfillmentLabel }}</el-tag>
                                     </div>
                                     <div class="preview-detail-row full-width-row">
                                         <span class="lbl">{{ $t('shipping_address_label') }}</span>
@@ -768,6 +891,7 @@
                                         <th>{{ $t('chosen_unit') }}</th>
                                         <th>{{ $t('quantity_ordered') }}</th>
                                         <th>{{ $t('unit_price') }}</th>
+                                        <th>{{ $t('so_from_warehouse') }}</th>
                                         <th>{{ $t('line_subtotal') }}</th>
                                     </tr>
                                 </thead>
@@ -781,6 +905,7 @@
                                         <td>{{ item.selectedUnit?.name_ar || item.selectedUnit?.name }}</td>
                                         <td>{{ $t('pieces_count', { count: item.quantity }) }}</td>
                                         <td>{{ formatCurrency(item.price) }}</td>
+                                        <td class="source-txt">{{ lineSourcesText(item) }}</td>
                                         <td class="total-txt">{{ formatCurrency(item.price * item.quantity) }}</td>
                                     </tr>
                                 </tbody>
@@ -800,23 +925,37 @@
                     </div>
 
                     <!-- Step 3 Action Navigation -->
+                    <!-- Two ways out: keep it as a draft to finish later, or
+                         confirm it now — which holds the stock, raises the
+                         invoice and posts the entry in the same click. -->
                     <div class="step-3-nav-bar mt-4">
-                        <el-button @click="goToStep(1)" size="large" class="step-back-btn">
-                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_edit_data') }}
+                        <el-button @click="goToStep(2)" size="large" class="step-back-btn">
+                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('so_previous_routing') }}
                         </el-button>
-                        <el-button
-                            type="success"
-                            size="large"
-                            :loading="submitting"
-                            @click="submitSalesOrder"
-                            class="confirm-order-btn"
-                        >
-                            <el-icon class="el-icon--left"><Check /></el-icon>
-                            {{ isEdit ? $t('save_order_changes') : $t('save_sales_order_draft') }}
-                        </el-button>
+                        <div class="execute-actions">
+                            <el-button
+                                size="large"
+                                :loading="submitting && submitMode === 'draft'"
+                                :disabled="submitting"
+                                @click="submitSalesOrder({ execute: null })"
+                            >
+                                <i class="fas fa-floppy-disk"></i>&nbsp;{{ isEdit ? $t('save_order_changes') : $t('save_sales_order_draft') }}
+                            </el-button>
+                            <el-button
+                                type="success"
+                                size="large"
+                                :loading="submitting && submitMode === 'confirm'"
+                                :disabled="submitting"
+                                class="confirm-order-btn"
+                                @click="submitSalesOrder({ execute: 'confirm' })"
+                            >
+                                <el-icon class="el-icon--left"><Check /></el-icon>
+                                {{ $t('so_save_and_confirm') }}
+                            </el-button>
+                        </div>
                     </div>
                     <p class="create-hint">
-                        {{ $t('saving_creates_pending_order') }}
+                        {{ $t('so_execute_hint') }}
                     </p>
                 </el-card>
             </div>
@@ -842,6 +981,7 @@ import { baseCurrencyCode } from '@/utils/currency';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
+import { useStockShortage } from '@/Composables/useStockShortage';
 
 const { t } = useI18n();
 import {
@@ -901,46 +1041,27 @@ const currencyCode = computed(() => baseCurrencyCode());
 const activeStep = ref(0);
 
 // Form data
+// Status and payment method are not asked for: an order is created as a
+// draft and moves through its stages from the order screen (or "save and
+// confirm" below), and it is paid on its invoice. The API ignored both
+// fields, so offering them only promised something that did not happen.
 const form = reactive({
     customer_id: null,
     discount: 0,
     tax: 0,
     notes: '',
-    status: 'pending',
     order_date: new Date().toISOString().split('T')[0],
     expected_delivery: '',
     shipping_address: '',
-    payment_method: 'cash',
+    fulfillment_type: 'ship',
     expenses: []
 });
 
-// Status transitions configuration
-const statusTransitions = {
-    pending: ['confirmed', 'cancelled'],
-    confirmed: ['processing', 'cancelled'],
-    processing: ['shipped', 'cancelled'],
-    shipped: ['delivered', 'cancelled'],
-    delivered: [],
-    cancelled: []
-};
-
-const statusLabels = {
-    pending: t('sales_status_pending'),
-    confirmed: t('sales_status_confirmed'),
-    processing: t('sales_status_processing'),
-    shipped: t('sales_status_shipped'),
-    delivered: t('sales_status_delivered'),
-    cancelled: t('sales_status_cancelled')
-};
-
-const statusColors = {
-    pending: 'warning',
-    confirmed: 'primary',
-    processing: 'info',
-    shipped: 'success',
-    delivered: 'success',
-    cancelled: 'danger'
-};
+const fulfillmentLabel = computed(() => ({
+    ship: t('so_fulfillment_ship'),
+    delivery: t('so_fulfillment_delivery'),
+    pickup: t('so_fulfillment_pickup'),
+}[form.fulfillment_type] || form.fulfillment_type));
 
 const items = ref([]);
 const formErrors = ref([]);
@@ -977,12 +1098,6 @@ const total = computed(() => {
     return Math.max(0, subtotal.value - (form.discount || 0) + (form.tax || 0) + totalExpenses.value);
 });
 
-// Available status transitions based on current status
-const availableStatuses = computed(() => {
-    const currentStatus = form.status;
-    const transitions = statusTransitions[currentStatus] || [];
-    return [currentStatus, ...transitions];
-});
 
 // Customer object details for selected profile card
 const selectedCustomer = computed(() => {
@@ -995,15 +1110,7 @@ const selectedCustomerName = computed(() => {
     return cust ? `${cust.name} (${cust.phone || cust.email || ''})` : t('not_specified');
 });
 
-// Payment method labels for preview
-const paymentMethodLabel = computed(() => {
-    const methods = {
-        cash: t('payment_method_cash'),
-        card: t('credit_card'),
-        transfer: t('bank_transfer')
-    };
-    return methods[form.payment_method] || form.payment_method;
-});
+
 
 // Methods
 //
@@ -1073,6 +1180,7 @@ const addProduct = (product) => {
 
         items.value.push({
             pick,
+            allocations: [],
             product_id: product.id,
             product_variant_id: product.variant_id || null,
             variant_label: product.variant_label || '',
@@ -1214,33 +1322,259 @@ const removeExpense = (index) => {
 const handleQuickAction = (command) => {
     switch (command) {
         case 'duplicate-last':
+            // One more of the last line. A second row for the same product
+            // (and size) would split what is one line, and share its key.
             if (items.value.length > 0) {
-                const lastItem = { ...items.value[items.value.length - 1] };
-                items.value.push(lastItem);
+                items.value[items.value.length - 1].quantity += 1;
                 updateTotals();
                 ElMessage.success(t('last_item_duplicated'));
             }
             break;
         case 'clear-all':
-            if (items.value.length > 0 && confirm(t('confirm_clear_all_items'))) {
-                items.value = [];
-                form.customer_id = null;
-                form.discount = 0;
-                form.tax = 0;
-                form.notes = '';
-                form.expenses = [];
-                updateTotals();
-                ElMessage.success(t('form_cleared'));
-            }
+            confirmClear();
             break;
         case 'save-draft':
-            localStorage.setItem('sales-order-draft', JSON.stringify({
-                form: form.value,
-                items: items.value
-            }));
-            ElMessage.success(t('draft_saved'));
+            saveLocalDraft();
             break;
     }
+};
+
+/* ------------------------------------------------------------------ *
+ * Routing: which warehouse fills each line
+ *
+ * Planned before saving, from a server suggestion the seller edits. Stock is
+ * counted per product, and two sizes of one product draw on the same stock,
+ * so what a warehouse has "free" for a line is what it holds less what the
+ * order's other lines of that product already take from it there.
+ * ------------------------------------------------------------------ */
+
+const routingMode = ref('plan');
+const routingLoading = ref(false);
+const routingWarehouses = ref([]);
+// product id => { warehouse id => free units before this order }
+const routingAvailable = ref({});
+const routeAllTarget = ref(null);
+
+const allocatedTotal = (item) => (item.allocations || []).reduce((sum, a) => sum + (Number(a.quantity) || 0), 0);
+
+const freeFor = (item, warehouseId, exceptIndex = -1) => {
+    const free = Number(routingAvailable.value[item.product_id]?.[warehouseId] ?? 0);
+    const takenByOthers = items.value.reduce((sum, other) => {
+        if (other.product_id !== item.product_id) return sum;
+        return sum + (other.allocations || []).reduce((s, a, i) => {
+            if (a.warehouse_id !== warehouseId) return s;
+            if (other === item && i === exceptIndex) return s;
+            return s + (Number(a.quantity) || 0);
+        }, 0);
+    }, 0);
+    return Math.max(0, free - takenByOthers);
+};
+
+/** ok: placed in full from stock that is there · short: placed, but a source lacks the stock · mismatch: not all placed. */
+const lineRoutingState = (item) => {
+    if (allocatedTotal(item) !== Number(item.quantity)) return 'mismatch';
+    const short = (item.allocations || []).some((a, i) => a.warehouse_id && Number(a.quantity) > freeFor(item, a.warehouse_id, i));
+    return short ? 'short' : 'ok';
+};
+
+const warehouseName = (id) => routingWarehouses.value.find((w) => w.id === id)?.name || `#${id}`;
+
+const warehouseCoversAll = (warehouseId) => {
+    const need = {};
+    items.value.forEach((item) => { need[item.product_id] = (need[item.product_id] || 0) + Number(item.quantity); });
+    return Object.entries(need).every(([productId, qty]) => Number(routingAvailable.value[productId]?.[warehouseId] ?? 0) >= qty);
+};
+
+const routingSummary = computed(() => {
+    if (items.value.some((item) => lineRoutingState(item) !== 'ok')) {
+        return { state: 'short', text: t('so_routing_summary_short') };
+    }
+    const used = new Set(items.value.flatMap((item) => item.allocations.map((a) => a.warehouse_id)));
+    if (used.size === 1) {
+        return { state: 'single', text: t('so_routing_summary_single', { name: warehouseName([...used][0]) }) };
+    }
+    return { state: 'split', text: t('so_routing_summary_split', { n: used.size }) };
+});
+
+/**
+ * Asks the server for a plan. Lines already planned in full keep their plan
+ * unless `force` — so going back to change a customer does not undo edits.
+ */
+const loadRoutingSuggestion = async (force = false) => {
+    if (!items.value.length) return;
+    routingLoading.value = true;
+    try {
+        const { data } = await salesOrdersApi.suggestRouting({
+            items: items.value.map((item) => ({ product_id: item.product_id, quantity: Number(item.quantity) || 1 })),
+        });
+        const plan = data?.data || {};
+        routingWarehouses.value = plan.warehouses || [];
+
+        const available = {};
+        (plan.lines || []).forEach((line) => { available[line.product_id] = line.available || {}; });
+        routingAvailable.value = available;
+
+        items.value.forEach((item, index) => {
+            const line = plan.lines?.[index];
+            if (!line) return;
+            if (!force && item.allocations?.length && allocatedTotal(item) === Number(item.quantity)) return;
+
+            const allocations = (line.allocations || []).map((a) => ({ warehouse_id: a.warehouse_id, quantity: a.quantity }));
+            // What no warehouse can cover still needs a source for the plan
+            // to add up: it goes on the preferred one, and shows as short.
+            if (line.shortfall > 0) {
+                const target = allocations[0] || { warehouse_id: plan.preferred_warehouse_id, quantity: 0 };
+                target.quantity += line.shortfall;
+                if (!allocations.length && target.warehouse_id) allocations.push(target);
+            }
+            item.allocations = allocations;
+        });
+    } catch (error) {
+        ElMessage.error(error.response?.data?.message || t('so_routing_failed'));
+    } finally {
+        routingLoading.value = false;
+    }
+};
+
+const routeAllTo = (warehouseId) => {
+    if (!warehouseId) return;
+    items.value.forEach((item) => { item.allocations = [{ warehouse_id: warehouseId, quantity: Number(item.quantity) }]; });
+    routeAllTarget.value = null;
+};
+
+const addSource = (item) => {
+    const used = new Set(item.allocations.map((a) => a.warehouse_id));
+    const next = routingWarehouses.value
+        .filter((w) => !used.has(w.id))
+        .sort((a, b) => freeFor(item, b.id) - freeFor(item, a.id))[0];
+    const remaining = Number(item.quantity) - allocatedTotal(item);
+    item.allocations.push({ warehouse_id: next?.id ?? null, quantity: Math.max(1, remaining) });
+};
+
+const lineSourcesText = (item) => {
+    if (routingMode.value !== 'plan' || !item.allocations?.length) return t('so_routing_at_confirmation');
+    return item.allocations.map((a) => `${warehouseName(a.warehouse_id)} ${a.quantity}`).join(' + ');
+};
+
+/* ------------------------------------------------------------------ *
+ * New customer without leaving the order
+ * ------------------------------------------------------------------ */
+
+const quickCustomer = reactive({ visible: false, saving: false, name: '', phone: '', address: '' });
+
+const openQuickCustomer = () => {
+    Object.assign(quickCustomer, { visible: true, saving: false, name: '', phone: '', address: '' });
+};
+
+const saveQuickCustomer = async () => {
+    if (!quickCustomer.name.trim() || quickCustomer.saving) return;
+    quickCustomer.saving = true;
+    try {
+        // The store endpoint matches on phone and overwrites whoever has it,
+        // so a number already on the books selects that customer instead of
+        // renaming them to what was typed here.
+        const phone = quickCustomer.phone.trim();
+        if (phone) {
+            const found = await posApi.customers({ search: phone, per_page: 5 });
+            const existing = (found.data?.data?.customers || []).find((c) => c.phone === phone);
+            if (existing) {
+                customers.value = [existing, ...customers.value.filter((c) => c.id !== existing.id)];
+                form.customer_id = existing.id;
+                onCustomerChosen(existing.id);
+                quickCustomer.visible = false;
+                ElMessage.info(t('so_customer_exists', { name: existing.name }));
+                return;
+            }
+        }
+
+        const { data } = await posApi.customerStore({
+            name: quickCustomer.name.trim(),
+            phone: quickCustomer.phone || null,
+            address: quickCustomer.address || null,
+            status: 'active',
+        });
+        const customer = data?.data?.customer || data?.data || data;
+        if (customer?.id) {
+            customers.value = [customer, ...customers.value.filter((c) => c.id !== customer.id)];
+            form.customer_id = customer.id;
+            onCustomerChosen(customer.id);
+        }
+        quickCustomer.visible = false;
+        ElMessage.success(t('so_customer_added'));
+    } catch (error) {
+        const errors = error.response?.data?.errors;
+        ElMessage.error((errors && Object.values(errors).flat()[0]) || error.response?.data?.message || t('so_customer_add_failed'));
+    } finally {
+        quickCustomer.saving = false;
+    }
+};
+
+/** A chosen customer brings their address, unless one was already typed. */
+const onCustomerChosen = (id) => {
+    const customer = customers.value.find((c) => c.id === id);
+    if (customer?.address && !form.shipping_address) form.shipping_address = customer.address;
+};
+
+/* ------------------------------------------------------------------ *
+ * Draft kept in this browser
+ * ------------------------------------------------------------------ */
+
+const DRAFT_KEY = 'sales-order-draft';
+
+const saveLocalDraft = () => {
+    try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+            saved_at: new Date().toISOString(),
+            form: { ...form, expenses: form.expenses.map((e) => ({ ...e })) },
+            items: items.value.map(({ units, ...item }) => ({ ...item, units: [item.selectedUnit].filter(Boolean) })),
+            routing_mode: routingMode.value,
+        }));
+        ElMessage.success(t('draft_saved'));
+    } catch {
+        ElMessage.error(t('so_draft_not_saved'));
+    }
+};
+
+const clearLocalDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
+};
+
+const offerLocalDraft = async () => {
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { draft = null; }
+    if (!draft?.items?.length) return;
+
+    try {
+        await ElMessageBox.confirm(
+            t('so_restore_draft_message', { count: draft.items.length }),
+            t('so_restore_draft_title'),
+            { type: 'info', confirmButtonText: t('so_restore_draft'), cancelButtonText: t('so_discard_draft') },
+        );
+        Object.assign(form, draft.form || {});
+        items.value = draft.items.map((item) => ({ ...item, allocations: item.allocations || [] }));
+        routingMode.value = draft.routing_mode || 'plan';
+        items.value.forEach((item, index) => loadProductUnits(item.product_id, index, { preserveSelection: true }));
+    } catch {
+        clearLocalDraft();
+    }
+};
+
+const confirmClear = async () => {
+    if (!items.value.length) return;
+    try {
+        await ElMessageBox.confirm(t('confirm_clear_all_items'), t('clear_the_form'), { type: 'warning' });
+    } catch {
+        return;
+    }
+    items.value = [];
+    form.customer_id = null;
+    form.discount = 0;
+    form.tax = 0;
+    form.notes = '';
+    form.expenses = [];
+    clearLocalDraft();
+    updateTotals();
+    ElMessage.success(t('form_cleared'));
 };
 
 // Wizard Navigation logic
@@ -1250,11 +1584,28 @@ const goToStep = (step) => {
         ElMessage.warning(t('add_item_before_next_step'));
         return;
     }
-    if (step === 2 && !form.customer_id) {
+    if (step >= 2 && !form.customer_id) {
         ElMessage.warning(t('choose_customer_before_final_step'));
         return;
     }
+    if (step === 3 && routingMode.value === 'plan') {
+        const unplaced = items.value.filter((item) => lineRoutingState(item) === 'mismatch');
+        if (unplaced.length) {
+            ElMessage.warning(t('so_routing_incomplete', { n: unplaced.length }));
+            return;
+        }
+        if (form.fulfillment_type === 'pickup'
+            && new Set(items.value.flatMap((item) => item.allocations.map((a) => a.warehouse_id))).size > 1) {
+            ElMessage.warning(t('so_pickup_one_branch'));
+            return;
+        }
+    }
     activeStep.value = step;
+
+    // Entering the routing step plans any line not yet planned in full.
+    if (step === 2 && routingMode.value === 'plan') {
+        loadRoutingSuggestion(false);
+    }
 
     // Focus input on Step 0 mount
     if (step === 0) {
@@ -1264,8 +1615,31 @@ const goToStep = (step) => {
     }
 };
 
+const submitMode = ref(null);
+const { handleStockShortage } = useStockShortage();
+
+const linePayload = (item) => ({
+    product_id: item.product_id,
+    product_variant_id: item.product_variant_id || null,
+    quantity: item.quantity,
+    unit_price: item.price,
+    product_unit_id: item.selectedUnit?.id || null,
+    // The plan from the routing step; left out to route at confirmation.
+    allocations: routingMode.value === 'plan' && item.allocations?.length
+        ? item.allocations
+            .filter((a) => a.warehouse_id && Number(a.quantity) > 0)
+            .map((a) => ({ warehouse_id: a.warehouse_id, quantity: Number(a.quantity) }))
+        : undefined,
+});
+
+/** Opens the order on its execution tab — where it goes next. */
+const openOrder = (id) => {
+    router.push({ path: '/admin/sales/sales-orders', query: { open: id, tab: 'execution' } });
+};
+
 const submitSalesOrder = async (options = {}) => {
     const itemsOnly = !!options.itemsOnly;
+    const execute = options.execute || null;
     formErrors.value = [];
 
     if (!itemsOnly && !form.customer_id) {
@@ -1284,47 +1658,75 @@ const submitSalesOrder = async (options = {}) => {
     }
 
     submitting.value = true;
+    submitMode.value = execute ? 'confirm' : 'draft';
 
     try {
         const payload = itemsOnly
-            ? {
-                items: items.value.map(item => ({
-                    product_id: item.product_id,
-                    product_variant_id: item.product_variant_id || null,
-                    quantity: item.quantity,
-                    unit_price: item.price,
-                    product_unit_id: item.selectedUnit?.id || null,
-                })),
-            }
+            ? { items: items.value.map(linePayload) }
             : {
                 customer_id: form.customer_id,
                 discount: form.discount || 0,
                 tax: form.tax || 0,
+                // What the customer is charged on top of the goods. The lines
+                // used to be added into the total on screen and never sent.
+                shipping_cost: totalExpenses.value || 0,
                 notes: form.notes,
-                status: form.status,
                 order_date: form.order_date,
                 expected_delivery: form.expected_delivery || null,
                 shipping_address: form.shipping_address,
-                payment_method: form.payment_method,
-                items: items.value.map(item => ({
-                    product_id: item.product_id,
-                    product_variant_id: item.product_variant_id || null,
-                    quantity: item.quantity,
-                    unit_price: item.price,
-                    product_unit_id: item.selectedUnit?.id || null,
-                })),
+                fulfillment_type: form.fulfillment_type,
+                items: items.value.map(linePayload),
+                ...(execute && !isEdit.value ? { execute } : {}),
             };
+
+        let orderId = route.params.id;
+        let execution = null;
 
         if (isEdit.value) {
             await salesOrdersApi.update(route.params.id, payload);
-            ElMessage.success(itemsOnly ? t('item_changes_saved') : t('sales_order_updated'));
         } else {
-            await salesOrdersApi.create(payload);
-            ElMessage.success(t('sales_order_created'));
+            const { data } = await salesOrdersApi.create(payload);
+            orderId = data?.data?.id;
+            execution = data?.execution || null;
+        }
+
+        // An edit is saved first, then confirmed through the same endpoint the
+        // order screen uses, so a refusal reads the same.
+        if (isEdit.value && execute === 'confirm') {
+            try {
+                await salesOrdersApi.confirm(orderId);
+                execution = { confirmed: true };
+            } catch (error) {
+                execution = {
+                    confirmed: false,
+                    message: error.response?.data?.message,
+                    shortages: error.response?.data?.data?.shortages || [],
+                };
+            }
         }
 
         isDirty.value = false;
-        router.push('/admin/sales/sales-orders');
+        clearLocalDraft();
+
+        if (execution && !execution.confirmed) {
+            // Saved, but not confirmed: say why, and offer the purchase order
+            // that would fix a shortage, as the order screen does.
+            const shown = await handleStockShortage(
+                { response: { data: { data: { shortages: execution.shortages || [] } } } },
+                orderId,
+            );
+            if (!shown) {
+                await ElMessageBox.alert(execution.message || t('so_saved_not_confirmed'), t('so_saved_as_draft'), { type: 'warning' })
+                    .catch(() => {});
+            }
+        } else {
+            ElMessage.success(execution?.confirmed
+                ? t('so_saved_and_confirmed')
+                : (isEdit.value ? (itemsOnly ? t('item_changes_saved') : t('sales_order_updated')) : t('sales_order_created')));
+        }
+
+        if (orderId) openOrder(orderId);
+        else router.push('/admin/sales/sales-orders');
     } catch (error) {
         console.error('Submit error:', error);
         if (error.response?.data?.errors) {
@@ -1335,6 +1737,7 @@ const submitSalesOrder = async (options = {}) => {
         }
     } finally {
         submitting.value = false;
+        submitMode.value = null;
     }
 };
 
@@ -1390,10 +1793,10 @@ const handleKeyboardShortcuts = (e) => {
     // Ctrl/Cmd + Enter: Confirm/Submit order
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        if (activeStep.value < 2) {
+        if (activeStep.value < 3) {
             goToStep(activeStep.value + 1);
-        } else if (items.value.length > 0) {
-            submitSalesOrder();
+        } else if (items.value.length > 0 && !submitting.value) {
+            submitSalesOrder({ execute: null });
         }
     }
     // Escape: Close search dropdown
@@ -1403,15 +1806,7 @@ const handleKeyboardShortcuts = (e) => {
     // Ctrl/Cmd + N: Clear items
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
-        if (items.value.length > 0 && confirm(t('confirm_clear_all_items'))) {
-            items.value = [];
-            form.customer_id = null;
-            form.discount = 0;
-            form.tax = 0;
-            form.notes = '';
-            form.expenses = [];
-            updateTotals();
-        }
+        confirmClear();
     }
 };
 
@@ -1464,11 +1859,14 @@ onMounted(async () => {
                 form.discount = parseFloat(order.discount) || 0;
                 form.tax = parseFloat(order.tax) || 0;
                 form.notes = order.notes || '';
-                form.status = order.status || 'pending';
                 form.order_date = order.order_date || '';
                 form.expected_delivery = order.expected_delivery || '';
                 form.shipping_address = order.shipping_address || '';
-                form.payment_method = order.payment_method || 'cash';
+                form.fulfillment_type = order.fulfillment_type || 'ship';
+                // Saved as one figure; shown back as one charge line.
+                form.expenses = parseFloat(order.shipping_cost) > 0
+                    ? [{ description: t('shipping_and_delivery'), category: 'shipping', amount: parseFloat(order.shipping_cost) }]
+                    : [];
 
                 if (order.items) {
                     items.value = order.items.map(item => {
@@ -1484,6 +1882,9 @@ onMounted(async () => {
 
                         return {
                             pick: pickKey(item.product_id, item.product_variant_id),
+                            // Its plan, if one was saved, so the routing step
+                            // shows it instead of suggesting a new one.
+                            allocations: (item.allocations || []).map((a) => ({ warehouse_id: a.warehouse_id, quantity: a.quantity })),
                             product_id: item.product_id,
                             product_variant_id: item.product_variant_id || null,
                             variant_label: variantLabelOf(item.variant) || '',
@@ -1514,7 +1915,10 @@ onMounted(async () => {
         }
     }
 
-    if (!isEdit.value) {
+    if (isEdit.value) {
+        routingMode.value = items.value.some((item) => item.allocations?.length) ? 'plan' : 'later';
+    } else {
+        await offerLocalDraft();
         setTimeout(() => {
             searchInputRef.value?.focus();
         }, 100);
@@ -3240,5 +3644,55 @@ onUnmounted(() => {
     .step-3-nav-bar .el-button {
         width: 100%;
     }
+}
+
+/* ---- Customer step ---- */
+.customer-pick-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.customer-pick-row .el-select { flex: 1; }
+.fulfillment-choice { display: flex; flex-wrap: wrap; }
+.fulfillment-choice i { margin-inline-end: 0.3rem; }
+.field-hint { display: block; margin-top: 0.35rem; color: #b45309; font-size: 0.78rem; }
+
+/* ---- Routing step ---- */
+.routing-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; width: 100%; }
+.routing-head > div { display: flex; align-items: center; gap: 0.5rem; }
+.routing-summary {
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 10px;
+    background: var(--el-fill-color-light); border: 1px solid var(--el-border-color-lighter);
+    font-weight: 600;
+}
+.routing-summary.ok { background: var(--el-color-success-light-9); border-color: var(--el-color-success-light-7); color: var(--el-color-success-dark-2); }
+.routing-summary.warn { background: var(--el-color-warning-light-9); border-color: var(--el-color-warning-light-7); color: var(--el-color-warning-dark-2); }
+.routing-summary-actions { display: flex; gap: 0.5rem; margin-inline-start: auto; flex-wrap: wrap; }
+.route-all-select { width: 200px; }
+.route-all-cover { float: inline-end; margin-inline-start: 0.75rem; color: var(--el-color-success); font-size: 0.75rem; }
+.route-all-cover.short { color: var(--el-color-warning); }
+
+.routing-lines { display: grid; gap: 0.75rem; }
+.routing-line {
+    border: 1px solid var(--el-border-color-lighter); border-inline-start: 4px solid var(--el-color-success);
+    border-radius: 10px; padding: 0.75rem 1rem; background: var(--el-bg-color);
+}
+.routing-line.is-short { border-inline-start-color: var(--el-color-warning); }
+.routing-line.is-mismatch { border-inline-start-color: var(--el-color-danger); }
+.routing-line-head { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.routing-line-name { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.routing-line-qty { display: flex; align-items: center; gap: 0.5rem; color: var(--el-text-color-secondary); font-size: 0.85rem; }
+.routing-source { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.routing-source-wh { width: 220px; }
+.routing-source-free { font-size: 0.8rem; color: var(--el-text-color-secondary); }
+.routing-source-free.short { color: var(--el-color-warning-dark-2); font-weight: 600; }
+
+/* ---- Review step ---- */
+.execute-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.source-txt { font-size: 0.8rem; color: var(--el-text-color-secondary); }
+
+@media (max-width: 640px) {
+    .customer-pick-row { flex-direction: column; }
+    .route-all-select, .routing-source-wh { width: 100%; }
+    .routing-summary-actions { margin-inline-start: 0; width: 100%; }
+    .execute-actions { width: 100%; }
+    .execute-actions .el-button { flex: 1; }
 }
 </style>

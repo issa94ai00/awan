@@ -130,6 +130,10 @@ class SalesOrderController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
+            // "confirm": save and confirm in one step — the reservation, the
+            // invoice and the entry follow at once. A refusal (short stock)
+            // still leaves the order saved, as a draft, and says why.
+            'execute' => 'nullable|in:confirm',
             'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
@@ -148,6 +152,12 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
         ]);
 
         // Who the order belongs to comes from the caller: the back office files
@@ -192,37 +202,59 @@ class SalesOrderController extends Controller
             + ($validated['tax'] ?? 0)
             + ($validated['shipping_cost'] ?? 0);
 
-        $salesOrder = SalesOrder::create($validated);
+        unset($validated['execute']);
 
-        foreach ($lineItems as $item) {
-            $salesOrder->items()->create($item);
+        try {
+            $salesOrder = DB::transaction(function () use ($validated, $lineItems, $request) {
+                $salesOrder = SalesOrder::create($validated);
+
+                $created = [];
+                foreach ($lineItems as $item) {
+                    $created[] = $salesOrder->items()->create($item);
+                }
+
+                // Opens the stage history, so the trail starts where the order
+                // does rather than at whatever its first transition happens to be.
+                //
+                // Creation is a draft: no stock reservation, no invoice, no
+                // ledger posting. Those start only when the order is confirmed.
+                SalesOrderStatusHistory::create([
+                    'sales_order_id' => $salesOrder->id,
+                    'from_status' => null,
+                    'to_status' => SalesOrder::STATUS_PENDING,
+                    'note' => 'إنشاء الطلب',
+                    'user_id' => auth()->id(),
+                ]);
+
+                // A plan that breaks the routing rules takes the order with
+                // it: better no order than one routed other than as shown.
+                $this->workflow->applyInitialPlan($salesOrder, $this->planFrom($created, $request->items));
+
+                return $salesOrder;
+            });
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
-        // Opens the stage history, so the trail starts where the order does
-        // rather than at whatever its first transition happens to be.
-        //
-        // Creation is deliberately a draft: no stock reservation, no invoice,
-        // no ledger posting. Those start only when the order is confirmed.
-        SalesOrderStatusHistory::create([
-            'sales_order_id' => $salesOrder->id,
-            'from_status' => null,
-            'to_status' => SalesOrder::STATUS_PENDING,
-            'note' => 'إنشاء الطلب',
-            'user_id' => auth()->id(),
-        ]);
+        $execution = $request->input('execute') === 'confirm'
+            ? $this->confirmNow($salesOrder)
+            : null;
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant']);
+        $salesOrder->refresh()->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'items.allocations']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إنشاء طلب البيع بنجاح',
+            'message' => $execution && ! $execution['confirmed']
+                ? 'تم حفظ الطلب كمسودة، لكن تعذّر تأكيده.'
+                : ($execution ? 'تم إنشاء طلب البيع وتأكيده' : 'تم إنشاء طلب البيع بنجاح'),
             'data' => $salesOrder,
+            'execution' => $execution,
         ], 201);
     }
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'quote', 'fulfillmentWarehouse']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse']);
 
         return response()->json([
             'success' => true,
@@ -267,6 +299,12 @@ class SalesOrderController extends Controller
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
         ]);
 
         // The stage is moved through the workflow endpoints, never by writing
@@ -331,14 +369,28 @@ class SalesOrderController extends Controller
             $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
         }
 
-        DB::transaction(function () use ($salesOrder, $validated, $lineItems) {
-            $salesOrder->update($validated);
+        try {
+            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $request) {
+                $salesOrder->update($validated);
 
-            $salesOrder->items()->delete();
-            foreach ($lineItems as $item) {
-                $salesOrder->items()->create($item);
-            }
-        });
+                // The lines are rewritten, and their allocations with them; the
+                // warehouses the order was routed through go too when a plan is
+                // sent, so it is the whole plan rather than laid over the old.
+                $salesOrder->items()->delete();
+                $created = [];
+                foreach ($lineItems as $item) {
+                    $created[] = $salesOrder->items()->create($item);
+                }
+
+                $plan = $this->planFrom($created, $request->items);
+                if (array_filter($plan)) {
+                    $salesOrder->routings()->sync([]);
+                    $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
+                }
+            });
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
 
         $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant']);
 
@@ -347,6 +399,76 @@ class SalesOrderController extends Controller
             'message' => 'تم تحديث طلب البيع بنجاح',
             'data' => $salesOrder,
         ]);
+    }
+
+    /**
+     * Where each line of an order being written should come from — the
+     * wizard's routing step asks before saving.
+     */
+    public function suggestRouting(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'fulfillment_warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->workflow->suggestSourcing(
+                $validated['items'],
+                isset($validated['fulfillment_warehouse_id']) ? (int) $validated['fulfillment_warehouse_id'] : null,
+            ),
+        ]);
+    }
+
+    /**
+     * The plan sent with the lines, keyed by the lines just written.
+     *
+     * @param  list<\App\Models\SalesOrderItem>  $created  in request order
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<int,int>>  item id => [warehouse id => quantity]
+     */
+    private function planFrom(array $created, array $items): array
+    {
+        $plan = [];
+
+        foreach (array_values($items) as $index => $item) {
+            $line = $created[$index] ?? null;
+            if (! $line || empty($item['allocations'])) {
+                continue;
+            }
+
+            foreach ($item['allocations'] as $allocation) {
+                $warehouseId = (int) $allocation['warehouse_id'];
+                $plan[$line->id][$warehouseId] = ($plan[$line->id][$warehouseId] ?? 0) + (int) $allocation['quantity'];
+            }
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Confirms an order just saved, reporting a refusal instead of throwing:
+     * the order stays, as a draft, with the reason and — for short stock —
+     * what is missing where.
+     *
+     * @return array{confirmed: bool, message?: string, shortages?: array, effects?: array}
+     */
+    private function confirmNow(SalesOrder $salesOrder): array
+    {
+        try {
+            $result = $this->workflow->transitionTo($salesOrder->refresh(), SalesOrder::STATUS_CONFIRMED);
+
+            return ['confirmed' => true, 'effects' => $result['effects'] ?? $result];
+        } catch (RuntimeException $e) {
+            return [
+                'confirmed' => false,
+                'message' => $e->getMessage(),
+                'shortages' => $this->workflow->stockShortages($salesOrder->refresh()),
+            ];
+        }
     }
 
     /**

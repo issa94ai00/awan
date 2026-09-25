@@ -12,21 +12,36 @@
                     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
                         <h2 style="margin:0; flex:1;">{{ order.order_number }}</h2>
                         <el-tag :type="statusTagType(order.status)" size="large">{{ order.status_text }}</el-tag>
-                        <el-dropdown @command="(val) => updateStatus(val)" trigger="click">
-                            <el-button type="primary" size="small">
+                        <!-- The next step, carried out on the order screen (see
+                             executeStage); only moves the workflow allows. -->
+                        <el-button
+                            v-if="nextForward"
+                            type="primary"
+                            size="small"
+                            @click="executeStage(nextForward)"
+                        >
+                            {{ stageActionLabel(nextForward) }}
+                        </el-button>
+                        <el-dropdown v-if="(order.allowed_transitions || []).length" @command="executeStage" trigger="click">
+                            <el-button size="small">
                                 {{ $t('change_status') }} <el-icon><ArrowDown /></el-icon>
                             </el-button>
                             <template #dropdown>
                                 <el-dropdown-menu>
-                                    <el-dropdown-item command="pending">{{ $t('hanging') }}</el-dropdown-item>
-                                    <el-dropdown-item command="confirmed">{{ $t('certain') }}</el-dropdown-item>
-                                    <el-dropdown-item command="processing">{{ $t('in_process') }}</el-dropdown-item>
-                                    <el-dropdown-item command="shipped">{{ $t('shipped') }}</el-dropdown-item>
-                                    <el-dropdown-item command="delivered">{{ $t('delivered') }}</el-dropdown-item>
-                                    <el-dropdown-item command="cancelled" divided>{{ $t('canceled') }}</el-dropdown-item>
+                                    <el-dropdown-item
+                                        v-for="stage in order.allowed_transitions"
+                                        :key="stage"
+                                        :command="stage"
+                                        :divided="stage === 'cancelled'"
+                                    >
+                                        {{ stageActionLabel(stage) }}
+                                    </el-dropdown-item>
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
+                        <el-button size="small" plain @click="openOrder">
+                            <i class="fas fa-route"></i>&nbsp;{{ $t('so_open_in_orders') }}
+                        </el-button>
                     </div>
                 </el-card>
 
@@ -72,19 +87,19 @@
                         <el-table-column prop="quantity" :label="$t('quantity')" width="100" />
                         <el-table-column :label="$t('unit_price')" width="130">
                             <template #default="{ row }">
-                                ${{ parseFloat(row.unit_price).toFixed(2) }}
+                                {{ formatCurrency(row.unit_price) }}
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('total')" width="130">
                             <template #default="{ row }">
-                                ${{ parseFloat(row.total).toFixed(2) }}
+                                {{ formatCurrency(row.total) }}
                             </template>
                         </el-table-column>
                     </el-table>
                     <span v-else>-</span>
 
                     <div style="margin-top:1rem; text-align:left; font-size:1.1rem; font-weight:700;">
-                        {{ $t('total') }}{{ parseFloat(order.total).toFixed(2) }}
+                        {{ $t('total') }}: {{ formatCurrency(order.total) }}
                     </div>
                 </el-card>
 
@@ -126,7 +141,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { formatCurrency } from '@/utils/sales';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseRequestsStore } from '@/stores/purchaseRequests';
 import { ElMessage } from 'element-plus';
@@ -155,14 +172,31 @@ const goBack = () => {
     router.push({ name: 'admin.purchase-requests.index' });
 };
 
-const updateStatus = async (status) => {
-    try {
-        await store.updateOrderStatus(order.value.id, status);
-        order.value.status = status;
-        ElMessage.success(window.t('status_updated_successfully'));
-    } catch {
-        ElMessage.error(window.t('status_update_failed'));
-    }
+const { t } = useI18n();
+
+const stageActionLabel = (stage) => ({
+    confirmed: t('confirm_order'),
+    processing: t('start_preparation'),
+    shipped: t('confirm_shipping'),
+    delivered: t('deliver_and_settle_action'),
+    cancelled: t('cancel_the_request'),
+}[stage] || stage);
+
+/** The forward move from here — cancelling is an exit, not the next step. */
+const nextForward = computed(() => (order.value?.allowed_transitions || []).find((stage) => stage !== 'cancelled') || null);
+
+/**
+ * A request is a sales order, moved where every sales order is: the order
+ * screen opens on its execution tab and starts the step, with its dialogs,
+ * stock checks and reasons. Setting the status from here skipped all of that
+ * and left the page showing the old status text.
+ */
+const executeStage = (stage) => {
+    router.push({ path: '/admin/sales/sales-orders', query: { open: order.value.id, tab: 'execution', do: stage } });
+};
+
+const openOrder = () => {
+    router.push({ path: '/admin/sales/sales-orders', query: { open: order.value.id, tab: 'execution' } });
 };
 
 onMounted(async () => {
@@ -172,7 +206,7 @@ onMounted(async () => {
             const data = await store.fetchOrder(id);
             order.value = data;
         } catch {
-            ElMessage.error(window.t('failed_to_load_order_details'));
+            ElMessage.error(t('failed_to_load_order_details'));
         } finally {
             loading.value = false;
         }

@@ -175,14 +175,18 @@
                     <el-table-column :label="$t('actions')" width="240" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
+                                <!-- The order's next step in one click: opens it on
+                                     its execution tab and starts that step, with
+                                     the order's facts in view. -->
                                 <el-button
-                                    v-if="normalizeStatus(row.status) === 'pending'"
+                                    v-if="ROW_NEXT[normalizeStatus(row.status)]"
                                     size="small"
-                                    type="primary"
-                                    @click="openDetailDrawer(row.id)"
-                                    :title="$t('confirm_order')"
+                                    :type="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].type"
+                                    :loading="advancingId === row.id"
+                                    @click="advanceOrder(row)"
+                                    :title="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].label"
                                 >
-                                    <i class="fas fa-circle-check"></i>
+                                    <i class="fas" :class="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].icon"></i>
                                 </el-button>
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
@@ -432,6 +436,15 @@
                                 <strong>{{ $t('next_label', { stage: nextStage.label }) }}</strong>
                             </div>
                             <p class="next-stage-effect"><i class="fas fa-arrow-turn-down"></i> {{ nextStage.effect }}</p>
+                            <el-button
+                                :type="STAGE_ACTIONS[nextStage.status]?.type || 'primary'"
+                                size="small"
+                                class="next-stage-go"
+                                :loading="store.saving"
+                                @click="handleStageMove({ status: nextStage.status, ...STAGE_ACTIONS[nextStage.status] })"
+                            >
+                                <i class="fas" :class="STAGE_ACTIONS[nextStage.status]?.icon"></i>&nbsp;{{ nextStage.label }}
+                            </el-button>
                         </div>
                         <el-alert v-if="isCancelled" type="info" show-icon :closable="false" class="mb-3"
                             :title="$t('order_cancelled_effects_reversed')" />
@@ -886,11 +899,10 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { useCustomersStore } from '@/stores/customers';
-import { useProductsStore } from '@/stores/products';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -912,10 +924,10 @@ import {
 } from '@/utils/sales';
 
 const router = useRouter();
+const route = useRoute();
 const { handleStockShortage } = useStockShortage();
 const store = useSalesOrdersStore();
 const customersStore = useCustomersStore();
-const productsStore = useProductsStore();
 
 const searchQuery = ref('');
 
@@ -1245,6 +1257,35 @@ const nextStage = computed(() => {
     return { status: next, label: STAGE_ACTIONS[next]?.label || next, effect: NEXT_STAGE_EFFECT[next] || '' };
 });
 
+/** The forward step a list row offers, by the order's stage. */
+const ROW_NEXT = {
+    pending: 'confirmed',
+    confirmed: 'processing',
+    processing: 'shipped',
+    shipped: 'delivered',
+};
+
+const advancingId = ref(null);
+
+/**
+ * From the list straight into the order's next step. The drawer opens on the
+ * execution tab first, so the dialogs that need the order (tracking on ship,
+ * the balance on delivery) have it — and so a refusal lands where it can be
+ * fixed.
+ */
+const advanceOrder = async (row) => {
+    advancingId.value = row.id;
+    try {
+        await openDetailDrawer(row.id, 'execution');
+        const target = ROW_NEXT[normalizeStatus(selectedOrder.value?.status)];
+        if (target && (routing.value.allowed_transitions || []).includes(target)) {
+            await handleStageMove({ status: target, ...STAGE_ACTIONS[target] });
+        }
+    } finally {
+        advancingId.value = null;
+    }
+};
+
 const stageExplainer = computed(() => {
     switch (normalizeStatus(selectedOrder.value?.status)) {
         case 'pending': return t('state_hint_pending');
@@ -1484,14 +1525,16 @@ const timelineSteps = computed(() => {
     const status = normalizeStatus(selectedOrder.value?.status);
     const order = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
     const reached = order.indexOf(status);
-    const t = detail.value.timeline || {};
+    // Named apart from the i18n `t`: shadowing it made every label below a
+    // call on this object, and the execution tab threw as soon as it opened.
+    const times = detail.value.timeline || {};
 
     return [
-        { key: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', at: t.order_date },
-        { key: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', at: t.confirmed_at },
+        { key: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', at: times.order_date },
+        { key: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', at: times.confirmed_at },
         { key: 'processing', label: t('prepare'), icon: 'fa-gears', at: null },
-        { key: 'shipped', label: t('shipping'), icon: 'fa-truck-fast', at: t.shipped_at },
-        { key: 'delivered', label: t('deliver'), icon: 'fa-box-open', at: t.delivered_at },
+        { key: 'shipped', label: t('shipping'), icon: 'fa-truck-fast', at: times.shipped_at },
+        { key: 'delivered', label: t('deliver'), icon: 'fa-box-open', at: times.delivered_at },
     ].map((step, i) => ({
         ...step,
         done: reached >= i && reached !== -1,
@@ -1526,10 +1569,10 @@ const goToInvoices = () => {
 };
 
 // Drawer Actions
-const openDetailDrawer = async (id) => {
+const openDetailDrawer = async (id, tab = 'overview') => {
     detailDrawerVisible.value = true;
     loadingDetail.value = true;
-    detailTab.value = 'overview';
+    detailTab.value = tab;
     detail.value = {};
     try {
         // One request for the whole screen: the order, its documents and the
@@ -1615,11 +1658,28 @@ const handleConvertToInvoice = async (id) => {
 onMounted(async () => {
     loadOrders(1);
     customersStore.fetchCustomers().catch(() => {});
-    productsStore.fetchProducts({ per_page: 100 }).catch(() => {});
+
+    // A link to one order — the new-order wizard sends here after saving —
+    // opens it, on the tab asked for.
+    // With `do`, it also starts that step — how the customer-requests screens
+    // hand a stage move to the one place that carries it out properly.
+    const openId = Number(route.query.open);
+    if (openId) {
+        const tab = ['overview', 'execution', 'documents'].includes(String(route.query.tab)) ? String(route.query.tab) : 'overview';
+        const target = route.query.do ? String(route.query.do) : null;
+        router.replace({ query: { ...route.query, open: undefined, tab: undefined, do: undefined } });
+
+        await openDetailDrawer(openId, target ? 'execution' : tab);
+        if (target && STAGE_ACTIONS[target] && (routing.value.allowed_transitions || []).includes(target)) {
+            await handleStageMove({ status: target, ...STAGE_ACTIONS[target] });
+        }
+    }
 });
 </script>
 
 <style scoped>
+.next-stage-go { margin-top: 0.5rem; }
+
 /* The size under a line's product name. */
 .row-variant {
     margin: 0.2rem 0 0.1rem;

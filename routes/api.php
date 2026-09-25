@@ -728,6 +728,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // which are declared later and would never be reached.
         Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('api.sales-orders.index');
         Route::post('/sales-orders', [SalesOrderController::class, 'store'])->name('api.sales-orders.store');
+        // Where each line of an order not yet saved should come from (new-order wizard).
+        Route::post('/sales-orders/suggest-routing', [SalesOrderController::class, 'suggestRouting'])->name('api.sales-orders.suggest-routing');
         Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->whereNumber('salesOrder')->name('api.sales-orders.show');
         Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->whereNumber('salesOrder')->name('api.sales-orders.update');
         Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->whereNumber('salesOrder')->name('api.sales-orders.destroy');

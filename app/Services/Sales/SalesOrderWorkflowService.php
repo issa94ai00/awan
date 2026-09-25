@@ -1899,6 +1899,151 @@ class SalesOrderWorkflowService
         return $ids->unique()->values()->all();
     }
 
+    /**
+     * Where each line of an order not yet saved should come from.
+     *
+     * The new-order wizard asks this before anything is written, so the seller
+     * sees — and can change — which warehouse fills what, instead of finding
+     * out at confirmation.
+     *
+     * Stock is counted per product, and two lines can draw on the same
+     * product (two sizes of it), so availability is shared across the lines
+     * rather than offered to each in full. One warehouse that can fill the
+     * whole order is preferred — one pick, one shipment — with the order's own
+     * warehouse first among equals, then the primary. Failing that, each line
+     * is filled greedily: its preferred warehouse, then whichever holds most.
+     *
+     * Nothing is reserved; the result is a starting point the seller edits.
+     *
+     * @param  array<int, array{product_id:int, quantity:int}>  $items
+     * @return array{preferred_warehouse_id: ?int, single_source: bool, warehouses: list<array<string,mixed>>, lines: list<array<string,mixed>>}
+     */
+    public function suggestSourcing(array $items, ?int $preferredWarehouseId = null): array
+    {
+        $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_primary')->orderBy('id')->get();
+        $productIds = collect($items)->pluck('product_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        // Free stock per product per warehouse, net of what is already held.
+        $free = [];
+        foreach ($productIds as $productId) {
+            foreach ($warehouses as $warehouse) {
+                $free[$productId][$warehouse->id] = $this->inventory->sellableQuantity($productId, $warehouse->id);
+            }
+        }
+
+        $need = [];
+        foreach ($items as $item) {
+            $need[(int) $item['product_id']] = ($need[(int) $item['product_id']] ?? 0) + max(0, (int) $item['quantity']);
+        }
+
+        $rank = function (Warehouse $w) use ($preferredWarehouseId) {
+            return [(int) $w->id === (int) $preferredWarehouseId ? 0 : 1, $w->is_primary ? 0 : 1, $w->id];
+        };
+        $ordered = $warehouses->sortBy($rank)->values();
+
+        $single = $ordered->first(function (Warehouse $w) use ($need, $free) {
+            foreach ($need as $productId => $quantity) {
+                if (($free[$productId][$w->id] ?? 0) < $quantity) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        $left = $free;
+        $lines = [];
+
+        foreach (array_values($items) as $index => $item) {
+            $productId = (int) $item['product_id'];
+            $remaining = max(0, (int) $item['quantity']);
+            $allocations = [];
+
+            $sources = $single
+                ? collect([$single])
+                : $ordered->sortBy(fn (Warehouse $w) => [
+                    (int) $w->id === (int) $preferredWarehouseId ? 0 : 1,
+                    -($left[$productId][$w->id] ?? 0),
+                    $w->id,
+                ])->values();
+
+            foreach ($sources as $warehouse) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $take = min($remaining, (int) ($left[$productId][$warehouse->id] ?? 0));
+                if ($take <= 0) {
+                    continue;
+                }
+                $allocations[] = ['warehouse_id' => $warehouse->id, 'quantity' => $take];
+                $left[$productId][$warehouse->id] -= $take;
+                $remaining -= $take;
+            }
+
+            $lines[] = [
+                'index' => $index,
+                'product_id' => $productId,
+                'quantity' => (int) $item['quantity'],
+                'allocations' => $allocations,
+                'shortfall' => $remaining,
+                // What each warehouse holds of this product for the order,
+                // before any line takes its share — the figure the screen
+                // shows beside each source.
+                'available' => collect($free[$productId] ?? [])->map(fn ($q) => (int) $q)->all(),
+            ];
+        }
+
+        return [
+            'preferred_warehouse_id' => $single?->id ?? ($preferredWarehouseId ?: $ordered->first()?->id),
+            'single_source' => (bool) $single,
+            'warehouses' => $warehouses->map(fn (Warehouse $w) => [
+                'id' => $w->id,
+                'name' => $w->name,
+                'is_primary' => (bool) $w->is_primary,
+                'location_type' => $w->location_type,
+            ])->values()->all(),
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * Records the per-line warehouse plan a new or edited order was saved
+     * with: the routings it draws on and each line's split.
+     *
+     * Goes through the same saveRoutings / saveSourcingPlan the order screen
+     * uses, so a plan from the wizard is held to the same rules — active
+     * warehouses, one for a pickup, every unit placed.
+     *
+     * @param  array<int, array<int,int>>  $plan  item id => [warehouse id => quantity]
+     *
+     * @throws RuntimeException
+     */
+    public function applyInitialPlan(SalesOrder $order, array $plan): void
+    {
+        $plan = array_filter($plan, fn ($sources) => array_sum($sources) > 0);
+        if ($plan === []) {
+            return;
+        }
+
+        $totals = [];
+        foreach ($plan as $sources) {
+            foreach ($sources as $warehouseId => $quantity) {
+                $totals[(int) $warehouseId] = ($totals[(int) $warehouseId] ?? 0) + (int) $quantity;
+            }
+        }
+        arsort($totals);
+
+        // The order belongs to the warehouse supplying most of it, unless it
+        // already has one among the sources.
+        if (! $order->fulfillment_warehouse_id || ! isset($totals[(int) $order->fulfillment_warehouse_id])) {
+            $order->fulfillment_warehouse_id = array_key_first($totals);
+            $order->save();
+        }
+
+        $this->saveRoutings($order, array_keys($totals));
+        $this->saveSourcingPlan($order->refresh(), $plan);
+    }
+
     /** Sourcing may be changed until the goods leave; after that it is history. */
     public function sourcingEditable(SalesOrder $order): bool
     {
