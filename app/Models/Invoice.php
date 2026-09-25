@@ -25,6 +25,11 @@ class Invoice extends Model
         'subtotal',
         'tax',
         'discount',
+        // The rates those two were written at, when they were written as rates
+        // rather than as figures. Null means the invoice carries amounts only —
+        // see the migration that added them.
+        'tax_percent',
+        'discount_percent',
         'additional_charges',
         'total',
         'paid_amount',
@@ -44,6 +49,8 @@ class Invoice extends Model
         'subtotal' => 'decimal:5',
         'tax' => 'decimal:5',
         'discount' => 'decimal:5',
+        'tax_percent' => 'decimal:2',
+        'discount_percent' => 'decimal:2',
         'additional_charges' => 'decimal:5',
         'total' => 'decimal:5',
         'paid_amount' => 'decimal:5',

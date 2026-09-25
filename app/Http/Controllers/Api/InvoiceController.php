@@ -183,6 +183,43 @@ class InvoiceController extends Controller
         }, $shortages);
     }
 
+    /**
+     * What the discount and the tax come to, from whichever of the two ways the
+     * caller expressed them.
+     *
+     * The invoice screen asks for rates, because that is how a discount is
+     * agreed and how a tax is set — but the ledger posts money, and every
+     * report already reads `invoices.discount` and `invoices.tax` as figures.
+     * So a rate decides the figure here, on the server's own subtotal, and both
+     * are stored: the figure the books need, and the rate it was struck at.
+     *
+     * A rate, when sent, wins over the matching amount outright. The two cannot
+     * be reconciled if they disagree, and the rate is the one the seller chose.
+     *
+     * Tax applies to what is actually being charged for the goods, so it is
+     * taken after the discount, not before it. Discounting 10% and taxing 5%
+     * on 1,000 is 900 + 45, not 900 + 50.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array{0: float, 1: float, 2: float|null, 3: float|null}
+     *         [tax, discount, taxPercent, discountPercent]
+     */
+    private function resolveCharges(array $validated, float $subtotal): array
+    {
+        $taxPercent = isset($validated['tax_percent']) ? (float) $validated['tax_percent'] : null;
+        $discountPercent = isset($validated['discount_percent']) ? (float) $validated['discount_percent'] : null;
+
+        $discount = $discountPercent !== null
+            ? round(max(0, $subtotal) * $discountPercent / 100, 5)
+            : (float) ($validated['discount'] ?? 0);
+
+        $tax = $taxPercent !== null
+            ? round(max(0, $subtotal - $discount) * $taxPercent / 100, 5)
+            : (float) ($validated['tax'] ?? 0);
+
+        return [$tax, $discount, $taxPercent, $discountPercent];
+    }
+
     public function store(Request $request, GoodsIssueService $goods): JsonResponse
     {
         try {
@@ -202,6 +239,13 @@ class InvoiceController extends Controller
                 'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
+                // The rates the seller typed. When either is sent it decides
+                // the figure above, which is then ignored — see
+                // resolveCharges(). Capped at 100: a discount cannot take off
+                // more than the whole of the goods, and a tax that doubles them
+                // is a typo, not a rate.
+                'tax_percent' => 'nullable|numeric|min:0|max:100',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 // What the customer handed over. Anything short of the total
                 // stays on their account as a receivable; anything over leaves
                 // them in credit.
@@ -321,8 +365,7 @@ class InvoiceController extends Controller
             }
 
             // Calculate totals
-            $tax = (float) ($validated['tax'] ?? 0);
-            $discount = (float) ($validated['discount'] ?? 0);
+            [$tax, $discount, $taxPercent, $discountPercent] = $this->resolveCharges($validated, $subtotal);
             
             // Calculate expenses total
             $expensesTotal = 0;
@@ -377,6 +420,8 @@ class InvoiceController extends Controller
                 $subtotal,
                 $tax,
                 $discount,
+                $taxPercent,
+                $discountPercent,
                 $additionalCharges,
                 $total,
                 $paidAmount,
@@ -392,6 +437,8 @@ class InvoiceController extends Controller
                 'subtotal' => $subtotal,
                 'tax' => $tax,
                 'discount' => $discount,
+                'tax_percent' => $taxPercent,
+                'discount_percent' => $discountPercent,
                 'additional_charges' => $additionalCharges,
                 'total' => $total,
                 'paid_amount' => $paidAmount,
@@ -607,6 +654,13 @@ class InvoiceController extends Controller
                 'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
+                // The rates the seller typed. When either is sent it decides
+                // the figure above, which is then ignored — see
+                // resolveCharges(). Capped at 100: a discount cannot take off
+                // more than the whole of the goods, and a tax that doubles them
+                // is a typo, not a rate.
+                'tax_percent' => 'nullable|numeric|min:0|max:100',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 'payment_method' => 'nullable|string|in:cash,card,transfer,check',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
@@ -683,8 +737,7 @@ class InvoiceController extends Controller
                 }
 
                 // Calculate totals
-                $tax = (float) ($validated['tax'] ?? 0);
-                $discount = (float) ($validated['discount'] ?? 0);
+                [$tax, $discount, $taxPercent, $discountPercent] = $this->resolveCharges($validated, $subtotal);
                 
                 // Calculate expenses total
                 $expensesTotal = 0;
@@ -738,7 +791,8 @@ class InvoiceController extends Controller
                  */
                 DB::transaction(function () use (
                     $invoice, $itemsData, $validated, $goods, $settles, $before,
-                    $subtotal, $tax, $discount, $additionalCharges, $total, $headerWarehouseId, &$shortages
+                    $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total,
+                    $headerWarehouseId, &$shortages
                 ) {
                 // Put back exactly what left, at what it cost when it left, and
                 // dated so it returns to its own place in the queue.
@@ -761,6 +815,8 @@ class InvoiceController extends Controller
                     'subtotal' => $subtotal,
                     'tax' => $tax,
                     'discount' => $discount,
+                    'tax_percent' => $taxPercent,
+                    'discount_percent' => $discountPercent,
                     'additional_charges' => $additionalCharges,
                     'total' => $total,
                     'due_amount' => max(0, round($total - (float) $invoice->paid_amount, 5)),

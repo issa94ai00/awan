@@ -24,6 +24,11 @@ class InvoiceResource extends JsonResource
             'subtotal' => (float) $this->subtotal,
             'tax' => (float) $this->tax,
             'discount' => (float) $this->discount,
+            // The rates behind those two figures, so a form reopening the
+            // invoice can offer back what was typed instead of inferring a rate
+            // from an amount. Null on an invoice written in amounts.
+            'tax_percent' => $this->tax_percent === null ? null : (float) $this->tax_percent,
+            'discount_percent' => $this->discount_percent === null ? null : (float) $this->discount_percent,
             // Charges billed on top of the goods (delivery, packaging, …).
             // Without this the client cannot reconcile subtotal against total.
             'additional_charges' => (float) $this->additional_charges,

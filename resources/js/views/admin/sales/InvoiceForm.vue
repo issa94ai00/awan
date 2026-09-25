@@ -404,14 +404,27 @@
 
                     <div class="fields-row">
                         <label class="field">
-                            <span class="field-label">{{ t('discount') }}</span>
-                            <el-input v-model.number="form.discount" type="number" min="0" step="0.01" />
+                            <span class="field-label">{{ t('discount_percent') }}</span>
+                            <el-input v-model.number="form.discount_percent" type="number" min="0" max="100" step="0.01">
+                                <template #append>%</template>
+                            </el-input>
+                            <span v-if="discountAmount > 0" class="field-figure deduct">− {{ money(discountAmount) }}</span>
                         </label>
                         <label class="field">
-                            <span class="field-label">{{ t('tax') }}</span>
-                            <el-input v-model.number="form.tax" type="number" min="0" step="0.01" />
+                            <span class="field-label">{{ t('tax_percent') }}</span>
+                            <el-input v-model.number="form.tax_percent" type="number" min="0" max="100" step="0.01">
+                                <template #append>%</template>
+                            </el-input>
+                            <span v-if="taxAmount > 0" class="field-figure">+ {{ money(taxAmount) }}</span>
                         </label>
                     </div>
+
+                    <!-- Which figure each rate is struck on. Said once, and only
+                         when both are in play — that is the only case where the
+                         order they apply in changes the answer. -->
+                    <p v-if="discountAmount > 0 && form.tax_percent > 0" class="field-note">
+                        {{ t('sales.tax_applies_after_discount') }}
+                    </p>
 
                     <!-- The total is clamped at zero rather than going
                          negative, so a discount larger than what it is being
@@ -474,13 +487,13 @@
                             <dt>{{ t('subtotal') }}</dt>
                             <dd>{{ money(subtotal) }}</dd>
                         </div>
-                        <div v-if="form.discount > 0" class="total-line deduct">
-                            <dt>{{ t('discount') }}</dt>
-                            <dd>− {{ money(form.discount) }}</dd>
+                        <div v-if="discountAmount > 0" class="total-line deduct">
+                            <dt>{{ t('discount') }} <span class="rate-chip">{{ percent(form.discount_percent) }}</span></dt>
+                            <dd>− {{ money(discountAmount) }}</dd>
                         </div>
-                        <div v-if="form.tax > 0" class="total-line">
-                            <dt>{{ t('tax') }}</dt>
-                            <dd>+ {{ money(form.tax) }}</dd>
+                        <div v-if="taxAmount > 0" class="total-line">
+                            <dt>{{ t('tax') }} <span class="rate-chip">{{ percent(form.tax_percent) }}</span></dt>
+                            <dd>+ {{ money(taxAmount) }}</dd>
                         </div>
                         <div v-if="totalExpenses > 0" class="total-line">
                             <dt>{{ t('additional_charges') }}</dt>
@@ -695,8 +708,12 @@ const form = reactive({
     // The rep credited with the sale. Null is a valid answer.
     assigned_employee_id: null,
     payment_method: 'cash',
-    discount: 0,
-    tax: 0,
+    // Rates, not figures: a discount is agreed as a percentage and a tax is set
+    // as one, and both then track the lines instead of going stale the moment a
+    // quantity changes. The money they come to is computed below and is what
+    // the invoice is saved and posted with.
+    discount_percent: 0,
+    tax_percent: 0,
     // Collected at the moment the invoice is raised; the rest becomes the
     // customer's outstanding balance.
     paid_amount: 0,
@@ -1131,16 +1148,32 @@ const totalExpenses = computed(() =>
     form.expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
 );
 
+// A rate is only ever a rate on screen; what the invoice carries, and what the
+// ledger is told, is the figure it comes to. The server derives these again
+// from its own subtotal — see InvoiceController::resolveCharges() — so the two
+// agree without the client's arithmetic being trusted.
+const rate = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+
+const discountAmount = computed(() => round2(subtotal.value * rate(form.discount_percent) / 100));
+
+// Tax is charged on what is actually being asked for the goods, so it comes off
+// the discounted figure. Charges billed on top (delivery, packaging) are not
+// part of the goods and are added after both.
+const taxAmount = computed(() =>
+    round2(Math.max(0, subtotal.value - discountAmount.value) * rate(form.tax_percent) / 100)
+);
+
 const total = computed(() =>
-    Math.max(0, subtotal.value - (Number(form.discount) || 0) + (Number(form.tax) || 0) + totalExpenses.value)
+    Math.max(0, subtotal.value - discountAmount.value + taxAmount.value + totalExpenses.value)
 );
 
 // True once the discount alone would take the total past zero — the point
-// where it stops being the discount that determines the total.
+// where it stops being the discount that determines the total. A rate is capped
+// at 100%, so this now only fires on an invoice that is all charges and no
+// goods; it stays because the figure, not the rate, is what decides.
 const discountExceedsChargeable = computed(() => {
-    const discount = Number(form.discount) || 0;
-    if (discount <= 0) return false;
-    return subtotal.value + (Number(form.tax) || 0) + totalExpenses.value - discount < 0;
+    if (discountAmount.value <= 0) return false;
+    return subtotal.value + taxAmount.value + totalExpenses.value - discountAmount.value < 0;
 });
 
 // Positive: the customer still owes this. Negative: they overpaid and the
@@ -1159,6 +1192,18 @@ const availableStatuses = computed(() => [form.status, ...(statusTransitions[for
 const canSubmit = computed(() =>
     items.value.length > 0 && missingSource.value.length === 0 && shortLines.value.length === 0
 );
+
+// The rate an amount implies, for an invoice that only ever stored the amount.
+// No base to speak of means no rate to infer — a discount on nothing is not
+// 100% off, it is a figure that was never a percentage.
+const impliedRate = (amount, base) => {
+    if (!(base > 0) || !(Number(amount) > 0)) return 0;
+    return rate(Math.round((Number(amount) / base) * 10000) / 100);
+};
+
+// 10, not 10.00; 12.5, not 12.50 — a rate reads as it was typed.
+const percent = (value) =>
+    new Intl.NumberFormat('ar-SY', { maximumFractionDigits: 2 }).format(rate(value)) + '%';
 
 const money = (value) =>
     new Intl.NumberFormat('ar-SY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1428,8 +1473,13 @@ const submitInvoice = async () => {
             customer_id: form.customer_id,
             assigned_employee_id: form.assigned_employee_id,
             payment_method: form.payment_method,
-            discount: form.discount || 0,
-            tax: form.tax || 0,
+            // Both: the rates decide the invoice, and the figures they come
+            // to are sent alongside so a client reading the request sees what
+            // was charged without recomputing it. The server takes the rates.
+            discount_percent: rate(form.discount_percent),
+            tax_percent: rate(form.tax_percent),
+            discount: discountAmount.value,
+            tax: taxAmount.value,
             paid_amount: form.paid_amount || 0,
             notes: form.notes,
             status: form.status,
@@ -1539,8 +1589,17 @@ const loadInvoice = async () => {
         : null);
     form.assigned_employee_id = invoice.assigned_employee_id ?? null;
     form.payment_method = invoice.payment_method || 'cash';
-    form.discount = parseFloat(invoice.discount) || 0;
-    form.tax = parseFloat(invoice.tax) || 0;
+    // An invoice raised at a rate gives it back. One raised before rates
+    // existed — or by a client that posts figures — carries amounts only, so the
+    // rate behind them is read back off the subtotal it was struck on. That
+    // keeps a 50-off-1,000 invoice reopening as 5% and saving back as 50,
+    // rather than losing the discount to a field that can no longer hold it.
+    const savedSubtotal = parseFloat(invoice.subtotal) || 0;
+    const savedDiscount = parseFloat(invoice.discount) || 0;
+    const savedTax = parseFloat(invoice.tax) || 0;
+
+    form.discount_percent = invoice.discount_percent ?? impliedRate(savedDiscount, savedSubtotal);
+    form.tax_percent = invoice.tax_percent ?? impliedRate(savedTax, savedSubtotal - savedDiscount);
     form.paid_amount = parseFloat(invoice.paid_amount) || 0;
     form.status = invoice.status || 'pending';
     form.notes = invoice.notes || '';
@@ -2324,6 +2383,37 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 0.35rem;
+}
+
+/* What the rate above comes to in money, under the field that sets it — so the
+   seller reads the percentage and the figure in one place instead of waiting
+   for the totals below to tell them. */
+.field-figure {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+}
+
+.field-figure.deduct { color: var(--bad); }
+
+.field-note {
+    margin: -0.35rem 0 0;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+}
+
+/* The rate beside its figure in the totals — quiet, because the money is the
+   thing being read there and the rate is only saying where it came from. */
+.rate-chip {
+    display: inline-block;
+    margin-inline-start: 0.3rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, .18);
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
 .extras { border-top: 1px dashed var(--line); padding-top: 0.85rem; }
