@@ -266,6 +266,17 @@
                     <i class="fas fa-file-lines"></i>
                     <span>{{ $t('sales_order_details') }}</span>
                     <strong v-if="selectedOrder">{{ selectedOrder.order_number }}</strong>
+                    <!-- Same as the list row's cart action, from inside the order. -->
+                    <el-button
+                        v-if="selectedOrder && mayPurchase && normalizeStatus(selectedOrder.status) !== 'cancelled'"
+                        size="small"
+                        type="success"
+                        plain
+                        class="drawer-purchase-btn"
+                        @click="createPurchaseRequest(selectedOrder)"
+                    >
+                        <i class="fas fa-cart-plus"></i>&nbsp;{{ $t('so_create_purchase_request') }}
+                    </el-button>
                 </div>
             </template>
 
@@ -1700,6 +1711,8 @@ onMounted(async () => {
 
 <style scoped>
 .next-stage-go { margin-top: 0.5rem; }
+.drawer-purchase-btn { margin-inline-start: auto; }
+.drawer-title .drawer-purchase-btn i { color: inherit; }
 
 /* The size under a line's product name. */
 .row-variant {
@@ -1907,6 +1920,8 @@ onMounted(async () => {
 
 .drawer-title {
     display: flex;
+    flex: 1;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
     font-weight: 700;
