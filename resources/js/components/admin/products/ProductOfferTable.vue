@@ -448,7 +448,7 @@ const colWidth = (key) => ({
  * Millimetres of real paper per CSS pixel of the PDF capture, taken from the
  * pair the two output paths were tuned to: a fifth of A4 is 59.4mm printed and
  * 295px captured. One setting therefore feeds both paths, in the units each of
- * them measures in (see the note on `.offer-table.is-print`).
+ * them measures in (see the note on `.offer-table.has-fixed-rows`).
  */
 const MM_PER_ROW_PX = 59.4 / 295;
 
@@ -633,27 +633,19 @@ const formatPrice = (price) => {
        than a starting point auto-layout re-negotiates against the longest
        product name in the page. */
     table-layout: fixed;
+    /* Gutter down the sides of the caption under the picture. The picture
+       itself has none: it is flush with the cell it fills. */
     --offer-image-pad: 10px;
-    /* The picture now tracks its column instead of the other way round: it
-       spans the image cell edge to edge. On screen it is held to this cap, or
-       a wide monitor would turn the editing table into a wall of posters; the
-       printed and exported list drops the cap below so the picture really does
-       take its half of the page. */
-    --offer-image-max: 340px;
-    /* The tallest a picture may grow. On screen it matches the width cap, so a
-       portrait photo takes the same square of the page a landscape one does
-       across; a set row height replaces this with what the cell actually has
-       (see `.has-fixed-rows`). */
+    /* How tall the picture band stands. The picture always spans its column;
+       this is what stops a wide monitor from turning the editing table into a
+       wall of posters. A set row height replaces it with what the cell
+       actually has under the caption (see `.has-fixed-rows`), which is how the
+       printed and exported list gets its share of the page. */
     --offer-image-cap: 340px;
     /* What the box stands at while the picture is still on its way — never
        more than the cell has to give, so it reserves a place without pushing
        a short row open. */
     --offer-image-min: min(120px, var(--offer-image-cap));
-}
-/* The printed / exported list lets the picture off its on-screen cap so it
-   really does take its share of the page. */
-.offer-table.is-print {
-    --offer-image-max: none;
 }
 /*
  * A row of a set height: a share of the *page* rather than of the table. The
@@ -674,9 +666,10 @@ const formatPrice = (price) => {
  */
 .offer-table.has-fixed-rows {
     --offer-image-cell-height: var(--offer-row-h, 295px);
-    /* What the caption under the picture takes out of that height: the cell's
-       padding top and bottom, the gap, and two lines of a 10pt product name. */
-    --offer-image-caption: 66px;
+    /* What the caption under the picture takes out of that height: its own
+       padding top and bottom, and two lines of a 10pt product name. Everything
+       else in the cell is picture. */
+    --offer-image-caption: 52px;
     /* The picture may take everything the cell has under the caption. */
     --offer-image-cap: calc(var(--offer-image-cell-height) - var(--offer-image-caption));
 }
@@ -687,14 +680,8 @@ const formatPrice = (price) => {
 .offer-table.has-fixed-rows .cell-product {
     height: var(--offer-image-cell-height);
 }
-/* Nothing more to say about the picture here: it reads `--offer-image-cap`
-   above and grows to the cell on its own (see the screen rule below). What is
-   left is the missing-picture box, which has no proportions of its own to
-   stand on and so takes the cell's. */
-.offer-table.has-fixed-rows .cell-image :deep(.entity-image--empty) {
-    height: var(--offer-image-cap) !important;
-    aspect-ratio: auto;
-}
+/* Nothing more to say about the picture here: the frame below is the cell's
+   height less the caption, and everything inside the frame fills it. */
 .offer-table th,
 .offer-table td {
     border: 1px solid #cbd5e1;
@@ -783,27 +770,32 @@ const formatPrice = (price) => {
 .cell-image {
     text-align: center;
     vertical-align: middle;
-    padding: var(--offer-image-pad);
+    /* No padding: the picture is the cell. What used to be this cell's gutter
+       now belongs to the caption alone, which is the only thing in here that
+       is read rather than looked at. */
+    padding: 0;
 }
 /*
  * EntityImage writes its box as an inline style off the `size` prop, so a box
- * that tracks the column has to win on specificity.
+ * that fills the frame has to win on specificity.
  *
- * The box used to be a square the picture was fitted inside, which left every
- * photo that is not itself square sitting in a band of empty cell. Now the box
- * takes its shape from the photo: the picture spans the column edge to edge,
- * and `max-height` pulls it back — proportionally, the way a replaced element
- * is clamped — when that would make it taller than the cell has room for. So
- * it grows until it meets the cell on one side or the other, and what is left
- * over is cell rather than a plate around the picture. Nothing is stretched or
- * cropped on the way: `contain` (set on the component) stays as the guarantee
- * that the goods are shown whole — a price list is read for them, and cropping
- * cuts the ends off a tap or a length of pipe.
+ * Two things were wanted here and only one of them is about the picture. The
+ * *cell* is filled: the frame above takes the column's full width and all the
+ * height under the caption, so every cell in the column is the same box and
+ * the list reads as one grid rather than a row of stamps floating in white.
+ * The *picture* is whole: `contain` (set on the component) fits it inside that
+ * box, so a photo wider than it is tall — or taller than it is wide — is shown
+ * end to end instead of having its ends cropped off. A price list is read for
+ * the goods, and a tap with its spout cut away is not the tap being sold.
+ *
+ * What is left over inside the box is the row's own background, not a plate
+ * around the picture: the box has no fill and no border of its own.
  */
 .cell-image :deep(.entity-image) {
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     aspect-ratio: auto;
+    border-radius: 0;
 }
 /*
  * A picture that has not arrived yet leaves nothing in the box to give it a
@@ -818,17 +810,19 @@ const formatPrice = (price) => {
 .cell-image :deep(.el-image__inner) {
     display: block;
     width: 100%;
-    height: auto;
-    max-height: var(--offer-image-cap, none);
-    /* Clamping the height narrows the picture; this keeps it in the middle of
-       the column rather than against its leading edge. */
-    margin-inline: auto;
+    height: 100%;
+    /* The picture sits in the middle of the box on whichever axis it does not
+       fill, so what is left over falls evenly on both sides of it rather than
+       stacking up on one. */
+    object-position: center;
 }
-/* The stand-in icon has no picture to take its shape from, so it keeps the
-   square the box used to be. */
+/* The stand-in icon has no picture to take its shape from, so it takes the
+   frame's, like everything else in here. */
 .cell-image :deep(.entity-image--empty) {
-    aspect-ratio: 1 / 1;
-    max-height: var(--offer-image-cap, none);
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border-radius: 0;
 }
 /* The shimmer stands in the reserved box above, which el-image gives it in
    full — it has no shape of its own to fall back on. */
@@ -845,15 +839,28 @@ const formatPrice = (price) => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
     width: 100%;
-    max-width: var(--offer-image-max);
+    height: 100%;
     margin-inline: auto;
 }
+/*
+ * The box the picture fills: the full width of its column, and as tall as the
+ * cell has room for under the caption. `overflow` is what makes `cover` a crop
+ * rather than a picture spilling over its neighbours.
+ */
 .cell-image-frame {
     position: relative;
     display: block;
     width: 100%;
+    /* The height is the starting point, not the last word: the frame takes
+       whatever the cell has left over once the caption has had its lines, so a
+       one-line product name gives its spare line back to the picture instead
+       of leaving a white strip under it. It never gives height back, so a name
+       that runs long spills the way it always did rather than squeezing the
+       picture out of the cell. */
+    height: var(--offer-image-cap);
+    flex: 1 0 auto;
+    overflow: hidden;
     line-height: 0;
 }
 /* Edit affordance over the picture, matching the pencil in the other cells
@@ -899,7 +906,10 @@ const formatPrice = (price) => {
     gap: 4px;
     width: 100%;
     max-width: 100%;
-    padding-inline: var(--offer-image-pad);
+    /* The 8px top and bottom are half of what `--offer-image-caption` above
+       budgets for; the other half is two lines of the name. Change one and the
+       picture stops meeting the bottom of its cell. */
+    padding: 8px var(--offer-image-pad);
     box-sizing: border-box;
 }
 .cell-image-name {
@@ -1384,13 +1394,14 @@ const formatPrice = (price) => {
         /* The column shares are percentages of the table, so they already scale
            to the actual printable width — A4 (210mm) or US Letter (216mm),
            whichever the print dialog picks. Nothing to re-state here. */
-        --offer-image-max: none;
     }
     /* Real millimetres on a real sheet: a fifth of A4's 297mm by default, or
        the custom height converted to paper by the component. */
     .offer-table.is-print {
         --offer-image-cell-height: var(--offer-row-h-print, 59.4mm);
-        --offer-image-caption: 17mm;
+        /* The same budget as on screen, read on paper: 8px of padding top and
+           bottom (4.2mm together) and two lines of a 10pt name (9.2mm). */
+        --offer-image-caption: 14mm;
     }
     .col-resizer {
         display: none;
