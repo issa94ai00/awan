@@ -167,7 +167,7 @@
                                     <div v-else-if="searchResults.length" class="search-results-list">
                                         <div
                                             v-for="(product, index) in searchResults"
-                                            :key="product.id"
+                                            :key="optionKey(product)"
                                             class="search-result-item"
                                             :class="{ highlighted: highlightedIndex === index, 'low-stock': product.stock_quantity <= 5 }"
                                             @click="addProduct(product)"
@@ -180,12 +180,22 @@
                                                 <el-icon><Box /></el-icon>
                                             </div>
                                             <div class="product-info">
-                                                <div class="product-name">{{ product.name_ar || product.name_en }}</div>
+                                                <!-- Each size is its own result, named by the
+                                                     product with its size beside it. -->
+                                                <div class="product-name">
+                                                    {{ baseName(product) || product.name_en }}
+                                                    <VariantChip v-if="product.variant_id" :label="product.variant_label" />
+                                                </div>
                                                 <div class="product-sku" v-if="product.sku">SKU: {{ product.sku }}</div>
                                                 <div class="product-meta">
                                                     <span class="stock-indicator" :class="{ 'low-stock': product.stock_quantity <= 5, 'out-of-stock': product.stock_quantity === 0 }">
                                                         <el-icon><Box /></el-icon> 
                                                         <span>{{ $t('units_available', { count: product.stock_quantity }) }}</span>
+                                                        <!-- Warehouse stock is held per product, so for a
+                                                             size say what the product has in all. -->
+                                                        <span v-if="product.variant_id && product.product_stock_quantity != null" class="product-stock-total">
+                                                            · {{ $t('so_product_stock_total', { count: product.product_stock_quantity }) }}
+                                                        </span>
                                                         <el-tag v-if="product.stock_quantity <= 5 && product.stock_quantity > 0" type="warning" size="small" round>{{ $t('low_stock') }}</el-tag>
                                                         <el-tag v-if="product.stock_quantity === 0" type="danger" size="small" round>{{ $t('out_of_stock') }}</el-tag>
                                                     </span>
@@ -267,9 +277,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="(item, index) in items" :key="item.product_id" class="item-table-row">
+                                    <tr v-for="(item, index) in items" :key="item.pick" class="item-table-row">
                                         <td class="product-cell" :data-label="$t('product')">
                                             <div class="product-name">{{ item.name }}</div>
+                                            <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
                                             <div class="product-sku" v-if="item.sku">SKU: {{ item.sku }}</div>
                                         </td>
                                         <td class="unit-cell" :data-label="$t('unity')">
@@ -761,9 +772,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="item in items" :key="item.product_id">
+                                    <tr v-for="item in items" :key="item.pick">
                                         <td class="item-name-cell">
                                             <strong>{{ item.name }}</strong>
+                                            <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
                                             <span class="sku-block" v-if="item.sku">SKU: {{ item.sku }}</span>
                                         </td>
                                         <td>{{ item.selectedUnit?.name_ar || item.selectedUnit?.name }}</td>
@@ -828,6 +840,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { statusLabel, statusTagType, formatCurrency, formatDate } from '@/utils/sales';
 import { baseCurrencyCode } from '@/utils/currency';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 
 const { t } = useI18n();
 import {
@@ -1012,7 +1026,8 @@ const onSearchInput = (query) => {
 
     searchTimeout = setTimeout(async () => {
         try {
-            const res = await posApi.productLookup({ q: query });
+            // One result per size, and a size's own code or barcode finds it.
+            const res = await posApi.productLookup({ q: query, expand_variants: 1 });
             let data = res.data?.data || res.data || [];
             data = Array.isArray(data) ? data : [];
             
@@ -1039,7 +1054,10 @@ const onSearchInput = (query) => {
 };
 
 const addProduct = (product) => {
-    const existingIndex = items.value.findIndex(i => i.product_id === product.id);
+    // A second pick of the same size adds to its line; another size of the
+    // same product is a line of its own.
+    const pick = optionKey(product);
+    const existingIndex = items.value.findIndex(i => i.pick === pick);
 
     if (existingIndex !== -1) {
         items.value[existingIndex].quantity += 1;
@@ -1054,8 +1072,11 @@ const addProduct = (product) => {
         };
 
         items.value.push({
+            pick,
             product_id: product.id,
-            name: product.name_ar || product.name_en,
+            product_variant_id: product.variant_id || null,
+            variant_label: product.variant_label || '',
+            name: baseName(product) || product.name_en,
             sku: product.sku || '',
             price: parseFloat(product.price) || 0,
             quantity: 1,
@@ -1269,6 +1290,7 @@ const submitSalesOrder = async (options = {}) => {
             ? {
                 items: items.value.map(item => ({
                     product_id: item.product_id,
+                    product_variant_id: item.product_variant_id || null,
                     quantity: item.quantity,
                     unit_price: item.price,
                     product_unit_id: item.selectedUnit?.id || null,
@@ -1286,6 +1308,7 @@ const submitSalesOrder = async (options = {}) => {
                 payment_method: form.payment_method,
                 items: items.value.map(item => ({
                     product_id: item.product_id,
+                    product_variant_id: item.product_variant_id || null,
                     quantity: item.quantity,
                     unit_price: item.price,
                     product_unit_id: item.selectedUnit?.id || null,
@@ -1460,10 +1483,13 @@ onMounted(async () => {
                         };
 
                         return {
+                            pick: pickKey(item.product_id, item.product_variant_id),
                             product_id: item.product_id,
+                            product_variant_id: item.product_variant_id || null,
+                            variant_label: variantLabelOf(item.variant) || '',
                             product_unit_id: item.product_unit_id || null,
-                            name: item.product?.name_ar || item.product?.name_en || t('unknown_product'),
-                            sku: item.product?.sku || '',
+                            name: item.product?.name_ar || item.product?.name_en || item.description || t('unknown_product'),
+                            sku: item.variant?.sku || item.product?.sku || '',
                             price: parseFloat(item.unit_price) || 0,
                             quantity: item.quantity || 1,
                             stock: item.product?.stock_quantity || 0,
@@ -1916,6 +1942,16 @@ onUnmounted(() => {
     font-size: 0.75rem;
     color: #6b7280;
     margin-bottom: 0.25rem;
+}
+
+/* The size beside a result's or a line's product name. */
+.line-variant {
+    margin: 0.15rem 0 0.2rem;
+}
+
+.product-stock-total {
+    color: #6b7280;
+    font-weight: 400;
 }
 
 .product-meta {

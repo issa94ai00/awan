@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseReceipt;
 use App\Models\PurchaseOrder;
+use App\Models\ProductVariant;
 use App\Models\Supplier;
 use App\Models\Product;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Purchasing\PurchaseOrderCostSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseReceiptController extends Controller
 {
@@ -20,7 +22,7 @@ class PurchaseReceiptController extends Controller
 
     public function index(Request $request)
     {
-        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
+        $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
 
         if ($request->has('supplier_id') && $request->supplier_id) {
             $query->where('supplier_id', $request->supplier_id);
@@ -57,16 +59,29 @@ class PurchaseReceiptController extends Controller
             'tax_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
-            // Stock is taken in once per product per receipt (the intake key
-            // is receipt + product), so a product's second line was silently
-            // dropped from the warehouse while still being billed.
-            'items.*.product_id' => 'required|distinct|exists:products,id',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
-        ], [
-            'items.*.product_id.distinct' => 'المنتج مكرر في أكثر من سطر — اجمعه في سطر واحد',
         ]);
+
+        $variants = ProductVariant::forLines($validated['items']);
+
+        // Stock is taken in once per product (or variant) per receipt — the
+        // intake key is receipt + product + variant — so a second line for the
+        // same thing was silently dropped from the warehouse while still being
+        // billed. Two sizes of one product are two different things.
+        $seen = [];
+        foreach ($validated['items'] as $index => $item) {
+            $key = PurchaseOrderCostSync::lineKey($item['product_id'], $item['product_variant_id'] ?? null);
+            if (isset($seen[$key])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => 'المنتج مكرر في أكثر من سطر — اجمعه في سطر واحد',
+                ]);
+            }
+            $seen[$key] = true;
+        }
 
         // The receipt credits the supplier it names and completes the order it
         // links, so the two have to agree — and a cancelled order was promised
@@ -103,12 +118,20 @@ class PurchaseReceiptController extends Controller
 
         $inventory = app(\App\Services\Inventory\InventoryService::class);
 
-        $receipt = DB::transaction(function () use ($validated, $request, $inventory) {
+        $receipt = DB::transaction(function () use ($validated, $inventory, $variants) {
             $receipt = PurchaseReceipt::create($validated);
 
-            foreach ($request->items as $item) {
+            $products = Product::whereIn('id', collect($validated['items'])->pluck('product_id'))->get()->keyBy('id');
+
+            foreach ($validated['items'] as $item) {
+                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+                $product = $products->get($item['product_id']);
+
                 $receipt->items()->create([
                     'product_id' => $item['product_id'],
+                    'product_variant_id' => $variant?->id,
+                    // Says which size came in, on the receipt and its print.
+                    'description' => $variant ? $variant->displayName($product?->name_ar ?? $product?->name_en) : null,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                     'sale_price' => $item['sale_price'] ?? null,
@@ -124,13 +147,23 @@ class PurchaseReceiptController extends Controller
             // total agree.
             $warehouseId = $receipt->warehouse_id ?: $inventory->defaultWarehouseId();
 
-            foreach ($request->items as $item) {
+            foreach ($validated['items'] as $item) {
+                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
+                // Warehouse stock and the product's average cost stay per
+                // product. What belongs to one size — its own count, what it
+                // cost and what it sells for — goes on the variant below.
+                if ($variant) {
+                    $this->receiveIntoVariant($variant, $item);
+                }
+
                 $inventory->receive(
                     $item['product_id'],
                     $item['quantity'],
                     $warehouseId,
                     [
-                        'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id'],
+                        'key' => 'purchase_receipt:' . $receipt->id . ':item:' . $item['product_id']
+                            . ($variant ? ':variant:' . $variant->id : ''),
                         'reference' => $receipt->receipt_number,
                         'source' => 'purchase_receipt',
                         'reason' => 'استلام من أمر شراء',
@@ -142,8 +175,9 @@ class PurchaseReceiptController extends Controller
                         // layer for this warehouse.
                         'update_average_cost' => true,
                         // If the operator set a shelf price on this line, receiving
-                        // the goods is what puts it into effect.
-                        'sale_price' => $item['sale_price'] ?? null,
+                        // the goods is what puts it into effect. A variant's
+                        // price is its own, set above — not the product's.
+                        'sale_price' => $variant ? null : ($item['sale_price'] ?? null),
                     ]
                 );
             }
@@ -195,7 +229,7 @@ class PurchaseReceiptController extends Controller
             return $receipt;
         });
 
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
 
         return response()->json([
             'success' => true,
@@ -206,7 +240,7 @@ class PurchaseReceiptController extends Controller
 
     public function show(PurchaseReceipt $receipt)
     {
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant']);
 
         return response()->json([
             'success' => true,
@@ -216,11 +250,41 @@ class PurchaseReceiptController extends Controller
     }
 
     /**
+     * What a receipt line changes on the variant it names: its own stock
+     * count goes up, its cost becomes the weighted average of what was on
+     * hand and what just arrived, and a shelf price set on the line becomes
+     * its price.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function receiveIntoVariant(ProductVariant $variant, array $item): void
+    {
+        $variant->refresh();
+
+        $onHand = max(0, (int) $variant->stock_quantity);
+        $quantity = (int) $item['quantity'];
+        $unitCost = (float) $item['unit_price'];
+        $oldCost = $variant->cost_price !== null ? (float) $variant->cost_price : null;
+
+        $variant->cost_price = ($oldCost === null || $onHand === 0)
+            ? $unitCost
+            : round(($onHand * $oldCost + $quantity * $unitCost) / ($onHand + $quantity), 5);
+
+        if (isset($item['sale_price']) && $item['sale_price'] !== null && $item['sale_price'] !== '') {
+            $variant->price = $item['sale_price'];
+        }
+
+        $variant->save();
+
+        ProductVariant::adjustStockCount($variant->id, $quantity);
+    }
+
+    /**
      * Get purchase order details for auto-filling receipt items
      */
     public function getPurchaseOrderDetails($purchaseOrderId)
     {
-        $purchaseOrder = PurchaseOrder::with(['items.product', 'supplier'])
+        $purchaseOrder = PurchaseOrder::with(['items.product', 'items.variant', 'supplier'])
             ->withCount('receipts')
             ->find($purchaseOrderId);
 
@@ -250,6 +314,9 @@ class PurchaseReceiptController extends Controller
                     return [
                         'id' => $item->id,
                         'product_id' => $item->product_id,
+                        'product_variant_id' => $item->product_variant_id,
+                        'variant_label' => $item->variant?->label,
+                        'variant_sku' => $item->variant?->sku,
                         'product_name' => $item->product_name,
                         'quantity' => $item->quantity,
                         'received_quantity' => $received,
@@ -289,7 +356,7 @@ class PurchaseReceiptController extends Controller
         }
 
         $receipt->update(collect($validated)->except('items')->all());
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'warehouse']);
+        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse']);
 
         return response()->json([
             'success' => true,

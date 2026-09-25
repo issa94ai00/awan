@@ -348,7 +348,10 @@
                                         <!-- The stored name survives the product being
                                              deleted from the catalogue. -->
                                         <span>{{ row.product?.name_ar || row.product_name || '-' }}</span>
-                                        <small v-if="row.product?.sku" class="cell-sub">{{ $t('po_sku_label', { sku: row.product.sku }) }}</small>
+                                        <div v-if="row.product_variant_id" class="cell-variant">
+                                            <VariantChip :label="variantLabelOf(row.variant) || row.product_name" />
+                                        </div>
+                                        <small v-if="row.variant?.sku || row.product?.sku" class="cell-sub">{{ $t('po_sku_label', { sku: row.variant?.sku || row.product.sku }) }}</small>
                                     </template>
                                 </el-table-column>
                                 <el-table-column :label="showReceived ? $t('po_ordered') : $t('quantity_ordered')" width="100" align="center">
@@ -582,7 +585,7 @@
                             v-for="(item, idx) in form.items"
                             :key="item.key"
                             class="item-grid-row"
-                            :class="{ 'item-duplicate': duplicateProductIds.has(item.product_id) }"
+                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick) }"
                         >
                             <div class="item-row-top">
                                 <span class="item-index">{{ idx + 1 }}</span>
@@ -591,8 +594,8 @@
                                      a product outside that page is still found. -->
                                 <el-select
                                     :ref="(el) => setProductSelectRef(item.key, el)"
-                                    v-model="item.product_id"
-                                    :placeholder="$t('select_item')"
+                                    v-model="item.pick"
+                                    :placeholder="$t('po_select_item_or_variant')"
                                     filterable
                                     remote
                                     reserve-keyword
@@ -605,14 +608,19 @@
                                          line will default to: this is a purchase, so
                                          the retail price it used to show was the
                                          wrong figure to choose by. -->
+                                    <!-- A product with sizes lists each size as its own
+                                         row, so the request says which one is wanted. -->
                                     <el-option
                                         v-for="p in productOptions"
-                                        :key="p.id"
+                                        :key="optionKey(p)"
                                         :label="productLabel(p)"
-                                        :value="p.id"
+                                        :value="optionKey(p)"
                                     >
                                         <div class="product-option">
-                                            <span>{{ p.name_ar || p.name }}</span>
+                                            <span class="product-option-name">
+                                                {{ baseName(p) }}
+                                                <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                            </span>
                                             <small>
                                                 <template v-if="p.sku">{{ p.sku }} · </template>{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}
                                             </small>
@@ -850,6 +858,8 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
 
 const { t } = useI18n();
 
@@ -889,6 +899,17 @@ const formLocked = computed(() => isEditMode.value && ['completed', 'cancelled']
 // across rows on purpose — remote-select keeps each row's own already-picked
 // label regardless of what the shared option pool currently holds.
 const productOptions = ref([]);
+// What the line picker offers before anything is typed: the first page of the
+// catalogue, one row per size.
+const defaultOptions = ref([]);
+const loadDefaultOptions = async () => {
+    try {
+        const res = await productsApi.getAll({ per_page: 100, expand_variants: 1 });
+        defaultOptions.value = res.data.data || [];
+    } catch (e) {
+        defaultOptions.value = [];
+    }
+};
 const productSearchLoading = ref(false);
 let productSearchTimer = null;
 
@@ -922,7 +943,10 @@ const quickAddSupplierForm = reactive({
 let rowSeq = 0;
 const blankRow = (overrides = {}) => ({
     key: ++rowSeq,
+    // What the select binds to: the product, or one variant of it.
+    pick: '',
     product_id: '',
+    product_variant_id: null,
     quantity: 1,
     unit_price: '',
     sale_price: '',
@@ -992,14 +1016,15 @@ const formSubtotal = computed(() => form.items.reduce((sum, item) => sum + lineT
 const formTotal = computed(() => formSubtotal.value + num(form.tax) - num(form.discount));
 const discountTooLarge = computed(() => num(form.discount) > formSubtotal.value + num(form.tax));
 
-// Two lines for one product split what is really one order line, and the
-// receipt then matches its quantity against only one of them.
-const duplicateProductIds = computed(() => {
+// Two lines for one product (or one variant) split what is really one order
+// line, and the receipt then matches its quantity against only one of them.
+// Two different sizes of one product are two lines, as they should be.
+const duplicatePicks = computed(() => {
     const seen = new Set();
     const dupes = new Set();
-    form.items.forEach(({ product_id: id }) => {
-        if (!id) return;
-        (seen.has(id) ? dupes : seen).add(id);
+    form.items.forEach(({ pick }) => {
+        if (!pick) return;
+        (seen.has(pick) ? dupes : seen).add(pick);
     });
     return dupes;
 });
@@ -1012,9 +1037,17 @@ const isBeforeOrderDate = (date) => {
 
 const productLabel = (p) => [p.name_ar || p.name, p.sku].filter(Boolean).join(' — ');
 
+// A saved line as the select's value and option.
+const lineFields = (item) => ({
+    pick: pickKey(item.product_id, item.product_variant_id),
+    product_id: item.product_id,
+    product_variant_id: item.product_variant_id || null,
+});
+
 // Names of what was ordered, for the list row.
 const itemsPreview = (order) => (order.items || [])
-    .map((item) => item.product?.name_ar || item.product_name)
+    // A variant line's stored name says which size; the product's does not.
+    .map((item) => (item.product_variant_id ? item.product_name : item.product?.name_ar || item.product_name))
     .filter(Boolean)
     .slice(0, 3)
     .join('، ') + ((order.items?.length || 0) > 3 ? '…' : '');
@@ -1207,7 +1240,7 @@ const duplicateOrder = async (id) => {
             // A line whose product left the catalogue cannot be ordered again.
             .filter((item) => item.product_id)
             .map((item) => blankRow({
-                product_id: item.product_id,
+                ...lineFields(item),
                 quantity: item.quantity,
                 unit_price: num(item.unit_price),
                 sale_price: item.sale_price != null ? num(item.sale_price) : '',
@@ -1231,9 +1264,10 @@ const duplicateFromDrawer = () => {
 // Lines that already name a product (edit, duplicate) need it among the
 // options, or the remote select shows the bare id.
 const rememberProducts = (items = []) => {
-    const known = new Set(productOptions.value.map((p) => p.id));
-    const missing = items.map((item) => item.product).filter((p) => p && !known.has(p.id));
-    if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+    productOptions.value = withOptions(
+        productOptions.value,
+        items.filter((item) => item.product_id).map(optionFromLine),
+    );
 };
 
 /* Focus follows the work: the supplier first on a new request, and each new
@@ -1278,7 +1312,7 @@ const openEditDrawer = async (id) => {
         form.tax = num(order.tax);
         form.notes = order.notes || '';
         form.items = order.items.map(item => blankRow({
-            product_id: item.product_id,
+            ...lineFields(item),
             quantity: item.quantity,
             unit_price: num(item.unit_price),
             sale_price: item.sale_price != null ? num(item.sale_price) : '',
@@ -1314,11 +1348,13 @@ const removeItemRow = (idx) => {
     form.items.splice(idx, 1);
 };
 
-const updateItemPrice = (productId, idx) => {
-    // The chosen product may only exist in the current search results, not
-    // in the page that loaded on mount, so look there first.
-    const prod = productOptions.value.find(p => p.id === productId)
-        || productsStore.products.find(p => p.id === productId);
+const updateItemPrice = (pick, idx) => {
+    // The chosen row may only exist in the current search results, not in
+    // the page that loaded on mount, so look there first.
+    const prod = productOptions.value.find(p => optionKey(p) === pick)
+        || defaultOptions.value.find(p => optionKey(p) === pick);
+    form.items[idx].product_id = prod?.id || '';
+    form.items[idx].product_variant_id = prod?.variant_id || null;
     if (prod) {
         // A purchase order's price is what the supplier is paid, so it
         // starts from the product's cost — not its retail price, which is
@@ -1332,14 +1368,15 @@ const searchProducts = (query) => {
     clearTimeout(productSearchTimer);
 
     if (!query) {
-        productOptions.value = productsStore.products;
+        productOptions.value = defaultOptions.value;
         return;
     }
 
     productSearchLoading.value = true;
     productSearchTimer = setTimeout(async () => {
         try {
-            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            // One row per size, and a size's own code finds it.
+            const res = await productsApi.getAll({ search: query, per_page: 100, expand_variants: 1 });
             productOptions.value = res.data.data || [];
         } catch (e) {
             // Keep whatever was showing rather than blanking the list on a
@@ -1405,7 +1442,9 @@ const submitQuickAddProduct = async () => {
 
         const idx = quickAddTargetIndex.value;
         if (idx !== null && form.items[idx]) {
+            form.items[idx].pick = pickKey(product.id);
             form.items[idx].product_id = product.id;
+            form.items[idx].product_variant_id = null;
             if (!form.items[idx].unit_price) {
                 form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
             }
@@ -1473,7 +1512,7 @@ const orderPayload = () => {
         discount: num(form.discount),
         tax: num(form.tax),
         notes: form.notes || null,
-        items: form.items.map(({ key, ...item }) => ({
+        items: form.items.map(({ key, pick, ...item }) => ({
             ...item,
             sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
         })),
@@ -1490,10 +1529,10 @@ const saveOrder = async ({ approve = false } = {}) => {
             ElMessage.warning(t('please_fill_all_item_fields'));
             return;
         }
-        if (duplicateProductIds.value.size) {
-            const id = [...duplicateProductIds.value][0];
-            const product = productOptions.value.find((p) => p.id === id);
-            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || id }));
+        if (duplicatePicks.value.size) {
+            const pick = [...duplicatePicks.value][0];
+            const product = productOptions.value.find((p) => optionKey(p) === pick);
+            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || pick }));
             return;
         }
         if (discountTooLarge.value) {
@@ -1811,6 +1850,7 @@ const prefillFromShortage = async (salesOrderId) => {
         resetForm();
         isEditMode.value = false;
         form.items = shortages.map((row) => blankRow({
+            pick: pickKey(row.product_id),
             product_id: row.product_id,
             quantity: row.suggested_quantity,
             unit_price: row.unit_price,
@@ -1843,9 +1883,9 @@ onMounted(async () => {
     await Promise.all([
         loadOrders(1),
         suppliersStore.fetchSuppliers().catch(() => {}),
-        productsStore.fetchProducts({ per_page: 100 }).catch(() => {}),
+        loadDefaultOptions(),
     ]);
-    productOptions.value = productsStore.products;
+    productOptions.value = defaultOptions.value;
 
     const shortageFor = route.query.shortage_for_order;
     if (shortageFor) {
@@ -2492,6 +2532,19 @@ onMounted(async () => {
 
 .product-option small {
     color: var(--text-muted);
+}
+
+.product-option-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* The size under the product's name in the detail table. */
+.cell-variant {
+    margin-top: 0.2rem;
 }
 
 .line-total-field strong {

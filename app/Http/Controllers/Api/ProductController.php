@@ -49,14 +49,15 @@ class ProductController extends Controller
     /**
      * Whether this request lists each variant as its own product.
      *
-     * The storefront does (a shopper picks "4 inch", not "floor drain"); admin
+     * The storefront does (a shopper picks "4 inch", not "floor drain"). Admin
      * screens keep one row per product, since they edit the product and its
-     * variants together. A public caller can still ask for grouped rows with
-     * `expand_variants=0`.
+     * variants together — except a line picker on an order or receipt, which
+     * asks for them with `expand_variants=1`. A public caller can still ask
+     * for grouped rows with `expand_variants=0`.
      */
     private function expandsVariants(Request $request): bool
     {
-        return ! $this->isAdminRequest($request) && $request->boolean('expand_variants', true);
+        return $request->boolean('expand_variants', ! $this->isAdminRequest($request));
     }
 
     private function isAdminRequest(Request $request): bool

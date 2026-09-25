@@ -14,6 +14,7 @@ class InvoiceItem extends Model
         'invoice_id',
         'warehouse_id',
         'product_id',
+        'product_variant_id',
         'product_name',
         'quantity',
         'unit_price',
@@ -69,5 +70,10 @@ class InvoiceItem extends Model
         static::saving(function ($item) {
             $item->total_price = $item->quantity * $item->unit_price;
         });
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,7 @@ class PurchaseOrderController extends Controller
         // receipts_count tells the list whether an order's goods already
         // arrived, so a completed row can point at its receipt instead of
         // offering a receive action that would double-count the stock.
-        $query = PurchaseOrder::with(['supplier', 'items.product'])->withCount('receipts');
+        $query = PurchaseOrder::with(['supplier', 'items.product', 'items.variant'])->withCount('receipts');
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -115,6 +116,7 @@ class PurchaseOrderController extends Controller
                 'notes' => 'nullable|string|max:1000',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|integer|exists:products,id',
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.sale_price' => 'nullable|numeric|min:0',
@@ -137,6 +139,7 @@ class PurchaseOrderController extends Controller
             $validated['created_by'] = auth()->id();
 
             $this->applyTotals($validated);
+            ProductVariant::forLines($validated['items']);
 
             // The header carries totals computed from the lines, so the two must
             // land together. Written separately, a failure inside the loop left
@@ -144,24 +147,12 @@ class PurchaseOrderController extends Controller
             $order = DB::transaction(function () use ($validated) {
                 $order = PurchaseOrder::create($validated);
 
-                foreach ($validated['items'] as $item) {
-                    $product = Product::find($item['product_id']);
-                    PurchaseOrderItem::create([
-                        'purchase_order_id' => $order->id,
-                        'product_id' => $item['product_id'],
-                        'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'sale_price' => $item['sale_price'] ?? null,
-                        'total_price' => $item['unit_price'] * $item['quantity'],
-                        'notes' => $item['notes'] ?? null,
-                    ]);
-                }
+                $this->createLines($order, $validated['items']);
 
                 return $order;
             });
 
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant']);
 
             return response()->json([
                 'success' => true,
@@ -186,7 +177,7 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
-        $order->load(['supplier', 'items.product', 'receipts']);
+        $order->load(['supplier', 'items.product', 'items.variant', 'receipts']);
         $order->loadCount('receipts');
 
         return response()->json([
@@ -216,7 +207,7 @@ class PurchaseOrderController extends Controller
             ]);
 
             $order->update($validated);
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant']);
 
             return response()->json([
                 'success' => true,
@@ -238,6 +229,7 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
@@ -264,6 +256,7 @@ class PurchaseOrderController extends Controller
         }
 
         $this->applyTotals($validated);
+        ProductVariant::forLines($validated['items']);
 
         /*
          * Editing an order clears its lines and writes them again. Without a
@@ -275,28 +268,47 @@ class PurchaseOrderController extends Controller
             $order->update($validated);
             $order->items()->delete();
 
-            foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                PurchaseOrderItem::create([
-                    'purchase_order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'sale_price' => $item['sale_price'] ?? null,
-                    'total_price' => $item['unit_price'] * $item['quantity'],
-                    'notes' => $item['notes'] ?? null,
-                ]);
-            }
+            $this->createLines($order, $validated['items']);
         });
 
-        $order->load(['supplier', 'items.product']);
+        $order->load(['supplier', 'items.product', 'items.variant']);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase order updated successfully',
             'data' => $order,
         ]);
+    }
+
+    /**
+     * Write an order's lines. A line for one variant is named for it
+     * ("floor drain - 4\"") so the supplier's copy and the goods receipt
+     * both say which size was asked for.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function createLines(PurchaseOrder $order, array $items): void
+    {
+        $products = Product::whereIn('id', collect($items)->pluck('product_id'))->get()->keyBy('id');
+        $variants = ProductVariant::forLines($items);
+
+        foreach ($items as $item) {
+            $product = $products->get($item['product_id']);
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+            $name = $product ? $product->name : 'Unknown Product';
+
+            PurchaseOrderItem::create([
+                'purchase_order_id' => $order->id,
+                'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'product_name' => $item['product_name'] ?? ($variant ? $variant->displayName($name) : $name),
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'sale_price' => $item['sale_price'] ?? null,
+                'total_price' => $item['unit_price'] * $item['quantity'],
+                'notes' => $item['notes'] ?? null,
+            ]);
+        }
     }
 
     /**
@@ -378,7 +390,7 @@ class PurchaseOrderController extends Controller
         $target = PurchaseOrder::normalizeStatus($validated['status']);
 
         if ($current === $target) {
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant']);
 
             return response()->json([
                 'success' => true,
@@ -409,7 +421,7 @@ class PurchaseOrderController extends Controller
         }
 
         $order->update(['status' => $target]);
-        $order->load(['supplier', 'items.product']);
+        $order->load(['supplier', 'items.product', 'items.variant']);
         $order->loadCount('receipts');
 
         return response()->json([

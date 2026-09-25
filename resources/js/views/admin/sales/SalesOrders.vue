@@ -311,8 +311,11 @@
                         <el-table :data="selectedOrder.items || []" stripe class="items-table" style="width: 100%">
                             <el-table-column :label="$t('item')" min-width="200">
                                 <template #default="{ row }">
-                                    <strong>{{ row.product?.name_ar || row.product?.name_en || row.product?.name || '—' }}</strong>
-                                    <p class="row-sub">{{ row.product?.sku || '—' }}</p>
+                                    <strong>{{ row.product?.name_ar || row.product?.name_en || row.product?.name || row.description || '—' }}</strong>
+                                    <div v-if="row.product_variant_id" class="row-variant">
+                                        <VariantChip :label="variantLabelOf(row.variant) || row.description" />
+                                    </div>
+                                    <p class="row-sub">{{ row.variant?.sku || row.product?.sku || '—' }}</p>
                                 </template>
                             </el-table-column>
                             <el-table-column :label="$t('quantity')" width="80" align="center">
@@ -892,6 +895,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { variantLabelOf } from '@/utils/productPick';
 import { useStockShortage } from '@/Composables/useStockShortage';
 
 const { t } = useI18n();
@@ -1615,6 +1620,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* The size under a line's product name. */
+.row-variant {
+    margin: 0.2rem 0 0.1rem;
+}
+
 .sales-page {
     padding: 0;
     font-family: 'Cairo', sans-serif;

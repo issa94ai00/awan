@@ -180,6 +180,7 @@ class Product extends Model implements Sitemapable
                 'pv.sku as variant_sku',
                 'pv.barcode as variant_barcode',
                 'pv.price as variant_price',
+                'pv.cost_price as variant_cost_price',
                 'pv.stock_quantity as variant_stock_quantity',
                 'pv.color as variant_color',
                 'pv.size as variant_size',

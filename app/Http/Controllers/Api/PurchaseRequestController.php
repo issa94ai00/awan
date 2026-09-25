@@ -281,6 +281,7 @@ class PurchaseRequestController extends Controller
             'assigned_employee_id' => 'nullable|integer|exists:employees,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.allocations' => 'nullable|array',
             'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
@@ -329,9 +330,13 @@ class PurchaseRequestController extends Controller
                 $itemsData = [];
                 $subtotal = 0;
 
+                $variants = ProductVariant::forLines($validated['items'], 'variant_id');
+
                 foreach ($validated['items'] as $item) {
                     $product = $products->get($item['product_id']);
-                    $unitPrice = $product->price ?? 0;
+                    $variant = $variants->get((int) ($item['variant_id'] ?? 0));
+                    $variant?->setRelation('product', $product);
+                    $unitPrice = $variant ? $variant->sellingPrice() : ($product->price ?? 0);
                     $quantity = $item['quantity'];
                     $itemTotal = $unitPrice * $quantity;
 
@@ -341,7 +346,8 @@ class PurchaseRequestController extends Controller
 
                     $itemsData[] = [
                         'product_id' => $product->id,
-                        'product_name' => $product->name_ar ?? $product->name_en ?? '',
+                        'variant_id' => $variant?->id,
+                        'product_name' => $variant ? $variant->displayName($product->name_ar ?? $product->name_en) : ($product->name_ar ?? $product->name_en ?? ''),
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'total_price' => $itemTotal,
@@ -584,6 +590,7 @@ class PurchaseRequestController extends Controller
         $validated = $request->validate([
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.allocations' => 'nullable|array',
             'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
@@ -605,9 +612,13 @@ class PurchaseRequestController extends Controller
 
                 $itemsData = [];
                 $subtotal = 0;
+                $variants = ProductVariant::forLines($validated['items'], 'variant_id');
+
                 foreach ($validated['items'] as $item) {
                     $product = $products->get($item['product_id']);
-                    $unitPrice = $product->price ?? 0;
+                    $variant = $variants->get((int) ($item['variant_id'] ?? 0));
+                    $variant?->setRelation('product', $product);
+                    $unitPrice = $variant ? $variant->sellingPrice() : ($product->price ?? 0);
                     $quantity = $item['quantity'];
                     $itemTotal = $unitPrice * $quantity;
 
@@ -616,7 +627,8 @@ class PurchaseRequestController extends Controller
 
                     $itemsData[] = [
                         'product_id' => $item['product_id'],
-                        'product_name' => $product->name_ar ?? $product->name_en ?? '',
+                        'variant_id' => $variant?->id,
+                        'product_name' => $variant ? $variant->displayName($product->name_ar ?? $product->name_en) : ($product->name_ar ?? $product->name_en ?? ''),
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'total_price' => $itemTotal,
@@ -697,6 +709,7 @@ class PurchaseRequestController extends Controller
         foreach ($itemsData as $itemData) {
             $item = $salesOrder->items()->create([
                 'product_id' => $itemData['product_id'],
+                'product_variant_id' => $itemData['variant_id'] ?? null,
                 'description' => $itemData['product_name'],
                 'quantity' => $itemData['quantity'],
                 'unit_price' => $itemData['unit_price'],
@@ -766,6 +779,7 @@ class PurchaseRequestController extends Controller
         return [
             'id' => $item->id,
             'product_id' => $item->product_id,
+            'variant_id' => $item->product_variant_id,
             'product_name' => $item->description,
             'quantity' => $item->quantity,
             'unit_price' => (float) $item->unit_price,

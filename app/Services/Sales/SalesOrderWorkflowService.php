@@ -7,6 +7,7 @@ use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
 use App\Models\Product;
 use App\Models\PurchaseOrderItem;
+use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
@@ -416,7 +417,7 @@ class SalesOrderWorkflowService
                     // Keyed per source as well as per product: a split line
                     // writes one movement per warehouse, and sharing a key would
                     // make the second look like a repeat of the first.
-                    'movement_key' => 'SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId,
+                    'movement_key' => $this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId),
                 ];
             }
         }
@@ -442,6 +443,12 @@ class SalesOrderWorkflowService
         $cost = $issued['cost'];
 
         $this->recordLineCosts($order, $sourcesByItem, $issued['cost_by_key'] ?? []);
+
+        // Warehouse stock moved per product above; the variant's own count
+        // follows so the store and the next order see the size that left.
+        foreach ($order->items as $item) {
+            ProductVariant::adjustStockCount($item->product_variant_id, -array_sum($sourcesByItem[$item->id] ?? []));
+        }
 
         // A shipment with items but no OUT movements means the stock settlement
         // never ran — status alone would say the goods left while the shelves
@@ -924,6 +931,21 @@ class SalesOrderWorkflowService
      * @return array<int,int>
      */
     /**
+     * The stock-movement key for one order line at one source warehouse.
+     *
+     * Per product and warehouse, as it always was, so orders already shipped
+     * keep the keys they were written with. A variant line adds its variant:
+     * the 4" and 5" of one drain on the same order are two issues, and a
+     * shared key would make the second look like a repeat and be skipped.
+     */
+    private function lineMovementKey(string $prefix, SalesOrder $order, $item, int $warehouseId): string
+    {
+        $key = $prefix.'-'.$order->id.'-'.$item->product_id.'-W'.$warehouseId;
+
+        return $item->product_variant_id ? $key.'-V'.$item->product_variant_id : $key;
+    }
+
+    /**
      * Writes what the shipped goods cost onto the lines that ordered them.
      *
      * The cost comes out of the FIFO layers the issue consumed, so it is what
@@ -950,7 +972,7 @@ class SalesOrderWorkflowService
             $shipped = 0;
 
             foreach ($sources as $sourceWarehouseId => $quantity) {
-                $issued = $costByKey['SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId] ?? null;
+                $issued = $costByKey[$this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId)] ?? null;
 
                 if ($issued === null) {
                     continue;
@@ -1105,7 +1127,7 @@ class SalesOrderWorkflowService
                             // the shipment: one return per warehouse, and a
                             // shared key would make the second look like a
                             // repeat of the first and be skipped.
-                            'key' => 'SO-CANCEL-'.$order->id.'-'.$item->product_id.'-W'.$sourceId,
+                            'key' => $this->lineMovementKey('SO-CANCEL', $order, $item, (int) $sourceId),
                             'reference' => 'sales_order_cancelled',
                             'source' => $order->id,
                             'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم '.$order->order_number,
@@ -1114,6 +1136,7 @@ class SalesOrderWorkflowService
                     );
 
                     $returned[(int) $sourceId] = ($returned[(int) $sourceId] ?? 0) + (int) $quantity;
+                    ProductVariant::adjustStockCount($item->product_variant_id, (int) $quantity);
                 }
             }
 
@@ -1308,7 +1331,11 @@ class SalesOrderWorkflowService
             $invoice->items()->create([
                 'warehouse_id' => $warehouseId,
                 'product_id' => $item->product_id,
-                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
+                'product_variant_id' => $item->product_variant_id,
+                // A variant line is named for its variant ("floor drain - 4\""),
+                // which the order line already carries.
+                'product_name' => ($item->product_variant_id ? $item->description : null)
+                    ?? $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'discount' => $item->discount ?? 0,

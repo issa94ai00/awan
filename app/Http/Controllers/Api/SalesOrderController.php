@@ -7,6 +7,8 @@ use App\Models\Employee;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\ProductUnit;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
 use App\Services\Accounting\LedgerPostingService;
@@ -34,7 +36,7 @@ class SalesOrderController extends Controller
     {
         // fulfillmentWarehouse is eager loaded because the list shows where each
         // order is routed; without it the column would fire a query per row.
-        $query = SalesOrder::with(['customer', 'creator', 'items.product', 'fulfillmentWarehouse']);
+        $query = SalesOrder::with(['customer', 'creator', 'items.product', 'items.variant', 'fulfillmentWarehouse']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -145,6 +147,7 @@ class SalesOrderController extends Controller
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
         ]);
 
         // Who the order belongs to comes from the caller: the back office files
@@ -208,7 +211,7 @@ class SalesOrderController extends Controller
             'user_id' => auth()->id(),
         ]);
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant']);
 
         return response()->json([
             'success' => true,
@@ -219,7 +222,7 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'quote', 'fulfillmentWarehouse']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'quote', 'fulfillmentWarehouse']);
 
         return response()->json([
             'success' => true,
@@ -263,6 +266,7 @@ class SalesOrderController extends Controller
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
         ]);
 
         // The stage is moved through the workflow endpoints, never by writing
@@ -336,7 +340,7 @@ class SalesOrderController extends Controller
             }
         });
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant']);
 
         return response()->json([
             'success' => true,
@@ -358,9 +362,17 @@ class SalesOrderController extends Controller
             ? collect()
             : ProductUnit::query()->whereIn('id', $unitIds)->get()->keyBy('id');
 
+        // A line for one variant carries its name ("floor drain - 4\"") so the
+        // order, its invoice and the picking list all say which size.
+        $variants = ProductVariant::forLines($items);
+        $variantProducts = $variants->isEmpty()
+            ? collect()
+            : Product::whereIn('id', $variants->pluck('product_id'))->get(['id', 'name_ar', 'name_en'])->keyBy('id');
+
         $lines = [];
 
         foreach ($items as $item) {
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
             $unitName = null;
             $unitMultiplier = 1;
             $unitId = $item['product_unit_id'] ?? null;
@@ -375,8 +387,12 @@ class SalesOrderController extends Controller
                 }
             }
 
+            $product = $variant ? $variantProducts->get($variant->product_id) : null;
+
             $lines[] = [
                 'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'description' => $variant ? $variant->displayName($product->name_ar ?? $product->name_en) : null,
                 'product_unit_id' => $unitId,
                 'unit_name' => $unitName,
                 'unit_multiplier' => $unitMultiplier,
@@ -466,7 +482,7 @@ class SalesOrderController extends Controller
     {
         $salesOrder->load([
             'customer', 'creator', 'assignedEmployee', 'quote',
-            'items.product', 'fulfillmentWarehouse', 'statusHistory.user',
+            'items.product', 'items.variant', 'fulfillmentWarehouse', 'statusHistory.user',
         ]);
 
         $invoice = $this->workflow->existingInvoice($salesOrder);

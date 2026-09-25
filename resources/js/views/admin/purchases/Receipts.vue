@@ -153,7 +153,14 @@
                                 <span class="card-title-txt"><i class="fas fa-list text-muted mr-1"></i> {{ $t('items_and_quantities_received') }}</span>
                             </template>
                             <el-table :data="selectedReceipt.items || []" style="width: 100%" stripe>
-                                <el-table-column prop="product.name_ar" :label="$t('item_product')" />
+                                <el-table-column :label="$t('item_product')" min-width="160">
+                                    <template #default="{ row }">
+                                        <span>{{ row.product?.name_ar || row.description || '-' }}</span>
+                                        <div v-if="row.product_variant_id" class="cell-variant">
+                                            <VariantChip :label="variantLabelOf(row.variant) || row.description" :sku="row.variant?.sku" show-sku />
+                                        </div>
+                                    </template>
+                                </el-table-column>
                                 <el-table-column prop="quantity" :label="$t('quantity_received')" width="140" align="center" />
                                 <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
@@ -407,13 +414,13 @@
                             v-for="(item, idx) in form.items"
                             :key="item.key"
                             class="item-grid-row"
-                            :class="{ 'item-duplicate': duplicateProductIds.has(item.product_id), 'item-off-order': linkedOrder && item.product_id && lineVsOrder(item).state === 'extra' }"
+                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick), 'item-off-order': linkedOrder && item.product_id && lineVsOrder(item).state === 'extra' }"
                         >
                             <div class="item-row-top">
                                 <span class="item-index">{{ idx + 1 }}</span>
                                 <el-select
-                                    v-model="item.product_id"
-                                    :placeholder="$t('select_item')"
+                                    v-model="item.pick"
+                                    :placeholder="$t('po_select_item_or_variant')"
                                     filterable
                                     remote
                                     reserve-keyword
@@ -423,12 +430,22 @@
                                     :disabled="isEditMode"
                                     @change="(val) => updateItemPrice(val, idx)"
                                 >
+                                    <!-- Each size of a product is its own row: a delivery
+                                         says which one arrived. -->
                                     <el-option
                                         v-for="p in productOptions"
-                                        :key="p.id"
+                                        :key="optionKey(p)"
                                         :label="[p.name_ar || p.name, p.sku].filter(Boolean).join(' — ')"
-                                        :value="p.id"
-                                    />
+                                        :value="optionKey(p)"
+                                    >
+                                        <div class="product-option">
+                                            <span class="product-option-name">
+                                                {{ baseName(p) }}
+                                                <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                            </span>
+                                            <small v-if="p.sku">{{ p.sku }}</small>
+                                        </div>
+                                    </el-option>
                                 </el-select>
                                 <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" :disabled="isEditMode" />
                                 <el-button
@@ -498,12 +515,12 @@
                         <span>{{ $t('rc_missing_lines') }}</span>
                         <el-button
                             v-for="line in missingOrderLines"
-                            :key="line.product_id"
+                            :key="pickKey(line.product_id, line.product_variant_id)"
                             size="small"
                             plain
                             @click="restoreOrderLine(line)"
                         >
-                            <i class="fas fa-plus"></i> {{ line.product?.name_ar || line.product_name }} ({{ line.remaining_quantity }})
+                            <i class="fas fa-plus"></i> {{ line.product_variant_id ? line.product_name : (line.product?.name_ar || line.product_name) }} ({{ line.remaining_quantity }})
                         </el-button>
                     </div>
                 </div>
@@ -648,6 +665,8 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
 
 const { t } = useI18n();
 
@@ -697,7 +716,10 @@ const quickAddForm = reactive({
 let rowSeq = 0;
 const blankRow = (overrides = {}) => ({
     key: ++rowSeq,
+    // What the select binds to: the product, or one variant of it.
+    pick: '',
     product_id: '',
+    product_variant_id: null,
     quantity: 1,
     unit_price: '',
     sale_price: '',
@@ -852,11 +874,23 @@ const loadSupplierOrders = async (supplierId) => {
     }
 };
 
-const orderLineFor = (productId) => orderLines.value.find((line) => line.product_id === productId);
+/**
+ * The request line a receipt line fills: the same variant, or — for a size the
+ * request only asked for as the product — the product's own line. The server
+ * settles received quantities the same way.
+ */
+const orderLineFor = (item) => {
+    const exact = orderLines.value.find((line) => line.product_id === item.product_id
+        && (line.product_variant_id || null) === (item.product_variant_id || null));
+    if (exact || !item.product_variant_id) return exact;
+    return orderLines.value.find((line) => line.product_id === item.product_id && !line.product_variant_id);
+};
+
+const linePick = (line) => pickKey(line.product_id, line.product_variant_id);
 
 /** How a receipt line compares with what the request still expects. */
 const lineVsOrder = (item) => {
-    const line = orderLineFor(item.product_id);
+    const line = orderLineFor(item);
     if (!line) return { state: 'extra' };
     const expected = line.remaining_quantity || line.quantity;
     const diff = Math.abs(num(item.quantity) - expected);
@@ -873,10 +907,12 @@ const lineVsOrder = (item) => {
 // Requested lines still owed that nothing on this receipt covers.
 const missingOrderLines = computed(() => orderLines.value.filter((line) => line.product_id
     && line.remaining_quantity > 0
-    && !form.items.some((item) => item.product_id === line.product_id)));
+    && !form.items.some((item) => item.pick === linePick(line))));
 
 const rowFromOrderLine = (line, quantity) => blankRow({
+    pick: linePick(line),
     product_id: line.product_id,
+    product_variant_id: line.product_variant_id || null,
     quantity: Math.max(1, quantity),
     unit_price: num(line.unit_price),
     sale_price: line.sale_price != null ? num(line.sale_price) : '',
@@ -962,7 +998,7 @@ const refillFromOrder = async () => {
 // The common case — everything came as asked — in one click.
 const receiveAllAsOrdered = () => {
     form.items.forEach((item) => {
-        const line = orderLineFor(item.product_id);
+        const line = orderLineFor(item);
         if (line) item.quantity = Math.max(1, line.remaining_quantity || line.quantity);
     });
     missingOrderLines.value.forEach((line) => restoreOrderLine(line));
@@ -986,22 +1022,28 @@ const productSearchLoading = ref(false);
 let productSearchTimer = null;
 
 const rememberProducts = (items = []) => {
-    const known = new Set(productOptions.value.map((p) => p.id));
-    const missing = items.map((item) => item.product).filter((p) => p && !known.has(p.id));
-    if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+    productOptions.value = withOptions(
+        productOptions.value,
+        items.filter((item) => item.product_id).map(optionFromLine),
+    );
 };
+
+// What the line picker offers before anything is typed: the first page of the
+// catalogue, one row per size.
+const defaultOptions = ref([]);
 
 const searchProducts = (query) => {
     clearTimeout(productSearchTimer);
     if (!query) {
-        productOptions.value = productsStore.products;
+        productOptions.value = defaultOptions.value;
         rememberProducts(orderLines.value);
         return;
     }
     productSearchLoading.value = true;
     productSearchTimer = setTimeout(async () => {
         try {
-            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            // One row per size, and a size's own code finds it.
+            const res = await productsApi.getAll({ search: query, per_page: 100, expand_variants: 1 });
             productOptions.value = res.data.data || [];
         } catch (e) {
             // Keep whatever was showing on a transient failure.
@@ -1016,14 +1058,15 @@ const receiptTotal = computed(() => goodsTotal.value + num(form.tax_amount));
 const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
 const totalUnits = computed(() => form.items.reduce((sum, item) => sum + (item.product_id ? num(item.quantity) : 0), 0));
 
-// Stock is taken in once per product per receipt, so a second line for the
-// same product never reached the warehouse.
-const duplicateProductIds = computed(() => {
+// Stock is taken in once per product (or variant) per receipt, so a second
+// line for the same one never reached the warehouse. Two sizes of one product
+// are two lines.
+const duplicatePicks = computed(() => {
     const seen = new Set();
     const dupes = new Set();
-    form.items.forEach(({ product_id: id }) => {
-        if (!id) return;
-        (seen.has(id) ? dupes : seen).add(id);
+    form.items.forEach(({ pick }) => {
+        if (!pick) return;
+        (seen.has(pick) ? dupes : seen).add(pick);
     });
     return dupes;
 });
@@ -1108,7 +1151,9 @@ const openEditDrawer = async (id) => {
         form.tax_amount = receipt.tax_amount ?? 0;
         form.notes = receipt.notes || '';
         form.items = receipt.items.map(item => blankRow({
+            pick: pickKey(item.product_id, item.product_variant_id),
             product_id: item.product_id,
+            product_variant_id: item.product_variant_id || null,
             quantity: item.quantity,
             unit_price: item.unit_price,
             sale_price: item.sale_price
@@ -1155,18 +1200,23 @@ const removeItemRow = (idx) => {
     form.items.splice(idx, 1);
 };
 
-const updateItemPrice = (productId, idx) => {
+const updateItemPrice = (pick, idx) => {
+    // The chosen row may only be in the current search results, not in the
+    // page that loaded first, so look there first.
+    const prod = productOptions.value.find(p => optionKey(p) === pick)
+        || defaultOptions.value.find(p => optionKey(p) === pick);
+    form.items[idx].product_id = prod?.id || '';
+    form.items[idx].product_variant_id = prod?.variant_id || null;
+
     // A product on the request is priced as agreed there, not at its
     // catalogue cost.
-    const line = orderLineFor(productId);
+    const line = orderLineFor(form.items[idx]);
     if (line) {
         form.items[idx].unit_price = num(line.unit_price);
         form.items[idx].sale_price = line.sale_price != null ? num(line.sale_price) : '';
         if (line.remaining_quantity > 0) form.items[idx].quantity = line.remaining_quantity;
         return;
     }
-    const prod = productOptions.value.find(p => p.id === productId)
-        || productsStore.products.find(p => p.id === productId);
     if (prod) {
         // The receipt's price is what the supplier is paid, so it starts
         // from the product's cost — not its retail price, which is what the
@@ -1230,7 +1280,9 @@ const submitQuickAddProduct = async () => {
 
         const idx = quickAddTargetIndex.value;
         if (idx !== null && form.items[idx]) {
+            form.items[idx].pick = pickKey(product.id);
             form.items[idx].product_id = product.id;
+            form.items[idx].product_variant_id = null;
             if (!form.items[idx].unit_price) {
                 form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
             }
@@ -1285,10 +1337,10 @@ const saveReceipt = async () => {
             ElMessage.warning(t('please_fill_all_item_fields'));
             return;
         }
-        if (duplicateProductIds.value.size) {
-            const id = [...duplicateProductIds.value][0];
-            const product = productOptions.value.find((p) => p.id === id);
-            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || id }));
+        if (duplicatePicks.value.size) {
+            const pick = [...duplicatePicks.value][0];
+            const product = productOptions.value.find((p) => optionKey(p) === pick);
+            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || pick }));
             return;
         }
 
@@ -1323,7 +1375,7 @@ const saveReceipt = async () => {
             await purchaseReceiptsApi.create({
                 ...form,
                 purchase_order_id: form.purchase_order_id || null,
-                items: form.items.map(({ key, ...item }) => ({
+                items: form.items.map(({ key, pick, ...item }) => ({
                     ...item,
                     sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
                 })),
@@ -1373,9 +1425,10 @@ onMounted(async () => {
     // Purchase orders load once a supplier is chosen (handleSupplierChange) or
     // when editing a receipt that already has one, so the list is always
     // scoped to a supplier instead of dumping every order in the system.
-    productsStore.fetchProducts({ per_page: 100 })
-        .then(() => {
-            productOptions.value = productsStore.products;
+    productsApi.getAll({ per_page: 100, expand_variants: 1 })
+        .then((res) => {
+            defaultOptions.value = res.data.data || [];
+            productOptions.value = defaultOptions.value;
             rememberProducts(orderLines.value);
         })
         .catch(() => {});
@@ -1916,6 +1969,30 @@ onMounted(async () => {
 
 .item-grid-row.item-off-order {
     border-style: dashed;
+}
+
+/* A line option: the product's name with its size, and its code. */
+.product-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.product-option small {
+    color: var(--text-muted);
+}
+
+.product-option-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* The size under the product's name in the detail table. */
+.cell-variant {
+    margin-top: 0.2rem;
 }
 
 .line-vs-order {

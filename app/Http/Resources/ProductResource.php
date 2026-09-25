@@ -57,7 +57,16 @@ class ProductResource extends JsonResource
             'sale_price' => $hasOwnPrice ? null : $data['sale_price'],
             'has_sale' => $hasOwnPrice ? false : $data['has_sale'],
             'discount_percentage' => $hasOwnPrice ? 0 : $data['discount_percentage'],
+            // What one of this size cost; the product's figure when the
+            // variant has none. Purchase screens prefill the buying price
+            // from it.
+            'cost_price' => $this->variant_cost_price !== null && (float) $this->variant_cost_price > 0
+                ? $this->variant_cost_price
+                : $data['cost_price'],
             'stock_quantity' => $stock,
+            // Warehouse stock is counted per product, so what can actually be
+            // reserved for an order is the product's figure, not the size's.
+            'product_stock_quantity' => $this->stock_quantity,
             'in_stock' => (bool) $this->in_stock && ($stock === null || (int) $stock > 0),
             'url' => $data['url'].'?variant='.$this->variant_id,
         ]);
