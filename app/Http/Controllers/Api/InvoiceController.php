@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\ProductVariant;
 use App\Models\Expense;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -31,7 +32,7 @@ class InvoiceController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Invoice::query()->with(['items.product', 'customer']);
+            $query = Invoice::query()->with(['items.product', 'items.variant', 'customer']);
 
             // Filter by status
             if ($request->filled('status')) {
@@ -161,6 +162,45 @@ class InvoiceController extends Controller
         ];
     }
 
+    /** "floor drain - 4\"" for a variant line, the product's name otherwise. */
+    private function lineName(Product $product, ?ProductVariant $variant): string
+    {
+        $name = $product->name_ar ?? $product->name_en ?? 'منتج غير معروف';
+
+        return $variant ? $variant->displayName($name) : $name;
+    }
+
+    /**
+     * Moves each variant line's own stock count with the goods.
+     *
+     * Warehouse stock is per product and moves through the issue and return
+     * above. A variant's count follows only the lines that stock actually left
+     * for — those with an issue movement under this invoice's key — so a line
+     * whose issue failed, or an invoice raised by a sales order (whose
+     * shipment moved the goods and the count), is left alone.
+     *
+     * @param  int  $direction  -1 as goods leave, +1 as they come back
+     */
+    private function moveVariantCounts(Invoice $invoice, string $keyPrefix, int $direction): void
+    {
+        $lines = $invoice->items()->whereNotNull('product_variant_id')->get();
+
+        if ($lines->isEmpty()) {
+            return;
+        }
+
+        $issued = StockMovement::whereIn(
+            'movement_key',
+            $lines->map(fn ($line) => $keyPrefix.':'.$invoice->id.':item:'.$line->id)->all()
+        )->where('movement_type', StockMovement::TYPE_OUT)->pluck('movement_key')->flip();
+
+        foreach ($lines as $line) {
+            if ($issued->has($keyPrefix.':'.$invoice->id.':item:'.$line->id)) {
+                ProductVariant::adjustStockCount((int) $line->product_variant_id, $direction * (int) $line->quantity);
+            }
+        }
+    }
+
     /**
      * Turns a shortage report into something a screen can point at.
      *
@@ -229,6 +269,9 @@ class InvoiceController extends Controller
                 // Who made the sale. Optional — a counter sale has no rep.
                 'assigned_employee_id' => 'nullable|integer|exists:employees,id',
                 'items.*.product_id' => 'required|integer|exists:products,id',
+                // One size or colour of the product. Stock is counted per
+                // product; the line keeps the variant and is named for it.
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
@@ -273,6 +316,7 @@ class InvoiceController extends Controller
             // Fetch all products to get their names
             $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
             $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            $variants = ProductVariant::forLines($validated['items']);
 
             // Fetch all product units if any
             $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
@@ -317,10 +361,13 @@ class InvoiceController extends Controller
                     $item['warehouse_id'] ?? ($validated['warehouse_id'] ?? null)
                 );
 
+                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
                 $itemsData[] = [
                     'product_id' => $item['product_id'],
+                    'product_variant_id' => $variant?->id,
                     'warehouse_id' => $lineWarehouseId,
-                    'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
+                    'product_name' => $this->lineName($product, $variant),
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'total_price' => $totalPrice,
@@ -526,6 +573,7 @@ class InvoiceController extends Controller
                 );
 
                 $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+                $this->moveVariantCounts($invoice, 'invoice', -1);
             } catch (\Throwable $e) {
                 // Coverage was checked before the invoice was written, so this
                 // is an unexpected failure rather than a routine shortfall. It
@@ -566,7 +614,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنشاء الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->fresh()->load('items.product')),
+                'data' => new InvoiceResource($invoice->fresh()->load('items.product', 'items.variant')),
                 'settlement' => [
                     'total' => round($total, 5),
                     'paid' => $paidAmount,
@@ -615,7 +663,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
             ]);
 
         } catch (\Exception $e) {
@@ -642,6 +690,7 @@ class InvoiceController extends Controller
                 'customer_id' => 'nullable|integer|exists:customers,id',
                 'items' => 'nullable|array|min:1',
                 'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required_with:items|integer|min:1',
                 'items.*.unit_price' => 'required_with:items|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
@@ -684,6 +733,7 @@ class InvoiceController extends Controller
                 // Fetch all products to get their names
                 $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
                 $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+                $variants = ProductVariant::forLines($validated['items']);
 
                 // Fetch all product units if any
                 $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
@@ -720,10 +770,13 @@ class InvoiceController extends Controller
                         }
                     }
 
+                    $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
                     $itemsData[] = [
                         'product_id' => $item['product_id'],
+                        'product_variant_id' => $variant?->id,
                         'warehouse_id' => $item['warehouse_id'] ?? $invoice->warehouse_id,
-                        'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
+                        'product_name' => $this->lineName($product, $variant),
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'total_price' => $totalPrice,
@@ -881,7 +934,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم تحديث الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
             ]);
 
         } catch (ValidationException $e) {
@@ -963,6 +1016,9 @@ class InvoiceController extends Controller
     {
         $lines = $invoice->items()->get();
 
+        // The sizes whose goods come back get their counts back with them.
+        $this->moveVariantCounts($invoice, 'invoice', +1);
+
         if ($lines->isEmpty()) {
             return ['cost' => 0.0, 'cost_by_warehouse' => []];
         }
@@ -1030,6 +1086,7 @@ class InvoiceController extends Controller
         );
 
         $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+        $this->moveVariantCounts($invoice, 'invoice', -1);
 
         $delta = $issued['cost_by_warehouse'];
 
@@ -1140,6 +1197,10 @@ class InvoiceController extends Controller
                         reason: 'إلغاء بيع - فاتورة '.$invoice->invoice_number,
                     );
 
+                    // Only what this invoice itself took off the shelf: one
+                    // raised by a sales order moved no stock of its own.
+                    $this->moveVariantCounts($invoice, 'invoice', +1);
+
                     /*
                      * The sale itself: the receivable and the revenue.
                      *
@@ -1174,7 +1235,7 @@ class InvoiceController extends Controller
                 'message' => $isCancelling
                     ? 'أُلغيت الفاتورة: أُعيدت الكميات إلى مستودعاتها وعُكست القيود المحاسبية.'
                     : 'تم تحديث حالة الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
             ]);
 
         } catch (ValidationException $e) {
