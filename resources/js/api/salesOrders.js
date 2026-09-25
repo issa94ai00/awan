@@ -74,6 +74,11 @@ export const salesOrdersApi = {
         return api.get(`/sales-orders/${id}/shortages`);
     },
 
+    // The order's lines as a purchase order, for the purchase screen to prefill.
+    purchaseDraft(id) {
+        return api.get(`/sales-orders/${id}/purchase-draft`);
+    },
+
     /** Moves the order to an execution stage, with all its side effects. */
     transition(id, payload) {
         return api.post(`/sales-orders/${id}/transition`, payload);

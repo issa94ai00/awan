@@ -854,6 +854,26 @@ class SalesOrderController extends Controller
         ]);
     }
 
+    /**
+     * The order's lines as a purchase order, for the purchase screen to open
+     * prefilled — "buy in what this customer ordered".
+     */
+    public function purchaseDraft(SalesOrder $salesOrder)
+    {
+        if ($salesOrder->status === SalesOrder::STATUS_CANCELLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الطلب ملغى — لا حاجة لشراء بنوده.',
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->workflow->purchaseDraft($salesOrder),
+        ]);
+    }
+
     /** Changes how the order is fulfilled, and everything that follows from it. */
     public function changeFulfillmentType(Request $request, SalesOrder $salesOrder)
     {

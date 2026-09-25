@@ -1869,6 +1869,54 @@ const prefillFromShortage = async (salesOrderId) => {
     }
 };
 
+/**
+ * Opens the create drawer with every line of a sales order — the same
+ * products, sizes and quantities, costed at the last price paid and carrying
+ * what each sells at. Reached from the sales-order list's "purchase request"
+ * action; unlike the shortage prefill it asks for the whole order, not only
+ * what stock cannot cover. The supplier is left for the buyer to choose.
+ */
+const prefillFromSalesOrder = async (salesOrderId) => {
+    try {
+        const { data } = await salesOrdersApi.purchaseDraft(salesOrderId);
+        const draft = data?.data || {};
+        const order = draft.sales_order || {};
+        const lines = draft.items || [];
+
+        if (!lines.length) {
+            ElMessage.info(t('po_from_sales_order_empty'));
+            return;
+        }
+
+        isEditMode.value = false;
+        editingStatus.value = '';
+        resetForm();
+        form.items = lines.map((line) => blankRow({
+            ...lineFields(line),
+            quantity: line.quantity,
+            unit_price: num(line.unit_price),
+            sale_price: num(line.sale_price),
+        }));
+        rememberProducts(lines);
+
+        // The customer's delivery date is when the goods are needed by, if it
+        // has not already passed.
+        if (order.expected_delivery && order.expected_delivery >= form.order_date) {
+            form.due_date = order.expected_delivery;
+        }
+        form.notes = [
+            t('po_from_sales_order_note', { number: order.order_number, customer: order.customer_name || '—' }),
+            order.notes,
+        ].filter(Boolean).join('\n').slice(0, 1000);
+
+        markFormClean();
+        formDrawerVisible.value = true;
+        ElMessage.success(t('po_from_sales_order_ready', { number: order.order_number }));
+    } catch (err) {
+        ElMessage.error(err?.response?.data?.message || t('po_from_sales_order_failed'));
+    }
+};
+
 onBeforeUnmount(() => window.removeEventListener('resize', onResize));
 
 onMounted(async () => {
@@ -1888,9 +1936,13 @@ onMounted(async () => {
     productOptions.value = defaultOptions.value;
 
     const shortageFor = route.query.shortage_for_order;
+    const fromSalesOrder = route.query.from_sales_order;
     if (shortageFor) {
         await prefillFromShortage(shortageFor);
         // Cleared so a refresh does not reopen the drawer over work in progress.
+        router.replace({ query: {} });
+    } else if (fromSalesOrder) {
+        await prefillFromSalesOrder(fromSalesOrder);
         router.replace({ query: {} });
     }
 });

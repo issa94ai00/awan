@@ -796,6 +796,76 @@ class SalesOrderWorkflowService
     }
 
     /**
+     * A purchase order with the same lines as this sales order, to prefill the
+     * purchase screen — buying in what a customer ordered, whether or not the
+     * stock could cover it today (unlike stockShortages, which asks only for
+     * what is missing).
+     *
+     * Each line carries what it sells at as its sale price and the last price
+     * paid for it (that size first) as its cost. Nothing is written; the buyer
+     * picks the supplier and saves.
+     *
+     * @return array{sales_order: array<string,mixed>, items: list<array<string,mixed>>}
+     */
+    public function purchaseDraft(SalesOrder $order): array
+    {
+        $order->loadMissing('customer', 'items.product', 'items.variant');
+
+        $items = $order->items
+            ->filter(fn (SalesOrderItem $item) => (int) $item->product_id > 0 && $item->product)
+            ->map(function (SalesOrderItem $item) {
+                $variant = $item->variant;
+
+                return [
+                    'product_id' => (int) $item->product_id,
+                    'product_variant_id' => $variant?->id,
+                    'product_name' => $item->description ?: $item->product->name_ar,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => $this->lastPurchasePriceFor($item->product, $variant),
+                    'sale_price' => round((float) $item->unit_price, 5),
+                    // Enough for the purchase screen's picker to label the line.
+                    'product' => $item->product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                    'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'sales_order' => [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'status' => $order->status,
+                'customer_name' => $order->customer?->name,
+                'expected_delivery' => $order->expected_delivery?->format('Y-m-d'),
+                'notes' => $order->notes,
+            ],
+            'items' => $items,
+        ];
+    }
+
+    /** The last price paid for this size, else its own cost, else the product's. */
+    private function lastPurchasePriceFor(Product $product, ?ProductVariant $variant): float
+    {
+        if ($variant) {
+            $lastPaid = PurchaseOrderItem::query()
+                ->where('product_variant_id', $variant->id)
+                ->latest('id')
+                ->value('unit_price');
+
+            if ($lastPaid !== null && (float) $lastPaid > 0) {
+                return round((float) $lastPaid, 5);
+            }
+
+            if ((float) $variant->cost_price > 0) {
+                return round((float) $variant->cost_price, 5);
+            }
+        }
+
+        return $this->lastPurchasePrice((int) $product->id, $product);
+    }
+
+    /**
      * A running count of what each warehouse can still give this order.
      *
      * Seeded from real availability and drawn down as the plan takes units, so

@@ -154,3 +154,42 @@ test('editing an order with a new plan replaces the old one', function () {
         ->and($order->fulfillment_warehouse_id)->toBe($this->branch->id)
         ->and($order->items->first()->allocations->pluck('quantity', 'warehouse_id')->all())->toBe([$this->branch->id => 5]);
 });
+
+test('a purchase draft carries every line of the order, costed at the last price paid', function () {
+    $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
+        'customer_id' => $this->customer->id,
+        'expected_delivery' => now()->addWeek()->format('Y-m-d'),
+        'notes' => 'على الواجهة',
+        'items' => [
+            array_merge(($this->line)($this->drain, 3, $this->five), ['unit_price' => 2.5]),
+            array_merge(($this->line)($this->tap, 2), ['unit_price' => 20]),
+        ],
+    ])->assertCreated()->json('data.id');
+
+    $draft = $this->getJson("/api/v1/sales-orders/{$id}/purchase-draft")->assertOk()->json('data');
+
+    expect($draft['sales_order']['customer_name'])->toBe('زبون')
+        ->and($draft['sales_order']['notes'])->toBe('على الواجهة')
+        ->and($draft['items'])->toHaveCount(2);
+
+    // Every line, stocked or not — not only what is short.
+    [$drain, $tap] = $draft['items'];
+    expect($drain['product_variant_id'])->toBe($this->five->id)
+        ->and($drain['quantity'])->toBe(3)
+        ->and((float) $drain['sale_price'])->toBe(2.5)
+        ->and($tap['product_variant_id'])->toBeNull()
+        ->and((float) $tap['unit_price'])->toBe(8.0);
+});
+
+test('a cancelled order offers no purchase draft', function () {
+    $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
+        'customer_id' => $this->customer->id,
+        'items' => [($this->line)($this->tap, 1)],
+    ])->assertCreated()->json('data.id');
+    SalesOrder::whereKey($id)->update(['status' => SalesOrder::STATUS_CANCELLED]);
+    $order = SalesOrder::find($id);
+
+    $this->actingAs($this->user, 'sanctum')
+        ->getJson("/api/v1/sales-orders/{$order->id}/purchase-draft")
+        ->assertStatus(422);
+});

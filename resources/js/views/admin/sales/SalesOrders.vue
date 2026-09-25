@@ -172,7 +172,7 @@
                     </el-table-column>
 
                     <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="240" align="center">
+                    <el-table-column :label="$t('actions')" width="280" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
                                 <!-- The order's next step in one click: opens it on
@@ -190,6 +190,19 @@
                                 </el-button>
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <!-- Buy in what this order asks for: opens a purchase
+                                     request with the same lines, quantities and
+                                     delivery date, for the buyer to pick a supplier. -->
+                                <el-button
+                                    v-if="mayPurchase && normalizeStatus(row.status) !== 'cancelled'"
+                                    size="small"
+                                    type="success"
+                                    plain
+                                    @click="createPurchaseRequest(row)"
+                                    :title="$t('so_create_purchase_request')"
+                                >
+                                    <i class="fas fa-cart-plus"></i>
                                 </el-button>
                                 <el-button
                                     size="small"
@@ -925,7 +938,7 @@ import {
 
 const router = useRouter();
 const route = useRoute();
-const { handleStockShortage } = useStockShortage();
+const { handleStockShortage, canRaisePurchaseOrder } = useStockShortage();
 const store = useSalesOrdersStore();
 const customersStore = useCustomersStore();
 
@@ -1266,6 +1279,14 @@ const ROW_NEXT = {
 };
 
 const advancingId = ref(null);
+
+// Purchasing is an admin area; the action is not offered to whoever it would refuse.
+const mayPurchase = computed(() => canRaisePurchaseOrder());
+
+/** A purchase request with this order's lines, opened on the purchases screen. */
+const createPurchaseRequest = (row) => {
+    router.push({ path: '/admin/purchases/orders', query: { from_sales_order: row.id } });
+};
 
 /**
  * From the list straight into the order's next step. The drawer opens on the
