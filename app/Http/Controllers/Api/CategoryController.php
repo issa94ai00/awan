@@ -83,20 +83,32 @@ class CategoryController extends Controller
         $perPage = (int) $request->get('per_page', 12);
         $perPage = $perPage > 0 ? min($perPage, 100) : 12;
 
+        // The storefront lists each variant as its own product (see
+        // ProductController::expandsVariants); `expand_variants=0` groups them.
+        $expand = $request->boolean('expand_variants', true);
+
         $productsQuery = Product::query()
-            ->whereIn('category_id', $category->descendantIds())
-            ->where('is_active', 1)
+            ->when($expand, fn ($q) => $q->withVariantRows())
+            ->whereIn('products.category_id', $category->descendantIds())
+            ->where('products.is_active', 1)
             ->with('category')
-            ->orderByDesc('created_at');
+            ->orderByDesc('products.created_at')
+            ->when($expand, fn ($q) => $q->orderBy('products.id')->orderBy('pv.id'));
 
         // Allow optional simple search within the category
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
-            $productsQuery->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm);
+            $productsQuery->where(function ($q) use ($searchTerm, $expand) {
+                $q->where('products.name_ar', 'like', $searchTerm)
+                  ->orWhere('products.name_en', 'like', $searchTerm)
+                  ->orWhere('products.brand', 'like', $searchTerm)
+                  ->orWhere('products.model', 'like', $searchTerm);
+
+                if ($expand) {
+                    $q->orWhere('pv.sku', 'like', $searchTerm)
+                      ->orWhere('pv.size', 'like', $searchTerm)
+                      ->orWhere('pv.color', 'like', $searchTerm);
+                }
             });
         }
 

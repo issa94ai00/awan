@@ -122,7 +122,7 @@
                 <div v-else :class="['products-grid', viewMode]">
                     <div 
                         v-for="product in products" 
-                        :key="product.id" 
+                        :key="product.listing_key || product.id" 
                         class="product-card"
                         @click="goToProduct(product.slug)"
                     >
@@ -156,12 +156,12 @@
                                 </button>
                                 <button 
                                     class="btn-add-cart" 
-                                    :class="{ 'is-adding': isAddingProduct(product.id) }"
-                                    :disabled="isAddingProduct(product.id)"
+                                    :class="{ 'is-adding': isAddingProduct(product) }"
+                                    :disabled="isAddingProduct(product)"
                                     @click.stop="addToCart(product)">
-                                    <i v-if="isAddingProduct(product.id)" class="fas fa-spinner fa-spin"></i>
+                                    <i v-if="isAddingProduct(product)" class="fas fa-spinner fa-spin"></i>
                                     <i v-else class="fas fa-cart-plus"></i> 
-                                    {{ isAddingProduct(product.id) ? (t('adding_to_cart') || 'جاري الإضافة...') : (t('add_to_cart') || 'إضافة للسلة') }}
+                                    {{ isAddingProduct(product) ? (t('adding_to_cart') || 'جاري الإضافة...') : (t('add_to_cart') || 'إضافة للسلة') }}
                                 </button>
                             </div>
                         </div>
@@ -336,17 +336,17 @@ const goToProduct = (slug) => {
     router.push(`/product/${slug}`);
 };
 
-const isAddingProduct = (productId) => cartStore.isAdding(productId);
+const isAddingProduct = (product) => cartStore.isAdding(product.id, product.variant_id);
 
 const addToCart = async (product) => {
-    if (isAddingProduct(product.id)) return;
+    if (isAddingProduct(product)) return;
 
     const localizedName = product[`name_${locale.value || 'ar'}`] || product.name_ar || '';
 
     showErrorMessage.value = false;
 
     try {
-        await cartStore.addToCart(product.id, 1);
+        await cartStore.addToCart(product.id, 1, product.variant_id);
 
         successMessage.value = t('added_to_cart_success', { name: localizedName }) || `تمت إضافة "${localizedName}" إلى السلة بنجاح`;
         showSuccessMessage.value = true;

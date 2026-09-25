@@ -11,7 +11,10 @@ export const useCartStore = defineStore('cart', () => {
     const totalItems = computed(() => cart.value?.total_items || 0);
     const totalAmount = computed(() => parseFloat(cart.value?.total || 0));
 
-    const isAdding = (productId) => addingProductIds.value.has(productId);
+    // Keyed per listing row: a store card for one variant spins on its own,
+    // not with every other variant of the same product.
+    const addingKey = (productId, variantId = null) => (variantId ? `${productId}-${variantId}` : productId);
+    const isAdding = (productId, variantId = null) => addingProductIds.value.has(addingKey(productId, variantId));
 
     // Fetch current cart data
     async function fetchCart() {
@@ -29,12 +32,15 @@ export const useCartStore = defineStore('cart', () => {
         }
     }
 
-    // Add item to cart
-    async function addToCart(productId, quantity = 1) {
-        addingProductIds.value = new Set(addingProductIds.value).add(productId);
+    // Add item to cart. A variant listed as its own product passes its id so
+    // the cart holds that variant, at its price.
+    async function addToCart(productId, quantity = 1, variantId = null) {
+        const key = addingKey(productId, variantId);
+        addingProductIds.value = new Set(addingProductIds.value).add(key);
         try {
             const res = await axios.post('/api/v1/cart/add', {
                 product_id: productId,
+                variant_id: variantId || undefined,
                 quantity: quantity
             });
             if (res.data?.success) {
@@ -49,7 +55,7 @@ export const useCartStore = defineStore('cart', () => {
             throw err;
         } finally {
             const next = new Set(addingProductIds.value);
-            next.delete(productId);
+            next.delete(key);
             addingProductIds.value = next;
         }
     }

@@ -336,6 +336,8 @@ const submitPurchaseRequest = async () => {
             address: purchaseState.address || null,
             notes: purchaseState.notes || null,
             items: cart.value.items.map(item => ({
+                product_id: item.product_id,
+                variant_id: item.variant_id || undefined,
                 product_name: item.product.name_ar,
                 quantity: item.quantity,
                 notes: null

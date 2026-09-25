@@ -161,6 +161,43 @@ class Product extends Model implements Sitemapable
         return $this->hasMany(ProductVariant::class);
     }
 
+    /**
+     * One row per variant instead of one row per product, so the storefront
+     * can list each size/colour as its own item. A product with no variants
+     * still comes back once, with a null `variant_id`.
+     *
+     * The variant's columns are aliased (`variant_*`) because `product_variants`
+     * shares sku, barcode, price, size and color with `products`; any condition
+     * added to a query using this scope must qualify its columns.
+     */
+    public function scopeWithVariantRows(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query
+            ->leftJoin('product_variants as pv', 'pv.product_id', '=', 'products.id')
+            ->select('products.*')
+            ->addSelect([
+                'pv.id as variant_id',
+                'pv.sku as variant_sku',
+                'pv.barcode as variant_barcode',
+                'pv.price as variant_price',
+                'pv.stock_quantity as variant_stock_quantity',
+                'pv.color as variant_color',
+                'pv.size as variant_size',
+                'pv.material as variant_material',
+            ]);
+    }
+
+    /**
+     * The price a shopper pays for a row from withVariantRows(): the variant's
+     * own price when it has one, otherwise the product's. Cast so the two
+     * tables' decimal columns compare as numbers on every driver.
+     */
+    public static function variantRowPriceSql(): string
+    {
+        return 'CAST(CASE WHEN pv.id IS NOT NULL AND pv.price > 0 THEN pv.price'
+            .' ELSE products.price END AS DECIMAL(20, 5))';
+    }
+
     public function warehouseAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ProductWarehouseAssignment::class);

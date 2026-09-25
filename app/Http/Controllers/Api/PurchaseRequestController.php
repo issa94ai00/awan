@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
@@ -37,6 +38,9 @@ class PurchaseRequestController extends Controller
             'employee_id' => 'nullable|integer|exists:employees,id',
             'items' => 'nullable|array',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
+            // The storefront lists each variant as its own product; a line for
+            // one names it here so the order is priced at the variant's price.
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.product_name' => 'required_without:items.*.product_id|nullable|string|max:255',
             'items.*.quantity' => 'required_with:items|integer|min:1',
             'items.*.notes' => 'nullable|string|max:500',
@@ -105,9 +109,17 @@ class PurchaseRequestController extends Controller
                         ->first();
                 }
 
+                $variant = $product && ! empty($item['variant_id'])
+                    ? ProductVariant::where('product_id', $product->id)->find($item['variant_id'])
+                    : null;
+
                 if ($product) {
                     $productId = $product->id;
                     $unitPrice = $product->price ?? 0;
+                    if ($variant) {
+                        $variant->setRelation('product', $product);
+                        $unitPrice = $variant->sellingPrice();
+                    }
                     $itemTotal = $unitPrice * $item['quantity'];
                 }
 
@@ -122,7 +134,9 @@ class PurchaseRequestController extends Controller
 
                 $itemsData[] = [
                     'product_id' => $productId,
-                    'product_name' => $item['product_name'] ?? ($product->name_ar ?? $product->name_en ?? ''),
+                    'variant_id' => $variant?->id,
+                    'product_name' => $item['product_name']
+                        ?? ($variant ? $variant->displayName($product->name_ar ?? $product->name_en) : ($product->name_ar ?? $product->name_en ?? '')),
                     'quantity' => $item['quantity'],
                     'unit_price' => $unitPrice,
                     'total_price' => $itemTotal,

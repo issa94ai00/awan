@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,7 +15,62 @@ class ProductResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $data = $this->baseArray();
+
+        return $this->variant_id ? $this->asVariantRow($data) : $data;
+    }
+
+    /**
+     * A row from Product::withVariantRows() that stands for one variant: it
+     * reads as a product of its own — name, code, price and stock are the
+     * variant's — while `id` and `slug` stay the parent's, so links and the
+     * cart keep working. `listing_key` is unique per row for list keys.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function asVariantRow(array $data): array
+    {
+        $label = ProductVariant::labelFor($this->variant_size, $this->variant_color, $this->variant_material);
+        $suffix = $label !== '' ? ' - '.$label : '';
+
+        $hasOwnPrice = $this->variant_price !== null && (float) $this->variant_price > 0;
+        $stock = $this->variant_stock_quantity;
+
+        return array_merge($data, [
+            'listing_key' => $this->id.'-'.$this->variant_id,
+            'variant_id' => $this->variant_id,
+            'variant_label' => $label,
+            'product_name_ar' => $this->name_ar,
+            'product_name_en' => $this->name_en,
+            'name_ar' => $this->name_ar.$suffix,
+            'name_en' => $this->name_en ? $this->name_en.$suffix : $this->name_en,
+            'sku' => $this->variant_sku ?: $this->sku,
+            'barcode' => $this->variant_barcode ?: $this->barcode,
+            'size' => $this->variant_size ?: $this->size,
+            'color' => $this->variant_color ?: $this->color,
+            'material' => $this->variant_material,
+            // The product's sale price is a discount on the product's price,
+            // not on a variant's own price, so it only carries over to a
+            // variant that has no price of its own.
+            'price' => $hasOwnPrice ? $this->variant_price : $data['price'],
+            'sale_price' => $hasOwnPrice ? null : $data['sale_price'],
+            'has_sale' => $hasOwnPrice ? false : $data['has_sale'],
+            'discount_percentage' => $hasOwnPrice ? 0 : $data['discount_percentage'],
+            'stock_quantity' => $stock,
+            'in_stock' => (bool) $this->in_stock && ($stock === null || (int) $stock > 0),
+            'url' => $data['url'].'?variant='.$this->variant_id,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function baseArray(): array
+    {
         return [
+            'listing_key' => (string) $this->id,
+            'variant_id' => null,
             'id' => $this->id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,

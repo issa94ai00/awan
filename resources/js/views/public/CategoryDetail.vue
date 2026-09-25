@@ -30,7 +30,7 @@
 
                 <div v-else>
                     <div v-if="products.length" class="products-grid">
-                        <div v-for="product in products" :key="product.id" class="product-card">
+                        <div v-for="product in products" :key="product.listing_key || product.id" class="product-card">
                             <div class="product-image">
                                 <div class="badges-container">
                                     <span v-if="!product.in_stock" class="badge badge-out">{{ t('out_of_stock') || 'غير متوفر' }}</span>
@@ -213,7 +213,7 @@ watch(locale, () => {
 
 const handleAddToCart = async (product) => {
     try {
-        await cartStore.addToCart(product.id, 1);
+        await cartStore.addToCart(product.id, 1, product.variant_id);
         showToast(`تم إضافة "${product.name_ar}" إلى السلة`);
     } catch (e) {
         showToast('حدث خطأ أثناء إضافة المنتج');

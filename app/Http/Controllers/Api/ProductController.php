@@ -47,37 +47,61 @@ class ProductController extends Controller
     }
 
     /**
+     * Whether this request lists each variant as its own product.
+     *
+     * The storefront does (a shopper picks "4 inch", not "floor drain"); admin
+     * screens keep one row per product, since they edit the product and its
+     * variants together. A public caller can still ask for grouped rows with
+     * `expand_variants=0`.
+     */
+    private function expandsVariants(Request $request): bool
+    {
+        return ! $this->isAdminRequest($request) && $request->boolean('expand_variants', true);
+    }
+
+    private function isAdminRequest(Request $request): bool
+    {
+        return $request->routeIs('api.admin.*') || $request->is('*admin*');
+    }
+
+    /**
      * Build the shared filtered product query.
+     *
+     * Columns are qualified with `products.` throughout: with expanded variants
+     * the query joins `product_variants`, which has its own sku, barcode, price,
+     * size and color.
      */
     private function baseQuery(Request $request): Builder
     {
         $query = Product::query()
             ->with('category');
 
+        $expand = $this->expandsVariants($request);
+        if ($expand) {
+            $query->withVariantRows();
+        }
+
         if ($request->boolean('with_variants')) {
             $query->with('variants');
         }
 
-        // Check if admin route
-        $isAdmin = $request->routeIs('api.admin.*') || $request->is('*admin*');
-
-        if ($isAdmin) {
+        if ($this->isAdminRequest($request)) {
             if ($request->has('is_active')) {
-                $query->where('is_active', $request->boolean('is_active'));
+                $query->where('products.is_active', $request->boolean('is_active'));
             }
         } else {
             // Public frontend only gets active products
-            $query->where('is_active', 1);
+            $query->where('products.is_active', 1);
         }
 
         // Filter by category_id (single value or array, for multi-classification
         // filtering) or category_slug
         if ($request->filled('category_id')) {
-            $query->whereIn('category_id', $this->categoryFilterIds((array) $request->category_id));
+            $query->whereIn('products.category_id', $this->categoryFilterIds((array) $request->category_id));
         } elseif ($request->filled('category_slug')) {
             $cat = Category::where('slug', $request->category_slug)->first();
             if ($cat) {
-                $query->whereIn('category_id', $cat->descendantIds());
+                $query->whereIn('products.category_id', $cat->descendantIds());
             } else {
                 // No such category -> empty result
                 return $query->whereRaw('1 = 0');
@@ -86,36 +110,46 @@ class ProductController extends Controller
 
         // Filter by featured
         if ($request->boolean('featured')) {
-            $query->where('is_featured', 1);
+            $query->where('products.is_featured', 1);
         }
 
         // Filter by stock availability
         if ($request->boolean('in_stock')) {
-            $query->where('in_stock', 1);
+            $query->where('products.in_stock', 1);
         }
 
-        // Price range (accept both min_price/price_min and max_price/price_max)
+        // Price range (accept both min_price/price_min and max_price/price_max).
+        // A variant row is filtered by the price it is listed at.
+        $priceColumn = $expand ? DB::raw('('.Product::variantRowPriceSql().')') : 'products.price';
         $minPrice = $request->get('min_price') ?? $request->get('price_min');
         if ($minPrice !== null && $minPrice !== '') {
-            $query->where('price', '>=', (float) $minPrice);
+            $query->where($priceColumn, '>=', (float) $minPrice);
         }
         $maxPrice = $request->get('max_price') ?? $request->get('price_max');
         if ($maxPrice !== null && $maxPrice !== '') {
-            $query->where('price', '<=', (float) $maxPrice);
+            $query->where($priceColumn, '<=', (float) $maxPrice);
         }
 
         // Search by name, brand, model, SKU or barcode — a purchasing screen
         // looking up a product by its code needs this as much as a shopper
-        // searching by name does.
+        // searching by name does. With expanded variants a variant's own code
+        // or size finds it too.
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm)
-                  ->orWhere('sku', 'like', $searchTerm)
-                  ->orWhere('barcode', 'like', $searchTerm);
+            $query->where(function ($q) use ($searchTerm, $expand) {
+                $q->where('products.name_ar', 'like', $searchTerm)
+                  ->orWhere('products.name_en', 'like', $searchTerm)
+                  ->orWhere('products.brand', 'like', $searchTerm)
+                  ->orWhere('products.model', 'like', $searchTerm)
+                  ->orWhere('products.sku', 'like', $searchTerm)
+                  ->orWhere('products.barcode', 'like', $searchTerm);
+
+                if ($expand) {
+                    $q->orWhere('pv.sku', 'like', $searchTerm)
+                      ->orWhere('pv.barcode', 'like', $searchTerm)
+                      ->orWhere('pv.size', 'like', $searchTerm)
+                      ->orWhere('pv.color', 'like', $searchTerm);
+                }
             });
         }
 
@@ -192,6 +226,10 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = $this->baseQuery($request);
+        $expand = $this->expandsVariants($request);
+        // `products` has no sale_price column (the resource's sale fields are
+        // always empty), so sorting by it was a 500 — sort by the list price.
+        $priceSql = $expand ? Product::variantRowPriceSql() : 'products.price';
 
         // Per-page with max cap
         $perPage = (int) $request->get('per_page', 12);
@@ -208,11 +246,11 @@ class ProductController extends Controller
             switch ($sortVal) {
                 case 'price_asc':
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END asc';
+                    $rawSortQuery = $priceSql . ' asc';
                     break;
                 case 'price_desc':
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END desc';
+                    $rawSortQuery = $priceSql . ' desc';
                     break;
                 case 'name_asc':
                     $sortBy = 'name_ar';
@@ -249,7 +287,7 @@ class ProductController extends Controller
             if (in_array($sortByInput, $allowedSorts, true)) {
                 if ($sortByInput === 'price') {
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END ' . $sortOrderInput;
+                    $rawSortQuery = $priceSql . ' ' . $sortOrderInput;
                 } else {
                     $sortBy = $sortByInput;
                     $sortOrder = $sortOrderInput;
@@ -260,7 +298,13 @@ class ProductController extends Controller
         if ($useRawSort) {
             $query->orderByRaw($rawSortQuery);
         } else {
-            $query->orderBy($sortBy, $sortOrder);
+            $query->orderBy('products.' . $sortBy, $sortOrder);
+        }
+
+        // Keep a product's variants next to each other and in the order they
+        // were entered, so pages don't shuffle them between requests.
+        if ($expand) {
+            $query->orderBy('products.id')->orderBy('pv.id');
         }
 
         $products = $query->paginate($perPage);
