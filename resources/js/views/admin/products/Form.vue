@@ -1080,12 +1080,14 @@ const submitForm = async () => {
         if (isEdit.value) {
             await store.updateProduct(route.params.id, formData);
             ElMessage.success(window.t('the_product_has_been_updated'));
+            backToList();
         } else {
             await store.createProduct(formData);
             ElMessage.success(window.t('the_product_has_been_added_successfully'));
+            // The plain list, newest first, is where a new product shows up;
+            // a filtered page might not include it.
+            router.push({ name: 'admin.products.index' });
         }
-
-        router.push('/admin/products');
     } catch (error) {
         if (error?.response?.data?.errors) {
             const errs = error.response.data.errors;
@@ -1100,9 +1102,12 @@ const submitForm = async () => {
     }
 };
 
-const goBack = () => {
-    router.push('/admin/products');
+// Returns to the list as it was left: same filters, sort and page.
+const backToList = () => {
+    router.push({ name: 'admin.products.index', query: store.adminListQuery || {} });
 };
+
+const goBack = backToList;
 
 const safeParseGallery = (value) => {
     try {

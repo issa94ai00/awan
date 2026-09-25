@@ -109,14 +109,29 @@ class ProductController extends Controller
             }
         }
 
-        // Filter by featured
+        // Filter by featured. Admin screens also ask for the opposite
+        // (`featured=0`); the storefront only ever narrows to featured ones.
         if ($request->boolean('featured')) {
             $query->where('products.is_featured', 1);
+        } elseif ($this->isAdminRequest($request) && $request->has('featured') && $request->filled('featured')) {
+            $query->where('products.is_featured', 0);
         }
 
         // Filter by stock availability
         if ($request->boolean('in_stock')) {
             $query->where('products.in_stock', 1);
+        }
+
+        // Admin: by the counted quantity rather than the in_stock flag, which
+        // can say "available" for a product with nothing on the shelf.
+        if ($this->isAdminRequest($request) && $request->filled('stock_level')) {
+            $low = self::lowStockSql();
+            match ($request->get('stock_level')) {
+                'available' => $query->where('products.stock_quantity', '>', 0),
+                'low' => $query->where('products.stock_quantity', '>', 0)->whereRaw("products.stock_quantity <= {$low}"),
+                'out' => $query->where(fn ($q) => $q->whereNull('products.stock_quantity')->orWhere('products.stock_quantity', '<=', 0)),
+                default => null,
+            };
         }
 
         // Price range (accept both min_price/price_min and max_price/price_max).
@@ -224,6 +239,35 @@ class ProductController extends Controller
     /**
      * Get all products with optional filters
      */
+    /**
+     * The quantity at or below which a product counts as running low: its own
+     * minimum when one is set, otherwise 10 (what the admin list has always
+     * coloured amber).
+     */
+    private static function lowStockSql(): string
+    {
+        return 'COALESCE(NULLIF(products.min_stock, 0), 10)';
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function adminSummary(): array
+    {
+        $low = self::lowStockSql();
+
+        $row = DB::table('products')->selectRaw(
+            'COUNT(*) as total,'
+            . ' SUM(is_active = 1) as active,'
+            . ' SUM(is_active = 0) as inactive,'
+            . ' SUM(is_featured = 1) as featured,'
+            . ' SUM(COALESCE(stock_quantity, 0) <= 0) as out_of_stock,'
+            . " SUM(stock_quantity > 0 AND stock_quantity <= {$low}) as low_stock"
+        )->first();
+
+        return array_map('intval', (array) $row);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = $this->baseQuery($request);
@@ -282,7 +326,7 @@ class ProductController extends Controller
                     break;
             }
         } else {
-            $allowedSorts = ['name_ar', 'name_en', 'price', 'created_at'];
+            $allowedSorts = ['name_ar', 'name_en', 'price', 'created_at', 'stock_quantity', 'cost_price'];
             $sortByInput = $request->get('sort_by', 'created_at');
             $sortOrderInput = strtolower($request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
             if (in_array($sortByInput, $allowedSorts, true)) {
@@ -310,7 +354,7 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
-        return response()->json([
+        $response = [
             'success' => true,
             'message' => 'Products retrieved successfully',
             'data' => ProductResource::collection($products->items()),
@@ -321,7 +365,15 @@ class ProductController extends Controller
                 'total' => $products->total(),
                 'has_more_pages' => $products->hasMorePages(),
             ]
-        ]);
+        ];
+
+        // The admin list opens with catalogue-wide counts, unaffected by the
+        // filters, so the cards read the same whatever is being searched.
+        if ($this->isAdminRequest($request) && $request->boolean('with_summary')) {
+            $response['summary'] = $this->adminSummary();
+        }
+
+        return response()->json($response);
     }
 
     /**

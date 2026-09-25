@@ -340,8 +340,9 @@ const editProduct = () => {
     router.push({ name: 'admin.products.edit', params: { id: product.value.id } });
 };
 
+// Returns to the list as it was left: same filters, sort and page.
 const goBack = () => {
-    router.push({ name: 'admin.products.index' });
+    router.push({ name: 'admin.products.index', query: store.adminListQuery || {} });
 };
 
 onMounted(loadProduct);
