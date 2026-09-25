@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnItem;
 use App\Services\Purchasing\PurchaseReturnService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,22 +26,45 @@ class PurchaseReturnController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = PurchaseReturn::with(['supplier', 'warehouse', 'items.product', 'creator']);
+        $query = PurchaseReturn::query();
 
         if ($request->filled('supplier_id')) {
-            $query->where('supplier_id', $request->supplier_id);
+            $query->where('purchase_returns.supplier_id', $request->supplier_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('purchase_returns.warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('purchase_receipt_id')) {
+            $query->where('purchase_returns.purchase_receipt_id', $request->purchase_receipt_id);
         }
 
         if ($request->filled('date_from')) {
-            $query->whereDate('return_date', '>=', $request->date_from);
+            $query->whereDate('purchase_returns.return_date', '>=', $request->date_from);
         }
 
         if ($request->filled('date_to')) {
-            $query->whereDate('return_date', '<=', $request->date_to);
+            $query->whereDate('purchase_returns.return_date', '<=', $request->date_to);
         }
 
-        $returns = $query->latest('return_date')->latest('id')
-            ->paginate($request->input('per_page', 20));
+        if ($request->filled('search')) {
+            $term = '%'.trim((string) $request->search).'%';
+            $query->where(function ($q) use ($term) {
+                $q->where('purchase_returns.return_number', 'like', $term)
+                    ->orWhere('purchase_returns.reason', 'like', $term)
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $term))
+                    ->orWhereHas('purchaseReceipt', fn ($r) => $r->where('receipt_number', 'like', $term));
+            });
+        }
+
+        // Totals for whatever is filtered, taken before paging.
+        $summary = $request->boolean('with_summary') ? $this->summary(clone $query) : null;
+
+        $returns = $query
+            ->with(['supplier', 'warehouse', 'items.product', 'purchaseReceipt:id,receipt_number', 'creator:id,name'])
+            ->latest('return_date')->latest('id')
+            ->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
 
         return response()->json([
             'success' => true,
@@ -54,8 +78,39 @@ class PurchaseReturnController extends Controller
                     'total' => $returns->total(),
                     'has_more_pages' => $returns->hasMorePages(),
                 ],
+                'summary' => $summary,
             ],
         ]);
+    }
+
+    /**
+     * Count, credit and tax for the filtered returns, and how far the credit
+     * fell short of (or exceeded) what the goods cost us.
+     *
+     * @return array{count:int,credit:float,tax:float,cost:float,variance:float}
+     */
+    private function summary($query): array
+    {
+        $ids = $query->select('purchase_returns.id');
+
+        $totals = PurchaseReturn::whereIn('id', $ids)
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(credit_amount), 0) as credit, COALESCE(SUM(tax_amount), 0) as tax')
+            ->first();
+
+        $cost = (float) PurchaseReturnItem::whereIn('purchase_return_id', $ids)
+            ->selectRaw('COALESCE(SUM(unit_cost * quantity), 0) as cost')
+            ->value('cost');
+
+        $credit = round((float) $totals->credit, 2);
+
+        return [
+            'count' => (int) $totals->count,
+            'credit' => $credit,
+            'tax' => round((float) $totals->tax, 2),
+            'cost' => round($cost, 2),
+            // Credit is the header figure, so an agreed lump sum is honoured.
+            'variance' => round($credit - $cost, 2),
+        ];
     }
 
     public function store(Request $request): JsonResponse
@@ -102,7 +157,7 @@ class PurchaseReturnController extends Controller
 
     public function show(PurchaseReturn $purchaseReturn): JsonResponse
     {
-        $purchaseReturn->load(['supplier', 'warehouse', 'items.product', 'purchaseReceipt', 'creator']);
+        $purchaseReturn->load(['supplier', 'warehouse', 'items.product', 'purchaseReceipt', 'creator:id,name']);
 
         return response()->json([
             'success' => true,

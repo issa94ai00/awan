@@ -1,376 +1,544 @@
 <template>
     <div class="purchases-page purchase-returns">
         <AdminPageHeader
-            icon="fas fa-rotate-left text-primary"
+            icon="fas fa-rotate-left"
             :title="$t('purchase_returns')"
             :subtitle="$t('purchase_returns_subtitle')"
         >
             <template #actions>
-                <el-button :icon="Refresh" :loading="loading" @click="reload" />
+                <el-tooltip :content="$t('refresh')" placement="bottom" :enterable="false">
+                    <el-button :icon="Refresh" :loading="loading" :aria-label="$t('refresh')" @click="fetchReturns()" />
+                </el-tooltip>
                 <el-button type="primary" :icon="Plus" @click="openCreate">
                     {{ $t('record_purchase_return') }}
                 </el-button>
             </template>
         </AdminPageHeader>
 
-        <el-card shadow="hover" class="table-panel">
-            <template #header>
-                <div class="card-header">
-                    <span><i class="fas fa-list text-muted"></i> {{ $t('purchase_returns') }}</span>
+        <!-- Totals follow the filters: "what went back to this supplier this
+             quarter" is the question these answer. -->
+        <AdminStatGrid :min="190">
+            <el-card v-for="card in statCards" :key="card.key" shadow="hover" class="stat-card">
+                <div class="stat-inner">
+                    <div class="stat-icon" :class="card.tone"><el-icon><component :is="card.icon" /></el-icon></div>
+                    <div class="stat-details">
+                        <h3 :class="card.valueClass">{{ summary ? card.value : '—' }}</h3>
+                        <p>{{ card.title }}</p>
+                    </div>
                 </div>
-            </template>
+            </el-card>
+        </AdminStatGrid>
 
-            <el-skeleton v-if="loading" :rows="5" animated />
-            <el-alert v-else-if="error" type="error" show-icon :closable="false" :title="error" />
+        <div class="panel-card">
+            <div class="filters">
+                <el-input
+                    v-model="filters.search"
+                    class="filter-search"
+                    :placeholder="$t('pret_search_placeholder')"
+                    :prefix-icon="Search"
+                    clearable
+                    @input="onSearchInput"
+                />
+                <el-select
+                    v-model="filters.supplier_id"
+                    class="filter-select"
+                    :placeholder="$t('pret_all_suppliers')"
+                    filterable
+                    clearable
+                    @change="applyFilters"
+                >
+                    <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
+                </el-select>
+                <el-select
+                    v-if="warehouses.length > 1"
+                    v-model="filters.warehouse_id"
+                    class="filter-select"
+                    :placeholder="$t('pret_all_warehouses')"
+                    clearable
+                    @change="applyFilters"
+                >
+                    <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                </el-select>
+                <el-date-picker
+                    v-model="filters.range"
+                    type="daterange"
+                    class="filter-dates"
+                    value-format="YYYY-MM-DD"
+                    format="YYYY-MM-DD"
+                    unlink-panels
+                    :start-placeholder="$t('pret_from')"
+                    :end-placeholder="$t('pret_to')"
+                    :shortcuts="dateShortcuts"
+                    @change="applyFilters"
+                />
+                <el-button v-if="activeFilterCount" text type="primary" :icon="RefreshLeft" @click="resetFilters">
+                    {{ $t('prod_admin_clear_filters', { count: activeFilterCount }) }}
+                </el-button>
+            </div>
 
-            <template v-else>
-                <el-table v-if="returns.length" :data="returns" stripe style="width:100%">
-                    <el-table-column prop="return_number" :label="$t('reference')" width="120">
-                        <template #default="{ row }"><span class="mono">{{ row.return_number }}</span></template>
-                    </el-table-column>
-                    <el-table-column :label="$t('supplier')" min-width="150">
-                        <template #default="{ row }">{{ row.supplier?.name || '—' }}</template>
-                    </el-table-column>
-                    <el-table-column :label="$t('return_date')" width="120" align="center">
-                        <template #default="{ row }">{{ String(row.return_date || '').slice(0, 10) }}</template>
-                    </el-table-column>
-                    <el-table-column :label="$t('items_count')" width="100" align="center">
-                        <template #default="{ row }">{{ row.items?.length || 0 }}</template>
-                    </el-table-column>
-                    <el-table-column :label="$t('credit_amount')" width="140" align="right">
-                        <template #default="{ row }"><strong>{{ money(row.credit_amount) }}</strong></template>
-                    </el-table-column>
-                    <el-table-column :label="$t('tax')" width="110" align="right">
-                        <template #default="{ row }">{{ money(row.tax_amount) }}</template>
-                    </el-table-column>
-                    <el-table-column :label="$t('reason')" min-width="140" show-overflow-tooltip>
-                        <template #default="{ row }">{{ row.reason || '—' }}</template>
-                    </el-table-column>
-                </el-table>
+            <el-result v-if="loadError && !returns.length" icon="error" :title="loadError">
+                <template #extra>
+                    <el-button type="primary" :icon="Refresh" @click="fetchReturns()">{{ $t('cat_admin_retry') }}</el-button>
+                </template>
+            </el-result>
 
-                <el-empty v-else :description="$t('no_purchase_returns_yet')" />
-            </template>
-        </el-card>
+            <el-table
+                v-else
+                v-loading="loading"
+                :data="returns"
+                row-key="id"
+                class="returns-table"
+                style="width: 100%"
+                :row-class-name="() => 'is-clickable'"
+                @row-click="openDetail"
+            >
+                <template #empty>
+                    <el-empty v-if="!loading && activeFilterCount" :description="$t('pret_no_matches')" :image-size="90">
+                        <el-button @click="resetFilters">{{ $t('cat_admin_clear_filters') }}</el-button>
+                    </el-empty>
+                    <el-empty v-else-if="!loading" :image-size="90">
+                        <template #description>
+                            <p class="empty-title">{{ $t('no_purchase_returns_yet') }}</p>
+                            <p class="empty-hint">{{ $t('pret_empty_hint') }}</p>
+                        </template>
+                        <el-button type="primary" :icon="Plus" @click="openCreate">{{ $t('record_purchase_return') }}</el-button>
+                    </el-empty>
+                    <span v-else />
+                </template>
 
-        <el-drawer
+                <el-table-column :label="$t('reference')" min-width="150">
+                    <template #default="{ row }">
+                        <div class="cell-stack">
+                            <button type="button" class="ref-link" dir="ltr" @click.stop="openDetail(row)">{{ row.return_number }}</button>
+                            <span class="cell-secondary">{{ formatDate(row.return_date) }}</span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('supplier')" min-width="190">
+                    <template #default="{ row }">
+                        <div class="cell-stack">
+                            <span class="cell-primary">{{ row.supplier?.name || '—' }}</span>
+                            <span v-if="row.purchase_receipt" class="cell-secondary">
+                                <el-icon :size="11"><Tickets /></el-icon>
+                                <span dir="ltr">{{ row.purchase_receipt.receipt_number }}</span>
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column v-if="warehouses.length > 1" :label="$t('warehouse')" min-width="130">
+                    <template #default="{ row }">{{ row.warehouse?.name || '—' }}</template>
+                </el-table-column>
+
+                <el-table-column :label="$t('returned_items')" min-width="180">
+                    <template #default="{ row }">
+                        <el-tooltip :disabled="(row.items || []).length < 2" placement="top" :enterable="false">
+                            <template #content>
+                                <div v-for="item in row.items" :key="item.id">{{ itemName(item) }} × {{ item.quantity }}</div>
+                            </template>
+                            <div class="cell-stack">
+                                <span class="cell-primary items-first">{{ itemsHeadline(row) }}</span>
+                                <span class="cell-secondary">{{ $t('pret_units_n', { count: unitsOf(row) }) }}</span>
+                            </div>
+                        </el-tooltip>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('reason')" min-width="150" show-overflow-tooltip>
+                    <template #default="{ row }">
+                        <span v-if="row.reason" class="reason-tag">{{ row.reason }}</span>
+                        <span v-else class="cell-empty">—</span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('pret_supplier_owed_less')" min-width="150" align="right">
+                    <template #default="{ row }">
+                        <div class="cell-stack amount-cell">
+                            <strong>{{ formatCurrency(Number(row.credit_amount) + Number(row.tax_amount)) }}</strong>
+                            <span v-if="Number(row.tax_amount)" class="cell-secondary">
+                                {{ $t('pret_incl_tax', { amount: formatCurrency(row.tax_amount) }) }}
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column width="48" align="center">
+                    <template #default>
+                        <el-icon class="row-chevron"><ArrowLeft /></el-icon>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <div v-if="total > 0" class="pagination-row">
+                <span class="pagination-summary">
+                    {{ $t('prod_admin_range', { from: rangeFrom, to: rangeTo, total }) }}
+                </span>
+                <el-pagination
+                    v-model:current-page="currentPage"
+                    v-model:page-size="pageSize"
+                    :total="total"
+                    :page-sizes="[10, 20, 50, 100]"
+                    :layout="isNarrow ? 'prev, pager, next' : 'sizes, prev, pager, next'"
+                    background
+                    @size-change="onPageChange(true)"
+                    @current-change="onPageChange(false)"
+                />
+            </div>
+        </div>
+
+        <PurchaseReturnForm
             v-model="createVisible"
-            :title="$t('record_purchase_return')"
-            size="55%"
-            direction="rtl"
-            destroy-on-close
-        >
-            <!-- Says what this document is for, because the alternative people
-                 reach for — a stock adjustment — books the goods out as
-                 shrinkage and leaves the supplier owed in full. -->
-            <el-alert
-                type="info"
-                show-icon
-                :closable="false"
-                class="mb-4"
-                :title="$t('purchase_return_is_not_shrinkage')"
-            />
+            :suppliers="suppliers"
+            :warehouses="warehouses"
+            :preset-supplier-id="filters.supplier_id || null"
+            @saved="onSaved"
+        />
 
-            <el-form :model="form" label-position="top">
-                <el-row :gutter="16">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('supplier')" required>
-                            <el-select v-model="form.supplier_id" filterable style="width:100%">
-                                <el-option
-                                    v-for="supplier in suppliers"
-                                    :key="supplier.id"
-                                    :label="supplier.name"
-                                    :value="supplier.id"
-                                />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('warehouse')" required>
-                            <el-select v-model="form.warehouse_id" style="width:100%">
-                                <el-option
-                                    v-for="warehouse in warehouses"
-                                    :key="warehouse.id"
-                                    :label="warehouse.name"
-                                    :value="warehouse.id"
-                                />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <el-row :gutter="16">
-                    <el-col :span="8">
-                        <el-form-item :label="$t('return_date')">
-                            <el-date-picker
-                                v-model="form.return_date"
-                                type="date"
-                                format="YYYY-MM-DD"
-                                value-format="YYYY-MM-DD"
-                                style="width:100%"
-                            />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="8">
-                        <el-form-item :label="$t('tax_returned')">
-                            <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="8">
-                        <el-form-item :label="$t('reason')">
-                            <el-input v-model="form.reason" :placeholder="$t('return_reason_example')" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <div class="lines-section">
-                    <div class="lines-header">
-                        <span>{{ $t('returned_items') }}</span>
-                        <el-button size="small" type="primary" plain @click="addLine">
-                            <i class="fas fa-plus"></i> {{ $t('add_item') }}
-                        </el-button>
-                    </div>
-
-                    <div v-for="(line, index) in form.items" :key="index" class="line-row">
-                        <el-select
-                            v-model="line.product_id"
-                            :placeholder="$t('select_item')"
-                            filterable
-                            style="flex: 2.5;"
-                        >
-                            <el-option
-                                v-for="product in products"
-                                :key="product.id"
-                                :label="product.name_ar + (product.sku ? ' (' + product.sku + ')' : '')"
-                                :value="product.id"
-                            />
-                        </el-select>
-                        <el-input-number v-model="line.quantity" :min="1" style="flex: 1;" />
-                        <el-input
-                            v-model="line.unit_price"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            :placeholder="$t('credit_per_unit')"
-                            style="flex: 1;"
-                        />
-                        <el-button
-                            type="danger"
-                            circle
-                            size="small"
-                            :disabled="form.items.length <= 1"
-                            @click="removeLine(index)"
-                        >
-                            <i class="fas fa-times"></i>
-                        </el-button>
-                    </div>
-
-                    <!-- The price is what the supplier credits, which is not
-                         always what the goods cost us; the gap is a real result
-                         and the server books it as one. -->
-                    <small class="hint">{{ $t('credit_per_unit_hint') }}</small>
-                </div>
-
-                <div class="drawer-footer">
-                    <el-button @click="createVisible = false">{{ $t('cancel') }}</el-button>
-                    <el-button type="primary" :loading="saving" :disabled="!canSubmit" @click="submit">
-                        {{ $t('save') }}
-                    </el-button>
-                </div>
-            </el-form>
-        </el-drawer>
+        <PurchaseReturnDetail v-model="detailVisible" :summary="detailRow" />
     </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessage } from 'element-plus';
-import { Plus, Refresh } from '@element-plus/icons-vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+    ArrowLeft, Box, Coin, Plus, Refresh, RefreshLeft, Search, Tickets, TrendCharts, Van,
+} from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import PurchaseReturnForm from '@/components/admin/purchases/PurchaseReturnForm.vue';
+import PurchaseReturnDetail from '@/components/admin/purchases/PurchaseReturnDetail.vue';
 import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { suppliersApi } from '@/api/suppliers';
-import { productsApi } from '@/api/products';
 import { useInventoryStore } from '@/stores/inventory';
+import { apiErrorMessage, formatCurrency, formatDate } from '@/utils/sales';
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const inventoryStore = useInventoryStore();
 
 const returns = ref([]);
-const suppliers = ref([]);
-const products = ref([]);
+const summary = ref(null);
+const total = ref(0);
 const loading = ref(false);
-const saving = ref(false);
-const error = ref('');
-const createVisible = ref(false);
-
-const form = reactive({
-    supplier_id: null,
-    warehouse_id: null,
-    return_date: new Date().toISOString().slice(0, 10),
-    tax_amount: 0,
-    reason: '',
-    items: [{ product_id: null, quantity: 1, unit_price: '' }],
-});
-
+const loadError = ref('');
+const suppliers = ref([]);
 const warehouses = computed(() => inventoryStore.warehouses || []);
 
-const money = (value) => Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+// ── Filters and paging, kept in the URL ───────────────────────────────────
+const filters = reactive({ search: '', supplier_id: null, warehouse_id: null, range: null });
+const currentPage = ref(1);
+const pageSize = ref(20);
+
+const readQuery = () => {
+    const q = route.query;
+    filters.search = q.search ? String(q.search) : '';
+    filters.supplier_id = Number(q.supplier_id) || null;
+    filters.warehouse_id = Number(q.warehouse_id) || null;
+    filters.range = q.from && q.to ? [String(q.from), String(q.to)] : null;
+    currentPage.value = Math.max(1, Number(q.page) || 1);
+    pageSize.value = [10, 20, 50, 100].includes(Number(q.per_page)) ? Number(q.per_page) : 20;
+};
+
+const queryKey = (query) => Object.entries(query).map(([k, v]) => `${k}=${v}`).sort().join('&');
+let lastQueryKey = null;
+
+const writeQuery = () => {
+    const query = {
+        search: filters.search || undefined,
+        supplier_id: filters.supplier_id || undefined,
+        warehouse_id: filters.warehouse_id || undefined,
+        from: filters.range?.[0] || undefined,
+        to: filters.range?.[1] || undefined,
+        page: currentPage.value > 1 ? currentPage.value : undefined,
+        per_page: pageSize.value !== 20 ? pageSize.value : undefined,
+    };
+    Object.keys(query).forEach((k) => query[k] === undefined && delete query[k]);
+    lastQueryKey = queryKey(query);
+    router.replace({ query });
+};
+
+const activeFilterCount = computed(() => [
+    filters.search, filters.supplier_id, filters.warehouse_id, filters.range?.length ? '1' : '',
+].filter(Boolean).length);
+
+// ── Data ─────────────────────────────────────────────────────────────────
+// A slow earlier response must not land over a newer one.
+let requestSeq = 0;
+
+const fetchReturns = async () => {
+    const seq = ++requestSeq;
+    loading.value = true;
+    loadError.value = '';
+    try {
+        const res = await purchaseReturnsApi.getAll({
+            page: currentPage.value,
+            per_page: pageSize.value,
+            search: filters.search || undefined,
+            supplier_id: filters.supplier_id || undefined,
+            warehouse_id: filters.warehouse_id || undefined,
+            date_from: filters.range?.[0] || undefined,
+            date_to: filters.range?.[1] || undefined,
+            with_summary: 1,
+        });
+        if (seq !== requestSeq) return;
+        const data = res.data?.data || {};
+        returns.value = data.returns || [];
+        total.value = data.pagination?.total || 0;
+        summary.value = data.summary || null;
+    } catch (e) {
+        if (seq !== requestSeq) return;
+        loadError.value = apiErrorMessage(e, t('pret_load_failed'));
+    } finally {
+        if (seq === requestSeq) loading.value = false;
+    }
+};
+
+const applyFilters = () => {
+    clearTimeout(searchTimer);
+    currentPage.value = 1;
+    writeQuery();
+    fetchReturns();
+};
+
+let searchTimer = null;
+const onSearchInput = (value) => {
+    clearTimeout(searchTimer);
+    if (!value) applyFilters();
+    else searchTimer = setTimeout(applyFilters, 400);
+};
+
+const resetFilters = () => {
+    Object.assign(filters, { search: '', supplier_id: null, warehouse_id: null, range: null });
+    applyFilters();
+};
+
+const onPageChange = (sizeChanged) => {
+    if (sizeChanged) currentPage.value = 1;
+    writeQuery();
+    fetchReturns();
+};
+
+const rangeFrom = computed(() => (total.value ? (currentPage.value - 1) * pageSize.value + 1 : 0));
+const rangeTo = computed(() => Math.min(currentPage.value * pageSize.value, total.value));
+
+const isoDay = (date) => {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+};
+
+const dateShortcuts = computed(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const daysAgo = (n) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - n);
+    return [
+        { text: t('pret_this_month'), value: () => [isoDay(monthStart), isoDay(now)] },
+        { text: t('pret_last_month'), value: () => [isoDay(lastMonthStart), isoDay(lastMonthEnd)] },
+        { text: t('pret_last_90_days'), value: () => [isoDay(daysAgo(90)), isoDay(now)] },
+        { text: t('pret_this_year'), value: () => [isoDay(new Date(now.getFullYear(), 0, 1)), isoDay(now)] },
+    ];
 });
 
-const canSubmit = computed(() =>
-    form.supplier_id
-    && form.warehouse_id
-    && form.items.some((line) => line.product_id && Number(line.quantity) > 0)
-);
+// ── Cards ────────────────────────────────────────────────────────────────
+const statCards = computed(() => {
+    const s = summary.value || {};
+    const variance = Number(s.variance) || 0;
+    return [
+        { key: 'count', icon: Van, tone: 'blue', title: t('purchase_returns'), value: Number(s.count || 0).toLocaleString() },
+        { key: 'credit', icon: Coin, tone: 'green', title: t('pret_total_credited'), value: formatCurrency(s.credit) },
+        { key: 'tax', icon: Box, tone: 'purple', title: t('tax_returned'), value: formatCurrency(s.tax) },
+        {
+            key: 'variance',
+            icon: TrendCharts,
+            tone: variance < 0 ? 'red' : 'green',
+            title: t('pret_credit_vs_cost'),
+            value: `${variance > 0 ? '+' : ''}${formatCurrency(variance)}`,
+            valueClass: variance < 0 ? 'is-bad' : variance > 0 ? 'is-good' : '',
+        },
+    ];
+});
 
-const reload = async () => {
-    loading.value = true;
-    error.value = '';
+// ── Rows ─────────────────────────────────────────────────────────────────
+const itemName = (item) => item.product?.name_ar || item.product?.name_en || `#${item.product_id}`;
+const unitsOf = (row) => (row.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+const itemsHeadline = (row) => {
+    const items = row.items || [];
+    if (!items.length) return '—';
+    const first = itemName(items[0]);
+    return items.length > 1 ? t('pret_and_more', { name: first, count: items.length - 1 }) : first;
+};
+
+// ── Drawers ──────────────────────────────────────────────────────────────
+const createVisible = ref(false);
+const detailVisible = ref(false);
+const detailRow = ref(null);
+
+const openCreate = () => { createVisible.value = true; };
+
+const openDetail = (row) => {
+    detailRow.value = row;
+    detailVisible.value = true;
+};
+
+const onSaved = async (created) => {
+    currentPage.value = 1;
+    writeQuery();
+    await fetchReturns();
+    // Show what was just recorded, as the list now has it.
+    const row = returns.value.find((r) => r.id === created?.id);
+    if (row) openDetail(row);
+    loadSuppliers();
+};
+
+const loadSuppliers = async () => {
     try {
-        const res = await purchaseReturnsApi.getAll({ per_page: 50 });
-        returns.value = res.data?.data?.returns || [];
-    } catch (e) {
-        error.value = e.response?.data?.message || e.message || t('failed_to_load_report');
-    } finally {
-        loading.value = false;
-    }
+        const res = await suppliersApi.getAll({ per_page: 500 });
+        suppliers.value = res.data?.data?.suppliers || [];
+    } catch { /* the filter and form still work by typing */ }
 };
 
-const openCreate = async () => {
-    form.supplier_id = null;
-    form.warehouse_id = warehouses.value.length === 1 ? warehouses.value[0].id : null;
-    form.return_date = new Date().toISOString().slice(0, 10);
-    form.tax_amount = 0;
-    form.reason = '';
-    form.items = [{ product_id: null, quantity: 1, unit_price: '' }];
-    createVisible.value = true;
+// ── Layout and lifecycle ─────────────────────────────────────────────────
+const isNarrow = ref(false);
+const onResize = () => { isNarrow.value = window.innerWidth < 768; };
 
-    if (!suppliers.value.length) {
-        try {
-            const res = await suppliersApi.getAll({ per_page: 200 });
-            suppliers.value = res.data?.data?.suppliers || [];
-        } catch {
-            // The form still works with a supplier typed by id elsewhere; the
-            // server validates it either way.
-        }
-    }
+// Reusing the component for a new URL (the sidebar link) re-reads it.
+watch(() => route.query, (query) => {
+    if (route.name !== 'admin.purchase-returns.index' || queryKey(query) === lastQueryKey) return;
+    readQuery();
+    lastQueryKey = queryKey(query);
+    fetchReturns();
+});
 
-    if (!products.value.length) {
-        try {
-            const res = await productsApi.getAll({ per_page: 300 });
-            products.value = res.data?.data?.products || res.data?.data || [];
-        } catch {
-            // Same: the field is a convenience, not the validation.
-        }
-    }
-};
+onMounted(() => {
+    onResize();
+    window.addEventListener('resize', onResize);
+    readQuery();
+    lastQueryKey = queryKey(route.query);
+    fetchReturns();
+    loadSuppliers();
+    if (!warehouses.value.length) inventoryStore.fetchWarehouses?.()?.catch?.(() => {});
+});
 
-const addLine = () => form.items.push({ product_id: null, quantity: 1, unit_price: '' });
-
-const removeLine = (index) => {
-    if (form.items.length > 1) form.items.splice(index, 1);
-};
-
-const submit = async () => {
-    saving.value = true;
-    try {
-        await purchaseReturnsApi.create({
-            supplier_id: form.supplier_id,
-            warehouse_id: form.warehouse_id,
-            return_date: form.return_date,
-            tax_amount: Number(form.tax_amount) || 0,
-            reason: form.reason || null,
-            items: form.items
-                .filter((line) => line.product_id && Number(line.quantity) > 0)
-                .map((line) => ({
-                    product_id: line.product_id,
-                    quantity: Number(line.quantity),
-                    // Left out when blank, so the server falls back to what the
-                    // units actually cost — the honest default.
-                    ...(line.unit_price !== '' ? { unit_price: Number(line.unit_price) } : {}),
-                })),
-        });
-
-        createVisible.value = false;
-        ElMessage.success(t('purchase_return_recorded'));
-        await reload();
-    } catch (e) {
-        // The server explains precisely why — stock not on the shelf, or a
-        // closed period — and echoing a generic failure would hide both.
-        ElMessage.error(e.response?.data?.message || t('failed_to_save_purchase_return'));
-    } finally {
-        saving.value = false;
-    }
-};
-
-onMounted(async () => {
-    await reload();
-
-    if (!warehouses.value.length) {
-        await inventoryStore.fetchWarehouses?.().catch(() => {});
-    }
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', onResize);
+    clearTimeout(searchTimer);
 });
 </script>
 
 <style scoped>
-.purchase-returns {
-    font-family: 'Cairo', sans-serif;
-}
+.purchase-returns { font-family: 'Cairo', sans-serif; }
 
-.table-panel {
-    border-radius: 1rem;
-}
-
-.card-header {
+/* ── Cards ── */
+.stat-card { border-radius: 14px; }
+.stat-inner { display: flex; align-items: center; gap: 0.9rem; }
+.stat-icon {
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    border-radius: 12px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+.stat-icon.blue { background: #eff6ff; color: #2563eb; }
+.stat-icon.green { background: #f0fdf4; color: #16a34a; }
+.stat-icon.purple { background: #f5f3ff; color: #7c3aed; }
+.stat-icon.red { background: #fef2f2; color: #dc2626; }
+.stat-details { min-width: 0; }
+.stat-details h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stat-details h3.is-good { color: #16a34a; }
+.stat-details h3.is-bad { color: #dc2626; }
+.stat-details p { margin: 0.15rem 0 0; font-size: 0.82rem; color: #64748b; }
+
+/* ── Panel and filters ── */
+.panel-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.1rem;
+}
+
+.filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
+.filter-search { flex: 1 1 260px; max-width: 360px; }
+.filter-select { width: 190px; }
+.filter-dates { max-width: 280px; }
+
+/* ── Table ── */
+.returns-table :deep(.is-clickable) { cursor: pointer; }
+.cell-stack { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.cell-primary { font-weight: 600; color: #0f172a; }
+.cell-secondary { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; color: #64748b; }
+.cell-empty { color: #94a3b8; }
+.items-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ref-link {
+    all: unset;
+    cursor: pointer;
+    font-family: ui-monospace, monospace;
     font-weight: 700;
-    color: var(--text-dark);
+    color: #2563eb;
+}
+.ref-link:hover { text-decoration: underline; }
+.ref-link:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+
+.reason-tag {
+    display: inline-block;
+    max-width: 100%;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
-.mono {
-    font-family: monospace;
-    font-weight: 700;
-}
+.amount-cell { align-items: flex-end; font-variant-numeric: tabular-nums; }
+.row-chevron { color: #cbd5e1; }
+:deep(.el-table__row:hover) .row-chevron { color: #2563eb; }
+[dir='ltr'] .row-chevron { transform: scaleX(-1); }
 
-.lines-section {
-    margin-top: 1rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1rem;
-    background: var(--bg-light);
-}
+.empty-title { margin: 0; font-weight: 700; color: #334155; }
+.empty-hint { margin: 0.35rem auto 0; max-width: 420px; font-size: 0.85rem; color: #64748b; line-height: 1.6; }
 
-.lines-header {
+.pagination-row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    font-weight: 700;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
 }
+.pagination-summary { font-size: 0.85rem; color: #64748b; }
 
-.line-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 0.75rem;
-}
+@media (max-width: 768px) {
+    :deep(.admin-stat-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.6rem; }
+    .stat-card :deep(.el-card__body) { padding: 0.75rem; }
+    .stat-inner { gap: 0.6rem; }
+    .stat-icon { width: 36px; height: 36px; font-size: 1.05rem; }
+    .stat-details h3 { font-size: 1rem; }
 
-.hint {
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-
-.drawer-footer {
-    border-top: 1px solid var(--border-color);
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
+    .panel-card { padding: 0.85rem; }
+    .filter-search { max-width: none; flex-basis: 100%; }
+    .filter-select { width: calc(50% - 0.375rem); }
+    .filter-dates { max-width: none; width: 100% !important; }
+    .pagination-row { justify-content: center; }
 }
 </style>
