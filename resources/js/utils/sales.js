@@ -215,3 +215,13 @@ export const customerName = (row) => row?.customer?.name || row?.customer_name |
 /** Extracts a human message from an axios error, falling back to a given default. */
 export const apiErrorMessage = (error, fallback) =>
     error?.response?.data?.message || error?.message || fallback;
+
+/**
+ * A date as `YYYY-MM-DD` in the browser's own time zone. `toISOString()` is
+ * UTC, so from midnight until 3am in Damascus it named yesterday — and a
+ * payment or return entered then was dated the day before.
+ */
+export const localIsoDate = (date = new Date()) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};

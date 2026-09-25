@@ -279,7 +279,7 @@ import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { productsApi } from '@/api/products';
 import { inventoryApi } from '@/api/inventory';
-import { apiErrorMessage, formatCurrency } from '@/utils/sales';
+import { apiErrorMessage, formatCurrency, localIsoDate } from '@/utils/sales';
 import { baseCurrencyCode, currencyDecimals, numberLocale } from '@/utils/currency';
 
 const props = defineProps({
@@ -295,7 +295,7 @@ const { t } = useI18n();
 
 const REASON_KEYS = ['pret_reason_faulty', 'pret_reason_wrong_item', 'pret_reason_damaged', 'pret_reason_excess', 'pret_reason_expired'];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localIsoDate();
 let lineSeq = 0;
 
 const newLine = (patch = {}) => ({

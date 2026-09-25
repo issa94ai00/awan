@@ -32,7 +32,7 @@ class PurchaseReceiptController extends Controller
             $query->where('supplier_id', $request->supplier_id);
         }
 
-        $receipts = $query->latest()->paginate(20);
+        $receipts = $query->latest()->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
 
         return response()->json([
             'success' => true,

@@ -48,12 +48,42 @@ class SupplierPaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
 
+        if ($request->filled('payment_method')) {
+            $query->where('payment_method', $request->payment_method);
+        }
+
+        if ($request->filled('purchase_receipt_id')) {
+            $query->where('purchase_receipt_id', $request->purchase_receipt_id);
+        }
+
+        // Searched on the server: filtering the loaded page in the browser
+        // reported "nothing found" for a payment that was simply on page two.
+        if ($request->filled('search')) {
+            $term = '%'.trim((string) $request->search).'%';
+            $query->where(function ($q) use ($term) {
+                $q->where('payment_number', 'like', $term)
+                    ->orWhere('reference', 'like', $term)
+                    ->orWhere('notes', 'like', $term)
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $term))
+                    ->orWhereHas('purchaseReceipt', fn ($r) => $r->where('receipt_number', 'like', $term));
+            });
+        }
+
         // Summed before paginating: paginate() puts a limit on the builder, so
         // a sum taken afterwards would only cover the page being shown.
         $totalPaid = round((float) (clone $query)->sum('amount'), 2);
 
+        $byMethod = (clone $query)->reorder()
+            ->selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
+            ->groupBy('payment_method')
+            ->get()
+            ->mapWithKeys(fn ($row) => [$row->payment_method => [
+                'count' => (int) $row->count,
+                'total' => round((float) $row->total, 2),
+            ]]);
+
         $payments = $query->latest('payment_date')->latest('id')
-            ->paginate($request->input('per_page', 20));
+            ->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
 
         return response()->json([
             'success' => true,
@@ -63,6 +93,7 @@ class SupplierPaymentController extends Controller
                 // What the filtered period cost in total, so the screen does
                 // not add up one page of rows and call it the answer.
                 'total_paid' => $totalPaid,
+                'by_method' => $byMethod,
                 'pagination' => [
                     'current_page' => $payments->currentPage(),
                     'last_page' => $payments->lastPage(),
@@ -181,12 +212,20 @@ class SupplierPaymentController extends Controller
                 'balance' => round((float) $supplier->balance, 2),
             ]);
 
+        // A negative balance is money paid ahead, not a smaller debt: netting
+        // the two understated what is owed by every advance on the books.
+        $owed = $suppliers->where('balance', '>', 0);
+        $advances = $suppliers->where('balance', '<', 0);
+
         return response()->json([
             'success' => true,
             'message' => 'Supplier balances retrieved successfully',
             'data' => [
                 'suppliers' => $suppliers->values(),
-                'total_outstanding' => round($suppliers->sum('balance'), 2),
+                'total_outstanding' => round($owed->sum('balance'), 2),
+                'owed_count' => $owed->count(),
+                'total_advances' => round(-$advances->sum('balance'), 2),
+                'advances_count' => $advances->count(),
             ],
         ]);
     }
