@@ -146,6 +146,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import { formatCurrency } from '@/utils/sales';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -157,6 +158,13 @@ const store = useAccountingReportsStore();
 const today = new Date().toISOString().split('T')[0];
 const dateFrom = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
 const dateTo = ref(today);
+
+// The accounting overview links here with the span its figures cover, so the
+// statement opens on the same numbers the reader just clicked.
+const route = useRoute();
+const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+if (isDate(route.query.date_from)) dateFrom.value = route.query.date_from;
+if (isDate(route.query.date_to)) dateTo.value = route.query.date_to;
 
 const s = computed(() => store.incomeStatement || {});
 const comparison = computed(() => s.value.comparison || null);

@@ -216,12 +216,15 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, reactive, computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useJournalEntriesStore } from '@/stores/journalEntries';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
 
 const store = useJournalEntriesStore();
 const ledgerStore = useLedgerAccountsStore();
@@ -347,6 +350,15 @@ const confirmReverse = (row) => {
 onMounted(() => {
     store.fetchEntries().catch(() => {});
     ledgerStore.fetchAccounts({ per_page: 100 }).catch(() => {});
+
+    // `?new=1` is how the accounting overview's "new entry" button lands here
+    // with the form already open. Dropped from the URL once used, so a reload
+    // or the back button does not open it a second time.
+    if (route.query.new) {
+        openCreateDrawer();
+        const { new: _new, ...query } = route.query;
+        router.replace({ query });
+    }
 });
 </script>
 
