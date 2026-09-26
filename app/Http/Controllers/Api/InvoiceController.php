@@ -38,6 +38,7 @@ class InvoiceController extends Controller
             // callers (the returns picker) still get the lines.
             $query = $request->boolean('lean')
                 ? Invoice::query()->with(['customer:id,name,phone,email,company', 'salesOrder:id,order_number'])->withCount('items')
+                    ->withSum(['creditNotes as credited_total' => fn ($q) => $q->where('status', '!=', 'cancelled')], 'total')
                 : Invoice::query()->with(['items.product', 'items.variant', 'customer']);
 
             if ($request->filled('customer_id')) {
@@ -91,9 +92,9 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Paid state is read from total and paid, not the stored due
-            // column, which older edits left out of step on some invoices.
-            $owed = 'total - paid_amount';
+            // Paid state is read from total, credit notes and paid — see
+            // OWED_SQL — rather than the stored due column.
+            $owed = self::OWED_SQL;
             match ($request->input('payment')) {
                 'unpaid' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)
                     ->whereRaw("{$owed} > 0.009")->where('paid_amount', '<=', 0.009),
@@ -101,7 +102,7 @@ class InvoiceController extends Controller
                     ->whereRaw("{$owed} > 0.009")->where('paid_amount', '>', 0.009),
                 'due' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} > 0.009"),
                 'paid' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} <= 0.009"),
-                'credit' => $query->where('paid_amount', '>', DB::raw('total + 0.009')),
+                'credit' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} < -0.009"),
                 default => null,
             };
 
@@ -151,6 +152,13 @@ class InvoiceController extends Controller
     }
 
     /**
+     * What an invoice still owes, in SQL: its total, less the credit notes
+     * raised against it (a return settles part of the bill without any money
+     * moving), less what was paid. Negative when the customer paid more.
+     */
+    public const OWED_SQL = "(invoices.total - invoices.paid_amount - COALESCE((SELECT SUM(cn.total) FROM credit_notes cn WHERE cn.invoice_id = invoices.id AND cn.status != 'cancelled'), 0))";
+
+    /**
      * Counts per status, what was billed and collected, what is still owed —
      * aged by how long it has been owed — and credits held by customers who
      * paid more than the invoice. Cancelled invoices bill nothing.
@@ -165,28 +173,29 @@ class InvoiceController extends Controller
             ->pluck('n', 'status');
 
         $today = now()->startOfDay();
-        $owed = 'CASE WHEN total - paid_amount > 0.009 THEN total - paid_amount ELSE 0 END';
-        $bucket = fn (?int $from, ?int $to) => 'COALESCE(SUM(CASE WHEN total - paid_amount > 0.009'
-            .($from !== null ? " AND created_at < '".$today->copy()->subDays($from)->toDateTimeString()."'" : '')
-            .($to !== null ? " AND created_at >= '".$today->copy()->subDays($to)->toDateTimeString()."'" : '')
-            .' THEN total - paid_amount ELSE 0 END), 0)';
+        $raw = self::OWED_SQL;
+        $owed = "CASE WHEN {$raw} > 0.009 THEN {$raw} ELSE 0 END";
+        $bucket = fn (?int $from, ?int $to) => "COALESCE(SUM(CASE WHEN {$raw} > 0.009"
+            .($from !== null ? " AND invoices.created_at < '".$today->copy()->subDays($from)->toDateTimeString()."'" : '')
+            .($to !== null ? " AND invoices.created_at >= '".$today->copy()->subDays($to)->toDateTimeString()."'" : '')
+            ." THEN {$raw} ELSE 0 END), 0)";
 
         // select([]) first: the list query carries its own columns (the line
         // count), which an aggregate cannot sit beside.
         $live = $base()->where('status', '!=', Invoice::STATUS_CANCELLED)->getQuery()->select([])
             ->selectRaw('COUNT(*) as n')
-            ->selectRaw('COALESCE(SUM(total), 0) as billed')
-            ->selectRaw('COALESCE(SUM(CASE WHEN paid_amount < total THEN paid_amount ELSE total END), 0) as collected')
+            ->selectRaw('COALESCE(SUM(invoices.total), 0) as billed')
+            ->selectRaw('COALESCE(SUM(CASE WHEN invoices.paid_amount < invoices.total THEN invoices.paid_amount ELSE invoices.total END), 0) as collected')
             ->selectRaw("COALESCE(SUM({$owed}), 0) as outstanding")
-            ->selectRaw('SUM(CASE WHEN total - paid_amount > 0.009 THEN 1 ELSE 0 END) as outstanding_count')
+            ->selectRaw("SUM(CASE WHEN {$raw} > 0.009 THEN 1 ELSE 0 END) as outstanding_count")
             ->selectRaw($bucket(null, 30).' as age_0_30')
             ->selectRaw($bucket(30, 60).' as age_31_60')
             ->selectRaw($bucket(60, 90).' as age_61_90')
             ->selectRaw($bucket(90, null).' as age_90_plus')
             ->first();
 
-        $credit = $base()->where('paid_amount', '>', DB::raw('total + 0.009'))->getQuery()->select([])
-            ->selectRaw('COUNT(*) as n, COALESCE(SUM(paid_amount - total), 0) as amount')
+        $credit = $base()->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$raw} < -0.009")->getQuery()->select([])
+            ->selectRaw("COUNT(*) as n, COALESCE(SUM(-1 * {$raw}), 0) as amount")
             ->first();
 
         $statuses = array_keys(Invoice::TRANSITIONS);

@@ -49,6 +49,12 @@ class PaymentRecorder
             throw new RuntimeException('مبلغ التحصيل يجب أن يكون أكبر من صفر.');
         }
 
+        // Its sale has been undone; money taken against it would settle a debt
+        // that no longer exists.
+        if ($invoice->status === Invoice::STATUS_CANCELLED) {
+            throw new RuntimeException(sprintf('الفاتورة %s ملغاة ولا يُحصّل عليها.', $invoice->invoice_number));
+        }
+
         $due = $this->outstanding($invoice);
 
         // Overpaying turns the receivable negative — the books would then say
@@ -109,9 +115,12 @@ class PaymentRecorder
         });
     }
 
-    /** What is still owed, trusting the amounts rather than the stored column. */
+    /**
+     * What is still owed, trusting the amounts rather than the stored column —
+     * and net of credit notes, so a returned item cannot be paid for again.
+     */
     public function outstanding(Invoice $invoice): float
     {
-        return max(0, round((float) $invoice->total - (float) $invoice->paid_amount, 5));
+        return max(0, $invoice->outstanding());
     }
 }

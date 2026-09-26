@@ -94,10 +94,19 @@ class Invoice extends Model
         return in_array($status, self::TRANSITIONS[$this->status] ?? [], true);
     }
 
-    /** What is still owed, from the figures rather than the stored due column. */
+    /**
+     * What is still owed: the total, less credit notes raised against it (a
+     * return settles part of the bill without money moving), less what was
+     * paid. Negative when the customer paid more than that. A list can load
+     * the credit notes' sum as `credited_total` to spare a query per row.
+     */
     public function outstanding(): float
     {
-        return round((float) $this->total - (float) $this->paid_amount, 5);
+        $credited = array_key_exists('credited_total', $this->attributes)
+            ? (float) $this->attributes['credited_total']
+            : (float) $this->creditNotes()->where('status', '!=', 'cancelled')->sum('total');
+
+        return round((float) $this->total - $credited - (float) $this->paid_amount, 5);
     }
 
     public static function getStatusOptions(): array
