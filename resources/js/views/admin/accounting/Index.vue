@@ -169,7 +169,7 @@
                                 <span class="check-count">{{ check.count }}</span>
                             </div>
                             <p class="check-detail">{{ check.detail }}</p>
-                            <p class="check-action"><i class="fas fa-arrow-turn-down"></i> {{ check.action }}</p>
+                            <p class="check-action"><i class="fas fa-arrow-turn-down flip-rtl"></i> {{ check.action }}</p>
                             <!-- The one finding that can be cleared without
                                  leaving the page. Everything else here still
                                  points at the screen that owns the repair. -->
@@ -252,7 +252,7 @@
                                 <el-tag v-if="row.status === 'reversed'" size="small" type="info" effect="plain" class="ml-1">{{ $t('reversed') }}</el-tag>
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('acc_ov_amount')" width="130" align="end">
+                        <el-table-column :label="$t('acc_ov_amount')" width="150" class-name="col-end" label-class-name="col-end">
                             <template #default="{ row }">
                                 <span class="entry-amt">{{ formatMoney(row.total_debit) }}</span>
                                 <i
@@ -278,7 +278,7 @@
                         <div v-for="row in plRows" :key="row.key" class="pl-row" :class="[row.kind, { 'is-negative': row.value < 0 }]">
                             <div class="pl-label">
                                 <span>{{ row.label }}</span>
-                                <strong>{{ row.sign }}{{ formatMoney(Math.abs(row.value)) }}</strong>
+                                <strong>{{ formatMoney(row.shown) }}</strong>
                             </div>
                             <div class="pl-bar"><span :style="{ width: row.width + '%' }"></span></div>
                             <span v-if="row.hint" class="pl-hint">{{ row.hint }}</span>
@@ -544,11 +544,11 @@ const plRows = computed(() => {
     const margin = (pct) => (pct === null || pct === undefined ? '' : t('acc_ov_margin', { pct: formatPct(pct) }));
 
     return [
-        { key: 'revenue', kind: 'is-in', label: t('acc_ov_net_revenue'), value: revenue, sign: '', width: width(revenue) },
-        { key: 'cos', kind: 'is-out', label: t('acc_ov_cost_of_sales'), value: cos, sign: cos ? '−' : '', width: width(cos) },
-        { key: 'gross', kind: 'is-sub', label: t('acc_ov_gross_profit'), value: gross, sign: gross < 0 ? '−' : '', width: width(gross), hint: margin(s.gross_margin_pct) },
-        { key: 'opex', kind: 'is-out', label: t('acc_ov_operating_expenses'), value: opex, sign: opex ? '−' : '', width: width(opex) },
-        { key: 'net', kind: 'is-total', label: net >= 0 ? t('acc_ov_net_profit') : t('acc_ov_net_loss'), value: net, sign: net < 0 ? '−' : '', width: width(net), hint: margin(s.net_margin_pct) },
+        { key: 'revenue', kind: 'is-in', label: t('acc_ov_net_revenue'), value: revenue, shown: revenue, width: width(revenue) },
+        { key: 'cos', kind: 'is-out', label: t('acc_ov_cost_of_sales'), value: cos, shown: -Math.abs(cos), width: width(cos) },
+        { key: 'gross', kind: 'is-sub', label: t('acc_ov_gross_profit'), value: gross, shown: gross, width: width(gross), hint: margin(s.gross_margin_pct) },
+        { key: 'opex', kind: 'is-out', label: t('acc_ov_operating_expenses'), value: opex, shown: -Math.abs(opex), width: width(opex) },
+        { key: 'net', kind: 'is-total', label: net >= 0 ? t('acc_ov_net_profit') : t('acc_ov_net_loss'), value: net, shown: net, width: width(net), hint: margin(s.net_margin_pct) },
     ];
 });
 
@@ -963,7 +963,11 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
 .head-link:hover, .card-foot-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .card-foot-link { display: inline-flex; align-items: center; margin-top: 1rem; }
 .dir-arrow { font-size: 0.7em; margin-inline-start: 0.35rem; }
-:global([dir="rtl"]) .dir-arrow { transform: scaleX(-1); }
+/* Plain descendant selector, not `:global([dir="rtl"]) .dir-arrow`: Vue keeps
+   only what is inside `:global()`, so that rule compiled to `[dir="rtl"]` and
+   mirrored the whole document in Arabic. */
+[dir="rtl"] .dir-arrow,
+[dir="rtl"] .flip-rtl { transform: scaleX(-1); }
 
 /* ── Health ───────────────────────────────────────────────────────────── */
 .health-banner {
@@ -1057,7 +1061,7 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
 .entry-no { font-weight: 700; color: var(--ov-text); font-variant-numeric: tabular-nums; }
 .entry-amt { font-weight: 800; color: var(--ov-text); font-variant-numeric: tabular-nums; }
 
-.entry-lines { padding: 0.4rem 2.5rem 0.6rem 1rem; }
+.entry-lines { padding-block: 0.4rem 0.6rem; padding-inline: 2.75rem 1rem; }
 
 .entry-line {
     display: grid;
@@ -1241,6 +1245,26 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
 @media (hover: none) {
     .hub-go { opacity: 0.6; }
 }
+
+/* ── Direction ────────────────────────────────────────────────────────────
+   Element Plus has no RTL mode: table cells are text-align:left, the expand
+   chevron points right, and alert icons keep their gap on the right. These
+   put each back on the reading direction. `mr-1` is not generated by
+   Tailwind here and the global `ml-1` is a physical margin-left, so both are
+   defined logically for this page. */
+.mr-1 { margin-inline-end: 0.35rem; }
+.ml-1 { margin-left: 0; margin-inline-start: 0.35rem; }
+
+.accounting-page :deep(.el-table__cell) { text-align: start; }
+.accounting-page :deep(.el-table__cell.col-end) { text-align: end; }
+[dir="rtl"] .entries-table :deep(.el-table__expand-icon:not(.el-table__expand-icon--expanded)) { transform: rotate(180deg); }
+
+.ov-alert :deep(.el-alert__icon) { margin-right: 0; margin-inline-end: 8px; }
+.ov-alert :deep(.el-alert__icon.is-big) { margin-inline-end: 12px; }
+.ov-alert :deep(.el-alert__content) { text-align: start; }
+
+/* Amounts and dates keep their digit order inside Arabic text. */
+.kpi-value, .pl-label strong, .eq-side strong, .entry-amt, .line-amt, .health-banner-count { unicode-bidi: isolate; }
 
 /* ── Pricing dialog ───────────────────────────────────────────────────── */
 .pricing-intro {
