@@ -245,3 +245,23 @@ test('the statement is refused to a sales account', function () {
         ->getJson('/api/v1/admin/accounting/cost-center-statement')
         ->assertForbidden();
 });
+
+test('each centre names the accounts behind its figures, and they add up to them', function () {
+    ($this->stock)($this->north, 10, 40);
+    ($this->sellFrom)($this->north, 1000, '2026-03-05');
+    $this->ledger->postCostOfGoodsSoldBySource(
+        key: 'so_cogs:acc',
+        costByWarehouse: [$this->north->id => 160],
+        label: 'بيع',
+        date: '2026-03-05',
+    );
+
+    $data = ($this->statement)(['date_from' => '2026-03-01', 'date_to' => '2026-03-31']);
+    $north = collect($data['centers'])->firstWhere('name', 'فرع الشمال');
+    $accounts = collect($north['accounts']);
+
+    expect($north['is_active'])->toBeTrue();
+    expect($accounts->first()['section'])->toBe('revenue');
+    expect((float) $accounts->where('section', 'revenue')->sum('amount'))->toBe((float) $north['revenue']);
+    expect((float) $accounts->where('section', 'cost_of_sales')->sum('amount'))->toBe((float) $north['cost_of_sales']);
+});

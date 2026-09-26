@@ -546,8 +546,9 @@ class AccountingReportController extends Controller
             ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
             ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
             ->whereIn('a.type', ['revenue', 'expense'])
-            ->groupBy('l.cost_center_id', 'c.code', 'c.name', 'a.type', 'a.posting_role')
-            ->selectRaw('l.cost_center_id, c.code, c.name, a.type, a.posting_role,
+            ->groupBy('l.cost_center_id', 'c.code', 'c.name', 'c.is_active', 'a.id', 'a.code', 'a.name', 'a.type', 'a.posting_role')
+            ->selectRaw('l.cost_center_id, c.code, c.name, c.is_active, a.id as account_id, a.code as account_code,
+                         a.name as account_name, a.type, a.posting_role,
                          COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c_amount')
             ->get();
 
@@ -560,9 +561,11 @@ class AccountingReportController extends Controller
                 'id' => $row->cost_center_id,
                 'code' => $row->code,
                 'name' => $row->name ?: 'غير موزّع',
+                'is_active' => $row->cost_center_id ? (bool) $row->is_active : null,
                 'revenue' => 0.0,
                 'cost_of_sales' => 0.0,
                 'operating_expenses' => 0.0,
+                'accounts' => [],
             ];
 
             $amount = round(
@@ -573,20 +576,25 @@ class AccountingReportController extends Controller
             if ($row->type === 'revenue') {
                 // Returns and discounts are debit-normal here, so this nets
                 // them off rather than adding them to revenue.
-                $centers[$key]['revenue'] = round(
-                    $centers[$key]['revenue']
-                    + (in_array($row->posting_role, self::CONTRA_REVENUE_ROLES, true) ? -$amount : $amount),
-                    2
-                );
-
-                continue;
+                $bucket = 'revenue';
+                $amount = in_array($row->posting_role, self::CONTRA_REVENUE_ROLES, true) ? -$amount : $amount;
+            } else {
+                $bucket = in_array($row->posting_role, self::COST_OF_SALES_ROLES, true)
+                    ? 'cost_of_sales'
+                    : 'operating_expenses';
             }
 
-            $bucket = in_array($row->posting_role, self::COST_OF_SALES_ROLES, true)
-                ? 'cost_of_sales'
-                : 'operating_expenses';
-
             $centers[$key][$bucket] = round($centers[$key][$bucket] + $amount, 2);
+
+            // The accounts behind the centre's figures: a result that cannot
+            // be taken apart cannot be questioned.
+            $centers[$key]['accounts'][] = [
+                'id' => $row->account_id,
+                'code' => $row->account_code,
+                'name' => $row->account_name,
+                'section' => $bucket,
+                'amount' => $amount,
+            ];
         }
 
         $centers = collect($centers)
@@ -596,6 +604,15 @@ class AccountingReportController extends Controller
                 $center['margin_percentage'] = abs($center['revenue']) > self::EPSILON
                     ? round(($center['gross_profit'] / $center['revenue']) * 100, 1)
                     : null;
+                $order = ['revenue' => 0, 'cost_of_sales' => 1, 'operating_expenses' => 2];
+                $center['accounts'] = collect($center['accounts'])
+                    ->reject(fn ($account) => abs($account['amount']) < self::EPSILON)
+                    ->sortBy([
+                        fn ($a, $b) => $order[$a['section']] <=> $order[$b['section']],
+                        fn ($a, $b) => abs($b['amount']) <=> abs($a['amount']),
+                    ])
+                    ->values()
+                    ->all();
 
                 return $center;
             })
