@@ -69,10 +69,36 @@ class Invoice extends Model
     const STATUS_DELIVERED = 'delivered';
     const STATUS_CANCELLED = 'cancelled';
 
+    /**
+     * Forward moves only, plus cancelling any time before delivery. Goods that
+     * reached the customer come back through a return, not a cancellation.
+     * Cancelled is final: coming back from it would need the goods issued and
+     * the sale posted again, which no status change does — a new invoice does.
+     */
+    const TRANSITIONS = [
+        self::STATUS_PENDING => [self::STATUS_CONFIRMED, self::STATUS_CANCELLED],
+        self::STATUS_CONFIRMED => [self::STATUS_PROCESSING, self::STATUS_CANCELLED],
+        self::STATUS_PROCESSING => [self::STATUS_SHIPPED, self::STATUS_CANCELLED],
+        self::STATUS_SHIPPED => [self::STATUS_DELIVERED, self::STATUS_CANCELLED],
+        self::STATUS_DELIVERED => [],
+        self::STATUS_CANCELLED => [],
+    ];
+
     const PAYMENT_CASH = 'cash';
     const PAYMENT_CARD = 'card';
     const PAYMENT_TRANSFER = 'transfer';
     const PAYMENT_CHECK = 'check';
+
+    public function canMoveTo(string $status): bool
+    {
+        return in_array($status, self::TRANSITIONS[$this->status] ?? [], true);
+    }
+
+    /** What is still owed, from the figures rather than the stored due column. */
+    public function outstanding(): float
+    {
+        return round((float) $this->total - (float) $this->paid_amount, 5);
+    }
 
     public static function getStatusOptions(): array
     {

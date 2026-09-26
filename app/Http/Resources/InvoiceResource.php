@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -40,6 +41,19 @@ class InvoiceResource extends JsonResource
             'paid_amount' => (float) $this->paid_amount,
             'due_amount' => (float) $this->due_amount,
 
+            // Owed, from the figures themselves: negative when the customer paid
+            // more than the invoice and holds a credit. The stored due_amount
+            // above is kept for older clients but was left out of step by
+            // earlier edits on some invoices.
+            'outstanding' => $this->outstanding(),
+            'payment_state' => $this->paymentState(),
+            'age_days' => $this->created_at ? (int) $this->created_at->copy()->startOfDay()->diffInDays(now()->startOfDay()) : null,
+
+            // The moves this screen may offer. None on an order's invoice —
+            // the order moves it — nor on a cancelled one.
+            'allowed_statuses' => $this->sales_order_id ? [] : (Invoice::TRANSITIONS[$this->status] ?? []),
+            'items_count' => $this->whenCounted('items'),
+
             'payment_method' => $this->payment_method,
             'payment_method_label' => $this->payment_method_label,
             'status' => $this->status,
@@ -50,6 +64,10 @@ class InvoiceResource extends JsonResource
 
             // Link back to the sales order this invoice was converted from.
             'sales_order_id' => $this->sales_order_id,
+            'sales_order' => $this->when($this->relationLoaded('salesOrder'), fn () => $this->salesOrder
+                ? ['id' => $this->salesOrder->id, 'order_number' => $this->salesOrder->order_number]
+                : null),
+            'customer_company' => $this->customer?->company,
 
             // Relationships
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
@@ -67,5 +85,21 @@ class InvoiceResource extends JsonResource
             'created_at_formatted' => $this->created_at?->format('Y-m-d H:i:s'),
             'created_at_human' => $this->created_at?->diffForHumans(),
         ];
+    }
+
+    private function paymentState(): ?string
+    {
+        if ($this->status === Invoice::STATUS_CANCELLED) {
+            return null;
+        }
+
+        $owed = $this->outstanding();
+
+        return match (true) {
+            $owed < -0.009 => 'credit',
+            $owed <= 0.009 => 'paid',
+            (float) $this->paid_amount > 0.009 => 'partial',
+            default => 'unpaid',
+        };
     }
 }

@@ -247,7 +247,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Refresh } from '@element-plus/icons-vue';
@@ -276,6 +276,7 @@ const formatWalletTotal = (wallet) =>
     formatMoney(wallet.total, { code: wallet.currency, decimals: wallet.decimal_places });
 
 const router = useRouter();
+const route = useRoute();
 const store = usePaymentsStore();
 
 const searchQuery = ref('');
@@ -448,6 +449,8 @@ const addExpense = async () => {
 };
 
 onMounted(() => {
+    // The invoices list links here with ?search=<invoice number>.
+    if (route.query.search) searchQuery.value = String(route.query.search);
     store.fetchPayments().catch(() => {});
     store.fetchCurrencyWallets().catch(() => {});
     fetchExpenses();
