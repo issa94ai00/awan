@@ -607,6 +607,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // month final, so it sits with the rest of the books.
                 Route::get('/accounting/periods', [AccountingPeriodController::class, 'index'])->name('api.admin.accounting.periods.index');
                 Route::post('/accounting/periods', [AccountingPeriodController::class, 'store'])->name('api.admin.accounting.periods.store');
+                Route::post('/accounting/periods/batch', [AccountingPeriodController::class, 'batch'])->name('api.admin.accounting.periods.batch');
                 Route::post('/accounting/periods/{accountingPeriod}/close', [AccountingPeriodController::class, 'close'])->name('api.admin.accounting.periods.close');
                 Route::post('/accounting/periods/{accountingPeriod}/reopen', [AccountingPeriodController::class, 'reopen'])->name('api.admin.accounting.periods.reopen');
                 Route::delete('/accounting/periods/{accountingPeriod}', [AccountingPeriodController::class, 'destroy'])->name('api.admin.accounting.periods.destroy');

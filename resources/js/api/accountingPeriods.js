@@ -9,6 +9,12 @@ export const accountingPeriodsApi = {
         return api.post('/admin/accounting/periods', data);
     },
 
+    // Several periods in one call — the missing months of a year. Any that
+    // would overlap an existing period come back as skipped.
+    batch(periods) {
+        return api.post('/admin/accounting/periods/batch', { periods });
+    },
+
     // Closing is what makes the dates inside a period final: postings dated
     // into it are refused afterwards, from every path in the system.
     close(id, data = {}) {
