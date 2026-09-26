@@ -726,6 +726,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::put('/quotes/{quote}/status', [QuoteController::class, 'updateStatus'])->name('api.quotes.update-status');
         Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])->name('api.quotes.destroy');
         Route::post('/quotes/{quote}/convert-to-sales-order', [QuoteController::class, 'convertToSalesOrder'])->name('api.quotes.convert-to-sales-order');
+        Route::post('/quotes/{quote}/duplicate', [QuoteController::class, 'duplicate'])->name('api.quotes.duplicate');
 
         // Sales Orders (طلبات بيع)
         // The {salesOrder} wildcard is constrained to numeric ids: without it, it

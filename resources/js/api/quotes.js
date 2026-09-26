@@ -27,5 +27,9 @@ export const quotesApi = {
 
     convertToSalesOrder(id) {
         return api.post(`/quotes/${id}/convert-to-sales-order`);
+    },
+
+    duplicate(id) {
+        return api.post(`/quotes/${id}/duplicate`);
     }
 };

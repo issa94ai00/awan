@@ -36,11 +36,11 @@ export const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'check'];
  * never offers a move the backend rejects.
  */
 export const QUOTE_TRANSITIONS = {
-    draft: ['sent', 'rejected'],
-    sent: ['accepted', 'rejected', 'expired'],
-    accepted: [],
-    rejected: [],
-    expired: [],
+    draft: ['sent', 'accepted', 'rejected'],
+    sent: ['accepted', 'rejected', 'expired', 'draft'],
+    accepted: ['sent'],
+    rejected: ['draft'],
+    expired: ['draft'],
 };
 
 export const ORDER_TRANSITIONS = {
