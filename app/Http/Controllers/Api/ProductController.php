@@ -397,11 +397,9 @@ class ProductController extends Controller
 
         $product->load('category');
 
-        // The admin product form's Variants tab needs the variant rows; the
-        // public product page doesn't (it relies on the base-product fields).
-        if ($isAdmin) {
-            $product->load('variants');
-        }
+        // The admin form's Variants tab edits these rows; the public page
+        // offers them as the sizes/colours to pick from.
+        $product->load('variants');
 
         return response()->json([
             'success' => true,

@@ -31,7 +31,7 @@
                         <div v-for="product in products" :key="product.id" class="product-card">
                             <div class="product-image">
                                 <img :src="getImageUrl(product.image_main)" :alt="product.name_ar">
-                                <router-link :to="'/product/' + product.slug" class="product-overlay">
+                                <router-link :to="'/product/' + product.slug + (product.variant_id ? '?variant=' + product.variant_id : '')" class="product-overlay">
                                     <span class="view-btn"><i class="fas fa-eye"></i></span>
                                 </router-link>
                             </div>

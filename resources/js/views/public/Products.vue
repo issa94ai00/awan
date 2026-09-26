@@ -124,7 +124,7 @@
                         v-for="product in products" 
                         :key="product.listing_key || product.id" 
                         class="product-card"
-                        @click="goToProduct(product.slug)"
+                        @click="goToProduct(product)"
                     >
                         <div class="product-image">
                             <img 
@@ -151,7 +151,7 @@
                                 </span>
                             </div>
                             <div class="product-actions">
-                                <button class="btn-view-details" @click.stop="goToProduct(product.slug)">
+                                <button class="btn-view-details" @click.stop="goToProduct(product)">
                                     <i class="fas fa-eye"></i> {{ t('product_details') || 'عرض التفاصيل' }}
                                 </button>
                                 <button 
@@ -332,8 +332,9 @@ const handleSearch = () => {
     }, 500);
 };
 
-const goToProduct = (slug) => {
-    router.push(`/product/${slug}`);
+// A card for one variant opens the product with that variant picked.
+const goToProduct = (product) => {
+    router.push({ path: `/product/${product.slug}`, query: product.variant_id ? { variant: product.variant_id } : {} });
 };
 
 const isAddingProduct = (product) => cartStore.isAdding(product.id, product.variant_id);

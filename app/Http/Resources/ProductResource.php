@@ -16,8 +16,39 @@ class ProductResource extends JsonResource
     public function toArray(Request $request): array
     {
         $data = $this->baseArray();
+        $data = $this->variant_id ? $this->asVariantRow($data) : $data;
 
-        return $this->variant_id ? $this->asVariantRow($data) : $data;
+        return self::viewerSeesCost($request) ? $data : $this->withoutCost($data);
+    }
+
+    /**
+     * What a product cost to buy is for staff only. The purchase screens read
+     * it from the public /products list too, so it goes by who is signed in
+     * (an admin, or any user with a role) rather than by the URL; shoppers
+     * and anonymous visitors never get it.
+     */
+    public static function viewerSeesCost(Request $request): bool
+    {
+        $user = $request->user() ?? $request->user('sanctum');
+
+        return $user !== null && ($user->is_admin || $user->role_id !== null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withoutCost(array $data): array
+    {
+        unset($data['cost_price']);
+
+        if (isset($data['variants']) && ! $data['variants'] instanceof \Illuminate\Http\Resources\MissingValue) {
+            $data['variants'] = collect($data['variants'])
+                ->map(fn (array $variant) => array_diff_key($variant, ['cost_price' => true]))
+                ->values();
+        }
+
+        return $data;
     }
 
     /**
@@ -140,6 +171,7 @@ class ProductResource extends JsonResource
                     'size' => $variant->size,
                     'color' => $variant->color,
                     'material' => $variant->material,
+                    'label' => $variant->label,
                     'price' => $variant->price,
                     'cost_price' => $variant->cost_price,
                     'stock_quantity' => $variant->stock_quantity,

@@ -37,7 +37,7 @@
                                     <span v-else class="badge badge-in">{{ t('in_stock') || 'متوفر' }}</span>
                                 </div>
                                 <img :src="getImageUrl(product.image_main)" :alt="product.name_ar" loading="lazy">
-                                <router-link :to="'/product/' + product.slug" class="product-overlay">
+                                <router-link :to="'/product/' + product.slug + (product.variant_id ? '?variant=' + product.variant_id : '')" class="product-overlay">
                                     <span class="view-btn"><i class="fas fa-eye"></i></span>
                                 </router-link>
                             </div>

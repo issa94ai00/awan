@@ -140,3 +140,37 @@ test('checking out a variant line prices the order at the variant', function () 
         ->and((float) $line->unit_price)->toBe(0.95)
         ->and($line->description)->toBe('جريدة تصريف - 4"');
 });
+
+test('the public product page offers its variants to pick from, without their cost', function () {
+    ProductVariant::where('sku', 'FD-1-3')->update(['cost_price' => 0.4]);
+
+    $variants = collect($this->getJson('/api/v1/products/floor-drain')->assertOk()->json('data.variants'));
+
+    expect($variants->pluck('sku')->sort()->values()->all())->toBe(['FD-1-3', 'FD-1-4', 'FD-1-5'])
+        ->and($variants->firstWhere('sku', 'FD-1-4')['label'])->toBe('4"')
+        ->and((float) $variants->firstWhere('sku', 'FD-1-3')['price'])->toBe(0.65)
+        ->and($variants->every(fn ($v) => ! array_key_exists('cost_price', $v)))->toBeTrue();
+});
+
+test('what a product cost is kept from shoppers but given to staff', function () {
+    $this->drain->update(['cost_price' => 3]);
+    ProductVariant::where('sku', 'FD-1-4')->update(['cost_price' => 0.5]);
+
+    $public = collect($this->getJson('/api/v1/products?per_page=50')->assertOk()->json('data'));
+    expect($public->every(fn ($row) => ! array_key_exists('cost_price', $row)))->toBeTrue();
+
+    $page = $this->getJson('/api/v1/products/floor-drain')->assertOk()->json('data');
+    expect($page)->not->toHaveKey('cost_price');
+
+    // The purchase screens read the public list while signed in, to prefill the buying price.
+    $buyer = User::factory()->create([
+        'is_admin' => false,
+        'role_id' => Role::firstOrCreate(['name' => 'employee'], ['display_name' => 'employee'])->id,
+    ]);
+    $staff = collect($this->actingAs($buyer)->getJson('/api/v1/products?per_page=50')->assertOk()->json('data'));
+    expect((float) $staff->firstWhere('sku', 'FD-1-4')['cost_price'])->toBe(0.5)
+        ->and((float) $staff->firstWhere('sku', 'FD-1-3')['cost_price'])->toBe(3.0);
+
+    $variants = collect($this->actingAs($buyer)->getJson('/api/v1/products/floor-drain')->json('data.variants'));
+    expect((float) $variants->firstWhere('sku', 'FD-1-4')['cost_price'])->toBe(0.5);
+});

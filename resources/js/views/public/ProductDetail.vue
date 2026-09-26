@@ -85,18 +85,47 @@
                             <h1 class="product-title">{{ $p(product, 'name') }}</h1>
                         </div>
 
-                        <div v-if="settings.show_product_price === '1' && product.show_price && parseFloat(product.price) > 0" class="product-details-price">
+                        <div v-if="settings.show_product_price === '1' && product.show_price && parseFloat(view.price) > 0" class="product-details-price">
                             <span class="price-label">{{ t('price') || 'السعر:' }}</span>
-                            <span class="price-value" v-if="product.has_sale" style="display: inline-flex; flex-direction: column;">
-                                <span class="sale-price" style="color:#dc2626; font-size:1.8rem; font-weight:700;">${{ parseFloat(product.sale_price).toFixed(2) }}</span>
-                                <span class="original-price" style="text-decoration:line-through; color:#999; font-size:1rem; margin-top:-5px;">${{ parseFloat(product.price).toFixed(2) }}</span>
+                            <span class="price-value" v-if="view.has_sale" style="display: inline-flex; flex-direction: column;">
+                                <span class="sale-price" style="color:#dc2626; font-size:1.8rem; font-weight:700;">${{ parseFloat(view.sale_price).toFixed(2) }}</span>
+                                <span class="original-price" style="text-decoration:line-through; color:#999; font-size:1rem; margin-top:-5px;">${{ parseFloat(view.price).toFixed(2) }}</span>
                             </span>
-                            <span class="price-value" v-else>${{ parseFloat(product.price).toFixed(2) }}</span>
+                            <span class="price-value" v-else>${{ parseFloat(view.price).toFixed(2) }}</span>
+                        </div>
+
+                        <!-- Variant picker: each size / colour / material the product comes in -->
+                        <div v-if="variants.length" class="product-variants">
+                            <h3>
+                                {{ t('pd_choose_option') }}
+                                <span v-if="selectedVariant" class="variant-current">{{ selectedVariant.label }}</span>
+                            </h3>
+                            <div class="variant-options" role="radiogroup" :aria-label="t('pd_choose_option')">
+                                <button v-for="v in variants"
+                                        :key="v.id"
+                                        type="button"
+                                        role="radio"
+                                        :aria-checked="v.id === selectedVariantId"
+                                        class="variant-chip"
+                                        :class="{ active: v.id === selectedVariantId, unavailable: !variantInStock(v) }"
+                                        @click="selectVariant(v.id)">
+                                    <span class="variant-chip-label">{{ v.label || v.sku }}</span>
+                                    <span v-if="showPrices && parseFloat(v.price) > 0" class="variant-chip-price">${{ parseFloat(v.price).toFixed(2) }}</span>
+                                </button>
+                            </div>
                         </div>
 
                         <div class="product-description">
-                            <h3>{{ t('description') || 'الوصف' }}</h3>
-                            <p>{{ $p(product, 'description') || t('no_description') || 'لا يوجد وصف متاح' }}</p>
+                            <h3>{{ specs.length ? (t('specifications') || 'المواصفات') : (t('description') || 'الوصف') }}</h3>
+                            <table v-if="specs.length" class="specs-table">
+                                <tbody>
+                                    <tr v-for="(row, idx) in specs" :key="idx">
+                                        <th scope="row">{{ row.label }}</th>
+                                        <td>{{ row.value }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <p v-else>{{ $p(product, 'description') || t('no_description') || 'لا يوجد وصف متاح' }}</p>
                         </div>
 
                         <div class="product-meta">
@@ -108,16 +137,24 @@
                                 <span class="meta-label">{{ t('model') || 'الموديل:' }}</span>
                                 <span class="meta-value">{{ product.model }}</span>
                             </div>
+                            <div v-if="view.sku" class="meta-item">
+                                <span class="meta-label">{{ t('pd_sku') }}</span>
+                                <span class="meta-value" dir="ltr">{{ view.sku }}</span>
+                            </div>
+                            <div v-for="attr in viewAttributes" :key="attr.key" class="meta-item">
+                                <span class="meta-label">{{ attr.label }}</span>
+                                <span class="meta-value">{{ attr.value }}</span>
+                            </div>
                             <div class="meta-item">
                                 <span class="meta-label">{{ t('availability') || 'التوفر:' }}</span>
-                                <span class="meta-value" :class="product.in_stock ? 'in-stock' : 'out-of-stock'">
-                                    {{ product.in_stock ? (t('in_stock') || 'متوفر') : (t('out_of_stock') || 'غير متوفر') }}
+                                <span class="meta-value" :class="view.in_stock ? 'in-stock' : 'out-of-stock'">
+                                    {{ view.in_stock ? (t('in_stock') || 'متوفر') : (t('out_of_stock') || 'غير متوفر') }}
                                 </span>
                             </div>
                         </div>
 
                         <div class="product-actions">
-                            <button class="btn-add-to-cart-product" @click="handleAddToCart(product)">
+                            <button class="btn-add-to-cart-product" @click="handleAddToCart(product, selectedVariantId)">
                                 <i class="fas fa-cart-plus"></i>
                                 {{ t('add_to_cart') || 'أضف للسلة' }}
                             </button>
@@ -125,7 +162,7 @@
                                 <i class="fas fa-question-circle"></i>
                                 {{ t('product_inquiry') || 'استفسار عن المنتج' }}
                             </button>
-                            <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000') + '?text=' + encodeURIComponent('مرحباً، أنا مهتم بمنتج: ' + $p(product, 'name'))" class="btn-whatsapp" target="_blank">
+                            <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000') + '?text=' + encodeURIComponent('مرحباً، أنا مهتم بمنتج: ' + viewName)" class="btn-whatsapp" target="_blank">
                                 <i class="fab fa-whatsapp"></i>
                                 {{ t('whatsapp_inquiry') || 'استفسار عبر واتساب' }}
                             </a>
@@ -220,9 +257,9 @@
                     <div class="inquiry-product-info">
                         <img :src="getImageUrl(product.image_main)" :alt="$p(product, 'name')" class="inquiry-product-img" @error="handleImageError">
                         <div class="inquiry-product-details">
-                            <h3>{{ $p(product, 'name') }}</h3>
-                            <p v-if="settings.show_product_price === '1' && product.show_price && parseFloat(product.price) > 0" class="product-price">
-                                ${{ parseFloat(product.has_sale ? product.sale_price : product.price).toFixed(2) }}
+                            <h3>{{ viewName }}</h3>
+                            <p v-if="settings.show_product_price === '1' && product.show_price && parseFloat(view.price) > 0" class="product-price">
+                                ${{ parseFloat(view.has_sale ? view.sale_price : view.price).toFixed(2) }}
                             </p>
                         </div>
                     </div>
@@ -309,7 +346,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, reactive } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
@@ -325,6 +362,7 @@ const { t, locale } = useI18n();
 
 // Route
 const route = useRoute();
+const router = useRouter();
 
 // State
 const product = ref(null);
@@ -407,15 +445,108 @@ const allImages = computed(() => {
     return list;
 });
 
+// Variants: the sizes / colours / materials this product is sold in. A
+// listing card for one variant links here with ?variant=<id>.
+const selectedVariantId = ref(null);
+const variants = computed(() => product.value?.variants || []);
+const selectedVariant = computed(() => variants.value.find(v => v.id === selectedVariantId.value) || null);
+const showPrices = computed(() => settings.value.show_product_price === '1' && !!product.value?.show_price);
+
+// Mirrors ProductResource::asVariantRow, so the page shows what the
+// listing card for the same variant showed.
+const variantInStock = (v) => !!product.value?.in_stock && (v.stock_quantity === null || parseInt(v.stock_quantity) > 0);
+
+const view = computed(() => {
+    const p = product.value || {};
+    const v = selectedVariant.value;
+    if (!v) return p;
+    const hasOwnPrice = v.price !== null && parseFloat(v.price) > 0;
+    return {
+        ...p,
+        sku: v.sku || p.sku,
+        size: v.size || p.size,
+        color: v.color || p.color,
+        material: v.material || null,
+        price: hasOwnPrice ? v.price : p.price,
+        sale_price: hasOwnPrice ? null : p.sale_price,
+        has_sale: hasOwnPrice ? false : p.has_sale,
+        in_stock: variantInStock(v),
+    };
+});
+
+const localized = (field) => {
+    const p = product.value || {};
+    return locale.value === 'en' ? (p[`${field}_en`] || p[`${field}_ar`]) : (p[`${field}_ar`] || p[`${field}_en`]);
+};
+
+const viewName = computed(() => {
+    const name = localized('name') || '';
+    return selectedVariant.value?.label ? `${name} - ${selectedVariant.value.label}` : name;
+});
+
+// Descriptions written as "Label: value • Label: value" (or one pair per
+// line) read better as a specs table; anything else stays a paragraph.
+const specs = computed(() => {
+    const text = (localized('description') || '').trim();
+    if (!text) return [];
+    const parts = text.split(/\s*[•\n]\s*/).map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) return [];
+    const rows = [];
+    for (const part of parts) {
+        const idx = part.indexOf(':');
+        if (idx <= 0 || idx === part.length - 1) return [];
+        rows.push({ label: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() });
+    }
+    return rows;
+});
+
+// Size / colour / material / weight / dimensions, when set.
+const viewAttributes = computed(() => {
+    const p = view.value;
+    const list = [];
+    if (p.size) list.push({ key: 'size', label: t('pd_size'), value: p.size });
+    if (p.color) list.push({ key: 'color', label: t('pd_color'), value: p.color });
+    if (p.material) list.push({ key: 'material', label: t('pd_material'), value: p.material });
+    if (parseFloat(p.weight) > 0) list.push({ key: 'weight', label: t('pd_weight'), value: `${parseFloat(p.weight)} kg` });
+    const dims = [p.length, p.width, p.height].map(d => parseFloat(d) || 0);
+    if (dims.some(d => d > 0)) list.push({ key: 'dims', label: t('pd_dimensions'), value: `${dims.join(' × ')} cm` });
+    return list;
+});
+
+const inquiryMessageFor = () => `مرحباً، أود الاستفسار عن منتج: ${product.value.name_ar}${selectedVariant.value?.label ? ' - ' + selectedVariant.value.label : ''}`;
+
+const selectVariant = (id) => {
+    const previousMessage = inquiryMessageFor();
+    selectedVariantId.value = id;
+    // Keep the prefilled inquiry in step, unless the visitor already edited it.
+    if (inquiryState.message === previousMessage) {
+        inquiryState.message = inquiryMessageFor();
+    }
+    if (String(route.query.variant || '') !== String(id)) {
+        router.replace({ query: { ...route.query, variant: id } });
+    }
+};
+
+const pickInitialVariant = () => {
+    const list = variants.value;
+    if (!list.length) {
+        selectedVariantId.value = null;
+        return;
+    }
+    const requested = list.find(v => String(v.id) === String(route.query.variant));
+    selectedVariantId.value = (requested || list.find(variantInStock) || list[0]).id;
+};
+
 // Helpers
 const handleImageError = (e) => {
     e.target.src = '/assets/images/placeholder.jpg';
 };
 
-const handleAddToCart = async (prod) => {
+const handleAddToCart = async (prod, variantId = null) => {
     try {
-        await cartStore.addToCart(prod.id, 1);
-        showToast(`تم إضافة "${prod.name_ar}" إلى السلة بنجاح`);
+        await cartStore.addToCart(prod.id, 1, variantId);
+        const label = variantId ? variants.value.find(v => v.id === variantId)?.label : '';
+        showToast(`تم إضافة "${prod.name_ar}${label ? ' - ' + label : ''}" إلى السلة بنجاح`);
     } catch (e) {
         showToast('حدث خطأ أثناء إضافة المنتج إلى السلة');
     }
@@ -487,11 +618,12 @@ const loadProductDetails = async () => {
         const res = await axios.get(`/api/v1/products/${productSlug.value}`);
         if (res.data?.success) {
             product.value = res.data.data;
+            pickInitialVariant();
             dispatchSeoEvent();
             
             // Prefill product name and ID in inquiry modal
             inquiryState.subject = 'product_details';
-            inquiryState.message = `مرحباً، أود الاستفسار عن منتج: ${product.value.name_ar}`;
+            inquiryState.message = inquiryMessageFor();
 
             // Fetch related
             const relRes = await axios.get(`/api/v1/products/${productSlug.value}/related`);
@@ -552,6 +684,13 @@ watch(productSlug, () => {
     stopAutoplay();
     loadProductDetails();
     startAutoplay();
+});
+
+// Back/forward between variants of the same product.
+watch(() => route.query.variant, (id) => {
+    if (id && String(id) !== String(selectedVariantId.value) && variants.value.some(v => String(v.id) === String(id))) {
+        selectedVariantId.value = variants.value.find(v => String(v.id) === String(id)).id;
+    }
 });
 </script>
 
@@ -1179,6 +1318,144 @@ watch(productSlug, () => {
 
 [data-theme="dark"] .product-description .description-en {
     color: #94a3b8;
+}
+
+/* Variant picker */
+.product-variants h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary-dark);
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.variant-current {
+    font-weight: 600;
+    color: var(--mobile-primary);
+}
+
+.variant-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.variant-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 72px;
+    padding: 0.45rem 0.9rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    color: #1e293b;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.3;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.variant-chip:hover {
+    border-color: color-mix(in srgb, var(--mobile-primary) 60%, transparent);
+}
+
+.variant-chip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+}
+
+.variant-chip.active {
+    border-color: var(--mobile-primary);
+    background: color-mix(in srgb, var(--mobile-primary) 8%, #fff);
+}
+
+.variant-chip.unavailable .variant-chip-label {
+    color: #94a3b8;
+    text-decoration: line-through;
+}
+
+.variant-chip-label {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.variant-chip-price {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+/* Specs table */
+.specs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.specs-table th,
+.specs-table td {
+    padding: 0.55rem 0.85rem;
+    text-align: start;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+}
+
+.specs-table tr:last-child th,
+.specs-table tr:last-child td {
+    border-bottom: none;
+}
+
+.specs-table th {
+    width: 42%;
+    font-weight: 600;
+    color: #475569;
+    background: #f8fafc;
+}
+
+.specs-table td {
+    font-weight: 600;
+    color: #1e293b;
+    unicode-bidi: plaintext;
+}
+
+[data-theme="dark"] .product-variants h3 {
+    color: #cbd5e1;
+}
+
+[data-theme="dark"] .variant-chip {
+    background: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .variant-chip.active {
+    border-color: var(--mobile-primary);
+    background: color-mix(in srgb, var(--mobile-primary) 18%, #1e293b);
+}
+
+[data-theme="dark"] .variant-chip-price {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .specs-table,
+[data-theme="dark"] .specs-table th,
+[data-theme="dark"] .specs-table td {
+    border-color: #334155;
+}
+
+[data-theme="dark"] .specs-table th {
+    background: #0f172a;
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .specs-table td {
+    color: #e2e8f0;
 }
 
 /* Related Products Slider Styles */

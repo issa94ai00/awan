@@ -165,14 +165,14 @@
                                 <div class="product-card">
                                     <div class="product-image">
                                         <img :src="getImageUrl(product.image_main)" :alt="$p(product, 'name')" loading="lazy" decoding="async" width="285" height="285">
-                                        <router-link :to="'/product/' + product.slug" class="product-overlay" :aria-label="$p(product, 'name')">
+                                        <router-link :to="'/product/' + product.slug + (product.variant_id ? '?variant=' + product.variant_id : '')" class="product-overlay" :aria-label="$p(product, 'name')">
                                             <span class="view-btn"><i class="fas fa-eye" aria-hidden="true"></i></span>
                                         </router-link>
                                     </div>
                                     <div class="product-info">
                                         <div class="product-name-container">
                                             <h3 class="product-title">
-                                                <router-link :to="'/product/' + product.slug" class="product-title-link">{{ $p(product, 'name') }}</router-link>
+                                                <router-link :to="'/product/' + product.slug + (product.variant_id ? '?variant=' + product.variant_id : '')" class="product-title-link">{{ $p(product, 'name') }}</router-link>
                                             </h3>
                                         </div>
                                         <div class="product-category">{{ $p(product.category, 'name') || t('building_materials') }}</div>
