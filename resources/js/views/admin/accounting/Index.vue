@@ -57,6 +57,7 @@
         <!-- ── KPIs ───────────────────────────────────────────────────────── -->
         <div class="kpi-toolbar">
             <span class="kpi-toolbar-label">
+                <i class="far fa-calendar"></i>
                 {{ $t('acc_ov_position_as_of', { date: todayLabel }) }}
             </span>
             <el-segmented v-model="plRange" :options="rangeOptions" size="small" @change="loadIncome" />
@@ -132,7 +133,7 @@
                      for itself; nothing asked the question across the system,
                      so a single order whose invoice never reached the ledger
                      stayed invisible until somebody happened to open it. -->
-                <section class="ov-card health-panel" v-loading="healthLoading">
+                <section class="ov-card health-panel" :class="healthError ? 'tone-neutral' : (health.is_healthy ? 'tone-green' : 'tone-red')" v-loading="healthLoading">
                     <header class="ov-card-head">
                         <h2><i class="fas fa-heart-pulse"></i> {{ $t('system_integrity_checks') }}</h2>
                         <div class="ov-card-head-end">
@@ -201,7 +202,7 @@
                     </ul>
                 </section>
 
-                <section class="ov-card">
+                <section class="ov-card tone-blue">
                     <header class="ov-card-head">
                         <h2><i class="fas fa-history"></i> {{ $t('latest_journal_entries') }}</h2>
                         <router-link to="/admin/accounting/journal" class="head-link">
@@ -221,9 +222,14 @@
                         <el-table-column type="expand" width="36">
                             <template #default="{ row }">
                                 <div class="entry-lines">
+                                    <div class="entry-line is-head">
+                                        <span>{{ $t('acc_ov_account') }}</span>
+                                        <span class="line-amt">{{ $t('debit_label') }}</span>
+                                        <span class="line-amt">{{ $t('credit_label') }}</span>
+                                    </div>
                                     <div v-for="line in row.lines || []" :key="line.id" class="entry-line">
                                         <span class="line-account">
-                                            <span class="line-code">{{ line.ledger_account?.code }}</span>
+                                            <span v-if="line.ledger_account?.code" class="line-code">{{ line.ledger_account.code }}</span>
                                             {{ line.ledger_account?.name || '—' }}
                                         </span>
                                         <span class="line-amt is-debit">{{ Number(line.debit) ? formatMoney(line.debit) : '' }}</span>
@@ -262,7 +268,7 @@
 
             <!-- ── Side column ─────────────────────────────────────────────── -->
             <aside class="ov-side">
-                <section class="ov-card" v-loading="incomeLoading && !!income">
+                <section class="ov-card tone-cyan" v-loading="incomeLoading && !!income">
                     <header class="ov-card-head">
                         <h2><i class="fas fa-chart-column"></i> {{ $t('acc_ov_pl_summary') }}</h2>
                         <span class="muted-sm">{{ rangeLabel }}</span>
@@ -281,7 +287,7 @@
                     </div>
                 </section>
 
-                <section class="ov-card">
+                <section class="ov-card tone-green">
                     <header class="ov-card-head">
                         <h2><i class="fas fa-scale-balanced"></i> {{ $t('acc_ov_financial_position') }}</h2>
                         <el-tag v-if="position" size="small" :type="position.is_balanced ? 'success' : 'danger'" effect="light" round>
@@ -316,14 +322,15 @@
         <section class="hub">
             <h2 class="hub-title">{{ $t('acc_ov_books_and_reports') }}</h2>
             <div class="hub-grid">
-                <div v-for="group in hubGroups" :key="group.key" class="hub-group">
-                    <h3>{{ group.title }}</h3>
+                <div v-for="group in hubGroups" :key="group.key" class="hub-group" :class="group.tone">
+                    <h3><span class="hub-dot"></span>{{ group.title }}</h3>
                     <router-link v-for="link in group.links" :key="link.path" :to="link.path" class="hub-link">
-                        <span class="hub-icon" :class="group.tone"><i :class="link.icon"></i></span>
+                        <span class="hub-icon"><i :class="link.icon"></i></span>
                         <span class="hub-text">
                             <strong>{{ $t(link.label) }}</strong>
                             <small>{{ $t(link.hint) }}</small>
                         </span>
+                        <i class="fas fa-chevron-right dir-arrow hub-go" aria-hidden="true"></i>
                     </router-link>
                 </div>
             </div>
@@ -738,24 +745,44 @@ const savePricing = async () => {
 </script>
 
 <style scoped>
+/* Colours are set here rather than taken from Element Plus: its secondary text
+   (#909399) and its danger/warning/primary tones sit near 3:1 on white, which
+   is too faint for the small figures and notes this page is made of. Every
+   text colour below reaches at least 4.5:1 on the card background. */
 .accounting-page {
     font-family: 'Cairo', sans-serif;
     --ov-radius: 14px;
-    --ov-border: var(--el-border-color-lighter, #e5e7eb);
-    --ov-muted: var(--el-text-color-secondary, #64748b);
-    --ov-text: var(--el-text-color-primary, #1e293b);
-    --c-assets: #2563eb;
-    --c-liabilities: #d97706;
-    --c-equity: #059669;
-    --c-revenue: #0891b2;
-    --c-loss: #dc2626;
+    --ov-surface: #ffffff;
+    --ov-soft: #f8fafc;
+    --ov-border: #e2e8f0;
+    --ov-text: #0f172a;
+    --ov-body: #334155;
+    --ov-muted: #475569;
+    --ov-subtle: #64748b;
+    --ov-link: color-mix(in srgb, var(--el-color-primary, #409eff) 68%, #000);
+    --c-assets: #1d4ed8;
+    --c-liabilities: #b45309;
+    --c-equity: #047857;
+    --c-revenue: #0e7490;
+    --c-loss: #b91c1c;
+    --c-violet: #6d28d9;
+    color: var(--ov-body);
 }
 
-.muted-sm { font-size: 0.75rem; color: var(--ov-muted); }
-.currency-tag { align-self: center; }
+.accounting-page .tone-blue { --tone: var(--c-assets); }
+.accounting-page .tone-green { --tone: var(--c-equity); }
+.accounting-page .tone-amber { --tone: var(--c-liabilities); }
+.accounting-page .tone-cyan { --tone: var(--c-revenue); }
+.accounting-page .tone-red { --tone: var(--c-loss); }
+.accounting-page .tone-violet { --tone: var(--c-violet); }
+.accounting-page .tone-neutral { --tone: var(--ov-subtle); }
+
+.muted-sm { font-size: 0.76rem; color: var(--ov-subtle); }
+.currency-tag { align-self: center; color: var(--ov-muted); border-color: var(--ov-border); font-weight: 600; }
 
 .ov-alert { margin-bottom: 1rem; border-radius: 10px; }
-.ov-alert-link { font-weight: 700; font-size: 0.82rem; color: inherit; text-decoration: underline; }
+.ov-alert :deep(.el-alert__title) { font-weight: 700; }
+.ov-alert-link { font-weight: 700; font-size: 0.82rem; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── KPIs ─────────────────────────────────────────────────────────────── */
 .kpi-toolbar {
@@ -767,11 +794,20 @@ const savePricing = async () => {
     margin-bottom: 0.75rem;
 }
 
-.kpi-toolbar-label { font-size: 0.82rem; color: var(--ov-muted); }
+.kpi-toolbar-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--ov-muted);
+}
+
+.kpi-toolbar-label i { color: var(--ov-subtle); }
 
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 0.9rem;
     margin-bottom: 1.25rem;
 }
@@ -781,19 +817,27 @@ const savePricing = async () => {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    padding: 1rem 1.1rem;
-    background: var(--el-bg-color, #fff);
+    gap: 0.25rem;
+    padding: 1rem 1.1rem 0.95rem;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--tone) 7%, var(--ov-surface)) 0%, var(--ov-surface) 70%);
     border: 1px solid var(--ov-border);
-    border-radius: var(--ov-radius);
     border-top: 3px solid var(--tone);
+    border-radius: var(--ov-radius);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     color: var(--ov-text);
     text-decoration: none;
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
     min-width: 0;
 }
 
-a.kpi-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); transform: translateY(-2px); }
+a.kpi-card:hover {
+    border-color: color-mix(in srgb, var(--tone) 35%, var(--ov-border));
+    border-top-color: var(--tone);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-2px);
+}
+
 a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
 
 .kpi-liabilities { --tone: var(--c-liabilities); }
@@ -806,35 +850,49 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
     position: absolute;
     inset-inline-end: 1rem;
     top: 0.9rem;
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     border-radius: 10px;
     display: grid;
     place-items: center;
     color: var(--tone);
-    background: color-mix(in srgb, var(--tone) 12%, transparent);
+    background: color-mix(in srgb, var(--tone) 13%, var(--ov-surface));
     font-size: 0.95rem;
 }
 
 .kpi-label {
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--ov-muted);
-    padding-inline-end: 2.6rem;
+    padding-inline-end: 2.8rem;
+    line-height: 1.5;
 }
 
 .kpi-value {
-    font-size: 1.35rem;
+    margin-top: 0.15rem;
+    font-size: 1.45rem;
     font-weight: 800;
+    color: var(--ov-text);
     font-variant-numeric: tabular-nums;
     line-height: 1.3;
     overflow-wrap: anywhere;
 }
 
 .kpi-value.is-negative { color: var(--c-loss); }
-.kpi-sub { font-size: 0.74rem; color: var(--ov-muted); }
-.kpi-delta.is-up { color: var(--c-equity); font-weight: 700; }
-.kpi-delta.is-down { color: var(--c-loss); font-weight: 700; }
+.kpi-sub { font-size: 0.76rem; color: var(--ov-subtle); line-height: 1.5; }
+
+.kpi-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: fit-content;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+.kpi-delta.is-up { color: var(--c-equity); background: color-mix(in srgb, var(--c-equity) 10%, var(--ov-surface)); }
+.kpi-delta.is-down { color: var(--c-loss); background: color-mix(in srgb, var(--c-loss) 9%, var(--ov-surface)); }
 
 /* ── Layout ───────────────────────────────────────────────────────────── */
 .ov-grid {
@@ -851,10 +909,12 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
 }
 
 .ov-card {
-    background: var(--el-bg-color, #fff);
+    --tone: var(--el-color-primary, #409eff);
+    background: var(--ov-surface);
     border: 1px solid var(--ov-border);
     border-radius: var(--ov-radius);
-    padding: 1rem 1.1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    padding: 1rem 1.1rem 1.1rem;
     min-width: 0;
 }
 
@@ -864,32 +924,45 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin-bottom: 0.85rem;
+    margin: 0 0 0.9rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--ov-border);
 }
 
 .ov-card-head h2 {
     margin: 0;
-    font-size: 0.98rem;
-    font-weight: 700;
+    font-size: 1rem;
+    font-weight: 800;
     color: var(--ov-text);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
 }
 
-.ov-card-head h2 i { color: var(--el-color-primary); font-size: 0.9rem; }
+.ov-card-head h2 i {
+    width: 30px;
+    height: 30px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 12%, var(--ov-surface));
+}
+
 .ov-card-head-end { display: flex; align-items: center; gap: 0.5rem; }
+.ov-card-head-end :deep(.el-button.is-text) { color: var(--ov-link); font-weight: 700; }
 
 .head-link, .card-foot-link {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 700;
-    color: var(--el-color-primary);
+    color: var(--ov-link);
     text-decoration: none;
 }
 
-.head-link:hover, .card-foot-link:hover { text-decoration: underline; }
-.card-foot-link { display: inline-block; margin-top: 0.9rem; }
-.dir-arrow { font-size: 0.7em; margin-inline-start: 0.25rem; }
+.head-link:hover, .card-foot-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card-foot-link { display: inline-flex; align-items: center; margin-top: 1rem; }
+.dir-arrow { font-size: 0.7em; margin-inline-start: 0.35rem; }
 :global([dir="rtl"]) .dir-arrow { transform: scaleX(-1); }
 
 /* ── Health ───────────────────────────────────────────────────────────── */
@@ -897,114 +970,166 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.7rem 0.9rem;
+    padding: 0.75rem 0.95rem;
     border-radius: 10px;
-    font-size: 0.86rem;
+    border: 1px solid transparent;
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.6;
 }
 
-.health-banner.is-clear { background: var(--el-color-success-light-9); color: var(--el-color-success-dark-2); }
-.health-banner.is-bad { background: var(--el-color-danger-light-9); color: var(--el-color-danger-dark-2); }
-.health-banner.is-unknown { background: var(--el-fill-color-light); color: var(--ov-muted); }
-.health-banner-count { margin-inline-start: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.health-banner > i { font-size: 1.05rem; }
+.health-banner.is-clear { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.health-banner.is-bad { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.health-banner.is-unknown { background: var(--ov-soft); border-color: var(--ov-border); color: var(--ov-muted); }
+.health-banner strong { font-weight: 800; font-variant-numeric: tabular-nums; }
 
-.health-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem; }
+.health-banner-count {
+    margin-inline-start: auto;
+    padding: 0.05rem 0.55rem;
+    border-radius: 999px;
+    background: #d1fae5;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.health-list { display: flex; flex-direction: column; gap: 0.65rem; margin-top: 0.8rem; }
 
 .health-check {
-    padding: 0.75rem 0.9rem;
-    border: 1px solid var(--el-color-danger-light-7);
-    border-inline-start: 4px solid var(--el-color-danger);
+    padding: 0.8rem 0.95rem;
+    background: #fffafa;
+    border: 1px solid #fecaca;
+    border-inline-start: 4px solid var(--c-loss);
     border-radius: 10px;
 }
 
-.check-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 600; }
-.check-head i { color: var(--el-color-danger); flex-shrink: 0; }
+.check-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 700; color: var(--ov-text); }
+.check-head i { color: var(--c-loss); flex-shrink: 0; }
 .check-title { flex: 1; min-width: 0; }
 
 .check-count {
-    min-width: 1.8rem;
-    padding: 0 0.45rem;
+    min-width: 1.9rem;
+    padding: 0.05rem 0.5rem;
     border-radius: 999px;
     text-align: center;
     font-size: 0.8rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     color: #fff;
-    background: var(--el-color-danger);
+    background: var(--c-loss);
 }
 
-.check-detail { margin: 0.45rem 0 0; font-size: 0.8rem; line-height: 1.7; color: var(--ov-muted); }
+.check-detail { margin: 0.45rem 0 0; font-size: 0.82rem; line-height: 1.75; color: var(--ov-body); }
 
 .check-action {
-    margin: 0.3rem 0 0;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--el-color-danger);
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #991b1b;
     overflow-wrap: anywhere;
 }
 
-.check-fix { margin-top: 0.6rem; }
+.check-fix { margin-top: 0.65rem; }
 .passed-toggle { margin-top: 0.5rem; }
+.passed-toggle :deep(.el-button) { color: var(--ov-muted); font-weight: 600; }
 
 .passed-list {
     list-style: none;
-    margin: 0.5rem 0 0;
+    margin: 0.6rem 0 0;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 0.35rem 1rem;
+    gap: 0.45rem 1rem;
 }
 
-.passed-list li { font-size: 0.8rem; color: var(--ov-muted); display: flex; gap: 0.45rem; align-items: baseline; }
-.passed-list i { color: var(--el-color-success); font-size: 0.72rem; }
+.passed-list li { font-size: 0.82rem; color: var(--ov-body); display: flex; gap: 0.5rem; align-items: baseline; line-height: 1.55; }
+.passed-list i { color: var(--c-equity); font-size: 0.72rem; }
 
 /* ── Entries ──────────────────────────────────────────────────────────── */
-.entry-no { font-weight: 700; font-variant-numeric: tabular-nums; }
-.entry-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.entries-table { --el-table-header-bg-color: var(--ov-soft); --el-table-border-color: var(--ov-border); }
+.entries-table :deep(th.el-table__cell .cell) { color: var(--ov-muted); font-weight: 700; font-size: 0.78rem; }
+.entries-table :deep(td.el-table__cell .cell) { color: var(--ov-body); }
+.entries-table :deep(.el-table__expanded-cell) { background: var(--ov-soft); }
+
+.entry-no { font-weight: 700; color: var(--ov-text); font-variant-numeric: tabular-nums; }
+.entry-amt { font-weight: 800; color: var(--ov-text); font-variant-numeric: tabular-nums; }
 
 .entry-lines { padding: 0.4rem 2.5rem 0.6rem 1rem; }
 
 .entry-line {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 110px 110px;
+    grid-template-columns: minmax(0, 1fr) 120px 120px;
     gap: 0.75rem;
-    padding: 0.3rem 0;
-    font-size: 0.8rem;
+    padding: 0.35rem 0;
+    font-size: 0.82rem;
+    color: var(--ov-body);
     border-bottom: 1px dashed var(--ov-border);
 }
 
+.entry-line.is-head {
+    padding-top: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ov-subtle);
+    border-bottom-style: solid;
+}
+
 .entry-line:last-child { border-bottom: 0; }
-.line-code { color: var(--ov-muted); font-variant-numeric: tabular-nums; margin-inline-end: 0.35rem; }
+
+.line-code {
+    display: inline-block;
+    padding: 0 0.35rem;
+    margin-inline-end: 0.4rem;
+    border-radius: 5px;
+    background: #e2e8f0;
+    color: var(--ov-muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
 .line-amt { text-align: end; font-variant-numeric: tabular-nums; }
-.line-amt.is-debit { color: var(--el-color-success-dark-2); }
-.line-amt.is-credit { color: var(--el-color-warning-dark-2); }
+.line-amt.is-debit { color: var(--c-equity); font-weight: 700; }
+.line-amt.is-credit { color: var(--c-liabilities); font-weight: 700; }
+
+@media (max-width: 640px) {
+    .entry-lines { padding-inline: 0.5rem; }
+    .entry-line { grid-template-columns: minmax(0, 1fr) 90px 90px; gap: 0.5rem; }
+}
 
 /* ── P&L ──────────────────────────────────────────────────────────────── */
-.pl-list { display: flex; flex-direction: column; gap: 0.8rem; }
-.pl-label { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; color: var(--ov-text); }
-.pl-label strong { font-variant-numeric: tabular-nums; }
-.pl-row.is-sub .pl-label, .pl-row.is-total .pl-label { font-weight: 700; }
-.pl-row.is-total { padding-top: 0.7rem; border-top: 1px solid var(--ov-border); }
+.pl-list { display: flex; flex-direction: column; gap: 0.85rem; }
+.pl-label { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.86rem; color: var(--ov-body); }
+.pl-label strong { color: var(--ov-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.pl-row.is-sub .pl-label, .pl-row.is-total .pl-label { font-weight: 800; color: var(--ov-text); }
+.pl-row.is-sub .pl-label strong, .pl-row.is-total .pl-label strong { font-weight: 800; }
+.pl-row.is-total { padding-top: 0.8rem; border-top: 1px solid var(--ov-border); }
+.pl-row.is-total .pl-label { font-size: 0.95rem; }
+.pl-row.is-out .pl-label strong { color: var(--c-liabilities); }
 .pl-row.is-negative .pl-label strong { color: var(--c-loss); }
 
-.pl-bar { height: 6px; margin-top: 0.3rem; border-radius: 999px; background: var(--el-fill-color-light); overflow: hidden; }
+.pl-bar { height: 8px; margin-top: 0.35rem; border-radius: 999px; background: #eef2f7; overflow: hidden; }
 .pl-bar span { display: block; height: 100%; border-radius: inherit; background: var(--c-revenue); transition: width 0.4s ease; }
 .pl-row.is-out .pl-bar span { background: var(--c-liabilities); }
 .pl-row.is-sub .pl-bar span, .pl-row.is-total .pl-bar span { background: var(--c-equity); }
 .pl-row.is-negative .pl-bar span { background: var(--c-loss); }
-.pl-hint { font-size: 0.72rem; color: var(--ov-muted); }
+.pl-hint { display: inline-block; margin-top: 0.2rem; font-size: 0.74rem; font-weight: 600; color: var(--ov-subtle); }
 
 /* ── Financial position ───────────────────────────────────────────────── */
-.eq-row { font-size: 0.84rem; }
+.eq-row { font-size: 0.86rem; font-weight: 600; color: var(--ov-body); }
 .eq-side { display: flex; align-items: center; gap: 0.4rem; }
-.eq-side strong { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+.eq-side strong { margin-inline-start: auto; color: var(--ov-text); font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .eq-bar {
     display: flex;
-    height: 10px;
+    height: 12px;
     margin-top: 0.45rem;
     border-radius: 999px;
     overflow: hidden;
-    background: var(--el-fill-color-light);
+    background: #eef2f7;
 }
 
 .eq-bar span { display: block; height: 100%; transition: width 0.4s ease; }
@@ -1017,93 +1142,120 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 0.35rem 1rem;
-    margin-top: 0.55rem;
-    font-size: 0.78rem;
-    color: var(--ov-muted);
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--ov-body);
     font-variant-numeric: tabular-nums;
 }
 
-.eq-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 0.35rem; }
+.eq-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-inline-end: 0.4rem; }
 .dot-assets { background: var(--c-assets); }
 .dot-liabilities { background: var(--c-liabilities); }
 .dot-equity { background: var(--c-equity); }
-.eq-note { margin: 0.7rem 0 0; font-size: 0.74rem; line-height: 1.7; color: var(--ov-muted); }
+
+.eq-note {
+    margin: 0.8rem 0 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    background: var(--ov-soft);
+    font-size: 0.76rem;
+    line-height: 1.75;
+    color: var(--ov-muted);
+}
 
 /* ── Hub ──────────────────────────────────────────────────────────────── */
-.hub { margin-top: 1.5rem; }
-.hub-title { margin: 0 0 0.8rem; font-size: 1rem; font-weight: 700; color: var(--ov-text); }
+.hub { margin-top: 1.75rem; }
+.hub-title { margin: 0 0 0.85rem; font-size: 1.05rem; font-weight: 800; color: var(--ov-text); }
 
 .hub-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 1rem;
 }
 
 .hub-group {
-    background: var(--el-bg-color, #fff);
+    --tone: var(--c-assets);
+    background: var(--ov-surface);
     border: 1px solid var(--ov-border);
+    border-top: 3px solid var(--tone);
     border-radius: var(--ov-radius);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     padding: 0.85rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.2rem;
 }
 
 .hub-group h3 {
-    margin: 0 0 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.4rem;
     padding-inline: 0.4rem;
-    font-size: 0.74rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    color: var(--ov-muted);
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--tone);
 }
+
+.hub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tone); }
 
 .hub-link {
     display: flex;
     align-items: center;
     gap: 0.7rem;
-    padding: 0.5rem 0.4rem;
+    padding: 0.55rem 0.45rem;
     border-radius: 10px;
     color: var(--ov-text);
     text-decoration: none;
     transition: background 0.15s ease;
 }
 
-.hub-link:hover { background: var(--el-fill-color-light); }
-.hub-link:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
+.hub-link:hover { background: color-mix(in srgb, var(--tone) 7%, var(--ov-surface)); }
+.hub-link:focus-visible { outline: 2px solid var(--tone); outline-offset: 1px; }
 
 .hub-icon {
-    --tone: var(--c-assets);
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
     display: grid;
     place-items: center;
-    border-radius: 9px;
+    border-radius: 10px;
     color: var(--tone);
-    background: color-mix(in srgb, var(--tone) 12%, transparent);
-    font-size: 0.88rem;
+    background: color-mix(in srgb, var(--tone) 12%, var(--ov-surface));
+    font-size: 0.9rem;
 }
 
-.hub-icon.tone-green { --tone: var(--c-equity); }
-.hub-icon.tone-amber { --tone: var(--c-liabilities); }
-.hub-icon.tone-violet { --tone: #7c3aed; }
+.hub-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.hub-text strong { font-size: 0.88rem; font-weight: 700; color: var(--ov-text); }
+.hub-text small { font-size: 0.75rem; color: var(--ov-subtle); line-height: 1.55; }
 
-.hub-text { display: flex; flex-direction: column; min-width: 0; }
-.hub-text strong { font-size: 0.86rem; font-weight: 700; }
-.hub-text small { font-size: 0.72rem; color: var(--ov-muted); line-height: 1.5; }
+.hub-go {
+    color: var(--ov-subtle);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.hub-link:hover .hub-go, .hub-link:focus-visible .hub-go { opacity: 1; color: var(--tone); }
+
+@media (hover: none) {
+    .hub-go { opacity: 0.6; }
+}
 
 /* ── Pricing dialog ───────────────────────────────────────────────────── */
 .pricing-intro {
     margin: 0 0 1rem;
-    font-size: 0.85rem;
-    line-height: 1.7;
-    color: var(--el-text-color-regular);
+    padding: 0.7rem 0.85rem;
+    border-radius: 10px;
+    background: var(--ov-soft);
+    font-size: 0.86rem;
+    line-height: 1.75;
+    color: var(--ov-body);
 }
 
-.pricing-name { font-weight: 700; }
-.pricing-sku, .pricing-unit { font-size: 0.75rem; color: var(--el-text-color-secondary); }
-.pricing-none { font-size: 0.78rem; color: var(--el-text-color-secondary); }
+.pricing-name { font-weight: 700; color: var(--ov-text); }
+.pricing-sku, .pricing-unit { font-size: 0.76rem; color: var(--ov-subtle); }
+.pricing-none { font-size: 0.8rem; color: var(--ov-subtle); }
 .pricing-input { width: 100%; }
 
 .pricing-footer {
@@ -1113,5 +1265,5 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
     gap: 1rem;
 }
 
-.pricing-count { font-size: 0.82rem; color: var(--el-text-color-secondary); }
+.pricing-count { font-size: 0.84rem; font-weight: 600; color: var(--ov-muted); }
 </style>
