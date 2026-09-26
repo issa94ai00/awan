@@ -173,3 +173,53 @@ test('what a credit note already settled cannot be paid again', function () {
         'amount' => 60,
     ])->assertCreated();
 });
+
+test('a correction cannot pay again for what a credit note settled', function () {
+    $invoice = ($this->invoice)(100);
+    DB::table('credit_notes')->insert([
+        'credit_note_number' => 'CN-PAY-2',
+        'invoice_id' => $invoice->id,
+        'customer_id' => $this->customer->id,
+        'total' => 40,
+        'status' => 'issued',
+        'issue_date' => now()->toDateString(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $payment = ($this->collect)($invoice, 30);
+
+    // 60 is all the invoice owes once the credit note is netted off.
+    ($this->api)()->putJson("/api/v1/payments/{$payment->id}", ['payment_method' => 'cash', 'amount' => 70])->assertUnprocessable();
+    expect((float) $invoice->refresh()->paid_amount)->toEqual(30.0);
+
+    $row = ($this->api)()->getJson('/api/v1/payments')->json('data.payments.0');
+    expect((float) $row['invoice_owed'])->toEqual(30.0);
+
+    // Covering the rest settles it, though the payments fall short of the total.
+    ($this->api)()->putJson("/api/v1/payments/{$payment->id}", ['payment_method' => 'cash', 'amount' => 60])->assertOk();
+    $invoice->refresh();
+    expect((float) $invoice->paid_amount)->toEqual(60.0)
+        ->and((float) $invoice->due_amount)->toEqual(40.0)
+        ->and($invoice->paid_at)->not->toBeNull();
+});
+
+test('the amount of a payment on a cancelled invoice is not corrected', function () {
+    $invoice = ($this->invoice)(100);
+    $payment = ($this->collect)($invoice, 50);
+    $invoice->update(['status' => Invoice::STATUS_CANCELLED]);
+
+    ($this->api)()->putJson("/api/v1/payments/{$payment->id}", ['payment_method' => 'cash', 'amount' => 60])->assertUnprocessable();
+    ($this->api)()->putJson("/api/v1/payments/{$payment->id}", ['payment_method' => 'card', 'amount' => 50])->assertOk();
+
+    expect($payment->refresh()->payment_method)->toBe('card');
+});
+
+test('today is the day the browser sends', function () {
+    $payment = ($this->collect)(($this->invoice)(100), 100);
+    $payment->update(['payment_date' => '2026-03-02']);
+
+    $summary = fn (string $today) => ($this->api)()->getJson("/api/v1/payments?with_summary=1&today={$today}")->json('data.summary');
+
+    expect($summary('2026-03-02')['today'])->toEqual(100)
+        ->and($summary('2026-03-01')['today'])->toEqual(0);
+});

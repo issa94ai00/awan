@@ -109,6 +109,28 @@ class Invoice extends Model
         return round((float) $this->total - $credited - (float) $this->paid_amount, 5);
     }
 
+    /**
+     * Sets what has been paid, and with it the due column and the paid stamp.
+     *
+     * The due column stays total less paid — reports sum it as that. The stamp
+     * follows outstanding(), net of credit notes: an invoice a return settled
+     * the rest of is paid once the money covers what is left, not only once it
+     * covers the whole total. An earlier stamp is kept rather than moved to
+     * now. `$clearIfOwed` takes it off when money comes back off the invoice;
+     * a new collection leaves an unrelated stamp alone.
+     */
+    public function applyPaid(float $paid, bool $clearIfOwed = true): void
+    {
+        $this->paid_amount = round($paid, 5);
+        $settled = $this->outstanding() <= 0.009;
+
+        $this->update([
+            'paid_amount' => $this->paid_amount,
+            'due_amount' => max(0, round((float) $this->total - (float) $this->paid_amount, 5)),
+            'paid_at' => $settled ? ($this->paid_at ?? now()) : ($clearIfOwed ? null : $this->paid_at),
+        ]);
+    }
+
     public static function getStatusOptions(): array
     {
         return [

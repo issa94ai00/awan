@@ -94,17 +94,12 @@ class PaymentRecorder
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
-            $paid = round((float) $invoice->paid_amount + $amount, 5);
-
-            $invoice->update([
-                'paid_amount' => $paid,
-                'due_amount' => max(0, round((float) $invoice->total - $paid, 5)),
-                // Stamped only when nothing is left owing. The status is left
-                // alone: whether the goods arrived is the order's business, and
-                // moving the invoice to "delivered" because it was paid is what
-                // used to make paid and delivered indistinguishable.
-                'paid_at' => $paid + 0.009 >= (float) $invoice->total ? now() : $invoice->paid_at,
-            ]);
+            // Stamped paid only when nothing is left owing, net of credit notes.
+            // The status is left alone: whether the goods arrived is the
+            // order's business, and moving the invoice to "delivered" because
+            // it was paid is what used to make paid and delivered
+            // indistinguishable.
+            $invoice->applyPaid((float) $invoice->paid_amount + $amount, false);
 
             // The customer owes us less now.
             $invoice->customer?->updateBalance(-$amount);

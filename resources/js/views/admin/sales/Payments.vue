@@ -123,6 +123,9 @@
                     :shortcuts="dateShortcuts"
                     @change="applyFilters"
                 />
+                <el-tag v-if="filters.customer" closable size="large" class="customer-chip" @close="clearCustomer">
+                    <i class="fas fa-user"></i> {{ $t('pay_customer_filter', { name: filters.customerName || `#${filters.customer}` }) }}
+                </el-tag>
                 <el-button v-if="activeFilterCount" text type="primary" :icon="RefreshLeft" @click="resetFilters">
                     {{ $t('prod_admin_clear_filters', { count: activeFilterCount }) }}
                 </el-button>
@@ -171,7 +174,7 @@
                             </div>
                             <div v-if="row.invoice">
                                 <dt>{{ $t('pay_invoice_left') }}</dt>
-                                <dd>{{ formatCurrency(Math.max(0, Number(row.invoice.total) - Number(row.invoice.paid_amount))) }}</dd>
+                                <dd>{{ formatCurrency(invoiceOwed(row)) }}</dd>
                             </div>
                             <div class="wide">
                                 <dt>{{ $t('notes') }}</dt>
@@ -193,7 +196,10 @@
                 <el-table-column :label="$t('client')" min-width="170">
                     <template #default="{ row }">
                         <div class="cell-stack">
-                            <span class="strong">{{ customerName(row) }}</span>
+                            <el-tooltip v-if="row.customer_id && String(row.customer_id) !== filters.customer" :content="$t('pay_filter_by_customer')" placement="top" :enterable="false">
+                                <button type="button" class="link-button plain" @click="filterByCustomer(row)">{{ customerName(row) }}</button>
+                            </el-tooltip>
+                            <span v-else class="strong">{{ customerName(row) }}</span>
                             <span v-if="row.customer?.phone" class="cell-secondary" dir="ltr">{{ row.customer.phone }}</span>
                         </div>
                     </template>
@@ -207,6 +213,9 @@
                                 <span dir="ltr">{{ row.invoice.invoice_number }}</span>
                             </button>
                             <span v-else-if="!row.is_refund" class="kind-tag account">{{ $t('pay_on_account') }}</span>
+                            <span v-if="row.invoice && !row.is_refund" class="cell-secondary" :class="invoiceState(row).cls">
+                                {{ invoiceState(row).text }}
+                            </span>
                         </div>
                     </template>
                 </el-table-column>
@@ -228,6 +237,9 @@
                         <strong class="amount" :class="row.is_refund ? 'out' : 'in'">
                             {{ row.is_refund ? '−' : '' }}{{ formatCurrency(Math.abs(Number(row.amount))) }}
                         </strong>
+                        <span v-if="isForeign(row)" class="cell-secondary tendered" dir="ltr">
+                            {{ formatCurrency(Math.abs(Number(row.tendered_amount)), row.currency) }}
+                        </span>
                     </template>
                 </el-table-column>
 
@@ -325,7 +337,9 @@
                 </div>
                 <el-form-item :label="$t('amount')">
                     <el-input-number v-model="editForm.amount" :min="0.01" :precision="2" :controls="false" :disabled="editing.amount_locked" style="width: 100%" />
-                    <p v-if="editing.amount_locked" class="field-hint">{{ $t('pay_amount_locked_currency') }}</p>
+                    <p v-if="editing.amount_locked" class="field-hint">
+                        {{ editing.invoice?.status === 'cancelled' ? $t('pay_amount_locked_cancelled') : $t('pay_amount_locked_currency') }}
+                    </p>
                     <p v-else-if="editing.invoice" class="field-hint">{{ $t('pay_amount_max', { amount: formatCurrency(editMax) }) }}</p>
                 </el-form-item>
                 <el-form-item :label="$t('payment_method')">
@@ -422,6 +436,23 @@ const showWallets = computed(() => store.wallets.length > 1 || store.wallets.som
 
 const goToInvoice = (invoice) => router.push(`/admin/sales/invoices/${invoice.id}/edit`);
 
+// What the invoice still owes, net of credit notes (sent by the server); the
+// old reading, total less paid, is only a fallback for a stale row.
+const invoiceOwed = (row) => (row.invoice_owed !== null && row.invoice_owed !== undefined
+    ? Number(row.invoice_owed)
+    : Math.max(0, Number(row.invoice?.total) - Number(row.invoice?.paid_amount)));
+
+const invoiceState = (row) => {
+    if (row.invoice?.status === 'cancelled') return { cls: 'is-cancelled', text: t('pay_invoice_cancelled') };
+    const owed = invoiceOwed(row);
+    return owed > 0.009
+        ? { cls: 'is-owing', text: t('pay_invoice_owes', { amount: formatCurrency(owed) }) }
+        : { cls: 'is-settled', text: t('pay_invoice_settled') };
+};
+
+const isForeign = (row) => row.tendered_amount !== null && row.tendered_amount !== undefined
+    && row.currency && !store.wallets.find((w) => w.currency === row.currency)?.is_base;
+
 // ── Summary ──────────────────────────────────────────────────────────────
 const summary = computed(() => store.summary || {
     collected: 0, collected_count: 0, by_method: {}, on_account: 0, on_account_count: 0,
@@ -457,7 +488,7 @@ const onTabChange = (name) => {
 };
 
 // ── Filters, sorting and paging, kept in the URL ─────────────────────────
-const blankFilters = () => ({ search: '', method: '', kind: '', range: null });
+const blankFilters = () => ({ search: '', method: '', kind: '', range: null, customer: '', customerName: '' });
 const filters = reactive(blankFilters());
 const sort = reactive({ prop: 'payment_date', order: 'descending' });
 const currentPage = ref(1);
@@ -470,6 +501,8 @@ const readQuery = () => {
         method: PAYMENT_METHODS.includes(q.method) ? q.method : '',
         kind: ['invoice', 'on_account', 'refund'].includes(q.kind) ? q.kind : '',
         range: q.from && q.to ? [String(q.from), String(q.to)] : null,
+        customer: /^\d+$/.test(String(q.customer || '')) ? String(q.customer) : '',
+        customerName: q.customer_name ? String(q.customer_name) : '',
     });
     tab.value = q.tab === 'expenses' ? 'expenses' : 'payments';
     sort.prop = q.sort === 'amount' ? 'amount' : 'payment_date';
@@ -489,6 +522,8 @@ const writeQuery = () => {
         kind: filters.kind || undefined,
         from: filters.range?.[0] || undefined,
         to: filters.range?.[1] || undefined,
+        customer: filters.customer || undefined,
+        customer_name: filters.customer ? filters.customerName || undefined : undefined,
         sort: sort.prop !== 'payment_date' ? sort.prop : undefined,
         direction: sort.order === 'ascending' ? 'asc' : undefined,
         page: currentPage.value > 1 ? currentPage.value : undefined,
@@ -499,7 +534,7 @@ const writeQuery = () => {
     router.replace({ query });
 };
 
-const activeFilterCount = computed(() => [filters.search, filters.method, filters.kind, filters.range?.length ? '1' : ''].filter(Boolean).length);
+const activeFilterCount = computed(() => [filters.search, filters.method, filters.kind, filters.range?.length ? '1' : '', filters.customer].filter(Boolean).length);
 
 const fetchPayments = () => store.fetchPayments({
     with_summary: 1,
@@ -510,6 +545,9 @@ const fetchPayments = () => store.fetchPayments({
     kind: filters.kind || undefined,
     date_from: filters.range?.[0] || undefined,
     date_to: filters.range?.[1] || undefined,
+    customer_id: filters.customer || undefined,
+    // The server clock is UTC; "today" on the cards is the day here.
+    today: localIsoDate(),
     sort: sort.prop === 'amount' ? 'amount' : 'date',
     direction: sort.order === 'ascending' ? 'asc' : 'desc',
 }).catch(() => {});
@@ -536,6 +574,18 @@ const onSearchInput = (text) => {
 
 const resetFilters = () => {
     Object.assign(filters, blankFilters());
+    applyFilters();
+};
+
+const filterByCustomer = (row) => {
+    filters.customer = String(row.customer_id);
+    filters.customerName = customerName(row);
+    applyFilters();
+};
+
+const clearCustomer = () => {
+    filters.customer = '';
+    filters.customerName = '';
     applyFilters();
 };
 
@@ -605,9 +655,8 @@ const editAmountChanged = computed(() => editing.value && Math.abs(Number(editFo
 
 // What the invoice leaves room for: its balance plus what this payment already covers.
 const editMax = computed(() => {
-    const inv = editing.value?.invoice;
-    if (!inv) return Infinity;
-    return Math.max(0, Number(inv.total) - Number(inv.paid_amount)) + Number(editing.value.amount);
+    if (!editing.value?.invoice) return Infinity;
+    return invoiceOwed(editing.value) + Number(editing.value.amount);
 });
 
 const editBlocker = computed(() => {
@@ -827,6 +876,14 @@ onBeforeUnmount(() => {
 
 .link-button { all: unset; cursor: pointer; color: #2563eb; font-weight: 600; }
 .link-button:hover { text-decoration: underline; }
+.link-button.plain { color: #0f172a; }
+.link-button.plain:hover { color: #2563eb; }
+.cell-secondary.is-owing { color: #b45309; }
+.cell-secondary.is-settled { color: #15803d; }
+.cell-secondary.is-cancelled { color: #94a3b8; text-decoration: line-through; }
+.tendered { display: block; margin-top: 0.1rem; }
+.customer-chip { font-weight: 600; }
+.customer-chip i { margin-inline-end: 0.3rem; }
 .link-button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
 
 .kind-tag { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; font-weight: 600; padding: 0.05rem 0.5rem; border-radius: 999px; }
