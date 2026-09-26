@@ -27,7 +27,13 @@ export const useSalesOrdersStore = defineStore('salesOrders', {
             delivered: 0,
             cancelled: 0,
             overdue: 0,
+            attention: 0,
         },
+        // Money behind the counts, over the same search — see
+        // SalesOrderController::listTotals().
+        totals: null,
+        // Warehouses and reps that hold orders, for the list filters.
+        options: { warehouses: [], employees: [] },
     }),
 
     actions: {
@@ -42,6 +48,8 @@ export const useSalesOrdersStore = defineStore('salesOrders', {
                 this.orders = data.sales_orders || [];
                 this.pagination = readPagination(data.pagination, this.pagination, this.orders.length);
                 if (data.status_counts) this.statusCounts = data.status_counts;
+                if (data.totals) this.totals = data.totals;
+                if (data.options) this.options = data.options;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load sales orders';
                 throw error;

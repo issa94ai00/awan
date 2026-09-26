@@ -18,6 +18,7 @@ use App\Models\WarehouseInventory;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PickingService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -2232,32 +2233,43 @@ class SalesOrderWorkflowService
      *
      * @return array<string,mixed>
      */
+    /**
+     * How long each open stage may sit before the order is called stalled: a
+     * pending order is waiting on a decision, a shipped one on a courier. The
+     * list's "needs attention" filter reads the same numbers.
+     */
+    public const STALL_DAYS = [
+        SalesOrder::STATUS_PENDING => 2,
+        SalesOrder::STATUS_CONFIRMED => 3,
+        SalesOrder::STATUS_PROCESSING => 2,
+        SalesOrder::STATUS_SHIPPED => 7,
+    ];
+
     public function followUp(SalesOrder $order): array
     {
         $status = (string) $order->status;
         $isOpen = ! in_array($status, [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED], true);
 
         // When the order last moved. Falls back to when it was raised, so an
-        // order that has never moved still ages from a real date.
-        $since = SalesOrderStatusHistory::where('sales_order_id', $order->id)
-            ->latest('id')
-            ->value('created_at') ?? $order->created_at;
+        // order that has never moved still ages from a real date. A list can
+        // hand the last move in as `stage_since_at` rather than cost a query
+        // per row.
+        $attributes = $order->getAttributes();
+        $since = array_key_exists('stage_since_at', $attributes)
+            ? ($attributes['stage_since_at'] ? Carbon::parse($attributes['stage_since_at']) : null)
+            : SalesOrderStatusHistory::where('sales_order_id', $order->id)->latest('id')->value('created_at');
+        $since ??= $order->created_at;
 
-        $daysInStage = $since ? (int) $since->startOfDay()->diffInDays(now()->startOfDay()) : 0;
+        // Copies throughout: startOfDay() changes the date in place, and these
+        // are the order's own attributes — the list then showed every order as
+        // raised at midnight.
+        $daysInStage = $since ? (int) $since->copy()->startOfDay()->diffInDays(now()->startOfDay()) : 0;
 
-        $expected = $order->expected_delivery;
+        $expected = $order->expected_delivery?->copy();
         $isOverdue = $isOpen && $expected && $expected->isBefore(now()->startOfDay());
         $daysOverdue = $isOverdue ? (int) $expected->startOfDay()->diffInDays(now()->startOfDay()) : 0;
 
-        // What counts as "too long" differs by stage: a pending order is waiting
-        // on a decision, a shipped one on a courier.
-        $threshold = match ($status) {
-            SalesOrder::STATUS_PENDING => 2,
-            SalesOrder::STATUS_CONFIRMED => 3,
-            SalesOrder::STATUS_PROCESSING => 2,
-            SalesOrder::STATUS_SHIPPED => 7,
-            default => null,
-        };
+        $threshold = self::STALL_DAYS[$status] ?? null;
 
         $isStalled = $threshold !== null && $daysInStage > $threshold;
 

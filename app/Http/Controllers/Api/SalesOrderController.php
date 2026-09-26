@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
+use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
@@ -34,49 +35,86 @@ class SalesOrderController extends Controller
 
     public function index(Request $request)
     {
-        // fulfillmentWarehouse is eager loaded because the list shows where each
-        // order is routed; without it the column would fire a query per row.
-        $query = SalesOrder::with(['customer', 'creator', 'items.product', 'items.variant', 'fulfillmentWarehouse']);
+        // The list shows who, how much, where from and whether it is paid —
+        // not the lines. Loading every line and its product for every row cost
+        // more than the rest of the page; the count is enough here and the
+        // drawer loads the lines.
+        $query = SalesOrder::query()
+            ->with([
+                'customer:id,name,phone,company',
+                'fulfillmentWarehouse:id,name',
+                'assignedEmployee:id,first_name,last_name',
+                'quote:id,quote_number',
+                // The live invoice, for the paid / due column.
+                'invoices' => fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->select('id', 'sales_order_id', 'invoice_number', 'status', 'total', 'paid_amount'),
+            ])
+            // select() replaces the column list, so it comes before the count
+            // and the subquery that add to it.
+            ->select('sales_orders.*')
+            ->withCount('items')
+            // When the order last moved, read in the same query so the
+            // follow-up figures do not cost one lookup per row.
+            ->selectSub(
+                SalesOrderStatusHistory::selectRaw('MAX(created_at)')->whereColumn('sales_order_id', 'sales_orders.id'),
+                'stage_since_at'
+            );
+
+        // Search, customer, routing and dates shape the tab counts too, so a
+        // badge says how many of *these* orders sit in each stage.
+        $this->applyListScope($query, $request);
+        $counts = $this->statusCounts(clone $query);
+        $totals = $this->listTotals(clone $query);
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-
-        // Searching used to happen in the browser over whatever page happened to
-        // be loaded, so an order on page 2 could not be found at all. It is a
-        // filter on the query now, and the pagination reflects the matches.
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%"));
-            });
+            $query->where('sales_orders.status', $request->status);
+        } elseif ($request->boolean('open')) {
+            // Under way: confirmed and not yet delivered.
+            $query->whereIn('sales_orders.status', [SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING, SalesOrder::STATUS_SHIPPED]);
         }
 
         // Orders past their promised delivery date and still open — the follow-up
         // view's whole purpose.
         if ($request->boolean('overdue')) {
-            $query->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
-                ->whereNotNull('expected_delivery')
-                ->whereDate('expected_delivery', '<', now()->toDateString());
+            $this->whereOverdue($query);
         }
+
+        // Overdue, or sitting in one stage longer than it should.
+        if ($request->boolean('attention')) {
+            $query->where(function ($q) {
+                $this->whereOverdue($q);
+                $q->orWhere(fn ($stalled) => $this->whereStalled($stalled));
+            });
+        }
+
+        // Invoiced and not yet paid in full: what is left to collect.
+        if ($request->input('payment') === 'due') {
+            $query->whereHas('invoices', fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->whereColumn('paid_amount', '<', DB::raw('total - 0.009')));
+        } elseif ($request->input('payment') === 'paid') {
+            $query->whereHas('invoices', fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->whereColumn('paid_amount', '>=', DB::raw('total - 0.009')));
+        }
+
+        $sort = in_array($request->input('sort'), ['order_date', 'total', 'order_number', 'expected_delivery', 'created_at'], true)
+            ? $request->input('sort')
+            : 'created_at';
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $query->orderBy('sales_orders.'.$sort, $direction)->orderByDesc('sales_orders.id');
 
         // per_page was ignored, so callers asking for a larger page (the RMA
         // form requests the customer's delivered orders) silently received only
         // the newest 20 and could not find the order they needed.
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
 
-        $salesOrders = $query->latest()->paginate($perPage);
+        $salesOrders = $query->paginate($perPage);
 
-        // Follow-up figures per row, so the list can flag what is stuck without
-        // the browser re-deriving dates it does not have.
+        // Follow-up figures and the payment position per row, so the list can
+        // flag what is stuck or unpaid without the browser re-deriving either.
         $rows = collect($salesOrders->items())->map(function (SalesOrder $order) {
             $order->setAttribute('follow_up', $this->workflow->followUp($order));
+            $order->setAttribute('payment', $this->paymentPosition($order));
+            $order->unsetRelation('invoices');
 
             return $order;
         });
@@ -86,9 +124,11 @@ class SalesOrderController extends Controller
             'message' => 'Sales orders retrieved successfully',
             'data' => [
                 'sales_orders' => $rows,
-                // Counted across the whole table, not the page: a tab badge that
-                // only counted the current page would be meaningless.
-                'status_counts' => $this->statusCounts(),
+                'status_counts' => $counts,
+                'totals' => $totals,
+                // The warehouses and reps that actually hold orders, for the
+                // filters — asked for once, when the screen opens.
+                'options' => $request->boolean('with_options') ? $this->filterOptions() : null,
                 'pagination' => [
                     'current_page' => $salesOrders->currentPage(),
                     'last_page' => $salesOrders->lastPage(),
@@ -100,19 +140,92 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    /** How many orders sit in each stage, plus how many are past due. */
-    private function statusCounts(): array
+    private function applyListScope($query, Request $request): void
     {
-        $counts = SalesOrder::query()
-            ->selectRaw('status, COUNT(*) as total')
-            ->groupBy('status')
+        if ($request->filled('customer_id')) {
+            $query->where('sales_orders.customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('fulfillment_type')) {
+            $query->where('sales_orders.fulfillment_type', $request->fulfillment_type);
+        }
+
+        if ($request->filled('employee_id')) {
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('sales_orders.order_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('sales_orders.order_date', '<=', $request->date_to);
+        }
+
+        // Searching used to happen in the browser over whatever page happened to
+        // be loaded, so an order on page 2 could not be found at all. It is a
+        // filter on the query now, and the pagination reflects the matches.
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('sales_orders.order_number', 'like', "%{$search}%")
+                    ->orWhere('sales_orders.tracking_number', 'like', "%{$search}%")
+                    ->orWhere('sales_orders.notes', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('company', 'like', "%{$search}%"))
+                    ->orWhereHas('invoices', fn ($i) => $i->where('invoice_number', 'like', "%{$search}%"));
+            });
+        }
+    }
+
+    private function whereOverdue($query): void
+    {
+        $query->whereNotIn('sales_orders.status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
+            ->whereNotNull('sales_orders.expected_delivery')
+            ->whereDate('sales_orders.expected_delivery', '<', now()->toDateString());
+    }
+
+    /**
+     * In one stage longer than SalesOrderWorkflowService::STALL_DAYS allows,
+     * counted from the last move or, failing one, from when it was raised —
+     * the same reading followUp() makes per row.
+     */
+    private function whereStalled($query): void
+    {
+        $lastMove = '(SELECT MAX(h.created_at) FROM sales_order_status_histories h WHERE h.sales_order_id = sales_orders.id)';
+
+        $query->where(function ($q) use ($lastMove) {
+            foreach (SalesOrderWorkflowService::STALL_DAYS as $status => $days) {
+                $q->orWhere(fn ($stage) => $stage->where('sales_orders.status', $status)
+                    ->whereRaw("COALESCE({$lastMove}, sales_orders.created_at) < ?", [
+                        now()->startOfDay()->subDays($days)->toDateTimeString(),
+                    ]));
+            }
+        });
+    }
+
+    /**
+     * How many orders sit in each stage, plus how many are past due or need
+     * attention — across every order the search matches, not just the page.
+     */
+    private function statusCounts($query): array
+    {
+        $counts = (clone $query)->reorder()->setEagerLoads([])->getQuery()
+            ->select('sales_orders.status', DB::raw('COUNT(*) as total'))
+            ->groupBy('sales_orders.status')
             ->pluck('total', 'status');
 
-        $overdue = SalesOrder::query()
-            ->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
-            ->whereNotNull('expected_delivery')
-            ->whereDate('expected_delivery', '<', now()->toDateString())
-            ->count();
+        $overdue = (clone $query)->reorder()->setEagerLoads([]);
+        $this->whereOverdue($overdue);
+
+        $attention = (clone $query)->reorder()->setEagerLoads([])->where(function ($q) {
+            $this->whereOverdue($q);
+            $q->orWhere(fn ($stalled) => $this->whereStalled($stalled));
+        });
 
         return [
             'all' => (int) $counts->sum(),
@@ -122,7 +235,73 @@ class SalesOrderController extends Controller
             'shipped' => (int) ($counts[SalesOrder::STATUS_SHIPPED] ?? 0),
             'delivered' => (int) ($counts[SalesOrder::STATUS_DELIVERED] ?? 0),
             'cancelled' => (int) ($counts[SalesOrder::STATUS_CANCELLED] ?? 0),
-            'overdue' => $overdue,
+            'overdue' => $overdue->count(),
+            'attention' => $attention->count(),
+        ];
+    }
+
+    /**
+     * The money behind the counts: what open orders are worth, what was
+     * delivered this month, and what invoiced orders still owe.
+     */
+    private function listTotals($query): array
+    {
+        $base = fn () => (clone $query)->reorder()->setEagerLoads([]);
+        $open = [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING, SalesOrder::STATUS_SHIPPED];
+
+        $delivered = $base()->where('sales_orders.status', SalesOrder::STATUS_DELIVERED)
+            ->where(fn ($q) => $q->where('sales_orders.delivered_at', '>=', now()->startOfMonth())
+                ->orWhere(fn ($legacy) => $legacy->whereNull('sales_orders.delivered_at')
+                    ->where('sales_orders.updated_at', '>=', now()->startOfMonth())));
+
+        $invoiced = Invoice::query()
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->whereIn('sales_order_id', $base()->whereNot('sales_orders.status', SalesOrder::STATUS_CANCELLED)
+                ->getQuery()->select('sales_orders.id'))
+            ->selectRaw('COALESCE(SUM(CASE WHEN total - paid_amount > 0 THEN total - paid_amount ELSE 0 END), 0) as due')
+            ->selectRaw('SUM(CASE WHEN total - paid_amount > 0.009 THEN 1 ELSE 0 END) as due_count')
+            ->first();
+
+        return [
+            'open_value' => round((float) $base()->whereIn('sales_orders.status', $open)->sum('sales_orders.total'), 2),
+            'delivered_month_value' => round((float) (clone $delivered)->sum('sales_orders.total'), 2),
+            'delivered_month_count' => (clone $delivered)->count(),
+            'to_collect' => round((float) ($invoiced->due ?? 0), 2),
+            'to_collect_count' => (int) ($invoiced->due_count ?? 0),
+        ];
+    }
+
+    private function filterOptions(): array
+    {
+        $warehouseIds = SalesOrder::whereNotNull('fulfillment_warehouse_id')->distinct()->pluck('fulfillment_warehouse_id');
+        $employeeIds = SalesOrder::whereNotNull('assigned_employee_id')->distinct()->pluck('assigned_employee_id');
+
+        return [
+            'warehouses' => Warehouse::whereIn('id', $warehouseIds)->orderBy('name')->get(['id', 'name']),
+            'employees' => Employee::whereIn('id', $employeeIds)->orderBy('first_name')->get(['id', 'first_name', 'last_name'])
+                ->map(fn (Employee $e) => ['id' => $e->id, 'name' => $e->name])->values(),
+        ];
+    }
+
+    /** Invoiced, paid, due — or not invoiced yet. */
+    private function paymentPosition(SalesOrder $order): ?array
+    {
+        $invoice = $order->invoices->sortByDesc('id')->first();
+        if (! $invoice) {
+            return null;
+        }
+
+        $total = (float) $invoice->total;
+        $paid = (float) $invoice->paid_amount;
+        $due = max(0, round($total - $paid, 5));
+
+        return [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'total' => $total,
+            'paid' => $paid,
+            'due' => $due,
+            'state' => $due <= 0.009 ? 'paid' : ($paid > 0.009 ? 'partial' : 'unpaid'),
         ];
     }
 

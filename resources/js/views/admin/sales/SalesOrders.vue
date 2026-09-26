@@ -1,262 +1,323 @@
 <template>
     <div class="sales-page sales-orders">
-        <!-- Modern Header -->
         <AdminPageHeader
             icon="fas fa-shopping-cart text-primary"
             :title="$t('sales_orders')"
-            :subtitle="$t('view_current_orders_with_quick')"
+            :subtitle="$t('so_list_subtitle')"
         >
             <template #actions>
-                <!-- Searching hits the API, so a match on any page is found. -->
-                <el-input
-                    v-model="searchQuery"
-                    :placeholder="$t('search_by_order_number_or_customer_name')"
-                    clearable
-                    class="search-input"
-                    :prefix-icon="Search"
-                    @input="onSearchInput"
-                    @keyup.enter="loadOrders(1)"
-                    @clear="loadOrders(1)"
-                />
-                <el-button type="primary" class="create-btn" @click="openCreateDrawer">
-                    <i class="fas fa-plus"></i> {{ $t('new_sales_order') }}
-                </el-button>
+                <el-tooltip :content="$t('refresh')" placement="bottom" :enterable="false">
+                    <el-button :icon="Refresh" :loading="store.loading" :aria-label="$t('refresh')" @click="loadOrders()" />
+                </el-tooltip>
+                <el-button type="primary" :icon="Plus" @click="openCreateDrawer">{{ $t('new_sales_order') }}</el-button>
             </template>
         </AdminPageHeader>
 
-        <!-- Metric Cards. Counted over the whole table by the API, not over the
-             loaded page — the old figures came from store.orders, so they only
-             ever described the twenty rows that happened to be on screen. -->
-        <AdminStatGrid>
-            <el-card shadow="hover" class="stat-card-wrapper">
-                <div class="stat-card-inner">
-                    <div class="stat-icon-box blue-grad"><i class="fas fa-shopping-cart"></i></div>
-                    <div class="stat-details">
-                        <h3>{{ counts.all }}</h3>
-                        <p>{{ $t('total_orders') }}</p>
-                    </div>
-                </div>
-            </el-card>
-            <el-card shadow="hover" class="stat-card-wrapper">
-                <div class="stat-card-inner">
-                    <div class="stat-icon-box orange-grad"><i class="fas fa-clock"></i></div>
-                    <div class="stat-details">
+        <!-- Where the orders stand, over the whole search rather than the page.
+             Each card is also the filter for what it counts. -->
+        <AdminStatGrid :min="200">
+            <el-card shadow="hover" class="so-stat is-clickable" :class="{ 'is-active': filters.stage === 'pending' }" @click="setStage('pending')">
+                <div class="so-stat-inner">
+                    <div class="so-stat-icon orange"><i class="fas fa-clock"></i></div>
+                    <div class="so-stat-details">
                         <h3>{{ counts.pending }}</h3>
                         <p>{{ $t('awaiting_confirmation') }}</p>
+                        <span class="so-stat-sub">{{ $t('so_confirm_to_reserve') }}</span>
                     </div>
                 </div>
             </el-card>
-            <el-card shadow="hover" class="stat-card-wrapper">
-                <div class="stat-card-inner">
-                    <div class="stat-icon-box purple-grad"><i class="fas fa-truck-fast"></i></div>
-                    <div class="stat-details">
-                        <h3>{{ counts.confirmed + counts.processing + counts.shipped }}</h3>
-                        <p>{{ $t('under_implementation') }}</p>
+
+            <el-card shadow="hover" class="so-stat is-clickable" :class="{ 'is-active': filters.stage === 'open' }" @click="setStage('open')">
+                <div class="so-stat-inner">
+                    <div class="so-stat-icon blue"><i class="fas fa-truck-fast"></i></div>
+                    <div class="so-stat-details">
+                        <h3>{{ formatCurrency(totals.open_value) }}</h3>
+                        <p>{{ $t('so_in_progress_n', { count: counts.confirmed + counts.processing + counts.shipped }) }}</p>
+                        <span class="so-stat-sub">{{ $t('so_open_split', { confirmed: counts.confirmed, processing: counts.processing, shipped: counts.shipped }) }}</span>
                     </div>
                 </div>
             </el-card>
-            <!-- The one card that is an instruction rather than a statistic. -->
-            <el-card
-                shadow="hover"
-                class="stat-card-wrapper"
-                :class="{ 'attention-card': counts.overdue > 0, clickable: counts.overdue > 0 }"
-                @click="counts.overdue > 0 && showOverdue()"
-            >
-                <div class="stat-card-inner">
-                    <div class="stat-icon-box" :class="counts.overdue > 0 ? 'red-grad' : 'green-grad'">
-                        <i class="fas" :class="counts.overdue > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'"></i>
+
+            <el-card shadow="hover" class="so-stat is-clickable" :class="{ 'is-active': filters.stage === 'delivered' }" @click="setStage('delivered')">
+                <div class="so-stat-inner">
+                    <div class="so-stat-icon green"><i class="fas fa-box-open"></i></div>
+                    <div class="so-stat-details">
+                        <h3>{{ formatCurrency(totals.delivered_month_value) }}</h3>
+                        <p>{{ $t('so_delivered_this_month') }}</p>
+                        <span class="so-stat-sub">{{ $t('so_orders_n', { count: totals.delivered_month_count || 0 }) }}</span>
                     </div>
-                    <div class="stat-details">
-                        <h3>{{ counts.overdue }}</h3>
-                        <p>{{ counts.overdue > 0 ? $t('overdue_for_delivery') : $t('no_overdue_orders') }}</p>
+                </div>
+            </el-card>
+
+            <el-card shadow="hover" class="so-stat is-clickable" :class="{ 'is-active': filters.payment === 'due' }" @click="togglePayment('due')">
+                <div class="so-stat-inner">
+                    <div class="so-stat-icon red"><i class="fas fa-hand-holding-dollar"></i></div>
+                    <div class="so-stat-details">
+                        <h3>{{ formatCurrency(totals.to_collect) }}</h3>
+                        <p>{{ $t('so_to_collect') }}</p>
+                        <span class="so-stat-sub">{{ $t('so_invoices_n', { count: totals.to_collect_count || 0 }) }}</span>
                     </div>
                 </div>
             </el-card>
         </AdminStatGrid>
 
-        <!-- Stage tabs: the pipeline as a filter, with counts across the table -->
-        <el-tabs v-model="activeStage" class="stage-tabs" @tab-change="onStageChange">
-            <el-tab-pane v-for="tab in stageTabs" :key="tab.name" :name="tab.name">
-                <template #label>
-                    <span class="stage-tab-label">
-                        <i class="fas" :class="tab.icon"></i> {{ tab.label }}
-                        <el-badge v-if="tab.count" :value="tab.count" :type="tab.badge" class="stage-badge" />
-                    </span>
-                </template>
-            </el-tab-pane>
-        </el-tabs>
+        <!-- The one thing on this screen that is an instruction, not a figure -->
+        <button
+            v-if="counts.attention && !filters.attention"
+            type="button"
+            class="so-attention"
+            @click="toggleAttention"
+        >
+            <i class="fas fa-triangle-exclamation"></i>
+            <span>
+                {{ $t('so_attention_n', { count: counts.attention }) }}
+                <template v-if="counts.overdue"> · {{ $t('so_overdue_n', { count: counts.overdue }) }}</template>
+            </span>
+            <span class="so-attention-cta">{{ $t('so_show') }}</span>
+        </button>
 
-        <!-- Main Card & Table -->
-        <el-card shadow="hover" class="table-panel">
-            <template #header>
-                <div class="card-header">
-                    <span><i class="fas fa-list text-muted"></i> {{ $t('list_of_sales_orders') }}</span>
-                </div>
-            </template>
-
-            <div v-if="store.loading" class="loading-state">
-                <el-skeleton :rows="6" animated />
-            </div>
-            <div v-else>
-                <el-table
-                    v-if="store.orders.length"
-                    :data="store.orders"
-                    style="width: 100%"
-                    stripe
-                    highlight-current-row
-                    class="custom-table"
-                    :row-class-name="rowClassName"
+        <section class="so-panel">
+            <!-- Stages, with counts across the whole search -->
+            <div class="so-stages" role="tablist">
+                <button
+                    v-for="tab in stageTabs"
+                    :key="tab.name"
+                    type="button"
+                    role="tab"
+                    class="so-stage"
+                    :class="{ 'is-on': filters.stage === tab.name }"
+                    :aria-selected="filters.stage === tab.name"
+                    @click="setStage(tab.name)"
                 >
-                    <el-table-column prop="order_number" :label="$t('order_number')" width="150">
-                        <template #default="{ row }">
-                            <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
-                            <!-- Says why this row is flagged, rather than only that it is. -->
-                            <el-tooltip
-                                v-if="row.follow_up?.needs_attention"
-                                :content="row.follow_up.attention_reasons.join(' — ')"
-                                placement="top"
-                            >
-                                <i class="fas fa-triangle-exclamation attention-flag"></i>
-                            </el-tooltip>
-                        </template>
-                    </el-table-column>
-                    <el-table-column prop="customer.name" :label="$t('client')">
-                        <template #default="{ row }">
-                            <div class="customer-info-cell">
-                                <i class="fas fa-user-circle text-muted"></i>
-                                <span>{{ row.customer?.name || '-' }}</span>
-                            </div>
-                        </template>
-                    </el-table-column>
-                    <el-table-column prop="total" :label="$t('total')" width="160">
-                        <template #default="{ row }">
-                            <strong class="total-amount">{{ formatCurrency(row.total) }}</strong>
-                        </template>
-                    </el-table-column>
-                    <el-table-column :label="$t('status')" width="150" align="center">
-                        <template #default="{ row }">
-                            <el-tag :type="statusTagType(row.status)" effect="light" class="status-tag">
-                                <i class="fas status-dot-icon" :class="statusIconClass(row.status)"></i>
-                                {{ getArabicStatus(row.status) }}
-                            </el-tag>
-                        </template>
-                    </el-table-column>
-                    <!-- Where the order is being served from. Routing was previously
-                         invisible on this screen even though it decides everything. -->
-                    <el-table-column :label="$t('routing')" width="180">
-                        <template #default="{ row }">
-                            <div class="routing-cell">
-                                <span><i class="fas fa-warehouse text-muted"></i> {{ row.fulfillment_warehouse?.name || '—' }}</span>
-                                <el-tag size="small" effect="plain" :type="fulfillmentTagType(row.fulfillment_type)">
-                                    {{ fulfillmentLabel(row.fulfillment_type) }}
-                                </el-tag>
-                            </div>
-                        </template>
-                    </el-table-column>
-                    <!-- Status says where an order is; this says how long it has been
-                         there, which is what makes a stall visible at all. -->
-                    <el-table-column :label="$t('follow_up')" width="150" align="center">
-                        <template #default="{ row }">
-                            <div class="follow-up-cell">
-                                <span :class="stageAgeClass(row.follow_up)">
-                                    {{ stageAgeText(row.follow_up) }}
-                                </span>
-                                <span v-if="row.follow_up?.is_overdue" class="overdue-note">
-                                    {{ $t('overdue_by_days', { days: row.follow_up.days_overdue }) }}
-                                </span>
-                            </div>
-                        </template>
-                    </el-table-column>
-                    <el-table-column :label="$t('order_date')" width="130" align="center">
-                        <template #default="{ row }">{{ formatDate(row.order_date) }}</template>
-                    </el-table-column>
-
-                    <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="280" align="center">
-                        <template #default="{ row }">
-                            <el-button-group class="action-btn-group">
-                                <!-- The order's next step in one click: opens it on
-                                     its execution tab and starts that step, with
-                                     the order's facts in view. -->
-                                <el-button
-                                    v-if="ROW_NEXT[normalizeStatus(row.status)]"
-                                    size="small"
-                                    :type="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].type"
-                                    :loading="advancingId === row.id"
-                                    @click="advanceOrder(row)"
-                                    :title="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].label"
-                                >
-                                    <i class="fas" :class="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].icon"></i>
-                                </el-button>
-                                <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
-                                    <i class="fas fa-eye"></i>
-                                </el-button>
-                                <!-- Buy in what this order asks for: opens a purchase
-                                     request with the same lines, quantities and
-                                     delivery date, for the buyer to pick a supplier. -->
-                                <el-button
-                                    v-if="mayPurchase && normalizeStatus(row.status) !== 'cancelled'"
-                                    size="small"
-                                    type="success"
-                                    plain
-                                    @click="createPurchaseRequest(row)"
-                                    :title="$t('so_create_purchase_request')"
-                                >
-                                    <i class="fas fa-cart-plus"></i>
-                                </el-button>
-                                <el-button
-                                    size="small"
-                                    type="warning"
-                                    plain
-                                    :disabled="normalizeStatus(row.status) !== 'pending'"
-                                    @click="openEditDrawer(row.id)"
-                                    :title="normalizeStatus(row.status) === 'pending' ? $t('edit') : $t('cannot_edit_confirmed_order')"
-                                >
-                                    <i class="fas fa-edit"></i>
-                                </el-button>
-                                <el-button
-                                    size="small"
-                                    type="danger"
-                                    plain
-                                    :disabled="!['pending', 'cancelled'].includes(normalizeStatus(row.status))"
-                                    @click="deleteOrder(row.id)"
-                                    :title="['pending', 'cancelled'].includes(normalizeStatus(row.status)) ? $t('delete') : $t('cancel_instead_of_deleting')"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </el-button>
-                            </el-button-group>
-                        </template>
-                    </el-table-column>
-                </el-table>
-
-                <!-- Empty State -->
-                <div v-if="!store.orders.length" class="empty-state-box">
-                    <i class="fas fa-shopping-cart empty-icon"></i>
-                    <p>{{ $t('there_are_no_requests_matching') }}</p>
-                    <el-button type="primary" size="medium" @click="openCreateDrawer">
-                        <i class="fas fa-plus"></i> {{ $t('create_new_order') }}
-                    </el-button>
-                </div>
-
-                <!-- Paging is server-side, so the list is no longer capped at the
-                     first twenty rows with a search that only saw those. -->
-                <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-row">
-                    <el-pagination
-                        layout="prev, pager, next, total"
-                        :total="store.pagination.total"
-                        :current-page="store.pagination.current_page"
-                        :page-size="store.pagination.per_page"
-                        background
-                        @current-change="onPageChange"
-                    />
-                </div>
+                    <i class="fas" :class="tab.icon"></i>
+                    {{ tab.label }}
+                    <span class="so-stage-count">{{ tab.count }}</span>
+                </button>
             </div>
-        </el-card>
+
+            <div class="so-filters">
+                <el-input
+                    v-model="filters.search"
+                    class="so-filter-search"
+                    :placeholder="$t('so_search_placeholder')"
+                    :prefix-icon="Search"
+                    clearable
+                    @input="onSearchInput"
+                />
+                <el-select
+                    v-if="store.options.warehouses?.length > 1"
+                    v-model="filters.warehouse_id"
+                    class="so-filter-select"
+                    :placeholder="$t('so_all_warehouses')"
+                    clearable
+                    filterable
+                    @change="applyFilters"
+                >
+                    <el-option v-for="w in store.options.warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                </el-select>
+                <el-select v-model="filters.fulfillment_type" class="so-filter-select" :placeholder="$t('so_any_fulfilment')" clearable @change="applyFilters">
+                    <el-option value="ship" :label="$t('shipping')" />
+                    <el-option value="delivery" :label="$t('courier_delivery')" />
+                    <el-option value="pickup" :label="$t('branch_pickup')" />
+                </el-select>
+                <el-select
+                    v-if="store.options.employees?.length > 1"
+                    v-model="filters.employee_id"
+                    class="so-filter-select"
+                    :placeholder="$t('so_all_reps')"
+                    clearable
+                    filterable
+                    @change="applyFilters"
+                >
+                    <el-option v-for="e in store.options.employees" :key="e.id" :label="e.name" :value="e.id" />
+                </el-select>
+                <el-select v-model="filters.payment" class="so-filter-select" :placeholder="$t('so_any_payment')" clearable @change="applyFilters">
+                    <el-option value="due" :label="$t('so_payment_due')" />
+                    <el-option value="paid" :label="$t('so_payment_paid')" />
+                </el-select>
+                <el-date-picker
+                    v-model="filters.range"
+                    type="daterange"
+                    class="so-filter-dates"
+                    value-format="YYYY-MM-DD"
+                    format="YYYY-MM-DD"
+                    unlink-panels
+                    :start-placeholder="$t('pret_from')"
+                    :end-placeholder="$t('pret_to')"
+                    :shortcuts="dateShortcuts"
+                    @change="applyFilters"
+                />
+                <el-check-tag :checked="filters.attention" class="so-attention-tag" @change="toggleAttention">
+                    <i class="fas fa-triangle-exclamation"></i> {{ $t('so_needs_attention') }}
+                </el-check-tag>
+                <el-button v-if="activeFilterCount" text type="primary" :icon="RefreshLeft" @click="resetFilters">
+                    {{ $t('prod_admin_clear_filters', { count: activeFilterCount }) }}
+                </el-button>
+            </div>
+
+            <el-result v-if="store.error && !store.orders.length" icon="error" :title="store.error">
+                <template #extra>
+                    <el-button type="primary" :icon="Refresh" @click="loadOrders()">{{ $t('cat_admin_retry') }}</el-button>
+                </template>
+            </el-result>
+
+            <el-table
+                v-else
+                v-loading="store.loading"
+                :data="store.orders"
+                row-key="id"
+                style="width: 100%"
+                class="so-table"
+                :row-class-name="rowClassName"
+                :default-sort="{ prop: sort.prop, order: sort.order }"
+                @sort-change="onSortChange"
+                @row-click="(row, column) => column?.property !== 'actions' && openDetailDrawer(row.id)"
+            >
+                <template #empty>
+                    <el-empty v-if="!store.loading && (activeFilterCount || filters.stage !== 'all')" :description="$t('there_are_no_requests_matching')" :image-size="90">
+                        <el-button @click="resetFilters(true)">{{ $t('cat_admin_clear_filters') }}</el-button>
+                    </el-empty>
+                    <el-empty v-else-if="!store.loading" :description="$t('so_no_orders_yet')" :image-size="90">
+                        <el-button type="primary" :icon="Plus" @click="openCreateDrawer">{{ $t('create_new_order') }}</el-button>
+                    </el-empty>
+                    <span v-else />
+                </template>
+
+                <el-table-column prop="order_number" :label="$t('order_number')" min-width="140" sortable="custom">
+                    <template #default="{ row }">
+                        <div class="so-stack">
+                            <span class="so-mono" dir="ltr">
+                                {{ row.order_number }}
+                                <el-tooltip v-if="row.follow_up?.needs_attention" :content="row.follow_up.attention_reasons.join(' — ')" placement="top">
+                                    <i class="fas fa-triangle-exclamation so-flag"></i>
+                                </el-tooltip>
+                            </span>
+                            <span class="so-sub">
+                                {{ formatDate(row.order_date || row.created_at) }}
+                                <template v-if="row.quote"> · <span dir="ltr">{{ row.quote.quote_number }}</span></template>
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('client')" min-width="170">
+                    <template #default="{ row }">
+                        <div class="so-stack">
+                            <span class="so-strong">{{ row.customer?.name || '—' }}</span>
+                            <span v-if="row.customer?.phone" class="so-sub" dir="ltr">{{ row.customer.phone }}</span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="total" :label="$t('total')" min-width="130" align="right" sortable="custom">
+                    <template #default="{ row }">
+                        <div class="so-stack so-end">
+                            <strong class="so-amount">{{ formatCurrency(row.total) }}</strong>
+                            <span class="so-sub">{{ $t('so_items_n', { count: row.items_count ?? 0 }) }}</span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('status')" min-width="150">
+                    <template #default="{ row }">
+                        <div class="so-stack">
+                            <span class="so-pill" :class="`s-${normalizeStatus(row.status)}`">
+                                <i class="fas" :class="statusIconClass(row.status)"></i>
+                                {{ getArabicStatus(row.status) }}
+                            </span>
+                            <span class="so-sub" :class="stageAgeClass(row.follow_up)">
+                                <template v-if="row.follow_up?.is_overdue">{{ $t('overdue_by_days', { days: row.follow_up.days_overdue }) }}</template>
+                                <template v-else-if="row.follow_up?.is_open">{{ $t('so_in_stage', { age: stageAgeText(row.follow_up) }) }}</template>
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('so_payment')" min-width="140">
+                    <template #default="{ row }">
+                        <div v-if="row.payment" class="so-stack">
+                            <span class="so-pay" :class="`p-${row.payment.state}`">{{ $t(`so_pay_${row.payment.state}`) }}</span>
+                            <span v-if="row.payment.due > 0.009" class="so-sub">{{ $t('so_due_amount', { amount: formatCurrency(row.payment.due) }) }}</span>
+                        </div>
+                        <span v-else class="so-sub">{{ normalizeStatus(row.status) === 'cancelled' ? '—' : $t('so_not_invoiced') }}</span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('routing')" min-width="160">
+                    <template #default="{ row }">
+                        <div class="so-stack">
+                            <span><i class="fas fa-warehouse so-muted-icon"></i> {{ row.fulfillment_warehouse?.name || $t('so_not_routed') }}</span>
+                            <span class="so-sub">
+                                {{ fulfillmentLabel(row.fulfillment_type) }}
+                                <template v-if="row.expected_delivery"> · {{ $t('so_due_on', { date: formatDate(row.expected_delivery) }) }}</template>
+                            </span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="actions" :label="$t('actions')" min-width="190" align="center">
+                    <template #default="{ row }">
+                        <div class="so-row-actions" @click.stop>
+                            <el-button
+                                v-if="ROW_NEXT[normalizeStatus(row.status)]"
+                                size="small"
+                                :type="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].type"
+                                plain
+                                :loading="advancingId === row.id"
+                                @click="advanceOrder(row)"
+                            >
+                                <i class="fas" :class="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].icon"></i>&nbsp;{{ STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].short }}
+                            </el-button>
+                            <el-dropdown trigger="click" @command="(cmd) => runRowCommand(row, cmd)">
+                                <el-button size="small" text circle :aria-label="$t('so_more_actions')">
+                                    <i class="fas fa-ellipsis-vertical"></i>
+                                </el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="view"><i class="fas fa-eye"></i> {{ $t('view_details') }}</el-dropdown-item>
+                                        <el-dropdown-item command="execution"><i class="fas fa-diagram-project"></i> {{ $t('fulfilment_and_routing') }}</el-dropdown-item>
+                                        <el-dropdown-item command="documents"><i class="fas fa-file-invoice-dollar"></i> {{ $t('documents_and_entries') }}</el-dropdown-item>
+                                        <el-dropdown-item v-if="normalizeStatus(row.status) === 'pending'" command="edit"><i class="fas fa-edit"></i> {{ $t('edit') }}</el-dropdown-item>
+                                        <el-dropdown-item v-if="mayPurchase && normalizeStatus(row.status) !== 'cancelled'" command="purchase">
+                                            <i class="fas fa-cart-plus"></i> {{ $t('so_create_purchase_request') }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item
+                                            v-if="['pending', 'cancelled'].includes(normalizeStatus(row.status))"
+                                            command="delete"
+                                            divided
+                                            class="so-danger-item"
+                                        >
+                                            <i class="fas fa-trash"></i> {{ $t('delete') }}
+                                        </el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </div>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <div v-if="store.pagination.total > 0" class="so-pagination">
+                <span class="so-sub">
+                    {{ $t('prod_admin_range', { from: rangeFrom, to: rangeTo, total: store.pagination.total }) }}
+                </span>
+                <el-pagination
+                    v-model:current-page="currentPage"
+                    v-model:page-size="pageSize"
+                    :total="store.pagination.total"
+                    :page-sizes="[10, 20, 50, 100]"
+                    :layout="isNarrow ? 'prev, pager, next' : 'sizes, prev, pager, next'"
+                    background
+                    @size-change="onPageChange(true)"
+                    @current-change="onPageChange(false)"
+                />
+            </div>
+        </section>
 
         <!-- Detail Drawer -->
         <el-drawer
             v-model="detailDrawerVisible"
-            size="64%"
+            :size="isNarrow ? '100%' : '64%'"
             direction="rtl"
             destroy-on-close
             class="detail-drawer"
@@ -922,13 +983,12 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
-import { useCustomersStore } from '@/stores/customers';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search } from '@element-plus/icons-vue';
+import { Plus, Refresh, RefreshLeft, Search } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
@@ -943,6 +1003,7 @@ import {
     statusLabel,
     formatCurrency,
     formatDate,
+    localIsoDate,
     paymentMethodLabel,
     apiErrorMessage,
 } from '@/utils/sales';
@@ -951,9 +1012,7 @@ const router = useRouter();
 const route = useRoute();
 const { handleStockShortage, canRaisePurchaseOrder } = useStockShortage();
 const store = useSalesOrdersStore();
-const customersStore = useCustomersStore();
 
-const searchQuery = ref('');
 
 // Drawers and actions state
 const detailDrawerVisible = ref(false);
@@ -969,25 +1028,6 @@ const FULFILLMENT_LABELS = { ship: t('shipping'), pickup: t('branch_pickup'), de
 const fulfillmentLabel = (type) => FULFILLMENT_LABELS[normalizeStatus(type)] || t('not_specified');
 const fulfillmentTagType = (type) => ({ ship: 'primary', delivery: 'warning', pickup: 'success' }[normalizeStatus(type)] || 'info');
 
-// Timeline step mappings
-const getTimelineProgressWidth = (status) => {
-    const value = normalizeStatus(status);
-    if (value === 'pending') return '0%';
-    if (value === 'confirmed') return '25%';
-    if (value === 'processing') return '50%';
-    if (value === 'shipped') return '75%';
-    if (value === 'delivered') return '100%';
-    return '0%';
-};
-
-const isStepCompleted = (currentStatus, step) => {
-    const val = normalizeStatus(currentStatus);
-    const steps = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
-    const currentIndex = steps.indexOf(val);
-    const stepIndex = steps.indexOf(step);
-    return stepIndex <= currentIndex;
-};
-
 /* ------------------------------------------------------------------ *
  * Pipeline view
  *
@@ -997,50 +1037,174 @@ const isStepCompleted = (currentStatus, step) => {
  * now the server's answers over the whole table.
  * ------------------------------------------------------------------ */
 
-const activeStage = ref('all');
 const counts = computed(() => store.statusCounts);
+const totals = computed(() => store.totals || { open_value: 0, delivered_month_value: 0, delivered_month_count: 0, to_collect: 0, to_collect_count: 0 });
 
 const stageTabs = computed(() => [
-    { name: 'all', label: t('all'), icon: 'fa-layer-group', count: counts.value.all, badge: 'info' },
-    { name: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', count: counts.value.pending, badge: 'warning' },
-    { name: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', count: counts.value.confirmed, badge: 'primary' },
-    { name: 'processing', label: t('being_prepared'), icon: 'fa-gears', count: counts.value.processing, badge: 'primary' },
-    { name: 'shipped', label: t('shipped_state'), icon: 'fa-truck-fast', count: counts.value.shipped, badge: 'primary' },
-    { name: 'delivered', label: t('delivered_state'), icon: 'fa-box-open', count: counts.value.delivered, badge: 'success' },
-    { name: 'cancelled', label: t('sales_status_cancelled'), icon: 'fa-ban', count: counts.value.cancelled, badge: 'danger' },
-    { name: 'overdue', label: t('overdue'), icon: 'fa-triangle-exclamation', count: counts.value.overdue, badge: 'danger' },
+    { name: 'all', label: t('all'), icon: 'fa-layer-group', count: counts.value.all },
+    { name: 'pending', label: t('sales_status_pending'), icon: 'fa-clock', count: counts.value.pending },
+    { name: 'confirmed', label: t('sales_status_confirmed'), icon: 'fa-circle-check', count: counts.value.confirmed },
+    { name: 'processing', label: t('being_prepared'), icon: 'fa-gears', count: counts.value.processing },
+    { name: 'shipped', label: t('shipped_state'), icon: 'fa-truck-fast', count: counts.value.shipped },
+    { name: 'delivered', label: t('delivered_state'), icon: 'fa-box-open', count: counts.value.delivered },
+    { name: 'cancelled', label: t('sales_status_cancelled'), icon: 'fa-ban', count: counts.value.cancelled },
 ]);
 
-const loadOrders = (page = 1) => {
-    const params = { page, per_page: 20 };
+// 'open' is confirmed + processing + shipped: the in-progress card, sent to
+// the API as its own flag.
+const STAGES = ['all', 'open', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 
-    if (activeStage.value === 'overdue') {
-        params.overdue = 1;
-    } else if (activeStage.value !== 'all') {
-        params.status = activeStage.value;
-    }
+// ── Filters, sorting and paging, kept in the URL ─────────────────────────
+const blankFilters = () => ({
+    stage: 'all', search: '', warehouse_id: null, fulfillment_type: '', employee_id: null,
+    payment: '', range: null, attention: false,
+});
+const filters = reactive(blankFilters());
+const sort = reactive({ prop: 'created_at', order: 'descending' });
+const currentPage = ref(1);
+const pageSize = ref(20);
 
-    if (searchQuery.value.trim()) {
-        params.search = searchQuery.value.trim();
-    }
-
-    return store.fetchOrders(params).catch(() => {});
+const readQuery = () => {
+    const q = route.query;
+    // Links from before the redesign sent ?overdue=1; it now lives under attention.
+    Object.assign(filters, {
+        stage: STAGES.includes(q.stage) ? q.stage : 'all',
+        search: q.search ? String(q.search) : '',
+        warehouse_id: Number(q.warehouse_id) || null,
+        fulfillment_type: ['ship', 'delivery', 'pickup'].includes(q.fulfillment) ? q.fulfillment : '',
+        employee_id: Number(q.employee_id) || null,
+        payment: ['due', 'paid'].includes(q.payment) ? q.payment : '',
+        range: q.from && q.to ? [String(q.from), String(q.to)] : null,
+        attention: q.attention === '1' || q.overdue === '1',
+    });
+    sort.prop = ['total', 'order_number', 'order_date', 'expected_delivery'].includes(q.sort) ? q.sort : 'created_at';
+    sort.order = q.direction === 'asc' ? 'ascending' : 'descending';
+    currentPage.value = Math.max(1, Number(q.page) || 1);
+    pageSize.value = [10, 20, 50, 100].includes(Number(q.per_page)) ? Number(q.per_page) : 20;
 };
 
-const onStageChange = () => loadOrders(1);
-const onPageChange = (page) => loadOrders(page);
+const queryKey = (query) => Object.entries(query).map(([k, v]) => `${k}=${v}`).sort().join('&');
+let lastQueryKey = null;
+
+const writeQuery = () => {
+    const query = {
+        stage: filters.stage !== 'all' ? filters.stage : undefined,
+        search: filters.search || undefined,
+        warehouse_id: filters.warehouse_id || undefined,
+        fulfillment: filters.fulfillment_type || undefined,
+        employee_id: filters.employee_id || undefined,
+        payment: filters.payment || undefined,
+        from: filters.range?.[0] || undefined,
+        to: filters.range?.[1] || undefined,
+        attention: filters.attention ? '1' : undefined,
+        sort: sort.prop !== 'created_at' ? sort.prop : undefined,
+        direction: sort.order === 'ascending' ? 'asc' : undefined,
+        page: currentPage.value > 1 ? currentPage.value : undefined,
+        per_page: pageSize.value !== 20 ? pageSize.value : undefined,
+    };
+    Object.keys(query).forEach((k) => query[k] === undefined && delete query[k]);
+    lastQueryKey = queryKey(query);
+    router.replace({ query });
+};
+
+const activeFilterCount = computed(() => [
+    filters.search, filters.warehouse_id, filters.fulfillment_type, filters.employee_id,
+    filters.payment, filters.range?.length ? '1' : '', filters.attention ? '1' : '',
+].filter(Boolean).length);
+
+let optionsLoaded = false;
+
+const loadOrders = () => {
+    const params = {
+        page: currentPage.value,
+        per_page: pageSize.value,
+        search: filters.search.trim() || undefined,
+        warehouse_id: filters.warehouse_id || undefined,
+        fulfillment_type: filters.fulfillment_type || undefined,
+        employee_id: filters.employee_id || undefined,
+        payment: filters.payment || undefined,
+        date_from: filters.range?.[0] || undefined,
+        date_to: filters.range?.[1] || undefined,
+        attention: filters.attention ? 1 : undefined,
+        sort: sort.prop,
+        direction: sort.order === 'ascending' ? 'asc' : 'desc',
+        with_options: optionsLoaded ? undefined : 1,
+    };
+
+    if (filters.stage === 'open') params.open = 1;
+    else if (filters.stage !== 'all') params.status = filters.stage;
+
+    return store.fetchOrders(params)
+        .then(() => { optionsLoaded = true; })
+        .catch(() => {});
+};
+
+const applyFilters = () => {
+    clearTimeout(searchTimer);
+    currentPage.value = 1;
+    writeQuery();
+    loadOrders();
+};
 
 // Debounced, so typing a nine-character order number is one request and not nine.
 let searchTimer = null;
-const onSearchInput = () => {
+const onSearchInput = (text) => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => loadOrders(1), 400);
+    if (!text) applyFilters();
+    else searchTimer = setTimeout(applyFilters, 400);
 };
 
-const showOverdue = () => {
-    activeStage.value = 'overdue';
-    loadOrders(1);
+const resetFilters = (withStage = false) => {
+    const stage = filters.stage;
+    Object.assign(filters, blankFilters());
+    if (withStage !== true) filters.stage = stage;
+    applyFilters();
 };
+
+const setStage = (stage) => {
+    filters.stage = filters.stage === stage && stage !== 'all' ? 'all' : stage;
+    applyFilters();
+};
+
+const togglePayment = (payment) => {
+    filters.payment = filters.payment === payment ? '' : payment;
+    applyFilters();
+};
+
+const toggleAttention = () => {
+    filters.attention = !filters.attention;
+    applyFilters();
+};
+
+const onSortChange = ({ prop, order }) => {
+    sort.prop = order ? prop : 'created_at';
+    sort.order = order || 'descending';
+    currentPage.value = 1;
+    writeQuery();
+    loadOrders();
+};
+
+const onPageChange = (sizeChanged) => {
+    if (sizeChanged) currentPage.value = 1;
+    writeQuery();
+    loadOrders();
+};
+
+const rangeFrom = computed(() => (store.pagination.total ? (currentPage.value - 1) * pageSize.value + 1 : 0));
+const rangeTo = computed(() => Math.min(currentPage.value * pageSize.value, store.pagination.total));
+
+const dateShortcuts = computed(() => {
+    const now = new Date();
+    const at = (y, m, d) => localIsoDate(new Date(y, m, d));
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    return [
+        { text: t('pret_this_month'), value: () => [at(y, m, 1), localIsoDate(now)] },
+        { text: t('pret_last_month'), value: () => [at(y, m - 1, 1), at(y, m, 0)] },
+        { text: t('pret_last_90_days'), value: () => [at(y, m, now.getDate() - 90), localIsoDate(now)] },
+        { text: t('pret_this_year'), value: () => [at(y, 0, 1), localIsoDate(now)] },
+    ];
+});
 
 /** How long the order has sat where it is. */
 const stageAgeText = (followUp) => {
@@ -1062,6 +1226,18 @@ const stageAgeClass = (followUp) => {
 };
 
 const rowClassName = ({ row }) => (row.follow_up?.needs_attention ? 'row-needs-attention' : '');
+
+const runRowCommand = (row, command) => {
+    if (command === 'view') return openDetailDrawer(row.id);
+    if (command === 'execution' || command === 'documents') return openDetailDrawer(row.id, command);
+    if (command === 'edit') return openEditDrawer(row.id);
+    if (command === 'purchase') return createPurchaseRequest(row);
+    if (command === 'delete') return deleteOrder(row.id);
+    return null;
+};
+
+const isNarrow = ref(false);
+const onResize = () => { isNarrow.value = window.innerWidth < 768; };
 
 /* ------------------------------------------------------------------ *
  * Routing and execution stages
@@ -1234,15 +1410,15 @@ const loadRouting = async (id) => {
 
 /** What each stage move will actually do, said plainly before it is clicked. */
 const STAGE_ACTIONS = {
-    confirmed: { label: t('confirm_order'), icon: 'fa-circle-check', type: 'primary', plain: false,
+    confirmed: { label: t('confirm_order'), short: t('so_step_confirm'), icon: 'fa-circle-check', type: 'primary', plain: false,
         confirm: t('confirm_order_effects') },
-    processing: { label: t('start_preparation'), icon: 'fa-gears', type: 'warning', plain: true,
+    processing: { label: t('start_preparation'), short: t('so_step_prepare'), icon: 'fa-gears', type: 'warning', plain: true,
         confirm: t('move_to_preparation_confirm') },
-    shipped: { label: t('confirm_shipping'), icon: 'fa-truck-fast', type: 'success', plain: false, dialog: 'ship' },
+    shipped: { label: t('confirm_shipping'), short: t('so_step_ship'), icon: 'fa-truck-fast', type: 'success', plain: false, dialog: 'ship' },
     // Delivery opens the settlement dialog rather than a plain confirm: the
     // money usually comes back at the door, and asking after the fact means it
     // gets recorded from memory or not at all.
-    delivered: { label: t('deliver_and_settle_action'), icon: 'fa-hand-holding-dollar', type: 'success', plain: false, dialog: 'deliver' },
+    delivered: { label: t('deliver_and_settle_action'), short: t('so_step_deliver'), icon: 'fa-hand-holding-dollar', type: 'success', plain: false, dialog: 'deliver' },
     cancelled: { label: t('cancel_the_request'), icon: 'fa-ban', type: 'danger', plain: true,
         confirm: t('cancel_order_effects') },
 };
@@ -1357,6 +1533,9 @@ const afterStageChange = async (result) => {
         message: notes.length ? `${result.message} (${notes.join(t('list_separator'))})` : result.message,
         duration: 5000,
     });
+    // The row moved stage, and with it the counts, the totals and possibly
+    // whether it still belongs in the filtered list at all.
+    loadOrders();
 };
 
 const handleStageMove = async (action) => {
@@ -1658,38 +1837,33 @@ const deleteOrder = async (id) => {
         await store.deleteOrder(id);
         ElMessage.success(t('sales_order_deleted'));
         if (selectedOrder.value?.id === id) detailDrawerVisible.value = false;
+        loadOrders();
     } catch (error) {
         ElMessage.error(apiErrorMessage(error, t('failed_to_delete_sales_order')));
     }
 };
 
-const handleConvertToInvoice = async (id) => {
-    try {
-        await ElMessageBox.confirm(
-            t('confirm_convert_to_invoice'),
-            t('convert_to_invoice'),
-            { type: 'info', confirmButtonText: t('convert'), cancelButtonText: t('cancel') }
-        );
-    } catch {
-        return;
-    }
+// Reusing the component for a new URL (the sidebar link) re-reads it.
+watch(() => route.query, (query) => {
+    if (route.name !== 'admin.sales-orders.index' || query.open || queryKey(query) === lastQueryKey) return;
+    readQuery();
+    lastQueryKey = queryKey(query);
+    loadOrders();
+});
 
-    try {
-        const invoice = await store.convertToInvoice(id);
-        detailDrawerVisible.value = false;
-        ElMessage.success(t('invoice_created_number', { number: invoice?.invoice_number || '' }));
-        // Send the user to the invoice so they can collect payment on it —
-        // previously the conversion left them on the orders list with no clue
-        // where the new invoice went.
-        router.push('/admin/sales/invoices');
-    } catch (e) {
-        ElMessage.error(apiErrorMessage(e, t('failed_to_convert_to_invoice')));
-    }
-};
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', onResize);
+    clearTimeout(searchTimer);
+});
 
 onMounted(async () => {
-    loadOrders(1);
-    customersStore.fetchCustomers().catch(() => {});
+    onResize();
+    window.addEventListener('resize', onResize);
+    readQuery();
+    // The one-off `open` link is stripped from the URL below; the filters are not.
+    const { open: _open, tab: _tab, do: _do, ...listQuery } = route.query;
+    lastQueryKey = queryKey(listQuery);
+    loadOrders();
 
     // A link to one order — the new-order wizard sends here after saving —
     // opens it, on the tab asked for.
@@ -1710,6 +1884,139 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ── List (cards, stages, filters, table) ── */
+.so-stat { border-radius: 14px; transition: border-color 0.15s, box-shadow 0.15s; }
+.so-stat.is-clickable { cursor: pointer; }
+.so-stat.is-active { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; }
+.so-stat-inner { display: flex; align-items: center; gap: 0.9rem; }
+.so-stat-icon {
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+}
+.so-stat-icon.orange { background: #fff7ed; color: #ea580c; }
+.so-stat-icon.blue { background: #eff6ff; color: #2563eb; }
+.so-stat-icon.green { background: #f0fdf4; color: #16a34a; }
+.so-stat-icon.red { background: #fef2f2; color: #dc2626; }
+.so-stat-details { min-width: 0; flex: 1; }
+.so-stat-details h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.so-stat-details p { margin: 0.15rem 0 0; font-size: 0.82rem; color: #64748b; }
+.so-stat-sub { display: block; font-size: 0.74rem; color: #94a3b8; margin-top: 0.15rem; }
+
+.so-attention {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.88rem;
+}
+.so-attention:hover { filter: brightness(0.98); }
+.so-attention:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.so-attention-cta { margin-inline-start: auto; font-weight: 700; text-decoration: underline; }
+
+.so-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.1rem; }
+
+.so-stages { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.9rem; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; }
+.so-stage {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: #475569;
+}
+.so-stage i { font-size: 0.78rem; opacity: 0.75; }
+.so-stage:hover { background: #f1f5f9; }
+.so-stage.is-on { background: #0f172a; color: #fff; }
+.so-stage:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.so-stage-count { font-size: 0.72rem; font-weight: 700; background: rgba(100, 116, 139, 0.14); border-radius: 999px; padding: 0 0.45rem; min-width: 1.2rem; text-align: center; }
+.so-stage.is-on .so-stage-count { background: rgba(255, 255, 255, 0.2); }
+
+.so-filters { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; margin-bottom: 1rem; }
+.so-filter-search { flex: 1 1 240px; max-width: 340px; }
+.so-filter-select { width: 160px; }
+.so-filter-dates { max-width: 260px; }
+.so-attention-tag { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+.so-table :deep(.el-table__row) { cursor: pointer; }
+.so-stack { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; align-items: flex-start; }
+.so-stack.so-end { align-items: flex-end; }
+.so-sub { font-size: 0.78rem; color: #64748b; }
+.so-mono { font-family: ui-monospace, monospace; font-weight: 700; color: #0f172a; }
+.so-strong { font-weight: 600; }
+.so-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+.so-flag { color: #dc2626; margin-inline-start: 0.3rem; font-size: 0.8rem; }
+.so-muted-icon { color: #94a3b8; font-size: 0.8rem; }
+
+.so-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.12rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--c, #64748b);
+    background: color-mix(in srgb, var(--c, #64748b) 11%, #fff);
+}
+.so-pill.s-pending { --c: #d97706; }
+.so-pill.s-confirmed { --c: #2563eb; }
+.so-pill.s-processing { --c: #7c3aed; }
+.so-pill.s-shipped { --c: #0891b2; }
+.so-pill.s-delivered { --c: #16a34a; }
+.so-pill.s-cancelled { --c: #64748b; }
+
+.so-pay { font-size: 0.78rem; font-weight: 700; }
+.so-pay.p-paid { color: #16a34a; }
+.so-pay.p-partial { color: #d97706; }
+.so-pay.p-unpaid { color: #dc2626; }
+
+.so-row-actions { display: inline-flex; align-items: center; gap: 0.25rem; }
+:deep(.so-danger-item) { color: #dc2626; }
+
+.so-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+
+@media (max-width: 768px) {
+    :deep(.admin-stat-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.6rem; }
+    .so-stat :deep(.el-card__body) { padding: 0.75rem; }
+    .so-stat-inner { gap: 0.6rem; }
+    .so-stat-icon { width: 36px; height: 36px; font-size: 0.95rem; }
+    .so-stat-details h3 { font-size: 1rem; }
+    .so-panel { padding: 0.85rem; }
+    .so-stages { flex-wrap: nowrap; overflow-x: auto; }
+    .so-stage { white-space: nowrap; }
+    .so-filter-search { max-width: none; flex-basis: 100%; }
+    .so-filter-select { width: calc(50% - 0.35rem); }
+    .so-filter-dates { max-width: none; width: 100% !important; }
+    .so-pagination { justify-content: center; }
+}
+
 .next-stage-go { margin-top: 0.5rem; }
 .drawer-purchase-btn { margin-inline-start: auto; }
 .drawer-title .drawer-purchase-btn i { color: inherit; }
