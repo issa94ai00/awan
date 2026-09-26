@@ -1,8 +1,8 @@
 import api from './index';
 
 export const accountingReportsApi = {
-    trialBalance() {
-        return api.get('/admin/accounting/trial-balance');
+    trialBalance(params = {}) {
+        return api.get('/admin/accounting/trial-balance', { params });
     },
 
     incomeStatement(params = {}) {

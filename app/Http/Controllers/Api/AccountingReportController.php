@@ -36,50 +36,84 @@ class AccountingReportController extends Controller
     {
         [$fromDate, $toDate] = $this->period($request);
 
-        $rows = DB::table('ledger_accounts as a')
-            ->leftJoin('journal_entry_lines as l', 'l.account_id', '=', 'a.id')
-            ->leftJoin('journal_entry_headers as h', function ($join) use ($fromDate, $toDate) {
-                $join->on('h.id', '=', 'l.journal_entry_header_id')
-                    ->whereNull('h.deleted_at')
-                    ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate]);
-            })
-            ->selectRaw('a.id, a.code, a.name, a.type, a.posting_role,
-                         COALESCE(SUM(CASE WHEN h.id IS NULL THEN 0 ELSE l.debit END), 0) as debits,
-                         COALESCE(SUM(CASE WHEN h.id IS NULL THEN 0 ELSE l.credit END), 0) as credits')
-            ->groupBy('a.id', 'a.code', 'a.name', 'a.type', 'a.posting_role')
-            ->orderBy('a.code')
-            ->get();
+        // Movement in the window, and everything before it collapsed into the
+        // opening figure. The window alone is not a trial balance: from the
+        // default 1 January, an asset account showed only this year's movement
+        // under a column headed "balance". Unposted entries stay out, as they
+        // do from every other report here.
+        $sums = fn (callable $dates) => DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->tap($dates)
+            ->groupBy('l.account_id')
+            ->selectRaw('l.account_id, COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c')
+            ->get()
+            ->keyBy('account_id');
 
-        $accounts = $rows->map(function ($row) {
-            $debits = (float) $row->debits;
-            $credits = (float) $row->credits;
+        $movement = $sums(fn ($q) => $q->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate]));
+        $before = $sums(fn ($q) => $q->whereDate('h.entry_date', '<', $fromDate));
 
-            return [
-                'id' => $row->id,
-                'code' => $row->code,
-                'name' => $row->name,
-                'type' => $row->type,
-                'debits' => round($debits, 2),
-                'credits' => round($credits, 2),
-                // Closing movement for the period, on the account's normal side.
-                'balance' => round(LedgerAccount::signedDelta($row->type, $debits, $credits), 2),
-            ];
-        });
+        /** A raw debit-minus-credit figure, split into the column it belongs in. */
+        $sides = fn (float $net) => [round(max($net, 0), 2), round(max(-$net, 0), 2)];
 
-        $totalDebits = round($accounts->sum('debits'), 2);
-        $totalCredits = round($accounts->sum('credits'), 2);
+        $accounts = DB::table('ledger_accounts')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type', 'posting_role', 'parent_id'])
+            ->map(function ($row) use ($movement, $before, $sides) {
+                $debits = (float) ($movement[$row->id]->d ?? 0);
+                $credits = (float) ($movement[$row->id]->c ?? 0);
+                $openD = (float) ($before[$row->id]->d ?? 0);
+                $openC = (float) ($before[$row->id]->c ?? 0);
+
+                [$openingDebit, $openingCredit] = $sides($openD - $openC);
+                [$closingDebit, $closingCredit] = $sides(($openD + $debits) - ($openC + $credits));
+
+                return [
+                    'id' => $row->id,
+                    'code' => $row->code,
+                    'name' => $row->name,
+                    'type' => $row->type,
+                    'posting_role' => $row->posting_role,
+                    'parent_id' => $row->parent_id,
+                    'debits' => round($debits, 2),
+                    'credits' => round($credits, 2),
+                    // Movement for the period, on the account's normal side.
+                    'balance' => round(LedgerAccount::signedDelta($row->type, $debits, $credits), 2),
+                    'opening_debit' => $openingDebit,
+                    'opening_credit' => $openingCredit,
+                    'closing_debit' => $closingDebit,
+                    'closing_credit' => $closingCredit,
+                    'opening_balance' => round(LedgerAccount::signedDelta($row->type, $openD, $openC), 2),
+                    'closing_balance' => round(LedgerAccount::signedDelta($row->type, $openD + $debits, $openC + $credits), 2),
+                ];
+            });
+
+        $total = fn (string $key) => round($accounts->sum($key), 2);
+        $totalDebits = $total('debits');
+        $totalCredits = $total('credits');
 
         return response()->json([
             'success' => true,
             'message' => 'Trial balance retrieved successfully',
             'data' => [
                 'period' => ['from' => $fromDate, 'to' => $toDate],
-                // Accounts with no movement in the period only add noise.
-                'accounts' => $accounts->filter(fn ($a) => $a['debits'] != 0.0 || $a['credits'] != 0.0)->values(),
+                // Accounts with nothing to show in any column only add noise.
+                'accounts' => $accounts->filter(fn ($a) => $a['debits'] != 0.0 || $a['credits'] != 0.0
+                    || $a['closing_debit'] != 0.0 || $a['closing_credit'] != 0.0
+                    || $a['opening_debit'] != 0.0 || $a['opening_credit'] != 0.0)->values(),
                 'all_accounts' => $accounts,
-                'totals' => ['debits' => $totalDebits, 'credits' => $totalCredits],
+                'totals' => [
+                    'debits' => $totalDebits,
+                    'credits' => $totalCredits,
+                    'opening_debits' => $total('opening_debit'),
+                    'opening_credits' => $total('opening_credit'),
+                    'closing_debits' => $total('closing_debit'),
+                    'closing_credits' => $total('closing_credit'),
+                ],
                 'difference' => round($totalDebits - $totalCredits, 2),
                 'is_balanced' => abs($totalDebits - $totalCredits) < self::EPSILON,
+                'closing_difference' => round($total('closing_debit') - $total('closing_credit'), 2),
                 // Surfaced so a corrupt entry is visible here instead of quietly
                 // skewing every downstream statement.
                 'unbalanced_entries' => $this->unbalancedEntries($fromDate, $toDate),
