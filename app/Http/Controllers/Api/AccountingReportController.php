@@ -1099,14 +1099,29 @@ class AccountingReportController extends Controller
         $net = round($output['amount'] - $input['amount'], 2);
 
         // What the documents of the period say, independently of the ledger.
-        $invoiceTax = round((float) DB::table('invoices')
+        $invoices = DB::table('invoices')
             ->where('status', '!=', 'cancelled')
             ->whereBetween(DB::raw('DATE(created_at)'), [$fromDate, $toDate])
-            ->sum('tax'), 2);
+            ->selectRaw('COUNT(*) n, COALESCE(SUM(tax),0) tax')->first();
+        $invoiceTax = round((float) $invoices->tax, 2);
 
-        $receiptTax = round((float) DB::table('purchase_receipts')
+        $receipts = DB::table('purchase_receipts')
             ->whereBetween('receipt_date', [$fromDate, $toDate])
-            ->sum('tax_amount'), 2);
+            ->selectRaw('COUNT(*) n, COALESCE(SUM(tax_amount),0) tax')->first();
+        $receiptTax = round((float) $receipts->tax, 2);
+
+        // A purchase return gives back the tax its receipt claimed, and posts
+        // it out of input VAT. Leaving it off this side reported every period
+        // with a return as not matching the ledger.
+        $returns = DB::getSchemaBuilder()->hasTable('purchase_returns')
+            ? DB::table('purchase_returns')
+                ->whereNull('deleted_at')
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('return_date', [$fromDate, $toDate])
+                ->selectRaw('COUNT(*) n, COALESCE(SUM(tax_amount),0) tax')->first()
+            : (object) ['n' => 0, 'tax' => 0];
+        $returnTax = round((float) $returns->tax, 2);
+        $netInputDocuments = round($receiptTax - $returnTax, 2);
 
         $revenue = $this->movementsByType(['revenue'], $fromDate, $toDate)
             ->whereIn('posting_role', ['sales_revenue', 'additional_charges_revenue'])
@@ -1126,17 +1141,75 @@ class AccountingReportController extends Controller
                 'documents' => [
                     'invoice_tax' => $invoiceTax,
                     'receipt_tax' => $receiptTax,
+                    'purchase_return_tax' => $returnTax,
+                    'net_input_tax' => $netInputDocuments,
+                    'invoice_count' => (int) $invoices->n,
+                    'receipt_count' => (int) $receipts->n,
+                    'purchase_return_count' => (int) $returns->n,
                 ],
                 // A document total that disagrees with the account means
                 // something did not post, or posted twice.
                 'reconciliation' => [
                     'output_difference' => round($invoiceTax - $output['amount'], 2),
-                    'input_difference' => round($receiptTax - $input['amount'], 2),
+                    'input_difference' => round($netInputDocuments - $input['amount'], 2),
                     'output_matches' => abs($invoiceTax - $output['amount']) < self::EPSILON,
-                    'input_matches' => abs($receiptTax - $input['amount']) < self::EPSILON,
+                    'input_matches' => abs($netInputDocuments - $input['amount']) < self::EPSILON,
                 ],
+                'months' => $this->vatByMonth($fromDate, $toDate),
             ],
         ]);
+    }
+
+    /**
+     * Output, input and net tax per calendar month of the period.
+     *
+     * A return usually covers a quarter; which month the tax arose in is the
+     * first thing to look at when the total is not what was expected. Grouped
+     * in PHP so the same code runs on MySQL and SQLite.
+     *
+     * @return array<int,array{month:string,output:float,input:float,net:float}>
+     */
+    private function vatByMonth(string $fromDate, string $toDate): array
+    {
+        $accounts = LedgerAccount::whereIn('posting_role', ['tax_payable', 'input_vat'])->get(['id', 'type', 'posting_role']);
+
+        $months = [];
+        for ($m = \Carbon\Carbon::parse($fromDate)->startOfMonth(); $m->lte(\Carbon\Carbon::parse($toDate)); $m->addMonth()) {
+            $months[$m->format('Y-m')] = ['month' => $m->format('Y-m'), 'output' => 0.0, 'input' => 0.0, 'net' => 0.0];
+        }
+
+        if ($accounts->isEmpty() || count($months) > 36) {
+            return array_values($months);
+        }
+
+        $rows = DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereIn('l.account_id', $accounts->pluck('id'))
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
+            ->groupBy('l.account_id', DB::raw('DATE(h.entry_date)'))
+            ->selectRaw('l.account_id, DATE(h.entry_date) d, COALESCE(SUM(l.debit),0) dr, COALESCE(SUM(l.credit),0) cr')
+            ->get();
+
+        $byId = $accounts->keyBy('id');
+
+        foreach ($rows as $row) {
+            $key = substr((string) $row->d, 0, 7);
+            $account = $byId[$row->account_id];
+            if (! isset($months[$key])) {
+                continue;
+            }
+            $amount = LedgerAccount::signedDelta($account->type, (float) $row->dr, (float) $row->cr);
+            $side = $account->posting_role === 'tax_payable' ? 'output' : 'input';
+            $months[$key][$side] = round($months[$key][$side] + $amount, 2);
+        }
+
+        foreach ($months as &$month) {
+            $month['net'] = round($month['output'] - $month['input'], 2);
+        }
+
+        return array_values($months);
     }
 
     /**
