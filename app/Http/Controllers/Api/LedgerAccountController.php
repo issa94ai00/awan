@@ -41,18 +41,18 @@ class LedgerAccountController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'code' => 'required|string|max:50|unique:ledger_accounts,code',
-            'name' => 'required|string|max:255',
-            'type' => 'required|string|max:100',
-            'description' => 'nullable|string|max:1000',
-            'balance' => 'nullable|numeric',
-            'is_active' => 'sometimes|boolean',
-        ]);
+        $validated = $request->validate($this->rules());
+
+        if ($refusal = $this->parentRefusal($validated)) {
+            return $refusal;
+        }
 
         $account = LedgerAccount::create(array_merge($validated, [
             'is_active' => $validated['is_active'] ?? true,
-            'balance' => $validated['balance'] ?? 0,
+            // Starts at zero and moves only through posted entries. An opening
+            // figure typed here had no entry behind it, so the trial balance
+            // stopped balancing by exactly that amount.
+            'balance' => 0,
             // The books are kept in one currency, so an account opened by hand
             // takes it rather than being left blank or guessing.
             'currency' => base_currency_code(),
@@ -76,14 +76,11 @@ class LedgerAccountController extends Controller
 
     public function update(Request $request, LedgerAccount $ledgerAccount): JsonResponse
     {
-        $validated = $request->validate([
-            'code' => 'required|string|max:50|unique:ledger_accounts,code,' . $ledgerAccount->id,
-            'name' => 'required|string|max:255',
-            'type' => 'required|string|max:100',
-            'description' => 'nullable|string|max:1000',
-            'balance' => 'nullable|numeric',
-            'is_active' => 'sometimes|boolean',
-        ]);
+        $validated = $request->validate($this->rules($ledgerAccount));
+
+        if ($refusal = $this->parentRefusal($validated, $ledgerAccount)) {
+            return $refusal;
+        }
 
         if ($validated['type'] !== $ledgerAccount->type && $ledgerAccount->journalEntryLines()->exists()) {
             return response()->json([
@@ -153,5 +150,74 @@ class LedgerAccountController extends Controller
             'message' => 'Ledger account deleted successfully',
             'data' => null,
         ]);
+    }
+
+    /**
+     * The five account types, stored lowercase.
+     *
+     * `type` was any string, and the chart screen offered "Asset", "Liability"
+     * and so on. Everything that reads the type compares it to lowercase names
+     * — `signedDelta` strictly — so an account created from that screen was
+     * treated as credit-normal and every posting moved its balance the wrong
+     * way. It is lowercased before validation and limited to the five.
+     *
+     * `balance` is deliberately absent: it is the posting engine's running
+     * total. The edit form used to send back the figure it had loaded, which
+     * overwrote anything posted while the form sat open.
+     */
+    private function rules(?LedgerAccount $account = null): array
+    {
+        request()->merge(['type' => strtolower(trim((string) request('type')))]);
+
+        return [
+            'code' => 'required|string|max:50|unique:ledger_accounts,code'.($account ? ','.$account->id : ''),
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:asset,liability,equity,revenue,expense',
+            'parent_id' => 'nullable|integer|exists:ledger_accounts,id',
+            'description' => 'nullable|string|max:1000',
+            'is_active' => 'sometimes|boolean',
+        ];
+    }
+
+    /**
+     * A parent must be of the same type and must not sit below the account.
+     *
+     * A liability grouped under assets would be counted with the assets by
+     * anything that rolls a branch up, and a parent that is its own
+     * descendant makes the tree a loop that never finishes walking.
+     */
+    private function parentRefusal(array $validated, ?LedgerAccount $account = null): ?JsonResponse
+    {
+        if (empty($validated['parent_id'])) {
+            return null;
+        }
+
+        $parent = LedgerAccount::find($validated['parent_id']);
+
+        $message = match (true) {
+            $parent->type !== $validated['type'] =>
+                'يجب أن يكون الحساب الرئيسي من نوع الحساب نفسه.',
+            $account && $this->isSelfOrDescendant($parent, $account) =>
+                'لا يمكن جعل الحساب تابعاً لنفسه أو لأحد حساباته الفرعية.',
+            default => null,
+        };
+
+        return $message
+            ? response()->json(['success' => false, 'message' => $message, 'data' => null], 422)
+            : null;
+    }
+
+    private function isSelfOrDescendant(LedgerAccount $candidate, LedgerAccount $account): bool
+    {
+        $seen = [];
+
+        for ($node = $candidate; $node; $node = $node->parent_id ? LedgerAccount::find($node->parent_id) : null) {
+            if ($node->id === $account->id || isset($seen[$node->id])) {
+                return true;
+            }
+            $seen[$node->id] = true;
+        }
+
+        return false;
     }
 }
