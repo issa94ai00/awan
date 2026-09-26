@@ -21,13 +21,39 @@ class ProductVariant extends Model
         'color',
         'size',
         'material',
+        'specs',
     ];
 
     protected $casts = [
         'price' => 'decimal:5',
         'cost_price' => 'decimal:5',
         'stock_quantity' => 'integer',
+        // Ordered [{label, value}] — see normaliseSpecs().
+        'specs' => 'array',
     ];
+
+    /**
+     * Details as typed into the price list: trimmed, rows with no value
+     * dropped, at most 30 kept. Null when nothing is left, so "no details"
+     * reads the same whether it was never set or was emptied.
+     *
+     * @param  mixed  $specs
+     * @return array<int, array{label: string, value: string}>|null
+     */
+    public static function normaliseSpecs($specs): ?array
+    {
+        $rows = collect(is_array($specs) ? $specs : [])
+            ->map(fn ($row) => [
+                'label' => trim((string) (is_array($row) ? ($row['label'] ?? '') : '')),
+                'value' => trim((string) (is_array($row) ? ($row['value'] ?? '') : '')),
+            ])
+            ->filter(fn ($row) => $row['value'] !== '')
+            ->take(30)
+            ->values()
+            ->all();
+
+        return $rows === [] ? null : $rows;
+    }
 
     public function product()
     {

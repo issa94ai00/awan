@@ -582,6 +582,11 @@
                         </el-form-item>
                     </el-col>
                 </el-row>
+                <VariantSpecsEditor
+                    v-model="addVariantForm.specs"
+                    :label-suggestions="specLabelSuggestions"
+                    :copy-sources="specCopySources(addVariantTarget?.product?.id)"
+                />
             </el-form>
             <template #footer>
                 <el-button @click="addVariantVisible = false">{{ $t('common.cancel') }}</el-button>
@@ -683,6 +688,19 @@
                         </el-form-item>
                     </el-col>
                 </el-row>
+                <template v-if="editItemIsVariant">
+                    <VariantSpecsEditor
+                        v-model="editItemSpecs"
+                        :label-suggestions="specLabelSuggestions"
+                        :copy-sources="specCopySources(editItemTarget?.group?.product?.id, editItemTarget?.item?.id)"
+                    />
+                    <div v-if="editItemSiblingCount > 0" class="specs-apply-siblings">
+                        <el-checkbox v-model="applySpecsToSiblings">
+                            {{ $t('vs_apply_to_siblings', { n: editItemSiblingCount }) }}
+                        </el-checkbox>
+                    </div>
+                    <p v-if="editItemServerErrors.specs" class="specs-server-error">{{ editItemServerErrors.specs }}</p>
+                </template>
             </el-form>
             <template #footer>
                 <el-button @click="closeEditItemDialog">{{ $t('common.cancel') }}</el-button>
@@ -709,6 +727,7 @@
 
 <script setup>
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
+import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
@@ -936,6 +955,7 @@ const emptyVariantForm = () => ({
     price: 0,
     cost_price: null,
     stock_quantity: 0,
+    specs: [],
 });
 const addVariantForm = reactive(emptyVariantForm());
 const addVariantRules = {
@@ -1108,14 +1128,14 @@ const generateVariantSku = async () => {
 // paper — refuse it up front instead of letting it confuse people later.
 function unitDetailKey() {
     const v = addVariantForm;
-    return [v.size, v.color, v.material].map((s) => String(s || '').trim()).join('|');
+    return [v.size, v.color, v.material].map((s) => String(s || '').trim()).join('|') + '|' + specsKey(v.specs);
 }
 
 async function saveAddVariant() {
     if (!addVariantFormRef.value || !addVariantTarget.value) return;
     const group = addVariantTarget.value;
     const already = group.items.some((item) =>
-        [item.size, item.color, item.unit].map((s) => String(s || '').trim()).join('|') === unitDetailKey()
+        [item.size, item.color, item.unit].map((s) => String(s || '').trim()).join('|') + '|' + specsKey(item.specs) === unitDetailKey()
     );
     if (already) {
         ElMessage.warning(t('duplicate_variant_warning'));
@@ -1138,6 +1158,7 @@ async function saveAddVariant() {
         price: addVariantForm.price ?? 0,
         cost_price: addVariantForm.cost_price || null,
         stock_quantity: addVariantForm.stock_quantity ?? 0,
+        specs: cleanSpecs(addVariantForm.specs),
     };
     try {
         const res = await productsApi.createVariant(payload);
@@ -1250,6 +1271,9 @@ function openEditItemDialog(group, item) {
         cost_price: source.cost_price != null ? parseFloat(source.cost_price) : null,
         stock_quantity: source.stock_quantity ?? product.stock_quantity ?? 0,
     });
+    editItemSpecs.value = editItemIsVariant.value ? cleanSpecs(source.specs) : [];
+    editItemSpecsBaseline.value = specsKey(editItemSpecs.value);
+    applySpecsToSiblings.value = false;
     editItemServerErrors.value = {};
     editItemBaseline.value = { ...editItemForm };
     nextTick(() => editItemFormRef.value?.clearValidate());
@@ -1268,7 +1292,9 @@ const editItemDirty = computed(() => {
     const baseline = editItemBaseline.value;
     if (!baseline) return false;
 
-    return Object.keys(editItemForm).some((key) => !sameFieldValue(editItemForm[key], baseline[key]));
+    return Object.keys(editItemForm).some((key) => !sameFieldValue(editItemForm[key], baseline[key]))
+        || specsKey(editItemSpecs.value) !== editItemSpecsBaseline.value
+        || applySpecsToSiblings.value;
 });
 
 // Any keystroke clears the standing server errors: they describe the values
@@ -1359,12 +1385,13 @@ async function saveEditItem() {
 
     // Same guard as "add variant": a change that makes this row duplicate a
     // sibling's size/color/unit would silently vanish on the printed table.
-    const newKey = [editItemForm.size, editItemForm.color, editItemForm.unit]
+    const newDetails = [editItemForm.size, editItemForm.color, editItemForm.unit]
         .map((s) => String(s || '').trim()).join('|');
+    const newKey = newDetails + '|' + specsKey(isVariant ? editItemSpecs.value : []);
     const collides = group.items.some((other) => {
         if (String(other.id) === rowId) return false;
         return [other.size, other.color, other.unit]
-            .map((s) => String(s || '').trim()).join('|') === newKey && newKey !== '||';
+            .map((s) => String(s || '').trim()).join('|') + '|' + specsKey(other.specs) === newKey && newDetails !== '||';
     });
     if (collides) {
         ElMessage.warning(t('duplicate_variant_warning'));
@@ -1396,6 +1423,12 @@ async function saveEditItem() {
         rowPatch.material = rowPatch.unit;
         delete rowPatch.unit;
     }
+    const newSpecs = cleanSpecs(editItemSpecs.value);
+    if (isVariant && specsKey(newSpecs) !== editItemSpecsBaseline.value) {
+        rowPatch.specs = newSpecs;
+    }
+    // Every other variant under the same product, when the box is ticked.
+    const siblingIds = isVariant && applySpecsToSiblings.value ? editItemSiblingIds() : [];
 
     try {
         const results = [];
@@ -1408,6 +1441,9 @@ async function saveEditItem() {
             }
             if (Object.keys(rowPatch).length) {
                 results.push(await saveField(rowId, rowPatch));
+            }
+            for (const sid of siblingIds) {
+                results.push(await saveField(`v-${sid}`, { specs: newSpecs }));
             }
         } else {
             const merged = { ...productPatch, ...rowPatch };
@@ -1448,10 +1484,87 @@ async function saveEditItem() {
     }
 }
 
+// ---- Variant details (specs) ----------------------------------------------
+// Each variant carries its own ordered [{label, value}] list — "Power: 750W".
+// Blank rows are the editor's scratch space, so they never leave the page.
+const editItemSpecs = ref([]);
+const editItemSpecsBaseline = ref('');
+const applySpecsToSiblings = ref(false);
+
+function cleanSpecs(list) {
+    return (Array.isArray(list) ? list : [])
+        .map((r) => ({ label: String(r?.label ?? '').trim(), value: String(r?.value ?? '').trim() }))
+        .filter((r) => r.value !== '');
+}
+
+function specsKey(list) {
+    return cleanSpecs(list).map((r) => `${r.label}:${r.value}`).join('¦');
+}
+
+function variantsOf(productId) {
+    const product = store.products.find((p) => String(p.id) === String(productId));
+    return Array.isArray(product?.variants) ? product.variants : [];
+}
+
+// Sibling variants whose details can be copied in, the one being edited left out.
+function specCopySources(productId, excludeRowId = null) {
+    if (productId == null) return [];
+    const exclude = excludeRowId && String(excludeRowId).startsWith('v-') ? Number(String(excludeRowId).slice(2)) : null;
+    return variantsOf(productId)
+        .filter((v) => Number(v.id) !== exclude)
+        .map((v) => ({
+            id: v.id,
+            label: [v.size, v.color, v.material].filter(Boolean).join(' · ') || v.sku || `#${v.id}`,
+            specs: cleanSpecs(v.specs),
+        }));
+}
+
+function editItemSiblingIds() {
+    const target = editItemTarget.value;
+    if (!target || !editItemIsVariant.value) return [];
+    const self = Number(String(target.item.id).slice(2));
+    return variantsOf(target.group.product.id).map((v) => Number(v.id)).filter((id) => id !== self);
+}
+
+const editItemSiblingCount = computed(() => (editItemVisible.value ? editItemSiblingIds().length : 0));
+
+// Labels already in use anywhere on the loaded list — variant details first,
+// then the "Label: value • …" lines product descriptions are written in —
+// most used first, so typing "Po" offers "Power" the same way every time.
+const specLabelSuggestions = computed(() => {
+    const counts = new Map();
+    const bump = (label) => {
+        const l = String(label || '').trim();
+        if (l && l.length <= 100) counts.set(l, (counts.get(l) || 0) + 1);
+    };
+    for (const p of store.products) {
+        for (const v of Array.isArray(p.variants) ? p.variants : []) {
+            for (const row of Array.isArray(v.specs) ? v.specs : []) bump(row.label);
+        }
+        const desc = String(p.description_ar || '');
+        if (desc.includes('•')) {
+            for (const part of desc.split('•')) {
+                const idx = part.indexOf(':');
+                if (idx > 0) bump(part.slice(0, idx));
+            }
+        }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+});
+
 // Server field names to form field names. Only `material` differs: the variant
 // endpoint calls it that, the dialog shows it in the shared "unit" input.
 function mapServerErrorsToForm(error, isVariant) {
     const errors = serverFieldErrors(error);
+
+    // A detail row's error arrives as `specs.2.value`; the dialog shows one
+    // line under the details list for all of them.
+    for (const key of Object.keys(errors)) {
+        if (key.startsWith('specs.')) {
+            errors.specs = errors.specs || errors[key];
+            delete errors[key];
+        }
+    }
 
     if (isVariant && errors.material) {
         const { material, ...rest } = errors;
@@ -2056,6 +2169,7 @@ function buildGroups(list) {
                 size: v.size || '',
                 color: v.color || '',
                 unit: v.material || '',
+                specs: cleanSpecs(v.specs),
                 price: parseFloat(v.price) || 0,
                 stock_quantity: v.stock_quantity ?? 0,
             }))
@@ -2073,7 +2187,7 @@ function buildGroups(list) {
         const seen = seenDetails.get(key);
         const group = map.get(key);
         for (const item of items) {
-            const detailKey = `${item.size}|${item.color}|${item.unit}`;
+            const detailKey = `${item.size}|${item.color}|${item.unit}|${specsKey(item.specs)}`;
             if (seen.has(detailKey)) continue;
             seen.add(detailKey);
             group.items.push(item);
@@ -3649,6 +3763,16 @@ onMounted(async () => {
     padding: 2px 10px;
     border-radius: 999px;
 }
+.specs-apply-siblings {
+    margin-top: 8px;
+}
+
+.specs-server-error {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--el-color-danger);
+}
+
 .edit-item-hint {
     margin-bottom: 14px;
 }

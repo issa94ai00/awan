@@ -172,6 +172,7 @@ class ProductResource extends JsonResource
                     'color' => $variant->color,
                     'material' => $variant->material,
                     'label' => $variant->label,
+                    'specs' => $variant->specs ?? [],
                     'price' => $variant->price,
                     'cost_price' => $variant->cost_price,
                     'stock_quantity' => $variant->stock_quantity,

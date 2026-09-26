@@ -117,11 +117,12 @@
 
                         <div class="product-description">
                             <h3>{{ specs.length ? (t('specifications') || 'المواصفات') : (t('description') || 'الوصف') }}</h3>
+                            <p v-if="specs.length && !descriptionSpecs.length && $p(product, 'description')">{{ $p(product, 'description') }}</p>
                             <table v-if="specs.length" class="specs-table">
                                 <tbody>
                                     <tr v-for="(row, idx) in specs" :key="idx">
-                                        <th scope="row">{{ row.label }}</th>
-                                        <td>{{ row.value }}</td>
+                                        <th v-if="row.label" scope="row">{{ row.label }}</th>
+                                        <td :colspan="row.label ? 1 : 2">{{ row.value }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -486,7 +487,7 @@ const viewName = computed(() => {
 
 // Descriptions written as "Label: value • Label: value" (or one pair per
 // line) read better as a specs table; anything else stays a paragraph.
-const specs = computed(() => {
+const descriptionSpecs = computed(() => {
     const text = (localized('description') || '').trim();
     if (!text) return [];
     const parts = text.split(/\s*[•\n]\s*/).map(s => s.trim()).filter(Boolean);
@@ -496,6 +497,21 @@ const specs = computed(() => {
         const idx = part.indexOf(':');
         if (idx <= 0 || idx === part.length - 1) return [];
         rows.push({ label: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() });
+    }
+    return rows;
+});
+
+// The chosen variant's own details replace the product's line with the same
+// label ("Power" of this size, not of the range) and add the rest after it.
+const specs = computed(() => {
+    const own = (selectedVariant.value?.specs || []).filter(r => r && String(r.value || '').trim());
+    if (!own.length) return descriptionSpecs.value;
+    const rows = descriptionSpecs.value.map(r => ({ ...r }));
+    for (const spec of own) {
+        const label = String(spec.label || '').trim();
+        const at = label ? rows.findIndex(r => r.label === label) : -1;
+        if (at !== -1) rows[at] = { label, value: spec.value };
+        else rows.push({ label, value: spec.value });
     }
     return rows;
 });

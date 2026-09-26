@@ -228,7 +228,13 @@
                             <div v-if="item.size" class="detail-size">{{ item.size }}</div>
                             <div v-if="item.color" class="detail-color">{{ item.color }}</div>
                             <div v-if="item.unit" class="detail-unit">{{ item.unit }}</div>
-                            <div v-if="!item.size && !item.color && !item.unit" class="detail-na">&mdash;</div>
+                            <ul v-if="item.specs && item.specs.length" class="detail-specs">
+                                <li v-for="(spec, sIdx) in item.specs" :key="sIdx">
+                                    <span v-if="spec.label" class="detail-spec-label">{{ spec.label }}:</span>
+                                    <span class="detail-spec-value">{{ spec.value }}</span>
+                                </li>
+                            </ul>
+                            <div v-if="!item.size && !item.color && !item.unit && !(item.specs && item.specs.length)" class="detail-na">&mdash;</div>
                         </div>
                         <!-- Both row actions live in one strip. They used to be
                              two absolutely-positioned buttons claiming the same
@@ -1081,6 +1087,17 @@ const formatPrice = (price) => {
 .detail-color { color: #6366f1; font-size: 8.5pt; }
 .detail-unit { color: #0f766e; font-size: 8.5pt; }
 .detail-na { color: #94a3b8; }
+/* A variant's own details, one "Label: value" per line under its size. */
+.detail-specs {
+    list-style: none;
+    margin: 3px 0 0;
+    padding: 0;
+    font-size: 8pt;
+    line-height: 1.35;
+    color: #475569;
+}
+.detail-spec-label { font-weight: 600; margin-inline-end: 3px; }
+.detail-spec-value { unicode-bidi: plaintext; }
 
 .cell-price {
     text-align: center;
