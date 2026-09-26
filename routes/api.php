@@ -596,7 +596,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/bank-reconciliations', [BankReconciliationController::class, 'index'])->name('api.admin.accounting.bank-reconciliations.index');
                 Route::post('/accounting/bank-reconciliations', [BankReconciliationController::class, 'store'])->name('api.admin.accounting.bank-reconciliations.store');
                 Route::get('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'show'])->name('api.admin.accounting.bank-reconciliations.show');
+                Route::put('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'update'])->name('api.admin.accounting.bank-reconciliations.update');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/toggle-line', [BankReconciliationController::class, 'toggleLine'])->name('api.admin.accounting.bank-reconciliations.toggle');
+                Route::post('/accounting/bank-reconciliations/{bankReconciliation}/lines', [BankReconciliationController::class, 'setLines'])->name('api.admin.accounting.bank-reconciliations.lines');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/complete', [BankReconciliationController::class, 'complete'])->name('api.admin.accounting.bank-reconciliations.complete');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/reopen', [BankReconciliationController::class, 'reopen'])->name('api.admin.accounting.bank-reconciliations.reopen');
                 Route::delete('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'destroy'])->name('api.admin.accounting.bank-reconciliations.destroy');
