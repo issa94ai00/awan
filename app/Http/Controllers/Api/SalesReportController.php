@@ -602,25 +602,73 @@ class SalesReportController extends Controller
 
         $this->applyInventoryDateFilters($query, $request);
 
-        $warehouseSummary = $query->clone()
+        // Without toBase()->select([]) this kept the base query's
+        // `warehouse_inventory.*` beside a GROUP BY, which MySQL's
+        // only_full_group_by rejects — the whole endpoint answered 500 in
+        // production while passing on the SQLite the tests run on.
+        $warehouseSummary = $query->clone()->toBase()
+            ->select([])
             ->join('warehouses', 'warehouses.id', '=', 'warehouse_inventory.warehouse_id')
             ->selectRaw('warehouse_inventory.warehouse_id as warehouse_id')
             ->selectRaw('warehouses.name as warehouse_name')
             ->selectRaw('SUM(warehouse_inventory.quantity) as total_quantity')
-            ->selectRaw('SUM(warehouse_inventory.available_quantity) as total_available')
+            ->selectRaw('SUM('.WarehouseInventory::availableSql().') as total_available')
             ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
             ->groupBy('warehouse_inventory.warehouse_id', 'warehouses.name')
+            ->orderByDesc('total_value')
             ->get();
 
-        $overallValue = (float) $query->clone()
-            ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
-            ->value('total_value');
+        // One pass for every headline figure, measured the way the inventory
+        // screens measure them (WarehouseInventory::availableSql), so this
+        // report and the stock screen give the same answer. The page used to
+        // take its counts from the dashboard's catalogue-wide stats, which
+        // ignored every filter set here.
+        $available = WarehouseInventory::availableSql();
+
+        // toBase(): plain rows, without the base query's `warehouse_inventory.*`
+        // column list or its eager loads, neither of which an aggregate wants.
+        $totals = $query->clone()->toBase()
+            ->select([])
+            ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as product_count')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
+            ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)), 0) as total_value')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity * COALESCE(products.cost_price, 0)), 0) as total_cost_value')
+            // Stock with no cost on file adds nothing to the value at cost, so the
+            // figure has to say how much of the stock it could not price.
+            ->selectRaw('COUNT(DISTINCT CASE WHEN COALESCE(products.cost_price, 0) <= 0 THEN warehouse_inventory.product_id END) as uncosted_products')
+            ->selectRaw("SUM(CASE WHEN ({$available}) > COALESCE(warehouse_inventory.reorder_point, 0) THEN 1 ELSE 0 END) as healthy_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= COALESCE(warehouse_inventory.reorder_point, 0) AND ({$available}) > 0 THEN 1 ELSE 0 END) as low_stock_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows")
+            ->reorder()
+            ->first();
 
         $overall = [
-            'total_quantity' => (float) $query->clone()->sum('warehouse_inventory.quantity'),
-            'total_available' => (float) $query->clone()->sum('warehouse_inventory.available_quantity'),
-            'total_value' => $overallValue,
+            'total_quantity' => (float) ($totals->total_quantity ?? 0),
+            'total_available' => (float) ($totals->total_available ?? 0),
+            'total_value' => (float) ($totals->total_value ?? 0),
+            'total_cost_value' => (float) ($totals->total_cost_value ?? 0),
+            'product_count' => (int) ($totals->product_count ?? 0),
+            'uncosted_products' => (int) ($totals->uncosted_products ?? 0),
+            'healthy_rows' => (int) ($totals->healthy_rows ?? 0),
+            'low_stock_rows' => (int) ($totals->low_stock_rows ?? 0),
+            'out_of_stock_rows' => (int) ($totals->out_of_stock_rows ?? 0),
         ];
+
+        // The products holding the most stock, across the filtered warehouses.
+        $topProducts = $query->clone()->toBase()
+            ->select([])
+            ->selectRaw('warehouse_inventory.product_id as product_id')
+            ->selectRaw('COALESCE(products.name_ar, products.name_en) as product_name')
+            ->selectRaw('products.sku as sku')
+            ->selectRaw('SUM(warehouse_inventory.quantity) as total_quantity')
+            ->selectRaw("SUM({$available}) as total_available")
+            ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
+            ->groupBy('warehouse_inventory.product_id', 'products.name_ar', 'products.name_en', 'products.sku')
+            ->reorder()
+            ->orderByDesc('total_quantity')
+            ->limit(10)
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -635,6 +683,14 @@ class SalesReportController extends Controller
                         'total_value' => (float) ($item->total_value ?? 0),
                     ];
                 }),
+                'top_products' => $topProducts->map(fn ($item) => [
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product_name,
+                    'sku' => $item->sku,
+                    'total_quantity' => (float) ($item->total_quantity ?? 0),
+                    'total_available' => (float) ($item->total_available ?? 0),
+                    'total_value' => (float) ($item->total_value ?? 0),
+                ]),
                 'overall' => $overall,
             ],
         ]);
