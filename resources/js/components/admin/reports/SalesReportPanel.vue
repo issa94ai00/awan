@@ -95,20 +95,16 @@
              drill-through. -->
         <el-row :gutter="20" class="dimension-panels">
             <el-col v-for="card in dimensionCards" :key="card.key" :xs="24" :md="8">
-                <el-card shadow="hover">
-                    <template #header>
-                        <div class="dimension-header">
-                            <span>{{ card.title }}</span>
-                            <el-button
-                                v-if="card.activeId"
-                                size="small"
-                                text
-                                type="primary"
-                                @click="emit('select-dimension', { type: card.key, id: null })"
-                            >
-                                {{ $t('clear_filter') }}
-                            </el-button>
-                        </div>
+                <CollapsibleCard :id="`breakdown-${card.key}`" :title="card.title" :count="card.rows.length || null">
+                    <template v-if="card.activeId" #extra>
+                        <el-button
+                            size="small"
+                            text
+                            type="primary"
+                            @click="emit('select-dimension', { type: card.key, id: null })"
+                        >
+                            {{ $t('clear_filter') }}
+                        </el-button>
                     </template>
 
                     <el-table
@@ -142,7 +138,7 @@
                             <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
                         </template>
                     </el-table>
-                </el-card>
+                </CollapsibleCard>
             </el-col>
         </el-row>
 
@@ -183,10 +179,12 @@
             </el-col>
         </el-row>
 
-        <el-card shadow="hover" class="profitability-table-card">
-            <template #header>
-                <span>{{ $t('product_profitability_by_warehouse') }}</span>
-            </template>
+        <CollapsibleCard
+            id="product-profitability"
+            :title="$t('product_profitability_by_warehouse')"
+            :count="profitability?.product_summary?.length || null"
+            class="profitability-table-card"
+        >
 
             <el-table :data="profitability?.product_summary || []" stripe style="width: 100%">
                 <el-table-column prop="product_name" :label="$t('product')" />
@@ -213,7 +211,7 @@
                     <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
                 </template>
             </el-table>
-        </el-card>
+        </CollapsibleCard>
     </div>
 </template>
 
@@ -223,6 +221,7 @@ import { useI18n } from 'vue-i18n';
 import * as echarts from 'echarts';
 import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
 const { t } = useI18n();
 
@@ -552,13 +551,6 @@ const formatValue = (value, format) => {
 .table-empty {
     color: #94a3b8;
     font-size: 0.85rem;
-}
-
-.dimension-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
 }
 
 /* A row that drills through says so before it is clicked. */

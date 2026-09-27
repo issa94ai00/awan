@@ -116,6 +116,11 @@
             </template>
             <span v-else-if="!awaitingRange" class="active-filters-all">{{ $t('sr_everything') }}</span>
             <span v-if="awaitingRange" class="active-filters-hint">{{ $t('sr_pick_range_hint') }}</span>
+            <span class="active-filters-spacer"></span>
+            <el-button link type="primary" class="active-filters-clear" @click="setAllCollapsed(!allCollapsed)">
+                <el-icon class="collapse-all-icon"><component :is="allCollapsed ? Expand : Fold" /></el-icon>
+                {{ allCollapsed ? $t('expand_all') : $t('collapse_all') }}
+            </el-button>
         </div>
 
         <el-tabs v-model="activeTab" class="report-tabs">
@@ -152,18 +157,15 @@
                     @select-dimension="applyDimensionFilter"
                 />
 
-                <el-card shadow="hover" class="table-card">
-                    <!-- Both tabs used to head this card with a bare "detailed
-                         report", which named neither what was listed nor how much
-                         of it the filters had matched. -->
-                    <template #header>
-                        <div class="table-card-header">
-                            <span>{{ $t('detailed_report') }} — {{ $t('invoices') }}</span>
-                            <span v-if="invoicePagination.total" class="table-card-count">
-                                {{ formatCount(invoicePagination.total) }}
-                            </span>
-                        </div>
-                    </template>
+                <!-- Both tabs used to head this card with a bare "detailed
+                     report", which named neither what was listed nor how much
+                     of it the filters had matched. -->
+                <CollapsibleCard
+                    id="detail-invoices"
+                    :title="`${$t('detailed_report')} — ${$t('invoices')}`"
+                    :count="invoicePagination.total || null"
+                    class="table-card"
+                >
 
                     <el-table
                         ref="invoiceTableRef"
@@ -324,7 +326,7 @@
                         @size-change="handleInvoiceSizeChange"
                         @current-change="handleInvoicePageChange"
                     />
-                </el-card>
+                </CollapsibleCard>
 
                 <TopPerformersTable
                     :title="$t('top_performing_employees')"
@@ -364,15 +366,12 @@
                     @select-dimension="applyDimensionFilter"
                 />
 
-                <el-card shadow="hover" class="table-card">
-                    <template #header>
-                        <div class="table-card-header">
-                            <span>{{ $t('detailed_report') }} — {{ $t('sales_orders_pipeline') }}</span>
-                            <span v-if="pagination.total" class="table-card-count">
-                                {{ formatCount(pagination.total) }}
-                            </span>
-                        </div>
-                    </template>
+                <CollapsibleCard
+                    id="detail-orders"
+                    :title="`${$t('detailed_report')} — ${$t('sales_orders_pipeline')}`"
+                    :count="pagination.total || null"
+                    class="table-card"
+                >
 
                     <el-table
                         ref="ordersTableRef"
@@ -493,7 +492,7 @@
                         @size-change="handleOrdersSizeChange"
                         @current-change="handleOrdersPageChange"
                     />
-                </el-card>
+                </CollapsibleCard>
 
                 <TopPerformersTable
                     :title="$t('top_performing_employees')"
@@ -516,12 +515,14 @@ import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
+import { Refresh, Download, Fold, Expand, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import SalesReportPanel from '@/components/admin/reports/SalesReportPanel.vue';
 import TopPerformersTable from '@/components/admin/reports/TopPerformersTable.vue';
+import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
+import { allCollapsed, setAllCollapsed } from '@/utils/collapsedSections';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -1234,8 +1235,6 @@ const exportActiveTab = async () => {
  * ------------------------------------------------------------------ */
 const formatMoney = (value) => formatMoneyWith(value || 0);
 
-/** Row counts read as quantities, so they get thousands separators. */
-const formatCount = (value) => Number(value || 0).toLocaleString();
 
 /** Names the dataset the export button is about to produce. */
 const activeTabLabel = computed(() =>
@@ -1311,6 +1310,14 @@ onMounted(() => {
     font-size: 0.82rem;
 }
 
+.active-filters-spacer {
+    flex: 1 1 auto;
+}
+
+.collapse-all-icon {
+    margin-inline-end: 4px;
+}
+
 .active-filters-hint {
     font-size: 0.82rem;
     color: var(--el-color-warning-dark-2, #b45309);
@@ -1337,22 +1344,7 @@ onMounted(() => {
     justify-content: center;
 }
 
-.table-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
 
-.table-card-count {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #64748b;
-    background: #f1f5f9;
-    border-radius: 999px;
-    padding: 0.1rem 0.6rem;
-    font-variant-numeric: tabular-nums;
-}
 
 /* The way into the underlying order or invoice. */
 .record-link {

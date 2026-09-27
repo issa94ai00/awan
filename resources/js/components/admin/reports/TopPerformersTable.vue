@@ -1,8 +1,5 @@
 <template>
-    <el-card shadow="hover" class="top-performers-card">
-        <template #header>
-            <span>{{ title }}</span>
-        </template>
+    <CollapsibleCard id="top-performers" :title="title" :count="rows.length || null" class="top-performers-card">
 
         <el-table v-loading="loading" :data="rows" style="width: 100%" stripe>
             <el-table-column :label="$t('rank')" width="80">
@@ -27,11 +24,12 @@
                 <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
             </template>
         </el-table>
-    </el-card>
+    </CollapsibleCard>
 </template>
 
 <script setup>
 import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
 /**
  * The ranked employee table both the orders and invoices tabs end on —
