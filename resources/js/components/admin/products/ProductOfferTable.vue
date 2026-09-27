@@ -228,13 +228,16 @@
                             <div v-if="item.size" class="detail-size">{{ item.size }}</div>
                             <div v-if="item.color" class="detail-color">{{ item.color }}</div>
                             <div v-if="item.unit" class="detail-unit">{{ item.unit }}</div>
-                            <ul v-if="item.specs && item.specs.length" class="detail-specs">
+                            <!-- With the specifications column showing, the specs are
+                                 read there; this cell keeps them only while it is
+                                 the one place they could appear. -->
+                            <ul v-if="!visibleColumns.specs && hasSpecs(item)" class="detail-specs">
                                 <li v-for="(spec, sIdx) in item.specs" :key="sIdx">
                                     <span v-if="spec.label" class="detail-spec-label">{{ spec.label }}:</span>
                                     <span class="detail-spec-value">{{ spec.value }}</span>
                                 </li>
                             </ul>
-                            <div v-if="!item.size && !item.color && !item.unit && !(item.specs && item.specs.length)" class="detail-na">&mdash;</div>
+                            <div v-if="!item.size && !item.color && !item.unit && (visibleColumns.specs || !hasSpecs(item))" class="detail-na">&mdash;</div>
                         </div>
                         <!-- Both row actions live in one strip. They used to be
                              two absolutely-positioned buttons claiming the same
@@ -271,6 +274,16 @@
                                 </button>
                             </el-tooltip>
                         </div>
+                    </td>
+                    <!-- A variant's own "Label: value" details, one per line. -->
+                    <td v-if="visibleColumns.specs" class="cell-specs">
+                        <ul v-if="hasSpecs(item)" class="spec-list">
+                            <li v-for="(spec, sIdx) in item.specs" :key="sIdx">
+                                <span v-if="spec.label" class="detail-spec-label">{{ spec.label }}:</span>
+                                <span class="detail-spec-value">{{ spec.value }}</span>
+                            </li>
+                        </ul>
+                        <div v-else class="detail-na">&mdash;</div>
                     </td>
                     <td
                         v-if="visibleColumns.price"
@@ -372,7 +385,7 @@ const props = defineProps({
     printMode: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
-        default: () => ({ image: true, product: true, details: true, price: true, inventory: true }),
+        default: () => ({ image: true, product: true, details: true, specs: true, price: true, inventory: true }),
     },
     // Per-column width shares that override the defaults below. Shares, not
     // percentages: they are re-normalised over the visible columns, so one
@@ -412,6 +425,8 @@ const emit = defineEmits([
  */
 const isVariantRow = (item) => String(item?.id ?? '').startsWith('v-');
 
+const hasSpecs = (item) => Array.isArray(item?.specs) && item.specs.length > 0;
+
 /** Display name of the classification a product is filed under, if it came through. */
 const categoryLabel = (product) => {
     const cat = product?.category;
@@ -433,8 +448,8 @@ const visibleColumnCount = computed(() => Object.values(props.visibleColumns).fi
  * not percentages — they are re-normalised over whatever subset is visible, so
  * hiding a column widens the others instead of leaving the table short.
  */
-const COLUMN_SHARES = { image: 50, product: 35, details: 35, price: 15, inventory: 15 };
-const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', price: 'the_price', inventory: 'inventory' };
+const COLUMN_SHARES = { image: 50, product: 35, details: 25, specs: 35, price: 15, inventory: 15 };
+const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', specs: 'specifications', price: 'the_price', inventory: 'inventory' };
 
 /** The showing columns, in table order — drives the colgroup and the header. */
 const activeColumns = computed(() => Object.keys(COLUMN_SHARES).filter((key) => props.visibleColumns[key]));
@@ -1097,6 +1112,24 @@ const formatPrice = (price) => {
     color: #475569;
 }
 .detail-spec-label { font-weight: 600; margin-inline-end: 3px; }
+
+/* The specifications column: the same "Label: value" lines, given the room of
+   a column of their own, so they read at body size and start-aligned. */
+.cell-specs {
+    color: #334155;
+    font-size: 9pt;
+    padding: 5px 8px;
+    text-align: start;
+    vertical-align: middle;
+}
+.spec-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+}
+.spec-list li + li { margin-top: 2px; }
+.cell-specs .detail-na { text-align: center; }
 .detail-spec-value { unicode-bidi: plaintext; }
 
 .cell-price {

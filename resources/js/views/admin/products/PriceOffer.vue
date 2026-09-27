@@ -1651,11 +1651,12 @@ let importMsgTimeout = null;
 // Which columns appear on the printed/exported price list — persisted per
 // browser so the choice sticks across visits.
 const COLUMNS_STORAGE_KEY = 'price_offer_visible_columns';
-const defaultColumns = { image: true, product: false, details: true, price: true, inventory: true };
+const defaultColumns = { image: true, product: false, details: true, specs: true, price: true, inventory: true };
 const columnOptions = [
     { key: 'image', label: 'image' },
     { key: 'product', label: 'product' },
     { key: 'details', label: 'details' },
+    { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
     { key: 'inventory', label: 'inventory' },
 ];
@@ -1690,7 +1691,7 @@ function toggleColumn(key, val) {
 // height of one product group, in the CSS pixels the PDF capture measures in;
 // null means "leave it to the default fifth of a page".
 const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
-const defaultColumnWidths = { image: 50, product: 35, details: 35, price: 15, inventory: 15 };
+const defaultColumnWidths = { image: 50, product: 35, details: 25, specs: 35, price: 15, inventory: 15 };
 const DEFAULT_ROW_HEIGHT = 295;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 520;
