@@ -7,13 +7,13 @@
             :subtitle="$t('advanced_sales_filtering_and_analytics')"
         >
             <template #actions>
-                <el-button :icon="Refresh" @click="resetFilters">
+                <el-button :icon="Refresh" :disabled="!activeFilterChips.length" @click="resetFilters">
                     {{ $t('reset') }}
                 </el-button>
                 <!-- One button that exports whichever tab is open. It never said
                      which, so naming the dataset is the difference between an
                      export and a guess. -->
-                <el-button type="primary" :icon="Download" :loading="exporting" @click="exportActiveTab">
+                <el-button type="primary" :icon="Download" :loading="exporting" :disabled="awaitingRange" @click="exportActiveTab">
                     {{ $t('export_report') }} — {{ activeTabLabel }}
                 </el-button>
             </template>
@@ -33,24 +33,27 @@
                 </el-select>
             </div>
             <div class="filter-field">
-                <label>{{ $t('date_filter_type') }}</label>
+                <label>{{ $t('sr_period') }}</label>
                 <el-select v-model="filters.date_filter_type">
-                    <el-option :label="$t('all')" value="all" />
-                    <el-option :label="$t('today')" value="today" />
-                    <el-option :label="$t('yesterday')" value="yesterday" />
-                    <el-option :label="$t('this_week')" value="this_week" />
-                    <el-option :label="$t('this_month')" value="this_month" />
-                    <el-option :label="$t('last_month')" value="last_month" />
-                    <el-option :label="$t('custom')" value="custom" />
+                    <el-option v-for="preset in PERIOD_PRESETS" :key="preset" :label="periodLabel(preset)" :value="preset" />
                 </el-select>
             </div>
-            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
-                <label>{{ $t('start_date') }}</label>
-                <el-date-picker v-model="filters.start_date" type="date" :placeholder="$t('start_date')" />
-            </div>
-            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
-                <label>{{ $t('end_date') }}</label>
-                <el-date-picker v-model="filters.end_date" type="date" :placeholder="$t('end_date')" />
+            <!-- One picker for both ends, with the common spans one click away.
+                 Dates travel as plain YYYY-MM-DD strings: the two Date pickers
+                 this replaces were sent through toISOString(), which is UTC, so
+                 in Damascus the day picked arrived as the day before. -->
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field filter-field--range">
+                <label>{{ $t('date_range') }}</label>
+                <el-date-picker
+                    v-model="customRange"
+                    type="daterange"
+                    value-format="YYYY-MM-DD"
+                    unlink-panels
+                    :shortcuts="rangeShortcuts"
+                    :start-placeholder="$t('start_date')"
+                    :end-placeholder="$t('end_date')"
+                    :range-separator="$t('to')"
+                />
             </div>
 
             <template #advanced>
@@ -86,12 +89,34 @@
                 </div>
             </template>
 
-            <template #actions>
-                <el-button type="primary" :icon="Search" @click="applyFilters">
-                    {{ $t('apply_filters') }}
+        </AdminFilterBar>
+
+        <!-- What the numbers below are for, in words, with each part one click
+             from undone. Filters now apply as they change, and several are set
+             from elsewhere — a breakdown row, the collapsed advanced panel, a
+             shared link — so the scope has to be readable without opening
+             anything. -->
+        <div class="active-filters" aria-live="polite">
+            <span class="active-filters-label">{{ $t('sr_showing') }}</span>
+            <template v-if="activeFilterChips.length">
+                <el-tag
+                    v-for="chip in activeFilterChips"
+                    :key="chip.key"
+                    closable
+                    effect="plain"
+                    round
+                    class="active-filter-chip"
+                    @close="clearFilter(chip.key)"
+                >
+                    <span class="active-filter-name">{{ chip.label }}:</span> {{ chip.value }}
+                </el-tag>
+                <el-button link type="primary" class="active-filters-clear" @click="resetFilters">
+                    {{ $t('clear_all') }}
                 </el-button>
             </template>
-        </AdminFilterBar>
+            <span v-else-if="!awaitingRange" class="active-filters-all">{{ $t('sr_everything') }}</span>
+            <span v-if="awaitingRange" class="active-filters-hint">{{ $t('sr_pick_range_hint') }}</span>
+        </div>
 
         <el-tabs v-model="activeTab" class="report-tabs">
             <el-tab-pane :label="$t('invoices')" name="invoices">
@@ -486,11 +511,12 @@
 
 <script setup>
 import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import { formatDate as formatSalesDate } from '@/utils/sales';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
+import { Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
@@ -548,7 +574,10 @@ const loadWarehouses = async () => {
  * difference, for no benefit, since the server already does this correctly.
  * Only 'custom' has dates the server cannot derive on its own.
  * ------------------------------------------------------------------ */
-const filters = reactive({
+const PERIOD_PRESETS = ['all', 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'];
+const GROUPINGS = ['day', 'week', 'month', 'employee', 'customer', 'warehouse', 'status'];
+
+const emptyFilters = () => ({
     employee_id: null,
     customer_id: null,
     warehouse_id: null,
@@ -559,10 +588,101 @@ const filters = reactive({
     group_by: 'day',
 });
 
-const toApiDate = (date) => {
-    const d = date instanceof Date ? date : new Date(date);
-    return d.toISOString().split('T')[0];
+/* ------------------------------------------------------------------ *
+ * The filters live in the address bar, so a refresh keeps the report on
+ * screen and a link hands someone else exactly this view. Short names keep
+ * the URL readable; empty filters are left out of it.
+ * ------------------------------------------------------------------ */
+const URL_KEYS = {
+    employee_id: 'employee',
+    customer_id: 'customer',
+    warehouse_id: 'warehouse',
+    status: 'status',
+    date_filter_type: 'period',
+    start_date: 'from',
+    end_date: 'to',
+    group_by: 'group',
 };
+
+const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+
+const filtersFromQuery = (query) => {
+    const next = emptyFilters();
+    const id = (value) => (/^\d+$/.test(String(value || '')) ? Number(value) : null);
+    next.employee_id = id(query.employee);
+    next.customer_id = id(query.customer);
+    next.warehouse_id = id(query.warehouse);
+    if (ORDER_STATUSES.includes(query.status)) next.status = query.status;
+    if (PERIOD_PRESETS.includes(query.period)) next.date_filter_type = query.period;
+    if (next.date_filter_type === 'custom') {
+        if (isIsoDate(query.from)) next.start_date = query.from;
+        if (isIsoDate(query.to)) next.end_date = query.to;
+    }
+    if (GROUPINGS.includes(query.group)) next.group_by = query.group;
+    return next;
+};
+
+const filtersToQuery = () => {
+    const defaults = emptyFilters();
+    const query = {};
+    for (const [field, key] of Object.entries(URL_KEYS)) {
+        const value = filters[field];
+        if (value === null || value === '' || value === defaults[field]) continue;
+        if ((field === 'start_date' || field === 'end_date') && filters.date_filter_type !== 'custom') continue;
+        query[key] = String(value);
+    }
+    return query;
+};
+
+const filters = reactive(filtersFromQuery(route.query));
+
+/** A calendar date as YYYY-MM-DD in local time — not toISOString(), which is UTC. */
+const toApiDate = (date) => {
+    if (isIsoDate(date)) return date;
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const periodLabel = (preset) => (preset === 'all' ? t('sr_all_time') : t(preset));
+
+/** Both ends of the custom period, as the range picker reads and writes them. */
+const customRange = computed({
+    get: () => (filters.start_date && filters.end_date ? [filters.start_date, filters.end_date] : null),
+    set: (range) => {
+        filters.start_date = range?.[0] || null;
+        filters.end_date = range?.[1] || null;
+    },
+});
+
+/** "Custom" is chosen but no dates yet: nothing to report until there are. */
+const awaitingRange = computed(() => filters.date_filter_type === 'custom' && !filters.start_date && !filters.end_date);
+
+const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+};
+
+const rangeShortcuts = computed(() => [
+    { text: t('sr_last_7_days'), value: () => [daysAgo(6), new Date()] },
+    { text: t('sr_last_30_days'), value: () => [daysAgo(29), new Date()] },
+    { text: t('sr_last_90_days'), value: () => [daysAgo(89), new Date()] },
+    {
+        text: t('sr_this_quarter'),
+        value: () => {
+            const now = new Date();
+            return [new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1), now];
+        },
+    },
+    {
+        text: t('sr_last_year'),
+        value: () => {
+            const year = new Date().getFullYear() - 1;
+            return [new Date(year, 0, 1), new Date(year, 11, 31)];
+        },
+    },
+]);
 
 const baseFilterParams = () => {
     const params = { date_filter_type: filters.date_filter_type || 'all' };
@@ -988,17 +1108,34 @@ const applyFilters = () => {
 };
 
 /**
- * Switch grouping from the empty chart's own suggestion.
+ * Filters apply as they change: there used to be an Apply button, and a
+ * report showing the old numbers under freshly changed filters looked like an
+ * answer to the new question. Changes are gathered for a moment, so clearing
+ * two chips or stepping through a select is one reload, not several.
  *
- * Goes through applyFilters() rather than only setting the value: the orders
- * trend is fetched *with* group_by, so changing it without a reload would
- * leave that tab charting the previous grouping's rows.
+ * group_by is watched with the rest: the orders trend is fetched *with* it, so
+ * changing it without a reload would leave that tab charting the previous
+ * grouping's rows.
  */
-const applyGrouping = (grouping) => {
-    if (filters.group_by === grouping) return;
+let filterReloadTimer = null;
+watch(
+    () => ({ ...filters }),
+    () => {
+        clearTimeout(filterReloadTimer);
+        filterReloadTimer = setTimeout(() => {
+            const query = { ...filtersToQuery(), ...(route.query.tab ? { tab: route.query.tab } : {}) };
+            router.replace({ query });
+            // A custom period with no dates yet would report on everything —
+            // the opposite of what picking "custom" asked for.
+            if (awaitingRange.value) return;
+            applyFilters();
+        }, 300);
+    },
+);
 
+/** Switch grouping from the empty chart's own suggestion. */
+const applyGrouping = (grouping) => {
     filters.group_by = grouping;
-    applyFilters();
 };
 
 /** Which breakdown row each panel should show as the current scope. */
@@ -1024,21 +1161,49 @@ const applyDimensionFilter = ({ type, id }) => {
     if (!field) return;
 
     filters[field] = id ?? null;
-    applyFilters();
 };
 
 const resetFilters = () => {
-    Object.assign(filters, {
-        employee_id: null, customer_id: null, warehouse_id: null, status: '',
-        date_filter_type: 'all', start_date: null, end_date: null, group_by: 'day',
-    });
+    // The chart grouping is a way of looking, not part of the scope: it stays.
+    Object.assign(filters, { ...emptyFilters(), group_by: filters.group_by });
     invoiceSort.value = null;
     ordersSort.value = null;
     // The header arrow is the table's own state; clearing ours would otherwise
     // leave it pointing at a sort no longer being applied.
     invoiceTableRef.value?.clearSort();
     ordersTableRef.value?.clearSort();
-    applyFilters();
+};
+
+/* ------------------------------------------------------------------ *
+ * Active filter chips
+ * ------------------------------------------------------------------ */
+const nameOf = (list, id) => list.value.find((row) => Number(row.id) === Number(id))?.name || `#${id}`;
+
+const periodChipValue = () => {
+    if (filters.date_filter_type !== 'custom') return periodLabel(filters.date_filter_type);
+    const from = filters.start_date ? formatDate(filters.start_date) : '…';
+    const to = filters.end_date ? formatDate(filters.end_date) : '…';
+    return `${from} – ${to}`;
+};
+
+const activeFilterChips = computed(() => {
+    const chips = [];
+    if (filters.date_filter_type !== 'all' && !awaitingRange.value) {
+        chips.push({ key: 'period', label: t('sr_period'), value: periodChipValue() });
+    }
+    if (filters.employee_id) chips.push({ key: 'employee_id', label: t('employee'), value: nameOf(employees, filters.employee_id) });
+    if (filters.customer_id) chips.push({ key: 'customer_id', label: t('customer'), value: nameOf(customers, filters.customer_id) });
+    if (filters.warehouse_id) chips.push({ key: 'warehouse_id', label: t('warehouse'), value: nameOf(warehouses, filters.warehouse_id) });
+    if (filters.status) chips.push({ key: 'status', label: t('status'), value: getStatusText(filters.status) });
+    return chips;
+});
+
+const clearFilter = (key) => {
+    if (key === 'period') {
+        Object.assign(filters, { date_filter_type: 'all', start_date: null, end_date: null });
+        return;
+    }
+    filters[key] = key === 'status' ? '' : null;
 };
 
 const exporting = ref(false);
@@ -1077,11 +1242,11 @@ const activeTabLabel = computed(() =>
     activeTab.value === 'invoices' ? t('invoices') : t('sales_orders_pipeline')
 );
 
-const formatDate = (value) => {
-    if (!value) return '-';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('ar-SA');
-};
+// The shared sales formatter: Gregorian, in the interface's language. This
+// used toLocaleDateString('ar-SA'), which most browsers render in the Hijri
+// calendar — so the report dated its invoices differently from every other
+// sales screen.
+const formatDate = (value) => (value ? formatSalesDate(value) : '-');
 
 const STATUS_TAG_TYPES = { pending: 'info', confirmed: 'warning', processing: 'primary', shipped: 'success', delivered: 'success', cancelled: 'danger' };
 const getStatusType = (status) => STATUS_TAG_TYPES[status] || 'info';
@@ -1106,6 +1271,55 @@ onMounted(() => {
 .empty-alert {
     margin-bottom: 1.25rem;
     border-radius: 0.9rem;
+}
+
+.filter-field--range {
+    /* Two dates and a separator do not fit the grid's one-field minimum. */
+    grid-column: span 2;
+}
+
+.active-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin: -0.5rem 0 1rem;
+    min-height: 28px;
+}
+
+.active-filters-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.active-filter-chip {
+    font-size: 0.82rem;
+}
+
+.active-filter-name {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.active-filters-all {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.active-filters-clear {
+    font-size: 0.82rem;
+}
+
+.active-filters-hint {
+    font-size: 0.82rem;
+    color: var(--el-color-warning-dark-2, #b45309);
+}
+
+@media (max-width: 640px) {
+    .filter-field--range {
+        grid-column: auto;
+    }
 }
 
 .report-tabs :deep(.el-tabs__content) {

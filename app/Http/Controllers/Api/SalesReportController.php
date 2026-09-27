@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SalesReportController extends Controller
@@ -23,7 +24,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
@@ -198,7 +199,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
@@ -266,7 +267,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -310,7 +311,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -446,7 +447,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -583,7 +584,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
         ]);
 
         $query = WarehouseInventory::query()
@@ -648,7 +649,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -767,7 +768,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
             'sort' => 'nullable|in:profit_asc,profit_desc,margin_asc,margin_desc',
@@ -953,7 +954,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1068,7 +1069,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1177,7 +1178,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
@@ -1228,7 +1229,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
@@ -1281,7 +1282,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1355,7 +1356,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
         ]);
 
         $query = WarehouseInventory::query()->with(['product', 'warehouse']);
@@ -1405,7 +1406,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1478,149 +1479,90 @@ class SalesReportController extends Controller
 
     private function applyDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
-
-        if ($request->filled('date')) {
-            $query->whereDate('order_date', $request->date);
-
-            return;
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('order_date', [$request->start_date, $request->end_date]);
-
-            return;
-        }
-
-        if ($request->filled('start_date')) {
-            $query->whereDate('order_date', '>=', $request->start_date);
-
-            return;
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('order_date', '<=', $request->end_date);
-
-            return;
-        }
-
-        if ($type === 'today') {
-            $query->whereDate('order_date', today());
-
-            return;
-        }
-
-        if ($type === 'yesterday') {
-            $query->whereDate('order_date', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('order_date', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('order_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('order_date', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        $this->applyDateRange($query, 'order_date', $request);
     }
 
     private function applyInventoryDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
-
-        if ($request->filled('date')) {
-            $query->whereDate('updated_at', $request->date);
-
-            return;
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('updated_at', [$request->start_date, $request->end_date]);
-
-            return;
-        }
-
-        if ($type === 'today') {
-            $query->whereDate('updated_at', today());
-
-            return;
-        }
-
-        if ($type === 'yesterday') {
-            $query->whereDate('updated_at', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('updated_at', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('updated_at', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('updated_at', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        $this->applyDateRange($query, 'updated_at', $request);
     }
 
     private function applyInvoiceDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
+        $this->applyDateRange($query, 'created_at', $request);
+    }
 
+    /**
+     * Narrows `$column` to the period the request asks for, whole days at both
+     * ends.
+     *
+     * The three filters used to be three copies of whereBetween($column,
+     * [from, to]) with bare dates. On a timestamp column the end date reads as
+     * its midnight, so "this month" dropped every invoice raised on the
+     * month's last day, and a custom range lost its end day. Invoices also
+     * ignored a range with only one end set. Comparing on the date part fixes
+     * all of it, and one resolver keeps the three from drifting apart again.
+     */
+    private function applyDateRange($query, string $column, Request $request): void
+    {
+        [$from, $to] = $this->resolveDateRange($request);
+
+        // Qualified with the query's own table: the invoice summary joins the
+        // lines and products to cost the set, and all three have a created_at.
+        if (! str_contains($column, '.')) {
+            $table = $query instanceof \Illuminate\Database\Eloquent\Builder
+                ? $query->getModel()->getTable()
+                : $query->from;
+            if (is_string($table) && $table !== '') {
+                $column = $table.'.'.$column;
+            }
+        }
+
+        if ($from !== null) {
+            $query->whereDate($column, '>=', $from);
+        }
+
+        if ($to !== null) {
+            $query->whereDate($column, '<=', $to);
+        }
+    }
+
+    /**
+     * The requested period as [from, to] date strings, either end null for
+     * open. An explicit date or range wins over the named preset.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolveDateRange(Request $request): array
+    {
         if ($request->filled('date')) {
-            $query->whereDate('created_at', $request->date);
+            $day = Carbon::parse($request->input('date'))->toDateString();
 
-            return;
+            return [$day, $day];
         }
 
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
-
-            return;
+        if ($request->filled('start_date') || $request->filled('end_date')) {
+            return [
+                $request->filled('start_date') ? Carbon::parse($request->input('start_date'))->toDateString() : null,
+                $request->filled('end_date') ? Carbon::parse($request->input('end_date'))->toDateString() : null,
+            ];
         }
 
-        if ($type === 'today') {
-            $query->whereDate('created_at', today());
+        $now = now();
 
-            return;
-        }
+        // NoOverflow: on the 31st, subMonth() lands back in the current month
+        // (31 March less a month is "31 February", i.e. 3 March).
+        $lastMonth = $now->copy()->subMonthNoOverflow();
 
-        if ($type === 'yesterday') {
-            $query->whereDate('created_at', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('created_at', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('created_at', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('created_at', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        return match ($request->input('date_filter_type', 'all')) {
+            'today' => [$now->toDateString(), $now->toDateString()],
+            'yesterday' => [$now->copy()->subDay()->toDateString(), $now->copy()->subDay()->toDateString()],
+            'this_week' => [$now->copy()->startOfWeek()->toDateString(), $now->copy()->endOfWeek()->toDateString()],
+            'this_month' => [$now->copy()->startOfMonth()->toDateString(), $now->copy()->endOfMonth()->toDateString()],
+            'last_month' => [$lastMonth->copy()->startOfMonth()->toDateString(), $lastMonth->copy()->endOfMonth()->toDateString()],
+            'this_year' => [$now->copy()->startOfYear()->toDateString(), $now->copy()->endOfYear()->toDateString()],
+            default => [null, null],
+        };
     }
 
     private function calculateSummary($query)
