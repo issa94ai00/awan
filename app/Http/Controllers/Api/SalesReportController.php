@@ -707,6 +707,7 @@ class SalesReportController extends Controller
             'date' => 'nullable|date',
             'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query();
@@ -722,6 +723,13 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // The status breakdown sees every status, so a report can say how many
+        // cancelled invoices it left out; everything else may leave them out.
+        $statusQuery = $query->clone();
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
         }
 
         $customerRows = $query
@@ -791,6 +799,25 @@ class SalesReportController extends Controller
             ];
         });
 
+        // Per status, so a report can leave cancelled invoices out of what
+        // was billed — `overall` below counts them — and say how many it left.
+        $statusSummary = $statusQuery
+            ->select('status')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
+            ->groupBy('status')
+            ->get()
+            ->map(fn ($item) => [
+                'status' => $item->status,
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                'paid_amount' => (float) ($item->paid_amount ?? 0),
+                'due_amount' => (float) ($item->due_amount ?? 0),
+            ])
+            ->values();
+
         return response()->json([
             'success' => true,
             'message' => 'Invoice dimensions retrieved successfully',
@@ -798,12 +825,117 @@ class SalesReportController extends Controller
                 'employee_summary' => $employeeSummary,
                 'customer_summary' => $customerSummary,
                 'warehouse_summary' => $warehouseSummary,
+                'status_summary' => $statusSummary,
                 'overall' => [
                     'total_invoices' => (int) $query->count(),
                     'total_invoiced' => (float) $query->sum('total'),
                     'paid_amount' => (float) $query->sum('paid_amount'),
                     'due_amount' => (float) $query->sum('due_amount'),
                 ],
+            ],
+        ]);
+    }
+
+    /**
+     * Billed and collected over time, by day, week or month.
+     *
+     * Grouped by calendar day in SQL — DATE() reads the same in MySQL and
+     * SQLite, where YEAR()/WEEK() do not — and folded into weeks or months
+     * here, which a day-per-row result keeps cheap. Empty periods are filled
+     * in, so a quiet week shows as a zero rather than as the line skipping it.
+     *
+     * Cancelled invoices are left out unless they are what was asked for:
+     * a trend of billing that counts voided bills is not one.
+     */
+    public function invoiceTrend(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
+            'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'group_by' => 'nullable|in:day,week,month',
+        ]);
+
+        $query = Invoice::query();
+        $this->applyInvoiceDateFilters($query, $request);
+
+        foreach (['customer_id' => 'customer_id', 'warehouse_id' => 'warehouse_id', 'employee_id' => 'assigned_employee_id'] as $param => $column) {
+            if ($request->filled($param)) {
+                $query->where($column, $request->input($param));
+            }
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        } else {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
+        }
+
+        $days = $query
+            ->selectRaw('DATE(created_at) as day')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get();
+
+        $groupBy = $request->input('group_by', 'day');
+        $bucket = fn (Carbon $date) => match ($groupBy) {
+            'week' => $date->copy()->startOfWeek()->toDateString(),
+            'month' => $date->format('Y-m'),
+            default => $date->toDateString(),
+        };
+        $step = fn (Carbon $date) => match ($groupBy) {
+            'week' => $date->addWeek(),
+            'month' => $date->addMonthNoOverflow(),
+            default => $date->addDay(),
+        };
+
+        $rows = [];
+        foreach ($days as $day) {
+            $key = $bucket(Carbon::parse($day->day));
+            $rows[$key] ??= ['period' => $key, 'total_invoices' => 0, 'total_invoiced' => 0.0, 'paid_amount' => 0.0, 'due_amount' => 0.0];
+            $rows[$key]['total_invoices'] += (int) $day->total_invoices;
+            $rows[$key]['total_invoiced'] += (float) $day->total_invoiced;
+            $rows[$key]['paid_amount'] += (float) $day->paid_amount;
+            $rows[$key]['due_amount'] += (float) $day->due_amount;
+        }
+
+        // From the start of the period asked for (or the first invoice) to its
+        // end, but never past today: a month in progress is not a month of
+        // zeros still to come.
+        [$from, $to] = $this->resolveDateRange($request);
+        $first = $from ?? $days->first()?->day;
+        $last = $to ?? $days->last()?->day;
+        if ($first && $last) {
+            $end = Carbon::parse(min($last, now()->toDateString()));
+            $cursor = Carbon::parse($first);
+            if ($groupBy === 'week') {
+                $cursor->startOfWeek();
+            } elseif ($groupBy === 'month') {
+                $cursor->startOfMonth();
+            }
+            // Bounded, so "all time" by day cannot run to thousands of rows.
+            for ($n = 0; $cursor->lte($end) && $n < 400; $n++, $step($cursor)) {
+                $key = $bucket($cursor);
+                $rows[$key] ??= ['period' => $key, 'total_invoices' => 0, 'total_invoiced' => 0.0, 'paid_amount' => 0.0, 'due_amount' => 0.0];
+            }
+        }
+        ksort($rows);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice trend retrieved successfully',
+            'data' => [
+                'group_by' => $groupBy,
+                'trend' => array_values($rows),
             ],
         ]);
     }
@@ -1012,6 +1144,7 @@ class SalesReportController extends Controller
             'date' => 'nullable|date',
             'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query();
@@ -1031,6 +1164,11 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // Asked for by a report that leaves voided bills out of its billing.
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
         }
 
         // Same shape as salesPerformance(): revenue/count straight off

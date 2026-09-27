@@ -493,6 +493,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/reports/inventory/export', [SalesReportController::class, 'inventoryExport'])->name('api.admin.reports.inventory.export');
             Route::get('/reports/invoices', [SalesReportController::class, 'invoiceReport'])->name('api.admin.reports.invoices.index');
             Route::get('/reports/invoices/dimensions', [SalesReportController::class, 'invoiceDimensions'])->name('api.admin.reports.invoices.dimensions');
+            Route::get('/reports/invoices/trend', [SalesReportController::class, 'invoiceTrend'])->name('api.admin.reports.invoices.trend');
             Route::get('/reports/invoices/performance', [SalesReportController::class, 'invoicePerformance'])->name('api.admin.reports.invoices.performance');
             Route::get('/reports/invoices/product-profitability', [SalesReportController::class, 'invoiceProductProfitability'])->name('api.admin.reports.invoices.product-profitability');
             Route::get('/reports/invoices/top-performers', [SalesReportController::class, 'invoiceTopPerformers'])->name('api.admin.reports.invoices.top-performers');
