@@ -45,6 +45,11 @@
             >
                 <el-option v-for="s in STATUSES" :key="s" :label="statusText(s)" :value="s" />
             </el-select>
+            <!-- The previous figures stay up, dimmed, while new ones load; this
+                 says so in words. -->
+            <span v-if="refreshing && ready.orders" class="updating-label" aria-live="polite">
+                <el-icon class="is-loading"><Loading /></el-icon>{{ $t('sr_updating') }}
+            </span>
             <span class="period-label">
                 <el-icon><Calendar /></el-icon>{{ periodLabel }}
             </span>
@@ -55,15 +60,24 @@
 
         <el-result v-if="loadError" icon="error" :title="$t('failed_to_load_report')">
             <template #extra>
-                <el-button type="primary" :icon="Refresh" @click="loadAll">{{ $t('cat_admin_retry') }}</el-button>
+                <el-button type="primary" :icon="Refresh" :loading="ordersLoading" @click="loadAll">{{ $t('cat_admin_retry') }}</el-button>
             </template>
         </el-result>
 
         <template v-else>
             <!-- ── KPIs ── -->
+            <!-- Each card waits only for the request its figure comes from: the
+                 planned margin is the slow one, and the other four no longer
+                 wait for it. -->
             <AdminStatGrid :min="200">
-                <el-card v-for="card in kpis" :key="card.key" shadow="hover" class="stat-card">
-                    <el-skeleton v-if="firstLoad" :rows="2" animated />
+                <el-card
+                    v-for="card in kpis"
+                    :key="card.key"
+                    shadow="hover"
+                    class="stat-card"
+                    :class="{ 'is-refreshing': ready[card.source] && card.loading }"
+                >
+                    <el-skeleton v-if="!ready[card.source]" :rows="2" animated />
                     <div v-else class="stat-inner">
                         <div class="stat-icon" :class="card.tone"><el-icon><component :is="card.icon" /></el-icon></div>
                         <div class="stat-details">
@@ -81,7 +95,7 @@
             </AdminStatGrid>
 
             <el-empty
-                v-if="!firstLoad && !loading && !summary.total_orders"
+                v-if="ready.orders && !ordersLoading && !summary.total_orders"
                 class="panel-card empty-report"
                 :description="activeFilterCount ? $t('prpt_no_orders_filtered') : $t('prpt_no_orders')"
                 :image-size="100"
@@ -97,7 +111,8 @@
                             <h3>{{ $t('prpt_spend_over_time') }}</h3>
                             <el-segmented v-model="groupBy" :options="groupOptions" size="small" @change="onGroupChange" />
                         </header>
-                        <div v-loading="trendLoading" class="chart-wrap">
+                        <el-skeleton v-if="!ready.trend" :rows="7" animated class="chart-skeleton" />
+                        <div v-else class="chart-wrap" :class="{ 'is-refreshing': trendLoading }">
                             <div ref="trendChartRef" class="chart" />
                             <p v-if="!trendLoading && !trend.length" class="chart-empty">{{ $t('no_data_for_current_filters') }}</p>
                         </div>
@@ -107,8 +122,9 @@
                         <header class="card-head">
                             <h3>{{ $t('prpt_spend_by_supplier') }}</h3>
                         </header>
-                        <el-skeleton v-if="firstLoad" :rows="5" animated />
-                        <ul v-else class="share-list">
+                        <el-skeleton v-if="!ready.dims" :rows="5" animated />
+                        <p v-else-if="!supplierShare.length" class="muted share-empty">{{ $t('no_data_for_current_filters') }}</p>
+                        <ul v-else class="share-list" :class="{ 'is-refreshing': dimsLoading }">
                             <li v-for="row in supplierShare" :key="row.key">
                                 <button
                                     v-if="row.supplier_id"
@@ -133,7 +149,9 @@
                 <section class="panel-card detail-card">
                     <el-tabs v-model="tab" class="detail-tabs" @tab-change="writeQuery">
                         <!-- Orders -->
-                        <el-tab-pane name="orders">
+                        <!-- lazy: a tab's table is built the first time it is
+                             opened rather than all three on arrival. -->
+                        <el-tab-pane name="orders" lazy>
                             <template #label>
                                 {{ $t('prpt_tab_orders') }} <span class="tab-count">{{ formatCount(pagination.total) }}</span>
                             </template>
@@ -246,11 +264,24 @@
                         </el-tab-pane>
 
                         <!-- Suppliers -->
-                        <el-tab-pane name="suppliers">
+                        <el-tab-pane name="suppliers" lazy>
                             <template #label>
                                 {{ $t('suppliers') }} <span class="tab-count">{{ formatCount(supplierRows.length) }}</span>
                             </template>
-                            <el-table :data="supplierRows" style="width: 100%" :default-sort="{ prop: 'total_spend', order: 'descending' }">
+                            <el-skeleton v-if="!ready.dims" :rows="6" animated />
+                            <!-- Capped in height, with the header pinned, so a long
+                                 supplier list scrolls inside the card. -->
+                            <el-table
+                                v-else
+                                :data="supplierRows"
+                                style="width: 100%"
+                                max-height="560"
+                                :class="{ 'is-refreshing': dimsLoading || perfLoading }"
+                                :default-sort="{ prop: 'total_spend', order: 'descending' }"
+                            >
+                                <template #empty>
+                                    <span class="muted">{{ $t('no_data_for_current_filters') }}</span>
+                                </template>
                                 <el-table-column type="index" width="50" align="center" />
                                 <el-table-column :label="$t('supplier')" min-width="180" prop="supplier_name" sortable>
                                     <template #default="{ row }">
@@ -284,80 +315,86 @@
                         </el-tab-pane>
 
                         <!-- Products -->
-                        <el-tab-pane name="products">
+                        <el-tab-pane name="products" lazy>
+                            <!-- No count until the tab has been opened: the
+                                 figures behind it are only fetched then. -->
                             <template #label>
-                                {{ $t('prpt_tab_products') }} <span class="tab-count">{{ formatCount(products.length) }}</span>
+                                {{ $t('prpt_tab_products') }}
+                                <span v-if="ready.products" class="tab-count">{{ formatCount(products.length) }}</span>
                             </template>
 
-                            <div class="products-toolbar">
-                                <el-input
-                                    v-model="productSearch"
-                                    :prefix-icon="Search"
-                                    clearable
-                                    :placeholder="$t('prpt_search_products')"
-                                    class="product-search"
-                                    @input="productPage = 1"
-                                />
-                                <div v-if="productSpend.summary?.top_spend_product" class="callout">
-                                    <span class="callout-label">{{ $t('top_spend_product') }}</span>
-                                    <strong>{{ productSpend.summary.top_spend_product.product_name }}</strong>
-                                    <span class="muted">{{ formatCurrency(productSpend.summary.top_spend_product.total_cost) }}</span>
+                            <el-skeleton v-if="!ready.products" :rows="8" animated />
+                            <div v-else :class="{ 'is-refreshing': productsLoading }">
+                                <div class="products-toolbar">
+                                    <el-input
+                                        v-model="productSearch"
+                                        :prefix-icon="Search"
+                                        clearable
+                                        :placeholder="$t('prpt_search_products')"
+                                        class="product-search"
+                                        @input="productPage = 1"
+                                    />
+                                    <div v-if="productSpend.summary?.top_spend_product" class="callout">
+                                        <span class="callout-label">{{ $t('top_spend_product') }}</span>
+                                        <strong>{{ productSpend.summary.top_spend_product.product_name }}</strong>
+                                        <span class="muted">{{ formatCurrency(productSpend.summary.top_spend_product.total_cost) }}</span>
+                                    </div>
+                                    <div v-if="productSpend.summary?.lowest_margin_product" class="callout is-warn">
+                                        <span class="callout-label">{{ $t('lowest_margin_product') }}</span>
+                                        <strong>{{ productSpend.summary.lowest_margin_product.product_name }}</strong>
+                                        <span :class="marginTone(productSpend.summary.lowest_margin_product.planned_margin)">
+                                            {{ formatPercent(productSpend.summary.lowest_margin_product.planned_margin, 1) }}
+                                        </span>
+                                    </div>
                                 </div>
-                                <div v-if="productSpend.summary?.lowest_margin_product" class="callout is-warn">
-                                    <span class="callout-label">{{ $t('lowest_margin_product') }}</span>
-                                    <strong>{{ productSpend.summary.lowest_margin_product.product_name }}</strong>
-                                    <span :class="marginTone(productSpend.summary.lowest_margin_product.planned_margin)">
-                                        {{ formatPercent(productSpend.summary.lowest_margin_product.planned_margin, 1) }}
+
+                                <el-table :data="pagedProducts" style="width: 100%" @sort-change="onProductSort">
+                                    <template #empty>
+                                        <span class="muted">{{ $t('no_data_for_current_filters') }}</span>
+                                    </template>
+                                    <el-table-column :label="$t('product')" prop="product_name" min-width="200" sortable="custom" />
+                                    <el-table-column :label="$t('quantity')" prop="quantity" width="100" align="center" sortable="custom">
+                                        <template #default="{ row }">{{ formatCount(row.quantity) }}</template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('cost')" prop="total_cost" min-width="150" align="right" sortable="custom">
+                                        <template #default="{ row }">
+                                            <div class="cell-stack num">
+                                                <strong>{{ formatCurrency(row.total_cost) }}</strong>
+                                                <span class="cell-secondary">{{ formatPercent(row.share, 1) }}</span>
+                                            </div>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('planned_revenue')" prop="total_planned_revenue" min-width="140" align="right" sortable="custom">
+                                        <template #default="{ row }"><span class="num">{{ formatCurrency(row.total_planned_revenue) }}</span></template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('planned_profit')" prop="planned_profit" min-width="140" align="right" sortable="custom">
+                                        <template #default="{ row }">
+                                            <span class="num" :class="row.planned_profit >= 0 ? 'tone-good' : 'tone-bad'">{{ formatCurrency(row.planned_profit) }}</span>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('margin')" prop="planned_margin" width="110" align="right" sortable="custom">
+                                        <template #default="{ row }">
+                                            <span class="num" :class="marginTone(row.planned_margin)">{{ formatPercent(row.planned_margin, 1) }}</span>
+                                        </template>
+                                    </el-table-column>
+                                </el-table>
+
+                                <div v-if="filteredProducts.length > PRODUCT_PAGE" class="pagination-row">
+                                    <span class="muted">
+                                        {{ $t('prod_admin_range', {
+                                            from: (productPage - 1) * PRODUCT_PAGE + 1,
+                                            to: Math.min(productPage * PRODUCT_PAGE, filteredProducts.length),
+                                            total: formatCount(filteredProducts.length),
+                                        }) }}
                                     </span>
+                                    <el-pagination
+                                        v-model:current-page="productPage"
+                                        :page-size="PRODUCT_PAGE"
+                                        :total="filteredProducts.length"
+                                        layout="prev, pager, next"
+                                        background
+                                    />
                                 </div>
-                            </div>
-
-                            <el-table :data="pagedProducts" style="width: 100%" @sort-change="onProductSort">
-                                <template #empty>
-                                    <span class="muted">{{ $t('no_data_for_current_filters') }}</span>
-                                </template>
-                                <el-table-column :label="$t('product')" prop="product_name" min-width="200" sortable="custom" />
-                                <el-table-column :label="$t('quantity')" prop="quantity" width="100" align="center" sortable="custom">
-                                    <template #default="{ row }">{{ formatCount(row.quantity) }}</template>
-                                </el-table-column>
-                                <el-table-column :label="$t('cost')" prop="total_cost" min-width="150" align="right" sortable="custom">
-                                    <template #default="{ row }">
-                                        <div class="cell-stack num">
-                                            <strong>{{ formatCurrency(row.total_cost) }}</strong>
-                                            <span class="cell-secondary">{{ formatPercent(row.share, 1) }}</span>
-                                        </div>
-                                    </template>
-                                </el-table-column>
-                                <el-table-column :label="$t('planned_revenue')" prop="total_planned_revenue" min-width="140" align="right" sortable="custom">
-                                    <template #default="{ row }"><span class="num">{{ formatCurrency(row.total_planned_revenue) }}</span></template>
-                                </el-table-column>
-                                <el-table-column :label="$t('planned_profit')" prop="planned_profit" min-width="140" align="right" sortable="custom">
-                                    <template #default="{ row }">
-                                        <span class="num" :class="row.planned_profit >= 0 ? 'tone-good' : 'tone-bad'">{{ formatCurrency(row.planned_profit) }}</span>
-                                    </template>
-                                </el-table-column>
-                                <el-table-column :label="$t('margin')" prop="planned_margin" width="110" align="right" sortable="custom">
-                                    <template #default="{ row }">
-                                        <span class="num" :class="marginTone(row.planned_margin)">{{ formatPercent(row.planned_margin, 1) }}</span>
-                                    </template>
-                                </el-table-column>
-                            </el-table>
-
-                            <div v-if="filteredProducts.length > PRODUCT_PAGE" class="pagination-row">
-                                <span class="muted">
-                                    {{ $t('prod_admin_range', {
-                                        from: (productPage - 1) * PRODUCT_PAGE + 1,
-                                        to: Math.min(productPage * PRODUCT_PAGE, filteredProducts.length),
-                                        total: formatCount(filteredProducts.length),
-                                    }) }}
-                                </span>
-                                <el-pagination
-                                    v-model:current-page="productPage"
-                                    :page-size="PRODUCT_PAGE"
-                                    :total="filteredProducts.length"
-                                    layout="prev, pager, next"
-                                    background
-                                />
                             </div>
                         </el-tab-pane>
                     </el-tabs>
@@ -373,9 +410,8 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import {
-    Calendar, Coin, DataLine, Download, InfoFilled, PieChart, Refresh, RefreshLeft, Search, ShoppingCart, TrendCharts,
+    Calendar, Coin, DataLine, Download, InfoFilled, Loading, PieChart, Refresh, RefreshLeft, Search, ShoppingCart, TrendCharts,
 } from '@element-plus/icons-vue';
-import * as echarts from 'echarts';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
@@ -480,11 +516,22 @@ const periodLabel = computed(() => (filters.range?.length
     : t('prpt_all_time')));
 
 // ── Data ─────────────────────────────────────────────────────────────────
-const firstLoad = ref(true);
-const loading = ref(false);
+// Each part of the report loads on its own, because each comes from its own
+// request and they are far from equally quick: performance and product spend
+// cost every line of every matching order in PHP. They used to be fetched as
+// one Promise.all, so the order count and total spend — the cheapest figures
+// on the page — sat in skeletons until the slowest report was done, and one
+// failed request turned the whole page into an error.
+//
+// `ready` marks a part whose first load has finished: before that it shows a
+// skeleton; after it, a refresh keeps the previous figures on screen, dimmed.
+const ready = reactive({ orders: false, trend: false, dims: false, perf: false, products: false });
 const loadError = ref(false);
 const ordersLoading = ref(false);
 const trendLoading = ref(false);
+const dimsLoading = ref(false);
+const perfLoading = ref(false);
+const productsLoading = ref(false);
 const exporting = ref(false);
 
 const orders = ref([]);
@@ -494,14 +541,32 @@ const dimensions = ref({ supplier_summary: [], status_summary: [] });
 const performance = ref({ summary: {}, supplier_summary: [] });
 const productSpend = ref({ summary: {}, product_summary: [] });
 
-// A slow earlier response must not land over a newer one.
-let loadSeq = 0;
-let ordersSeq = 0;
-let trendSeq = 0;
+const refreshing = computed(() => ordersLoading.value || trendLoading.value || dimsLoading.value
+    || perfLoading.value || productsLoading.value);
 
-const fetchOrders = async () => {
-    const seq = ++ordersSeq;
-    ordersLoading.value = true;
+/**
+ * Wraps a loader so only its latest call lands — a slow response to an old
+ * filter must not overwrite a newer one — and only that call clears the
+ * spinner. `run` receives `superseded()` to check after each await.
+ */
+const latestOnly = (loading, readyKey, run) => {
+    let token = 0;
+    return async () => {
+        const mine = ++token;
+        loading.value = true;
+        try {
+            await run(() => mine !== token);
+        } finally {
+            if (mine === token) {
+                loading.value = false;
+                ready[readyKey] = true;
+            }
+        }
+    };
+};
+
+/** The list and the summary behind the headline figures. */
+const fetchOrders = latestOnly(ordersLoading, 'orders', async (superseded) => {
     try {
         const res = await api.get('/admin/reports/purchases', {
             params: {
@@ -511,60 +576,80 @@ const fetchOrders = async () => {
                 ...(ordersSort.value ? { sort: ordersSort.value } : {}),
             },
         });
-        if (seq !== ordersSeq) return;
+        if (superseded()) return;
         const data = res.data?.data || {};
         orders.value = data.purchase_orders || [];
         summary.value = data.summary || {};
         pagination.total = data.pagination?.total || 0;
-    } finally {
-        if (seq === ordersSeq) ordersLoading.value = false;
+        loadError.value = false;
+    } catch {
+        // Without the list there is no report to show; the other parts
+        // failing only empties their own card.
+        if (!superseded()) loadError.value = true;
     }
-};
+});
 
-const fetchTrend = async () => {
-    const seq = ++trendSeq;
-    trendLoading.value = true;
+const fetchTrend = latestOnly(trendLoading, 'trend', async (superseded) => {
     try {
         const res = await api.get('/admin/reports/purchases/summary', { params: { ...baseParams(), group_by: groupBy.value } });
-        if (seq !== trendSeq) return;
+        if (superseded()) return;
         trend.value = res.data?.data?.summary || [];
-        await nextTick();
-        renderTrend();
     } catch {
-        if (seq === trendSeq) trend.value = [];
-    } finally {
-        if (seq === trendSeq) trendLoading.value = false;
+        if (!superseded()) trend.value = [];
     }
+});
+
+const fetchDimensions = latestOnly(dimsLoading, 'dims', async (superseded) => {
+    try {
+        const res = await api.get('/admin/reports/purchases/dimensions', { params: baseParams() });
+        if (superseded()) return;
+        dimensions.value = res.data?.data || { supplier_summary: [], status_summary: [] };
+    } catch {
+        if (!superseded()) dimensions.value = { supplier_summary: [], status_summary: [] };
+    }
+});
+
+const fetchPerformance = latestOnly(perfLoading, 'perf', async (superseded) => {
+    try {
+        const res = await api.get('/admin/reports/purchases/performance', { params: baseParams() });
+        if (superseded()) return;
+        performance.value = res.data?.data || { summary: {}, supplier_summary: [] };
+    } catch {
+        if (!superseded()) performance.value = { summary: {}, supplier_summary: [] };
+    }
+});
+
+/**
+ * Product spend feeds only the products tab, so it is fetched the first time
+ * that tab is opened, and again after a filter change only once it is looked
+ * at — not on every change for a tab most visits never open.
+ */
+let productsStale = true;
+const fetchProducts = latestOnly(productsLoading, 'products', async (superseded) => {
+    productsStale = false;
+    try {
+        const res = await api.get('/admin/reports/purchases/product-spend', { params: baseParams() });
+        if (superseded()) return;
+        productSpend.value = res.data?.data || { summary: {}, product_summary: [] };
+    } catch {
+        if (!superseded()) productSpend.value = { summary: {}, product_summary: [] };
+    }
+});
+
+const loadProductsIfNeeded = () => {
+    if (tab.value === 'products' && productsStale) fetchProducts();
 };
 
-/** Everything that depends on the filters, fetched side by side. */
-const loadAll = async () => {
-    const seq = ++loadSeq;
-    loading.value = true;
-    loadError.value = false;
-    const params = baseParams();
-    try {
-        const [, dims, perf, prod] = await Promise.all([
-            fetchOrders(),
-            api.get('/admin/reports/purchases/dimensions', { params }),
-            api.get('/admin/reports/purchases/performance', { params }),
-            api.get('/admin/reports/purchases/product-spend', { params }),
-            fetchTrend(),
-        ]);
-        if (seq !== loadSeq) return;
-        dimensions.value = dims.data?.data || { supplier_summary: [], status_summary: [] };
-        performance.value = perf.data?.data || { summary: {}, supplier_summary: [] };
-        productSpend.value = prod.data?.data || { summary: {}, product_summary: [] };
-    } catch {
-        if (seq === loadSeq) loadError.value = true;
-    } finally {
-        if (seq === loadSeq) {
-            loading.value = false;
-            firstLoad.value = false;
-            await nextTick();
-            renderTrend();
-        }
-    }
+watch(tab, loadProductsIfNeeded);
+
+/** Everything that depends on the filters, each part landing as it arrives. */
+const loadAll = () => {
+    productsStale = true;
+    fetchOrders();
+    fetchTrend();
+    fetchDimensions();
+    fetchPerformance();
+    loadProductsIfNeeded();
 };
 
 const applyFilters = () => {
@@ -600,7 +685,7 @@ const onGroupChange = () => {
 const onPageChange = (sizeChanged) => {
     if (sizeChanged) pagination.current_page = 1;
     writeQuery();
-    fetchOrders().catch(() => ElMessage.error(t('failed_to_load_report')));
+    fetchOrders();
 };
 
 const SORT_FIELDS = { landed_cost: 'landed', cost_variance: 'variance' };
@@ -609,7 +694,7 @@ const onSortChange = ({ prop, order }) => {
     ordersSort.value = field && order ? `${field}_${order === 'ascending' ? 'asc' : 'desc'}` : null;
     pagination.current_page = 1;
     writeQuery();
-    fetchOrders().catch(() => ElMessage.error(t('failed_to_load_report')));
+    fetchOrders();
 };
 
 const ordersDefaultSort = computed(() => {
@@ -636,18 +721,22 @@ const kpis = computed(() => {
     ].filter(Boolean).join(' · ');
 
     return [
-        { key: 'spend', icon: Coin, tone: 'green', title: t('total_spend'), value: formatCurrency(s.total_spend), sub: extras },
+        { key: 'spend', source: 'orders', loading: ordersLoading.value, icon: Coin, tone: 'green', title: t('total_spend'), value: formatCurrency(s.total_spend), sub: extras },
         {
             key: 'orders',
+            source: 'orders',
+            loading: ordersLoading.value,
             icon: ShoppingCart,
             tone: 'blue',
             title: t('total_orders'),
             value: formatCount(s.total_orders || 0),
             sub: t('prpt_open_done', { open: formatCount(open), done: formatCount(done) }),
         },
-        { key: 'avg', icon: DataLine, tone: 'purple', title: t('average_order_value'), value: formatCurrency(s.average_order_value) },
+        { key: 'avg', source: 'orders', loading: ordersLoading.value, icon: DataLine, tone: 'purple', title: t('average_order_value'), value: formatCurrency(s.average_order_value) },
         {
             key: 'variance',
+            source: 'orders',
+            loading: ordersLoading.value,
             icon: TrendCharts,
             tone: variance > 0.005 ? 'red' : 'green',
             title: t('prpt_landed_vs_ordered'),
@@ -660,6 +749,8 @@ const kpis = computed(() => {
         },
         {
             key: 'margin',
+            source: 'perf',
+            loading: perfLoading.value,
             icon: PieChart,
             tone: 'amber',
             title: t('planned_margin'),
@@ -739,6 +830,15 @@ const onProductSort = ({ prop, order }) => {
 // ── Trend chart ──────────────────────────────────────────────────────────
 const trendChartRef = ref(null);
 let trendChart = null;
+let chartObserver = null;
+
+// Fetched the first time there is a trend to draw, and only the parts of the
+// library this chart uses.
+let echartsLoader = null;
+const loadEcharts = () => {
+    echartsLoader ??= import('@/utils/echartsLite').then((module) => module.default);
+    return echartsLoader;
+};
 
 const groupOptions = computed(() => [
     { label: t('daily'), value: 'day' },
@@ -761,11 +861,31 @@ const periodName = (item) => {
     return item.period || '—';
 };
 
-const renderTrend = () => {
-    if (!trendChartRef.value) return;
-    if (!trendChart || trendChart.getDom() !== trendChartRef.value) {
-        trendChart?.dispose();
-        trendChart = echarts.init(trendChartRef.value);
+const disposeTrend = () => {
+    chartObserver?.disconnect();
+    chartObserver = null;
+    trendChart?.dispose();
+    trendChart = null;
+};
+
+const renderTrend = async () => {
+    if (!trend.value.length) {
+        trendChart?.clear();
+        return;
+    }
+    const echarts = await loadEcharts();
+    await nextTick();
+    const element = trendChartRef.value;
+    if (!element) return;
+    if (!trendChart || trendChart.getDom() !== element) {
+        disposeTrend();
+        trendChart = echarts.init(element);
+        // Follows the card rather than the window, so folding the sidebar
+        // resizes it too.
+        if (typeof ResizeObserver !== 'undefined') {
+            chartObserver = new ResizeObserver(() => trendChart?.resize());
+            chartObserver.observe(element);
+        }
     }
     const rows = groupBy.value === 'supplier'
         ? trend.value.slice().sort((a, b) => b.total_spend - a.total_spend).slice(0, 12)
@@ -881,8 +1001,13 @@ const orderLink = (row) => ({ name: 'admin.purchases.orders', query: { search: r
 const isNarrow = ref(false);
 const onResize = () => {
     isNarrow.value = window.innerWidth < 768;
-    trendChart?.resize();
 };
+
+// Series names and number formats are baked in when drawn; the language
+// switching has to redraw them. The card is re-created when the report comes
+// back from empty or an error, so a new container is drawn into as well.
+watch([trend, locale], renderTrend);
+watch(trendChartRef, (element) => { if (element) renderTrend(); });
 
 watch(() => route.query, (query) => {
     if (route.name !== 'admin.purchases.report' || queryKey(query) === lastQueryKey) return;
@@ -902,8 +1027,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
-    trendChart?.dispose();
-    trendChart = null;
+    disposeTrend();
 });
 </script>
 
@@ -922,6 +1046,15 @@ onBeforeUnmount(() => {
 .filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.85rem 1rem; }
 .filter-dates { max-width: 290px; }
 .filter-select { width: 200px; }
+.updating-label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.82rem; color: #2563eb; margin-inline-start: auto; }
+.updating-label + .period-label { margin-inline-start: 0; }
+
+/* Last figures, kept while new ones load: still readable, visibly not current. */
+.stat-card, .chart-wrap, .share-list, .detail-card :deep(.el-table) { transition: opacity 0.2s ease; }
+.is-refreshing { opacity: 0.55; pointer-events: none; }
+.chart-skeleton { height: 300px; }
+.share-empty { margin: 2rem 0; text-align: center; font-size: 0.88rem; }
+
 .period-label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; color: #64748b; margin-inline-start: auto; }
 
 /* ── KPIs ── */
