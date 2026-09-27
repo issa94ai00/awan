@@ -278,7 +278,7 @@
                     <!-- The storefront's specifications table for this row: the
                          product's "Label: value" description lines, with the
                          variant's own details laid over them. -->
-                    <td v-if="visibleColumns.specs" class="cell-specs">
+                    <td v-if="visibleColumns.specs" class="cell-specs" :class="{ 'has-spec-table': specRows(item).length }">
                         <table v-if="specRows(item).length" class="spec-table">
                             <tbody>
                                 <tr v-for="(spec, sIdx) in specRows(item)" :key="sIdx">
@@ -1131,38 +1131,54 @@ const formatPrice = (price) => {
     text-align: start;
     vertical-align: middle;
 }
-/* The storefront's two-column specs table, shrunk to a cell. */
+/* The storefront's two-column specs table, merged into the price list's own
+   grid: the cell gives up its padding, the table fills it edge to edge, and
+   its lines are the main table's lines — so each label and value reads as a
+   cell of the price list, not as a box sitting inside one. */
+.offer-table td.cell-specs.has-spec-table {
+    padding: 0;
+    /* Lets the nested table's `height: 100%` resolve against the row, so its
+       lines run to the bottom of the cell however tall the product group is. */
+    height: 1px;
+    vertical-align: top;
+}
 .spec-table {
     width: 100%;
+    height: 100%;
     border-collapse: collapse;
-    border: 1px solid #e2e8f0;
+    border: none;
     font-size: 8.5pt;
     line-height: 1.35;
 }
 .offer-table .spec-table th,
 .offer-table .spec-table td {
-    padding: 2px 6px;
+    padding: 3px 8px;
     border: none;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #cbd5e1;
     text-align: start;
-    vertical-align: top;
+    vertical-align: middle;
 }
 .offer-table .spec-table tr:last-child th,
 .offer-table .spec-table tr:last-child td {
     border-bottom: none;
 }
+/* The label/value divider, drawn like any other column line of the grid. */
+.offer-table .spec-table th {
+    border-inline-end: 1px solid #cbd5e1;
+}
 .spec-table th {
     width: 42%;
     font-weight: 600;
     color: #475569;
-    background: #f8fafc;
+    background: rgba(241, 245, 249, 0.75);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
 }
+/* Transparent, so the value takes the row's zebra stripe like its neighbours. */
 .spec-table td {
     font-weight: 600;
     color: #1e293b;
-    background: #fff;
+    background: transparent;
     unicode-bidi: plaintext;
 }
 .cell-specs .detail-na { text-align: center; }
