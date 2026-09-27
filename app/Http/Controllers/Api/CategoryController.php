@@ -91,9 +91,32 @@ class CategoryController extends Controller
             ->when($expand, fn ($q) => $q->withVariantRows())
             ->whereIn('products.category_id', $category->descendantIds())
             ->where('products.is_active', 1)
-            ->with('category')
-            ->orderByDesc('products.created_at')
-            ->when($expand, fn ($q) => $q->orderBy('products.id')->orderBy('pv.id'));
+            ->with('category');
+
+        // What the shopper pays for the row, so a variant sorts at its own price.
+        $priceSql = $expand ? Product::variantRowPriceSql() : 'products.price';
+        $nameColumn = $request->input('lang') === 'en' ? 'products.name_en' : 'products.name_ar';
+
+        // Unpriced rows ("ask for a price") go last either way, not first as
+        // the cheapest things in the shop.
+        $unpricedLast = "CASE WHEN COALESCE({$priceSql}, 0) <= 0 THEN 1 ELSE 0 END";
+
+        match ($request->input('sort')) {
+            'price_asc' => $productsQuery->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} asc"),
+            'price_desc' => $productsQuery->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} desc"),
+            'name' => $productsQuery->orderBy($nameColumn),
+            default => $productsQuery->orderByDesc('products.created_at'),
+        };
+        // A stable tie-break, or rows with equal keys swap between pages and a
+        // product shows up twice while another never does.
+        $productsQuery->orderBy('products.id')->when($expand, fn ($q) => $q->orderBy('pv.id'));
+
+        // In stock the way the card's badge says it: the product is, and the
+        // size shown has stock (or keeps none of its own).
+        if ($request->boolean('in_stock')) {
+            $productsQuery->where('products.in_stock', 1)
+                ->when($expand, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)));
+        }
 
         // Allow optional simple search within the category
         if ($request->filled('search')) {
@@ -114,11 +137,38 @@ class CategoryController extends Controller
 
         $products = $productsQuery->paginate($perPage);
 
+        // The subcategories worth offering as a shortcut — the ones with
+        // something in them — and the parent, for the way back up.
+        $subcategories = $category->children()
+            ->where('is_active', 1)
+            ->withProductCount()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn ($child) => (int) $child->product_count > 0)
+            ->map(fn ($child) => [
+                'id' => $child->id,
+                'slug' => $child->slug,
+                'name_ar' => $child->name_ar,
+                'name_en' => $child->name_en,
+                'product_count' => (int) $child->product_count,
+            ])
+            ->values();
+
+        $parent = $category->parent_id ? $category->parent()->where('is_active', 1)->first() : null;
+
         return response()->json([
             'success' => true,
             'message' => 'Category products retrieved successfully',
             'data' => [
                 'category' => new CategoryResource($category),
+                'subcategories' => $subcategories,
+                'parent' => $parent ? [
+                    'id' => $parent->id,
+                    'slug' => $parent->slug,
+                    'name_ar' => $parent->name_ar,
+                    'name_en' => $parent->name_en,
+                ] : null,
                 'products' => ProductResource::collection($products->items()),
                 'pagination' => [
                     'current_page' => $products->currentPage(),
