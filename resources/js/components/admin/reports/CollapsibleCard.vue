@@ -111,7 +111,10 @@ onBeforeUnmount(() => unregisterSection(props.id));
     transform: rotate(-90deg);
 }
 
-:global([dir='rtl']) .is-collapsed .cc-chevron {
+/* A plain descendant selector, scoped only at the chevron. Written as
+   :global([dir='rtl']) … it compiled to a bare [dir='rtl'] rule and turned
+   the whole page on its side. */
+[dir='rtl'] .is-collapsed .cc-chevron {
     transform: rotate(90deg);
 }
 
