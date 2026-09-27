@@ -93,29 +93,10 @@ class CategoryController extends Controller
             ->where('products.is_active', 1)
             ->with('category');
 
-        // What the shopper pays for the row, so a variant sorts at its own price.
-        $priceSql = $expand ? Product::variantRowPriceSql() : 'products.price';
-        $nameColumn = $request->input('lang') === 'en' ? 'products.name_en' : 'products.name_ar';
+        $productsQuery->storefrontSort($request->input('sort'), $expand, $request->input('lang'));
 
-        // Unpriced rows ("ask for a price") go last either way, not first as
-        // the cheapest things in the shop.
-        $unpricedLast = "CASE WHEN COALESCE({$priceSql}, 0) <= 0 THEN 1 ELSE 0 END";
-
-        match ($request->input('sort')) {
-            'price_asc' => $productsQuery->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} asc"),
-            'price_desc' => $productsQuery->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} desc"),
-            'name' => $productsQuery->orderBy($nameColumn),
-            default => $productsQuery->orderByDesc('products.created_at'),
-        };
-        // A stable tie-break, or rows with equal keys swap between pages and a
-        // product shows up twice while another never does.
-        $productsQuery->orderBy('products.id')->when($expand, fn ($q) => $q->orderBy('pv.id'));
-
-        // In stock the way the card's badge says it: the product is, and the
-        // size shown has stock (or keeps none of its own).
         if ($request->boolean('in_stock')) {
-            $productsQuery->where('products.in_stock', 1)
-                ->when($expand, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)));
+            $productsQuery->storefrontInStock($expand);
         }
 
         // Allow optional simple search within the category

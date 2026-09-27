@@ -189,6 +189,37 @@ class Product extends Model implements Sitemapable
     }
 
     /**
+     * The storefront's listing orders — newest, price either way, name — for a
+     * query with or without withVariantRows(). Unpriced rows ("ask for a
+     * price") go last under a price sort rather than first as the cheapest,
+     * and a tie-break on id keeps rows from swapping between pages.
+     */
+    public function scopeStorefrontSort(\Illuminate\Database\Eloquent\Builder $query, ?string $sort, bool $variantRows, ?string $lang = null): \Illuminate\Database\Eloquent\Builder
+    {
+        $priceSql = $variantRows ? self::variantRowPriceSql() : 'products.price';
+        $unpricedLast = "CASE WHEN COALESCE({$priceSql}, 0) <= 0 THEN 1 ELSE 0 END";
+
+        match ($sort) {
+            'price_asc' => $query->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} asc"),
+            'price_desc' => $query->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} desc"),
+            'name' => $query->orderBy($lang === 'en' ? 'products.name_en' : 'products.name_ar'),
+            default => $query->orderByDesc('products.created_at'),
+        };
+
+        return $query->orderBy('products.id')->when($variantRows, fn ($q) => $q->orderBy('pv.id'));
+    }
+
+    /**
+     * In stock the way the storefront card's badge says it: the product is,
+     * and the size listed has stock (or keeps none of its own).
+     */
+    public function scopeStorefrontInStock(\Illuminate\Database\Eloquent\Builder $query, bool $variantRows): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where('products.in_stock', 1)
+            ->when($variantRows, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)));
+    }
+
+    /**
      * The price a shopper pays for a row from withVariantRows(): the variant's
      * own price when it has one, otherwise the product's. Cast so the two
      * tables' decimal columns compare as numbers on every driver.
