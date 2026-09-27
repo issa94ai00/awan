@@ -728,6 +728,7 @@
 <script setup>
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
 import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
+import { parseDescriptionSpecs } from '@/utils/productSpecs';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
@@ -2165,12 +2166,16 @@ function buildGroups(list) {
         }
         if (!map.get(key).productIds.includes(p.id)) map.get(key).productIds.push(p.id);
         const variants = Array.isArray(p.variants) ? p.variants : [];
+        // The product's "Label: value" description lines, which each row's
+        // specifications cell shows under its own, as the storefront does.
+        const baseSpecs = parseDescriptionSpecs(p.description_ar || p.description_en);
         const items = variants.length
             ? variants.map((v) => makeItem(`v-${v.id}`, {
                 size: v.size || '',
                 color: v.color || '',
                 unit: v.material || '',
                 specs: cleanSpecs(v.specs),
+                baseSpecs,
                 price: parseFloat(v.price) || 0,
                 stock_quantity: v.stock_quantity ?? 0,
             }))
@@ -2178,6 +2183,7 @@ function buildGroups(list) {
                 size: p.size || '',
                 color: p.color || '',
                 unit: p.unit || '',
+                baseSpecs,
                 price: parseFloat(p.price) || 0,
                 stock_quantity: p.stock_quantity ?? 0,
             })];

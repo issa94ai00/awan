@@ -405,6 +405,7 @@ import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
+import { parseDescriptionSpecs, mergeSpecs } from '@/utils/productSpecs';
 import axios from 'axios';
 
 // Stores
@@ -536,36 +537,10 @@ const viewName = computed(() => {
     return selectedVariant.value?.label ? `${name} - ${selectedVariant.value.label}` : name;
 });
 
-// Descriptions written as "Label: value • Label: value" (or one pair per
-// line) read better as a specs table; anything else stays a paragraph.
-const descriptionSpecs = computed(() => {
-    const text = (localized('description') || '').trim();
-    if (!text) return [];
-    const parts = text.split(/\s*[•\n]\s*/).map(s => s.trim()).filter(Boolean);
-    if (parts.length < 2) return [];
-    const rows = [];
-    for (const part of parts) {
-        const idx = part.indexOf(':');
-        if (idx <= 0 || idx === part.length - 1) return [];
-        rows.push({ label: part.slice(0, idx).trim(), value: part.slice(idx + 1).trim() });
-    }
-    return rows;
-});
-
-// The chosen variant's own details replace the product's line with the same
-// label ("Power" of this size, not of the range) and add the rest after it.
-const specs = computed(() => {
-    const own = (selectedVariant.value?.specs || []).filter(r => r && String(r.value || '').trim());
-    if (!own.length) return descriptionSpecs.value;
-    const rows = descriptionSpecs.value.map(r => ({ ...r }));
-    for (const spec of own) {
-        const label = String(spec.label || '').trim();
-        const at = label ? rows.findIndex(r => r.label === label) : -1;
-        if (at !== -1) rows[at] = { label, value: spec.value };
-        else rows.push({ label, value: spec.value });
-    }
-    return rows;
-});
+// Descriptions written as "Label: value • Label: value" read as a specs table;
+// the chosen variant's own details are laid over the product's.
+const descriptionSpecs = computed(() => parseDescriptionSpecs(localized('description')));
+const specs = computed(() => mergeSpecs(descriptionSpecs.value, selectedVariant.value?.specs));
 
 // The comparison: one row per detail label any option sets for itself, one
 // column per option. An option without its own line for a label falls back to

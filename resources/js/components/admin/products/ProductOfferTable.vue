@@ -275,14 +275,18 @@
                             </el-tooltip>
                         </div>
                     </td>
-                    <!-- A variant's own "Label: value" details, one per line. -->
+                    <!-- The storefront's specifications table for this row: the
+                         product's "Label: value" description lines, with the
+                         variant's own details laid over them. -->
                     <td v-if="visibleColumns.specs" class="cell-specs">
-                        <ul v-if="hasSpecs(item)" class="spec-list">
-                            <li v-for="(spec, sIdx) in item.specs" :key="sIdx">
-                                <span v-if="spec.label" class="detail-spec-label">{{ spec.label }}:</span>
-                                <span class="detail-spec-value">{{ spec.value }}</span>
-                            </li>
-                        </ul>
+                        <table v-if="specRows(item).length" class="spec-table">
+                            <tbody>
+                                <tr v-for="(spec, sIdx) in specRows(item)" :key="sIdx">
+                                    <th v-if="spec.label" scope="row">{{ spec.label }}</th>
+                                    <td :colspan="spec.label ? 1 : 2">{{ spec.value }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                         <div v-else class="detail-na">&mdash;</div>
                     </td>
                     <td
@@ -367,6 +371,7 @@
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { productImages, toImagePath } from '@/utils/productImages';
+import { mergeSpecs } from '@/utils/productSpecs';
 import { EditPen, Loading, Check, Clock, WarningFilled, UploadFilled, Delete, Plus } from '@element-plus/icons-vue';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -426,6 +431,8 @@ const emit = defineEmits([
 const isVariantRow = (item) => String(item?.id ?? '').startsWith('v-');
 
 const hasSpecs = (item) => Array.isArray(item?.specs) && item.specs.length > 0;
+
+const specRows = (item) => mergeSpecs(Array.isArray(item?.baseSpecs) ? item.baseSpecs : [], item?.specs);
 
 /** Display name of the classification a product is filed under, if it came through. */
 const categoryLabel = (product) => {
@@ -741,7 +748,9 @@ const formatPrice = (price) => {
     text-align: center;
     border-bottom: 2px solid #1d4ed8;
 }
-.offer-table tbody tr:hover td {
+/* Child combinators, so a specifications table nested in a cell keeps its own
+   look while the row around it is hovered. */
+.offer-table > tbody > tr:hover > td {
     background: #e2e9f2 !important;
 }
 
@@ -1122,13 +1131,40 @@ const formatPrice = (price) => {
     text-align: start;
     vertical-align: middle;
 }
-.spec-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    line-height: 1.4;
+/* The storefront's two-column specs table, shrunk to a cell. */
+.spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #e2e8f0;
+    font-size: 8.5pt;
+    line-height: 1.35;
 }
-.spec-list li + li { margin-top: 2px; }
+.offer-table .spec-table th,
+.offer-table .spec-table td {
+    padding: 2px 6px;
+    border: none;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: start;
+    vertical-align: top;
+}
+.offer-table .spec-table tr:last-child th,
+.offer-table .spec-table tr:last-child td {
+    border-bottom: none;
+}
+.spec-table th {
+    width: 42%;
+    font-weight: 600;
+    color: #475569;
+    background: #f8fafc;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+.spec-table td {
+    font-weight: 600;
+    color: #1e293b;
+    background: #fff;
+    unicode-bidi: plaintext;
+}
 .cell-specs .detail-na { text-align: center; }
 .detail-spec-value { unicode-bidi: plaintext; }
 
