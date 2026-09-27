@@ -465,6 +465,7 @@
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
                 @start-edit-stock="startEditStock" @commit-edit-stock="commitEditStock" @cancel-edit-stock="cancelEditStock"
                 @edit-item="openEditItemDialog"
+                @edit-specs="openSpecsDialog"
                 @remove-variant="removeVariant"
                 @remove-item="removeItem"
                 @update-image="updateItemImage" @clear-image="clearItemImage"
@@ -710,6 +711,22 @@
             </template>
         </el-dialog>
 
+        <SpecsEditDialog
+            v-model="specsDialogVisible"
+            :product-name="specsDialog.productName"
+            :variant-label="specsDialog.variantLabel"
+            :is-variant="specsDialog.isVariant"
+            :description="specsDialog.description"
+            :own-specs="specsDialog.ownSpecs"
+            :option-count="specsDialog.optionCount"
+            :sibling-count="specsDialog.siblingIds.length"
+            :label-suggestions="specLabelSuggestions"
+            :copy-sources="specsDialog.copySources"
+            :saving="specsDialogSaving"
+            :server-error="specsDialogError"
+            @save="saveSpecsDialog"
+        />
+
         <div v-if="total > 0 && !arrangeMode" class="pagination-wrapper screen-only">
             <el-pagination
                 v-model:current-page="currentPage"
@@ -728,7 +745,8 @@
 <script setup>
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
 import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
-import { parseDescriptionSpecs } from '@/utils/productSpecs';
+import SpecsEditDialog from '@/components/admin/products/SpecsEditDialog.vue';
+import { parseDescriptionSpecs, serializeDescriptionSpecs } from '@/utils/productSpecs';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
@@ -1485,6 +1503,85 @@ async function saveEditItem() {
     }
 }
 
+// ---- Specifications dialog ------------------------------------------------
+// Opened from a row's specifications cell. It edits the two lists the cell
+// merges: the variant's own details and the product's "Label: value" lines,
+// which are stored in its Arabic description and read under every option.
+const specsDialogVisible = ref(false);
+const specsDialogSaving = ref(false);
+const specsDialogError = ref('');
+const specsDialog = reactive({
+    productId: null,
+    variantId: null,
+    productName: '',
+    variantLabel: '',
+    isVariant: false,
+    description: '',
+    ownSpecs: [],
+    optionCount: 0,
+    siblingIds: [],
+    copySources: [],
+});
+
+function openSpecsDialog(group, item) {
+    const productId = item.productId ?? group.product.id;
+    const product = store.products.find((p) => String(p.id) === String(productId)) || group.product;
+    const isVariant = String(item.id).startsWith('v-');
+    const variantId = isVariant ? Number(String(item.id).slice(2)) : null;
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const variant = isVariant ? variants.find((v) => Number(v.id) === variantId) : null;
+    Object.assign(specsDialog, {
+        productId: product.id,
+        variantId,
+        productName: product.name_ar || product.name_en || '',
+        variantLabel: isVariant
+            ? [variant?.size, variant?.color, variant?.material].filter(Boolean).join(' · ') || variant?.sku || ''
+            : '',
+        isVariant,
+        // The Arabic text is what the price list reads; an English-only
+        // product is edited through its English text instead.
+        description: String((product.description_ar || product.description_en) ?? ''),
+        ownSpecs: isVariant ? cleanSpecs(variant?.specs) : [],
+        optionCount: variants.length,
+        siblingIds: isVariant ? variants.map((v) => Number(v.id)).filter((id) => id !== variantId) : [],
+        copySources: isVariant ? specCopySources(product.id, item.id) : [],
+    });
+    specsDialogError.value = '';
+    specsDialogVisible.value = true;
+}
+
+async function saveSpecsDialog({ productRows, ownRows, applyToSiblings }) {
+    const product = store.products.find((p) => String(p.id) === String(specsDialog.productId));
+    const field = product && !product.description_ar && product.description_en ? 'description_en' : 'description_ar';
+    specsDialogSaving.value = true;
+    specsDialogError.value = '';
+    try {
+        const results = [];
+        if (productRows) {
+            results.push(await saveField(`p-${specsDialog.productId}`, { [field]: serializeDescriptionSpecs(productRows) }));
+        }
+        if (ownRows && specsDialog.isVariant) {
+            results.push(await saveField(`v-${specsDialog.variantId}`, { specs: ownRows }));
+            if (applyToSiblings) {
+                for (const sid of specsDialog.siblingIds) {
+                    results.push(await saveField(`v-${sid}`, { specs: ownRows }));
+                }
+            }
+        }
+        const failed = results.find((r) => !r.ok);
+        if (failed) {
+            // The dialog stays open with what was typed; some of the requests
+            // may already have gone through, and the cells show those.
+            specsDialogError.value = fieldErrorMessage(failed.error) || t('failed_to_save');
+            return;
+        }
+        specsDialogVisible.value = false;
+        if (results.some((r) => !r.queued)) ElMessage.success(t('saved_successfully'));
+    } finally {
+        specsDialogSaving.value = false;
+    }
+}
+
 // ---- Variant details (specs) ----------------------------------------------
 // Each variant carries its own ordered [{label, value}] list — "Power: 750W".
 // Blank rows are the editor's scratch space, so they never leave the page.
@@ -2169,6 +2266,7 @@ function buildGroups(list) {
         // The product's "Label: value" description lines, which each row's
         // specifications cell shows under its own, as the storefront does.
         const baseSpecs = parseDescriptionSpecs(p.description_ar || p.description_en);
+        const productId = p.id;
         const items = variants.length
             ? variants.map((v) => makeItem(`v-${v.id}`, {
                 size: v.size || '',
@@ -2176,6 +2274,7 @@ function buildGroups(list) {
                 unit: v.material || '',
                 specs: cleanSpecs(v.specs),
                 baseSpecs,
+                productId,
                 price: parseFloat(v.price) || 0,
                 stock_quantity: v.stock_quantity ?? 0,
             }))
@@ -2184,6 +2283,7 @@ function buildGroups(list) {
                 color: p.color || '',
                 unit: p.unit || '',
                 baseSpecs,
+                productId,
                 price: parseFloat(p.price) || 0,
                 stock_quantity: p.stock_quantity ?? 0,
             })];

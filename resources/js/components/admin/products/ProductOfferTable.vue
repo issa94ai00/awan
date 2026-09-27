@@ -278,7 +278,12 @@
                     <!-- The storefront's specifications table for this row: the
                          product's "Label: value" description lines, with the
                          variant's own details laid over them. -->
-                    <td v-if="visibleColumns.specs" class="cell-specs" :class="{ 'has-spec-table': specRows(item).length }">
+                    <td
+                        v-if="visibleColumns.specs"
+                        class="cell-specs"
+                        :class="{ 'has-spec-table': specRows(item).length, editable: !printMode }"
+                        @dblclick="!printMode && $emit('edit-specs', group, item)"
+                    >
                         <table v-if="specRows(item).length" class="spec-table">
                             <tbody>
                                 <tr v-for="(spec, sIdx) in specRows(item)" :key="sIdx">
@@ -288,6 +293,16 @@
                             </tbody>
                         </table>
                         <div v-else class="detail-na">&mdash;</div>
+                        <el-tooltip v-if="!printMode" :content="$t('edit_specifications')" placement="top" effect="dark">
+                            <button
+                                type="button"
+                                class="cell-edit-btn cell-specs-btn"
+                                :aria-label="$t('edit_specifications')"
+                                @click="$emit('edit-specs', group, item)"
+                            >
+                                <el-icon><component :is="specRows(item).length ? EditPen : Plus" /></el-icon>
+                            </button>
+                        </el-tooltip>
                     </td>
                     <td
                         v-if="visibleColumns.price"
@@ -414,6 +429,7 @@ const emit = defineEmits([
     'update-image', 'clear-image',
     'add-variant',
     'edit-item',
+    'edit-specs',
     // Removal is split by what is being removed, because the two are not the
     // same act: a variant is one line of a product, an item is the product.
     'remove-variant',
@@ -1182,6 +1198,23 @@ const formatPrice = (price) => {
     unicode-bidi: plaintext;
 }
 .cell-specs .detail-na { text-align: center; }
+.cell-specs.editable {
+    position: relative;
+    cursor: pointer;
+}
+/* Hidden until the cell is pointed at: at rest it would sit on the first
+   value of a table that fills the cell edge to edge. It stands on a solid
+   chip so it stays legible over the text beneath it. */
+.cell-specs-btn {
+    opacity: 0;
+    z-index: 2;
+    background: #fff;
+    box-shadow: 0 0 0 1px #cbd5e1;
+}
+.cell-specs:hover .cell-specs-btn,
+.cell-specs-btn:focus-visible {
+    opacity: 1;
+}
 .detail-spec-value { unicode-bidi: plaintext; }
 
 .cell-price {

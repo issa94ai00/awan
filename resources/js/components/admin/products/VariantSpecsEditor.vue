@@ -2,7 +2,7 @@
     <div class="variant-specs">
         <div class="variant-specs-head">
             <span class="variant-specs-title">
-                {{ $t('vs_details_title') }}
+                {{ title || $t('vs_details_title') }}
                 <span v-if="rows.length" class="variant-specs-count">{{ rows.length }}</span>
             </span>
             <div class="variant-specs-tools">
@@ -23,6 +23,8 @@
             </div>
         </div>
 
+        <p v-if="hint" class="variant-specs-hint variant-specs-lead">{{ hint }}</p>
+
         <div v-if="pasteOpen" class="variant-specs-paste">
             <el-input
                 v-model="pasteText"
@@ -42,8 +44,11 @@
         <div v-if="rows.length" class="variant-specs-rows">
             <div v-for="(row, idx) in rows" :key="row.key" class="variant-specs-row">
                 <el-autocomplete
+                    :ref="(el) => setLabelRef(row.key, el)"
                     v-model="row.label"
                     class="variant-specs-label"
+                    :class="{ 'is-invalid': labelProblem(row) }"
+                    :title="labelProblem(row) || undefined"
                     :fetch-suggestions="suggestLabels"
                     :placeholder="$t('vs_label_placeholder')"
                     :trigger-on-focus="true"
@@ -54,6 +59,8 @@
                 <el-input
                     v-model="row.value"
                     class="variant-specs-value"
+                    :class="{ 'is-invalid': valueProblem(row) }"
+                    :title="valueProblem(row) || undefined"
                     :placeholder="$t('vs_value_placeholder')"
                     @input="emitRows"
                     @keydown.enter.prevent="addRow(idx + 1)"
@@ -86,7 +93,8 @@
                 </div>
             </div>
         </div>
-        <p v-else class="variant-specs-empty">{{ $t('vs_empty') }}</p>
+        <p v-else class="variant-specs-empty">{{ emptyText || $t('vs_empty') }}</p>
+        <p v-if="firstProblem" class="variant-specs-problem">{{ firstProblem }}</p>
 
         <el-button class="variant-specs-add" size="small" :icon="Plus" @click="addRow()">
             {{ $t('vs_add_row') }}
@@ -103,7 +111,8 @@
  * v-model is the plain [{label, value}] array the API stores; empty rows are
  * kept while editing and dropped by the server.
  */
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { Plus, Delete, ArrowUp, ArrowDown, CopyDocument, DocumentAdd } from '@element-plus/icons-vue';
 
 const props = defineProps({
@@ -112,7 +121,16 @@ const props = defineProps({
     labelSuggestions: { type: Array, default: () => [] },
     // Other variants to copy from: [{ id, label, specs }].
     copySources: { type: Array, default: () => [] },
+    // Heading, one-line explanation and empty-state text, when the default
+    // "Variant details" wording does not fit (the product-wide list).
+    title: { type: String, default: '' },
+    hint: { type: String, default: '' },
+    emptyText: { type: String, default: '' },
+    // For a list stored as "Label: value • …" text: every line needs a label,
+    // and neither half may hold the characters that text is split on.
+    strict: { type: Boolean, default: false },
 });
+const { t } = useI18n();
 const emit = defineEmits(['update:modelValue']);
 
 let nextKey = 0;
@@ -139,10 +157,42 @@ function emitRows() {
 
 const sources = computed(() => props.copySources.filter((s) => Array.isArray(s.specs) && s.specs.length));
 
-function addRow(at = rows.value.length) {
-    rows.value.splice(at, 0, { key: nextKey++, label: '', value: '' });
-    emitRows();
+// New rows take the cursor, so "Enter, type, Enter, type" fills a list.
+const labelRefs = new Map();
+function setLabelRef(key, el) {
+    if (el) labelRefs.set(key, el);
+    else labelRefs.delete(key);
 }
+
+function addRow(at = rows.value.length) {
+    const key = nextKey++;
+    rows.value.splice(at, 0, { key, label: '', value: '' });
+    emitRows();
+    nextTick(() => labelRefs.get(key)?.focus?.());
+}
+
+function labelProblem(row) {
+    if (!props.strict) return '';
+    const label = row.label.trim();
+    if (!label && row.value.trim()) return t('vs_label_required');
+    if (/[:：•\n]/.test(label)) return t('vs_label_bad_chars');
+    return '';
+}
+
+function valueProblem(row) {
+    if (!props.strict) return '';
+    return /[•\n]/.test(row.value) ? t('vs_value_bad_chars') : '';
+}
+
+const firstProblem = computed(() => {
+    for (const row of rows.value) {
+        const problem = labelProblem(row) || valueProblem(row);
+        if (problem) return problem;
+    }
+    return '';
+});
+
+defineExpose({ hasProblems: () => firstProblem.value !== '' });
 
 function removeRow(idx) {
     rows.value.splice(idx, 1);
@@ -290,6 +340,22 @@ function applyPaste() {
 
 .variant-specs-row-actions :deep(.el-button + .el-button) {
     margin-left: 0;
+}
+
+.variant-specs-lead {
+    display: block;
+    margin: -4px 0 10px;
+}
+
+.variant-specs-label.is-invalid :deep(.el-input__wrapper),
+.variant-specs-value.is-invalid :deep(.el-input__wrapper) {
+    box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+}
+
+.variant-specs-problem {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: var(--el-color-danger);
 }
 
 .variant-specs-empty {
