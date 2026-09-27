@@ -178,6 +178,57 @@
             </div>
         </section>
 
+        <!-- Every option's specifications side by side. A column header picks
+             that option, the same as its chip in the picker above. -->
+        <section v-if="compareRows.length" class="variant-compare-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>{{ t('pd_compare_title') }}</h2>
+                    <p>{{ t('pd_compare_subtitle') }}</p>
+                </div>
+                <div class="variant-compare-scroll">
+                    <table class="variant-compare-table">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="compare-corner">{{ t('specifications') }}</th>
+                                <th v-for="v in variants"
+                                    :key="v.id"
+                                    scope="col"
+                                    :class="{ active: v.id === selectedVariantId }"
+                                    :aria-current="v.id === selectedVariantId ? 'true' : undefined">
+                                    <button type="button"
+                                            class="compare-pick"
+                                            :title="t('pd_compare_pick')"
+                                            @click="selectVariant(v.id)">
+                                        <span class="compare-pick-label">{{ v.label || v.sku }}</span>
+                                        <span v-if="showPrices && parseFloat(v.price) > 0" class="compare-pick-price">${{ parseFloat(v.price).toFixed(2) }}</span>
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in compareRows" :key="row.label">
+                                <th scope="row">{{ row.label }}</th>
+                                <td v-for="(value, idx) in row.values"
+                                    :key="variants[idx].id"
+                                    :class="{ active: variants[idx].id === selectedVariantId, empty: !value }">
+                                    {{ value || '—' }}
+                                </td>
+                            </tr>
+                            <tr class="compare-stock-row">
+                                <th scope="row">{{ t('availability') || 'التوفر' }}</th>
+                                <td v-for="v in variants"
+                                    :key="v.id"
+                                    :class="[{ active: v.id === selectedVariantId }, variantInStock(v) ? 'in-stock' : 'out-of-stock']">
+                                    {{ variantInStock(v) ? (t('in_stock') || 'متوفر') : (t('out_of_stock') || 'غير متوفر') }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- Related Products Section -->
         <section class="related-products-section fade-up" v-if="relatedProducts.length">
             <div class="container">
@@ -514,6 +565,36 @@ const specs = computed(() => {
         else rows.push({ label, value: spec.value });
     }
     return rows;
+});
+
+// The comparison: one row per detail label any option sets for itself, one
+// column per option. An option without its own line for a label falls back to
+// the product's line, as its specs table above does. Lines only the product
+// sets read the same in every column, so they stay in that table instead.
+const compareRows = computed(() => {
+    if (variants.value.length < 2) return [];
+    const own = variants.value.map(v => (Array.isArray(v.specs) ? v.specs : [])
+        .filter(r => r && String(r.label || '').trim() && String(r.value || '').trim())
+        .map(r => ({ label: String(r.label).trim(), value: String(r.value).trim() })));
+    const labels = [];
+    for (const list of own) {
+        for (const r of list) if (!labels.includes(r.label)) labels.push(r.label);
+    }
+    // Keep the product's own order for the labels it shares with the options.
+    const productOrder = descriptionSpecs.value.map(r => r.label);
+    labels.sort((a, b) => {
+        const ia = productOrder.indexOf(a);
+        const ib = productOrder.indexOf(b);
+        if (ia === -1 || ib === -1) return (ia === -1) - (ib === -1);
+        return ia - ib;
+    });
+    return labels.map(label => {
+        const fallback = descriptionSpecs.value.find(r => r.label === label)?.value || '';
+        return {
+            label,
+            values: own.map(list => list.find(r => r.label === label)?.value || fallback),
+        };
+    });
 });
 
 // Size / colour / material / weight / dimensions, when set.
@@ -1472,6 +1553,208 @@ watch(() => route.query.variant, (id) => {
 
 [data-theme="dark"] .specs-table td {
     color: #e2e8f0;
+}
+
+/* Options comparison */
+.variant-compare-section {
+    padding: 2.5rem 0 1rem;
+}
+
+/* Many options run wider than a phone; the table scrolls inside its frame
+   rather than widening the page, with the label column pinned. */
+.variant-compare-scroll {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.variant-compare-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.95rem;
+}
+
+.variant-compare-table th,
+.variant-compare-table td {
+    padding: 0.65rem 0.9rem;
+    text-align: center;
+    border-bottom: 1px solid #e2e8f0;
+    border-inline-start: 1px solid #f1f5f9;
+    vertical-align: middle;
+    min-width: 120px;
+}
+
+.variant-compare-table tbody tr:last-child th,
+.variant-compare-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.variant-compare-table tbody th,
+.variant-compare-table .compare-corner {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    min-width: 140px;
+    text-align: start;
+    font-weight: 600;
+    color: #475569;
+    background: #f8fafc;
+    border-inline-start: none;
+}
+
+.variant-compare-table .compare-corner {
+    color: #1e293b;
+    font-weight: 700;
+}
+
+.variant-compare-table td {
+    font-weight: 600;
+    color: #1e293b;
+    unicode-bidi: plaintext;
+}
+
+.variant-compare-table td.empty {
+    color: #cbd5e1;
+    font-weight: 400;
+}
+
+.variant-compare-table thead th:not(.compare-corner) {
+    padding: 0.5rem;
+    background: #fff;
+}
+
+.compare-pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    color: #1e293b;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+}
+
+.compare-pick:hover {
+    border-color: var(--mobile-primary);
+}
+
+.compare-pick:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+.compare-pick-price {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+/* The picked option's column is tinted top to bottom, so its values read as
+   one line down the table. */
+.variant-compare-table th.active .compare-pick {
+    border-color: var(--mobile-primary);
+    background: color-mix(in srgb, var(--mobile-primary) 10%, #fff);
+}
+
+.variant-compare-table td.active {
+    background: color-mix(in srgb, var(--mobile-primary) 7%, #fff);
+}
+
+.compare-stock-row td {
+    font-size: 0.85rem;
+}
+
+.compare-stock-row td.in-stock {
+    color: #15803d;
+}
+
+.compare-stock-row td.out-of-stock {
+    color: #dc2626;
+}
+
+[data-theme="dark"] .variant-compare-scroll,
+[data-theme="dark"] .variant-compare-table thead th:not(.compare-corner) {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+[data-theme="dark"] .variant-compare-table th,
+[data-theme="dark"] .variant-compare-table td {
+    border-color: #334155;
+}
+
+[data-theme="dark"] .variant-compare-table tbody th,
+[data-theme="dark"] .variant-compare-table .compare-corner {
+    background: #0f172a;
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .variant-compare-table .compare-corner {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .variant-compare-table td {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .variant-compare-table td.empty {
+    color: #475569;
+}
+
+[data-theme="dark"] .compare-pick {
+    background: #0f172a;
+    border-color: #334155;
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .compare-pick-price {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .variant-compare-table th.active .compare-pick {
+    border-color: var(--mobile-primary);
+    background: color-mix(in srgb, var(--mobile-primary) 18%, #1e293b);
+}
+
+[data-theme="dark"] .variant-compare-table td.active {
+    background: color-mix(in srgb, var(--mobile-primary) 12%, #1e293b);
+}
+
+[data-theme="dark"] .compare-stock-row td.in-stock {
+    color: #4ade80;
+}
+
+[data-theme="dark"] .compare-stock-row td.out-of-stock {
+    color: #f87171;
+}
+
+@media (max-width: 576px) {
+    .variant-compare-section {
+        padding-top: 1.5rem;
+    }
+
+    .variant-compare-table {
+        font-size: 0.85rem;
+    }
+
+    .variant-compare-table th,
+    .variant-compare-table td {
+        min-width: 96px;
+        padding: 0.5rem 0.6rem;
+    }
+
+    .variant-compare-table tbody th,
+    .variant-compare-table .compare-corner {
+        min-width: 104px;
+    }
 }
 
 /* Related Products Slider Styles */
