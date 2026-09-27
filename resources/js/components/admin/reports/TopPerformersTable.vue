@@ -1,5 +1,11 @@
 <template>
-    <CollapsibleCard id="top-performers" :title="title" :count="rows.length || null" class="top-performers-card">
+    <CollapsibleCard
+        id="top-performers"
+        :title="title"
+        :count="rows.length || null"
+        class="top-performers-card"
+        @active-change="emit('active-change', $event)"
+    >
 
         <el-table v-loading="loading" :data="rows" style="width: 100%" stripe>
             <el-table-column :label="$t('rank')" width="80">
@@ -46,6 +52,9 @@ defineProps({
     averageKey: { type: String, required: true },
     averageLabel: { type: String, required: true },
 });
+
+// Fetched only once the card is on screen and open; see CollapsibleCard.
+const emit = defineEmits(['active-change']);
 
 const formatMoney = (value) => formatMoneyWith(value);
 

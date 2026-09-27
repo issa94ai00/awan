@@ -1,12 +1,16 @@
 <template>
     <div class="sales-report-panel">
-        <AdminStatGrid v-if="loading">
+        <!-- Skeletons only for the very first load. After that a refresh keeps
+             the previous figures on screen, dimmed, until the new ones land:
+             blanking the page on every filter change made each change look
+             like starting over. -->
+        <AdminStatGrid v-if="stats.pending">
             <el-card v-for="n in Math.max(statCards.length, 4)" :key="n" shadow="hover" class="stat-card skeleton-card">
                 <el-skeleton :rows="2" animated />
             </el-card>
         </AdminStatGrid>
 
-        <AdminStatGrid v-else>
+        <AdminStatGrid v-else :class="{ 'is-refreshing': stats.refreshing }">
             <el-card v-for="stat in statCards" :key="stat.key" shadow="hover" class="stat-card">
                 <div class="stat-content">
                     <div class="stat-icon">
@@ -20,7 +24,7 @@
             </el-card>
         </AdminStatGrid>
 
-        <el-row v-if="!loading && metrics" :gutter="20" class="metrics-row">
+        <el-row v-if="!insights.pending && metrics" :gutter="20" class="metrics-row" :class="{ 'is-refreshing': insights.refreshing }">
             <el-col :xs="12" :md="6">
                 <el-card shadow="hover">
                     <div class="mini-metric">
@@ -60,7 +64,7 @@
         <!-- One honest chart: a time trend when the grouping is chronological, a
              ranked bar when it's a category. Never both series (sales vs order
              count) on one axis — see the trend/count split below. -->
-        <el-card shadow="hover" class="chart-card">
+        <el-card shadow="hover" class="chart-card" :class="{ 'is-refreshing': chart.refreshing && chartMode !== 'none' }">
             <template #header>
                 <div class="card-header">
                     <span>{{ chartTitle }}</span>
@@ -84,7 +88,13 @@
                     </el-button>
                 </div>
             </div>
-            <div v-else ref="chartRef" class="chart-canvas"></div>
+            <el-skeleton v-else-if="chart.pending" :rows="6" animated class="chart-skeleton" />
+            <div v-else-if="!chartLabels.length && !chartLoading" class="chart-empty">
+                <p class="chart-empty-note">{{ $t('no_data_for_current_filters') }}</p>
+            </div>
+            <!-- Kept mounted through a refresh so the chart can animate from
+                 the old values to the new rather than being torn down. -->
+            <div v-show="chartMode !== 'none' && !chart.pending && chartLabels.length" ref="chartRef" class="chart-canvas"></div>
         </el-card>
 
         <!-- One block, three dimensions. These were three copy-pasted cards
@@ -93,7 +103,7 @@
              outstanding balance among them. Driving them from one config keeps
              them honest with each other, and gives every dimension the same
              drill-through. -->
-        <el-row :gutter="20" class="dimension-panels">
+        <el-row :gutter="20" class="dimension-panels" :class="{ 'is-refreshing': insights.refreshing }">
             <el-col v-for="card in dimensionCards" :key="card.key" :xs="24" :md="8">
                 <CollapsibleCard :id="`breakdown-${card.key}`" :title="card.title" :count="card.rows.length || null">
                     <template v-if="card.activeId" #extra>
@@ -107,14 +117,20 @@
                         </el-button>
                     </template>
 
+                    <el-skeleton v-if="insights.pending" :rows="4" animated />
+                    <!-- Capped in height: a customer breakdown runs to hundreds of
+                         rows, and uncapped it pushed its two neighbours' cards
+                         into a column of white space beside it. -->
                     <el-table
+                        v-else
                         :data="card.rows"
                         stripe
+                        max-height="380"
                         style="width: 100%"
                         :row-class-name="({ row }) => dimensionRowClass(card, row)"
                         @row-click="(row) => selectDimensionRow(card, row)"
                     >
-                        <el-table-column :prop="card.nameKey" :label="card.rowLabel" min-width="120" />
+                        <el-table-column :prop="card.nameKey" :label="card.rowLabel" min-width="120" show-overflow-tooltip />
 
                         <el-table-column v-if="dimensionCountKey" :label="countLabel" width="72" align="center">
                             <template #default="{ row }">{{ formatCount(row[dimensionCountKey]) }}</template>
@@ -142,88 +158,100 @@
             </el-col>
         </el-row>
 
-        <el-row v-if="profitability?.summary" :gutter="20" class="metrics-row">
-            <el-col :xs="12" :md="6">
-                <el-card shadow="hover">
-                    <div class="mini-metric">
-                        <span>{{ $t('most_profitable_product') }}</span>
-                        <strong>{{ profitability.summary.top_product?.product_name || '-' }}</strong>
-                        <small>{{ formatMoney(profitability.summary.top_product?.gross_profit || 0) }}</small>
-                    </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :md="6">
-                <el-card shadow="hover">
-                    <div class="mini-metric">
-                        <span>{{ $t('least_profitable_product') }}</span>
-                        <strong>{{ profitability.summary.lowest_product?.product_name || '-' }}</strong>
-                        <small>{{ formatMoney(profitability.summary.lowest_product?.gross_profit || 0) }}</small>
-                    </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :md="6">
-                <el-card shadow="hover">
-                    <div class="mini-metric">
-                        <span>{{ $t('total_profit') }}</span>
-                        <strong>{{ formatMoney(profitability.summary.gross_profit || 0) }}</strong>
-                    </div>
-                </el-card>
-            </el-col>
-            <el-col :xs="12" :md="6">
-                <el-card shadow="hover">
-                    <div class="mini-metric">
-                        <span>{{ $t('items_count') }}</span>
-                        <strong>{{ profitability.summary.product_count || 0 }}</strong>
-                    </div>
-                </el-card>
-            </el-col>
-        </el-row>
-
+        <!-- The costliest figures on the page — every line of every matching
+             document, costed — so they are fetched only once this card is on
+             screen and open. Its headline numbers moved inside it: they sum up
+             this table, and outside it they loaded, and folded, apart from it. -->
         <CollapsibleCard
             id="product-profitability"
             :title="$t('product_profitability_by_warehouse')"
             :count="profitability?.product_summary?.length || null"
             class="profitability-table-card"
+            @active-change="emit('profitability-active', $event)"
         >
+            <el-skeleton v-if="profit.pending" :rows="6" animated />
 
-            <el-table :data="profitability?.product_summary || []" stripe style="width: 100%">
-                <el-table-column prop="product_name" :label="$t('product')" />
-                <el-table-column prop="warehouse_name" :label="$t('warehouse')" />
-                <el-table-column prop="quantity" :label="$t('quantity')" />
-                <el-table-column :label="$t('revenue')">
-                    <template #default="{ row }">{{ formatMoney(row.total_revenue) }}</template>
-                </el-table-column>
-                <el-table-column :label="$t('cost')">
-                    <template #default="{ row }">{{ formatMoney(row.total_cost) }}</template>
-                </el-table-column>
-                <el-table-column :label="$t('profit')">
-                    <template #default="{ row }">
-                        <strong :class="row.gross_profit >= 0 ? 'profit-positive' : 'profit-negative'">
-                            {{ formatMoney(row.gross_profit) }}
-                        </strong>
+            <div v-else :class="{ 'is-refreshing': profit.refreshing }">
+                <el-row v-if="profitability?.summary" :gutter="16" class="metrics-row profit-summary">
+                    <el-col :xs="12" :md="6">
+                        <div class="mini-metric">
+                            <span>{{ $t('most_profitable_product') }}</span>
+                            <strong class="mini-metric-name">{{ profitability.summary.top_product?.product_name || '-' }}</strong>
+                            <small>{{ formatMoney(profitability.summary.top_product?.gross_profit || 0) }}</small>
+                        </div>
+                    </el-col>
+                    <el-col :xs="12" :md="6">
+                        <div class="mini-metric">
+                            <span>{{ $t('least_profitable_product') }}</span>
+                            <strong class="mini-metric-name">{{ profitability.summary.lowest_product?.product_name || '-' }}</strong>
+                            <small>{{ formatMoney(profitability.summary.lowest_product?.gross_profit || 0) }}</small>
+                        </div>
+                    </el-col>
+                    <el-col :xs="12" :md="6">
+                        <div class="mini-metric">
+                            <span>{{ $t('total_profit') }}</span>
+                            <strong>{{ formatMoney(profitability.summary.gross_profit || 0) }}</strong>
+                        </div>
+                    </el-col>
+                    <el-col :xs="12" :md="6">
+                        <div class="mini-metric">
+                            <span>{{ $t('items_count') }}</span>
+                            <strong>{{ profitability.summary.product_count || 0 }}</strong>
+                        </div>
+                    </el-col>
+                </el-row>
+
+                <!-- Sorted and paged here: the endpoint returns every product in
+                     one go, and a few hundred rendered rows made the tab stall
+                     each time it was opened. -->
+                <el-table :data="productPage" stripe style="width: 100%" @sort-change="handleProductSort">
+                    <el-table-column prop="product_name" :label="$t('product')" min-width="180" show-overflow-tooltip />
+                    <el-table-column prop="warehouse_name" :label="$t('warehouse')" min-width="120" show-overflow-tooltip />
+                    <el-table-column prop="quantity" :label="$t('quantity')" sortable="custom" width="110" />
+                    <el-table-column prop="total_revenue" :label="$t('revenue')" sortable="custom" min-width="120">
+                        <template #default="{ row }">{{ formatMoney(row.total_revenue) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="total_cost" :label="$t('cost')" sortable="custom" min-width="120">
+                        <template #default="{ row }">{{ formatMoney(row.total_cost) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="gross_profit" :label="$t('profit')" sortable="custom" min-width="120">
+                        <template #default="{ row }">
+                            <strong :class="row.gross_profit >= 0 ? 'profit-positive' : 'profit-negative'">
+                                {{ formatMoney(row.gross_profit) }}
+                            </strong>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="gross_margin" :label="$t('margin')" sortable="custom" width="110">
+                        <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
+                    </el-table-column>
+
+                    <template #empty>
+                        <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
                     </template>
-                </el-table-column>
-                <el-table-column :label="$t('margin')">
-                    <template #default="{ row }">{{ formatPercentage(row.gross_margin) }}</template>
-                </el-table-column>
+                </el-table>
 
-                <template #empty>
-                    <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
-                </template>
-            </el-table>
+                <el-pagination
+                    v-if="productRows.length > 10"
+                    v-model:current-page="productPageNumber"
+                    v-model:page-size="productPageSize"
+                    :page-sizes="[10, 20, 50, 100]"
+                    :total="productRows.length"
+                    layout="total, sizes, prev, pager, next"
+                    class="table-pagination"
+                />
+            </div>
         </CollapsibleCard>
     </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
-import * as echarts from 'echarts';
 import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 /**
  * The block every report tab (sales orders, invoices) repeats: a stat grid,
@@ -242,7 +270,20 @@ const { t } = useI18n();
  * has no chart-worthy data for this tab.
  */
 const props = defineProps({
-    loading: { type: Boolean, default: false },
+    /**
+     * Loading is tracked per part, because the parts come from different
+     * requests and the slowest of them — product profitability — used to hold
+     * the stat cards in skeletons until it was done.
+     *
+     *   statsLoading          the paginated list, whose summary feeds the cards
+     *   insightsLoading       performance figures and the three breakdowns
+     *   chartLoading          the chart's own series
+     *   profitabilityLoading  the product table, fetched only once it is shown
+     */
+    statsLoading: { type: Boolean, default: false },
+    insightsLoading: { type: Boolean, default: false },
+    chartLoading: { type: Boolean, default: false },
+    profitabilityLoading: { type: Boolean, default: false },
     statCards: { type: Array, default: () => [] },
     metrics: { type: Object, default: null },
     chartMode: { type: String, default: 'none' }, // 'trend' | 'bar' | 'none'
@@ -281,7 +322,51 @@ const props = defineProps({
     profitability: { type: Object, default: null },
 });
 
-const emit = defineEmits(['select-grouping', 'select-dimension']);
+const emit = defineEmits(['select-grouping', 'select-dimension', 'profitability-active']);
+
+/**
+ * `pending` until a part's first load has finished — shown as a skeleton —
+ * and `refreshing` while any later one runs, shown as the old figures dimmed.
+ */
+const loadState = (isLoading) => {
+    const state = reactive({ pending: true, refreshing: false });
+    watch(isLoading, (now, before) => {
+        if (before && !now) state.pending = false;
+        state.refreshing = now && !state.pending;
+    });
+    return state;
+};
+
+const stats = loadState(() => props.statsLoading);
+const insights = loadState(() => props.insightsLoading);
+const chart = loadState(() => props.chartLoading);
+const profit = loadState(() => props.profitabilityLoading);
+
+/* Product profitability, sorted and paged client-side. */
+const productSort = ref({ prop: null, order: null });
+const productPageNumber = ref(1);
+const productPageSize = ref(20);
+
+const productRows = computed(() => {
+    const rows = props.profitability?.product_summary || [];
+    const { prop, order } = productSort.value;
+    if (!prop || !order) return rows;
+    const direction = order === 'ascending' ? 1 : -1;
+    return [...rows].sort((a, b) => ((Number(a[prop]) || 0) - (Number(b[prop]) || 0)) * direction);
+});
+
+const productPage = computed(() => {
+    const from = (productPageNumber.value - 1) * productPageSize.value;
+    return productRows.value.slice(from, from + productPageSize.value);
+});
+
+const handleProductSort = ({ prop, order }) => {
+    productSort.value = { prop, order };
+    productPageNumber.value = 1;
+};
+
+// New figures are a new list: back to its first page.
+watch(() => props.profitability?.product_summary, () => { productPageNumber.value = 1; });
 
 const valueLabel = computed(() => props.dimensionValueLabel || t('total_sales'));
 const countLabel = computed(() => props.dimensionCountLabel || t('count'));
@@ -333,7 +418,11 @@ const selectDimensionRow = (card, row) => {
 
     // Clicking the row already filtered on clears it, so the same gesture
     // both narrows and widens.
-    emit('select-dimension', { type: card.key, id: String(card.activeId) === String(id) ? null : id });
+    emit('select-dimension', {
+        type: card.key,
+        id: String(card.activeId) === String(id) ? null : id,
+        name: row[card.nameKey] || null,
+    });
 };
 
 const dimensionRowClass = (card, row) => {
@@ -344,7 +433,8 @@ const dimensionRowClass = (card, row) => {
 };
 
 const chartRef = ref(null);
-let chart = null;
+let chartInstance = null;
+let resizeObserver = null;
 
 // Sequential blue — the validated palette's default single hue for magnitude
 // (both the trend line and the ranked bar are one metric across one series).
@@ -427,35 +517,63 @@ const barOption = () => {
     };
 };
 
+/**
+ * ECharts is fetched the first time there is something to draw. The invoices
+ * tab opens on a daily grouping it has no series for, so most visits to it
+ * never need the library at all.
+ */
+let echartsLoader = null;
+const loadEcharts = () => {
+    echartsLoader ??= import('@/utils/echartsLite').then((module) => module.default);
+    return echartsLoader;
+};
+
+const disposeChart = () => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    chartInstance?.dispose();
+    chartInstance = null;
+};
+
 const renderChart = async () => {
-    if (props.chartMode === 'none') {
-        if (chart) { chart.dispose(); chart = null; }
+    if (props.chartMode === 'none' || !props.chartLabels.length) {
+        disposeChart();
         return;
     }
 
-    await nextTick();
-    if (!chartRef.value) return;
+    // Still on its first load: the skeleton is showing, not the canvas.
+    if (chart.pending) return;
 
-    if (!chart) {
-        chart = echarts.init(chartRef.value);
+    const echarts = await loadEcharts();
+    await nextTick();
+    const element = chartRef.value;
+    // Hidden (its tab is not the open one) it measures zero, and a chart drawn
+    // at zero width stays that way; the observer below draws it once it opens.
+    if (!element || props.chartMode === 'none') return;
+
+    if (chartInstance && chartInstance.getDom() !== element) disposeChart();
+
+    if (!chartInstance) {
+        chartInstance = echarts.init(element);
+        // Follows the card, not the window: folding the sidebar or opening the
+        // tab resizes it without the window ever changing.
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver(() => chartInstance?.resize());
+            resizeObserver.observe(element);
+        }
     }
 
-    chart.setOption(props.chartMode === 'trend' ? trendOption() : barOption(), true);
+    chartInstance.setOption(props.chartMode === 'trend' ? trendOption() : barOption(), true);
+    chartInstance.resize();
 };
 
-const handleResize = () => chart?.resize();
-
 watch(() => [props.chartMode, props.chartLabels, props.chartValues], renderChart, { deep: true });
+// The series name and number formats are baked into the option when drawn.
+watch(locale, renderChart);
+watch(() => chart.pending, renderChart);
 
-onMounted(() => {
-    renderChart();
-    window.addEventListener('resize', handleResize);
-});
-
-onBeforeUnmount(() => {
-    window.removeEventListener('resize', handleResize);
-    chart?.dispose();
-});
+onMounted(renderChart);
+onBeforeUnmount(disposeChart);
 
 const formatMoney = (value) => formatMoneyWith(value || 0);
 const formatPercentage = (value) => `${Number(value || 0).toFixed(2)}%`;
@@ -471,6 +589,12 @@ const formatValue = (value, format) => {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+}
+
+.sales-report-panel > *,
+.metrics-row,
+.dimension-panels {
+    transition: opacity 0.2s ease;
 }
 
 .stat-card {
@@ -616,5 +740,35 @@ const formatValue = (value, format) => {
 
 .dimension-panels {
     row-gap: 1rem;
+}
+
+/* Last figures, kept while new ones load: still readable, visibly not current. */
+.is-refreshing {
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.chart-skeleton {
+    height: 320px;
+    padding: 0.5rem 0;
+}
+
+.profit-summary {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5);
+}
+
+/* A product name can run long; the figure under it is the point. */
+.mini-metric-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.table-pagination {
+    margin-top: 1rem;
+    justify-content: center;
 }
 </style>

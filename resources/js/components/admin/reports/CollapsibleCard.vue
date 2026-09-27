@@ -1,5 +1,6 @@
 <template>
     <el-card
+        ref="cardRef"
         shadow="hover"
         class="collapsible-card"
         :class="{ 'is-collapsed': collapsed }"
@@ -42,8 +43,13 @@
  * A report card whose body folds away under its header. The choice is kept
  * per section id (see utils/collapsedSections), so it survives a reload and a
  * tab switch.
+ *
+ * It also says when its body is actually in front of someone — scrolled near
+ * the viewport, on the visible tab, and not folded — through `active-change`.
+ * A section whose data is expensive loads on that instead of with the page,
+ * so a table nobody scrolls to, or keeps folded, never costs a request.
  */
-import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { isCollapsed, setCollapsed, registerSection, unregisterSection } from '@/utils/collapsedSections';
 
@@ -55,6 +61,8 @@ const props = defineProps({
     count: { type: Number, default: null },
 });
 
+const emit = defineEmits(['active-change']);
+
 const bodyId = computed(() => `section-${props.id}`);
 const collapsed = computed(() => isCollapsed(props.id));
 
@@ -62,8 +70,36 @@ const toggle = () => setCollapsed(props.id, !collapsed.value);
 
 const formatCount = (value) => Number(value || 0).toLocaleString();
 
-onMounted(() => registerSection(props.id));
-onBeforeUnmount(() => unregisterSection(props.id));
+const cardRef = ref(null);
+const inView = ref(false);
+let observer = null;
+
+// A pane hidden by its tab measures nothing and never intersects, so a card on
+// the other tab reads as out of view without the parent having to say so.
+const active = computed(() => inView.value && !collapsed.value);
+watch(active, (value) => emit('active-change', value));
+
+onMounted(() => {
+    registerSection(props.id);
+
+    const element = cardRef.value?.$el;
+    if (!element || typeof IntersectionObserver === 'undefined') {
+        inView.value = true;
+        return;
+    }
+    // Starts a little before the card scrolls in, so its rows are usually
+    // there by the time it is.
+    observer = new IntersectionObserver(
+        ([entry]) => { inView.value = entry.isIntersecting; },
+        { rootMargin: '300px 0px' },
+    );
+    observer.observe(element);
+});
+
+onBeforeUnmount(() => {
+    unregisterSection(props.id);
+    observer?.disconnect();
+});
 </script>
 
 <style scoped>
