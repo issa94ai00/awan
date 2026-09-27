@@ -449,6 +449,7 @@ class SalesReportController extends Controller
             'date' => 'nullable|date',
             'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = SalesOrder::query()->with(['items.product', 'items.allocations.warehouse', 'fulfillmentWarehouse']);
@@ -468,6 +469,17 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('sales_orders.status', $request->status);
+        }
+
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('sales_orders.status', '!=', SalesOrder::STATUS_CANCELLED);
+        }
+
+        // Validated from the start but never applied, so choosing a product
+        // changed nothing. Narrowed twice: to the documents that sold it, then
+        // to its own lines within them.
+        if ($request->filled('product_id')) {
+            $query->whereHas('items', fn ($items) => $items->where('product_id', $request->product_id));
         }
 
         $orders = $query->get();
@@ -530,7 +542,8 @@ class SalesReportController extends Controller
                     'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
                 ]];
             });
-        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
+        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0)
+            ->when($request->filled('product_id'), fn ($rows) => $rows->where('product_id', (int) $request->product_id));
 
         $grouped = $productSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
 
@@ -562,6 +575,8 @@ class SalesReportController extends Controller
             'gross_profit' => (float) $grossProfit,
             'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
             'product_count' => $finalProductSummary->count(),
+            // `product_count` counts product-and-warehouse rows; this, products.
+            'distinct_products' => $finalProductSummary->pluck('product_id')->unique()->count(),
             'top_product' => $finalProductSummary->first() ?: null,
             'lowest_product' => $finalProductSummary->last() ?: null,
         ];
@@ -1265,6 +1280,7 @@ class SalesReportController extends Controller
             'date' => 'nullable|date',
             'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query()->with(['items.product', 'items.warehouse', 'warehouse']);
@@ -1284,6 +1300,17 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
+        }
+
+        // Validated from the start but never applied, so choosing a product
+        // changed nothing. Narrowed twice: to the documents that sold it, then
+        // to its own lines within them.
+        if ($request->filled('product_id')) {
+            $query->whereHas('items', fn ($items) => $items->where('product_id', $request->product_id));
         }
 
         $invoices = $query->get();
@@ -1318,7 +1345,8 @@ class SalesReportController extends Controller
                     'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
                 ];
             });
-        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
+        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0)
+            ->when($request->filled('product_id'), fn ($rows) => $rows->where('product_id', (int) $request->product_id));
 
         $grouped = $lineSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
 
@@ -1354,6 +1382,7 @@ class SalesReportController extends Controller
                     'gross_profit' => (float) $grossProfit,
                     'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
                     'product_count' => $productSummary->count(),
+                    'distinct_products' => $productSummary->pluck('product_id')->unique()->count(),
                     'top_product' => $productSummary->first() ?: null,
                     'lowest_product' => $productSummary->last() ?: null,
                 ],
