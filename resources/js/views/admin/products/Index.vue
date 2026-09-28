@@ -1416,7 +1416,9 @@ onBeforeUnmount(() => {
 .star-toggle:disabled { opacity: 0.5; cursor: wait; }
 
 .row-actions { display: flex; flex-wrap: nowrap; gap: 0.3rem; justify-content: center; }
-.row-actions .el-button + .el-button { margin-inline-start: 0; }
+/* The admin theme puts a 12px side margin on every button after the first,
+   which pushed the fourth action out of the cell; the gap handles spacing. */
+.row-actions :deep(.el-button) { margin: 0 !important; }
 
 :deep(.row-inactive .product-cell),
 :deep(.row-inactive .price-cell) { opacity: 0.55; }

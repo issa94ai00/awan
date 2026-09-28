@@ -138,7 +138,7 @@
                                 </el-col>
                                 <el-col :xs="24" :md="6">
                                     <el-form-item :label="$t('currency')">
-                                        <el-select v-model="form.currency" size="large" style="width:100%">
+                                        <el-select v-model="form.currency" size="large" style="width:100%" disabled>
                                             <el-option
                                                 v-for="c in currencyOptions"
                                                 :key="c.code"
@@ -679,7 +679,9 @@ const uploadHeaders = reactive({
     'Accept': 'application/json'
 });
 
-const currencyOptions = computed(() => buildCurrencyOptions());
+// Prices are stored in the base currency (USD) — there is no per-product
+// currency column — so the picker only shows it and cannot be changed.
+const currencyOptions = computed(() => buildCurrencyOptions().filter((c) => c.code === baseCurrencyCode()));
 
 const form = reactive({
     name_ar: '',
@@ -1135,7 +1137,7 @@ const loadProduct = async () => {
             price: p.price ?? 0,
             cost_price: p.cost_price ?? 0,
             sale_price: p.sale_price ?? null,
-            currency: p.currency || baseCurrencyCode(),
+            currency: baseCurrencyCode(),
             show_price: p.show_price ?? true,
             tax_rate: p.tax_rate ?? 0,
             taxable: p.taxable ?? true,
