@@ -77,7 +77,13 @@ class StockMovementController extends Controller
             'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'movement_type' => 'required|string|in:in,out,adjustment',
-            'quantity' => 'required|numeric|min:0.01',
+            // An adjustment is signed — a stock count that finds fewer units
+            // than the books has to take them off. With `min:0.01` on every
+            // type a count could only ever add stock. Whole units only: the
+            // service casts to int, so 0.5 used to be accepted and move nothing.
+            'quantity' => $request->input('movement_type') === StockMovement::TYPE_ADJUSTMENT
+                ? 'required|integer|not_in:0'
+                : 'required|integer|min:1',
             'movement_key' => 'nullable|string|max:255',
             'reference' => 'nullable|string|max:255',
             'source' => 'nullable|string|max:255',
