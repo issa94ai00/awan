@@ -76,6 +76,21 @@ export const fixedAssetsApi = {
         return api.post('/admin/accounting/fixed-assets', data);
     },
 
+    // Only the descriptive fields: the figures are what the entries were made of.
+    update(id, data) {
+        return api.put(`/admin/accounting/fixed-assets/${id}`, data);
+    },
+
+    // What a depreciation run through a month would post, and the run itself.
+    // Missed months are caught up, each dated to its own month.
+    depreciationPreview(params = {}) {
+        return api.get('/admin/accounting/fixed-assets/depreciation', { params });
+    },
+
+    depreciate(data = {}) {
+        return api.post('/admin/accounting/fixed-assets/depreciation', data);
+    },
+
     // Retiring an asset, rather than deleting it: its cost is on the balance
     // sheet and its depreciation in periods already reported on.
     dispose(id, data = {}) {

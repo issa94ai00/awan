@@ -2,14 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\FixedAsset;
-use App\Services\Accounting\LedgerPostingService;
+use App\Services\Accounting\FixedAssetDepreciation;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Charges one month of depreciation across the register.
+ * Charges depreciation across the register up to a month, catching up any
+ * month that was missed.
  *
  * Meant to be run once a month, and safe to run again: each asset's charge for
  * a given month is posted under a key naming that month, so a second run finds
@@ -24,12 +23,12 @@ use Illuminate\Support\Facades\DB;
 class AccountingDepreciate extends Command
 {
     protected $signature = 'accounting:depreciate
-                            {--month= : The month to charge, as YYYY-MM (defaults to last month)}
+                            {--month= : Charge up to and including this month, as YYYY-MM (defaults to last month)}
                             {--dry-run : Report the charges and post nothing}';
 
-    protected $description = 'Post one month of straight-line depreciation for every active asset';
+    protected $description = 'Post straight-line depreciation for every active asset up to a month, including missed months';
 
-    public function handle(LedgerPostingService $ledger): int
+    public function handle(FixedAssetDepreciation $depreciation): int
     {
         $month = $this->resolveMonth();
 
@@ -46,72 +45,27 @@ class AccountingDepreciate extends Command
             return self::SUCCESS;
         }
 
-        $assets = FixedAsset::where('status', FixedAsset::STATUS_ACTIVE)
-            ->whereDate('acquired_on', '<=', $month->copy()->endOfMonth())
-            ->orderBy('asset_number')
-            ->get();
+        // Every month still owed up to this one, not only this one: a month
+        // the schedule missed would otherwise never be charged.
+        $preview = $depreciation->preview($month);
 
-        if ($assets->isEmpty()) {
-            $this->info('لا توجد أصول نشطة تُهلك في '.$month->format('Y-m').'.');
-
-            return self::SUCCESS;
-        }
-
-        $rows = [];
-        $total = 0.0;
-        $posted = 0;
-
-        foreach ($assets as $asset) {
-            if ($asset->isDepreciatedThrough($month)) {
-                continue;
-            }
-
-            $charge = $asset->chargeFor($month);
-
-            if ($charge <= 0) {
-                continue;
-            }
-
-            $rows[] = [
-                $asset->asset_number,
-                mb_substr($asset->name, 0, 28),
-                number_format((float) $asset->cost, 2),
-                number_format($charge, 2),
-                number_format($asset->netBookValue() - $charge, 2),
-            ];
-
-            $total += $charge;
-
-            if ($this->option('dry-run')) {
-                continue;
-            }
-
-            DB::transaction(function () use ($ledger, $asset, $month, $charge, &$posted) {
-                $entry = $ledger->postDepreciation($asset, $month, $charge);
-
-                if (! $entry?->wasRecentlyCreated) {
-                    return;
-                }
-
-                // The register carries its own running total so it can be read
-                // without replaying the journal; the entry above is the record.
-                $asset->update([
-                    'accumulated_depreciation' => round((float) $asset->accumulated_depreciation + $charge, 2),
-                    'depreciated_through' => $month->copy()->endOfMonth()->toDateString(),
-                ]);
-
-                $posted++;
-            });
-        }
-
-        if ($rows === []) {
-            $this->info('لا شيء لإهلاكه في '.$month->format('Y-m').' — كل الأصول محدَّثة أو مُهلكة بالكامل.');
+        if ($preview->isEmpty()) {
+            $this->info('لا شيء لإهلاكه حتى '.$month->format('Y-m').' — كل الأصول محدَّثة أو مُهلكة بالكامل.');
 
             return self::SUCCESS;
         }
 
-        $this->table(['الأصل', 'الاسم', 'التكلفة', 'قسط الشهر', 'القيمة الدفترية بعده'], $rows);
-        $this->line('إجمالي إهلاك '.$month->format('Y-m').': '.number_format($total, 2));
+        $this->table(
+            ['الأصل', 'الاسم', 'الأشهر', 'القسط', 'القيمة الدفترية بعده'],
+            $preview->map(fn (array $row) => [
+                $row['asset_number'],
+                mb_substr($row['name'], 0, 28),
+                implode(', ', $row['months']),
+                number_format($row['amount'], 2),
+                number_format($row['net_book_value_after'], 2),
+            ])->all()
+        );
+        $this->line('إجمالي الإهلاك حتى '.$month->format('Y-m').': '.number_format($preview->sum('amount'), 2));
 
         if ($this->option('dry-run')) {
             $this->warn('معاينة فقط — لم يُرحَّل أي قيد.');
@@ -119,7 +73,13 @@ class AccountingDepreciate extends Command
             return self::SUCCESS;
         }
 
-        $this->info("تم ترحيل {$posted} قيد إهلاك.");
+        $result = $depreciation->run($month);
+
+        foreach ($result['blocked'] as $blocked) {
+            $this->warn($blocked['asset_number'].': '.$blocked['reason']);
+        }
+
+        $this->info("تم ترحيل {$result['entries']} قيد إهلاك.");
 
         return self::SUCCESS;
     }
@@ -130,7 +90,7 @@ class AccountingDepreciate extends Command
         $option = $this->option('month');
 
         if (! $option) {
-            return now()->subMonthNoOverflow()->startOfMonth();
+            return FixedAssetDepreciation::lastCompletedMonth();
         }
 
         if (! preg_match('/^(\d{4})-(\d{2})$/', (string) $option, $m)) {

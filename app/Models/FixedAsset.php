@@ -85,7 +85,7 @@ class FixedAsset extends Model
      *
      * Rounded per month rather than derived from an unrounded rate, so the
      * schedule is made of figures that were actually posted. The final month
-     * takes whatever rounding left behind — see `monthlyChargeOn`.
+     * takes whatever rounding left behind — see FixedAssetDepreciation::owed.
      */
     public function monthlyCharge(): float
     {
@@ -96,39 +96,44 @@ class FixedAsset extends Model
         return round($this->depreciableAmount() / $this->useful_life_months, 2);
     }
 
-    /**
-     * What to charge for a given month, never taking the asset below its
-     * salvage value.
-     *
-     * The last instalment absorbs the rounding difference: twelve charges of
-     * 83.33 leave four cents of an asset that costs 1,000, and an asset that
-     * never quite finishes depreciating would be charged forever.
-     */
-    public function chargeFor(Carbon $month): float
+    /** Whether everything above the salvage value has been charged. */
+    public function isFullyDepreciated(): bool
     {
-        if ($this->status !== self::STATUS_ACTIVE) {
-            return 0.0;
-        }
-
-        // Nothing is charged for a month that ended before the asset arrived.
-        if ($month->copy()->endOfMonth()->lt($this->acquired_on)) {
-            return 0.0;
-        }
-
-        $remaining = round($this->depreciableAmount() - (float) $this->accumulated_depreciation, 2);
-
-        if ($remaining <= 0) {
-            return 0.0;
-        }
-
-        return min($this->monthlyCharge(), $remaining);
+        return round($this->depreciableAmount() - (float) $this->accumulated_depreciation, 2) <= 0;
     }
 
-    /** Whether this month has already been charged. */
-    public function isDepreciatedThrough(Carbon $month): bool
+    /** Monthly charges still to come before the asset reaches its salvage value. */
+    public function remainingMonths(): int
     {
-        return $this->depreciated_through !== null
-            && $this->depreciated_through->gte($month->copy()->endOfMonth()->startOfDay());
+        $remaining = round($this->depreciableAmount() - (float) $this->accumulated_depreciation, 2);
+        $monthly = $this->monthlyCharge();
+
+        if ($remaining <= 0 || $monthly <= 0) {
+            return 0;
+        }
+
+        return (int) ceil(round($remaining / $monthly, 6));
+    }
+
+    /**
+     * The month the last charge falls in, at the current pace.
+     *
+     * Counted from the month after the last one charged, so an asset the run
+     * is behind on shows when it will really finish, not when it should have.
+     */
+    public function lastChargeMonth(): ?string
+    {
+        $remaining = $this->remainingMonths();
+
+        if ($remaining === 0 || ! $this->acquired_on) {
+            return null;
+        }
+
+        $next = $this->depreciated_through
+            ? $this->depreciated_through->copy()->addDay()->startOfMonth()
+            : $this->acquired_on->copy()->startOfMonth();
+
+        return $next->addMonthsNoOverflow($remaining - 1)->format('Y-m');
     }
 
     /** The key the acquisition entry is posted under. */

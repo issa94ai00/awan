@@ -572,7 +572,11 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // the periods that use them, not to the month they were paid.
                 Route::get('/accounting/fixed-assets', [FixedAssetController::class, 'index'])->name('api.admin.accounting.fixed-assets.index');
                 Route::post('/accounting/fixed-assets', [FixedAssetController::class, 'store'])->name('api.admin.accounting.fixed-assets.store');
+                // Declared before {fixedAsset} so "depreciation" is never read as an id.
+                Route::get('/accounting/fixed-assets/depreciation', [FixedAssetController::class, 'depreciationPreview'])->name('api.admin.accounting.fixed-assets.depreciation.preview');
+                Route::post('/accounting/fixed-assets/depreciation', [FixedAssetController::class, 'depreciate'])->name('api.admin.accounting.fixed-assets.depreciation.run');
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
+                Route::put('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'update'])->name('api.admin.accounting.fixed-assets.update');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
 
