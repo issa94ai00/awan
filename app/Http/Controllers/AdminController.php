@@ -479,7 +479,7 @@ class AdminController extends Controller
         $currencies = app(CurrencyService::class);
         $availableCurrencies = $currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
-        $availableTimezones = ['Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
+        $availableTimezones = ['Asia/Damascus', 'Asia/Beirut', 'Asia/Baghdad', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
         $validated = $request->validate([
             'settings.site_name' => 'nullable|string|max:255',
