@@ -823,25 +823,7 @@ class SalesOrderWorkflowService
     {
         $order->loadMissing('customer', 'items.product', 'items.variant');
 
-        $items = $order->items
-            ->filter(fn (SalesOrderItem $item) => (int) $item->product_id > 0 && $item->product)
-            ->map(function (SalesOrderItem $item) {
-                $variant = $item->variant;
-
-                return [
-                    'product_id' => (int) $item->product_id,
-                    'product_variant_id' => $variant?->id,
-                    'product_name' => $item->description ?: $item->product->name_ar,
-                    'quantity' => (int) $item->quantity,
-                    'unit_price' => $this->lastPurchasePriceFor($item->product, $variant),
-                    'sale_price' => round((float) $item->unit_price, 5),
-                    // Enough for the purchase screen's picker to label the line.
-                    'product' => $item->product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
-                    'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
-                ];
-            })
-            ->values()
-            ->all();
+        $items = $this->purchaseDraftLines($order->items, fn (SalesOrderItem $item) => $item->description);
 
         return [
             'sales_order' => [
@@ -854,6 +836,76 @@ class SalesOrderWorkflowService
             ],
             'items' => $items,
         ];
+    }
+
+    /**
+     * The same draft from a sales invoice: every line it sold, for a purchase
+     * order raised against the invoice rather than an order.
+     *
+     * @return array{invoice: array<string,mixed>, items: list<array<string,mixed>>}
+     */
+    public function invoicePurchaseDraft(Invoice $invoice): array
+    {
+        $invoice->loadMissing('customer', 'salesOrder', 'items.product', 'items.variant');
+
+        return [
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'status' => $invoice->status,
+                'customer_name' => $invoice->customer?->name,
+                'sales_order_id' => $invoice->sales_order_id,
+                'order_number' => $invoice->salesOrder?->order_number,
+                'notes' => $invoice->notes,
+            ],
+            'items' => $this->purchaseDraftLines($invoice->items, fn ($item) => $item->product_name),
+        ];
+    }
+
+    /**
+     * Sale lines as purchase lines: the size sold, what it sold at, and the
+     * last price paid for it as the cost. One line per product and size, the
+     * way the purchase screen holds them.
+     *
+     * @param  iterable<\Illuminate\Database\Eloquent\Model>  $lines
+     * @param  callable(\Illuminate\Database\Eloquent\Model): ?string  $storedName
+     * @return list<array<string,mixed>>
+     */
+    private function purchaseDraftLines(iterable $lines, callable $storedName): array
+    {
+        $out = [];
+
+        foreach ($lines as $item) {
+            $product = $item->product;
+            if ((int) $item->product_id <= 0 || ! $product) {
+                continue;
+            }
+
+            $variant = $item->variant;
+            $key = $product->id.':'.($variant?->id ?? 0);
+
+            // An invoice may sell one size on two lines; the purchase screen
+            // refuses a product twice, so they become one line.
+            if (isset($out[$key])) {
+                $out[$key]['quantity'] += (int) $item->quantity;
+
+                continue;
+            }
+
+            $out[$key] = [
+                'product_id' => (int) $item->product_id,
+                'product_variant_id' => $variant?->id,
+                'product_name' => $storedName($item) ?: $product->name_ar,
+                'quantity' => (int) $item->quantity,
+                'unit_price' => $this->lastPurchasePriceFor($product, $variant),
+                'sale_price' => round((float) $item->unit_price, 5),
+                // Enough for the purchase screen's picker to label the line.
+                'product' => $product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
+            ];
+        }
+
+        return array_values($out);
     }
 
     /** The last price paid for this size, else its own cost, else the product's. */

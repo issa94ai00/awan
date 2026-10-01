@@ -9,6 +9,11 @@ export const invoicesApi = {
         return api.get(`/invoices/${id}`);
     },
 
+    // The invoice's lines as a purchase order, to prefill the purchase screen.
+    purchaseDraft(id) {
+        return api.get(`/invoices/${id}/purchase-draft`);
+    },
+
     create(data) {
         return api.post('/invoices', data);
     },

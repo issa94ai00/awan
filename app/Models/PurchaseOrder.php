@@ -57,6 +57,9 @@ class PurchaseOrder extends Model
 
     protected $fillable = [
         'supplier_id',
+        // The sale it buys in for, when it was raised for one; at most one.
+        'sales_order_id',
+        'invoice_id',
         'order_number',
         'status',
         'total',
@@ -98,6 +101,18 @@ class PurchaseOrder extends Model
     public function receipts()
     {
         return $this->hasMany(PurchaseReceipt::class);
+    }
+
+    /** The sales order this buys in for, if it was raised for one. */
+    public function salesOrder()
+    {
+        return $this->belongsTo(SalesOrder::class);
+    }
+
+    /** The sales invoice this buys in for, if it was raised for one. */
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     /** The stage this order is at, whatever spelling its status was stored in. */

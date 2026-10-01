@@ -116,6 +116,12 @@ class SalesOrder extends Model
         return $this->hasMany(Invoice::class, 'sales_order_id');
     }
 
+    /** Purchase orders raised to buy in for this order. */
+    public function purchaseOrders()
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
     public function channel()
     {
         return $this->belongsTo(OrderChannel::class, 'channel_id');

@@ -10,7 +10,7 @@
                 <!-- Searching hits the API, so an order on any page is found. -->
                 <el-input
                     v-model="searchQuery"
-                    :placeholder="$t('search_by_order_number_or_supplier_name')"
+                    :placeholder="$t('po_search_placeholder')"
                     clearable
                     class="search-input"
                     :prefix-icon="Search"
@@ -124,6 +124,11 @@
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
                             <small class="cell-sub">{{ formatDate(row.order_date || row.created_at) }}</small>
+                            <!-- The sale it buys in for, when there is one. -->
+                            <small v-if="saleLinkOf(row)" class="cell-sub sale-ref" :title="saleLinkOf(row).customer">
+                                <i class="fas" :class="saleLinkOf(row).type === 'invoice' ? 'fa-file-invoice-dollar' : 'fa-cart-shopping'"></i>
+                                {{ saleLinkOf(row).number }}
+                            </small>
                         </template>
                     </el-table-column>
                     <el-table-column prop="supplier.name" :label="$t('supplier')" min-width="200">
@@ -301,6 +306,10 @@
                             <i class="fas fa-edit"></i> {{ $t('edit') }}
                         </el-button>
                     </div>
+                </div>
+
+                <div v-if="saleLinkOf(selectedOrder)" class="mb-3">
+                    <PurchaseSaleLink :model-value="saleLinkOf(selectedOrder)" disabled />
                 </div>
 
                 <!-- A cancelled order has no position on the track; drawing it
@@ -555,6 +564,13 @@
                         </el-form-item>
                     </el-col>
                 </el-row>
+
+                <!-- The sale this buys in for. Picking one links it and fills
+                     the lines from it; a received order can still be relinked. -->
+                <el-form-item :label="$t('po_for_sale')" class="sale-link-item">
+                    <PurchaseSaleLink v-model="form.sale_link" @pick="fillFromSale" />
+                    <small v-if="!form.sale_link && !formLocked" class="field-hint">{{ $t('po_for_sale_hint') }}</small>
+                </el-form-item>
 
                 <el-row :gutter="20">
                     <el-col :xs="24" :sm="12">
@@ -859,6 +875,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
+import { invoicesApi } from '@/api/invoices';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
 
 const { t } = useI18n();
@@ -960,6 +978,8 @@ const form = reactive({
     discount: 0,
     tax: 0,
     notes: '',
+    // The sale this buys in for: { type: 'sales_order' | 'invoice', id, number, customer }.
+    sale_link: null,
     items: []
 });
 
@@ -970,6 +990,10 @@ const todayIso = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// The note the last fill wrote, so filling from another sale replaces it
+// instead of stacking a second one, while a note someone typed is kept.
+let autoNote = '';
+
 const resetForm = () => {
     form.supplier_id = '';
     form.order_date = todayIso();
@@ -977,6 +1001,8 @@ const resetForm = () => {
     form.discount = 0;
     form.tax = 0;
     form.notes = '';
+    form.sale_link = null;
+    autoNote = '';
     form.items = [blankRow()];
 };
 
@@ -1311,6 +1337,7 @@ const openEditDrawer = async (id) => {
         form.discount = num(order.discount);
         form.tax = num(order.tax);
         form.notes = order.notes || '';
+        form.sale_link = saleLinkOf(order);
         form.items = order.items.map(item => blankRow({
             ...lineFields(item),
             quantity: item.quantity,
@@ -1503,7 +1530,7 @@ const apiError = (e, fallback) => {
 
 const orderPayload = () => {
     if (formLocked.value) {
-        return { order_date: form.order_date || null, due_date: form.due_date || null, notes: form.notes || null };
+        return { order_date: form.order_date || null, due_date: form.due_date || null, notes: form.notes || null, ...saleLinkPayload() };
     }
     return {
         supplier_id: form.supplier_id,
@@ -1512,6 +1539,7 @@ const orderPayload = () => {
         discount: num(form.discount),
         tax: num(form.tax),
         notes: form.notes || null,
+        ...saleLinkPayload(),
         items: form.items.map(({ key, pick, ...item }) => ({
             ...item,
             sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
@@ -1875,6 +1903,8 @@ const prefillFromShortage = async (salesOrderId) => {
                 : t('sales.prefilled_from_order', { order: orderNumber }),
             order.notes,
         ].filter(Boolean).join('\n').slice(0, 1000);
+        autoNote = form.notes;
+        form.sale_link = { type: 'sales_order', id: Number(order.id ?? salesOrderId), number: orderNumber, customer: order.customer_name || '' };
 
         // Clean from here: the prefill is a starting point, not the
         // operator's unsaved work.
@@ -1895,12 +1925,9 @@ const prefillFromShortage = async (salesOrderId) => {
  */
 const prefillFromSalesOrder = async (salesOrderId) => {
     try {
-        const { data } = await salesOrdersApi.purchaseDraft(salesOrderId);
-        const draft = data?.data || {};
-        const order = draft.sales_order || {};
-        const lines = draft.items || [];
+        const draft = await fetchSaleDraft({ type: 'sales_order', id: salesOrderId });
 
-        if (!lines.length) {
+        if (!draft.lines.length) {
             ElMessage.info(t('po_from_sales_order_empty'));
             return;
         }
@@ -1908,29 +1935,113 @@ const prefillFromSalesOrder = async (salesOrderId) => {
         isEditMode.value = false;
         editingStatus.value = '';
         resetForm();
-        form.items = lines.map((line) => blankRow({
-            ...lineFields(line),
-            quantity: line.quantity,
-            unit_price: num(line.unit_price),
-            sale_price: num(line.sale_price),
-        }));
-        rememberProducts(lines);
-
-        // The customer's delivery date is when the goods are needed by, if it
-        // has not already passed.
-        if (order.expected_delivery && order.expected_delivery >= form.order_date) {
-            form.due_date = order.expected_delivery;
-        }
-        form.notes = [
-            t('po_from_sales_order_note', { number: order.order_number, customer: order.customer_name || '—' }),
-            order.notes,
-        ].filter(Boolean).join('\n').slice(0, 1000);
+        applySaleDraft(draft);
+        form.sale_link = draft.link;
 
         markFormClean();
         formDrawerVisible.value = true;
-        ElMessage.success(t('po_from_sales_order_ready', { number: order.order_number }));
+        ElMessage.success(t('po_from_sales_order_ready', { number: draft.link.number }));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('po_from_sales_order_failed'));
+    }
+};
+
+/* The sale a purchase order buys in for ------------------------------ */
+
+/** An order's link as the picker holds it, or null. */
+const saleLinkOf = (order) => {
+    if (order?.sales_order) {
+        return { type: 'sales_order', id: order.sales_order.id, number: order.sales_order.order_number, customer: order.sales_order.customer?.name || '' };
+    }
+    if (order?.invoice) {
+        return { type: 'invoice', id: order.invoice.id, number: order.invoice.invoice_number, customer: order.invoice.customer?.name || '' };
+    }
+    return null;
+};
+
+// Both are always sent, so linking one sale, or none, clears the other.
+const saleLinkPayload = () => ({
+    sales_order_id: form.sale_link?.type === 'sales_order' ? form.sale_link.id : null,
+    invoice_id: form.sale_link?.type === 'invoice' ? form.sale_link.id : null,
+});
+
+/** A sale's lines as a purchase draft, with what to say about where they came from. */
+const fetchSaleDraft = async (link) => {
+    if (link.type === 'invoice') {
+        const { data } = await invoicesApi.purchaseDraft(link.id);
+        const invoice = data?.data?.invoice || {};
+        return {
+            link: { type: 'invoice', id: invoice.id ?? link.id, number: invoice.invoice_number, customer: invoice.customer_name || '' },
+            lines: data?.data?.items || [],
+            note: t('po_from_invoice_note', { number: invoice.invoice_number, customer: invoice.customer_name || '—' }),
+            notes: invoice.notes,
+            expected: null,
+        };
+    }
+    const { data } = await salesOrdersApi.purchaseDraft(link.id);
+    const order = data?.data?.sales_order || {};
+    return {
+        link: { type: 'sales_order', id: order.id ?? link.id, number: order.order_number, customer: order.customer_name || '' },
+        lines: data?.data?.items || [],
+        note: t('po_from_sales_order_note', { number: order.order_number, customer: order.customer_name || '—' }),
+        notes: order.notes,
+        expected: order.expected_delivery,
+    };
+};
+
+/** A sale's draft onto the form: the same sizes and quantities, both prices, the date and a note. */
+const applySaleDraft = ({ lines, note, notes, expected }) => {
+    form.items = lines.map((line) => blankRow({
+        ...lineFields(line),
+        quantity: line.quantity,
+        unit_price: num(line.unit_price),
+        sale_price: line.sale_price != null ? num(line.sale_price) : '',
+    }));
+    rememberProducts(lines);
+
+    // The customer's delivery date is when the goods are needed by, if it
+    // has not already passed.
+    if (expected && expected >= form.order_date) form.due_date = expected;
+
+    if (!form.notes.trim() || form.notes === autoNote) {
+        form.notes = [note, notes].filter(Boolean).join('\n').slice(0, 1000);
+        autoNote = form.notes;
+    }
+};
+
+/**
+ * A sale picked in the form: linked already by the picker, and its lines
+ * filled in — after asking, when the form has lines of its own. Keeping them
+ * keeps the link alone.
+ */
+const fillFromSale = async (link) => {
+    if (formLocked.value || !link) return;
+
+    if (form.items.some((item) => item.product_id)) {
+        try {
+            await ElMessageBox.confirm(
+                t('po_sale_replace_lines', { number: link.number }),
+                t('po_sale_replace_title'),
+                { type: 'info', confirmButtonText: t('po_sale_replace'), cancelButtonText: t('po_sale_keep_lines') },
+            );
+        } catch {
+            return;
+        }
+    }
+
+    loadingForm.value = true;
+    try {
+        const draft = await fetchSaleDraft(link);
+        if (!draft.lines.length) {
+            ElMessage.info(t('po_sale_empty', { number: link.number }));
+            return;
+        }
+        applySaleDraft(draft);
+        ElMessage.success(t('po_sale_filled', { number: link.number }));
+    } catch (err) {
+        ElMessage.error(err?.response?.data?.message || t('po_sale_fill_failed'));
+    } finally {
+        loadingForm.value = false;
     }
 };
 
@@ -2511,6 +2622,12 @@ onMounted(async () => {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.cell-sub.sale-ref { color: #2563eb; direction: ltr; text-align: start; }
+.cell-sub.sale-ref i { margin-inline-end: 0.2rem; }
+
+/* The "for a sale" field: its hint sits under the picker. */
+.sale-link-item :deep(.el-form-item__content) { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+.field-hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.5; }
 
 .supplier-cell > div {
     min-width: 0;

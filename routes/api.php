@@ -677,6 +677,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/invoices', [InvoiceController::class, 'index'])->name('api.invoices.index');
         Route::post('/invoices', [InvoiceController::class, 'store'])->name('api.invoices.store');
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('api.invoices.show');
+        Route::get('/invoices/{invoice}/purchase-draft', [InvoiceController::class, 'purchaseDraft'])->whereNumber('invoice')->name('api.invoices.purchase-draft');
         Route::put('/invoices/{invoice}', [InvoiceController::class, 'update'])->name('api.invoices.update');
         Route::put('/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('api.invoices.update-status');
         Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('api.invoices.destroy');

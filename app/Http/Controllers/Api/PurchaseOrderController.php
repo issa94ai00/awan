@@ -13,12 +13,20 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderController extends Controller
 {
+    /** The sale an order buys in for, with enough to name it and its customer. */
+    private const SALE_LINKS = [
+        'salesOrder:id,order_number,status,customer_id',
+        'salesOrder.customer:id,name',
+        'invoice:id,invoice_number,status,customer_id',
+        'invoice.customer:id,name',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         // receipts_count tells the list whether an order's goods already
         // arrived, so a completed row can point at its receipt instead of
         // offering a receive action that would double-count the stock.
-        $query = PurchaseOrder::with(['supplier', 'items.product', 'items.variant'])->withCount('receipts');
+        $query = PurchaseOrder::with(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts');
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -35,7 +43,7 @@ class PurchaseOrderController extends Controller
         // happened to hold, so an order on page three can still be found.
         if ($request->filled('search')) {
             $query->whereSearch(
-                ['order_number', 'supplier.name', 'supplier.company', 'supplier.phone'],
+                ['order_number', 'supplier.name', 'supplier.company', 'supplier.phone', 'salesOrder.order_number', 'invoice.invoice_number'],
                 $request->input('search')
             );
         }
@@ -111,6 +119,8 @@ class PurchaseOrderController extends Controller
                 'discount' => 'nullable|numeric|min:0',
                 'tax' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
+                'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+                'invoice_id' => 'nullable|integer|exists:invoices,id',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
@@ -129,6 +139,8 @@ class PurchaseOrderController extends Controller
                 'items.*.unit_price.required' => 'يجب تحديد سعر الوحدة',
                 'items.*.unit_price.min' => 'سعر الوحدة يجب أن يكون 0 على الأقل',
             ]);
+
+            $this->assertOneSaleLink($validated);
 
             $validated['order_number'] = $this->nextOrderNumber();
             $validated['status'] = $validated['status'] ?? 'pending';
@@ -149,7 +161,7 @@ class PurchaseOrderController extends Controller
                 return $order;
             });
 
-            $order->load(['supplier', 'items.product', 'items.variant']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -174,7 +186,7 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
-        $order->load(['supplier', 'items.product', 'items.variant', 'receipts']);
+        $order->load(['supplier', 'items.product', 'items.variant', 'receipts', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([
@@ -201,10 +213,14 @@ class PurchaseOrderController extends Controller
                 'order_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
                 'notes' => 'nullable|string|max:1000',
+                // Which sale it was for is a reference, not goods: still fixable.
+                'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+                'invoice_id' => 'nullable|integer|exists:invoices,id',
             ]);
+            $this->assertOneSaleLink($validated);
 
             $order->update($validated);
-            $order->load(['supplier', 'items.product', 'items.variant']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -224,6 +240,8 @@ class PurchaseOrderController extends Controller
             'discount' => 'nullable|numeric|min:0',
             'tax' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
+            'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+            'invoice_id' => 'nullable|integer|exists:invoices,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
@@ -232,6 +250,8 @@ class PurchaseOrderController extends Controller
             'items.*.sale_price' => 'nullable|numeric|min:0',
             'items.*.notes' => 'nullable|string|max:500',
         ]);
+
+        $this->assertOneSaleLink($validated);
 
         // A full save used to accept any status at all, so the rules the
         // status endpoint enforces — no completing by hand, no reviving a
@@ -268,13 +288,33 @@ class PurchaseOrderController extends Controller
             $this->createLines($order, $validated['items']);
         });
 
-        $order->load(['supplier', 'items.product', 'items.variant']);
+        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase order updated successfully',
             'data' => $order,
         ]);
+    }
+
+    /**
+     * A purchase order buys in for one sale at most: an order or an invoice.
+     * Naming one clears the other, so a save that sends only the new link
+     * cannot leave the order pointing at two sales.
+     */
+    private function assertOneSaleLink(array &$validated): void
+    {
+        if (!empty($validated['sales_order_id']) && !empty($validated['invoice_id'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'invoice_id' => 'اربط طلب الشراء بطلب بيع أو بفاتورة بيع، لا بالاثنين',
+            ]);
+        }
+
+        if (!empty($validated['sales_order_id'])) {
+            $validated['invoice_id'] = null;
+        } elseif (!empty($validated['invoice_id'])) {
+            $validated['sales_order_id'] = null;
+        }
     }
 
     /**
@@ -387,7 +427,7 @@ class PurchaseOrderController extends Controller
         $target = PurchaseOrder::normalizeStatus($validated['status']);
 
         if ($current === $target) {
-            $order->load(['supplier', 'items.product', 'items.variant']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -418,7 +458,7 @@ class PurchaseOrderController extends Controller
         }
 
         $order->update(['status' => $target]);
-        $order->load(['supplier', 'items.product', 'items.variant']);
+        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([

@@ -17,6 +17,7 @@ use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\GoodsIssueService;
+use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -1564,5 +1565,25 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * The invoice's lines as a purchase order, for the purchase screen to open
+     * prefilled — "buy in what this invoice sold". Nothing is written.
+     */
+    public function purchaseDraft(Invoice $invoice, SalesOrderWorkflowService $workflow): JsonResponse
+    {
+        if ($invoice->status === Invoice::STATUS_CANCELLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الفاتورة ملغاة — لا حاجة لشراء بنودها.',
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $workflow->invoicePurchaseDraft($invoice),
+        ]);
     }
 }
