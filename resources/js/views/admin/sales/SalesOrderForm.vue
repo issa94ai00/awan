@@ -8,7 +8,7 @@
                 <el-button v-if="!isLocked" @click="showShortcutsHelp = true" :icon="Key" class="shortcuts-btn">
                     {{ $t('keyboard_shortcuts') }}
                 </el-button>
-                <el-button @click="goBack" :icon="ArrowRight" class="back-btn">
+                <el-button @click="goBack" :icon="backIcon" class="back-btn">
                     {{ $t('back_to_sales_orders') }}
                 </el-button>
             </template>
@@ -103,12 +103,14 @@
         </el-dialog>
 
         <!-- Steps Indicator -->
-        <el-steps :active="activeStep" finish-status="success" align-center class="mb-4 sales-steps">
-            <el-step :title="$t('choose_products')" :description="$t('set_products_units_quantities')" />
-            <el-step :title="$t('customer_and_shipping_data')" :description="$t('assign_customer_delivery_finance')" />
+        <!-- A step already passed can be clicked to go back to it; the only way
+             back used to be the "previous" button, one step at a time. -->
+        <el-steps :active="activeStep" finish-status="success" align-center class="mb-4 sales-steps" :class="'at-step-' + activeStep">
+            <el-step :title="$t('choose_products')" :description="$t('set_products_units_quantities')" @click="activeStep > 0 && goToStep(0)" />
+            <el-step :title="$t('customer_and_shipping_data')" :description="$t('assign_customer_delivery_finance')" @click="activeStep > 1 && goToStep(1)" />
             <!-- Where the goods come from, decided while the seller still has
                  the order in front of them rather than at confirmation. -->
-            <el-step :title="$t('so_wizard_routing')" :description="$t('so_wizard_routing_hint')" />
+            <el-step :title="$t('so_wizard_routing')" :description="$t('so_wizard_routing_hint')" @click="activeStep > 2 && goToStep(2)" />
             <el-step :title="$t('so_wizard_review')" :description="$t('so_wizard_review_hint')" />
         </el-steps>
 
@@ -138,11 +140,11 @@
                             <el-icon><Search /></el-icon>
                             <span>{{ $t('search_products_and_build_items') }}</span>
                             <div class="search-filters">
-                                <el-select v-model="searchCategory" :placeholder="$t('category')" size="small" clearable @change="onSearchInput" class="filter-select">
+                                <el-select v-model="searchCategory" :placeholder="$t('category')" size="small" clearable @change="runSearch" class="filter-select">
                                     <el-option :label="$t('all_categories')" :value="null" />
                                     <el-option v-for="cat in categories" :key="cat.id" :label="cat.name_ar || cat.name" :value="cat.id" />
                                 </el-select>
-                                <el-select v-model="searchStockFilter" :placeholder="$t('nav_inventory')" size="small" clearable @change="onSearchInput" class="filter-select">
+                                <el-select v-model="searchStockFilter" :placeholder="$t('nav_inventory')" size="small" clearable @change="runSearch" class="filter-select">
                                     <el-option :label="$t('all')" :value="null" />
                                     <el-option :label="$t('in_stock')" value="available" />
                                     <el-option :label="$t('low')" value="low" />
@@ -183,7 +185,7 @@
 
                             <!-- Search Results Dropdown -->
                             <Transition name="dropdown">
-                                <div v-if="showResults && (searchResults.length || searchLoading)" class="search-dropdown">
+                                <div v-if="showResults && (searchResults.length || searchLoading || searchedFor)" class="search-dropdown">
                                     <div v-if="searchLoading" class="search-loading">
                                         <el-icon class="is-loading"><Loading /></el-icon>
                                         <span>{{ $t('searching_products') }}</span>
@@ -301,7 +303,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="(item, index) in items" :key="item.pick" class="item-table-row">
+                                    <tr v-for="(item, index) in items" :key="item.pick" class="item-table-row" :class="{ 'just-added': flashedPick === item.pick }">
                                         <td class="product-cell" :data-label="$t('product')">
                                             <div class="product-name">{{ item.name }}</div>
                                             <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
@@ -336,13 +338,14 @@
                                                     @click="decrementQty(index)"
                                                     :disabled="item.quantity <= 1"
                                                 />
+                                                <!-- The buttons either side are the steppers; the
+                                                     field's own made it four for one number. -->
                                                 <el-input-number
                                                     v-model="item.quantity"
                                                     :min="1"
-                                                    :max="item.stock || 9999"
+                                                    :controls="false"
                                                     size="small"
                                                     @change="updateTotals"
-                                                    controls-position="inline"
                                                 />
                                                 <el-button
                                                     :icon="Plus"
@@ -350,6 +353,14 @@
                                                     circle
                                                     @click="incrementQty(index)"
                                                 />
+                                            </div>
+                                            <!-- Ordering past the stock is allowed (routing and
+                                                 confirmation deal with the shortage), but it is
+                                                 said here rather than discovered there. The field
+                                                 used to stop at the stock without a word, counted
+                                                 in pieces whatever unit was chosen. -->
+                                            <div v-if="overStock(item)" class="qty-over-stock">
+                                                {{ item.stock > 0 ? $t('so_qty_over_stock', { n: item.stock }) : $t('out_of_stock') }}
                                             </div>
                                         </td>
                                         <td class="price-cell" :data-label="$t('unit_price')">
@@ -364,6 +375,15 @@
                                             <!-- Was a hardcoded "ل.س" beside every price, contradicting
                                                  the configured currency shown everywhere else on the row. -->
                                             <span class="currency">{{ currencyCode }}</span>
+                                            <button
+                                                v-if="priceEdited(item)"
+                                                type="button"
+                                                class="list-price"
+                                                :title="$t('so_reset_list_price')"
+                                                @click="resetPrice(item)"
+                                            >
+                                                <i class="fas fa-rotate-left"></i> {{ formatCurrency(listPrice(item)) }}
+                                            </button>
                                         </td>
                                         <td class="total-cell" :data-label="$t('grand_total')">
                                             {{ formatCurrency(item.price * item.quantity) }}
@@ -422,7 +442,7 @@
                                 @click="goToStep(1)"
                             >
                                 {{ $t('next_customer_and_shipping') }}
-                                <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                                <el-icon class="el-icon--right"><component :is="nextIcon" /></el-icon>
                             </el-button>
                         </div>
                     </el-card>
@@ -443,12 +463,14 @@
 
                         <div class="customer-pick-row">
                             <el-select
+                                ref="customerSelectRef"
                                 v-model="form.customer_id"
                                 :placeholder="$t('search_and_choose_customer')"
                                 filterable
                                 clearable
                                 size="large"
                                 class="w-full"
+                                :class="{ 'needs-customer': customerMissing && !form.customer_id }"
                                 @change="onCustomerChosen"
                             >
                                 <el-option
@@ -464,6 +486,8 @@
                                 <i class="fas fa-user-plus"></i>&nbsp;{{ $t('so_new_customer') }}
                             </el-button>
                         </div>
+
+                        <p v-if="customerMissing && !form.customer_id" class="field-error">{{ $t('choose_customer_before_final_step') }}</p>
 
                         <!-- Selected Customer Profile Card (WOW effect!) -->
                         <Transition name="fade-slide">
@@ -503,7 +527,7 @@
                         </template>
                         <div class="delivery-card-body">
                             <el-row :gutter="20">
-                                <el-col :span="12">
+                                <el-col :xs="24" :sm="12">
                                     <div class="summary-input-row mb-3">
                                         <label>{{ $t('order_date') }}</label>
                                         <el-date-picker
@@ -516,7 +540,7 @@
                                         />
                                     </div>
                                 </el-col>
-                                <el-col :span="12">
+                                <el-col :xs="24" :sm="12">
                                     <div class="summary-input-row mb-3">
                                         <label>{{ $t('expected_delivery') }}</label>
                                         <el-date-picker
@@ -668,16 +692,15 @@
 
                             <div class="step-nav-buttons">
                                 <el-button @click="goToStep(0)" size="large" class="w-full mb-2 step-back-btn">
-                                    <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_products') }}
+                                    <el-icon class="el-icon--left"><component :is="backIcon" /></el-icon> {{ $t('previous_products') }}
                                 </el-button>
                                 <el-button
                                     type="primary"
                                     size="large"
                                     class="w-full submit-btn step-nav-btn"
-                                    :disabled="!form.customer_id"
                                     @click="goToStep(2)"
                                 >
-                                    {{ $t('so_next_routing') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                                    {{ $t('so_next_routing') }} <el-icon class="el-icon--right"><component :is="nextIcon" /></el-icon>
                                 </el-button>
                             </div>
                         </div>
@@ -785,10 +808,10 @@
 
                     <div class="step-3-nav-bar mt-4">
                         <el-button @click="goToStep(1)" size="large" class="step-back-btn">
-                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('previous_edit_data') }}
+                            <el-icon class="el-icon--left"><component :is="backIcon" /></el-icon> {{ $t('previous_edit_data') }}
                         </el-button>
                         <el-button type="primary" size="large" @click="goToStep(3)">
-                            {{ $t('next_review_and_confirm') }} <el-icon class="el-icon--right"><ArrowLeft /></el-icon>
+                            {{ $t('next_review_and_confirm') }} <el-icon class="el-icon--right"><component :is="nextIcon" /></el-icon>
                         </el-button>
                     </div>
                 </el-card>
@@ -930,7 +953,7 @@
                          invoice and posts the entry in the same click. -->
                     <div class="step-3-nav-bar mt-4">
                         <el-button @click="goToStep(2)" size="large" class="step-back-btn">
-                            <el-icon class="el-icon--left"><ArrowRight /></el-icon> {{ $t('so_previous_routing') }}
+                            <el-icon class="el-icon--left"><component :is="backIcon" /></el-icon> {{ $t('so_previous_routing') }}
                         </el-button>
                         <div class="execute-actions">
                             <el-button
@@ -983,7 +1006,7 @@ import VariantChip from '@/components/admin/products/VariantChip.vue';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 import { useStockShortage } from '@/Composables/useStockShortage';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 import {
     Document, Search, ShoppingCart, User, Wallet, Notebook,
     ArrowRight, ArrowLeft, Plus, Minus, Delete, Check, Loading,
@@ -998,6 +1021,11 @@ const productsStore = useProductsStore();
 
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
+const customerSelectRef = ref(null);
+
+// "Next" points the way the page reads: left in Arabic, right in English.
+const nextIcon = computed(() => (locale.value === 'ar' ? ArrowLeft : ArrowRight));
+const backIcon = computed(() => (locale.value === 'ar' ? ArrowRight : ArrowLeft));
 const showShortcutsHelp = ref(false);
 
 /* ------------------------------------------------------------------ *
@@ -1119,12 +1147,33 @@ const selectedCustomerName = computed(() => {
 // order detail and the invoices — all of which read the configured
 // `default_currency`. It now comes from @/utils/sales with the rest.
 
+// The words typed, or a chosen category on its own, start a search. The
+// filters used to be wired to this as change handlers, so picking a category
+// searched for its id, and the category was never sent at all.
+const canSearch = (query) => (query || '').trim().length >= 2 || !!searchCategory.value;
+
+// Set once a search has answered, so "nothing found" can be told apart from
+// "not searched yet". The dropdown only ever opened on results before, so its
+// empty state could never show.
+const searchedFor = ref('');
+
+// Enter pressed before the results came back: a barcode scanner types the
+// code and Enter in one burst, faster than the search can answer.
+let enterPending = false;
+
+const runSearch = () => onSearchInput(searchQuery.value);
+
 const onSearchInput = (query) => {
     clearTimeout(searchTimeout);
     highlightedIndex.value = -1;
+    // Typing on after an Enter means the Enter was not for these results.
+    enterPending = false;
+    query = typeof query === 'string' ? query : searchQuery.value;
 
-    if (!query || query.length < 2) {
+    if (!canSearch(query)) {
         searchResults.value = [];
+        searchedFor.value = '';
+        searchLoading.value = false;
         return;
     }
 
@@ -1132,9 +1181,14 @@ const onSearchInput = (query) => {
     showResults.value = true;
 
     searchTimeout = setTimeout(async () => {
+        const asked = `${query}|${searchCategory.value ?? ''}|${searchStockFilter.value ?? ''}`;
         try {
             // One result per size, and a size's own code or barcode finds it.
-            const res = await posApi.productLookup({ q: query, expand_variants: 1 });
+            const res = await posApi.productLookup({
+                q: query.trim() || undefined,
+                category_id: searchCategory.value || undefined,
+                expand_variants: 1,
+            });
             let data = res.data?.data || res.data || [];
             data = Array.isArray(data) ? data : [];
             
@@ -1149,15 +1203,34 @@ const onSearchInput = (query) => {
             }
             
             searchResults.value = data;
+            searchedFor.value = asked;
+            // The first result is the one Enter takes.
+            highlightedIndex.value = data.length ? 0 : -1;
             await nextTick();
             updateDropdownPosition();
+
+            if (enterPending) {
+                enterPending = false;
+                const exact = exactMatch(query);
+                if (exact) addProduct(exact);
+                else if (data.length === 1) addProduct(data[0]);
+            }
         } catch (error) {
             console.error('Search error:', error);
             searchResults.value = [];
+            searchedFor.value = asked;
         } finally {
             searchLoading.value = false;
         }
     }, 300);
+};
+
+/** A result whose code or barcode is exactly what was typed or scanned. */
+const exactMatch = (query) => {
+    const code = (query || '').trim().toLowerCase();
+    if (!code) return null;
+    return searchResults.value.find((p) => [p.sku, p.barcode]
+        .some((v) => v && String(v).toLowerCase() === code)) || null;
 };
 
 const addProduct = (product) => {
@@ -1200,8 +1273,23 @@ const addProduct = (product) => {
 
     searchQuery.value = '';
     searchResults.value = [];
+    searchedFor.value = '';
     showResults.value = false;
     updateTotals();
+    flashLine(pick);
+    // Back to the search for the next item: a click on a result had taken
+    // the focus away, so every pick needed a click back into the box.
+    nextTick(() => searchInputRef.value?.focus());
+};
+
+// The line a pick landed on glows for a moment. A second pick of an item
+// already on the order only raised its quantity, which was easy to miss.
+const flashedPick = ref(null);
+let flashTimer = null;
+const flashLine = (pick) => {
+    clearTimeout(flashTimer);
+    flashedPick.value = pick;
+    flashTimer = setTimeout(() => { flashedPick.value = null; }, 1200);
 };
 
 const loadProductUnits = async (productId, itemIndex, { preserveSelection = false } = {}) => {
@@ -1256,6 +1344,22 @@ const loadProductUnits = async (productId, itemIndex, { preserveSelection = fals
     }
 };
 
+/** Pieces a line takes from stock, in whatever unit it is sold. */
+const overStock = (item) => {
+    const pieces = Number(item.quantity) * (Number(item.selectedUnit?.base_unit_multiplier) || 1);
+    return pieces > Number(item.stock || 0);
+};
+
+/** The catalogue price for the line's unit, before anyone typed over it. */
+const listPrice = (item) => (Number(item.base_price) || 0) * (Number(item.selectedUnit?.price_multiplier) || 1);
+
+const priceEdited = (item) => Math.abs((Number(item.price) || 0) - listPrice(item)) >= 0.005;
+
+const resetPrice = (item) => {
+    item.price = listPrice(item);
+    updateTotals();
+};
+
 const onUnitChange = (index) => {
     const item = items.value[index];
     if (item && item.selectedUnit) {
@@ -1297,7 +1401,15 @@ const navigateResult = (direction) => {
 };
 
 const selectHighlighted = () => {
-    if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
+    // Still searching: take the answer when it comes.
+    if (searchLoading.value) {
+        enterPending = true;
+        return;
+    }
+    const exact = exactMatch(searchQuery.value);
+    if (exact) {
+        addProduct(exact);
+    } else if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
         addProduct(searchResults.value[highlightedIndex.value]);
     }
 };
@@ -1577,6 +1689,9 @@ const confirmClear = async () => {
     ElMessage.success(t('form_cleared'));
 };
 
+// Set once "next" was pressed without a customer; marks the field.
+const customerMissing = ref(false);
+
 // Wizard Navigation logic
 const goToStep = (step) => {
     formErrors.value = [];
@@ -1586,6 +1701,10 @@ const goToStep = (step) => {
     }
     if (step >= 2 && !form.customer_id) {
         ElMessage.warning(t('choose_customer_before_final_step'));
+        // Point at the field rather than only naming it.
+        customerMissing.value = true;
+        if (activeStep.value === 1) customerSelectRef.value?.focus?.();
+        else activeStep.value = 1;
         return;
     }
     if (step === 3 && routingMode.value === 'plan') {
@@ -3652,6 +3771,42 @@ onUnmounted(() => {
 .fulfillment-choice { display: flex; flex-wrap: wrap; }
 .fulfillment-choice i { margin-inline-end: 0.3rem; }
 .field-hint { display: block; margin-top: 0.35rem; color: #b45309; font-size: 0.78rem; }
+.field-error { margin: 0.4rem 0 0; color: #dc2626; font-size: 0.8rem; }
+.needs-customer :deep(.el-select__wrapper) { box-shadow: 0 0 0 1px #dc2626 inset; }
+
+/* ---- Items table: feedback on each line ---- */
+.items-table tbody tr.just-added td { animation: line-flash 1.2s ease-out; }
+@keyframes line-flash {
+    0%, 30% { background-color: rgba(59, 130, 246, 0.16); }
+    100% { background-color: transparent; }
+}
+.qty-over-stock {
+    margin-top: 0.25rem;
+    color: #b45309;
+    font-size: 0.7rem;
+    text-align: center;
+    white-space: normal;
+}
+.list-price {
+    display: block;
+    margin-top: 0.15rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    text-decoration: line-through;
+    cursor: pointer;
+}
+.list-price:hover { color: #3b82f6; text-decoration: none; }
+
+/* A step already passed reads as a link back to it. */
+.sales-steps.at-step-1 :deep(.el-step:nth-child(-n+1)),
+.sales-steps.at-step-2 :deep(.el-step:nth-child(-n+2)),
+.sales-steps.at-step-3 :deep(.el-step:nth-child(-n+3)) { cursor: pointer; }
+.sales-steps.at-step-1 :deep(.el-step:nth-child(-n+1):hover .el-step__title),
+.sales-steps.at-step-2 :deep(.el-step:nth-child(-n+2):hover .el-step__title),
+.sales-steps.at-step-3 :deep(.el-step:nth-child(-n+3):hover .el-step__title) { text-decoration: underline; }
 
 /* ---- Routing step ---- */
 .routing-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; width: 100%; }

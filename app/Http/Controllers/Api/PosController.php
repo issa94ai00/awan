@@ -68,6 +68,11 @@ class PosController extends Controller
             $products->whereSearch($columns, $query);
         }
 
+        // An order form narrows its search to one category, or browses it.
+        if ($request->filled('category_id')) {
+            $products->where('products.category_id', $request->integer('category_id'));
+        }
+
         if ($expand) {
             $products->orderBy('products.name_ar')->orderBy('products.id')->orderBy('pv.id');
         }
