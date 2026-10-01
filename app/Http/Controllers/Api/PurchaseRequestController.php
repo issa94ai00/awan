@@ -431,14 +431,7 @@ class PurchaseRequestController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = '%'.$request->search.'%';
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', $search)
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'like', $search)
-                            ->orWhere('phone', 'like', $search);
-                    });
-            });
+            $query->whereSearch(['order_number', 'customer.name', 'customer.phone'], $request->search);
         }
 
         $perPage = min(max((int) $request->get('per_page', 20), 1), 100);

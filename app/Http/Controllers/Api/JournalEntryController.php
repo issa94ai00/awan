@@ -33,11 +33,7 @@ class JournalEntryController extends Controller
         // Entry number or narration: the two things a person remembers an
         // entry by when they come looking for it.
         if ($request->filled('search')) {
-            // An explicit escape character: MySQL and SQLite disagree on the default.
-            $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], trim($request->search)).'%';
-            $query->where(fn ($q) => $q
-                ->whereRaw("entry_number LIKE ? ESCAPE '!'", [$term])
-                ->orWhereRaw("description LIKE ? ESCAPE '!'", [$term]));
+            $query->whereSearch(['entry_number', 'description'], $request->search);
         }
 
         if ($request->filled('date_from')) {

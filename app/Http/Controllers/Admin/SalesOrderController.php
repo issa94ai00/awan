@@ -20,10 +20,7 @@ class SalesOrderController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('order_number', 'like', '%'.$request->search.'%')
-                ->orWhereHas('customer', function ($q) use ($request) {
-                    $q->where('name', 'like', '%'.$request->search.'%');
-                });
+            $query->whereSearch(['order_number', 'customer.name'], $request->search);
         }
 
         $salesOrders = $query->latest()->paginate(20);

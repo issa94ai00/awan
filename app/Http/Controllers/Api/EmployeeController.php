@@ -33,12 +33,8 @@ class EmployeeController extends Controller
         $query = Employee::query()->with('warehouse:id,name,code');
 
         if ($request->has('search') && $request->search) {
-            $search = strtolower($request->search);
-            $query->whereRaw("LOWER(CONCAT(first_name, ' ', last_name)) LIKE ?", ["%{$search}%"])
-                ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(phone) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(department) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(position) LIKE ?', ["%{$search}%"]);
+            // Word by word, so first and last name cover "first last" too.
+            $query->whereSearch(['first_name', 'last_name', 'email', 'phone', 'department', 'position'], $request->search);
         }
 
         if ($request->has('status') && $request->status) {

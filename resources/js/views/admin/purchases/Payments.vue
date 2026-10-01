@@ -318,6 +318,7 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import SupplierPaymentForm from '@/components/admin/purchases/SupplierPaymentForm.vue';
 import { useSupplierPaymentsStore } from '@/stores/supplierPayments';
 import { apiErrorMessage, formatCurrency, formatDate, localIsoDate, paymentMethodLabel } from '@/utils/sales';
+import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -460,8 +461,8 @@ const balanceList = computed(() => (balanceView.value === 'owed'
     : store.outstanding.filter((s) => Number(s.balance) < -0.009).sort((a, b) => a.balance - b.balance)));
 
 const visibleBalances = computed(() => {
-    const q = balanceSearch.value.trim().toLowerCase();
-    return q ? balanceList.value.filter((s) => s.name.toLowerCase().includes(q)) : balanceList.value;
+    const q = balanceSearch.value.trim();
+    return q ? balanceList.value.filter((s) => matchesSearch(s.name, q)) : balanceList.value;
 });
 
 const barWidth = (supplier) => {

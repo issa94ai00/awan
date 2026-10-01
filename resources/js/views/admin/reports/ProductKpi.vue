@@ -287,6 +287,7 @@
 
 <script setup>
 import { formatMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
@@ -667,10 +668,10 @@ const page = ref(1);
 const pageSize = ref(20);
 
 const tableRows = computed(() => {
-    const term = search.value.trim().toLowerCase();
+    const term = search.value.trim();
     let list = view.value === 'warehouse' ? warehouseRows.value : productRows.value;
     if (term) {
-        list = list.filter((row) => `${row.product_name || ''} ${row.warehouse_name || ''}`.toLowerCase().includes(term));
+        list = list.filter((row) => matchesSearch([row.product_name, row.warehouse_name], term));
     }
     if (lossesOnly.value) list = list.filter((row) => row.gross_profit < 0);
     const { prop, order } = sort;

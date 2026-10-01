@@ -115,6 +115,7 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { usePayrollsStore } from '@/stores/payrolls';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
 const store = usePayrollsStore();
@@ -202,14 +203,13 @@ const statusTagType = (status) => {
 
 const filteredPayrolls = computed(() => {
     if (!searchQuery.value.trim()) return store.payrolls;
-    const query = searchQuery.value.toLowerCase();
     return store.payrolls.filter((payroll) => {
-        return [
+        return matchesSearch([
             payroll.payroll_number,
             payroll.employee?.name,
             payroll.net_salary,
             payroll.status
-        ].some((field) => String(field || '').toLowerCase().includes(query));
+        ], searchQuery.value);
     });
 });
 

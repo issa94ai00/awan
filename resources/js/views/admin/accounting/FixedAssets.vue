@@ -601,6 +601,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { fixedAssetsApi } from '@/api/accountingReports';
 import { suppliersApi } from '@/api/suppliers';
 import { formatMoney, formatNumber, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -744,8 +745,7 @@ const clearFilters = () => {
 };
 
 const suggestCategories = (query, cb) => {
-    const q = String(query || '').toLowerCase();
-    cb(categories.value.filter((c) => c.toLowerCase().includes(q)).map((value) => ({ value })));
+    cb(categories.value.filter((c) => matchesSearch(c, query)).map((value) => ({ value })));
 };
 
 /* ------------------------------------------------------------------ *

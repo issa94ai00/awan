@@ -133,6 +133,7 @@ import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import { formatCurrency, sumBy } from '@/utils/sales';
+import { matchesSearch } from '@/utils/search';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
@@ -184,12 +185,10 @@ const summaryCards = computed(() => [
 ]);
 
 const filteredCustomers = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    const query = searchQuery.value.trim();
     if (!query) return store.customers;
     return store.customers.filter((customer) =>
-        [customer.name, customer.company, customer.email, customer.phone]
-            .some((field) => String(field || '').toLowerCase().includes(query))
-    );
+        matchesSearch([customer.name, customer.company, customer.email, customer.phone], query));
 });
 
 const balanceTone = (customer) => {

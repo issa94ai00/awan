@@ -159,11 +159,7 @@ class WmsController extends Controller
         $query = Product::with(['category', 'inventory.warehouse']);
 
         if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%')
-                    ->orWhere('sku', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name', 'code', 'sku'], $request->search);
         }
 
         if ($request->category) {
@@ -220,11 +216,7 @@ class WmsController extends Controller
 
         // Search by product name or code
         if ($request->filled('search')) {
-            $query->whereHas('product', function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%')
-                    ->orWhere('sku', 'like', '%'.$request->search.'%');
-            });
+            $query->whereHas('product', fn ($q) => $q->whereSearch(['name', 'code', 'sku'], $request->search));
         }
 
         $perPage = $request->input('per_page', 15);
@@ -932,10 +924,7 @@ class WmsController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(fn ($q) => $q
-                ->where('list_number', 'like', "%{$search}%")
-                ->orWhereHas('salesOrder', fn ($o) => $o->where('order_number', 'like', "%{$search}%")));
+            $query->whereSearch(['list_number', 'salesOrder.order_number'], $request->search);
         }
 
         $lists = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
@@ -1725,10 +1714,7 @@ class WmsController extends Controller
         $query = Warehouse::withSum('inventory as total_stock', 'quantity');
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name', 'code'], $request->search);
         }
 
         if ($request->filled('is_active')) {

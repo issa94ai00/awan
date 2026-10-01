@@ -272,6 +272,7 @@ import {
 } from '@element-plus/icons-vue';
 import { categoriesApi } from '@/api/categories';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { matchesSearch } from '@/utils/search';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 
@@ -311,10 +312,8 @@ const fetchCategories = async () => {
 
 const byOrder = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id;
 
-const normalize = (value) => String(value ?? '').toLowerCase().trim();
-
-const matchesSearch = (category, term) => !term
-    || [category.name_ar, category.name_en, category.slug].some((field) => normalize(field).includes(term));
+const categoryMatches = (category, term) =>
+    matchesSearch([category.name_ar, category.name_en, category.slug], term);
 
 /**
  * Sections with their subcategories nested under them, each carrying the
@@ -372,12 +371,12 @@ const passesStatus = (category) => {
  * in; a section that matches the search itself keeps all its children.
  */
 const tree = computed(() => {
-    const term = normalize(filters.search);
+    const term = filters.search;
 
     return fullTree.value.reduce((rows, parent) => {
-        const parentHit = matchesSearch(parent, term);
+        const parentHit = categoryMatches(parent, term);
         const children = parent.children.filter((child) =>
-            passesStatus(child) && (parentHit || matchesSearch(child, term)));
+            passesStatus(child) && (parentHit || categoryMatches(child, term)));
 
         if ((parentHit && passesStatus(parent)) || children.length) {
             rows.push({ ...parent, children });

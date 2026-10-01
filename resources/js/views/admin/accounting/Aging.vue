@@ -242,6 +242,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { accountingReportsApi } from '@/api/accountingReports';
 import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -329,10 +330,9 @@ const bucketFilter = reactive({ receivables: '', payables: '' });
 const partiesIn = (section, bucket) => (section.data?.parties || []).filter((p) => Number(p.buckets?.[bucket] || 0) > 0).length;
 
 const visibleParties = (section) => {
-    const q = search.value.trim().toLowerCase();
     const bucket = bucketFilter[section.key];
     return (section.data?.parties || []).filter((p) =>
-        (!q || String(p.name || '').toLowerCase().includes(q))
+        matchesSearch(p.name, search.value)
         && (!bucket || Number(p.buckets?.[bucket] || 0) > 0));
 };
 

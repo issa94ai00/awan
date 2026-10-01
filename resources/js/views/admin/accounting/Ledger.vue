@@ -376,6 +376,7 @@ import { ledgerAccountsApi } from '@/api/ledgerAccounts';
 import { accountingReportsApi } from '@/api/accountingReports';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { formatMoney, baseCurrencyCode } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t, te } = useI18n();
@@ -478,8 +479,7 @@ const activeFilterCount = computed(() => [filters.search.trim(), filters.type, f
 const resetFilters = () => Object.assign(filters, { search: '', type: '', status: '', hideZero: false });
 
 const matches = (node) => {
-    const q = filters.search.trim().toLowerCase();
-    if (q && !String(node.code).toLowerCase().includes(q) && !String(node.name).toLowerCase().includes(q)) return false;
+    if (!matchesSearch([node.code, node.name], filters.search)) return false;
     if (filters.status === 'active' && !node.is_active) return false;
     if (filters.status === 'inactive' && node.is_active) return false;
     if (filters.hideZero && node.rollup === 0) return false;

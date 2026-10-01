@@ -18,11 +18,7 @@ class ProductionController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('order_number', 'like', '%' . $request->search . '%')
-                ->orWhereHas('product', function ($q) use ($request) {
-                    $q->where('name_ar', 'like', '%' . $request->search . '%')
-                        ->orWhere('name_en', 'like', '%' . $request->search . '%');
-                });
+            $query->whereSearch(['order_number', 'product.name_ar', 'product.name_en'], $request->search);
         }
 
         $productionOrders = $query->latest()->paginate(20);

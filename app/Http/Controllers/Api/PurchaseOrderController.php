@@ -34,13 +34,10 @@ class PurchaseOrderController extends Controller
         // Searching hits the table rather than the twenty rows the browser
         // happened to hold, so an order on page three can still be found.
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', "%{$search}%")
-                        ->orWhere('company', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%"));
-            });
+            $query->whereSearch(
+                ['order_number', 'supplier.name', 'supplier.company', 'supplier.phone'],
+                $request->input('search')
+            );
         }
 
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);

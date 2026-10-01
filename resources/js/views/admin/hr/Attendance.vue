@@ -63,6 +63,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAttendanceStore } from '@/stores/attendance';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { matchesSearch } from '@/utils/search';
 
 const router = useRouter();
 const attendanceStore = useAttendanceStore();
@@ -86,12 +87,10 @@ const attendanceRecords = computed(() => attendanceStore.records.map((record) =>
 })));
 
 const filteredRecords = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    const query = searchQuery.value.trim();
     if (!query) return attendanceRecords.value;
     return attendanceRecords.value.filter((record) => {
-        return [record.employeeName, record.department, record.statusLabel].some((field) =>
-            String(field || '').toLowerCase().includes(query)
-        );
+        return matchesSearch([record.employeeName, record.department, record.statusLabel], query);
     });
 });
 

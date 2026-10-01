@@ -49,13 +49,10 @@ class PurchaseReturnController extends Controller
         }
 
         if ($request->filled('search')) {
-            $term = '%'.trim((string) $request->search).'%';
-            $query->where(function ($q) use ($term) {
-                $q->where('purchase_returns.return_number', 'like', $term)
-                    ->orWhere('purchase_returns.reason', 'like', $term)
-                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $term))
-                    ->orWhereHas('purchaseReceipt', fn ($r) => $r->where('receipt_number', 'like', $term));
-            });
+            $query->whereSearch([
+                'purchase_returns.return_number', 'purchase_returns.reason',
+                'supplier.name', 'purchaseReceipt.receipt_number',
+            ], $request->search);
         }
 
         // Totals for whatever is filtered, taken before paging.

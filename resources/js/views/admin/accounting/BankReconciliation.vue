@@ -517,6 +517,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { bankReconciliationsApi } from '@/api/bankReconciliations';
 import { formatMoney, formatNumber, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -659,16 +660,13 @@ const kindOptions = computed(() => [
 ]);
 
 const rows = computed(() => {
-    const needle = search.value.trim().toLowerCase();
     return movements.value.filter((m) => {
         if (show.value === 'earlier' ? !m.cleared_in : m.cleared_in) return false;
         if (show.value === 'outstanding' && m.is_cleared) return false;
         if (show.value === 'cleared' && !m.is_cleared) return false;
         if (kind.value === 'in' && m.amount <= 0) return false;
         if (kind.value === 'out' && m.amount >= 0) return false;
-        if (!needle) return true;
-        return [m.entry_number, m.line_description, m.description, String(Math.abs(m.amount)), Math.abs(m.amount).toFixed(2)]
-            .some((v) => String(v || '').toLowerCase().includes(needle));
+        return matchesSearch([m.entry_number, m.line_description, m.description, String(Math.abs(m.amount)), Math.abs(m.amount).toFixed(2)], search.value);
     });
 });
 

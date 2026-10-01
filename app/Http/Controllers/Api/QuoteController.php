@@ -426,14 +426,9 @@ class QuoteController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('quote_number', 'like', "%{$search}%")
-                    ->orWhere('notes', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%")
-                        ->orWhere('company', 'like', "%{$search}%"));
-            });
+            $query->whereSearch([
+                'quote_number', 'notes', 'customer.name', 'customer.phone', 'customer.company',
+            ], $request->search);
         }
 
         if ($request->filled('date_from')) {

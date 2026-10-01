@@ -45,9 +45,7 @@ class FixedAssetController extends Controller
         }
 
         if ($request->filled('search')) {
-            $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], trim((string) $request->search)).'%';
-            $query->where(fn ($q) => $q->whereRaw("name LIKE ? ESCAPE '!'", [$term])
-                ->orWhereRaw("asset_number LIKE ? ESCAPE '!'", [$term]));
+            $query->whereSearch(['name', 'asset_number'], $request->search);
         }
 
         $perPage = min(100, max(1, (int) $request->input('per_page', 20)));

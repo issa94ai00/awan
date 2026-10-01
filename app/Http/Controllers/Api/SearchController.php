@@ -36,7 +36,6 @@ class SearchController extends Controller
             ]);
         }
 
-        $searchTerm = '%' . $query . '%';
         $prefix = $query . '%';
 
         // Listed the way category pages list them — a row per size or colour,
@@ -46,15 +45,10 @@ class SearchController extends Controller
         $productsQuery = Product::query()
             ->withVariantRows()
             ->where('products.is_active', 1)
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('products.name_ar', 'like', $searchTerm)
-                  ->orWhere('products.name_en', 'like', $searchTerm)
-                  ->orWhere('products.description_ar', 'like', $searchTerm)
-                  ->orWhere('products.brand', 'like', $searchTerm)
-                  ->orWhere('products.model', 'like', $searchTerm)
-                  ->orWhere('products.sku', 'like', $searchTerm)
-                  ->orWhere('pv.sku', 'like', $searchTerm);
-            })
+            ->whereSearch([
+                'products.name_ar', 'products.name_en', 'products.description_ar',
+                'products.brand', 'products.model', 'products.sku', 'pv.sku',
+            ], $query)
             ->with('category:id,name_ar,name_en,slug');
 
         if ($request->boolean('in_stock')) {
@@ -76,11 +70,7 @@ class SearchController extends Controller
         // Search categories
         $categories = Category::query()
             ->where('is_active', 1)
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('description', 'like', $searchTerm);
-            })
+            ->whereSearch(['name_ar', 'name_en', 'description'], $query)
             ->withProductCount()
             ->limit(10)
             ->get();
@@ -128,17 +118,10 @@ class SearchController extends Controller
             ]);
         }
 
-        $searchTerm = '%' . $query . '%';
-
         // Return product objects so the navbar can show thumbnails + links
         $products = Product::query()
             ->where('is_active', 1)
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm);
-            })
+            ->whereSearch(['name_ar', 'name_en', 'brand', 'model'], $query)
             ->with('category:id,name_ar,slug')
             ->limit(6)
             ->get();

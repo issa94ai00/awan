@@ -421,6 +421,7 @@ import {
     paymentMethodLabel,
 } from '@/utils/sales';
 import { formatMoney } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -715,10 +716,9 @@ const expenseForm = reactive({ description: '', amount: 0, category: 'other', ex
 
 // The expenses endpoint returns every row, so filtering here does see them all.
 const filteredExpenses = computed(() => {
-    const q = expenseSearch.value.trim().toLowerCase();
+    const q = expenseSearch.value.trim();
     if (!q) return expenses.value;
-    return expenses.value.filter((e) => [e.expense_number, e.description, expenseCategoryLabel(e.category), e.invoice?.invoice_number]
-        .some((f) => String(f || '').toLowerCase().includes(q)));
+    return expenses.value.filter((e) => matchesSearch([e.expense_number, e.description, expenseCategoryLabel(e.category), e.invoice?.invoice_number], q));
 });
 const expenseTotal = computed(() => filteredExpenses.value.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
 

@@ -13,16 +13,11 @@ class LeaveRequestController extends Controller
         $query = LeaveRequest::with('employee');
 
         if ($request->filled('search')) {
-            $search = strtolower($request->search);
-            $query->where(function ($query) use ($search) {
-                $query->whereHas('employee', function ($query) use ($search) {
-                    $query->whereRaw('LOWER(CONCAT(first_name, \' \' , last_name)) LIKE ?', ["%{$search}%"])
-                        ->orWhereRaw('LOWER(department) LIKE ?', ["%{$search}%"]);
-                })
-                ->orWhereRaw('LOWER(leave_type) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(status) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(reason) LIKE ?', ["%{$search}%"]);
-            });
+            // Word by word, so first and last name cover "first last" too.
+            $query->whereSearch([
+                'employee.first_name', 'employee.last_name', 'employee.department',
+                'leave_type', 'status', 'reason',
+            ], $request->search);
         }
 
         if ($request->filled('employee_id')) {

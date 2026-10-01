@@ -58,22 +58,14 @@ class PosController extends Controller
         }
 
         if ($query) {
-            $searchTerm = '%' . $query . '%';
-            $products->where(function ($q) use ($searchTerm, $expand) {
-                $q->where('products.name_ar', 'like', $searchTerm)
-                    ->orWhere('products.name_en', 'like', $searchTerm)
-                    ->orWhere('products.brand', 'like', $searchTerm)
-                    ->orWhere('products.model', 'like', $searchTerm)
-                    ->orWhere('products.sku', 'like', $searchTerm)
-                    ->orWhere('products.barcode', 'like', $searchTerm);
-
-                if ($expand) {
-                    $q->orWhere('pv.sku', 'like', $searchTerm)
-                        ->orWhere('pv.barcode', 'like', $searchTerm)
-                        ->orWhere('pv.size', 'like', $searchTerm)
-                        ->orWhere('pv.color', 'like', $searchTerm);
-                }
-            });
+            $columns = [
+                'products.name_ar', 'products.name_en', 'products.brand',
+                'products.model', 'products.sku', 'products.barcode',
+            ];
+            if ($expand) {
+                $columns = [...$columns, 'pv.sku', 'pv.barcode', 'pv.size', 'pv.color'];
+            }
+            $products->whereSearch($columns, $query);
         }
 
         if ($expand) {
@@ -97,13 +89,7 @@ class PosController extends Controller
         $query = Customer::query();
 
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name', 'like', $searchTerm)
-                    ->orWhere('phone', 'like', $searchTerm)
-                    ->orWhere('email', 'like', $searchTerm)
-                    ->orWhere('company', 'like', $searchTerm);
-            });
+            $query->whereSearch(['name', 'phone', 'email', 'company'], $request->search);
         }
 
         $perPage = min(max((int) $request->get('per_page', 20), 1), 100);

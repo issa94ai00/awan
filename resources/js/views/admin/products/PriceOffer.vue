@@ -754,6 +754,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
+import { matchesSearch } from '@/utils/search';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
 import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
 
@@ -1923,9 +1924,7 @@ function categoryLabel(cat) {
 }
 
 function categoryMatches(cat, q) {
-    if (!q) return true;
-    return (cat.name_ar || '').toLowerCase().includes(q)
-        || (cat.name_en || '').toLowerCase().includes(q);
+    return matchesSearch([cat.name_ar, cat.name_en], q);
 }
 
 function categoryProductCount(cat) {
@@ -1954,7 +1953,7 @@ const parentCategoryCount = computed(() => fullCategoryTree.value.filter((n) => 
 // children come along) or when any child matches (only the matching children
 // are shown), so a hit is always shown in the context it lives in.
 const categoryTree = computed(() => {
-    const q = categorySearch.value.trim().toLowerCase();
+    const q = categorySearch.value;
     const hideEmpty = hideEmptyCategories.value;
     const out = [];
     for (const node of fullCategoryTree.value) {

@@ -198,6 +198,7 @@ import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { matchesSearch } from '@/utils/search';
 import { useListingQuery } from '@/Composables/useListingQuery';
 import ProductListingCard from '@/components/public/ProductListingCard.vue';
 import ListingPagination from '@/components/public/ListingPagination.vue';
@@ -254,11 +255,7 @@ const sections = computed(() => {
 });
 
 const finderTerm = computed(() => finder.value.trim());
-const normalize = (text) => String(text || '').toLocaleLowerCase();
-const matches = (cat) => {
-    const term = normalize(finderTerm.value);
-    return normalize(cat.name_ar).includes(term) || normalize(cat.name_en).includes(term);
-};
+const matches = (cat) => matchesSearch([cat.name_ar, cat.name_en], finderTerm.value);
 
 /** A section shows if it or any of its subcategories matches what is typed. */
 const visibleSections = computed(() => {

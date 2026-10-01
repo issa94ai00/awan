@@ -198,6 +198,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
+import { matchesSearch } from '@/utils/search';
 import {
     Box, Fold, Expand, Close, Odometer, ShoppingCart, ArrowDown, Setting,
     ShoppingBag, Coin, UserFilled, ChatDotRound, Tools, DataAnalysis, Monitor,
@@ -568,18 +569,9 @@ const searchInputRef = ref(null);
 const highlightedIndex = ref(0);
 const hasQuery = computed(() => searchQuery.value.trim() !== '');
 
-// Fold Arabic letter variants and diacritics so "اصناف" finds "أصناف".
-const normalize = (value) => String(value)
-    .toLowerCase()
-    .replace(/[ً-ْـ]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .trim();
-
 const filteredNavItems = computed(() => {
-    const query = normalize(searchQuery.value);
-    if (!query) {
+    // matchesSearch folds Arabic letter variants, so "اصناف" finds "أصناف".
+    if (!hasQuery.value) {
         return [];
     }
 
@@ -587,9 +579,8 @@ const filteredNavItems = computed(() => {
         if (item.group && !canAccessGroup(item.group)) {
             return false;
         }
-        const label = normalize(t(item.labelKey));
-        const groupLabel = item.groupLabelKey ? normalize(t(item.groupLabelKey)) : '';
-        return label.includes(query) || groupLabel.includes(query);
+        const groupLabel = item.groupLabelKey ? t(item.groupLabelKey) : '';
+        return matchesSearch([t(item.labelKey), groupLabel], searchQuery.value);
     });
 });
 

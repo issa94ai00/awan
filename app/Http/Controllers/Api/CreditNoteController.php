@@ -38,11 +38,7 @@ class CreditNoteController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('credit_note_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"));
-            });
+            $query->whereSearch(['credit_note_number', 'customer.name'], $request->search);
         }
 
         $creditNotes = $query->latest('issue_date')->latest('id')

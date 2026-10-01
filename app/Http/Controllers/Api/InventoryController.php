@@ -104,13 +104,7 @@ class InventoryController extends Controller
         $this->applyStatusFilter($query, $request->input('status'));
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('products.name_ar', 'like', "%{$search}%")
-                    ->orWhere('products.name_en', 'like', "%{$search}%")
-                    ->orWhere('products.sku', 'like', "%{$search}%")
-                    ->orWhere('products.barcode', 'like', "%{$search}%");
-            });
+            $query->whereSearch(['products.name_ar', 'products.name_en', 'products.sku', 'products.barcode'], $request->search);
         }
 
         $orderBy = $request->input('sort_by', 'warehouse_inventory.updated_at');
@@ -177,13 +171,7 @@ class InventoryController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('products.name_ar', 'like', "%{$search}%")
-                    ->orWhere('products.name_en', 'like', "%{$search}%")
-                    ->orWhere('products.sku', 'like', "%{$search}%")
-                    ->orWhere('products.barcode', 'like', "%{$search}%");
-            });
+            $query->whereSearch(['products.name_ar', 'products.name_en', 'products.sku', 'products.barcode'], $request->search);
         }
 
         $this->applyStatusFilter($query, $request->input('status'));

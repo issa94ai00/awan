@@ -101,19 +101,11 @@ class CategoryController extends Controller
 
         // Allow optional simple search within the category
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $productsQuery->where(function ($q) use ($searchTerm, $expand) {
-                $q->where('products.name_ar', 'like', $searchTerm)
-                  ->orWhere('products.name_en', 'like', $searchTerm)
-                  ->orWhere('products.brand', 'like', $searchTerm)
-                  ->orWhere('products.model', 'like', $searchTerm);
-
-                if ($expand) {
-                    $q->orWhere('pv.sku', 'like', $searchTerm)
-                      ->orWhere('pv.size', 'like', $searchTerm)
-                      ->orWhere('pv.color', 'like', $searchTerm);
-                }
-            });
+            $columns = ['products.name_ar', 'products.name_en', 'products.brand', 'products.model'];
+            if ($expand) {
+                $columns = [...$columns, 'pv.sku', 'pv.size', 'pv.color'];
+            }
+            $productsQuery->whereSearch($columns, $request->search);
         }
 
         $products = $productsQuery->paginate($perPage);

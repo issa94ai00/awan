@@ -173,17 +173,10 @@ class RmaController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('rma_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                        $customerQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('phone', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('invoice', function ($invoiceQuery) use ($search) {
-                        $invoiceQuery->where('invoice_number', 'like', "%{$search}%");
-                    });
-            });
+            $query->whereSearch(
+                ['rma_number', 'customer.name', 'customer.phone', 'invoice.invoice_number'],
+                $request->search
+            );
         }
 
         return $query;
@@ -886,12 +879,7 @@ class RmaController extends Controller
         $query = Customer::query();
 
         if ($request->has('search') && ! empty($request->search)) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
+            $query->whereSearch(['name', 'phone', 'email'], $request->search);
         }
 
         $customers = $query->orderBy('name', 'asc')

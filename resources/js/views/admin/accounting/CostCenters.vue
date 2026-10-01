@@ -367,6 +367,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { costCentersApi } from '@/api/costCenters';
 import { accountingReportsApi } from '@/api/accountingReports';
 import { formatMoney, formatNumber, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -522,11 +523,10 @@ const showInactive = ref(false);
 const inactiveCount = computed(() => centers.value.filter((c) => !c.is_active).length);
 
 const visibleCenters = computed(() => {
-    const needle = search.value.trim().toLowerCase();
+    const needle = search.value.trim();
     return centers.value.filter((c) => {
         if (!c.is_active && !showInactive.value && !needle) return false;
-        if (!needle) return true;
-        return [c.code, c.name, c.warehouse?.name, c.notes].some((v) => String(v || '').toLowerCase().includes(needle));
+        return matchesSearch([c.code, c.name, c.warehouse?.name, c.notes], needle);
     });
 });
 

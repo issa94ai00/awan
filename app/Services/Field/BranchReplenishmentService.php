@@ -39,10 +39,7 @@ class BranchReplenishmentService
             // that the stock screen paints red cannot be missing from here.
             ->whereRaw('available_quantity - reserved_quantity <= COALESCE(reorder_point, 0)')
             ->when($search, fn ($q) => $q->whereHas('product', fn ($p) => $p
-                ->where('name_ar', 'like', "%{$search}%")
-                ->orWhere('name_en', 'like', "%{$search}%")
-                ->orWhere('sku', 'like', "%{$search}%")
-                ->orWhere('barcode', 'like', "%{$search}%")))
+                ->whereSearch(['name_ar', 'name_en', 'sku', 'barcode'], $search)))
             ->get();
 
         $supplyStock = $supply

@@ -59,14 +59,10 @@ class SupplierPaymentController extends Controller
         // Searched on the server: filtering the loaded page in the browser
         // reported "nothing found" for a payment that was simply on page two.
         if ($request->filled('search')) {
-            $term = '%'.trim((string) $request->search).'%';
-            $query->where(function ($q) use ($term) {
-                $q->where('payment_number', 'like', $term)
-                    ->orWhere('reference', 'like', $term)
-                    ->orWhere('notes', 'like', $term)
-                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $term))
-                    ->orWhereHas('purchaseReceipt', fn ($r) => $r->where('receipt_number', 'like', $term));
-            });
+            $query->whereSearch([
+                'payment_number', 'reference', 'notes',
+                'supplier.name', 'purchaseReceipt.receipt_number',
+            ], $request->search);
         }
 
         // Summed before paginating: paginate() puts a limit on the builder, so
@@ -202,7 +198,7 @@ class SupplierPaymentController extends Controller
     public function outstanding(Request $request): JsonResponse
     {
         $suppliers = Supplier::query()
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
+            ->when($request->filled('search'), fn ($q) => $q->whereSearch(['name'], $request->search))
             ->orderByDesc('balance')
             ->get(['id', 'name', 'balance', 'currency'])
             ->map(fn ($supplier) => [

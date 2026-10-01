@@ -20,10 +20,7 @@ class QuoteController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('quote_number', 'like', '%' . $request->search . '%')
-                ->orWhereHas('customer', function ($q) use ($request) {
-                    $q->where('name', 'like', '%' . $request->search . '%');
-                });
+            $query->whereSearch(['quote_number', 'customer.name'], $request->search);
         }
 
         $quotes = $query->latest()->paginate(20);

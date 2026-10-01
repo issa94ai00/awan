@@ -114,6 +114,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Plus, Delete, ArrowUp, ArrowDown, CopyDocument, DocumentAdd } from '@element-plus/icons-vue';
+import { matchesSearch } from '@/utils/search';
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] },
@@ -215,10 +216,9 @@ function copyFrom(id) {
 }
 
 function suggestLabels(query, cb) {
-    const q = String(query || '').trim().toLowerCase();
     const taken = new Set(rows.value.map((r) => r.label.trim()));
     cb(props.labelSuggestions
-        .filter((l) => !taken.has(l) && (!q || l.toLowerCase().includes(q)))
+        .filter((l) => !taken.has(l) && matchesSearch(l, query))
         .slice(0, 12)
         .map((value) => ({ value })));
 }

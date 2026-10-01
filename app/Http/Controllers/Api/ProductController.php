@@ -151,22 +151,16 @@ class ProductController extends Controller
         // searching by name does. With expanded variants a variant's own code
         // or size finds it too.
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $query->where(function ($q) use ($searchTerm, $expand) {
-                $q->where('products.name_ar', 'like', $searchTerm)
-                  ->orWhere('products.name_en', 'like', $searchTerm)
-                  ->orWhere('products.brand', 'like', $searchTerm)
-                  ->orWhere('products.model', 'like', $searchTerm)
-                  ->orWhere('products.sku', 'like', $searchTerm)
-                  ->orWhere('products.barcode', 'like', $searchTerm);
+            $columns = [
+                'products.name_ar', 'products.name_en', 'products.brand',
+                'products.model', 'products.sku', 'products.barcode',
+            ];
 
-                if ($expand) {
-                    $q->orWhere('pv.sku', 'like', $searchTerm)
-                      ->orWhere('pv.barcode', 'like', $searchTerm)
-                      ->orWhere('pv.size', 'like', $searchTerm)
-                      ->orWhere('pv.color', 'like', $searchTerm);
-                }
-            });
+            if ($expand) {
+                array_push($columns, 'pv.sku', 'pv.barcode', 'pv.size', 'pv.color');
+            }
+
+            $query->whereSearch($columns, $request->search);
         }
 
         return $query;

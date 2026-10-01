@@ -64,17 +64,11 @@ class InvoiceController extends Controller
             }
 
             if ($request->filled('search')) {
-                $search = '%' . trim((string) $request->search) . '%';
-                $query->where(function ($q) use ($search) {
-                    $q->where('invoice_number', 'like', $search)
-                        ->orWhere('notes', 'like', $search)
-                        ->orWhereHas('customer', function ($qCustomer) use ($search) {
-                            $qCustomer->where('name', 'like', $search)
-                                ->orWhere('phone', 'like', $search)
-                                ->orWhere('company', 'like', $search);
-                        })
-                        ->orWhereHas('salesOrder', fn ($o) => $o->where('order_number', 'like', $search));
-                });
+                $query->whereSearch([
+                    'invoice_number', 'notes',
+                    'customer.name', 'customer.phone', 'customer.company',
+                    'salesOrder.order_number',
+                ], $request->search);
             }
 
             // The cards and tab counts describe the search, before the status

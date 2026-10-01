@@ -194,6 +194,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t, te } = useI18n();
@@ -282,11 +283,10 @@ const groupByType = ref(true);
 const showZero = ref(false);
 
 const accountRows = computed(() => {
-    const q = search.value.trim().toLowerCase();
     const source = showZero.value ? allAccounts.value : (data.value?.accounts || []);
     return source
         .map((a) => ({ ...a, type: normType(a.type), key: 'a' + a.id }))
-        .filter((a) => !q || String(a.code).toLowerCase().includes(q) || String(a.name).toLowerCase().includes(q));
+        .filter((a) => matchesSearch([a.code, a.name], search.value));
 });
 
 const AMOUNT_KEYS = ['opening_debit', 'opening_credit', 'debits', 'credits', 'closing_debit', 'closing_credit'];

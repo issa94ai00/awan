@@ -418,6 +418,7 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { formatMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
 import { formatDate, localIsoDate } from '@/utils/sales';
+import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -808,8 +809,8 @@ const products = computed(() => {
 });
 
 const filteredProducts = computed(() => {
-    const q = productSearch.value.trim().toLowerCase();
-    const list = q ? products.value.filter((p) => String(p.product_name || '').toLowerCase().includes(q)) : products.value.slice();
+    const q = productSearch.value.trim();
+    const list = q ? products.value.filter((p) => matchesSearch(p.product_name, q)) : products.value.slice();
     const { prop, order } = productSort.value;
     if (prop && order) {
         const dir = order === 'ascending' ? 1 : -1;

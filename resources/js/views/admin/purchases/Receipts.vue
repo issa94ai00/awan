@@ -807,6 +807,7 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
 import { paymentMethodLabel } from '@/utils/sales';
+import { matchesSearch } from '@/utils/search';
 import { supplierPaymentsApi } from '@/api/supplierPayments';
 import { useStockShortage } from '@/Composables/useStockShortage';
 
@@ -1234,15 +1235,14 @@ const duplicatePicks = computed(() => {
 
 const filteredReceipts = computed(() => {
     if (!searchQuery.value.trim()) return store.receipts;
-    const query = searchQuery.value.toLowerCase();
     return store.receipts.filter((receipt) => {
-        return [
+        return matchesSearch([
             receipt.receipt_number,
             receipt.supplier?.name,
             receipt.purchase_order?.order_number,
             receipt.receipt_date,
             receipt.notes
-        ].some((field) => String(field || '').toLowerCase().includes(query));
+        ], searchQuery.value);
     });
 });
 

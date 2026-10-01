@@ -125,16 +125,11 @@ class PaymentController extends Controller
         // Searching used to happen in the browser over the twenty rows loaded,
         // so a payment on page two could not be found at all.
         if ($request->filled('search')) {
-            $search = '%'.trim((string) $request->search).'%';
-            $query->where(function ($q) use ($search) {
-                $q->where('payment_number', 'like', $search)
-                    ->orWhere('reference', 'like', $search)
-                    ->orWhere('notes', 'like', $search)
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $search)
-                        ->orWhere('phone', 'like', $search)
-                        ->orWhere('company', 'like', $search))
-                    ->orWhereHas('invoice', fn ($i) => $i->where('invoice_number', 'like', $search));
-            });
+            $query->whereSearch([
+                'payment_number', 'reference', 'notes',
+                'customer.name', 'customer.phone', 'customer.company',
+                'invoice.invoice_number',
+            ], $request->search);
         }
 
         // The cards describe the search and dates, before the status and kind

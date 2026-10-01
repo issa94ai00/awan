@@ -19,10 +19,7 @@ class PaymentController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('payment_number', 'like', '%' . $request->search . '%')
-                ->orWhereHas('customer', function ($q) use ($request) {
-                    $q->where('name', 'like', '%' . $request->search . '%');
-                });
+            $query->whereSearch(['payment_number', 'customer.name'], $request->search);
         }
 
         $payments = $query->latest()->paginate(20);

@@ -14,13 +14,7 @@ class SupplierController extends Controller
         $query = Supplier::query();
 
         if ($request->filled('search')) {
-            $search = '%' . $request->search . '%';
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', $search)
-                    ->orWhere('company', 'like', $search)
-                    ->orWhere('email', 'like', $search)
-                    ->orWhere('phone', 'like', $search);
-            });
+            $query->whereSearch(['name', 'company', 'email', 'phone'], $request->search);
         }
 
         if ($request->filled('status')) {

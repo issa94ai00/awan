@@ -169,16 +169,11 @@ class SalesOrderController extends Controller
         // be loaded, so an order on page 2 could not be found at all. It is a
         // filter on the query now, and the pagination reflects the matches.
         if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('sales_orders.order_number', 'like', "%{$search}%")
-                    ->orWhere('sales_orders.tracking_number', 'like', "%{$search}%")
-                    ->orWhere('sales_orders.notes', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%")
-                        ->orWhere('company', 'like', "%{$search}%"))
-                    ->orWhereHas('invoices', fn ($i) => $i->where('invoice_number', 'like', "%{$search}%"));
-            });
+            $query->whereSearch([
+                'sales_orders.order_number', 'sales_orders.tracking_number', 'sales_orders.notes',
+                'customer.name', 'customer.phone', 'customer.company',
+                'invoices.invoice_number',
+            ], $request->search);
         }
     }
 

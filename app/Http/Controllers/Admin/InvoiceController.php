@@ -16,13 +16,7 @@ class InvoiceController extends Controller
         $query = Invoice::with(['customer', 'creator', 'items.product']);
 
         if ($request->has('search') && $request->search) {
-            $search = '%' . $request->search . '%';
-            $query->where(function ($q) use ($search) {
-                $q->where('invoice_number', 'like', $search)
-                    ->orWhereHas('customer', function ($qCustomer) use ($search) {
-                        $qCustomer->where('name', 'like', $search);
-                    });
-            });
+            $query->whereSearch(['invoice_number', 'customer.name'], $request->search);
         }
 
         if ($request->has('status') && $request->status) {
@@ -114,12 +108,7 @@ class InvoiceController extends Controller
         $query = $request->input('q', '');
 
         $products = Product::where('is_active', true)
-            ->where(function ($q) use ($query) {
-                $q->where('name_ar', 'like', "%{$query}%")
-                    ->orWhere('name_en', 'like', "%{$query}%")
-                    ->orWhere('sku', 'like', "%{$query}%")
-                    ->orWhere('barcode', 'like', "%{$query}%");
-            })
+            ->whereSearch(['name_ar', 'name_en', 'sku', 'barcode'], $query)
             ->limit(20)
             ->get(['id', 'name_ar', 'name_en', 'price', 'sku', 'stock_quantity', 'unit', 'tax_rate', 'taxable']);
 

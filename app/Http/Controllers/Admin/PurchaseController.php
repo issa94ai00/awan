@@ -23,13 +23,7 @@ class PurchaseController extends Controller
         $query = Supplier::query();
 
         if ($request->has('search') && $request->search) {
-            $search = '%' . $request->search . '%';
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', $search)
-                    ->orWhere('email', 'like', $search)
-                    ->orWhere('phone', 'like', $search)
-                    ->orWhere('company', 'like', $search);
-            });
+            $query->whereSearch(['name', 'email', 'phone', 'company'], $request->search);
         }
 
         if ($request->has('status') && $request->status) {
@@ -46,13 +40,7 @@ class PurchaseController extends Controller
         $query = PurchaseOrder::with('supplier');
 
         if ($request->has('search') && $request->search) {
-            $search = '%' . $request->search . '%';
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', $search)
-                    ->orWhereHas('supplier', function ($qSupplier) use ($search) {
-                        $qSupplier->where('name', 'like', $search);
-                    });
-            });
+            $query->whereSearch(['order_number', 'supplier.name'], $request->search);
         }
 
         if ($request->has('status') && $request->status) {

@@ -21,13 +21,7 @@ class InquiryAdminController extends Controller
 
         // Search functionality
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('email', 'like', '%' . $request->search . '%')
-                  ->orWhere('phone', 'like', '%' . $request->search . '%')
-                  ->orWhere('subject', 'like', '%' . $request->search . '%')
-                  ->orWhere('message', 'like', '%' . $request->search . '%');
-            });
+            $query->whereSearch(['name', 'email', 'phone', 'subject', 'message'], $request->search);
         }
 
         // Filter by status
