@@ -2,7 +2,10 @@
     <section class="lines-card" :class="{ 'has-error': showError }">
         <header class="lines-head">
             <h3><i class="fas fa-cart-shopping"></i> {{ t('selected_order_items') }}</h3>
-            <span v-if="order.lines.value.length" class="lines-count">{{ t('items_count_label', { count: order.lines.value.length }) }}</span>
+            <span v-if="order.lines.value.length" class="lines-meta">
+                <span v-if="order.lines.value.length > 1" class="lines-order"><i class="fas fa-arrow-up-short-wide"></i> {{ t('sof_newest_first') }}</span>
+                <span class="lines-count">{{ t('items_count_label', { count: order.lines.value.length }) }}</span>
+            </span>
         </header>
 
         <div v-if="!order.lines.value.length" class="lines-empty">
@@ -212,6 +215,8 @@ onUnmounted(() => clearTimeout(undoTimer));
 .lines-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
 .lines-head h3 { margin: 0; font-size: 0.98rem; font-weight: 700; color: #1e293b; display: flex; gap: 0.5rem; align-items: center; }
 .lines-head h3 i { color: #64748b; }
+.lines-meta { display: flex; align-items: center; gap: 0.6rem; }
+.lines-order { font-size: 0.74rem; color: #94a3b8; }
 .lines-count { font-size: 0.78rem; color: #2563eb; background: #eff6ff; border-radius: 999px; padding: 0.1rem 0.6rem; }
 
 .lines-empty {

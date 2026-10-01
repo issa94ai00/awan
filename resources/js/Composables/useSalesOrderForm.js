@@ -140,12 +140,17 @@ function createSalesOrderForm({ orderId }) {
      * A search result onto the order. A second pick of the same product (and
      * size) adds one to its line; another size is a line of its own.
      * Returns the line it landed on.
+     *
+     * The line picked last goes first, right under the search box, so it is
+     * in view without scrolling a long order — a repeat pick moves its line
+     * back up too. The order is saved as it is listed.
      */
     const addProduct = (option) => {
         const key = optionKey(option);
         const existing = lines.value.find((line) => line.key === key);
         if (existing) {
             existing.quantity = (Number(existing.quantity) || 0) + 1;
+            lines.value = [existing, ...lines.value.filter((line) => line !== existing)];
             return existing;
         }
 
@@ -167,7 +172,7 @@ function createSalesOrderForm({ orderId }) {
             units: [unit],
             allocations: [],
         });
-        lines.value.push(line);
+        lines.value.unshift(line);
         loadUnits(line);
         return line;
     };
