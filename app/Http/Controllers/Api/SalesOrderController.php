@@ -1016,12 +1016,19 @@ class SalesOrderController extends Controller
      */
     public function stockShortages(SalesOrder $salesOrder)
     {
+        $salesOrder->loadMissing('customer');
+
         return response()->json([
             'success' => true,
             'data' => [
+                // What the purchase screen carries over besides the lines: who
+                // the goods are for, and when they are needed by.
                 'sales_order' => [
                     'id' => $salesOrder->id,
                     'order_number' => $salesOrder->order_number,
+                    'customer_name' => $salesOrder->customer?->name,
+                    'expected_delivery' => $salesOrder->expected_delivery?->format('Y-m-d'),
+                    'notes' => $salesOrder->notes,
                 ],
                 'shortages' => $this->workflow->stockShortages($salesOrder),
             ],

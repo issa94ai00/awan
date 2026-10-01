@@ -1840,24 +1840,41 @@ const prefillFromShortage = async (salesOrderId) => {
     try {
         const { data } = await salesOrdersApi.shortages(salesOrderId);
         const shortages = data?.data?.shortages ?? [];
-        const orderNumber = data?.data?.sales_order?.order_number ?? salesOrderId;
+        const order = data?.data?.sales_order || {};
+        const orderNumber = order.order_number ?? salesOrderId;
 
         if (!shortages.length) {
             ElMessage.info(t('sales.shortage_none_left'));
             return;
         }
 
-        resetForm();
         isEditMode.value = false;
+        editingStatus.value = '';
+        resetForm();
+        // Filled as the sales-order prefill is: the size that was sold, its
+        // last cost and sale price, and the product among the picker's options
+        // so the line shows its name rather than an id.
         form.items = shortages.map((row) => blankRow({
-            pick: pickKey(row.product_id),
-            product_id: row.product_id,
+            ...lineFields(row),
             quantity: row.suggested_quantity,
-            unit_price: row.unit_price,
+            unit_price: num(row.unit_price),
+            sale_price: row.sale_price != null ? num(row.sale_price) : '',
         }));
-        // Says where these lines came from, so whoever approves the order later
-        // can trace it back to the sale that needed them.
-        form.notes = t('sales.prefilled_from_order', { order: orderNumber });
+        rememberProducts(shortages.map((row) => ({ ...row, product_name: row.name })));
+
+        // The customer's delivery date is when the goods are needed by, if it
+        // has not already passed.
+        if (order.expected_delivery && order.expected_delivery >= form.order_date) {
+            form.due_date = order.expected_delivery;
+        }
+        // Says where these lines came from and for whom, so whoever approves
+        // the order later can trace it back to the sale that needed them.
+        form.notes = [
+            order.customer_name
+                ? t('po_from_sales_order_note', { number: orderNumber, customer: order.customer_name })
+                : t('sales.prefilled_from_order', { order: orderNumber }),
+            order.notes,
+        ].filter(Boolean).join('\n').slice(0, 1000);
 
         // Clean from here: the prefill is a starting point, not the
         // operator's unsaved work.

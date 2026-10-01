@@ -725,7 +725,7 @@ class SalesOrderWorkflowService
      */
     public function stockShortages(SalesOrder $order): array
     {
-        $order->loadMissing('items.product');
+        $order->loadMissing('items.product', 'items.variant');
 
         $candidates = $this->sourceCandidates($order);
         $pool = [];
@@ -757,18 +757,29 @@ class SalesOrderWorkflowService
             }
 
             $product = $item->product;
+            $variant = $item->variant;
 
             $shortages[] = [
                 'product_id' => $productId,
-                'name' => $product?->name_ar ?: ($product?->name_en ?: ('#'.$productId)),
-                'sku' => $product?->sku,
+                // The size too, so the purchase line buys the one that was sold.
+                'product_variant_id' => $variant?->id,
+                // A variant line's stored name says which size; the product's does not.
+                'name' => ($variant ? $item->description : null)
+                    ?: ($product?->name_ar ?: ($product?->name_en ?: ('#'.$productId))),
+                'sku' => $variant?->sku ?: $product?->sku,
                 'required' => $required,
                 'available' => $covered,
                 'shortfall' => $shortfall,
                 // What to put on the purchase order. The shortfall itself: buying
                 // more is a stocking decision the buyer makes, not one to assume.
                 'suggested_quantity' => $shortfall,
-                'unit_price' => $this->lastPurchasePrice($productId, $product),
+                'unit_price' => $product
+                    ? $this->lastPurchasePriceFor($product, $variant)
+                    : $this->lastPurchasePrice($productId, null),
+                'sale_price' => round((float) $item->unit_price, 5),
+                // Enough for the purchase screen's picker to label the line.
+                'product' => $product?->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
             ];
         }
 

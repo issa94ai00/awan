@@ -181,6 +181,31 @@ test('a purchase draft carries every line of the order, costed at the last price
         ->and((float) $tap['unit_price'])->toBe(8.0);
 });
 
+test('a shortage carries the size sold, its prices and who it is for', function () {
+    // 20 of the 5" drain against 16 in stock: 4 short.
+    $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
+        'customer_id' => $this->customer->id,
+        'expected_delivery' => now()->addWeek()->format('Y-m-d'),
+        'notes' => 'على الواجهة',
+        'items' => [array_merge(($this->line)($this->drain, 20, $this->five), ['unit_price' => 2.5])],
+    ])->assertCreated()->json('data.id');
+
+    $data = $this->getJson("/api/v1/sales-orders/{$id}/shortages")->assertOk()->json('data');
+
+    expect($data['sales_order']['customer_name'])->toBe('زبون')
+        ->and($data['sales_order']['expected_delivery'])->toBe(now()->addWeek()->format('Y-m-d'))
+        ->and($data['sales_order']['notes'])->toBe('على الواجهة')
+        ->and($data['shortages'])->toHaveCount(1);
+
+    $row = $data['shortages'][0];
+    expect($row['product_variant_id'])->toBe($this->five->id)
+        ->and($row['shortfall'])->toBe(4)
+        ->and($row['sku'])->toBe('FD-5')
+        ->and((float) $row['sale_price'])->toBe(2.5)
+        ->and($row['product']['id'])->toBe($this->drain->id)
+        ->and($row['variant']['id'])->toBe($this->five->id);
+});
+
 test('a cancelled order offers no purchase draft', function () {
     $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
         'customer_id' => $this->customer->id,
