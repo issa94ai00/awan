@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\ProductResource;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
@@ -68,9 +69,11 @@ class PosController extends Controller
             $products->whereSearch($columns, $query);
         }
 
-        // An order form narrows its search to one category, or browses it.
+        // An order form narrows its search to one category, or browses it. A
+        // section covers the products filed under its subcategories too.
         if ($request->filled('category_id')) {
-            $products->where('products.category_id', $request->integer('category_id'));
+            $category = Category::find($request->integer('category_id'));
+            $products->whereIn('products.category_id', $category ? $category->descendantIds() : [0]);
         }
 
         if ($expand) {

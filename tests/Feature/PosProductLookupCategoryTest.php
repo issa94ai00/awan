@@ -30,3 +30,11 @@ test('a category narrows the words searched for', function () use ($lookup) {
 test('a category alone lists what is in it', function () use ($lookup) {
     expect($lookup(['category_id' => $this->sinks->id, 'expand_variants' => 1]))->toBe(['مغسلة خلاط مدمج']);
 });
+
+test('a section includes the products of its subcategories', function () use ($lookup) {
+    $basin = Category::create(['name_ar' => 'خلاطات مغسلة', 'name_en' => 'Basin mixers', 'slug' => 'basin-mixers', 'parent_id' => $this->mixers->id, 'is_active' => true]);
+    Product::factory()->create(['name_ar' => 'خلاط مغسلة كروم', 'category_id' => $basin->id, 'is_active' => true]);
+
+    expect($lookup(['category_id' => $this->mixers->id]))->toBe(['خلاط مغسلة ذهبي', 'خلاط مغسلة كروم']);
+    expect($lookup(['category_id' => $basin->id]))->toBe(['خلاط مغسلة كروم']);
+});
