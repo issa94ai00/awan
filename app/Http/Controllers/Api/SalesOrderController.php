@@ -9,6 +9,7 @@ use App\Models\JournalEntryHeader;
 use App\Models\ProductUnit;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
 use App\Models\Warehouse;
@@ -827,6 +828,8 @@ class SalesOrderController extends Controller
                 // picking jobs, and the single key above can only show one.
                 'picking_lists' => $this->workflow->pickingListsFor($salesOrder),
                 'follow_up' => $this->workflow->followUp($salesOrder),
+                // Null, not empty, for whoever may not see purchasing.
+                'purchase_orders' => $this->linkedPurchaseOrders($salesOrder),
                 'history' => $salesOrder->statusHistory,
                 'routing' => $this->routingPayload($salesOrder),
                 'timeline' => [
@@ -1033,6 +1036,50 @@ class SalesOrderController extends Controller
                 'shortages' => $this->workflow->stockShortages($salesOrder),
             ],
         ]);
+    }
+
+    /**
+     * Purchase orders raised for this sale: linked to the order itself, or to
+     * one of its invoices. Purchasing is an admin area, so anyone else gets
+     * null, and the drawer leaves the card out.
+     *
+     * @return list<array<string,mixed>>|null
+     */
+    private function linkedPurchaseOrders(SalesOrder $salesOrder): ?array
+    {
+        $user = auth()->user();
+        if (! $user || ! ($user->isAdmin() || $user->hasRole('admin'))) {
+            return null;
+        }
+
+        $invoiceIds = $salesOrder->invoices()->pluck('id');
+
+        return PurchaseOrder::query()
+            ->with(['supplier:id,name,company', 'invoice:id,invoice_number'])
+            ->withCount(['items', 'receipts'])
+            ->where(function ($q) use ($salesOrder, $invoiceIds) {
+                $q->where('sales_order_id', $salesOrder->id);
+                if ($invoiceIds->isNotEmpty()) {
+                    $q->orWhereIn('invoice_id', $invoiceIds);
+                }
+            })
+            ->latest('id')
+            ->get()
+            ->map(fn (PurchaseOrder $po) => [
+                'id' => $po->id,
+                'order_number' => $po->order_number,
+                'status' => PurchaseOrder::normalizeStatus($po->status),
+                'supplier_name' => $po->supplier?->name,
+                'total' => (float) $po->total,
+                'order_date' => $po->order_date?->format('Y-m-d'),
+                'due_date' => $po->due_date?->format('Y-m-d'),
+                'items_count' => (int) $po->items_count,
+                'receipts_count' => (int) $po->receipts_count,
+                // Through which document it is linked: this order, or its invoice.
+                'invoice_number' => $po->invoice?->invoice_number,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

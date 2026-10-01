@@ -800,6 +800,43 @@
                             <el-empty v-else :description="$t('no_invoice_yet')" :image-size="60" />
                         </el-card>
 
+                        <!-- Purchase orders raised for this sale, through the order
+                             or its invoice. Left out for whoever cannot see
+                             purchasing (the API sends null then). -->
+                        <el-card v-if="purchaseOrders" shadow="never" class="info-card mb-3">
+                            <template #header>
+                                <div class="card-head-row">
+                                    <span class="card-title-txt"><i class="fas fa-cart-flatbed"></i> {{ $t('so_purchase_orders') }}</span>
+                                    <el-button
+                                        v-if="mayPurchase && normalizeStatus(selectedOrder.status) !== 'cancelled'"
+                                        size="small"
+                                        type="success"
+                                        plain
+                                        @click="createPurchaseRequest(selectedOrder)"
+                                    >
+                                        <i class="fas fa-plus"></i>&nbsp;{{ $t('so_po_new') }}
+                                    </el-button>
+                                </div>
+                            </template>
+                            <ul v-if="purchaseOrders.length" class="po-list">
+                                <li v-for="po in purchaseOrders" :key="po.id" class="po-row">
+                                    <div class="po-main">
+                                        <button type="button" class="po-number" @click="openPurchaseOrder(po)">{{ po.order_number }}</button>
+                                        <el-tag :type="purchaseTagType(po.status)" size="small" effect="plain">{{ getArabicStatus(po.status) }}</el-tag>
+                                        <span v-if="po.receipts_count" class="po-received"><i class="fas fa-box-open"></i> {{ $t('so_po_received') }}</span>
+                                    </div>
+                                    <div class="po-meta">
+                                        <span><i class="fas fa-user-tie"></i> {{ po.supplier_name || '—' }}</span>
+                                        <span>{{ $t('po_items_count', po.items_count) }}</span>
+                                        <span v-if="po.due_date"><i class="fas fa-calendar"></i> {{ formatDate(po.due_date) }}</span>
+                                        <span v-if="po.invoice_number" class="po-via">{{ $t('so_po_via_invoice', { number: po.invoice_number }) }}</span>
+                                    </div>
+                                    <strong class="po-total">{{ formatCurrency(po.total) }}</strong>
+                                </li>
+                            </ul>
+                            <el-empty v-else :description="$t('so_no_purchase_orders')" :image-size="60" />
+                        </el-card>
+
                         <!-- Payments -->
                         <el-card v-if="payments.length" shadow="never" class="info-card mb-3">
                             <template #header><span class="card-title-txt"><i class="fas fa-hand-holding-dollar"></i> {{ $t('payments_list') }}</span></template>
@@ -1673,6 +1710,14 @@ const detailTab = ref('overview');
 const detail = ref({});
 
 const invoice = computed(() => detail.value.invoice || null);
+// Null when this user may not see purchasing; the card is left out then.
+const purchaseOrders = computed(() => (Array.isArray(detail.value.purchase_orders) ? detail.value.purchase_orders : null));
+const purchaseTagType = (status) => ({ pending: 'warning', confirmed: 'primary', processing: 'primary', completed: 'success', cancelled: 'info' }[status] || 'info');
+// The purchases list finds an order by its number.
+const openPurchaseOrder = (po) => {
+    detailDrawerVisible.value = false;
+    router.push({ path: '/admin/purchases/orders', query: { search: po.order_number } });
+};
 const payments = computed(() => detail.value.payments || []);
 const journalEntries = computed(() => detail.value.journal_entries || []);
 const stockMovements = computed(() => detail.value.stock_movements || []);
@@ -2963,4 +3008,25 @@ onMounted(async () => {
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
 }
+
+/* Purchase orders raised for the sale */
+.card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.po-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.po-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+.po-row:last-child { border-bottom: none; }
+.po-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.po-number { all: unset; cursor: pointer; font-weight: 700; color: #2563eb; direction: ltr; }
+.po-number:hover { text-decoration: underline; }
+.po-number:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.po-received { font-size: 0.75rem; color: #16a34a; }
+.po-meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.78rem; color: #64748b; }
+.po-meta i { color: #94a3b8; margin-inline-end: 0.2rem; }
+.po-via { color: #475569; }
+.po-total { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-variant-numeric: tabular-nums; color: #1e293b; white-space: nowrap; }
 </style>

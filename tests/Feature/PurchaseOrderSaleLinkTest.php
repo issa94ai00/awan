@@ -123,3 +123,34 @@ it('moves the link from an order to an invoice, and can drop it', function () {
     $order->refresh();
     expect($order->invoice_id)->toBeNull()->and($order->sales_order_id)->toBeNull();
 });
+
+it('lists the purchase orders raised for a sale on its detail, through the order or its invoice', function () {
+    $direct = $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/purchase-orders', ($this->payload)(['sales_order_id' => $this->salesOrder['id']]))
+        ->assertCreated()->json('data.id');
+    $viaInvoice = $this->postJson('/api/v1/admin/purchase-orders', ($this->payload)(['invoice_id' => $this->invoice->id]))
+        ->assertCreated()->json('data.id');
+    // Another sale's purchase order stays off this one.
+    $this->postJson('/api/v1/admin/purchase-orders', ($this->payload)())->assertCreated();
+
+    $rows = $this->getJson("/api/v1/sales-orders/{$this->salesOrder['id']}/detail")->assertOk()->json('data.purchase_orders');
+
+    expect(collect($rows)->pluck('id')->all())->toBe([$viaInvoice, $direct])
+        ->and($rows[0]['invoice_number'])->toBe('INV-LINK-1')
+        ->and($rows[0]['supplier_name'])->toBe('مورّد')
+        ->and($rows[1]['invoice_number'])->toBeNull();
+});
+
+it('keeps purchase orders off the sale detail for whoever cannot see purchasing', function () {
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/purchase-orders', ($this->payload)(['sales_order_id' => $this->salesOrder['id']]))
+        ->assertCreated();
+
+    $seller = User::factory()->create();
+
+    $this->actingAs($seller, 'sanctum')
+        ->getJson("/api/v1/sales-orders/{$this->salesOrder['id']}/detail")
+        ->assertOk()
+        ->assertJsonPath('data.purchase_orders', null);
+});
+
