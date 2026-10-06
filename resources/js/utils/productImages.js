@@ -36,8 +36,15 @@ export function toImagePath(value) {
         } catch {
             return path;
         }
-        if (parsed.origin !== window.location.origin) return path;
-        path = parsed.pathname;
+        if (parsed.origin !== window.location.origin) {
+            if (['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+                path = parsed.pathname;
+            } else {
+                return path;
+            }
+        } else {
+            path = parsed.pathname;
+        }
     }
 
     path = path.split('?')[0].replace(/^\/+/, '');

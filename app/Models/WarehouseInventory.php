@@ -59,6 +59,8 @@ class WarehouseInventory extends Model
 
     const COST_BASIS_LIFO = 'LIFO';
 
+    const COST_BASIS_WEIGHTED_AVERAGE = 'WEIGHTED_AVERAGE';
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);

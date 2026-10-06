@@ -232,6 +232,11 @@ const routes = [
                 component: () => import('@/views/admin/sales/Quotes.vue')
             },
             {
+                path: 'sales/quotes/create',
+                name: 'admin.quotes.create',
+                component: () => import('@/views/admin/sales/Quotes.vue')
+            },
+            {
                 path: 'sales/sales-orders',
                 name: 'admin.sales-orders.index',
                 component: () => import('@/views/admin/sales/SalesOrders.vue')

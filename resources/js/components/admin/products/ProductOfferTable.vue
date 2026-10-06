@@ -34,8 +34,11 @@
                 </th>
             </tr>
         </thead>
-        <tbody>
-            <template v-for="(group, gIdx) in groups" :key="group.key">
+        <template v-for="(group, gIdx) in groups" :key="group.key">
+            <tbody
+                class="group-tbody"
+                :class="{ 'has-section': !!group.sectionLabel }"
+            >
                 <!-- Classification heading. It belongs to the group that opens
                      the section so the PDF's page-break walk, which counts rows
                      group by group, keeps its place. -->
@@ -343,6 +346,48 @@
                         </span>
                     </td>
                     <td
+                        v-if="visibleColumns.offer && iIdx === 0"
+                        :rowspan="group.items.length"
+                        class="cell-offer"
+                        :class="{ editing: !printMode && editingId === offerRowId(group) }"
+                        @dblclick="!printMode && hasVariants(group) && $emit('start-edit', offerItem(group))"
+                    >
+                        <input
+                            v-if="!printMode && editingId === offerRowId(group)"
+                            v-model="localEditValue"
+                            type="text"
+                            inputmode="decimal"
+                            class="price-edit-input"
+                            autocomplete="off"
+                            @keydown.enter.prevent="$emit('commit-edit', localEditValue)"
+                            @keydown.escape.prevent="$emit('cancel-edit')"
+                            @blur="$emit('commit-edit', localEditValue)"
+                        />
+                        <template v-else>
+                            <span v-if="hasOfferPrice(group)" class="price-value">
+                                {{ formatPrice(offerItem(group).displayPrice) }}
+                            </span>
+                            <span v-else class="detail-na">&mdash;</span>
+                            <span
+                                v-if="!printMode && hasOfferPrice(group) && offerItem(group).originalPrice !== offerItem(group).displayPrice"
+                                class="price-original"
+                            >
+                                {{ formatPrice(offerItem(group).originalPrice) }}
+                            </span>
+                        </template>
+                        <el-tooltip v-if="!printMode && hasVariants(group)" :content="$t('click_to_edit_price')" placement="top" effect="dark">
+                            <button type="button" class="cell-edit-btn" @click="$emit('start-edit', offerItem(group))">
+                                <el-icon><EditPen /></el-icon>
+                            </button>
+                        </el-tooltip>
+                        <span v-if="!printMode && itemStatus[offerRowId(group)]" class="save-status corner" :class="itemStatus[offerRowId(group)]">
+                            <el-icon v-if="itemStatus[offerRowId(group)] === 'saving'" class="is-loading"><Loading /></el-icon>
+                            <el-icon v-else-if="itemStatus[offerRowId(group)] === 'saved'"><Check /></el-icon>
+                            <el-icon v-else-if="itemStatus[offerRowId(group)] === 'pending'"><Clock /></el-icon>
+                            <el-icon v-else><WarningFilled /></el-icon>
+                        </span>
+                    </td>
+                    <td
                         v-if="visibleColumns.inventory"
                         class="cell-stock"
                         :class="{ editing: !printMode && editingStockId === item.id }"
@@ -373,8 +418,10 @@
                         </span>
                     </td>
                 </tr>
-            </template>
-            <tr v-if="!loading && groups.length === 0">
+            </tbody>
+        </template>
+        <tbody v-if="!loading && groups.length === 0" class="empty-tbody">
+            <tr>
                 <td :colspan="visibleColumnCount" class="empty-cell">
                     <el-empty :description="$t('there_are_no_products')" />
                 </td>
@@ -405,7 +452,7 @@ const props = defineProps({
     printMode: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
-        default: () => ({ image: true, product: true, details: true, specs: true, price: true, inventory: true }),
+        default: () => ({ image: true, product: true, details: true, specs: true, price: true, offer: true, inventory: true }),
     },
     // Per-column width shares that override the defaults below. Shares, not
     // percentages: they are re-normalised over the visible columns, so one
@@ -471,8 +518,8 @@ const visibleColumnCount = computed(() => Object.values(props.visibleColumns).fi
  * not percentages — they are re-normalised over whatever subset is visible, so
  * hiding a column widens the others instead of leaving the table short.
  */
-const COLUMN_SHARES = { image: 50, product: 35, details: 25, specs: 35, price: 15, inventory: 15 };
-const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', specs: 'specifications', price: 'the_price', inventory: 'inventory' };
+const COLUMN_SHARES = { image: 50, product: 35, details: 25, specs: 35, price: 15, offer: 15, inventory: 15 };
+const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', specs: 'specifications', price: 'the_price', offer: 'offer_price', inventory: 'inventory' };
 
 /** The showing columns, in table order — drives the colgroup and the header. */
 const activeColumns = computed(() => Object.keys(COLUMN_SHARES).filter((key) => props.visibleColumns[key]));
@@ -514,7 +561,7 @@ const tableVars = computed(() => (props.rowHeight > 0
  * native print that variable is millimetres of paper.
  */
 const rowStyle = (group) => {
-    if (!hasFixedRows.value || props.visibleColumns.image || props.visibleColumns.product) return null;
+    if (!hasFixedRows.value || props.visibleColumns.image || props.visibleColumns.product || props.visibleColumns.offer) return null;
     return { height: `calc(var(--offer-image-cell-height) / ${Math.max(group.items.length, 1)})` };
 };
 
@@ -623,6 +670,24 @@ const setImageBusy = (group, val) => {
 
 // The item id the parent's per-row status badges are keyed by.
 const imageRowId = (group) => `p-${group.product.id}`;
+const offerRowId = (group) => `p-${group.product.id}`;
+
+const offerItem = (group) => group.offerItem || {
+    id: `p-${group.product.id}`,
+    productId: group.product.id,
+    price: parseFloat(group.product.price) || 0,
+    originalPrice: parseFloat(group.product.price) || 0,
+    displayPrice: parseFloat(group.product.price) || 0,
+};
+
+const hasVariants = (group) => (group.items?.length > 1) || isVariantRow(group.items?.[0]);
+
+const hasOfferPrice = (group) => {
+    if (!hasVariants(group)) return false;
+    const item = offerItem(group);
+    const p = Number(item?.displayPrice);
+    return Number.isFinite(p) && p > 0;
+};
 
 const imageSlug = (group) => group.product?.slug || group.product?.name_ar || 'product';
 
@@ -721,7 +786,8 @@ const formatPrice = (price) => {
    group however the columns are arranged — including with the picture hidden,
    where the product cell is the one holding the group together. */
 .offer-table.has-fixed-rows .cell-image,
-.offer-table.has-fixed-rows .cell-product {
+.offer-table.has-fixed-rows .cell-product,
+.offer-table.has-fixed-rows .cell-offer {
     height: var(--offer-image-cell-height);
 }
 /* Nothing more to say about the picture here: the frame below is the cell's
@@ -1217,7 +1283,8 @@ const formatPrice = (price) => {
 }
 .detail-spec-value { unicode-bidi: plaintext; }
 
-.cell-price {
+.cell-price,
+.cell-offer {
     text-align: center;
     font-weight: 700;
     color: #b00e0e;
@@ -1248,6 +1315,7 @@ const formatPrice = (price) => {
 }
 .cell-detail:hover .cell-edit-btn,
 .cell-price:hover .cell-edit-btn,
+.cell-offer:hover .cell-edit-btn,
 .cell-stock:hover .cell-edit-btn {
     opacity: 1;
 }
@@ -1326,7 +1394,8 @@ const formatPrice = (price) => {
     background: #fef2f2;
     color: #dc2626;
 }
-.cell-price.editing {
+.cell-price.editing,
+.cell-offer.editing {
     padding: 0;
     overflow: visible;
 }
@@ -1539,12 +1608,15 @@ const formatPrice = (price) => {
         --offer-image-caption: 14mm;
     }
     .col-resizer {
-        display: none;
+        display: none !important;
+    }
+    .offer-table thead {
+        display: table-header-group !important;
     }
     .offer-table thead th {
         position: static;
-        background: #bcdcfb;
-        color: #000;
+        background: #bcdcfb !important;
+        color: #0f172a !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -1552,6 +1624,10 @@ const formatPrice = (price) => {
        variable this medium has just overridden. */
     .cell-image :deep(.entity-image) {
         cursor: default;
+    }
+    .offer-table tbody.group-tbody {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
     }
     .offer-table tr {
         break-inside: avoid;
@@ -1561,8 +1637,19 @@ const formatPrice = (price) => {
        PDF path already keeps it with its first group; this is for a native
        Ctrl+P, where the browser chooses the breaks. */
     .offer-table tbody tr.section-row {
-        break-after: avoid;
-        page-break-after: avoid;
+        break-inside: avoid !important;
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    .cell-edit-btn,
+    .cell-name-edit,
+    .add-item-variant-btn,
+    .remove-item-btn,
+    .add-item-variant-icon,
+    .cell-row-actions,
+    .cell-image-edit,
+    .save-status {
+        display: none !important;
     }
 }
 

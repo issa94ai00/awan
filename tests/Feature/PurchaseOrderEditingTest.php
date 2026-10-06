@@ -168,3 +168,40 @@ it('refuses to delete an order whose goods were received', function () {
 
     expect(PurchaseOrder::find($order->id))->not->toBeNull();
 });
+
+it('calculates and stores discount from discount_percent', function () {
+    // 4 items @ 25 = 100 subtotal, 15% discount
+    $id = $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/purchase-orders', ($this->payload)([
+            'discount_percent' => 15,
+        ]))
+        ->assertCreated()
+        ->json('data.id');
+
+    $order = PurchaseOrder::find($id);
+    expect((float) $order->subtotal)->toBe(100.0)
+        ->and((float) $order->discount)->toBe(15.0)
+        ->and((float) $order->discount_percent)->toBe(15.0)
+        ->and((float) $order->total)->toBe(85.0);
+});
+
+it('updates discount_percent and recalculates discount when order is edited', function () {
+    $id = $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/purchase-orders', ($this->payload)([
+            'discount_percent' => 10,
+        ]))
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->actingAs($this->admin)
+        ->putJson("/api/v1/admin/purchase-orders/{$id}", ($this->payload)([
+            'discount_percent' => 25,
+        ]))
+        ->assertOk();
+
+    $order = PurchaseOrder::find($id);
+    expect((float) $order->discount)->toBe(25.0)
+        ->and((float) $order->discount_percent)->toBe(25.0)
+        ->and((float) $order->total)->toBe(75.0);
+});
+

@@ -62,6 +62,8 @@ class PurchaseReceiptController extends Controller
             // it is recoverable from the tax authority, not part of the stock's
             // value.
             'tax_amount' => 'nullable|numeric|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -99,8 +101,30 @@ class PurchaseReceiptController extends Controller
             ], 403);
         }
 
+        $goodsTotal = (float) collect($validated['items'])->sum(fn ($item) => (int) $item['quantity'] * (float) $item['unit_price']);
+
+        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : null;
+
+        if ($discountPercent !== null) {
+            $discount = round(max(0, $goodsTotal) * ($discountPercent / 100), 5);
+        } else {
+            $discount = round((float) ($validated['discount'] ?? 0), 5);
+            if ($goodsTotal > 0 && $discount > 0) {
+                $discountPercent = round(($discount / $goodsTotal) * 100, 2);
+            }
+        }
+
+        if ($discount > $goodsTotal) {
+            throw ValidationException::withMessages(['discount' => 'الخصم أكبر من قيمة البضاعة']);
+        }
+
+        $validated['discount'] = $discount;
+        $validated['discount_percent'] = $discountPercent;
+
         $receiptTotal = round(
-            collect($validated['items'])->sum(fn ($item) => (int) $item['quantity'] * (float) $item['unit_price'])
+            max(0, $goodsTotal - $discount)
             + (float) ($validated['tax_amount'] ?? 0),
             2
         );
@@ -249,10 +273,7 @@ class PurchaseReceiptController extends Controller
                 // Bought on account, so the supplier is now owed for it — including
                 // the tax, which is part of what the invoice has to be paid at even
                 // though the books carry it separately from the goods.
-                $receipt->supplier?->updateBalance(
-                    $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price)
-                    + (float) ($receipt->tax_amount ?? 0)
-                );
+                $receipt->supplier?->updateBalance($receipt->totalAmount());
 
                 // Receiving goods against a linked order is what completes it: the
                 // order was a promise to buy, and this receipt is that promise
@@ -371,6 +392,8 @@ class PurchaseReceiptController extends Controller
             'data' => [
                 'purchase_order' => $purchaseOrder,
                 'supplier_id' => $purchaseOrder->supplier_id,
+                'discount' => (float) ($purchaseOrder->discount ?? 0),
+                'discount_percent' => $purchaseOrder->discount_percent !== null ? (float) $purchaseOrder->discount_percent : null,
                 // Whether goods may still come in against it, so the form can
                 // say so before the operator fills anything in.
                 'receivable' => PurchaseOrder::normalizeStatus($purchaseOrder->status) !== PurchaseOrder::STATUS_CANCELLED,

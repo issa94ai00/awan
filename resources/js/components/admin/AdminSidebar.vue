@@ -255,7 +255,7 @@ const menu = [
                     { labelKey: 'categories', path: '/admin/categories' },
                     { labelKey: 'products', path: '/admin/products' },
                     { labelKey: 'product_units', path: '/admin/products/units' },
-                    { labelKey: 'price_offer', path: '/admin/products/price-offer' },
+                    { labelKey: 'catalog', path: '/admin/products/price-offer' },
                     { labelKey: 'special_offers', path: '/admin/special-offers' },
                     { labelKey: 'secondary_navbar', path: '/admin/secondary-navbar' },
                 ],

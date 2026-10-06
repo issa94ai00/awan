@@ -315,7 +315,9 @@ class SalesOrderController extends Controller
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
             'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
@@ -369,13 +371,34 @@ class SalesOrderController extends Controller
         );
 
         $validated['subtotal'] = $subtotal;
+
+        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : null;
+        $taxPercent = isset($validated['tax_percent']) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
+            ? (float) $validated['tax_percent']
+            : null;
+
+        $discountAmount = $discountPercent !== null
+            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
+            : (float) ($validated['discount'] ?? 0);
+        $taxAmount = $taxPercent !== null
+            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
+            : (float) ($validated['tax'] ?? 0);
+
+        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
+            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        }
+
+        $validated['discount'] = $discountAmount;
+        $validated['discount_percent'] = $discountPercent;
+        $validated['tax'] = $taxAmount;
+        $validated['tax_percent'] = $taxPercent;
+
         // Delivery charged to the customer belongs in what they owe. It was
         // stored on the order but left out of the total, so every shipped order
         // was invoiced for less than it was worth.
-        $validated['total'] = $subtotal
-            - ($validated['discount'] ?? 0)
-            + ($validated['tax'] ?? 0)
-            + ($validated['shipping_cost'] ?? 0);
+        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? 0), 2);
 
         unset($validated['execute']);
 
@@ -462,7 +485,9 @@ class SalesOrderController extends Controller
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
             'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
@@ -498,6 +523,8 @@ class SalesOrderController extends Controller
             'tax',
             'shipping_cost',
             'shipping_address',
+            'discount_percent',
+            'tax_percent',
             'notes',
         ];
 
@@ -528,10 +555,31 @@ class SalesOrderController extends Controller
         );
 
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal
-            - ($validated['discount'] ?? 0)
-            + ($validated['tax'] ?? 0)
-            + ($validated['shipping_cost'] ?? 0);
+
+        $discountPercent = array_key_exists('discount_percent', $validated) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : ($salesOrder->discount_percent ?? null);
+        $taxPercent = array_key_exists('tax_percent', $validated) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
+            ? (float) $validated['tax_percent']
+            : ($salesOrder->tax_percent ?? null);
+
+        $discountAmount = $discountPercent !== null
+            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
+            : (float) ($validated['discount'] ?? $salesOrder->discount ?? 0);
+        $taxAmount = $taxPercent !== null
+            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
+            : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
+
+        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
+            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        }
+
+        $validated['discount'] = $discountAmount;
+        $validated['discount_percent'] = $discountPercent;
+        $validated['tax'] = $taxAmount;
+        $validated['tax_percent'] = $taxPercent;
+
+        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
 
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than

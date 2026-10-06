@@ -146,6 +146,7 @@ class InventoryAllocationService
             WarehouseInventory::COST_BASIS_FIFO => $this->allocateFIFO($productId, $quantity, $warehouseId, $variantId),
             WarehouseInventory::COST_BASIS_FEFO => $this->allocateFEFO($productId, $quantity, $warehouseId, $variantId),
             WarehouseInventory::COST_BASIS_LIFO => $this->allocateLIFO($productId, $quantity, $warehouseId, $variantId),
+            WarehouseInventory::COST_BASIS_WEIGHTED_AVERAGE => $this->allocateFIFO($productId, $quantity, $warehouseId, $variantId),
             default => $this->allocateFIFO($productId, $quantity, $warehouseId, $variantId),
         };
     }

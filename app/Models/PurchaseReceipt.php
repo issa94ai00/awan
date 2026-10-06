@@ -23,6 +23,8 @@ class PurchaseReceipt extends Model
         // Tax the supplier charged, held apart from the goods: it is a claim
         // against the tax authority, not part of what the stock cost.
         'tax_amount',
+        'discount',
+        'discount_percent',
         'status',
         'currency',
         'notes',
@@ -32,6 +34,8 @@ class PurchaseReceipt extends Model
     protected $casts = [
         'receipt_date' => 'date',
         'tax_amount' => 'decimal:5',
+        'discount' => 'decimal:5',
+        'discount_percent' => 'decimal:2',
     ];
 
     public function purchaseOrder()
@@ -65,14 +69,14 @@ class PurchaseReceipt extends Model
         return $this->hasMany(SupplierPayment::class);
     }
 
-    /** What the supplier is owed for it: the goods at their price, plus the tax. */
+    /** What the supplier is owed for it: the goods at their price, less discount, plus the tax. */
     public function totalAmount(): float
     {
-        return round(
-            $this->items->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price)
-            + (float) ($this->tax_amount ?? 0),
-            2
-        );
+        $goods = (float) $this->items->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price);
+        $discount = (float) ($this->discount ?? 0);
+        $tax = (float) ($this->tax_amount ?? 0);
+
+        return round(max(0, $goods - $discount) + $tax, 2);
     }
 
     public function paidAmount(): float
@@ -97,7 +101,12 @@ class PurchaseReceipt extends Model
     {
         $this->loadMissing('items', 'payments');
 
+        $goodsTotal = round((float) $this->items->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price), 2);
+
         return array_merge($this->toArray(), [
+            'goods_total' => $goodsTotal,
+            'discount' => round((float) ($this->discount ?? 0), 2),
+            'discount_percent' => $this->discount_percent !== null ? (float) $this->discount_percent : null,
             'total_amount' => $this->totalAmount(),
             'paid_amount' => $this->paidAmount(),
             'due_amount' => $this->dueAmount(),

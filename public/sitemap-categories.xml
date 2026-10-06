@@ -1,74 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/mixers</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/taps-valves</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/sanitary</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/pipes</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
     <loc>https://sanitary.awaanaltakadom.sy/category/tools</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <lastmod>2026-09-12T16:46:22+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
     <loc>https://sanitary.awaanaltakadom.sy/category/materials</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/furniture</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <lastmod>2026-09-12T16:46:20+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
     <loc>https://sanitary.awaanaltakadom.sy/category/electrical</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/wash-basin</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-            </url>
-    <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/chairs</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <lastmod>2026-09-12T16:46:15+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
     <loc>https://sanitary.awaanaltakadom.sy/category/hand-tools</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <lastmod>2026-09-12T16:46:11+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
     <loc>https://sanitary.awaanaltakadom.sy/category/power-tools-accessories</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <lastmod>2026-09-12T16:46:08+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
@@ -175,170 +133,494 @@
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas</loc>
-    <lastmod>2026-09-03T22:32:55+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/awaan-tools</loc>
+    <lastmod>2026-09-13T08:01:14+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-power-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-power-tools</loc>
+    <lastmod>2026-09-13T08:04:42+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-bits-accessories</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-bits-accessories</loc>
+    <lastmod>2026-09-13T08:05:04+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-pneumatic-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-pneumatic-tools</loc>
+    <lastmod>2026-09-13T08:07:00+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-abrasives-cutting</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAANs-abrasives-cutting</loc>
+    <lastmod>2026-09-13T11:38:46+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-screwdrivers</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-screwdrivers</loc>
+    <lastmod>2026-09-13T11:39:03+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-wrenches-sockets</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-wrenches-sockets</loc>
+    <lastmod>2026-09-13T11:39:25+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-pliers-cutters</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-pliers-cutter</loc>
+    <lastmod>2026-09-13T11:40:10+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-hammers-chisels</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-hammers-chisels</loc>
+    <lastmod>2026-09-13T11:40:27+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-saws-files</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-saws-files</loc>
+    <lastmod>2026-09-13T11:40:45+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-knives-blades</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-knives-blades</loc>
+    <lastmod>2026-09-13T11:40:58+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-measuring-layout</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-measuring-layout</loc>
+    <lastmod>2026-09-13T11:41:19+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-woodworking</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-woodworking</loc>
+    <lastmod>2026-09-13T11:42:12+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-masonry-tiling</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-masonry-tiling</loc>
+    <lastmod>2026-09-13T11:41:43+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-painting-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-painting-tools</loc>
+    <lastmod>2026-09-13T11:42:33+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-plumbing-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-plumbing-tools</loc>
+    <lastmod>2026-09-13T11:42:52+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-electrical-testers</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-electrical-testers</loc>
+    <lastmod>2026-09-13T11:43:13+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-welding-soldering</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-welding-soldering</loc>
+    <lastmod>2026-09-13T11:43:35+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-automotive-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-automotive-tools</loc>
+    <lastmod>2026-09-13T11:43:57+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-garden-tools</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-garden-tools</loc>
+    <lastmod>2026-09-13T11:44:21+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-safety-equipment</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-safety-equipment</loc>
+    <lastmod>2026-09-13T11:44:36+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-locks-doors</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-locks-doors</loc>
+    <lastmod>2026-09-13T11:44:59+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-hinges-furniture</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-hinges-furniture</loc>
+    <lastmod>2026-09-13T11:46:09+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-lifting-ladders</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-lifting-ladders</loc>
+    <lastmod>2026-09-13T11:46:32+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-adhesives-tapes</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-adhesives-tapes</loc>
+    <lastmod>2026-09-13T11:47:02+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-scales-weighing</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-scales-weighing</loc>
+    <lastmod>2026-09-13T11:47:20+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-toolboxes-storage</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-toolboxes-storage</loc>
+    <lastmod>2026-09-13T11:47:38+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>
     <url>
-    <loc>https://sanitary.awaanaltakadom.sy/category/bahsas-misc-supplies</loc>
-    <lastmod>2026-09-06T20:55:30+00:00</lastmod>
+    <loc>https://sanitary.awaanaltakadom.sy/category/AWAAN-misc-supplies</loc>
+    <lastmod>2026-09-13T11:48:05+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/next-tools</loc>
+    <lastmod>2026-09-26T19:44:52+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-elbows</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-ac</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-elbows45</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-tees</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-couplings</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-wyes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-reducers</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-floordrains</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-plugs</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-wc</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-traps</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-glue</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-pipes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-drainpipes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-greypipes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-majdpipes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-pprpipes</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-pprfittings</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-pprthreaded</loc>
+    <lastmod>2026-09-27T16:39:35+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/saad-plast-hoses</loc>
+    <lastmod>2026-09-27T16:39:36+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-pipes</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-couplings</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-reducers</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-elbows</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-tees</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-traps</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-rekar</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-wc</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-plugs</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde</loc>
+    <lastmod>2026-09-27T20:01:32+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-pipes</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-fittings</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-elbows</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-threaded</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-valves</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde-ppr-accessories</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/kalde2</loc>
+    <lastmod>2026-09-27T20:11:56+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-products</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-angle-valves</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-gate-valves</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-taps</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-ppr-fittings</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-brass-fittings</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-drains</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-float-valves</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-standard-mixers</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-hawaii-mixers</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-chef-mixers</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-concealed-mixers</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-water-heaters</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-flexible-hoses</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+            </url>
+    <url>
+    <loc>https://sanitary.awaanaltakadom.sy/category/egyptian-shower-hoses</loc>
+    <lastmod>2026-10-04T06:41:37+00:00</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
             </url>

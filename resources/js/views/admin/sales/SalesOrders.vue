@@ -275,6 +275,7 @@
                                 <template #dropdown>
                                     <el-dropdown-menu>
                                         <el-dropdown-item command="view"><i class="fas fa-eye"></i> {{ $t('view_details') }}</el-dropdown-item>
+                                        <el-dropdown-item command="print"><i class="fas fa-print"></i> {{ $t('print') }}</el-dropdown-item>
                                         <el-dropdown-item command="execution"><i class="fas fa-diagram-project"></i> {{ $t('fulfilment_and_routing') }}</el-dropdown-item>
                                         <el-dropdown-item command="documents"><i class="fas fa-file-invoice-dollar"></i> {{ $t('documents_and_entries') }}</el-dropdown-item>
                                         <el-dropdown-item v-if="normalizeStatus(row.status) === 'pending'" command="edit"><i class="fas fa-edit"></i> {{ $t('edit') }}</el-dropdown-item>
@@ -327,17 +328,27 @@
                     <i class="fas fa-file-lines"></i>
                     <span>{{ $t('sales_order_details') }}</span>
                     <strong v-if="selectedOrder">{{ selectedOrder.order_number }}</strong>
-                    <!-- Same as the list row's cart action, from inside the order. -->
-                    <el-button
-                        v-if="selectedOrder && mayPurchase && normalizeStatus(selectedOrder.status) !== 'cancelled'"
-                        size="small"
-                        type="success"
-                        plain
-                        class="drawer-purchase-btn"
-                        @click="createPurchaseRequest(selectedOrder)"
-                    >
-                        <i class="fas fa-cart-plus"></i>&nbsp;{{ $t('so_create_purchase_request') }}
-                    </el-button>
+                    <div v-if="selectedOrder" class="drawer-header-actions">
+                        <el-button
+                            size="small"
+                            plain
+                            class="drawer-print-btn"
+                            @click="openPrintDialog(selectedOrder)"
+                        >
+                            <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                        </el-button>
+                        <!-- Same as the list row's cart action, from inside the order. -->
+                        <el-button
+                            v-if="mayPurchase && normalizeStatus(selectedOrder.status) !== 'cancelled'"
+                            size="small"
+                            type="success"
+                            plain
+                            class="drawer-purchase-btn"
+                            @click="createPurchaseRequest(selectedOrder)"
+                        >
+                            <i class="fas fa-cart-plus"></i>&nbsp;{{ $t('so_create_purchase_request') }}
+                        </el-button>
+                    </div>
                 </div>
             </template>
 
@@ -1015,22 +1026,704 @@
                 <el-button type="primary" :loading="store.saving" @click="submitShipment">{{ $t('confirm_shipping') }}</el-button>
             </template>
         </el-dialog>
+
+        <!-- Sales Order Printable Modal & Sheet -->
+        <el-dialog
+            v-model="printOrderDialogVisible"
+            :width="isFullScreenPreview ? '100%' : '1040px'"
+            :fullscreen="isFullScreenPreview"
+            class="so-print-dialog"
+            destroy-on-close
+            append-to-body
+            :top="isFullScreenPreview ? '0' : '2vh'"
+        >
+            <template #header>
+                <div class="so-dialog-header-custom so-screen-only">
+                    <div class="so-dh-left">
+                        <div class="so-dh-icon">
+                            <i class="fas fa-print"></i>
+                        </div>
+                        <div class="so-dh-info">
+                            <div class="so-dh-main-line">
+                                <span class="so-dh-title-text">{{ $t('so_print_preview') || 'معاينة أمر البيع والطباعة' }}</span>
+                                <strong v-if="printOrderData" class="so-dh-ordernum" dir="ltr">{{ printOrderData.order_number }}</strong>
+                            </div>
+                            <div class="so-dh-subline" v-if="printOrderData">
+                                <span><i class="fas fa-calendar-day"></i> {{ formatDate(printOrderData.order_date || printOrderData.created_at) }}</span>
+                                <span v-if="printOrderData.customer" class="so-dh-customer-crumb">
+                                    <i class="fas fa-user"></i> {{ printOrderData.customer.name }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="printOrderData" class="so-dh-badges">
+                        <span class="so-status-pill" :class="`pill-${normalizeStatus(printOrderData.status)}`">
+                            <i class="fas" :class="statusIconClass(printOrderData.status)"></i>
+                            {{ getArabicStatus(printOrderData.status) }}
+                        </span>
+                        <span class="so-dh-count">
+                            <i class="fas fa-box-open"></i> {{ $t('so_items_n', { count: printItemsCount }) }} ({{ printTotalQuantity }} قطعة)
+                        </span>
+                        <span class="so-dh-pages-est">
+                            <i class="fas fa-file-lines"></i> {{ estimatedPages === 1 ? 'صفحة A4 واحدة' : `${estimatedPages} صفحات A4 تقريباً` }}
+                        </span>
+                    </div>
+
+                    <div class="so-dh-actions">
+                        <el-button
+                            size="small"
+                            class="so-fs-toggle-btn"
+                            :type="isFullScreenPreview ? 'primary' : 'default'"
+                            plain
+                            @click="isFullScreenPreview = !isFullScreenPreview"
+                        >
+                            <i class="fas" :class="isFullScreenPreview ? 'fa-compress' : 'fa-expand'"></i>
+                            <span>{{ isFullScreenPreview ? ($t('exit_fullscreen') || 'تصغير') : ($t('fullscreen') || 'ملء الشاشة') }}</span>
+                        </el-button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Print Settings Toolbar (Screen Only) -->
+            <div class="so-print-toolbar so-screen-only">
+                <!-- Row 1: Presets, Zoom & Actions -->
+                <div class="so-toolbar-row so-toolbar-primary-row">
+                    <!-- Preset Selector -->
+                    <div class="so-tb-unit">
+                        <span class="so-tb-label">
+                            <i class="fas fa-wand-magic-sparkles text-primary"></i>
+                            {{ $t('so_preset') || 'نمط المستند' }}:
+                        </span>
+                        <el-radio-group v-model="printSettings.preset" size="small" @change="applyPreset">
+                            <el-radio-button value="official">
+                                <i class="fas fa-crown"></i> {{ $t('so_preset_official') || 'أمر رسمي كامل' }}
+                            </el-radio-button>
+                            <el-radio-button value="dispatch">
+                                <i class="fas fa-boxes-packing"></i> {{ $t('so_preset_dispatch') || 'صرف مستودعي' }}
+                            </el-radio-button>
+                            <el-radio-button value="customer">
+                                <i class="fas fa-receipt"></i> {{ $t('so_preset_customer') || 'إشعار عميل' }}
+                            </el-radio-button>
+                        </el-radio-group>
+                    </div>
+
+                    <!-- Interactive Zoom Controls -->
+                    <div class="so-tb-unit so-tb-zoom">
+                        <span class="so-tb-label">
+                            <i class="fas fa-magnifying-glass"></i>
+                            {{ $t('zoom') || 'الحجم' }}:
+                        </span>
+                        <el-button-group size="small">
+                            <el-button :disabled="zoomLevel <= 65" @click="zoomOut" :title="$t('zoom_out') || 'تصغير'">
+                                <i class="fas fa-minus"></i>
+                            </el-button>
+                            <el-button @click="resetZoom" class="so-zoom-badge" :title="$t('reset_zoom') || 'إعادة ضبط 100%'">
+                                {{ zoomLevel }}%
+                            </el-button>
+                            <el-button :disabled="zoomLevel >= 150" @click="zoomIn" :title="$t('zoom_in') || 'تكبير'">
+                                <i class="fas fa-plus"></i>
+                            </el-button>
+                        </el-button-group>
+                    </div>
+
+                    <!-- Primary Execution Buttons -->
+                    <div class="so-tb-actions-cluster">
+                        <el-button
+                            type="warning"
+                            plain
+                            size="default"
+                            :loading="isExportingPdf"
+                            class="btn-export-pdf"
+                            @click="exportOrderPdf"
+                        >
+                            <i class="fas fa-file-pdf"></i> {{ $t('download_pdf') || 'تحميل PDF' }}
+                        </el-button>
+                        <el-button
+                            type="primary"
+                            :icon="Printer"
+                            size="default"
+                            class="btn-print-prominent"
+                            @click="triggerPrintOrder"
+                        >
+                            <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة الأمر الآن' }}
+                        </el-button>
+                    </div>
+                </div>
+
+                <!-- Row 2: Format & Color Palette Controls -->
+                <div class="so-toolbar-row so-toolbar-secondary-row">
+                    <!-- Header Style -->
+                    <div class="so-tb-unit">
+                        <span class="so-tb-label">
+                            <i class="fas fa-heading"></i>
+                            {{ $t('po_header_style') || 'الترويسة' }}:
+                        </span>
+                        <el-radio-group v-model="printSettings.headerStyle" size="small">
+                            <el-radio-button value="official">
+                                <i class="fas fa-file-invoice"></i> {{ $t('po_header_official') || 'رسمية' }}
+                            </el-radio-button>
+                            <el-radio-button value="banner">
+                                <i class="fas fa-image"></i> {{ $t('po_header_banner') || 'بانر' }}
+                            </el-radio-button>
+                            <el-radio-button value="compact">
+                                <i class="fas fa-compress-alt"></i> {{ $t('po_header_compact') || 'مدمجة' }}
+                            </el-radio-button>
+                        </el-radio-group>
+                    </div>
+
+                    <!-- Color Accent Palette -->
+                    <div class="so-tb-unit">
+                        <span class="so-tb-label">
+                            <i class="fas fa-palette"></i>
+                            {{ $t('so_theme') || 'اللون' }}:
+                        </span>
+                        <el-radio-group v-model="printSettings.theme" size="small">
+                            <el-radio-button value="navy">
+                                <span class="theme-dot dot-navy"></span> {{ $t('so_theme_navy') || 'كحلي' }}
+                            </el-radio-button>
+                            <el-radio-button value="emerald">
+                                <span class="theme-dot dot-emerald"></span> {{ $t('so_theme_emerald') || 'زمردي' }}
+                            </el-radio-button>
+                            <el-radio-button value="charcoal">
+                                <span class="theme-dot dot-charcoal"></span> {{ $t('so_theme_charcoal') || 'رمادي' }}
+                            </el-radio-button>
+                            <el-radio-button value="indigo">
+                                <span class="theme-dot dot-indigo"></span> {{ $t('so_theme_indigo') || 'نيلي' }}
+                            </el-radio-button>
+                        </el-radio-group>
+                    </div>
+
+                    <!-- Page Density -->
+                    <div class="so-tb-unit">
+                        <span class="so-tb-label">
+                            <i class="fas fa-table-cells"></i>
+                            {{ $t('so_density') || 'الكثافة' }}:
+                        </span>
+                        <el-radio-group v-model="printSettings.density" size="small">
+                            <el-radio-button value="standard">
+                                <i class="fas fa-expand"></i> {{ $t('so_density_standard') || 'قياسي' }}
+                            </el-radio-button>
+                            <el-radio-button value="compact">
+                                <i class="fas fa-compress"></i> {{ $t('so_density_compact') || 'مدمج' }}
+                            </el-radio-button>
+                        </el-radio-group>
+                    </div>
+
+                    <!-- Watermark -->
+                    <div class="so-tb-unit">
+                        <span class="so-tb-label">
+                            <i class="fas fa-stamp"></i>
+                            {{ $t('so_watermark') || 'العلامة المائية' }}:
+                        </span>
+                        <el-select v-model="printSettings.watermark" size="small" style="width: 145px;">
+                            <el-option value="" :label="$t('so_watermark_none') || 'بدون علامة'" />
+                            <el-option value="draft" :label="$t('so_watermark_draft') || 'مسودة DRAFT'" />
+                            <el-option value="approved" :label="$t('so_watermark_approved') || 'معتمد APPROVED'" />
+                            <el-option value="paid" :label="$t('so_watermark_paid') || 'مدفوع بالكامل PAID'" />
+                            <el-option value="official" :label="$t('so_watermark_official') || 'أمر رسمي OFFICIAL'" />
+                        </el-select>
+                    </div>
+                </div>
+
+                <!-- Row 3: Component Visibility Toggles -->
+                <div class="so-toolbar-row so-toolbar-toggles-row">
+                    <span class="so-toolbar-sublabel">
+                        <i class="fas fa-sliders"></i> {{ $t('display_options') || 'خيارات العرض' }}:
+                    </span>
+                    <div class="so-toggles-grid">
+                        <el-checkbox v-model="printSettings.showPrices">
+                            <i class="fas fa-dollar-sign"></i> {{ $t('so_show_prices') || 'الأسعار والإجماليات' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showQrCode">
+                            <i class="fas fa-qrcode"></i> {{ $t('so_show_qr') || 'رمز التحقق QR' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showLogo">
+                            <i class="fas fa-image"></i> {{ $t('po_show_logo') || 'الشعار' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showContacts">
+                            <i class="fas fa-address-book"></i> {{ $t('po_show_contacts') || 'بيانات التواصل' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showImages">
+                            <i class="fas fa-box-open"></i> {{ $t('po_show_images') || 'صور المنتجات' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showSku">
+                            <i class="fas fa-barcode"></i> {{ $t('so_show_sku') || 'الأكواد والباركود' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showCustomerInfo">
+                            <i class="fas fa-user-check"></i> {{ $t('customer_info') || 'بيانات العميل' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showNotes">
+                            <i class="fas fa-note-sticky"></i> {{ $t('notes') || 'الملاحظات والشروط' }}
+                        </el-checkbox>
+                        <el-checkbox v-model="printSettings.showSignatures">
+                            <i class="fas fa-signature"></i> {{ $t('po_show_signatures') || 'التوقيعات والختم' }}
+                        </el-checkbox>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paper simulation stage with Zoom Container -->
+            <div
+                class="so-paper-stage"
+                :class="{ 'is-fullscreen': isFullScreenPreview }"
+                v-loading="printOrderLoading"
+                :element-loading-text="$t('loading') || 'جاري تجهيز أمر البيع للطباعة...'"
+            >
+                <div class="so-paper-viewport" :style="zoomContainerStyle">
+                    <div
+                        v-if="printOrderData"
+                        id="sales-order-printable-doc"
+                        class="so-printable-sheet"
+                        :class="[
+                            `theme-${printSettings.theme}`,
+                            { 'density-compact': printSettings.density === 'compact' },
+                            { 'mode-dispatch': !printSettings.showPrices }
+                        ]"
+                    >
+                        <!-- Diagonal Watermark Overlay if selected -->
+                        <div v-if="printSettings.watermark && watermarkText" class="so-sheet-watermark" :class="`wm-${printSettings.watermark}`">
+                            <span>{{ watermarkText }}</span>
+                        </div>
+
+                        <!-- Official Print Header with Logo & Brand Details -->
+                        <PrintDocumentHeader
+                            :header-style="printSettings.headerStyle"
+                            :show-logo="printSettings.showLogo"
+                            :show-contacts="printSettings.showContacts"
+                            :show-meta="false"
+                            :title="printSettings.showPrices ? ($t('official_sales_order') || 'أمر بيع رسمي') : ($t('dispatch_note_title') || 'مذكرة صرف واستلام بضاعة')"
+                            :subtitle="printSettings.showPrices ? 'OFFICIAL SALES ORDER' : 'WAREHOUSE PICKING & DISPATCH SLIP'"
+                            :document-number="printOrderData.order_number"
+                            :banner-src="'/Header.jpeg'"
+                        />
+
+                        <!-- Document Executive Ribbon / Status, QR & Reference Bar -->
+                        <div class="so-doc-ribbon">
+                            <div class="so-ribbon-left">
+                                <span class="so-ribbon-doc-type">
+                                    <i class="fas" :class="printSettings.showPrices ? 'fa-file-contract' : 'fa-boxes-packing'"></i>
+                                    {{ printSettings.showPrices ? ($t('official_sales_order') || 'أمر بيع رسمي معتمد') : ($t('dispatch_note_title') || 'مذكرة صرف واستلام مستودعي') }}
+                                </span>
+                                <span class="so-ribbon-status" :class="`status-${normalizeStatus(printOrderData.status)}`">
+                                    <i class="fas" :class="statusIconClass(printOrderData.status)"></i>
+                                    {{ getArabicStatus(printOrderData.status) }}
+                                </span>
+                                <span v-if="printOrderData.quote" class="so-ribbon-quote">
+                                    <i class="fas fa-file-lines"></i>
+                                    {{ $t('quote') }}: <strong dir="ltr">{{ printOrderData.quote.quote_number }}</strong>
+                                </span>
+                            </div>
+
+                            <div class="so-ribbon-right">
+                                <div class="so-ribbon-item">
+                                    <span class="lbl"><i class="fas fa-calendar-check"></i> {{ $t('order_date') || 'تاريخ الأمر' }}:</span>
+                                    <strong class="val" dir="ltr">{{ formatDate(printOrderData.order_date || printOrderData.created_at) }}</strong>
+                                </div>
+                                <div v-if="printOrderData.expected_delivery" class="so-ribbon-item">
+                                    <span class="lbl"><i class="fas fa-truck-clock"></i> {{ $t('expected_delivery') || 'تاريخ التسليم' }}:</span>
+                                    <strong class="val" dir="ltr">{{ formatDate(printOrderData.expected_delivery) }}</strong>
+                                </div>
+                                <!-- Electronic QR Verification Badge in ribbon -->
+                                <div v-if="printSettings.showQrCode && qrCodeDataUrl" class="so-ribbon-qr" :title="$t('qr_verification_label') || 'تحقق إلكتروني معتمد'">
+                                    <img :src="qrCodeDataUrl" alt="QR" class="so-ribbon-qr-img" />
+                                    <span class="so-ribbon-qr-label">{{ $t('qr_verification_label') || 'تحقق إلكتروني' }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Unified Order & Customer Details Cards Grid -->
+                        <div v-if="printSettings.showCustomerInfo" class="so-print-meta-grid">
+                            <!-- Customer Info Box -->
+                            <div class="so-meta-card so-meta-customer">
+                                <div class="so-meta-card-header">
+                                    <div class="so-card-header-icon"><i class="fas fa-user-tie"></i></div>
+                                    <span class="so-meta-card-title">{{ $t('customer_info') || 'بيانات العميل وجهة التسليم' }}</span>
+                                </div>
+                                <div class="so-meta-card-body" v-if="printOrderData.customer">
+                                    <div class="so-customer-primary">
+                                        <strong class="so-customer-name">{{ printOrderData.customer.name }}</strong>
+                                        <span v-if="printOrderData.customer.company" class="so-customer-company">
+                                            ({{ printOrderData.customer.company }})
+                                        </span>
+                                    </div>
+                                    <div class="so-customer-meta-list">
+                                        <div v-if="printOrderData.customer.phone" class="so-cm-item">
+                                            <i class="fas fa-phone-alt"></i>
+                                            <span dir="ltr">{{ printOrderData.customer.phone }}</span>
+                                        </div>
+                                        <div v-if="printOrderData.customer.email" class="so-cm-item">
+                                            <i class="fas fa-envelope"></i>
+                                            <span dir="ltr">{{ printOrderData.customer.email }}</span>
+                                        </div>
+                                        <div v-if="printOrderData.shipping_address || printOrderData.customer.address" class="so-cm-item">
+                                            <i class="fas fa-location-dot"></i>
+                                            <span>{{ printOrderData.shipping_address || printOrderData.customer.address }}</span>
+                                        </div>
+                                        <div v-if="printOrderData.customer.tax_number || printOrderData.customer.cr_number" class="so-cm-item so-cm-tax">
+                                            <i class="fas fa-certificate"></i>
+                                            <span>{{ $t('tax_number') || 'الرقم الضريبي' }}: <strong>{{ printOrderData.customer.tax_number || printOrderData.customer.cr_number }}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="so-meta-card-body text-muted">
+                                    <em>{{ $t('no_customer_specified') || 'لم يُحدد عميل' }}</em>
+                                </div>
+                            </div>
+
+                            <!-- Order Execution & Warehouse Details Box -->
+                            <div class="so-meta-card so-meta-order">
+                                <div class="so-meta-card-header">
+                                    <div class="so-card-header-icon"><i class="fas fa-clipboard-check"></i></div>
+                                    <span class="so-meta-card-title">{{ $t('order_details') || 'بيانات التنفيذ ومستودع الصرف' }}</span>
+                                </div>
+                                <div class="so-meta-card-body">
+                                    <div class="so-order-meta-grid">
+                                        <div class="so-om-item">
+                                            <span class="so-om-label">{{ $t('order_number') || 'رقم الأمر' }}:</span>
+                                            <strong class="so-om-val so-mono" dir="ltr">{{ printOrderData.order_number }}</strong>
+                                        </div>
+                                        <div class="so-om-item">
+                                            <span class="so-om-label">{{ $t('fulfilment_type') || 'طريقة التسليم' }}:</span>
+                                            <span class="so-om-val so-fulfilment-pill">
+                                                <i class="fas fa-truck-ramp-box"></i> {{ fulfillmentLabel(printOrderData.fulfillment_type) }}
+                                            </span>
+                                        </div>
+                                        <div v-if="printOrderData.fulfillment_warehouse" class="so-om-item">
+                                            <span class="so-om-label">{{ $t('warehouse') || 'مستودع الصرف' }}:</span>
+                                            <span class="so-om-val"><i class="fas fa-warehouse text-muted"></i> {{ printOrderData.fulfillment_warehouse.name }}</span>
+                                        </div>
+                                        <div v-if="printOrderData.creator || printOrderData.assigned_employee" class="so-om-item">
+                                            <span class="so-om-label">{{ $t('sales_officer') || 'مسؤول المبيعات' }}:</span>
+                                            <span class="so-om-val">{{ printOrderData.assigned_employee?.name || printOrderData.creator?.name }}</span>
+                                        </div>
+                                        <div v-if="printOrderData.payment && printSettings.showPrices" class="so-om-item">
+                                            <span class="so-om-label">{{ $t('so_payment') || 'حالة الدفع' }}:</span>
+                                            <span class="so-om-val so-pay-pill" :class="`p-${printOrderData.payment.state}`">
+                                                {{ $t(`so_pay_${printOrderData.payment.state}`) }}
+                                            </span>
+                                        </div>
+                                        <div v-if="!printSettings.showPrices" class="so-om-item">
+                                            <span class="so-om-label">{{ $t('doc_classification') || 'تصنيف المستند' }}:</span>
+                                            <span class="so-om-val text-warning font-semibold">
+                                                <i class="fas fa-shield-halved"></i> نسخة مستودعية غير مسعرة
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Line Items Table -->
+                        <table class="so-print-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 34px; text-align: center;">#</th>
+                                    <th v-if="printSettings.showImages" style="width: 48px; text-align: center;">{{ $t('image') || 'الصورة' }}</th>
+                                    <th>{{ $t('product') || 'المنتج / البيان والتفاصيل' }}</th>
+                                    <th v-if="printSettings.showSku" style="width: 105px;">{{ $t('sku') || 'الرمز / SKU' }}</th>
+                                    <th style="width: 80px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
+                                    <!-- Commercial columns if showPrices -->
+                                    <th v-if="printSettings.showPrices" style="width: 110px; text-align: left;">{{ $t('unit_price') || 'السعر الإفرادي' }}</th>
+                                    <th v-if="printSettings.showPrices && hasItemDiscount" style="width: 85px; text-align: left;">{{ $t('discount') || 'الخصم' }}</th>
+                                    <th v-if="printSettings.showPrices && hasItemTax" style="width: 85px; text-align: left;">{{ $t('tax') || 'الضريبة' }}</th>
+                                    <th v-if="printSettings.showPrices" style="width: 125px; text-align: left;">{{ $t('total') || 'الإجمالي' }}</th>
+                                    <!-- Warehouse checklist columns if !showPrices -->
+                                    <th v-if="!printSettings.showPrices" style="width: 115px; text-align: center;">{{ $t('warehouse_location') || 'موقع الصرف / الرف' }}</th>
+                                    <th v-if="!printSettings.showPrices" style="width: 75px; text-align: center;">{{ $t('item_checked') || 'التجهيز' }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx">
+                                    <td style="text-align: center;" class="so-row-idx">{{ idx + 1 }}</td>
+                                    <td v-if="printSettings.showImages" class="so-print-img-cell" style="text-align: center;">
+                                        <EntityImage
+                                            :src="item.product?.image_main || item.product?.image || item.product?.image_url"
+                                            type="product"
+                                            :size="printSettings.density === 'compact' ? 30 : 38"
+                                            shape="square"
+                                            :lazy="false"
+                                        />
+                                    </td>
+                                    <td>
+                                        <div class="so-item-name">{{ item.product?.name_ar || item.product?.name || item.description || '-' }}</div>
+                                        <div v-if="item.product?.name_en" class="so-item-name-en">{{ item.product.name_en }}</div>
+                                        <div v-if="item.product_variant_id" class="so-item-variant">
+                                            <VariantChip :label="variantLabelOf(item.variant) || item.description" />
+                                        </div>
+                                        <div v-else-if="item.description && item.description !== item.product?.name_ar" class="so-item-desc">
+                                            {{ item.description }}
+                                        </div>
+                                    </td>
+                                    <td v-if="printSettings.showSku" class="so-sku-cell">
+                                        <code>{{ item.variant?.sku || item.product?.sku || '—' }}</code>
+                                    </td>
+                                    <td style="text-align: center;" class="so-qty-cell">
+                                        <span class="so-qty-num">{{ item.quantity }}</span>
+                                        <span v-if="item.product_unit?.name || item.unit_name || item.unit" class="so-unit-label">
+                                            {{ item.product_unit?.name || item.unit_name || item.unit }}
+                                        </span>
+                                    </td>
+                                    <!-- Commercial pricing cells -->
+                                    <td v-if="printSettings.showPrices" style="text-align: left;" class="so-price-cell" dir="ltr">
+                                        {{ formatCurrency(item.unit_price) }}
+                                    </td>
+                                    <td v-if="printSettings.showPrices && hasItemDiscount" style="text-align: left;" class="so-discount-cell" dir="ltr">
+                                        {{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}
+                                    </td>
+                                    <td v-if="printSettings.showPrices && hasItemTax" style="text-align: left;" class="so-tax-cell" dir="ltr">
+                                        {{ toNum(item.tax) ? formatCurrency(item.tax) : '—' }}
+                                    </td>
+                                    <td v-if="printSettings.showPrices" style="text-align: left;" class="so-total-cell" dir="ltr">
+                                        <strong>{{ formatCurrency(lineTotal(item)) }}</strong>
+                                    </td>
+                                    <!-- Warehouse checklist cells -->
+                                    <td v-if="!printSettings.showPrices" style="text-align: center;" class="so-loc-cell">
+                                        <span class="so-loc-badge">
+                                            <i class="fas fa-boxes-stacked text-muted"></i>
+                                            {{ item.bin?.code || printOrderData.fulfillment_warehouse?.name || 'مستودع رئيسي' }}
+                                        </span>
+                                    </td>
+                                    <td v-if="!printSettings.showPrices" style="text-align: center;" class="so-check-cell">
+                                        <span class="so-check-box"></span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr class="so-table-summary-row">
+                                    <td :colspan="(printSettings.showImages ? 1 : 0) + (printSettings.showSku ? 1 : 0) + 2" class="so-sum-label">
+                                        <i class="fas fa-layer-group text-primary"></i>
+                                        <span>{{ $t('summary') || 'إجمالي بنود الطلب' }}:</span>
+                                        <strong class="so-sum-count">{{ printItemsCount }}</strong> {{ $t('items') || 'أصناف' }}
+                                        ·
+                                        <span>{{ $t('total_quantity') || 'مجموع الكميات' }}:</span>
+                                        <strong class="so-sum-count">{{ printTotalQuantity }}</strong>
+                                    </td>
+                                    <!-- Commercial total cell -->
+                                    <td v-if="printSettings.showPrices" :colspan="(hasItemDiscount ? 1 : 0) + (hasItemTax ? 1 : 0) + 2" class="so-sum-total" dir="ltr">
+                                        <span class="so-sum-subtext">{{ $t('subtotal') }}:</span>
+                                        <strong>{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</strong>
+                                    </td>
+                                    <!-- Non-priced dispatch cell -->
+                                    <td v-else colspan="2" class="so-sum-dispatch" style="text-align: center;">
+                                        <i class="fas fa-clipboard-check text-success"></i>
+                                        <span>نسخة جرد وتحميل مستودعي</span>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+
+                        <!-- Totals & Notes Block -->
+                        <div class="so-print-summary-row">
+                            <div class="so-print-notes-col">
+                                <div v-if="printSettings.showNotes && printOrderData.notes" class="so-print-notes-box">
+                                    <div class="so-notes-header">
+                                        <i class="fas fa-clipboard-list"></i>
+                                        <strong>{{ $t('notes') || 'ملاحظات وشروط الطلب' }}:</strong>
+                                    </div>
+                                    <p class="so-notes-text">{{ printOrderData.notes }}</p>
+                                </div>
+                                <div v-if="printOrderData.carrier || printOrderData.tracking_number" class="so-print-shipping-box">
+                                    <div class="so-shipping-header">
+                                        <i class="fas fa-truck-fast"></i>
+                                        <strong>{{ $t('shipping_info') || 'معلومات الشحن والتوصيل' }}:</strong>
+                                    </div>
+                                    <div class="so-shipping-details">
+                                        <span v-if="printOrderData.carrier">
+                                            {{ $t('shipping_company') }}: <strong>{{ printOrderData.carrier }}</strong>
+                                        </span>
+                                        <span v-if="printOrderData.tracking_number" class="so-track-num" dir="ltr">
+                                            <i class="fas fa-barcode"></i> {{ printOrderData.tracking_number }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="so-print-legal-notice">
+                                    <i class="fas fa-circle-info"></i>
+                                    <span v-if="printSettings.showPrices">
+                                        {{ $t('so_print_legal_notice') || 'تخضع المواد المسلمة لشروط الضمان المعتمدة لدى شركة أوان التقدم للتجهيزات الصحية ومواد البناء.' }}
+                                    </span>
+                                    <span v-else>
+                                        {{ $t('dispatch_non_priced_notice') || 'مذكرة صرف رسمية غير مسعرة معتمدة لأغراض النقل والتحميل والمطابقة والتسليم المستودعي.' }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Commercial Totals Card -->
+                            <div v-if="printSettings.showPrices" class="so-print-totals-col">
+                                <table class="so-totals-table">
+                                    <tr>
+                                        <td>{{ $t('items_subtotal') || 'المجموع الفرعي' }}:</td>
+                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</td>
+                                    </tr>
+                                    <tr v-if="toNum(printOrderData.discount) > 0">
+                                        <td>{{ $t('less_discount') || 'الخصم الممنوح' }}:</td>
+                                        <td class="val discount-val" dir="ltr">− {{ formatCurrency(printOrderData.discount) }}</td>
+                                    </tr>
+                                    <tr v-if="toNum(printOrderData.tax) > 0">
+                                        <td>{{ $t('plus_tax') || 'ضريبة القيمة المضافة' }}:</td>
+                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.tax) }}</td>
+                                    </tr>
+                                    <tr v-if="toNum(printOrderData.shipping_cost) > 0">
+                                        <td>{{ $t('plus_shipping_cost') || 'أجور التوصيل / الشحن' }}:</td>
+                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.shipping_cost) }}</td>
+                                    </tr>
+                                    <tr class="grand-total-row">
+                                        <td>{{ $t('grand_total_amount') || 'المجموع الإجمالي النهائي' }}:</td>
+                                        <td class="val grand-val" dir="ltr">{{ formatCurrency(printOrderData.total) }}</td>
+                                    </tr>
+                                    <tr v-if="printOrderData.invoice" class="invoice-status-row">
+                                        <td>{{ $t('invoice_number') }}:</td>
+                                        <td class="val" dir="ltr">
+                                            <span class="so-mono">{{ printOrderData.invoice.invoice_number }}</span>
+                                            <span v-if="toNum(printOrderData.invoice.paid_amount) >= toNum(printOrderData.invoice.total)" class="badge-paid">
+                                                ({{ $t('fully_paid') }})
+                                            </span>
+                                            <span v-else-if="toNum(printOrderData.invoice.paid_amount) > 0" class="badge-partial">
+                                                ({{ $t('partially_paid') }}: {{ formatCurrency(printOrderData.invoice.paid_amount) }})
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <!-- Warehouse Dispatch Summary Card (Non-Priced) -->
+                            <div v-else class="so-print-totals-col so-dispatch-card-col">
+                                <div class="so-dispatch-summary-box">
+                                    <div class="so-dispatch-header">
+                                        <i class="fas fa-boxes-packing text-primary"></i>
+                                        <strong>{{ $t('dispatch_note_title') || 'ملخص الصرف والتسليم' }}</strong>
+                                    </div>
+                                    <div class="so-dispatch-details-list">
+                                        <div class="so-dd-row">
+                                            <span>عدد الأصناف:</span>
+                                            <strong>{{ printItemsCount }} أصناف</strong>
+                                        </div>
+                                        <div class="so-dd-row">
+                                            <span>إجمالي القطع:</span>
+                                            <strong>{{ printTotalQuantity }} قطعة</strong>
+                                        </div>
+                                        <div class="so-dd-row" v-if="printOrderData.fulfillment_warehouse">
+                                            <span>مستودع التحميل:</span>
+                                            <strong>{{ printOrderData.fulfillment_warehouse.name }}</strong>
+                                        </div>
+                                        <div class="so-dd-row" v-if="printOrderData.carrier">
+                                            <span>جهة الشحن:</span>
+                                            <strong>{{ printOrderData.carrier }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Official Signatures Block (Commercial Mode) -->
+                        <div v-if="printSettings.showSignatures && printSettings.showPrices" class="so-print-signatures">
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-pen-nib"></i> {{ $t('prepared_by') || 'إعداد وتجهيز' }}</span>
+                                <div class="sig-name" v-if="printOrderData.assigned_employee?.name || printOrderData.creator?.name">
+                                    {{ printOrderData.assigned_employee?.name || printOrderData.creator?.name }}
+                                </div>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('signature_and_date') || 'التوقيع والتاريخ' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-calculator"></i> {{ $t('finance_audit') || 'التدقيق والحسابات' }}</span>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('signature_and_date') || 'التوقيع والتاريخ' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-user-check"></i> {{ $t('so_customer_acceptance') || 'استلام وقبول العميل' }}</span>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('receiver_name_sig') || 'الاسم والتوقيع' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-stamp"></i> {{ $t('company_seal') || 'ختم واعتماد الشركة' }}</span>
+                                <div class="sig-seal-box">
+                                    <span>{{ $t('official_seal') || 'الختم الرسمي' }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Warehouse & Dispatch Signatures Block (Dispatch Mode) -->
+                        <div v-if="printSettings.showSignatures && !printSettings.showPrices" class="so-print-signatures">
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-boxes-packing"></i> {{ $t('picker_signature') || 'تجهيز المستودع' }}</span>
+                                <div class="sig-name" v-if="printOrderData.assigned_employee?.name || printOrderData.creator?.name">
+                                    {{ printOrderData.assigned_employee?.name || printOrderData.creator?.name }}
+                                </div>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('signature_and_date') || 'التوقيع والتاريخ' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-warehouse"></i> {{ $t('warehouse_keeper') || 'أمين المستودع' }}</span>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('signature_and_date') || 'التوقيع والتاريخ' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-truck"></i> {{ $t('driver_signature') || 'استلام السائق والناقل' }}</span>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('receiver_name_sig') || 'الاسم ورقم اللوحة' }}</span>
+                            </div>
+                            <div class="sig-card">
+                                <span class="sig-title"><i class="fas fa-user-check"></i> {{ $t('so_customer_acceptance') || 'استلام العميل في الموقع' }}</span>
+                                <div class="sig-line"></div>
+                                <span class="sig-sub">{{ $t('receiver_name_sig') || 'الاسم والتوقيع' }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Document Running Footer -->
+                        <div class="so-print-footer">
+                            <div class="so-footer-line">
+                                <span>{{ $t('official_doc_footer_notice') || 'وثيقة رسمية صادرة آلياً من نظام أوان التقدم للتجهيزات الصحية ومواد البناء · صالحة للاستخدام الإداري والمالي' }}</span>
+                            </div>
+                            <div class="so-footer-meta">
+                                <span>{{ $t('printed_at') || 'تاريخ الطباعة' }}: {{ printFormattedDate }}</span>
+                                <span>REF: {{ printOrderData.order_number }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="dialog-footer so-screen-only">
+                    <el-button @click="printOrderDialogVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button
+                        type="warning"
+                        plain
+                        size="large"
+                        :loading="isExportingPdf"
+                        class="btn-export-pdf"
+                        @click="exportOrderPdf"
+                    >
+                        <i class="fas fa-file-pdf"></i> {{ $t('download_pdf') || 'تحميل PDF' }}
+                    </el-button>
+                    <el-button type="primary" :icon="Printer" size="large" class="btn-print-prominent" @click="triggerPrintOrder">
+                        <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة الأمر الآن' }}
+                    </el-button>
+                </div>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, onBeforeUnmount, computed, reactive, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSalesOrdersStore } from '@/stores/salesOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Refresh, RefreshLeft, Search } from '@element-plus/icons-vue';
+import { Plus, Refresh, RefreshLeft, Search, Printer } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
+import EntityImage from '@/components/admin/EntityImage.vue';
 import { variantLabelOf } from '@/utils/productPick';
 import { useStockShortage } from '@/Composables/useStockShortage';
+import QRCode from 'qrcode';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const { t } = useI18n();
 import {
@@ -1266,6 +1959,7 @@ const rowClassName = ({ row }) => (row.follow_up?.needs_attention ? 'row-needs-a
 
 const runRowCommand = (row, command) => {
     if (command === 'view') return openDetailDrawer(row.id);
+    if (command === 'print') return openPrintDialog(row);
     if (command === 'execution' || command === 'documents') return openDetailDrawer(row.id, command);
     if (command === 'edit') return openEditDrawer(row.id);
     if (command === 'purchase') return createPurchaseRequest(row);
@@ -1888,6 +2582,418 @@ const deleteOrder = async (id) => {
     }
 };
 
+// Print Order Actions & UI Settings
+const printOrderData = ref(null);
+const printOrderDialogVisible = ref(false);
+const printOrderLoading = ref(false);
+const isFullScreenPreview = ref(false);
+const isExportingPdf = ref(false);
+const zoomLevel = ref(100);
+const qrCodeDataUrl = ref('');
+
+const printSettings = reactive({
+    preset: 'official', // 'official' | 'dispatch' | 'customer'
+    headerStyle: 'official', // 'official' | 'banner' | 'compact'
+    density: 'standard', // 'standard' | 'compact'
+    theme: 'navy', // 'navy' | 'emerald' | 'charcoal' | 'indigo'
+    watermark: '', // '' | 'draft' | 'approved' | 'paid' | 'official'
+    showPrices: true,
+    showQrCode: true,
+    showLogo: true,
+    showContacts: true,
+    showImages: true,
+    showSku: true,
+    showCustomerInfo: true,
+    showNotes: true,
+    showSignatures: true,
+});
+
+const applyPreset = (presetName) => {
+    printSettings.preset = presetName;
+    if (presetName === 'official') {
+        printSettings.showPrices = true;
+        printSettings.headerStyle = 'official';
+        printSettings.density = 'standard';
+        printSettings.watermark = '';
+        printSettings.showLogo = true;
+        printSettings.showContacts = true;
+        printSettings.showImages = true;
+        printSettings.showSku = true;
+        printSettings.showCustomerInfo = true;
+        printSettings.showNotes = true;
+        printSettings.showSignatures = true;
+        printSettings.showQrCode = true;
+    } else if (presetName === 'dispatch') {
+        printSettings.showPrices = false;
+        printSettings.headerStyle = 'compact';
+        printSettings.density = 'compact';
+        printSettings.watermark = '';
+        printSettings.showLogo = true;
+        printSettings.showContacts = false;
+        printSettings.showImages = true;
+        printSettings.showSku = true;
+        printSettings.showCustomerInfo = true;
+        printSettings.showNotes = true;
+        printSettings.showSignatures = true;
+        printSettings.showQrCode = true;
+    } else if (presetName === 'customer') {
+        printSettings.showPrices = true;
+        printSettings.headerStyle = 'banner';
+        printSettings.density = 'standard';
+        printSettings.watermark = printOrderData.value?.payment?.state === 'paid' ? 'paid' : 'approved';
+        printSettings.showLogo = true;
+        printSettings.showContacts = true;
+        printSettings.showImages = true;
+        printSettings.showSku = false;
+        printSettings.showCustomerInfo = true;
+        printSettings.showNotes = true;
+        printSettings.showSignatures = true;
+        printSettings.showQrCode = true;
+    }
+};
+
+const zoomIn = () => {
+    if (zoomLevel.value < 150) zoomLevel.value = Math.min(150, zoomLevel.value + 15);
+};
+
+const zoomOut = () => {
+    if (zoomLevel.value > 65) zoomLevel.value = Math.max(65, zoomLevel.value - 15);
+};
+
+const resetZoom = () => {
+    zoomLevel.value = 100;
+};
+
+const zoomContainerStyle = computed(() => {
+    if (zoomLevel.value === 100) return {};
+    return {
+        transform: `scale(${zoomLevel.value / 100})`,
+        transformOrigin: 'top center',
+        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    };
+});
+
+const watermarkLabels = {
+    draft: 'مسودة — DRAFT',
+    approved: 'طلب معتمد — APPROVED',
+    paid: 'مدفوع بالكامل — PAID',
+    official: 'أمر بيع رسمي — OFFICIAL',
+};
+
+const watermarkText = computed(() => {
+    return watermarkLabels[printSettings.watermark] || '';
+});
+
+const printItemsCount = computed(() => {
+    return printOrderData.value?.items?.length || 0;
+});
+
+const printTotalQuantity = computed(() => {
+    return (printOrderData.value?.items || []).reduce((acc, it) => acc + (toNum(it.quantity)), 0);
+});
+
+const estimatedPages = computed(() => {
+    const items = printOrderData.value?.items?.length || 0;
+    const isCompact = printSettings.density === 'compact';
+    const limit = isCompact ? 14 : 9;
+    return items <= limit ? 1 : Math.ceil(items / limit);
+});
+
+const printFormattedDate = computed(() => {
+    const d = new Date();
+    return `${d.toLocaleDateString('ar-SY')} ${d.toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}`;
+});
+
+const hasItemDiscount = computed(() => {
+    return printOrderData.value?.items?.some((item) => toNum(item.discount) > 0) ?? false;
+});
+
+const hasItemTax = computed(() => {
+    return printOrderData.value?.items?.some((item) => toNum(item.tax) > 0) ?? false;
+});
+
+const calcPrintSubtotal = (order) => {
+    if (!order?.items) return 0;
+    return order.items.reduce((acc, it) => acc + (toNum(it.unit_price) * toNum(it.quantity)), 0);
+};
+
+const generateQrCode = async (order) => {
+    if (!order) return;
+    try {
+        const payload = `https://sanitary.awaanaltakadom.sy/admin/sales/sales-orders?open=${order.id}&ref=${order.order_number}&total=${order.total || 0}&date=${order.order_date || ''}`;
+        qrCodeDataUrl.value = await QRCode.toDataURL(payload, {
+            width: 140,
+            margin: 1,
+            color: {
+                dark: '#0f172a',
+                light: '#ffffff',
+            },
+        });
+    } catch (e) {
+        console.error('QR code generation error:', e);
+        qrCodeDataUrl.value = '';
+    }
+};
+
+watch(printOrderData, (newOrder) => {
+    if (newOrder) {
+        generateQrCode(newOrder);
+    }
+}, { immediate: true });
+
+const exportOrderPdf = async () => {
+    const el = document.getElementById('sales-order-printable-doc');
+    if (!el) return;
+    isExportingPdf.value = true;
+    try {
+        const prevZoom = zoomLevel.value;
+        zoomLevel.value = 100;
+        await nextTick();
+
+        const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+        });
+
+        zoomLevel.value = prevZoom;
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const imgWidth = 210;
+        const pageHeight = 297;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+        }
+
+        const fileName = `${t('sales_order') || 'Sales_Order'}_${printOrderData.value?.order_number || 'doc'}.pdf`;
+        pdf.save(fileName);
+        ElMessage.success(t('pdf_downloaded_successfully') || 'تم تجهيز وتحميل ملف PDF بنجاح');
+    } catch (err) {
+        console.error('PDF export error:', err);
+        ElMessage.error(t('failed_to_export_pdf') || 'فشل تصدير ملف PDF');
+    } finally {
+        isExportingPdf.value = false;
+    }
+};
+
+watch(printOrderDialogVisible, (visible) => {
+    if (typeof document !== 'undefined') {
+        if (visible) {
+            document.body.classList.add('so-print-dialog-open');
+        } else {
+            document.body.classList.remove('so-print-dialog-open');
+        }
+    }
+});
+
+const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const openPrintDialog = async (orderOrRow) => {
+    if (!orderOrRow) return;
+    zoomLevel.value = 100;
+
+    const orderId = typeof orderOrRow === 'object' ? orderOrRow.id : Number(orderOrRow);
+    // If an object was provided, show it immediately while details load
+    printOrderData.value = typeof orderOrRow === 'object' ? orderOrRow : null;
+    printOrderDialogVisible.value = true;
+    printOrderLoading.value = true;
+
+    try {
+        let full = typeof orderOrRow === 'object' ? { ...orderOrRow } : null;
+        // Always ensure we fetch full items, customer, warehouse and invoice details
+        if (!full || !full.items || !full.items.length || !full.fulfillment_warehouse || !full.customer) {
+            try {
+                const res = await salesOrdersApi.detail(orderId);
+                if (res.data?.data?.sales_order) {
+                    full = {
+                        ...res.data.data.sales_order,
+                        invoice: res.data.data.invoice,
+                    };
+                }
+            } catch (err) {
+                console.warn('salesOrdersApi.detail failed, trying getById', err);
+                const alt = await salesOrdersApi.getById(orderId);
+                if (alt.data?.data) {
+                    full = {
+                        ...alt.data.data,
+                        items: alt.data.data.items || [],
+                    };
+                }
+            }
+        }
+
+        if (full) {
+            printOrderData.value = full;
+            generateQrCode(full);
+        }
+    } catch (e) {
+        console.error('Failed to load order for printing:', e);
+        ElMessage.error(t('failed_to_load_order_details_msg') || 'فشل تحميل تفاصيل الطلب للطباعة');
+    } finally {
+        printOrderLoading.value = false;
+    }
+};
+
+const triggerPrintOrder = async () => {
+    const docEl = document.getElementById('sales-order-printable-doc');
+    if (!docEl) {
+        window.print();
+        return;
+    }
+
+    try {
+        // Collect all style definitions currently in the page (Tailwind, Element Plus, Fonts, Custom CSS)
+        const headStyles = [];
+        document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+            headStyles.push(node.outerHTML);
+        });
+
+        // Dedicated print stylesheet for A4 portrait
+        const extraPrintStyles = `
+            <style>
+                @page {
+                    size: A4 portrait;
+                    margin: 8mm 10mm 10mm 10mm;
+                }
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    box-sizing: border-box !important;
+                }
+                html, body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    background: #ffffff !important;
+                    color: #0f172a !important;
+                    font-family: 'Cairo', 'Almarai', Tahoma, -apple-system, sans-serif !important;
+                    direction: rtl !important;
+                    width: 100% !important;
+                    height: auto !important;
+                    overflow: visible !important;
+                }
+                a {
+                    text-decoration: none !important;
+                    color: inherit !important;
+                }
+                a[href]:after {
+                    content: none !important;
+                }
+                #sales-order-printable-doc {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    background: #ffffff !important;
+                    display: block !important;
+                }
+                .so-print-table thead {
+                    display: table-header-group !important;
+                }
+                .so-print-table tfoot {
+                    display: table-footer-group !important;
+                }
+                .so-print-table tr {
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                }
+                .so-doc-ribbon,
+                .so-print-meta-grid,
+                .so-print-summary-row,
+                .so-print-signatures,
+                .so-print-footer {
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                }
+                .so-screen-only,
+                .so-print-toolbar {
+                    display: none !important;
+                }
+            </style>
+        `;
+
+        // Create a hidden iframe for isolated, flawless printing
+        let iframe = document.getElementById('so-print-hidden-iframe');
+        if (iframe) {
+            iframe.remove();
+        }
+        iframe = document.createElement('iframe');
+        iframe.id = 'so-print-hidden-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+
+        const iframeDoc = iframe.contentWindow.document;
+        iframeDoc.open();
+        iframeDoc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="utf-8">
+    <title>${escapeHtml(printOrderData.value?.order_number || 'أمر بيع')}</title>
+    ${headStyles.join('\n')}
+    ${extraPrintStyles}
+</head>
+<body>
+    ${docEl.outerHTML}
+</body>
+</html>`);
+        iframeDoc.close();
+
+        // Wait for images in the iframe to finish loading
+        await new Promise((resolve) => {
+            const images = iframeDoc.images;
+            if (!images || images.length === 0) {
+                setTimeout(resolve, 150);
+                return;
+            }
+            let loaded = 0;
+            const total = images.length;
+            const onDone = () => {
+                loaded++;
+                if (loaded >= total) resolve();
+            };
+            for (let i = 0; i < total; i++) {
+                if (images[i].complete) {
+                    onDone();
+                } else {
+                    images[i].onload = onDone;
+                    images[i].onerror = onDone;
+                }
+            }
+            setTimeout(resolve, 800); // Failsafe timeout
+        });
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+
+        setTimeout(() => {
+            iframe?.remove();
+        }, 60000);
+    } catch (e) {
+        console.error('Iframe print error, falling back to window.print():', e);
+        await nextTick();
+        window.print();
+    }
+};
+
 // Reusing the component for a new URL (the sidebar link) re-reads it.
 watch(() => route.query, (query) => {
     if (route.name !== 'admin.sales-orders.index' || query.open || queryKey(query) === lastQueryKey) return;
@@ -1899,6 +3005,11 @@ watch(() => route.query, (query) => {
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
     clearTimeout(searchTimer);
+    if (typeof document !== 'undefined') {
+        document.body.classList.remove('so-print-dialog-open');
+    }
+    const iframe = document.getElementById('so-print-hidden-iframe');
+    if (iframe) iframe.remove();
 });
 
 onMounted(async () => {
@@ -1906,16 +3017,23 @@ onMounted(async () => {
     window.addEventListener('resize', onResize);
     readQuery();
     // The one-off `open` link is stripped from the URL below; the filters are not.
-    const { open: _open, tab: _tab, do: _do, ...listQuery } = route.query;
+    const { open: _open, tab: _tab, do: _do, print: _print, ...listQuery } = route.query;
     lastQueryKey = queryKey(listQuery);
     loadOrders();
+
+    // A link with print=... opens the print preview dialog directly
+    const printId = Number(route.query.print || (route.query.do === 'print' ? route.query.open : null));
+    if (printId) {
+        router.replace({ query: { ...route.query, print: undefined } });
+        openPrintDialog(printId);
+    }
 
     // A link to one order — the new-order wizard sends here after saving —
     // opens it, on the tab asked for.
     // With `do`, it also starts that step — how the customer-requests screens
     // hand a stage move to the one place that carries it out properly.
     const openId = Number(route.query.open);
-    if (openId) {
+    if (openId && !printId) {
         const tab = ['overview', 'execution', 'documents'].includes(String(route.query.tab)) ? String(route.query.tab) : 'overview';
         const target = route.query.do ? String(route.query.do) : null;
         router.replace({ query: { ...route.query, open: undefined, tab: undefined, do: undefined } });
@@ -3029,4 +4147,1329 @@ onMounted(async () => {
 .po-meta i { color: #94a3b8; margin-inline-end: 0.2rem; }
 .po-via { color: #475569; }
 .po-total { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-variant-numeric: tabular-nums; color: #1e293b; white-space: nowrap; }
+
+/* ── Sales Order Detail Drawer Actions ── */
+.drawer-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-inline-start: auto;
+}
+
+.drawer-print-btn {
+    border-color: #cbd5e1;
+    color: #334155;
+    font-weight: 600;
+}
+
+.drawer-print-btn:hover {
+    color: #2563eb;
+    border-color: #2563eb;
+    background-color: #eff6ff;
+}
+
+/* ── Print Dialog Container & Custom Header ── */
+.so-print-dialog :global(.el-dialog__header) {
+    padding: 12px 20px 10px 20px;
+    margin-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+.so-print-dialog :global(.el-dialog__body) {
+    padding: 0;
+    background: #f1f5f9;
+}
+
+.so-dialog-header-custom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.so-dh-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.so-dh-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #1e40af, #3b82f6);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    box-shadow: 0 2px 6px rgba(30, 64, 175, 0.25);
+    flex-shrink: 0;
+}
+
+.so-dh-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.so-dh-main-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.so-dh-title-text {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.so-dh-ordernum {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 800;
+}
+
+.so-dh-subline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.so-dh-customer-crumb {
+    color: #334155;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.so-dh-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.so-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 700;
+}
+
+.so-status-pill.pill-confirmed,
+.so-status-pill.pill-delivered {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.so-status-pill.pill-pending {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.so-status-pill.pill-processing,
+.so-status-pill.pill-shipped {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.so-status-pill.pill-cancelled {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.so-dh-count {
+    font-size: 11.5px;
+    color: #475569;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.so-dh-pages-est {
+    font-size: 11px;
+    color: #0284c7;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    padding: 2px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+}
+
+.so-dh-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.so-fs-toggle-btn {
+    font-size: 11.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ── Print Settings Toolbar (Screen Only) ── */
+.so-print-toolbar {
+    background: #ffffff;
+    padding: 10px 18px;
+    border-bottom: 1px solid #cbd5e1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.so-toolbar-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+}
+
+.so-toolbar-primary-row {
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.so-toolbar-secondary-row {
+    padding-bottom: 8px;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.so-toolbar-toggles-row {
+    align-items: center;
+}
+
+.so-tb-unit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.so-tb-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.so-tb-actions-cluster {
+    margin-inline-start: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-export-pdf {
+    font-weight: 700 !important;
+    color: #b45309 !important;
+    background: #fef3c7 !important;
+    border: 1px solid #fde68a !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+
+.btn-export-pdf:hover {
+    background: #fde68a !important;
+    color: #92400e !important;
+}
+
+.btn-print-prominent {
+    font-weight: 700 !important;
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3) !important;
+    padding-inline: 18px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+
+.btn-print-prominent:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+    transform: translateY(-1px);
+}
+
+.theme-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    vertical-align: middle;
+    margin-inline-end: 3px;
+}
+
+.dot-navy { background: #1e3a8a; }
+.dot-emerald { background: #047857; }
+.dot-charcoal { background: #18181b; }
+.dot-indigo { background: #4338ca; }
+
+.so-zoom-badge {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    min-width: 48px;
+}
+
+.so-toolbar-sublabel {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.so-toggles-grid {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+
+.so-toggles-grid :global(.el-checkbox) {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+}
+
+.so-toggles-grid :global(.el-checkbox__label) {
+    font-size: 11px;
+    color: #334155;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.so-toggles-grid :global(.el-checkbox__label i) {
+    color: #64748b;
+    font-size: 10px;
+}
+
+/* ── Paper Simulation Stage (Screen Only) ── */
+.so-paper-stage {
+    padding: 24px;
+    background: #e2e8f0;
+    display: flex;
+    justify-content: center;
+    overflow: auto;
+    min-height: 480px;
+    box-sizing: border-box;
+}
+
+.so-paper-stage.is-fullscreen {
+    min-height: calc(100vh - 165px);
+    background: #cbd5e1;
+}
+
+.so-paper-viewport {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    transform-origin: top center;
+}
+
+/* ── Printable Sheet Styles ── */
+.so-printable-sheet {
+    --so-primary: #1e3a8a;
+    --so-header-bg: #1e293b;
+    --so-accent-subtle: #eff6ff;
+    --so-border-color: #cbd5e1;
+    --so-highlight-bg: #f8fafc;
+
+    position: relative;
+    width: 100%;
+    max-width: 860px;
+    background: #ffffff;
+    color: #0f172a;
+    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
+    padding: 16px 22px;
+    box-sizing: border-box;
+    direction: rtl;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+/* Color Theme Overrides */
+.so-printable-sheet.theme-emerald {
+    --so-primary: #047857;
+    --so-header-bg: #064e3b;
+    --so-accent-subtle: #ecfdf5;
+    --so-border-color: #a7f3d0;
+    --so-highlight-bg: #f0fdf4;
+}
+
+.so-printable-sheet.theme-charcoal {
+    --so-primary: #18181b;
+    --so-header-bg: #09090b;
+    --so-accent-subtle: #f4f4f5;
+    --so-border-color: #d4d4d8;
+    --so-highlight-bg: #fafafa;
+}
+
+.so-printable-sheet.theme-indigo {
+    --so-primary: #4338ca;
+    --so-header-bg: #312e81;
+    --so-accent-subtle: #eef2ff;
+    --so-border-color: #c7d2fe;
+    --so-highlight-bg: #f5f3ff;
+}
+
+/* Watermark Overlay */
+.so-sheet-watermark {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+    overflow: hidden;
+}
+
+.so-sheet-watermark span {
+    transform: rotate(-28deg);
+    font-size: 54px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    padding: 12px 30px;
+    border-radius: 12px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.so-sheet-watermark.wm-draft span {
+    color: rgba(220, 38, 38, 0.08);
+    border: 4px dashed rgba(220, 38, 38, 0.14);
+}
+
+.so-sheet-watermark.wm-approved span {
+    color: rgba(22, 163, 74, 0.08);
+    border: 4px solid rgba(22, 163, 74, 0.14);
+}
+
+.so-sheet-watermark.wm-paid span {
+    color: rgba(13, 148, 136, 0.08);
+    border: 4px solid rgba(13, 148, 136, 0.14);
+}
+
+.so-sheet-watermark.wm-official span {
+    color: rgba(30, 58, 138, 0.08);
+    border: 4px solid rgba(30, 58, 138, 0.14);
+}
+
+/* Document Executive Ribbon */
+.so-doc-ribbon {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 7px 12px;
+    background: var(--so-highlight-bg);
+    border: 1px solid var(--so-border-color);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.so-ribbon-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.so-ribbon-doc-type {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--so-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.so-ribbon-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.so-ribbon-status.status-confirmed,
+.so-ribbon-status.status-delivered {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.so-ribbon-status.status-pending {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.so-ribbon-status.status-processing,
+.so-ribbon-status.status-shipped {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.so-ribbon-status.status-cancelled {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.so-ribbon-quote {
+    font-size: 10.5px;
+    color: #475569;
+    background: #eff6ff;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #bfdbfe;
+}
+
+.so-ribbon-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.so-ribbon-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+}
+
+.so-ribbon-item .lbl {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.so-ribbon-item .val {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.so-ribbon-qr {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 2px 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.so-ribbon-qr-img {
+    width: 28px;
+    height: 28px;
+    display: block;
+    image-rendering: pixelated;
+}
+
+.so-ribbon-qr-label {
+    font-size: 8px;
+    font-weight: 700;
+    color: #475569;
+}
+
+/* ── Customer & Order Details Meta Grid ── */
+.so-print-meta-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.so-meta-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.so-meta-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--so-highlight-bg);
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.so-card-header-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: var(--so-accent-subtle);
+    color: var(--so-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.so-meta-card-title {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--so-primary);
+}
+
+.so-meta-card-body {
+    padding: 8px 12px;
+    font-size: 11px;
+}
+
+.so-customer-primary {
+    margin-bottom: 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.so-customer-name {
+    font-size: 13.5px;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.so-customer-company {
+    font-size: 11.5px;
+    color: #475569;
+    font-weight: 600;
+    background: #f1f5f9;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.so-customer-meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #334155;
+}
+
+.so-cm-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.35;
+}
+
+.so-cm-item i {
+    color: #64748b;
+    width: 13px;
+    text-align: center;
+    font-size: 9.5px;
+    flex-shrink: 0;
+}
+
+.so-cm-tax {
+    color: var(--so-primary);
+    font-weight: 600;
+}
+
+.so-cm-tax i {
+    color: var(--so-primary);
+}
+
+.so-order-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+}
+
+.so-om-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.so-om-label {
+    font-size: 9.5px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.so-om-val {
+    font-size: 11px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.so-mono {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--so-primary);
+    font-weight: 800;
+}
+
+.so-fulfilment-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #0369a1;
+}
+
+.so-pay-pill {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 9.5px;
+    font-weight: 700;
+    width: fit-content;
+}
+
+.so-pay-pill.p-paid { background: #dcfce7; color: #15803d; }
+.so-pay-pill.p-due,
+.so-pay-pill.p-partial { background: #fee2e2; color: #b91c1c; }
+.so-pay-pill.p-pending { background: #fef3c7; color: #b45309; }
+
+/* ── Items Table ── */
+.so-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-bottom: 12px;
+}
+
+.so-print-table thead th {
+    background: var(--so-header-bg);
+    color: #ffffff;
+    border: 1px solid var(--so-header-bg);
+    padding: 6px 8px;
+    text-align: right;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+}
+
+.so-print-table tbody td {
+    border: 1px solid #e2e8f0;
+    padding: 5px 8px;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.so-print-table tbody tr:nth-child(even) {
+    background: #fbfcfd;
+}
+
+.so-row-idx {
+    color: #64748b;
+    font-weight: 700;
+    font-size: 10px;
+}
+
+.so-print-img-cell {
+    padding: 2px !important;
+}
+
+.so-item-name {
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.so-item-name-en {
+    font-size: 9px;
+    color: #64748b;
+    direction: ltr;
+    text-align: right;
+}
+
+.so-item-variant {
+    font-size: 9.5px;
+    color: #0369a1;
+    margin-top: 2px;
+}
+
+.so-item-desc {
+    font-size: 9px;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.so-sku-cell code {
+    background: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 9.5px;
+    color: #475569;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.so-qty-cell {
+    font-weight: 800;
+}
+
+.so-qty-num {
+    font-size: 12px;
+    color: #0f172a;
+}
+
+.so-unit-label {
+    font-size: 9px;
+    font-weight: normal;
+    color: #64748b;
+    margin-inline-start: 2px;
+}
+
+.so-price-cell {
+    font-variant-numeric: tabular-nums;
+    color: #334155;
+    font-weight: 600;
+}
+
+.so-discount-cell {
+    font-variant-numeric: tabular-nums;
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.so-tax-cell {
+    font-variant-numeric: tabular-nums;
+    color: #64748b;
+}
+
+.so-total-cell {
+    font-variant-numeric: tabular-nums;
+    color: var(--so-primary);
+    font-weight: 800;
+}
+
+.so-loc-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #334155;
+}
+
+.so-check-box {
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+    border: 1.5px solid #64748b;
+    border-radius: 3px;
+    background: #ffffff;
+}
+
+.so-table-summary-row td {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+    padding: 6px 10px;
+    font-size: 11px;
+}
+
+.so-sum-label {
+    color: #334155;
+}
+
+.so-sum-count {
+    color: var(--so-primary);
+    font-weight: 800;
+    margin-inline: 2px;
+}
+
+.so-sum-total {
+    text-align: left !important;
+    font-size: 12px;
+    color: var(--so-primary);
+}
+
+.so-sum-dispatch {
+    font-size: 11px;
+    font-weight: 700;
+    color: #047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.so-sum-subtext {
+    font-size: 10px;
+    color: #64748b;
+    margin-inline-end: 4px;
+}
+
+/* ── Summary & Notes Row ── */
+.so-print-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.so-print-notes-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.so-print-notes-box,
+.so-print-shipping-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 10.5px;
+}
+
+.so-notes-header,
+.so-shipping-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 3px;
+    color: #475569;
+    font-size: 10.5px;
+}
+
+.so-notes-header i,
+.so-shipping-header i {
+    color: var(--so-primary);
+    font-size: 10px;
+}
+
+.so-notes-text {
+    margin: 0;
+    color: #0f172a;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+.so-shipping-details {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    color: #334155;
+}
+
+.so-track-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: var(--so-primary);
+    background: #eff6ff;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #bfdbfe;
+}
+
+.so-print-legal-notice {
+    font-size: 9.5px;
+    color: #64748b;
+    line-height: 1.35;
+    padding: 4px 6px;
+    background: #fafafa;
+    border-radius: 4px;
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.so-print-legal-notice i {
+    color: #94a3b8;
+    font-size: 9px;
+}
+
+.so-print-totals-col {
+    width: 290px;
+    flex-shrink: 0;
+}
+
+.so-totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+}
+
+.so-totals-table td {
+    padding: 4px 6px;
+    color: #334155;
+}
+
+.so-totals-table td.val {
+    text-align: left;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.so-totals-table td.discount-val {
+    color: #dc2626;
+}
+
+.so-totals-table .grand-total-row td {
+    font-weight: 900;
+    font-size: 13.5px;
+    color: var(--so-primary);
+    border-top: 2px solid var(--so-primary);
+    padding-top: 6px;
+}
+
+.grand-val {
+    font-size: 14.5px;
+    color: var(--so-primary);
+}
+
+.invoice-status-row td {
+    font-size: 10px;
+    color: #64748b;
+    padding-top: 4px;
+    border-top: 1px dashed #cbd5e1;
+}
+
+.badge-paid {
+    color: #15803d;
+    font-weight: 700;
+    margin-inline-start: 4px;
+}
+
+.badge-partial {
+    color: #d97706;
+    font-weight: 700;
+    margin-inline-start: 4px;
+}
+
+/* Dispatch Non-priced Card */
+.so-dispatch-summary-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.so-dispatch-header {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--so-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    border-bottom: 1px dashed #cbd5e1;
+    padding-bottom: 6px;
+}
+
+.so-dispatch-details-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+}
+
+.so-dd-row {
+    display: flex;
+    justify-content: space-between;
+    color: #475569;
+}
+
+.so-dd-row strong {
+    color: #0f172a;
+}
+
+/* ── Signatures ── */
+.so-print-signatures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 10px;
+    border-top: 1px dashed #cbd5e1;
+}
+
+.sig-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.sig-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sig-title i {
+    color: var(--so-primary);
+    font-size: 9.5px;
+}
+
+.sig-name {
+    font-size: 9.5px;
+    color: var(--so-primary);
+    font-weight: 700;
+    margin-bottom: 3px;
+}
+
+.sig-line {
+    width: 80%;
+    border-bottom: 1px solid #94a3b8;
+    margin-bottom: 4px;
+}
+
+.sig-sub {
+    font-size: 8.5px;
+    color: #94a3b8;
+}
+
+.sig-seal-box {
+    width: 52px;
+    height: 52px;
+    border: 2px dashed #94a3b8;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    color: #94a3b8;
+    text-align: center;
+}
+
+/* ── Document Running Footer ── */
+.so-print-footer {
+    margin-top: 14px;
+    padding-top: 6px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #94a3b8;
+    line-height: 1.3;
+}
+
+.so-footer-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    direction: ltr;
+}
+
+/* ── Compact Density Mode ── */
+.so-printable-sheet.density-compact {
+    padding: 10px 14px;
+}
+
+.so-printable-sheet.density-compact .so-doc-ribbon {
+    padding: 4px 8px;
+    margin-bottom: 8px;
+}
+
+.so-printable-sheet.density-compact .so-print-meta-grid {
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.so-printable-sheet.density-compact .so-meta-card-body {
+    padding: 5px 8px;
+}
+
+.so-printable-sheet.density-compact .so-print-table tbody td {
+    padding: 3px 6px;
+}
+
+.so-printable-sheet.density-compact .so-print-table thead th {
+    padding: 4px 6px;
+}
+
+.so-printable-sheet.density-compact .so-item-name {
+    font-size: 10px;
+}
+
+.so-printable-sheet.density-compact .so-print-summary-row {
+    margin-bottom: 10px;
+}
+
+.so-printable-sheet.density-compact .so-print-signatures {
+    margin-top: 10px;
+    padding-top: 6px;
+}
+
+.so-printable-sheet.density-compact .sig-title {
+    margin-bottom: 12px;
+}
+
+/* ── Media Print Rules ── */
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm 10mm 10mm 10mm;
+    }
+
+    html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        color: #0f172a !important;
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 100% !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    a[href]:after {
+        content: none !important;
+    }
+
+    /* Hide background app layout & screen elements only when print modal is active */
+    :global(body.so-print-dialog-open #app),
+    :global(body.so-print-dialog-open .admin-layout),
+    :global(body.so-print-dialog-open .admin-sidebar),
+    :global(body.so-print-dialog-open .admin-header),
+    :global(body.so-print-dialog-open .admin-main-wrapper),
+    :global(body.so-print-dialog-open .sidebar-overlay),
+    :global(body.so-print-dialog-open .detail-drawer),
+    :global(body.so-print-dialog-open .el-dialog__header),
+    :global(body.so-print-dialog-open .el-dialog__footer),
+    :global(body.so-print-dialog-open .dialog-footer),
+    :global(body.so-print-dialog-open .el-dialog__headerbtn),
+    .so-screen-only,
+    .so-print-toolbar {
+        display: none !important;
+    }
+
+    :global(.el-overlay),
+    :global(.el-overlay-dialog) {
+        position: static !important;
+        display: block !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: auto !important;
+        inset: auto !important;
+        z-index: auto !important;
+    }
+
+    :global(.el-dialog.so-print-dialog) {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+    }
+
+    :global(.el-dialog.so-print-dialog .el-dialog__body) {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        overflow: visible !important;
+    }
+
+    .so-paper-stage {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        display: block !important;
+        min-height: auto !important;
+        overflow: visible !important;
+    }
+
+    .so-paper-viewport {
+        transform: none !important;
+        display: block !important;
+        width: 100% !important;
+    }
+
+    #sales-order-printable-doc {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: #ffffff !important;
+        display: block !important;
+    }
+
+    .so-doc-ribbon,
+    .so-print-meta-grid,
+    .so-print-table,
+    .so-print-table tr,
+    .so-print-summary-row,
+    .so-print-signatures,
+    .so-print-footer {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    .so-print-table thead {
+        display: table-header-group !important;
+    }
+
+    .so-print-table tfoot {
+        display: table-footer-group !important;
+    }
+
+    .so-ribbon-status,
+    .so-meta-card-header,
+    .so-card-header-icon,
+    .so-status-tag,
+    .so-quote-badge,
+    .so-ribbon-qr,
+    .so-loc-badge,
+    .so-check-box,
+    .so-print-table thead th,
+    .so-totals-table .grand-total-row td,
+    .so-sheet-watermark span {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
 </style>

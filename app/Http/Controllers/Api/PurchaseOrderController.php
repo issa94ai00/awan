@@ -117,6 +117,7 @@ class PurchaseOrderController extends Controller
                 'order_date' => 'nullable|date',
                 'due_date' => 'nullable|date|after_or_equal:order_date',
                 'discount' => 'nullable|numeric|min:0',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 'tax' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
                 'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
@@ -238,6 +239,7 @@ class PurchaseOrderController extends Controller
             'order_date' => 'nullable|date',
             'due_date' => 'nullable|date|after_or_equal:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
             'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
@@ -362,7 +364,18 @@ class PurchaseOrderController extends Controller
         }
 
         $tax = (float) ($validated['tax'] ?? 0);
-        $discount = (float) ($validated['discount'] ?? 0);
+        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : null;
+
+        if ($discountPercent !== null) {
+            $discount = round(max(0, $subtotal) * ($discountPercent / 100), 5);
+        } else {
+            $discount = round((float) ($validated['discount'] ?? 0), 5);
+            if ($subtotal > 0 && $discount > 0) {
+                $discountPercent = round(($discount / $subtotal) * 100, 2);
+            }
+        }
 
         if ($discount > $subtotal + $tax) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -370,8 +383,10 @@ class PurchaseOrderController extends Controller
             ]);
         }
 
+        $validated['discount'] = $discount;
+        $validated['discount_percent'] = $discountPercent;
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal + $tax - $discount;
+        $validated['total'] = max(0, $subtotal + $tax - $discount);
     }
 
     /**

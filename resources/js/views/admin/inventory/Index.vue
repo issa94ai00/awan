@@ -29,6 +29,7 @@
                 <router-link :to="{ name: 'admin.inventory.movements' }" custom v-slot="{ navigate }">
                     <el-button :icon="Tickets" @click="navigate">{{ $t('movement_log') }}</el-button>
                 </router-link>
+                <el-button :icon="Operation" @click="costMethodModalVisible = true">{{ $t('cost_calculation_method') }}</el-button>
                 <el-button :icon="Switch" @click="openMovement('transfer')">{{ $t('transfer_stock') }}</el-button>
                 <el-button type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
             </template>
@@ -44,7 +45,14 @@
                     <div class="stat-icon-box value"><el-icon><Coin /></el-icon></div>
                     <div class="stat-details">
                         <h3>{{ summary ? formatMoney(summary.total_value) : '—' }}</h3>
-                        <p>{{ $t('total_stock_value') }}</p>
+                        <p>
+                            {{ $t('total_stock_value') }}
+                            <el-tooltip :content="$t('cost_calculation_method_management')" placement="top" :enterable="false">
+                                <button type="button" class="cost-chip-btn" @click.stop="costMethodModalVisible = true">
+                                    {{ activeCostMethod }}
+                                </button>
+                            </el-tooltip>
+                        </p>
                     </div>
                 </div>
             </el-card>
@@ -558,6 +566,12 @@
                 </div>
             </template>
         </el-drawer>
+
+        <!-- Cost Calculation Method Management Modal -->
+        <CostCalculationMethodModal
+            v-model="costMethodModalVisible"
+            @saved="onCostMethodSaved"
+        />
     </div>
 </template>
 
@@ -565,6 +579,7 @@
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
+import CostCalculationMethodModal from '@/components/admin/inventory/CostCalculationMethodModal.vue';
 import { formatMoney as formatBaseMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -576,13 +591,34 @@ import { productsApi } from '@/api/products';
 import {
     Plus, Search, Refresh, RefreshLeft, Edit, EditPen, Switch, Tickets, Download, Upload, Files, ArrowDown,
     DocumentCopy, Coin, Box, CircleCheck, Warning, RemoveFilled, OfficeBuilding, Calendar, Sort, Bottom, Top,
-    Grid, MoreFilled,
+    Grid, MoreFilled, Operation,
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const store = useInventoryStore();
+
+const costMethodModalVisible = ref(false);
+const activeCostMethod = ref('FIFO');
+
+const fetchCostMethod = async () => {
+    try {
+        const res = await inventoryApi.getCostingMethod();
+        if (res.data?.data?.current_method) {
+            activeCostMethod.value = res.data.data.current_method;
+        }
+    } catch {
+        // silent fallback to default
+    }
+};
+
+const onCostMethodSaved = (data) => {
+    if (data?.current_method) {
+        activeCostMethod.value = data.current_method;
+    }
+    refreshAll();
+};
 
 const formatNumber = (n) => formatCount(n);
 const formatMoney = (n) => formatBaseMoney(n);
@@ -1183,6 +1219,7 @@ onMounted(() => {
     loadSummary().catch(() => ElMessage.error(t('failed_to_update_data')));
     loadStock();
     loadAttention();
+    fetchCostMethod();
 });
 
 onBeforeUnmount(() => {
@@ -1521,6 +1558,25 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 .delta-down { color: var(--danger); }
 
 .form-alert { margin-bottom: 1rem; }
+
+.cost-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #4f46e5;
+    background: rgba(79, 70, 229, 0.08);
+    border: 1px solid rgba(79, 70, 229, 0.22);
+    border-radius: 4px;
+    cursor: pointer;
+    margin-inline-start: 6px;
+    transition: all 0.15s ease;
+}
+.cost-chip-btn:hover {
+    background: rgba(79, 70, 229, 0.18);
+    border-color: #4f46e5;
+}
 
 .drawer-footer { display: flex; justify-content: flex-end; gap: 0.75rem; }
 </style>

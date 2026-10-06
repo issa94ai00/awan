@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\PurchaseReportController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\InventoryCostMethodController;
 use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
@@ -543,6 +544,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/inventory/stock', [InventoryController::class, 'stock'])->name('api.admin.inventory.stock');
             Route::get('/inventory/export', [InventoryController::class, 'export'])->name('api.admin.inventory.export');
             Route::post('/inventory/import', [InventoryController::class, 'import'])->name('api.admin.inventory.import');
+            Route::get('/inventory/costing-method', [InventoryCostMethodController::class, 'show'])->name('api.admin.inventory.costing-method.show');
+            Route::post('/inventory/costing-method', [InventoryCostMethodController::class, 'update'])->name('api.admin.inventory.costing-method.update');
 
             // Admin Accounting
             //

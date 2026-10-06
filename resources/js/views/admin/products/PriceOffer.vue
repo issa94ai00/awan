@@ -1,6 +1,5 @@
 <template>
     <div class="price-offer-page">
-        <div class="print-cover"><img :src="'/cover.jpeg'" alt=""></div>
         <header class="offer-toolbar">
             <div class="toolbar-head">
                 <div class="toolbar-title">
@@ -286,14 +285,19 @@
                             </div>
                         </el-popover>
                         <div class="export-actions">
+                            <button type="button" class="btn-ghost btn-print-settings" :title="$t('print_settings')" @click="openPrintSettings">
+                                <el-icon><Printer /></el-icon>
+                                <span>{{ $t('print_settings') }}</span>
+                            </button>
                             <button type="button" class="btn-pdf" :disabled="printLoading || total === 0" @click="printPage">
                                 <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
-                                {{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}
+                                <el-icon v-else><Printer /></el-icon>
+                                <span>{{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}</span>
                             </button>
                             <button type="button" class="btn-pdf-download" :disabled="printLoading || total === 0" @click="downloadPdf">
                                 <el-icon v-if="printLoading && prepMode === 'pdf'" class="is-loading"><Loading /></el-icon>
                                 <el-icon v-else><Download /></el-icon>
-                                {{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}
+                                <span>{{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}</span>
                             </button>
                         </div>
                     </div>
@@ -472,10 +476,54 @@
                 @add-variant="openAddVariantDialog" />
         </div>
 
-        <!-- Print/PDF-only table: holds every product across every page, grouped by product name -->
-        <div class="offer-table-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
-            <ProductOfferTable ref="printTableRef" :groups="printGroups" :loading="false" :editing-id="null" :edit-value="''" print-mode
-                :visible-columns="visibleColumns" :column-widths="columnWidths" :row-height="rowHeight" />
+        <!-- Print/PDF-only layout: holds cover, official header banner, metadata, full catalogue table and footer -->
+        <div class="print-sheet-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
+            <!-- Optional Full-page Cover -->
+            <div v-if="printSettings.showCover" class="print-cover">
+                <img :src="'/cover.jpeg'" alt="Catalog Cover">
+            </div>
+
+            <div class="print-document-content">
+                <!-- Official Header Banner and Document Metadata -->
+                <div v-if="printSettings.showHeader" ref="printHeaderRef" class="print-document-header-box">
+                    <PrintDocumentHeader
+                        :header-style="printSettings.headerStyle || 'official'"
+                        :title="printSettings.title || $t('price_offer')"
+                        :subtitle="'OFFICIAL PRICE QUOTATION'"
+                        :customer-name="printSettings.customerName"
+                        :date="printSettings.date"
+                        :notes="printSettings.notes"
+                        :show-contacts="printSettings.showContacts !== false"
+                        :banner-src="'/Header.jpeg'"
+                    />
+                </div>
+
+                <div class="offer-table-wrap">
+                    <ProductOfferTable
+                        ref="printTableRef"
+                        :groups="printGroups"
+                        :loading="false"
+                        :editing-id="null"
+                        :edit-value="''"
+                        print-mode
+                        :visible-columns="effectivePrintColumns"
+                        :column-widths="columnWidths"
+                        :row-height="rowHeight"
+                    />
+                </div>
+
+                <div v-if="printSettings.showFooter" class="print-document-footer">
+                    <div class="footer-company-info">
+                        <span class="f-comp">{{ $t('site_fallback_name') }}</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-cr">س.ت: 5048</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-addr">ريف دمشق - معربا</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-phone" dir="ltr">0980831477 - 0962889577</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Print/PDF-prep overlay: shows progress while every page is pulled, images are loaded, and (for PDF) pages are rendered -->
@@ -727,6 +775,221 @@
             @save="saveSpecsDialog"
         />
 
+        <!-- Print & PDF Settings Dialog -->
+        <el-dialog
+            v-model="printSettingsVisible"
+            :title="$t('print_settings')"
+            width="680px"
+            class="print-settings-dialog"
+            :close-on-click-modal="true"
+            append-to-body
+        >
+            <div class="print-settings-content">
+                <!-- Scope Summary Banner -->
+                <div class="print-summary-card">
+                    <div class="summary-stat">
+                        <span class="stat-num">{{ printableCount }}</span>
+                        <span class="stat-lbl">{{ $t('product') }}</span>
+                    </div>
+                    <div class="summary-sep"></div>
+                    <div class="summary-stat">
+                        <span class="stat-num">{{ catalogueSections.length }}</span>
+                        <span class="stat-lbl">{{ $t('classifications') }}</span>
+                    </div>
+                    <div class="summary-sep"></div>
+                    <div class="summary-stat is-price">
+                        <span class="stat-num">{{ formatSummaryPrice(printableSum) }}</span>
+                        <span class="stat-lbl">{{ $t('sum_of_prices') }}</span>
+                    </div>
+                    <div v-if="divideOverrideCount > 0" class="summary-badge">
+                        {{ $t('divides_applied', { divisor: divideValueApplied }) }}
+                    </div>
+                </div>
+
+                <!-- Quick Presets -->
+                <div class="presets-row">
+                    <span class="presets-title">{{ $t('common.quick_actions') || 'قوالب سريعة' }}:</span>
+                    <button type="button" class="preset-chip" @click="applyClientPreset">
+                        <el-icon><User /></el-icon>
+                        {{ $t('client_preset') }}
+                    </button>
+                    <button type="button" class="preset-chip" @click="applyFullCatalogPreset">
+                        <el-icon><Collection /></el-icon>
+                        {{ $t('full_catalog_preset') }}
+                    </button>
+                </div>
+
+                <div class="settings-sections">
+                    <!-- Section 1: Document Branding & Layout -->
+                    <div class="settings-section">
+                        <h4 class="section-title">
+                            <el-icon><Picture /></el-icon>
+                            {{ $t('print_options') }}
+                        </h4>
+                        <div class="settings-grid">
+                            <div class="setting-item-box" :class="{ active: printSettings.showCover }">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('include_cover_page') }}</div>
+                                        <div class="setting-desc">{{ $t('include_cover_page_desc') }}</div>
+                                    </div>
+                                    <el-switch v-model="printSettings.showCover" @change="savePrintSettings" />
+                                </div>
+                                <div v-if="printSettings.showCover" class="setting-thumb-preview cover-thumb">
+                                    <img :src="'/cover.jpeg'" alt="Cover Preview" />
+                                </div>
+                            </div>
+
+                            <div class="setting-item-box" :class="{ active: printSettings.showHeader }">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('include_company_header') }}</div>
+                                        <div class="setting-desc">{{ $t('include_company_header_desc') }}</div>
+                                    </div>
+                                    <el-switch v-model="printSettings.showHeader" @change="savePrintSettings" />
+                                </div>
+                                <div v-if="printSettings.showHeader" class="setting-header-preview-box">
+                                    <div class="header-style-pill-selector">
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: (printSettings.headerStyle || 'official') === 'official' }"
+                                            @click="setHeaderStyle('official')"
+                                        >
+                                            <i class="fas fa-certificate"></i>
+                                            <span>{{ $t('official_header') || 'ترويسة رسمية بالشعار' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.headerStyle === 'compact' }"
+                                            @click="setHeaderStyle('compact')"
+                                        >
+                                            <i class="fas fa-compress-alt"></i>
+                                            <span>{{ $t('compact_header') || 'مدمجة' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.headerStyle === 'banner' }"
+                                            @click="setHeaderStyle('banner')"
+                                        >
+                                            <i class="fas fa-image"></i>
+                                            <span>{{ $t('banner_header') || 'بانر' }}</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="live-header-preview-card">
+                                        <PrintDocumentHeader
+                                            preview-mode
+                                            :header-style="printSettings.headerStyle || 'official'"
+                                            :title="printSettings.title || $t('price_offer')"
+                                            :subtitle="'OFFICIAL PRICE QUOTATION'"
+                                            :customer-name="printSettings.customerName"
+                                            :date="printSettings.date"
+                                            :notes="printSettings.notes"
+                                            :show-contacts="printSettings.showContacts !== false"
+                                            :banner-src="'/Header.jpeg'"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-toggles-row">
+                            <label class="toggle-checkbox-label">
+                                <el-checkbox v-model="printSettings.showContacts" @change="savePrintSettings" />
+                                <span>{{ $t('show_contacts_in_header') || 'إظهار بيانات التواصل في الترويسة' }}</span>
+                            </label>
+                            <label class="toggle-checkbox-label">
+                                <el-checkbox v-model="printSettings.showPageNumbers" @change="savePrintSettings" />
+                                <span>{{ $t('show_page_numbers') }}</span>
+                            </label>
+                            <label class="toggle-checkbox-label">
+                                <el-checkbox v-model="printSettings.showFooter" @change="savePrintSettings" />
+                                <span>{{ $t('show_print_footer') }}</span>
+                            </label>
+                            <label class="toggle-checkbox-label is-warning">
+                                <el-checkbox v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
+                                <span>{{ $t('hide_stock_for_clients') }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Offer & Client Details -->
+                    <div class="settings-section">
+                        <h4 class="section-title">
+                            <el-icon><Document /></el-icon>
+                            {{ $t('offer_title') }} &amp; {{ $t('client_name') }}
+                        </h4>
+                        <div class="fields-grid">
+                            <div class="field-group">
+                                <label class="field-label">{{ $t('offer_title') }}</label>
+                                <el-input
+                                    v-model="printSettings.title"
+                                    :placeholder="$t('price_offer')"
+                                    clearable
+                                    @input="savePrintSettings"
+                                />
+                            </div>
+                            <div class="field-group">
+                                <label class="field-label">{{ $t('client_name') }}</label>
+                                <el-input
+                                    v-model="printSettings.customerName"
+                                    :placeholder="$t('client_name_placeholder')"
+                                    clearable
+                                    @input="savePrintSettings"
+                                />
+                            </div>
+                            <div class="field-group">
+                                <label class="field-label">{{ $t('offer_date') }}</label>
+                                <el-input
+                                    v-model="printSettings.date"
+                                    type="date"
+                                    @change="savePrintSettings"
+                                />
+                            </div>
+                            <div class="field-group">
+                                <label class="field-label">{{ $t('offer_notes') }}</label>
+                                <el-input
+                                    v-model="printSettings.notes"
+                                    :placeholder="$t('offer_notes_placeholder')"
+                                    clearable
+                                    @input="savePrintSettings"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="print-dialog-footer">
+                    <el-button @click="printSettingsVisible = false">{{ $t('common.cancel') }}</el-button>
+                    <div class="footer-primary-actions">
+                        <el-button
+                            type="primary"
+                            :loading="printLoading && prepMode === 'pdf'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Download"
+                            @click="downloadPdf"
+                        >
+                            {{ $t('download_pdf_now') }}
+                        </el-button>
+                        <el-button
+                            type="danger"
+                            :loading="printLoading && prepMode === 'print'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Printer"
+                            @click="printPage"
+                        >
+                            {{ $t('print_now') }}
+                        </el-button>
+                    </div>
+                </div>
+            </template>
+        </el-dialog>
+
         <div v-if="total > 0 && !arrangeMode" class="pagination-wrapper screen-only">
             <el-pagination
                 v-model:current-page="currentPage"
@@ -744,6 +1007,7 @@
 
 <script setup>
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
+import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
 import SpecsEditDialog from '@/components/admin/products/SpecsEditDialog.vue';
 import { parseDescriptionSpecs, serializeDescriptionSpecs } from '@/utils/productSpecs';
@@ -756,7 +1020,7 @@ import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { matchesSearch } from '@/utils/search';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document } from '@element-plus/icons-vue';
 
 // vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
 // bundling it statically costs every visit to this screen ~200 kB for a control
@@ -1750,13 +2014,14 @@ let importMsgTimeout = null;
 // Which columns appear on the printed/exported price list — persisted per
 // browser so the choice sticks across visits.
 const COLUMNS_STORAGE_KEY = 'price_offer_visible_columns';
-const defaultColumns = { image: true, product: false, details: true, specs: true, price: true, inventory: true };
+const defaultColumns = { image: true, product: false, details: true, specs: true, price: true, offer: true, inventory: true };
 const columnOptions = [
     { key: 'image', label: 'image' },
     { key: 'product', label: 'product' },
     { key: 'details', label: 'details' },
     { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
+    { key: 'offer', label: 'offer_price' },
     { key: 'inventory', label: 'inventory' },
 ];
 
@@ -1790,7 +2055,7 @@ function toggleColumn(key, val) {
 // height of one product group, in the CSS pixels the PDF capture measures in;
 // null means "leave it to the default fifth of a page".
 const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
-const defaultColumnWidths = { image: 50, product: 35, details: 25, specs: 35, price: 15, inventory: 15 };
+const defaultColumnWidths = { image: 50, product: 35, details: 25, specs: 35, price: 15, offer: 15, inventory: 15 };
 const DEFAULT_ROW_HEIGHT = 295;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 520;
@@ -2225,6 +2490,8 @@ const printGroups = ref([]);
 // work off every page in the active filter rather than the one on screen.
 const fullPrintGroups = ref([]);
 const printTableRef = ref(null);
+const printHeaderRef = ref(null);
+const printSettingsVisible = ref(false);
 const printLoading = ref(false);
 const printCancelled = ref(false);
 const printProgress = ref({ loaded: 0, total: 0 });
@@ -2238,6 +2505,97 @@ const prepMode = ref('print');
 const exportPhase = ref('fetch');
 // Rendered off-screen (not display:none) only while html2canvas needs to see it.
 const pdfRendering = ref(false);
+
+const PRINT_SETTINGS_STORAGE_KEY = 'price_offer_print_settings';
+const defaultPrintSettings = {
+    showCover: false,
+    showHeader: true,
+    showFooter: true,
+    showPageNumbers: true,
+    headerStyle: 'official',
+    showContacts: true,
+    title: '',
+    customerName: '',
+    date: new Date().toISOString().slice(0, 10),
+    notes: '',
+    hideInventoryInPrint: true,
+};
+
+function readStoredPrintSettings() {
+    try {
+        const raw = localStorage.getItem(PRINT_SETTINGS_STORAGE_KEY);
+        if (!raw) return { ...defaultPrintSettings };
+        const parsed = JSON.parse(raw);
+        return { ...defaultPrintSettings, ...parsed };
+    } catch {
+        return { ...defaultPrintSettings };
+    }
+}
+
+const printSettings = ref(readStoredPrintSettings());
+
+function savePrintSettings() {
+    try {
+        localStorage.setItem(PRINT_SETTINGS_STORAGE_KEY, JSON.stringify(printSettings.value));
+    } catch {
+        // quota or private mode
+    }
+}
+
+function setHeaderStyle(style) {
+    printSettings.value.headerStyle = style;
+    savePrintSettings();
+}
+
+function openPrintSettings() {
+    printSettingsVisible.value = true;
+}
+
+function applyClientPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = true;
+    printSettings.value.headerStyle = 'official';
+    printSettings.value.showContacts = true;
+    if (!printSettings.value.title) {
+        printSettings.value.title = t('price_offer');
+    }
+    savePrintSettings();
+    flashMsg(t('client_preset'));
+}
+
+function applyFullCatalogPreset() {
+    printSettings.value.showCover = true;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = false;
+    printSettings.value.headerStyle = 'official';
+    printSettings.value.showContacts = true;
+    savePrintSettings();
+    flashMsg(t('full_catalog_preset'));
+}
+
+const hasPrintMeta = computed(() => !!(
+    printSettings.value.title ||
+    printSettings.value.customerName ||
+    printSettings.value.date ||
+    printSettings.value.notes
+));
+
+const printableCount = computed(() => (
+    fullPrintGroups.value.length ? fullPrintGroups.value.length : groupedProducts.value.length
+));
+
+const effectivePrintColumns = computed(() => {
+    const cols = { ...visibleColumns };
+    if (printSettings.value.hideInventoryInPrint) {
+        cols.inventory = false;
+    }
+    return cols;
+});
 
 // Groups rows by product name (not just product id), so products stored as
 // separate rows sharing a name (e.g. color variants) print as one entry.
@@ -2298,6 +2656,13 @@ function buildGroups(list) {
             seen.add(detailKey);
             group.items.push(item);
         }
+    }
+    for (const group of map.values()) {
+        const p = group.product;
+        group.offerItem = makeItem(`p-${p.id}`, {
+            productId: p.id,
+            price: parseFloat(p.price) || 0,
+        });
     }
     return order.map((k) => map.get(k));
 }
@@ -2527,7 +2892,11 @@ const divideAllPrices = () => {
     // Every row in the filtered catalogue, not just the page on screen —
     // otherwise pages 2+ print at their undivided price.
     const source = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
+    const isGroupWithVariants = (group) => (group.items?.length > 1) || String(group.items?.[0]?.id ?? '').startsWith('v-');
     for (const group of source) {
+        if (group.offerItem && isGroupWithVariants(group) && group.offerItem.originalPrice > 0) {
+            overrides.value[group.offerItem.id] = Math.round((group.offerItem.originalPrice / v) * 10) / 10;
+        }
         for (const item of group.items) {
             overrides.value[item.id] = Math.round((item.originalPrice / v) * 10) / 10;
         }
@@ -2610,6 +2979,9 @@ const printPage = async () => {
         const tableEl = await prepareFullCatalog();
         if (!tableEl) return;
         printLoading.value = false;
+        // Allow the DOM, transitions, and image paints to settle cleanly before opening the print dialog
+        await nextTick();
+        await new Promise((resolve) => setTimeout(resolve, 150));
         window.print();
     } catch {
         if (!printCancelled.value) ElMessage.error(t('failed_to_bring_products'));
@@ -2629,17 +3001,27 @@ const downloadPdf = async () => {
         printProgress.value = { loaded: 0, total: 0 };
         pdfRendering.value = true;
         await nextTick();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const baseTitle = printSettings.value.title || 'price-offer';
+        const safeTitle = baseTitle.replace(/[/\\?%*:|"<>]/g, '-').trim();
+        const dateStr = printSettings.value.date || new Date().toISOString().slice(0, 10);
+
         await renderTableToPdf({
             table: tableEl,
             groups: printGroups.value,
-            filename: `price-offer-${new Date().toISOString().slice(0, 10)}.pdf`,
-            coverSrc: '/cover.jpeg',
+            filename: `${safeTitle}-${dateStr}.pdf`,
+            coverSrc: printSettings.value.showCover ? '/cover.jpeg' : null,
+            headerEl: printSettings.value.showHeader ? printHeaderRef.value : null,
+            showPageNumbers: printSettings.value.showPageNumbers,
+            footerBrand: 'AWAAN AL-TAKADOM - Sanitary Ware & Building Materials',
             onPageProgress: (loaded, total) => {
                 printProgress.value = { loaded, total };
             },
         });
         flashMsg(t('pdf_ready'));
-    } catch {
+    } catch (err) {
+        console.error('PDF export error:', err);
         if (!printCancelled.value) ElMessage.error(t('failed_to_generate_pdf'));
     } finally {
         pdfRendering.value = false;
@@ -2903,6 +3285,18 @@ onMounted(async () => {
 .btn-ghost:hover {
     background: rgba(255, 255, 255, .12);
     border-color: rgba(255, 255, 255, .6);
+}
+.btn-print-settings {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, .1);
+    border: 1px solid rgba(255, 255, 255, .35);
+}
+.btn-print-settings:hover {
+    background: rgba(255, 255, 255, .2);
+    border-color: rgba(255, 255, 255, .65);
+    transform: translateY(-1px);
 }
 .btn-pdf,
 .btn-pdf-download {
@@ -3978,6 +4372,337 @@ onMounted(async () => {
     opacity: 0;
 }
 
+/* Print Settings Dialog Styles */
+.print-settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.print-summary-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.summary-stat .stat-num {
+    font-size: 17px;
+    font-weight: 800;
+    color: #1e293b;
+}
+.summary-stat .stat-lbl {
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 600;
+}
+.summary-stat.is-price .stat-num {
+    color: #b00e0e;
+}
+.summary-sep {
+    width: 1px;
+    height: 28px;
+    background: #cbd5e1;
+}
+.summary-badge {
+    background: #e0f2fe;
+    color: #0284c7;
+    border: 1px solid #bae6fd;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.presets-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+.presets-title {
+    font-weight: 700;
+    color: #475569;
+}
+.preset-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    padding: 5px 13px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #334155;
+    transition: all .15s ease;
+}
+.preset-chip:hover {
+    background: #f8fafc;
+    border-color: #3b82f6;
+    color: #2563eb;
+    transform: translateY(-1px);
+}
+.settings-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.settings-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 12px 0;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1e293b;
+}
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.setting-item-box {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.setting-item-box.active {
+    border-color: #93c5fd;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+}
+.setting-item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+.setting-info {
+    flex: 1 1 auto;
+}
+.setting-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 3px;
+}
+.setting-desc {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.35;
+}
+.setting-thumb-preview {
+    margin-top: 10px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 4px;
+}
+.cover-thumb img {
+    max-height: 85px;
+    width: auto;
+    object-fit: contain;
+}
+.header-thumb img {
+    max-height: 38px;
+    width: 100%;
+    object-fit: contain;
+}
+.settings-toggles-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+}
+.toggle-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+}
+.toggle-checkbox-label.is-warning {
+    color: #b45309;
+}
+.fields-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+}
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.field-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #475569;
+}
+.print-dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+}
+.footer-primary-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Document Print/PDF Layout Elements */
+.print-sheet-wrap {
+    display: none;
+}
+.print-sheet-wrap.pdf-render {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: -99999px;
+    width: 960px;
+    background: #fff;
+    padding: 16px;
+}
+.print-document-header-box {
+    margin-bottom: 12px;
+    width: 100%;
+}
+.print-document-header {
+    margin-bottom: 12px;
+}
+.setting-header-preview-box {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.header-style-pill-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.style-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.style-pill-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.style-pill-btn.active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(59, 130, 246, 0.15);
+}
+.style-pill-btn i {
+    font-size: 10px;
+}
+.live-header-preview-card {
+    border-radius: 8px;
+    overflow: hidden;
+}
+.print-header-top {
+    text-align: center;
+    margin-bottom: 8px;
+}
+.print-header-img {
+    max-width: 100%;
+    height: auto;
+    max-height: 85px;
+    object-fit: contain;
+    border-radius: 4px;
+}
+.print-meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 11px;
+    margin-bottom: 10px;
+}
+.print-meta-bar .meta-title-item .meta-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0f172a;
+}
+.print-meta-bar .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.print-meta-bar .meta-label {
+    color: #64748b;
+    font-weight: 600;
+}
+.print-meta-bar .meta-val {
+    color: #0f172a;
+    font-weight: 700;
+}
+.print-document-footer {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #cbd5e1;
+}
+.footer-company-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 9.5pt;
+    color: #64748b;
+    font-weight: 600;
+}
+.footer-company-info .f-sep {
+    color: #94a3b8;
+}
+
 /* Zero page margin so the browser has no room to draw its own URL/date
    header and footer line — same trick used by public/file_with_images.html. */
 @page {
@@ -3987,55 +4712,66 @@ onMounted(async () => {
 /* Print styles */
 @media print {
     .offer-toolbar,
-    .screen-only {
+    .screen-only,
+    :global(.admin-sidebar),
+    :global(.admin-header),
+    :global(.sidebar-overlay),
+    :global(.el-overlay),
+    :global(.el-dialog__wrapper),
+    :global(.columns-popover),
+    :global(.categories-popover),
+    :global(.image-editor-popover) {
         display: none !important;
-    }
-    .print-only {
-        display: block !important;
-    }
-    .print-cover {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100vh;
-        /* Chromium resolves 100vh against the screen viewport, not the @page
-           print box, so the cover renders a hair taller than one physical
-           page. That sliver used to spill onto a blank page 2 before this
-           break was reached — clipping it here keeps everything on page 1. */
-        overflow: hidden;
-        page-break-after: always;
-        break-after: page;
-    }
-    .print-cover img {
-        max-width: 100%;
-        max-height: 100vh;
-        width: auto;
-        height: auto;
-        object-fit: contain;
     }
     body {
-        background: #fff;
-        margin: 0;
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     .price-offer-page {
-        /* Zero here (not on .print-cover) — any padding on this wrapper adds
-           to the cover's height too, pushing it past one full page and
-           spilling a near-blank page behind it before the real content. */
-        padding: 0;
+        padding: 0 !important;
+        margin: 0 !important;
     }
-    .print-only {
-        padding: 8px;
+    .print-sheet-wrap.print-only {
+        display: block !important;
+        padding: 8mm 8mm 10mm !important;
+    }
+    .print-cover {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        margin: -8mm -8mm 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        page-break-after: always !important;
+        break-after: page !important;
+    }
+    .print-cover img {
+        width: 100% !important;
+        height: 100% !important;
+        max-height: 100vh !important;
+        object-fit: contain !important;
+    }
+    .print-document-content {
+        page-break-before: auto !important;
+    }
+    .print-document-header {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-bottom: 8px !important;
+    }
+    .print-document-footer {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-top: 10px !important;
     }
     .offer-table-wrap {
-        max-height: none;
-        overflow: visible;
-        border: none;
-        box-shadow: none;
-    }
-    :global(.columns-popover),
-    :global(.categories-popover) {
-        display: none !important;
+        max-height: none !important;
+        overflow: visible !important;
+        border: none !important;
+        box-shadow: none !important;
     }
 }
 </style>

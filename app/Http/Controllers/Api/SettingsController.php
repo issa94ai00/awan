@@ -151,6 +151,7 @@ class SettingsController extends Controller
             'settings.theme_page_header_bg_color' => 'nullable|string|max:200',
             'settings.theme_page_header_text_color' => 'nullable|string|max:50',
             'settings.secondary_navbar_items' => 'nullable|string',
+            'settings.inventory_cost_method' => ['nullable', 'string', 'in:FIFO,WEIGHTED_AVERAGE,LIFO,FEFO'],
         ]);
 
         $data = $request->input('settings', []);

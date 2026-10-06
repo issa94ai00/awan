@@ -150,6 +150,11 @@
                     <el-table-column prop="total" :label="$t('total')" width="160">
                         <template #default="{ row }">
                             <strong class="amount-txt">{{ money(row.total) }}</strong>
+                            <div v-if="num(row.discount) > 0" class="discount-table-tag" :title="`${$t('discount')}: ${money(row.discount)}`">
+                                <i class="fas fa-tag"></i>
+                                <span>-{{ money(row.discount) }}</span>
+                                <small v-if="row.discount_percent != null && num(row.discount_percent) > 0">({{ row.discount_percent }}%)</small>
+                            </div>
                         </template>
                     </el-table-column>
                     <el-table-column :label="$t('status')" width="150" align="center">
@@ -216,6 +221,9 @@
                                         <el-dropdown-menu>
                                             <el-dropdown-item command="view">
                                                 <i class="fas fa-eye"></i> {{ $t('view_details') }}
+                                            </el-dropdown-item>
+                                            <el-dropdown-item command="print">
+                                                <i class="fas fa-print"></i> {{ $t('print') }}
                                             </el-dropdown-item>
                                             <el-dropdown-item command="edit" :disabled="!canEdit(row)">
                                                 <i class="fas fa-edit"></i> {{ $t('edit') }}
@@ -299,6 +307,9 @@
                         </el-tag>
                     </div>
                     <div class="drawer-head-actions">
+                        <el-button type="primary" plain @click="printOrder(selectedOrder)">
+                            <i class="fas fa-print"></i> {{ $t('print') }}
+                        </el-button>
                         <el-button plain @click="duplicateFromDrawer">
                             <i class="fas fa-copy"></i> {{ $t('po_duplicate_order') }}
                         </el-button>
@@ -395,7 +406,17 @@
                                 </div>
                                 <div class="financial-row">
                                     <span>{{ $t('discount_label') }}</span>
-                                    <span>{{ money(selectedOrder.discount) }}</span>
+                                    <span class="discount-figure" :class="{ 'has-discount': num(selectedOrder.discount) > 0 }">
+                                        <template v-if="num(selectedOrder.discount) > 0">
+                                            − {{ money(selectedOrder.discount) }}
+                                            <span v-if="selectedOrder.discount_percent != null && num(selectedOrder.discount_percent) > 0" class="discount-badge-pill">
+                                                {{ selectedOrder.discount_percent }}%
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            {{ money(0) }}
+                                        </template>
+                                    </span>
                                 </div>
                                 <div class="financial-row">
                                     <span>{{ $t('tax_label') }}</span>
@@ -596,6 +617,203 @@
                         </el-button>
                     </div>
 
+                    <!-- Fast Suggested Product Search & Multi-Add Bar (Stays Open!) -->
+                    <div ref="quickSearchContainerRef" class="po-suggested-search-panel" @mousedown.stop>
+                        <div class="search-bar-header">
+                            <div class="search-input-box">
+                                <el-input
+                                    ref="quickSearchInputRef"
+                                    v-model="quickSearchQuery"
+                                    :placeholder="$t('po_quick_search_placeholder')"
+                                    clearable
+                                    class="po-search-input"
+                                    @focus="onQuickSearchFocus"
+                                    @input="onQuickSearchInput"
+                                    @clear="onQuickSearchClear"
+                                    @keydown.esc="quickSearchOpen = false"
+                                >
+                                    <template #prefix>
+                                        <i v-if="!quickSearchLoading" class="fas fa-search search-icon"></i>
+                                        <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
+                                    </template>
+                                </el-input>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="btn-toggle-suggestions"
+                                :class="{ 'is-active': quickSearchOpen }"
+                                @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
+                                :title="quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products')"
+                            >
+                                <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-list-check'"></i>
+                                <span>{{ quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products') }}</span>
+                                <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
+                            </button>
+                        </div>
+
+                        <!-- Suggested Search Results Dropdown Panel (Stays open while adding!) -->
+                        <transition name="el-zoom-in-top">
+                            <div
+                                v-if="quickSearchOpen"
+                                class="suggested-search-dropdown"
+                                @click.stop
+                            >
+                                <!-- Dropdown Banner & Tips -->
+                                <div class="dropdown-top-strip">
+                                    <div class="strip-left">
+                                        <i class="fas fa-boxes-stacked text-primary"></i>
+                                        <strong>{{ $t('po_suggested_products') }}</strong>
+                                        <span class="results-badge">{{ quickSearchResults.length }}</span>
+                                    </div>
+                                    <div class="strip-right">
+                                        <span class="keep-open-pill">
+                                            <i class="fas fa-thumbtack text-success"></i>
+                                            {{ $t('po_search_hint') }}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            class="close-dropdown-btn"
+                                            @click.stop="quickSearchOpen = false"
+                                            :title="$t('close')"
+                                        >
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- List of Suggested Products with Images & Add Button -->
+                                <div class="suggested-list-scroll">
+                                    <div v-if="quickSearchLoading" class="suggested-loading-state">
+                                        <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                        <span>{{ $t('loading') }}...</span>
+                                    </div>
+
+                                    <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
+                                        <i class="fas fa-search-minus empty-icon"></i>
+                                        <p>{{ $t('po_no_products_found') }}</p>
+                                        <el-button size="small" type="primary" plain @click="openQuickAddProduct(form.items.length - 1)">
+                                            <i class="fas fa-plus"></i> {{ $t('add_new_product') }}
+                                        </el-button>
+                                    </div>
+
+                                    <div v-else class="suggested-products-grid">
+                                        <div
+                                            v-for="p in quickSearchResults"
+                                            :key="optionKey(p)"
+                                            class="suggested-item-card"
+                                            :class="{ 'item-in-order': getOrderItemCount(p) > 0 }"
+                                        >
+                                            <!-- Product Thumbnail with fallback and preview -->
+                                            <div class="item-card-image">
+                                                <EntityImage
+                                                    :src="productImageSrc(p)"
+                                                    type="product"
+                                                    :size="52"
+                                                    shape="square"
+                                                    class="card-img"
+                                                />
+                                                <span v-if="getOrderItemCount(p) > 0" class="in-order-tag" :title="$t('po_in_order')">
+                                                    {{ getOrderItemCount(p) }}
+                                                </span>
+                                            </div>
+
+                                            <!-- Product Information -->
+                                            <div class="item-card-body">
+                                                <div class="item-card-header">
+                                                    <span class="item-name" :title="baseName(p)">
+                                                        {{ baseName(p) }}
+                                                    </span>
+                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                                </div>
+
+                                                <div class="item-card-tags">
+                                                    <span v-if="p.sku" class="sku-chip">
+                                                        <i class="fas fa-barcode"></i> {{ p.sku }}
+                                                    </span>
+                                                    <span v-if="p.category?.name_ar || p.category_name" class="cat-chip">
+                                                        {{ p.category?.name_ar || p.category_name }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="item-card-financials">
+                                                    <div class="cost-stat">
+                                                        <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                        <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
+                                                    </div>
+                                                    <div v-if="p.price && p.price !== p.cost_price" class="sale-stat">
+                                                        <span class="stat-lbl">{{ $t('sale_price') }}:</span>
+                                                        <span class="stat-val text-muted">{{ money(p.price) }}</span>
+                                                    </div>
+                                                    <div
+                                                        v-if="p.stock_quantity != null || p.stock != null"
+                                                        class="stock-stat"
+                                                        :class="(p.stock_quantity || p.stock || 0) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                    >
+                                                        <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                        <span class="stat-val">{{ p.stock_quantity ?? p.stock ?? 0 }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Action Button / Quantity Controls (Stays Open!) -->
+                                            <div class="item-card-action">
+                                                <template v-if="getOrderItemCount(p) === 0">
+                                                    <button
+                                                        type="button"
+                                                        class="btn-add-product"
+                                                        @click.stop.prevent="addProductToOrder(p, 1)"
+                                                    >
+                                                        <i class="fas fa-cart-plus"></i>
+                                                        <span>{{ $t('po_add_to_order') }}</span>
+                                                    </button>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="item-stepper" @click.stop>
+                                                        <button
+                                                            type="button"
+                                                            class="stepper-btn stepper-minus"
+                                                            @click.stop.prevent="addProductToOrder(p, -1)"
+                                                            :title="$t('decrease')"
+                                                        >
+                                                            <i class="fas fa-minus"></i>
+                                                        </button>
+                                                        <span class="stepper-val">{{ getOrderItemCount(p) }}</span>
+                                                        <button
+                                                            type="button"
+                                                            class="stepper-btn stepper-plus"
+                                                            @click.stop.prevent="addProductToOrder(p, 1)"
+                                                            :title="$t('increase')"
+                                                        >
+                                                            <i class="fas fa-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Dropdown Footer -->
+                                <div class="dropdown-footer-strip">
+                                    <div class="footer-summary">
+                                        <span>
+                                            {{ $t('po_items_in_order_summary', filledItemCount) }} &bull;
+                                            <strong>{{ money(formSubtotal) }}</strong>
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="btn-done-search"
+                                        @click.stop="quickSearchOpen = false"
+                                    >
+                                        <i class="fas fa-check"></i> {{ $t('po_close_search') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </transition>
+                    </div>
+
                     <div class="items-grid-wrapper">
                         <div
                             v-for="(item, idx) in form.items"
@@ -632,14 +850,27 @@
                                         :label="productLabel(p)"
                                         :value="optionKey(p)"
                                     >
-                                        <div class="product-option">
-                                            <span class="product-option-name">
-                                                {{ baseName(p) }}
-                                                <VariantChip v-if="p.variant_id" :label="p.variant_label" />
-                                            </span>
-                                            <small>
-                                                <template v-if="p.sku">{{ p.sku }} · </template>{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}
-                                            </small>
+                                        <div class="product-option-enhanced">
+                                            <EntityImage
+                                                :src="productImageSrc(p)"
+                                                type="product"
+                                                :size="36"
+                                                shape="square"
+                                                class="option-thumb"
+                                            />
+                                            <div class="option-details">
+                                                <div class="option-title-line">
+                                                    <span class="product-option-name">{{ baseName(p) }}</span>
+                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                                </div>
+                                                <div class="option-meta-line">
+                                                    <span v-if="p.sku" class="sku-tag"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                    <span class="cost-tag">{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}</span>
+                                                    <span v-if="p.stock_quantity != null" class="stock-tag" :class="(p.stock_quantity || 0) > 0 ? 'is-in' : 'is-zero'">
+                                                        {{ $t('available') }}: {{ p.stock_quantity }}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </el-option>
                                 </el-select>
@@ -687,20 +918,131 @@
                     </div>
                 </div>
 
-                <el-row v-if="!formLocked" :gutter="20" class="mt-3">
+                <el-row v-if="!formLocked" :gutter="20" class="mt-3 financial-inputs-row">
+                    <!-- Discount Field with Mode Switcher (% vs Currency), Quick Presets, and Live Preview -->
                     <el-col :xs="24" :sm="12">
-                        <el-form-item :label="$t('discount')" :error="discountTooLarge ? $t('po_discount_exceeds_total') : ''">
-                            <el-input v-model="form.discount" type="number" min="0" :placeholder="$t('discount_amount_placeholder')" style="width: 100%" />
+                        <el-form-item :error="discountTooLarge ? $t('po_discount_exceeds_total') : ''" class="financial-form-item discount-form-item">
+                            <template #label>
+                                <div class="form-label-with-mode">
+                                    <span class="label-text">
+                                        <i class="fas fa-tag label-icon text-primary"></i>
+                                        {{ $t('discount') }}
+                                    </span>
+                                    <div class="discount-mode-toggle" role="radiogroup" :title="$t('discount')">
+                                        <button
+                                            type="button"
+                                            class="mode-btn"
+                                            :class="{ 'is-active': form.discount_mode === 'percent' }"
+                                            @click.prevent="setDiscountMode('percent')"
+                                        >
+                                            %
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="mode-btn"
+                                            :class="{ 'is-active': form.discount_mode === 'amount' }"
+                                            @click.prevent="setDiscountMode('amount')"
+                                        >
+                                            {{ currencyCode }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <div class="discount-field-container">
+                                <!-- Percentage input mode (default & primary) -->
+                                <el-input
+                                    v-if="form.discount_mode === 'percent'"
+                                    v-model="form.discount_percent"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="any"
+                                    :placeholder="$t('discount_percent')"
+                                    class="financial-input"
+                                    @input="updateDiscountFromPercent"
+                                >
+                                    <template #append>%</template>
+                                </el-input>
+
+                                <!-- Direct amount input mode -->
+                                <el-input
+                                    v-else
+                                    v-model="form.discount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    :placeholder="$t('discount_amount_placeholder')"
+                                    class="financial-input"
+                                    @input="updateDiscountPercentFromAmount"
+                                >
+                                    <template #append>{{ currencyCode }}</template>
+                                </el-input>
+
+                                <!-- Quick Presets & Live Calculated Preview -->
+                                <div class="discount-helper-row">
+                                    <div v-if="form.discount_mode === 'percent'" class="discount-preset-chips">
+                                        <button
+                                            v-for="p in DISCOUNT_PRESETS"
+                                            :key="p"
+                                            type="button"
+                                            class="preset-chip"
+                                            :class="{ 'is-active': num(form.discount_percent) === p }"
+                                            @click.prevent="applyDiscountPreset(p)"
+                                        >
+                                            {{ p }}%
+                                        </button>
+                                    </div>
+                                    <span v-if="form.discount_mode === 'percent' && num(form.discount) > 0" class="discount-live-val">
+                                        = − {{ money(form.discount) }}
+                                    </span>
+                                    <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && formSubtotal > 0" class="discount-live-val">
+                                        ≈ {{ (Math.round((num(form.discount) / formSubtotal) * 10000) / 100).toFixed(2) }}%
+                                    </span>
+                                </div>
+                            </div>
                         </el-form-item>
                     </el-col>
+
+                    <!-- Tax Field with Quick 15% VAT Action -->
                     <el-col :xs="24" :sm="12">
-                        <el-form-item :label="$t('tax')">
-                            <el-input v-model="form.tax" type="number" min="0" :placeholder="$t('tax_amount_placeholder')" style="width: 100%" />
+                        <el-form-item class="financial-form-item tax-form-item">
+                            <template #label>
+                                <div class="form-label-with-mode">
+                                    <span class="label-text">
+                                        <i class="fas fa-receipt label-icon text-muted"></i>
+                                        {{ $t('tax') }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="vat-quick-chip"
+                                        :class="{ 'is-active': isVat15Active }"
+                                        @click.prevent="toggleVat15"
+                                    >
+                                        {{ $t('apply_vat_15') }}
+                                    </button>
+                                </div>
+                            </template>
+                            <el-input
+                                v-model="form.tax"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                :placeholder="$t('tax_amount_placeholder')"
+                                class="financial-input"
+                            >
+                                <template #append>{{ currencyCode }}</template>
+                            </el-input>
+                            <div class="tax-helper-row">
+                                <span v-if="num(form.tax) > 0 && formSubtotal > 0" class="tax-live-val">
+                                    ≈ {{ (Math.round((num(form.tax) / Math.max(1, formSubtotal - num(form.discount))) * 10000) / 100).toFixed(2) }}%
+                                </span>
+                            </div>
                         </el-form-item>
                     </el-col>
                 </el-row>
 
-                <el-form-item :label="$t('notes')" class="mt-3">
+                <el-form-item :label="$t('notes')" class="mt-2">
                     <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('purchase_order_notes_placeholder')" />
                 </el-form-item>
 
@@ -714,7 +1056,17 @@
                     </div>
                     <div class="financial-row">
                         <span>{{ $t('discount_label') }}</span>
-                        <span>− {{ money(form.discount) }}</span>
+                        <span class="discount-figure" :class="{ 'has-discount': num(form.discount) > 0 }">
+                            <template v-if="num(form.discount) > 0">
+                                − {{ money(form.discount) }}
+                                <span v-if="form.discount_percent !== '' && form.discount_percent != null && num(form.discount_percent) > 0" class="discount-badge-pill">
+                                    {{ form.discount_percent }}%
+                                </span>
+                            </template>
+                            <template v-else>
+                                {{ money(0) }}
+                            </template>
+                        </span>
                     </div>
                     <div class="financial-row">
                         <span>{{ $t('tax_label') }}</span>
@@ -855,12 +1207,263 @@
                 </el-button>
             </template>
         </el-dialog>
+
+        <!-- Purchase Order Printable Modal & Sheet -->
+        <el-dialog
+            v-model="printOrderDialogVisible"
+            :title="$t('print_preview') || 'معاينة أمر الشراء والطباعة'"
+            width="900px"
+            class="po-print-dialog"
+            destroy-on-close
+        >
+            <!-- Print Settings Toolbar (Screen Only) -->
+            <div class="po-print-toolbar po-screen-only">
+                <div class="po-print-toolbar-group">
+                    <span class="po-toolbar-label">
+                        <i class="fas fa-heading"></i>
+                        {{ $t('po_header_style') || 'نمط الترويسة' }}:
+                    </span>
+                    <el-radio-group v-model="printSettings.headerStyle" size="small">
+                        <el-radio-button label="official">
+                            <i class="fas fa-file-invoice"></i> {{ $t('po_header_official') || 'رسمية معتمدة' }}
+                        </el-radio-button>
+                        <el-radio-button label="banner">
+                            <i class="fas fa-image"></i> {{ $t('po_header_banner') || 'بانر مصور' }}
+                        </el-radio-button>
+                        <el-radio-button label="compact">
+                            <i class="fas fa-compress-alt"></i> {{ $t('po_header_compact') || 'مدمجة' }}
+                        </el-radio-button>
+                    </el-radio-group>
+                </div>
+
+                <div class="po-print-toolbar-group po-toggles-group">
+                    <el-checkbox v-model="printSettings.showLogo">
+                        {{ $t('po_show_logo') || 'الشعار' }}
+                    </el-checkbox>
+                    <el-checkbox v-model="printSettings.showContacts">
+                        {{ $t('po_show_contacts') || 'بيانات التواصل' }}
+                    </el-checkbox>
+                    <el-checkbox v-model="printSettings.showImages">
+                        {{ $t('po_show_images') || 'صور المنتجات' }}
+                    </el-checkbox>
+                    <el-checkbox v-model="printSettings.showSignatures">
+                        {{ $t('po_show_signatures') || 'التوقيعات والختم' }}
+                    </el-checkbox>
+                </div>
+
+                <div class="po-print-toolbar-actions">
+                    <el-button type="primary" :icon="Printer" size="small" @click="triggerPrintOrder">
+                        {{ $t('print_now') || 'طباعة الآن' }}
+                    </el-button>
+                </div>
+            </div>
+
+            <div v-if="printOrderData" id="purchase-order-printable-doc" class="po-printable-sheet">
+                <!-- Official Print Header with Logo & Brand Details -->
+                <PrintDocumentHeader
+                    :header-style="printSettings.headerStyle"
+                    :show-logo="printSettings.showLogo"
+                    :show-contacts="printSettings.showContacts"
+                    :show-meta="false"
+                    :title="$t('official_purchase_order') || 'أمر شراء رسمي'"
+                    :subtitle="'OFFICIAL PURCHASE ORDER'"
+                    :document-number="printOrderData.order_number"
+                    :banner-src="'/Header.jpeg'"
+                />
+
+                <!-- Unified Order & Supplier Details Card -->
+                <div class="po-print-meta-grid">
+                    <!-- Supplier Info Box -->
+                    <div class="po-meta-card po-meta-supplier">
+                        <div class="po-meta-card-header">
+                            <i class="fas fa-truck-moving"></i>
+                            <span class="po-meta-card-title">{{ $t('supplier_info') || 'بيانات المورد' }}</span>
+                        </div>
+                        <div class="po-meta-card-body" v-if="printOrderData.supplier">
+                            <div class="po-supplier-primary">
+                                <strong class="po-supplier-name">{{ printOrderData.supplier.name }}</strong>
+                                <span v-if="printOrderData.supplier.company" class="po-supplier-company">
+                                    ({{ printOrderData.supplier.company }})
+                                </span>
+                            </div>
+                            <div class="po-supplier-meta-list">
+                                <div v-if="printOrderData.supplier.phone" class="po-sm-item">
+                                    <i class="fas fa-phone-alt"></i>
+                                    <span dir="ltr">{{ printOrderData.supplier.phone }}</span>
+                                </div>
+                                <div v-if="printOrderData.supplier.email" class="po-sm-item">
+                                    <i class="fas fa-envelope"></i>
+                                    <span dir="ltr">{{ printOrderData.supplier.email }}</span>
+                                </div>
+                                <div v-if="printOrderData.supplier.address" class="po-sm-item">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    <span>{{ printOrderData.supplier.address }}</span>
+                                </div>
+                                <div v-if="printOrderData.supplier.tax_number || printOrderData.supplier.cr_number" class="po-sm-item">
+                                    <i class="fas fa-certificate"></i>
+                                    <span>{{ $t('tax_number') || 'الرقم الضريبي' }}: {{ printOrderData.supplier.tax_number || printOrderData.supplier.cr_number }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="po-meta-card-body text-muted">
+                            <em>{{ $t('no_supplier_specified') || 'لم يُحدد مورد' }}</em>
+                        </div>
+                    </div>
+
+                    <!-- Order Details Box -->
+                    <div class="po-meta-card po-meta-order">
+                        <div class="po-meta-card-header">
+                            <i class="fas fa-file-invoice"></i>
+                            <span class="po-meta-card-title">{{ $t('order_details') || 'بيانات الأمر' }}</span>
+                        </div>
+                        <div class="po-meta-card-body">
+                            <div class="po-order-meta-grid">
+                                <div class="po-om-item">
+                                    <span class="po-om-label">{{ $t('order_number') || 'رقم الأمر' }}:</span>
+                                    <strong class="po-om-val po-mono" dir="ltr">{{ printOrderData.order_number }}</strong>
+                                </div>
+                                <div class="po-om-item">
+                                    <span class="po-om-label">{{ $t('order_date') || 'تاريخ الأمر' }}:</span>
+                                    <span class="po-om-val" dir="ltr">{{ formatDate(printOrderData.order_date || printOrderData.created_at) }}</span>
+                                </div>
+                                <div v-if="printOrderData.due_date" class="po-om-item">
+                                    <span class="po-om-label">{{ $t('due_date') || 'تاريخ الاستحقاق' }}:</span>
+                                    <span class="po-om-val" dir="ltr">{{ formatDate(printOrderData.due_date) }}</span>
+                                </div>
+                                <div class="po-om-item">
+                                    <span class="po-om-label">{{ $t('status') || 'الحالة' }}:</span>
+                                    <span class="po-om-val po-status-tag" :class="`status-${printOrderData.status}`">
+                                        {{ $t(`po_status_${printOrderData.status}`) || printOrderData.status }}
+                                    </span>
+                                </div>
+                                <div v-if="saleLinkOf(printOrderData)" class="po-om-item po-om-full">
+                                    <span class="po-om-label">{{ $t('po_for_sale') || 'مرتبط بطلب بيع' }}:</span>
+                                    <span class="po-om-val po-sale-badge">
+                                        <i class="fas fa-link"></i>
+                                        <strong>{{ saleLinkOf(printOrderData).label || saleLinkOf(printOrderData) }}</strong>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Line Items Table -->
+                <table class="po-print-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 36px; text-align: center;">#</th>
+                            <th v-if="printSettings.showImages" style="width: 52px; text-align: center;">{{ $t('image') || 'الصورة' }}</th>
+                            <th>{{ $t('product') || 'المنتج / الصنف' }}</th>
+                            <th style="width: 120px;">{{ $t('sku') || 'الرمز' }}</th>
+                            <th style="width: 70px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
+                            <th style="width: 105px; text-align: left;">{{ $t('unit_cost') || 'السعر الإفرادي' }}</th>
+                            <th style="width: 115px; text-align: left;">{{ $t('total') || 'الإجمالي' }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx">
+                            <td style="text-align: center;" class="po-row-idx">{{ idx + 1 }}</td>
+                            <td v-if="printSettings.showImages" class="po-print-img-cell" style="text-align: center;">
+                                <EntityImage
+                                    :src="item.product?.image_main || item.product?.image"
+                                    type="product"
+                                    :size="38"
+                                    shape="square"
+                                />
+                            </td>
+                            <td>
+                                <div class="po-item-name">{{ item.product?.name_ar || item.product_name || '-' }}</div>
+                                <div v-if="item.product?.name_en" class="po-item-name-en">{{ item.product.name_en }}</div>
+                                <div v-if="item.product_variant_id" class="po-item-variant">
+                                    <VariantChip :label="variantLabelOf(item.variant) || item.product_name" />
+                                </div>
+                            </td>
+                            <td class="po-sku-cell">
+                                <code>{{ item.variant?.sku || item.product?.sku || '—' }}</code>
+                            </td>
+                            <td style="text-align: center; font-weight: 700;">
+                                {{ item.quantity }}
+                            </td>
+                            <td style="text-align: left;" dir="ltr">
+                                {{ money(item.unit_price) }}
+                            </td>
+                            <td style="text-align: left; font-weight: 800;" dir="ltr">
+                                {{ money(item.quantity * item.unit_price) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Totals & Notes Block -->
+                <div class="po-print-summary-row">
+                    <div class="po-print-notes-col">
+                        <div v-if="printOrderData.notes" class="po-print-notes-box">
+                            <div class="po-notes-header">
+                                <i class="fas fa-clipboard-list"></i>
+                                <strong>{{ $t('notes') || 'ملاحظات وشروط الطلب' }}:</strong>
+                            </div>
+                            <p class="po-notes-text">{{ printOrderData.notes }}</p>
+                        </div>
+                    </div>
+                    <div class="po-print-totals-col">
+                        <table class="po-totals-table">
+                            <tr>
+                                <td>{{ $t('subtotal') }}:</td>
+                                <td class="val" dir="ltr">{{ money(printOrderData.subtotal ?? detailSubtotal) }}</td>
+                            </tr>
+                            <tr v-if="num(printOrderData.discount) > 0">
+                                <td>{{ $t('discount') }} <span v-if="printOrderData.discount_percent">({{ printOrderData.discount_percent }}%)</span>:</td>
+                                <td class="val discount-val" dir="ltr">− {{ money(printOrderData.discount) }}</td>
+                            </tr>
+                            <tr v-if="num(printOrderData.tax) > 0">
+                                <td>{{ $t('tax') }}:</td>
+                                <td class="val" dir="ltr">{{ money(printOrderData.tax) }}</td>
+                            </tr>
+                            <tr class="grand-total-row">
+                                <td>{{ $t('total') }}:</td>
+                                <td class="val" dir="ltr">{{ money(printOrderData.total) }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Official Signatures Block -->
+                <div v-if="printSettings.showSignatures" class="po-print-signatures">
+                    <div class="sig-card">
+                        <span class="sig-title">{{ $t('prepared_by') || 'إعداد وتجهيز' }}</span>
+                        <div class="sig-line"></div>
+                    </div>
+                    <div class="sig-card">
+                        <span class="sig-title">{{ $t('reviewed_by') || 'مراجعة وتدقيق' }}</span>
+                        <div class="sig-line"></div>
+                    </div>
+                    <div class="sig-card">
+                        <span class="sig-title">{{ $t('approved_by') || 'اعتماد الإدارة' }}</span>
+                        <div class="sig-line"></div>
+                    </div>
+                    <div class="sig-card">
+                        <span class="sig-title">{{ $t('company_seal') || 'ختم واعتماد الشركة' }}</span>
+                        <div class="sig-seal-box"></div>
+                    </div>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="dialog-footer po-screen-only">
+                    <el-button @click="printOrderDialogVisible = false">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" :icon="Printer" @click="triggerPrintOrder">
+                        <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة الآن' }}
+                    </el-button>
+                </div>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, onBeforeUnmount, computed, reactive, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
@@ -870,16 +1473,27 @@ import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
 import { baseCurrencyCode, formatMoney } from '@/utils/currency';
 import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
-import { Search } from '@element-plus/icons-vue';
+
+const normalizeStatus = normalizePurchaseOrderStatus;
+import { Search, Printer } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
+import EntityImage from '@/components/admin/EntityImage.vue';
+import { resolveImageUrl } from '@/utils/productImages';
 import { invoicesApi } from '@/api/invoices';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
 
 const { t } = useI18n();
+
+const productImageSrc = (p) => {
+    if (!p) return '';
+    const raw = p.image_main || p.image || p.primary_image_url || p.image_url || '';
+    return resolveImageUrl(raw);
+};
 
 const router = useRouter();
 const route = useRoute();
@@ -924,12 +1538,115 @@ const loadDefaultOptions = async () => {
     try {
         const res = await productsApi.getAll({ per_page: 100, expand_variants: 1 });
         defaultOptions.value = res.data.data || [];
+        productOptions.value = defaultOptions.value;
+        if (!quickSearchResults.value.length) {
+            quickSearchResults.value = defaultOptions.value;
+        }
     } catch (e) {
         defaultOptions.value = [];
     }
 };
 const productSearchLoading = ref(false);
 let productSearchTimer = null;
+
+// Suggested product quick search & multi-add state
+const quickSearchQuery = ref('');
+const quickSearchLoading = ref(false);
+const quickSearchResults = ref([]);
+const quickSearchOpen = ref(false);
+const quickSearchInputRef = ref(null);
+const quickSearchContainerRef = ref(null);
+let quickSearchDebounceTimer = null;
+
+const onQuickSearchFocus = () => {
+    quickSearchOpen.value = true;
+    if (!quickSearchQuery.value && defaultOptions.value.length) {
+        quickSearchResults.value = defaultOptions.value;
+    }
+};
+
+const onQuickSearchInput = (val) => {
+    clearTimeout(quickSearchDebounceTimer);
+    quickSearchOpen.value = true;
+    const query = typeof val === 'string' ? val.trim() : '';
+    if (!query) {
+        quickSearchResults.value = defaultOptions.value;
+        return;
+    }
+    quickSearchLoading.value = true;
+    quickSearchDebounceTimer = setTimeout(async () => {
+        try {
+            const res = await productsApi.getAll({ search: query, per_page: 50, expand_variants: 1 });
+            quickSearchResults.value = res.data.data || [];
+            rememberProducts(quickSearchResults.value);
+        } catch {
+            // Keep current suggestions on error
+        } finally {
+            quickSearchLoading.value = false;
+        }
+    }, 250);
+};
+
+const onQuickSearchClear = () => {
+    quickSearchQuery.value = '';
+    quickSearchResults.value = defaultOptions.value;
+};
+
+const getOrderItemCount = (prod) => {
+    const key = optionKey(prod);
+    const existing = form.items.find((item) => item.pick === key);
+    return existing ? num(existing.quantity) : 0;
+};
+
+const addProductToOrder = (prod, delta = 1) => {
+    const key = optionKey(prod);
+    const cost = prod.cost_price != null && Number(prod.cost_price) > 0 ? Number(prod.cost_price) : Number(prod.price || 0);
+    const sale = prod.price != null ? Number(prod.price) : '';
+
+    rememberProducts([prod]);
+
+    const existingIdx = form.items.findIndex((item) => item.pick === key);
+
+    if (existingIdx !== -1) {
+        const currentQty = num(form.items[existingIdx].quantity);
+        const newQty = currentQty + delta;
+        if (newQty <= 0) {
+            if (form.items.length > 1) {
+                form.items.splice(existingIdx, 1);
+            } else {
+                form.items[0] = blankRow();
+            }
+        } else {
+            form.items[existingIdx].quantity = newQty;
+        }
+    } else {
+        if (delta <= 0) return;
+        const emptyIdx = form.items.findIndex((item) => !item.product_id && !item.pick);
+        if (emptyIdx !== -1) {
+            form.items[emptyIdx].pick = key;
+            form.items[emptyIdx].product_id = prod.id;
+            form.items[emptyIdx].product_variant_id = prod.variant_id || null;
+            form.items[emptyIdx].unit_price = cost;
+            form.items[emptyIdx].sale_price = sale;
+            form.items[emptyIdx].quantity = 1;
+        } else {
+            form.items.push(blankRow({
+                pick: key,
+                product_id: prod.id,
+                product_variant_id: prod.variant_id || null,
+                unit_price: cost,
+                sale_price: sale,
+                quantity: 1,
+            }));
+        }
+    }
+};
+
+const handleClickOutsideQuickSearch = (e) => {
+    if (quickSearchContainerRef.value && !quickSearchContainerRef.value.contains(e.target)) {
+        quickSearchOpen.value = false;
+    }
+};
 
 // Quick-add-product state: lets a missing item be created without leaving
 // the order form, then drops straight into the row that needed it.
@@ -976,6 +1693,8 @@ const form = reactive({
     order_date: '',
     due_date: '',
     discount: 0,
+    discount_percent: '',
+    discount_mode: 'percent',
     tax: 0,
     notes: '',
     // The sale this buys in for: { type: 'sales_order' | 'invoice', id, number, customer }.
@@ -999,11 +1718,16 @@ const resetForm = () => {
     form.order_date = todayIso();
     form.due_date = '';
     form.discount = 0;
+    form.discount_percent = '';
+    form.discount_mode = 'percent';
     form.tax = 0;
     form.notes = '';
     form.sale_link = null;
     autoNote = '';
     form.items = [blankRow()];
+    quickSearchQuery.value = '';
+    quickSearchOpen.value = false;
+    quickSearchResults.value = defaultOptions.value;
 };
 
 /* Unsaved-changes guard: the drawer closes on a stray click outside it, and
@@ -1039,6 +1763,98 @@ const formatDate = (value) => (value ? String(value).slice(0, 10) : '-');
 
 const lineTotal = (item) => num(item.quantity) * num(item.unit_price);
 const formSubtotal = computed(() => form.items.reduce((sum, item) => sum + lineTotal(item), 0));
+
+const currencyCode = computed(() => baseCurrencyCode());
+const DISCOUNT_PRESETS = [5, 10, 15, 20, 25];
+
+const setDiscountMode = (mode) => {
+    form.discount_mode = mode;
+    if (mode === 'percent') {
+        if (num(form.discount) > 0 && (form.discount_percent === '' || form.discount_percent == null)) {
+            updateDiscountPercentFromAmount();
+        }
+        updateDiscountFromPercent();
+    } else {
+        if (num(form.discount_percent) > 0 && num(form.discount) === 0) {
+            updateDiscountFromPercent();
+        }
+    }
+};
+
+const applyDiscountPreset = (p) => {
+    form.discount_mode = 'percent';
+    if (num(form.discount_percent) === p) {
+        form.discount_percent = '';
+        form.discount = 0;
+    } else {
+        form.discount_percent = p;
+        updateDiscountFromPercent();
+    }
+};
+
+const updateDiscountFromPercent = () => {
+    if (form.discount_percent === '' || form.discount_percent == null) {
+        form.discount = 0;
+        return;
+    }
+    let pct = num(form.discount_percent);
+    if (pct < 0) {
+        pct = 0;
+        form.discount_percent = 0;
+    }
+    if (pct > 100) {
+        pct = 100;
+        form.discount_percent = 100;
+    }
+    const subtotalVal = formSubtotal.value;
+    if (subtotalVal >= 0) {
+        form.discount = Math.round((pct / 100) * subtotalVal * 100) / 100;
+    }
+};
+
+const updateDiscountPercentFromAmount = () => {
+    const disc = num(form.discount);
+    const subtotalVal = formSubtotal.value;
+    if (subtotalVal <= 0 || disc <= 0) {
+        form.discount_percent = '';
+        return;
+    }
+    form.discount_percent = Math.round((disc / subtotalVal) * 10000) / 100;
+};
+
+const isVat15Active = computed(() => {
+    const chargeable = Math.max(0, formSubtotal.value - num(form.discount));
+    if (chargeable <= 0 || num(form.tax) <= 0) return false;
+    const vat15 = Math.round(chargeable * 0.15 * 100) / 100;
+    return Math.abs(num(form.tax) - vat15) < 0.05;
+});
+
+const toggleVat15 = () => {
+    const chargeable = Math.max(0, formSubtotal.value - num(form.discount));
+    const vat15 = Math.round(chargeable * 0.15 * 100) / 100;
+    if (isVat15Active.value) {
+        form.tax = 0;
+    } else {
+        form.tax = vat15;
+    }
+};
+
+watch(formSubtotal, () => {
+    if (form.discount_mode === 'percent') {
+        if (form.discount_percent !== '' && form.discount_percent != null) {
+            updateDiscountFromPercent();
+        } else {
+            form.discount = 0;
+        }
+    } else {
+        updateDiscountPercentFromAmount();
+    }
+    if (isVat15Active.value) {
+        const chargeable = Math.max(0, formSubtotal.value - num(form.discount));
+        form.tax = Math.round(chargeable * 0.15 * 100) / 100;
+    }
+});
+
 const formTotal = computed(() => formSubtotal.value + num(form.tax) - num(form.discount));
 const discountTooLarge = computed(() => num(form.discount) > formSubtotal.value + num(form.tax));
 
@@ -1087,8 +1903,6 @@ const dueState = (order) => {
     if (due === today) return 'today';
     return null;
 };
-
-const normalizeStatus = normalizePurchaseOrderStatus;
 
 const statusTagType = (status) => {
     const value = normalizeStatus(status);
@@ -1235,6 +2049,79 @@ const openDetailDrawer = async (id) => {
     }
 };
 
+// Print Order Actions & UI Settings
+const printOrderData = ref(null);
+const printOrderDialogVisible = ref(false);
+const printOrderLoading = ref(false);
+
+const printSettings = reactive({
+    headerStyle: 'official', // 'official' | 'banner' | 'compact'
+    showLogo: true,
+    showContacts: true,
+    showImages: true,
+    showSignatures: true,
+});
+
+const PO_PRINT_SETTINGS_STORAGE_KEY = 'po_print_header_settings_v1';
+const loadPrintSettings = () => {
+    try {
+        const saved = localStorage.getItem(PO_PRINT_SETTINGS_STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (['official', 'banner', 'compact'].includes(parsed.headerStyle)) {
+                printSettings.headerStyle = parsed.headerStyle;
+            }
+            if (typeof parsed.showLogo === 'boolean') printSettings.showLogo = parsed.showLogo;
+            if (typeof parsed.showContacts === 'boolean') printSettings.showContacts = parsed.showContacts;
+            if (typeof parsed.showImages === 'boolean') printSettings.showImages = parsed.showImages;
+            if (typeof parsed.showSignatures === 'boolean') printSettings.showSignatures = parsed.showSignatures;
+        }
+    } catch {
+        // ignore storage errors
+    }
+};
+
+const savePrintSettings = () => {
+    try {
+        localStorage.setItem(PO_PRINT_SETTINGS_STORAGE_KEY, JSON.stringify(printSettings));
+    } catch {
+        // ignore
+    }
+};
+
+loadPrintSettings();
+
+watch(printSettings, () => {
+    savePrintSettings();
+}, { deep: true });
+
+const printOrder = async (orderOrRow) => {
+    if (!orderOrRow) return;
+    printOrderLoading.value = true;
+    try {
+        let full = orderOrRow;
+        // If order items or supplier details are incomplete, fetch the full order record
+        if (!full.items || !full.items.length) {
+            const res = await purchaseOrdersApi.getById(orderOrRow.id);
+            if (res.data?.data) {
+                full = res.data.data;
+            }
+        }
+        printOrderData.value = full;
+        printOrderDialogVisible.value = true;
+    } catch {
+        printOrderData.value = orderOrRow;
+        printOrderDialogVisible.value = true;
+    } finally {
+        printOrderLoading.value = false;
+    }
+};
+
+const triggerPrintOrder = async () => {
+    await nextTick();
+    window.print();
+};
+
 const openCreateDrawer = () => {
     isEditMode.value = false;
     editingStatus.value = '';
@@ -1260,6 +2147,17 @@ const duplicateOrder = async (id) => {
         resetForm();
         form.supplier_id = order.supplier_id;
         form.discount = num(order.discount);
+        const dupPct = (order.discount_percent != null && order.discount_percent !== '') ? num(order.discount_percent) : null;
+        if (dupPct !== null && dupPct > 0) {
+            form.discount_mode = 'percent';
+            form.discount_percent = dupPct;
+        } else if (num(order.discount) > 0) {
+            form.discount_mode = 'amount';
+            form.discount_percent = '';
+        } else {
+            form.discount_mode = 'percent';
+            form.discount_percent = '';
+        }
         form.tax = num(order.tax);
         form.notes = t('po_duplicated_from', { number: order.order_number });
         form.items = (order.items || [])
@@ -1335,6 +2233,18 @@ const openEditDrawer = async (id) => {
         form.order_date = formatDate(order.order_date || order.created_at);
         form.due_date = order.due_date ? formatDate(order.due_date) : '';
         form.discount = num(order.discount);
+        const editPct = (order.discount_percent != null && order.discount_percent !== '') ? num(order.discount_percent) : null;
+        if (editPct !== null && editPct > 0) {
+            form.discount_mode = 'percent';
+            form.discount_percent = editPct;
+        } else if (num(order.discount) > 0) {
+            form.discount_mode = 'amount';
+            const subtotalVal = order.subtotal ?? (order.items || []).reduce((sum, item) => sum + (num(item.quantity) * num(item.unit_price)), 0);
+            form.discount_percent = subtotalVal > 0 ? Math.round((num(order.discount) / subtotalVal) * 10000) / 100 : '';
+        } else {
+            form.discount_mode = 'percent';
+            form.discount_percent = '';
+        }
         form.tax = num(order.tax);
         form.notes = order.notes || '';
         form.sale_link = saleLinkOf(order);
@@ -1537,6 +2447,7 @@ const orderPayload = () => {
         order_date: form.order_date || null,
         due_date: form.due_date || null,
         discount: num(form.discount),
+        discount_percent: (form.discount_percent === '' || form.discount_percent == null) ? null : num(form.discount_percent),
         tax: num(form.tax),
         notes: form.notes || null,
         ...saleLinkPayload(),
@@ -1793,6 +2704,7 @@ const nextStep = (order) => {
 
 const onRowCommand = (command, row) => {
     if (command === 'view') return openDetailDrawer(row.id);
+    if (command === 'print') return printOrder(row);
     if (command === 'duplicate') return duplicateOrder(row.id);
     if (command === 'edit') return canEdit(row) ? openEditDrawer(row.id) : undefined;
     if (command === 'reopen') return reopenOrder(row);
@@ -1946,6 +2858,53 @@ const prefillFromSalesOrder = async (salesOrderId) => {
     }
 };
 
+/**
+ * Opens the create drawer prefilled with a specific product, quantity and supplier.
+ * Used when navigating from the product search list on sales order or quotes creation.
+ */
+const openWithProduct = async (query) => {
+    try {
+        isEditMode.value = false;
+        editingStatus.value = '';
+        resetForm();
+        if (query.supplier_id) form.supplier_id = Number(query.supplier_id);
+        if (query.warehouse_id) form.warehouse_id = Number(query.warehouse_id);
+        if (query.notes) form.notes = String(query.notes);
+
+        const productId = Number(query.add_product_id);
+        const variantId = query.add_variant_id ? Number(query.add_variant_id) : null;
+        const qty = Math.max(1, Number(query.add_qty) || 1);
+        const price = query.add_price != null && query.add_price !== '' ? Number(query.add_price) : 0;
+
+        let target = defaultOptions.value.find((p) => p.id === productId && (!variantId || p.variant_id === variantId));
+        if (!target) {
+            try {
+                const res = await posApi.productLookup({ q: query.sku || query.name || String(productId), expand_variants: 1 });
+                const list = res.data?.data || [];
+                target = list.find((p) => p.id === productId && (!variantId || p.variant_id === variantId)) || list.find((p) => p.id === productId) || list[0];
+            } catch {}
+        }
+        if (target) {
+            rememberProducts([target]);
+            const pickKey = optionKey(target);
+            form.items = [{
+                key: 1,
+                product_id: target.id,
+                product_variant_id: target.variant_id || variantId || null,
+                pick: pickKey,
+                quantity: qty,
+                unit_price: price || Number(target.cost_price || target.price) || 0,
+                sale_price: Number(target.price) || 0,
+                notes: '',
+            }];
+            markFormClean();
+            formDrawerVisible.value = true;
+        }
+    } catch (e) {
+        console.error('Failed to open purchase drawer with product', e);
+    }
+};
+
 /* The sale a purchase order buys in for ------------------------------ */
 
 /** An order's link as the picker holds it, or null. */
@@ -2045,10 +3004,14 @@ const fillFromSale = async (link) => {
     }
 };
 
-onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', onResize);
+    document.removeEventListener('click', handleClickOutsideQuickSearch);
+});
 
 onMounted(async () => {
     window.addEventListener('resize', onResize);
+    document.addEventListener('click', handleClickOutsideQuickSearch);
     // The purchases hub links here with ?search=<order number>; without this the
     // parameter was dropped and the operator landed on an unfiltered list.
     if (route.query.search) searchQuery.value = String(route.query.search);
@@ -2065,12 +3028,16 @@ onMounted(async () => {
 
     const shortageFor = route.query.shortage_for_order;
     const fromSalesOrder = route.query.from_sales_order;
+    const addProductId = route.query.add_product_id;
     if (shortageFor) {
         await prefillFromShortage(shortageFor);
         // Cleared so a refresh does not reopen the drawer over work in progress.
         router.replace({ query: {} });
     } else if (fromSalesOrder) {
         await prefillFromSalesOrder(fromSalesOrder);
+        router.replace({ query: {} });
+    } else if (addProductId) {
+        await openWithProduct(route.query);
         router.replace({ query: {} });
     }
 });
@@ -2837,5 +3804,1184 @@ onMounted(async () => {
     background: var(--bg-light);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
+}
+
+/* Financial inputs & discount percentage UX */
+.financial-inputs-row {
+    margin-bottom: 0.5rem;
+}
+
+.financial-form-item {
+    margin-bottom: 0.75rem;
+}
+
+.financial-form-item :deep(.el-form-item__label) {
+    width: 100%;
+    display: block;
+    margin-bottom: 6px;
+    padding: 0;
+}
+
+.form-label-with-mode {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark, #1e293b);
+}
+
+.form-label-with-mode .label-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.form-label-with-mode .label-icon {
+    font-size: 0.82rem;
+}
+
+.discount-mode-toggle {
+    display: inline-flex;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.discount-mode-toggle .mode-btn {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.12rem 0.5rem;
+    border-radius: 4px;
+    color: #64748b;
+    transition: all 0.15s ease;
+    line-height: 1.2;
+}
+
+.discount-mode-toggle .mode-btn:hover {
+    color: #0f172a;
+}
+
+.discount-mode-toggle .mode-btn.is-active {
+    background: #ffffff;
+    color: #2563eb;
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.discount-field-container {
+    width: 100%;
+}
+
+.financial-input :deep(.el-input-group__append) {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 0 12px;
+    border-color: var(--border-color, #e2e8f0);
+}
+
+.discount-helper-row,
+.tax-helper-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.4rem;
+    min-height: 24px;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.discount-preset-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+
+.preset-chip {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    transition: all 0.15s ease;
+    line-height: 1.2;
+}
+
+.preset-chip:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.preset-chip.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.discount-live-val {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #dc2626;
+    margin-inline-start: auto;
+}
+
+.tax-live-val {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-inline-start: auto;
+}
+
+.vat-quick-chip {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.12rem 0.5rem;
+    border-radius: 4px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    transition: all 0.15s ease;
+    line-height: 1.2;
+}
+
+.vat-quick-chip:hover {
+    background: #dbeafe;
+}
+
+.vat-quick-chip.is-active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.discount-figure {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.discount-figure.has-discount {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.discount-badge-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+    line-height: 1.1;
+}
+
+.discount-table-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: #dc2626;
+    margin-top: 0.2rem;
+    font-weight: 600;
+}
+
+.discount-table-tag i {
+    font-size: 0.65rem;
+}
+
+/* ==========================================================================
+   Suggested Product Search & Multi-Add Panel (Stays Open)
+   ========================================================================== */
+.po-suggested-search-panel {
+    position: relative;
+    margin-bottom: 1.25rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-md, 10px);
+    padding: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.search-bar-header {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.search-input-box {
+    flex: 1;
+    min-width: 0;
+}
+
+.po-search-input :deep(.el-input__wrapper) {
+    background: #ffffff;
+    box-shadow: 0 0 0 1px #cbd5e1 inset;
+    border-radius: 8px;
+    padding: 4px 12px;
+    transition: all 0.2s ease;
+}
+
+.po-search-input :deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 0 0 1px #2563eb inset;
+}
+
+.search-icon {
+    font-size: 0.95rem;
+    color: #64748b;
+    margin-inline-end: 4px;
+}
+
+.btn-toggle-suggestions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.btn-toggle-suggestions:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.btn-toggle-suggestions.is-active {
+    background: #1e3a8a;
+    border-color: #1e3a8a;
+    color: #ffffff;
+}
+
+.count-badge {
+    background: rgba(30, 58, 138, 0.1);
+    color: #1e3a8a;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    font-weight: 700;
+}
+
+.btn-toggle-suggestions.is-active .count-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* Floating / Expandable Dropdown */
+.suggested-search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 999;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.15), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dropdown-top-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.84rem;
+}
+
+.strip-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #1e293b;
+}
+
+.results-badge {
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+}
+
+.strip-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.keep-open-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: #047857;
+    background: #ecfdf5;
+    padding: 0.15rem 0.6rem;
+    border-radius: 9999px;
+    border: 1px solid #a7f3d0;
+}
+
+.close-dropdown-btn {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #64748b;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.close-dropdown-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+/* Products List Scroll Container */
+.suggested-list-scroll {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.6rem;
+}
+
+.suggested-loading-state,
+.suggested-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem 1rem;
+    color: #64748b;
+    gap: 0.6rem;
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 2.2rem;
+    color: #cbd5e1;
+}
+
+/* Products Grid / Cards */
+.suggested-products-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.suggested-item-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    transition: all 0.15s ease;
+}
+
+.suggested-item-card:hover {
+    border-color: #93c5fd;
+    background: #f8fafc;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.suggested-item-card.item-in-order {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.item-card-image {
+    position: relative;
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-card-image :deep(.entity-image) {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+}
+
+.in-order-tag {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.05rem 0.35rem;
+    border-radius: 9999px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.item-card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.item-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.item-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.3;
+}
+
+.item-card-tags {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+}
+
+.sku-chip {
+    color: #475569;
+    background: #f1f5f9;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.cat-chip {
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.item-card-financials {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+    margin-top: 0.1rem;
+}
+
+.item-card-financials .stat-lbl {
+    color: #64748b;
+    margin-inline-end: 0.25rem;
+}
+
+.cost-stat .stat-val {
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.stock-stat.is-in-stock .stat-val {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.stock-stat.is-out-stock .stat-val {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Action Area */
+.item-card-action {
+    flex-shrink: 0;
+    margin-inline-start: auto;
+}
+
+.btn-add-product {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #2563eb;
+    color: #ffffff;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+}
+
+.btn-add-product:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3);
+}
+
+/* Stepper inside card */
+.item-stepper {
+    display: inline-flex;
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #16a34a;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(22, 163, 74, 0.15);
+}
+
+.item-stepper .stepper-btn {
+    all: unset;
+    cursor: pointer;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.75rem;
+    color: #16a34a;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-stepper .stepper-btn:hover {
+    background: #dcfce7;
+}
+
+.item-stepper .stepper-val {
+    min-width: 28px;
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #15803d;
+    padding: 0 0.3rem;
+}
+
+/* Dropdown Footer */
+.dropdown-footer-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.82rem;
+}
+
+.footer-summary {
+    color: #475569;
+}
+
+.btn-done-search {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #1e3a8a;
+    color: #ffffff;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.btn-done-search:hover {
+    background: #1e40af;
+}
+
+/* ==========================================================================
+   Enhanced Product Option inside Row Select
+   ========================================================================== */
+.product-option-enhanced {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 4px 0;
+}
+
+.product-option-enhanced .option-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.product-option-enhanced .option-details {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.product-option-enhanced .option-title-line {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow: hidden;
+}
+
+.product-option-enhanced .product-option-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.product-option-enhanced .option-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+}
+
+.product-option-enhanced .sku-tag {
+    color: #64748b;
+    font-family: monospace;
+}
+
+.product-option-enhanced .cost-tag {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.product-option-enhanced .stock-tag.is-in {
+    color: #16a34a;
+}
+
+.product-option-enhanced .stock-tag.is-zero {
+    color: #dc2626;
+}
+
+:global(.po-select-product-popper .el-select-dropdown__item) {
+    height: auto !important;
+    line-height: normal !important;
+    padding: 6px 12px !important;
+}
+
+/* Purchase Order Printable Sheet Styles */
+.po-print-dialog {
+    --el-dialog-padding-primary: 16px;
+}
+
+.po-print-dialog :global(.el-dialog__header) {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.po-print-dialog :global(.el-dialog__title) {
+    font-weight: 700;
+    color: #1e3a8a;
+    font-size: 16px;
+}
+
+/* Print Settings Toolbar */
+.po-print-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.po-print-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.po-toolbar-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.po-toolbar-label i {
+    color: #2563eb;
+}
+
+.po-toggles-group {
+    gap: 16px;
+}
+
+.po-toggles-group :global(.el-checkbox) {
+    margin-right: 0;
+    margin-left: 0;
+}
+
+.po-toggles-group :global(.el-checkbox__label) {
+    font-size: 12px;
+    color: #334155;
+    font-weight: 600;
+}
+
+.po-print-toolbar-actions {
+    margin-right: auto;
+}
+
+.po-printable-sheet {
+    background: #ffffff;
+    color: #0f172a;
+    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    direction: rtl;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+/* Unified Order & Supplier Details Grid */
+.po-print-meta-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.po-meta-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.po-meta-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.po-meta-card-header i {
+    color: #2563eb;
+    font-size: 11px;
+}
+
+.po-meta-card-body {
+    padding: 8px 12px;
+    font-size: 11.5px;
+}
+
+.po-supplier-primary {
+    margin-bottom: 6px;
+}
+
+.po-supplier-name {
+    font-size: 13.5px;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.po-supplier-company {
+    font-size: 12px;
+    color: #64748b;
+    margin-right: 6px;
+}
+
+.po-supplier-meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #334155;
+    font-size: 11px;
+}
+
+.po-sm-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.po-sm-item i {
+    color: #64748b;
+    width: 14px;
+    text-align: center;
+    font-size: 10px;
+}
+
+.po-order-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+}
+
+.po-om-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.po-om-full {
+    grid-column: 1 / -1;
+}
+
+.po-om-label {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.po-om-val {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.po-mono {
+    font-family: 'JetBrains Mono', monospace;
+    color: #1e3a8a;
+}
+
+.po-status-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    width: fit-content;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.po-status-tag.status-approved,
+.po-status-tag.status-received {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.po-status-tag.status-pending,
+.po-status-tag.status-draft {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.po-status-tag.status-ordered {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.po-status-tag.status-cancelled {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.po-sale-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    font-size: 11px;
+}
+
+.po-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-bottom: 14px;
+}
+
+.po-print-table th,
+.po-print-table td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 8px;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.po-print-table th {
+    background: #f1f5f9;
+    color: #1e3a8a;
+    font-weight: 800;
+    font-size: 10.5px;
+}
+
+.po-print-img-cell {
+    padding: 3px !important;
+}
+
+.po-item-name {
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.po-item-name-en {
+    font-size: 9.5px;
+    color: #64748b;
+    direction: ltr;
+    text-align: right;
+}
+
+.po-item-variant {
+    font-size: 9.5px;
+    color: #0369a1;
+    margin-top: 2px;
+}
+
+.po-sku-cell code {
+    background: #f8fafc;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: #475569;
+}
+
+.po-print-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.po-print-notes-col {
+    flex: 1;
+}
+
+.po-print-notes-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+}
+
+.po-notes-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    color: #475569;
+}
+
+.po-notes-header i {
+    color: #2563eb;
+    font-size: 10.5px;
+}
+
+.po-notes-text {
+    margin: 0;
+    color: #0f172a;
+    white-space: pre-wrap;
+    line-height: 1.45;
+}
+
+.po-print-totals-col {
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.po-totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+}
+
+.po-totals-table td {
+    padding: 4px 6px;
+    color: #334155;
+}
+
+.po-totals-table td.val {
+    text-align: left;
+    font-weight: 700;
+}
+
+.po-totals-table td.discount-val {
+    color: #dc2626;
+}
+
+.po-totals-table .grand-total-row td {
+    font-weight: 800;
+    font-size: 13px;
+    color: #1e3a8a;
+    border-top: 2px solid #1e3a8a;
+    padding-top: 6px;
+}
+
+.po-print-signatures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px dashed #cbd5e1;
+}
+
+.sig-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.sig-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 30px;
+}
+
+.sig-line {
+    width: 80%;
+    border-bottom: 1px solid #94a3b8;
+}
+
+.sig-seal-box {
+    width: 60px;
+    height: 60px;
+    border: 1px dashed #94a3b8;
+    border-radius: 50%;
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm 10mm;
+    }
+
+    html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        color: #0f172a !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Hide background app layout & screen elements */
+    :global(.admin-layout),
+    :global(.admin-sidebar),
+    :global(.admin-header),
+    :global(.admin-main-wrapper),
+    :global(.sidebar-overlay),
+    .po-screen-only,
+    .po-print-toolbar,
+    :global(.el-dialog__header),
+    :global(.el-dialog__footer),
+    :global(.dialog-footer),
+    :global(.el-dialog__headerbtn) {
+        display: none !important;
+    }
+
+    /* Keep the dialog overlay visible but transparent & static */
+    :global(.el-overlay),
+    :global(.el-overlay-dialog) {
+        position: static !important;
+        display: block !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: auto !important;
+        inset: auto !important;
+        z-index: auto !important;
+    }
+
+    :global(.el-dialog.po-print-dialog) {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+    }
+
+    :global(.el-dialog.po-print-dialog .el-dialog__body) {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    #purchase-order-printable-doc {
+        position: static !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: #ffffff !important;
+        display: block !important;
+    }
+
+    .po-print-meta-grid,
+    .po-print-table,
+    .po-print-summary-row,
+    .po-print-signatures {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    .po-meta-card-header,
+    .po-status-tag,
+    .po-sale-badge,
+    .po-print-table thead th,
+    .po-totals-table .grand-total-row {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
 }
 </style>

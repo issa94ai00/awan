@@ -68,9 +68,21 @@ function loadImage(src) {
  *   renders a classification heading row.
  * @param {string} filename
  * @param {string} [coverSrc] - optional full-bleed cover page, drawn "contain"-fit.
+ * @param {HTMLElement} [headerEl] - optional header banner element captured on page 1.
+ * @param {boolean} [showPageNumbers] - whether to print page numbers and footer.
+ * @param {string} [footerBrand] - optional footer brand text.
  * @param {(loaded: number, total: number) => void} [onPageProgress]
  */
-export async function renderTableToPdf({ table, groups, filename, coverSrc, onPageProgress }) {
+export async function renderTableToPdf({
+    table,
+    groups,
+    filename,
+    coverSrc,
+    headerEl,
+    showPageNumbers = true,
+    footerBrand,
+    onPageProgress,
+}) {
     const scale = 2;
     const canvas = await html2canvas(table, {
         scale,
@@ -106,64 +118,118 @@ export async function renderTableToPdf({ table, groups, filename, coverSrc, onPa
     const pageWidthPt = pdf.internal.pageSize.getWidth();
     const pageHeightPt = pdf.internal.pageSize.getHeight();
     const contentWidthPt = pageWidthPt - PAGE_MARGIN_PT * 2;
-    const contentHeightPt = pageHeightPt - PAGE_MARGIN_PT * 2;
-    const ptPerCssPx = contentWidthPt / tableRect.width;
-    const maxBodyHeightCss = (contentHeightPt / ptPerCssPx) - theadHeight;
+    const FOOTER_HEIGHT_PT = showPageNumbers ? 22 : 0;
+    const contentHeightPt = pageHeightPt - PAGE_MARGIN_PT * 2 - FOOTER_HEIGHT_PT;
+    const ptPerCssPx = contentWidthPt / (tableRect.width || 960);
+
+    // Optional header banner element capture for the first content page
+    let headerCanvas = null;
+    let headerHeightPt = 0;
+    if (headerEl) {
+        try {
+            headerCanvas = await html2canvas(headerEl, {
+                scale,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+            });
+            const headerRect = headerEl.getBoundingClientRect();
+            const widthForScale = headerRect.width || tableRect.width || 960;
+            headerHeightPt = (headerCanvas.height / scale) * (contentWidthPt / widthForScale);
+        } catch (e) {
+            console.warn('Could not capture header banner for PDF:', e);
+            headerCanvas = null;
+            headerHeightPt = 0;
+        }
+    }
+
+    const maxBodyHeightCssOther = (contentHeightPt / ptPerCssPx) - theadHeight;
+    const maxBodyHeightCssPage1 = headerCanvas
+        ? Math.max(120, ((contentHeightPt - headerHeightPt - 10) / ptPerCssPx) - theadHeight)
+        : maxBodyHeightCssOther;
 
     // Greedily pack whole groups onto each page; a single group taller than
     // one page is left to overflow rather than being split mid-row.
     const pages = [];
     let pageTop = null;
     let pageBottom = null;
+    let isFirst = true;
+
     for (const chunk of chunkRects) {
+        const maxBodyHeight = (isFirst && headerCanvas) ? maxBodyHeightCssPage1 : maxBodyHeightCssOther;
         if (pageTop === null) {
             pageTop = chunk.top;
             pageBottom = chunk.bottom;
             continue;
         }
-        if (chunk.bottom - pageTop > maxBodyHeightCss) {
-            pages.push({ top: pageTop, bottom: pageBottom });
+        if (chunk.bottom - pageTop > maxBodyHeight) {
+            pages.push({ top: pageTop, bottom: pageBottom, hasHeader: isFirst && !!headerCanvas });
+            isFirst = false;
             pageTop = chunk.top;
             pageBottom = chunk.bottom;
         } else {
             pageBottom = chunk.bottom;
         }
     }
-    if (pageTop !== null) pages.push({ top: pageTop, bottom: pageBottom });
-    if (!pages.length) pages.push({ top: 0, bottom: 0 });
+    if (pageTop !== null) {
+        pages.push({ top: pageTop, bottom: pageBottom, hasHeader: isFirst && !!headerCanvas });
+    }
+    if (!pages.length) {
+        pages.push({ top: 0, bottom: 0, hasHeader: !!headerCanvas });
+    }
 
     let pageCount = 0;
     const totalPages = pages.length + (coverSrc ? 1 : 0);
 
+    // Full-bleed Cover Page if provided
     if (coverSrc) {
-        const coverImg = await loadImage(coverSrc);
-        if (coverImg) {
-            const coverCanvas = document.createElement('canvas');
-            coverCanvas.width = coverImg.naturalWidth;
-            coverCanvas.height = coverImg.naturalHeight;
-            coverCanvas.getContext('2d').drawImage(coverImg, 0, 0);
-            const coverData = coverCanvas.toDataURL('image/jpeg', 0.92);
+        try {
+            const coverImg = await loadImage(coverSrc);
+            if (coverImg) {
+                const coverCanvas = document.createElement('canvas');
+                coverCanvas.width = coverImg.naturalWidth;
+                coverCanvas.height = coverImg.naturalHeight;
+                coverCanvas.getContext('2d').drawImage(coverImg, 0, 0);
+                const coverData = coverCanvas.toDataURL('image/jpeg', 0.92);
 
-            const imgRatio = coverImg.naturalWidth / coverImg.naturalHeight;
-            const pageRatio = pageWidthPt / pageHeightPt;
-            let drawW, drawH, offX = 0, offY = 0;
-            if (imgRatio > pageRatio) {
-                drawW = pageWidthPt;
-                drawH = pageWidthPt / imgRatio;
-                offY = (pageHeightPt - drawH) / 2;
-            } else {
-                drawH = pageHeightPt;
-                drawW = pageHeightPt * imgRatio;
-                offX = (pageWidthPt - drawW) / 2;
+                const imgRatio = coverImg.naturalWidth / coverImg.naturalHeight;
+                const pageRatio = pageWidthPt / pageHeightPt;
+                let drawW, drawH, offX = 0, offY = 0;
+                if (imgRatio > pageRatio) {
+                    drawW = pageWidthPt;
+                    drawH = pageWidthPt / imgRatio;
+                    offY = (pageHeightPt - drawH) / 2;
+                } else {
+                    drawH = pageHeightPt;
+                    drawW = pageHeightPt * imgRatio;
+                    offX = (pageWidthPt - drawW) / 2;
+                }
+                pdf.addImage(coverData, 'JPEG', offX, offY, drawW, drawH);
+                pageCount += 1;
+                onPageProgress?.(pageCount, totalPages);
             }
-            pdf.addImage(coverData, 'JPEG', offX, offY, drawW, drawH);
-            pageCount += 1;
-            onPageProgress?.(pageCount, totalPages);
+        } catch (e) {
+            console.warn('Could not render cover image for PDF:', e);
         }
     }
 
     const theadHeightScaled = Math.round(theadHeight * scale);
-    for (const { top, bottom } of pages) {
+    const totalTablePages = pages.length;
+
+    for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+        const { top, bottom, hasHeader } = pages[pIdx];
+        if (pageCount > 0) pdf.addPage();
+        pageCount += 1;
+
+        let curY = PAGE_MARGIN_PT;
+
+        // Draw header on the first table page
+        if (hasHeader && headerCanvas) {
+            const headerData = headerCanvas.toDataURL('image/jpeg', 0.95);
+            pdf.addImage(headerData, 'JPEG', PAGE_MARGIN_PT, curY, contentWidthPt, headerHeightPt);
+            curY += headerHeightPt + 8;
+        }
+
         const bodyHeightScaled = Math.max(0, Math.round((bottom - top) * scale));
         const pageCanvas = document.createElement('canvas');
         pageCanvas.width = canvas.width;
@@ -184,9 +250,25 @@ export async function renderTableToPdf({ table, groups, filename, coverSrc, onPa
 
         const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
         const imgHeightPt = (pageCanvas.height / scale) * ptPerCssPx;
-        if (pageCount > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', PAGE_MARGIN_PT, PAGE_MARGIN_PT, contentWidthPt, imgHeightPt);
-        pageCount += 1;
+        pdf.addImage(imgData, 'JPEG', PAGE_MARGIN_PT, curY, contentWidthPt, imgHeightPt);
+
+        // Footer with divider and page numbers
+        if (showPageNumbers) {
+            const footerY = pageHeightPt - 16;
+            pdf.setDrawColor(226, 232, 240); // #e2e8f0
+            pdf.setLineWidth(0.75);
+            pdf.line(PAGE_MARGIN_PT, footerY - 8, pageWidthPt - PAGE_MARGIN_PT, footerY - 8);
+
+            pdf.setFontSize(8.5);
+            pdf.setTextColor(100, 116, 139); // #64748b
+
+            const pageStr = `${pIdx + 1} / ${totalTablePages}`;
+            pdf.text(pageStr, pageWidthPt - PAGE_MARGIN_PT, footerY, { align: 'right' });
+
+            const brandStr = footerBrand || 'AWAAN AL-TAKADOM - Sanitary Ware & Building Materials';
+            pdf.text(brandStr, PAGE_MARGIN_PT, footerY, { align: 'left' });
+        }
+
         onPageProgress?.(pageCount, totalPages);
         // Yield a frame so the progress overlay actually repaints between pages.
         await new Promise((r) => setTimeout(r, 0));
