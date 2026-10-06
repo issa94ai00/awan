@@ -35,6 +35,7 @@ class Expense extends Model
 
     const STATUS_PENDING = 'pending';
     const STATUS_APPROVED = 'approved';
+    const STATUS_PAID = 'paid';
     const STATUS_REJECTED = 'rejected';
 
     const CATEGORY_SHIPPING = 'shipping';
@@ -51,6 +52,7 @@ class Expense extends Model
     public static function getStatusOptions(): array
     {
         return [
+            self::STATUS_PAID => 'مدفوع',
             self::STATUS_PENDING => 'معلق',
             self::STATUS_APPROVED => 'موافق عليه',
             self::STATUS_REJECTED => 'مرفوض',

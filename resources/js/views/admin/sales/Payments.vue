@@ -1,21 +1,30 @@
 <template>
     <div class="payments-page">
         <AdminPageHeader
-            icon="fas fa-money-bill-transfer"
-            :title="$t('payments')"
-            :subtitle="$t('pay_subtitle')"
+            :icon="tab === 'expenses' ? 'fas fa-receipt' : 'fas fa-money-bill-transfer'"
+            :title="tab === 'expenses' ? $t('pay_expenses_title') : $t('payments')"
+            :subtitle="tab === 'expenses' ? $t('pay_expenses_subtitle') : $t('pay_subtitle')"
         >
             <template #actions>
                 <el-tooltip :content="$t('refresh')" placement="bottom" :enterable="false">
-                    <el-button :icon="Refresh" :loading="store.loading" :aria-label="$t('refresh')" @click="reload" />
+                    <el-button
+                        :icon="Refresh"
+                        :loading="store.loading || expensesLoading"
+                        :aria-label="$t('refresh')"
+                        @click="reload"
+                    />
                 </el-tooltip>
-                <el-button v-if="tab === 'expenses'" :icon="Plus" @click="openExpenseDialog">{{ $t('add_expense') }}</el-button>
-                <el-button type="primary" :icon="Plus" @click="paymentDialogVisible = true">{{ $t('record_payment') }}</el-button>
+                <el-button v-if="tab === 'expenses'" type="primary" :icon="Plus" @click="openExpenseDialog()">
+                    {{ $t('add_expense') }}
+                </el-button>
+                <el-button v-else type="primary" :icon="Plus" @click="paymentDialogVisible = true">
+                    {{ $t('record_payment') }}
+                </el-button>
             </template>
         </AdminPageHeader>
 
-        <!-- ── Money in, over the search and dates ── -->
-        <AdminStatGrid :min="200">
+        <!-- ── Payments Stat Cards ── -->
+        <AdminStatGrid v-if="tab === 'payments'" :min="200">
             <el-card shadow="hover" class="stat-card">
                 <div class="stat-inner">
                     <div class="stat-icon green"><i class="fas fa-sack-dollar"></i></div>
@@ -77,9 +86,75 @@
             </el-card>
         </AdminStatGrid>
 
-        <!-- Cash by currency — only worth a panel once more than one is held.
-             Each is its own drawer, never blended into one converted figure. -->
-        <section v-if="showWallets" class="wallets">
+        <!-- ── Expenses Stat Cards ── -->
+        <AdminStatGrid v-else :min="200">
+            <el-card shadow="hover" class="stat-card">
+                <div class="stat-inner">
+                    <div class="stat-icon red"><i class="fas fa-receipt"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatCurrency(expensesSummary.total) }}</h3>
+                        <p>{{ $t('pay_expenses_total', { amount: '' }).replace(': ', '').trim() }} · {{ expensePeriodLabel }}</p>
+                        <div v-if="expenseCategorySplit.length" class="method-bar" :aria-label="expenseCategorySplitText">
+                            <span
+                                v-for="part in expenseCategorySplit"
+                                :key="part.category"
+                                class="method-bar-part"
+                                :class="`cat-${part.category}`"
+                                :style="{ flexGrow: part.share }"
+                                :title="`${expenseCategoryLabel(part.category)}: ${formatCurrency(part.total)}`"
+                            />
+                        </div>
+                        <span class="stat-sub">{{ expenseCategorySplitText || $t('pay_expenses_count', { count: expensesSummary.count || 0 }) }}</span>
+                    </div>
+                </div>
+            </el-card>
+
+            <el-card shadow="hover" class="stat-card">
+                <div class="stat-inner">
+                    <div class="stat-icon blue"><i class="fas fa-calendar-day"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatCurrency(expensesSummary.today) }}</h3>
+                        <p>{{ $t('pay_expenses_today') }}</p>
+                        <span class="stat-sub">{{ $t('pay_expenses_count', { count: expensesSummary.today_count || 0 }) }}</span>
+                    </div>
+                </div>
+            </el-card>
+
+            <el-card
+                shadow="hover"
+                class="stat-card is-clickable"
+                :class="{ 'is-active': expenseFilters.status === 'paid' }"
+                @click="setExpenseStatus('paid')"
+            >
+                <div class="stat-inner">
+                    <div class="stat-icon green"><i class="fas fa-circle-check"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatCurrency(expensesSummary.by_status?.paid?.total || 0) }}</h3>
+                        <p>{{ $t('pay_expenses_paid') }}</p>
+                        <span class="stat-sub">{{ $t('pay_expenses_count', { count: expensesSummary.by_status?.paid?.count || 0 }) }}</span>
+                    </div>
+                </div>
+            </el-card>
+
+            <el-card
+                shadow="hover"
+                class="stat-card is-clickable"
+                :class="{ 'is-active': expenseFilters.status === 'pending' }"
+                @click="setExpenseStatus('pending')"
+            >
+                <div class="stat-inner">
+                    <div class="stat-icon amber"><i class="fas fa-clock"></i></div>
+                    <div class="stat-details">
+                        <h3>{{ formatCurrency(expensesSummary.by_status?.pending?.total || 0) }}</h3>
+                        <p>{{ $t('pay_expenses_pending') }}</p>
+                        <span class="stat-sub">{{ $t('pay_expenses_count', { count: expensesSummary.by_status?.pending?.count || 0 }) }}</span>
+                    </div>
+                </div>
+            </el-card>
+        </AdminStatGrid>
+
+        <!-- Cash by currency — only shown when on payments tab and multiple held -->
+        <section v-if="tab === 'payments' && showWallets" class="wallets">
             <div v-for="wallet in store.wallets" :key="wallet.currency" class="wallet" :class="{ 'is-base': wallet.is_base }">
                 <span class="wallet-code">{{ wallet.currency }}</span>
                 <strong class="wallet-amount">{{ formatWalletTotal(wallet) }}</strong>
@@ -283,49 +358,239 @@
         <section v-show="tab === 'expenses'" class="panel-card">
             <div class="filters">
                 <el-input
-                    v-model="expenseSearch"
+                    v-model="expenseFilters.search"
                     class="filter-search"
                     :placeholder="$t('pay_expense_search')"
                     :prefix-icon="Search"
                     clearable
+                    @input="onExpenseSearchInput"
                 />
-                <span class="cell-secondary">{{ $t('pay_expenses_total', { amount: formatCurrency(expenseTotal) }) }}</span>
+                <el-select
+                    v-model="expenseFilters.category"
+                    class="filter-select"
+                    :placeholder="$t('pay_all_categories')"
+                    clearable
+                    @change="applyExpenseFilters"
+                >
+                    <el-option value="shipping" :label="$t('shipping')" />
+                    <el-option value="packaging" :label="$t('packaging')" />
+                    <el-option value="handling" :label="$t('process')" />
+                    <el-option value="other" :label="$t('subject_other')" />
+                </el-select>
+                <el-select
+                    v-model="expenseFilters.status"
+                    class="filter-select"
+                    :placeholder="$t('pay_all_statuses')"
+                    clearable
+                    @change="applyExpenseFilters"
+                >
+                    <el-option value="paid" :label="$t('expense_paid')" />
+                    <el-option value="pending" :label="$t('expense_pending')" />
+                    <el-option value="approved" :label="$t('pay_expense_status_approved')" />
+                    <el-option value="rejected" :label="$t('pay_expense_status_rejected')" />
+                </el-select>
+                <el-date-picker
+                    v-model="expenseFilters.range"
+                    type="daterange"
+                    class="filter-dates"
+                    value-format="YYYY-MM-DD"
+                    format="YYYY-MM-DD"
+                    unlink-panels
+                    :start-placeholder="$t('pret_from')"
+                    :end-placeholder="$t('pret_to')"
+                    :shortcuts="dateShortcuts"
+                    @change="applyExpenseFilters"
+                />
+                <el-button v-if="activeExpenseFilterCount" text type="primary" :icon="RefreshLeft" @click="resetExpenseFilters">
+                    {{ $t('prod_admin_clear_filters', { count: activeExpenseFilterCount }) }}
+                </el-button>
+                <div class="expenses-stat-badge">
+                    <span>{{ $t('pay_expenses_total', { amount: formatCurrency(expensesSummary.total) }) }}</span>
+                </div>
             </div>
 
-            <el-alert v-if="expensesError" type="error" show-icon :closable="false" :title="expensesError" />
-            <el-table v-else v-loading="expensesLoading" :data="filteredExpenses" style="width: 100%">
+            <el-alert v-if="expensesError && !expenses.length" type="error" show-icon :closable="false" :title="expensesError">
+                <template #default>
+                    <el-button type="primary" size="small" :icon="Refresh" style="margin-top: 0.5rem" @click="fetchExpenses">
+                        {{ $t('cat_admin_retry') }}
+                    </el-button>
+                </template>
+            </el-alert>
+
+            <el-table
+                v-else
+                v-loading="expensesLoading"
+                :data="expenses"
+                row-key="id"
+                style="width: 100%"
+                class="expenses-table"
+                :default-sort="{ prop: expenseSort.prop, order: expenseSort.order }"
+                @sort-change="onExpenseSortChange"
+            >
                 <template #empty>
-                    <el-empty v-if="!expensesLoading" :description="$t('there_are_no_expenses_matching')" :image-size="80">
-                        <el-button :icon="Plus" @click="openExpenseDialog">{{ $t('add_expense') }}</el-button>
+                    <el-empty v-if="!expensesLoading && activeExpenseFilterCount" :description="$t('there_are_no_expenses_matching')" :image-size="90">
+                        <el-button @click="resetExpenseFilters">{{ $t('cat_admin_clear_filters') }}</el-button>
+                    </el-empty>
+                    <el-empty v-else-if="!expensesLoading" :description="$t('there_are_no_expenses_matching')" :image-size="90">
+                        <el-button type="primary" :icon="Plus" @click="openExpenseDialog()">{{ $t('add_expense') }}</el-button>
                     </el-empty>
                     <span v-else />
                 </template>
-                <el-table-column :label="$t('pay_expense')" min-width="220">
+
+                <el-table-column type="expand" width="36">
+                    <template #default="{ row }">
+                        <dl class="row-details">
+                            <div>
+                                <dt>{{ $t('pret_recorded_by') }}</dt>
+                                <dd>{{ row.creator?.name || '—' }}</dd>
+                            </div>
+                            <div>
+                                <dt>{{ $t('spay_recorded_at') }}</dt>
+                                <dd>{{ formatDateTime(row.created_at) }}</dd>
+                            </div>
+                            <div>
+                                <dt>{{ $t('pay_expense_accounting_effect') }}</dt>
+                                <dd>
+                                    <span v-if="row.status === 'paid'" class="effect-tag success">
+                                        <i class="fas fa-check-circle"></i> {{ $t('pay_expense_paid_desc') }}
+                                    </span>
+                                    <span v-else-if="row.status === 'pending'" class="effect-tag warning">
+                                        <i class="fas fa-clock"></i> {{ $t('pay_expense_pending_desc') }}
+                                    </span>
+                                    <span v-else-if="row.status === 'approved'" class="effect-tag primary">
+                                        <i class="fas fa-thumbs-up"></i> {{ $t('pay_expense_approved_desc') }}
+                                    </span>
+                                    <span v-else class="effect-tag danger">
+                                        <i class="fas fa-ban"></i> {{ $t('pay_expense_rejected_desc') }}
+                                    </span>
+                                </dd>
+                            </div>
+                            <div v-if="row.customer">
+                                <dt>{{ $t('client') }}</dt>
+                                <dd>{{ row.customer.name }} {{ row.customer.phone ? `(${row.customer.phone})` : '' }}</dd>
+                            </div>
+                            <div v-if="row.invoice">
+                                <dt>{{ $t('invoice') }}</dt>
+                                <dd>
+                                    <button type="button" class="link-button" @click="goToInvoice(row.invoice)">
+                                        {{ row.invoice.invoice_number }} ({{ formatCurrency(row.invoice.total) }})
+                                    </button>
+                                </dd>
+                            </div>
+                            <div class="wide">
+                                <dt>{{ $t('notes') }}</dt>
+                                <dd>{{ row.notes || '—' }}</dd>
+                            </div>
+                        </dl>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="expense_date" :label="$t('expense_number')" min-width="150" sortable="custom">
                     <template #default="{ row }">
                         <div class="cell-stack">
-                            <span class="strong">{{ row.description }}</span>
-                            <span class="cell-secondary"><span class="mono" dir="ltr">{{ row.expense_number }}</span> · {{ formatDate(row.expense_date) }}</span>
+                            <span class="mono" dir="ltr">{{ row.expense_number || '—' }}</span>
+                            <span class="cell-secondary">{{ formatDate(row.expense_date || row.created_at) }}</span>
                         </div>
                     </template>
                 </el-table-column>
-                <el-table-column :label="$t('category')" min-width="120">
-                    <template #default="{ row }">{{ expenseCategoryLabel(row.category) }}</template>
-                </el-table-column>
-                <el-table-column :label="$t('invoice')" min-width="140">
+
+                <el-table-column :label="$t('description')" min-width="210">
                     <template #default="{ row }">
-                        <button v-if="row.invoice" type="button" class="link-button" @click="goToInvoice(row.invoice)">
-                            <span dir="ltr">{{ row.invoice.invoice_number }}</span>
-                        </button>
-                        <span v-else class="cell-secondary">—</span>
+                        <div class="cell-stack">
+                            <strong class="strong">{{ row.description }}</strong>
+                            <span v-if="row.notes" class="cell-secondary text-truncate" :title="row.notes">{{ row.notes }}</span>
+                        </div>
                     </template>
                 </el-table-column>
-                <el-table-column :label="$t('amount')" min-width="120" align="right">
-                    <template #default="{ row }"><strong class="amount out">{{ formatCurrency(row.amount) }}</strong></template>
+
+                <el-table-column :label="$t('category')" min-width="130">
+                    <template #default="{ row }">
+                        <span class="expense-cat-tag" :class="`cat-${row.category}`">
+                            <i :class="categoryIcon(row.category)"></i>
+                            {{ expenseCategoryLabel(row.category) }}
+                        </span>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('spay_applied_to')" min-width="150">
+                    <template #default="{ row }">
+                        <div class="cell-stack">
+                            <button v-if="row.invoice" type="button" class="link-button" @click="goToInvoice(row.invoice)">
+                                <i class="fas fa-file-invoice"></i> <span dir="ltr">{{ row.invoice.invoice_number }}</span>
+                            </button>
+                            <span v-else-if="row.customer" class="cell-secondary">
+                                <i class="fas fa-user"></i> {{ row.customer.name }}
+                            </span>
+                            <span v-else class="cell-secondary">—</span>
+                        </div>
+                    </template>
+                </el-table-column>
+
+                <el-table-column :label="$t('expense_status')" min-width="120">
+                    <template #default="{ row }">
+                        <el-tag :type="statusTagType(row.status)" size="small" class="expense-status-tag" round>
+                            <i :class="statusIcon(row.status)"></i>
+                            {{ expenseStatusLabel(row.status) }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="amount" :label="$t('amount')" min-width="130" align="right" sortable="custom">
+                    <template #default="{ row }">
+                        <strong class="amount out">
+                            − {{ formatCurrency(row.amount) }}
+                        </strong>
+                    </template>
+                </el-table-column>
+
+                <el-table-column width="120" align="center">
+                    <template #default="{ row }">
+                        <div class="actions-row">
+                            <el-tooltip v-if="row.status === 'pending'" :content="$t('pay_expense_mark_paid')" placement="top" :enterable="false">
+                                <el-button size="small" circle text type="success" :aria-label="$t('pay_expense_mark_paid')" @click="markExpenseAsPaid(row)">
+                                    <i class="fas fa-check"></i>
+                                </el-button>
+                            </el-tooltip>
+                            <el-tooltip :content="$t('edit')" placement="top" :enterable="false">
+                                <el-button size="small" circle text :aria-label="$t('edit')" @click="openExpenseDialog(row)">
+                                    <i class="fas fa-pen"></i>
+                                </el-button>
+                            </el-tooltip>
+                            <el-tooltip :content="$t('delete')" placement="top" :enterable="false">
+                                <el-button size="small" circle text type="danger" :aria-label="$t('delete')" @click="deleteExpense(row)">
+                                    <i class="fas fa-trash-can"></i>
+                                </el-button>
+                            </el-tooltip>
+                        </div>
+                    </template>
                 </el-table-column>
             </el-table>
+
+            <div v-if="expensesTotalCount > 0" class="pagination-row">
+                <span class="cell-secondary">
+                    {{ $t('prod_admin_range', { from: expenseRangeFrom, to: expenseRangeTo, total: expensesTotalCount }) }}
+                </span>
+                <el-pagination
+                    v-model:current-page="expenseCurrentPage"
+                    v-model:page-size="expensePageSize"
+                    :total="expensesTotalCount"
+                    :page-sizes="[10, 20, 50, 100]"
+                    :layout="isNarrow ? 'prev, pager, next' : 'sizes, prev, pager, next'"
+                    background
+                    @size-change="onExpensePageChange(true)"
+                    @current-change="onExpensePageChange(false)"
+                />
+            </div>
         </section>
 
+        <!-- Dialogs -->
         <QuickPaymentDialog v-model="paymentDialogVisible" @saved="onPaymentSaved" />
+
+        <ExpenseDialog
+            v-model="expenseDialogVisible"
+            :expense="editingExpense"
+            @saved="onExpenseSaved"
+        />
 
         <!-- Correct a payment: what it was, never who or which invoice -->
         <el-dialog v-model="editVisible" :title="$t('pay_edit_title', { number: editing?.payment_number || '' })" :width="isNarrow ? '94%' : '460px'" :close-on-click-modal="false">
@@ -365,37 +630,6 @@
                 <el-button type="primary" :loading="store.saving" :disabled="!!editBlocker" @click="saveEdit">{{ $t('save_changes') }}</el-button>
             </template>
         </el-dialog>
-
-        <!-- Expense -->
-        <el-dialog v-model="showExpenseDialog" :title="$t('add_expense')" :width="isNarrow ? '94%' : '480px'" :close-on-click-modal="false">
-            <el-form :model="expenseForm" label-position="top" @submit.prevent>
-                <el-form-item :label="$t('description')" required>
-                    <el-input v-model="expenseForm.description" maxlength="255" />
-                </el-form-item>
-                <div class="edit-row">
-                    <el-form-item :label="$t('amount')" required>
-                        <el-input-number v-model="expenseForm.amount" :min="0" :precision="2" :controls="false" style="width: 100%" />
-                    </el-form-item>
-                    <el-form-item :label="$t('date')">
-                        <el-date-picker v-model="expenseForm.expense_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
-                    </el-form-item>
-                </div>
-                <el-form-item :label="$t('category')">
-                    <el-radio-group v-model="expenseForm.category">
-                        <el-radio-button v-for="category in EXPENSE_CATEGORIES" :key="category" :value="category">
-                            {{ expenseCategoryLabel(category) }}
-                        </el-radio-button>
-                    </el-radio-group>
-                </el-form-item>
-                <el-form-item :label="$t('notes')">
-                    <el-input v-model="expenseForm.notes" type="textarea" :rows="2" />
-                </el-form-item>
-            </el-form>
-            <template #footer>
-                <el-button @click="showExpenseDialog = false">{{ $t('cancel') }}</el-button>
-                <el-button type="primary" :loading="savingExpense" @click="addExpense">{{ $t('save') }}</el-button>
-            </template>
-        </el-dialog>
     </div>
 </template>
 
@@ -403,11 +637,12 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Refresh, RefreshLeft, Search } from '@element-plus/icons-vue';
 import { usePaymentsStore } from '@/stores/payments';
+import { expensesApi } from '@/api/expenses';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
+import ExpenseDialog from '@/components/admin/sales/ExpenseDialog.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import {
@@ -421,7 +656,6 @@ import {
     paymentMethodLabel,
 } from '@/utils/sales';
 import { formatMoney } from '@/utils/currency';
-import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -488,48 +722,86 @@ const onTabChange = (name) => {
     if (name === 'expenses' && !expensesLoaded) fetchExpenses();
 };
 
-// ── Filters, sorting and paging, kept in the URL ─────────────────────────
+// ── Filters, sorting and paging for Payments ──────────────────────────────
 const blankFilters = () => ({ search: '', method: '', kind: '', range: null, customer: '', customerName: '' });
 const filters = reactive(blankFilters());
 const sort = reactive({ prop: 'payment_date', order: 'descending' });
 const currentPage = ref(1);
 const pageSize = ref(20);
 
+// ── Filters, sorting and paging for Expenses ──────────────────────────────
+const blankExpenseFilters = () => ({ search: '', category: '', status: '', range: null });
+const expenseFilters = reactive(blankExpenseFilters());
+const expenseSort = reactive({ prop: 'expense_date', order: 'descending' });
+const expenseCurrentPage = ref(1);
+const expensePageSize = ref(20);
+const expensesTotalCount = ref(0);
+
 const readQuery = () => {
     const q = route.query;
-    Object.assign(filters, {
-        search: q.search ? String(q.search) : '',
-        method: PAYMENT_METHODS.includes(q.method) ? q.method : '',
-        kind: ['invoice', 'on_account', 'refund'].includes(q.kind) ? q.kind : '',
-        range: q.from && q.to ? [String(q.from), String(q.to)] : null,
-        customer: /^\d+$/.test(String(q.customer || '')) ? String(q.customer) : '',
-        customerName: q.customer_name ? String(q.customer_name) : '',
-    });
     tab.value = q.tab === 'expenses' ? 'expenses' : 'payments';
-    sort.prop = q.sort === 'amount' ? 'amount' : 'payment_date';
-    sort.order = q.direction === 'asc' ? 'ascending' : 'descending';
-    currentPage.value = Math.max(1, Number(q.page) || 1);
-    pageSize.value = [10, 20, 50, 100].includes(Number(q.per_page)) ? Number(q.per_page) : 20;
+
+    if (tab.value === 'expenses') {
+        Object.assign(expenseFilters, {
+            search: q.search ? String(q.search) : '',
+            category: ['shipping', 'packaging', 'handling', 'other'].includes(q.category) ? q.category : '',
+            status: ['paid', 'pending', 'approved', 'rejected'].includes(q.status) ? q.status : '',
+            range: q.from && q.to ? [String(q.from), String(q.to)] : null,
+        });
+        expenseSort.prop = q.sort === 'amount' ? 'amount' : (q.sort === 'expense_number' ? 'expense_number' : 'expense_date');
+        expenseSort.order = q.direction === 'asc' ? 'ascending' : 'descending';
+        expenseCurrentPage.value = Math.max(1, Number(q.page) || 1);
+        expensePageSize.value = [10, 20, 50, 100].includes(Number(q.per_page)) ? Number(q.per_page) : 20;
+    } else {
+        Object.assign(filters, {
+            search: q.search ? String(q.search) : '',
+            method: PAYMENT_METHODS.includes(q.method) ? q.method : '',
+            kind: ['invoice', 'on_account', 'refund'].includes(q.kind) ? q.kind : '',
+            range: q.from && q.to ? [String(q.from), String(q.to)] : null,
+            customer: /^\d+$/.test(String(q.customer || '')) ? String(q.customer) : '',
+            customerName: q.customer_name ? String(q.customer_name) : '',
+        });
+        sort.prop = q.sort === 'amount' ? 'amount' : 'payment_date';
+        sort.order = q.direction === 'asc' ? 'ascending' : 'descending';
+        currentPage.value = Math.max(1, Number(q.page) || 1);
+        pageSize.value = [10, 20, 50, 100].includes(Number(q.per_page)) ? Number(q.per_page) : 20;
+    }
 };
 
 const queryKey = (query) => Object.entries(query).map(([k, v]) => `${k}=${v}`).sort().join('&');
 let lastQueryKey = null;
 
 const writeQuery = () => {
-    const query = {
-        tab: tab.value !== 'payments' ? tab.value : undefined,
-        search: filters.search || undefined,
-        method: filters.method || undefined,
-        kind: filters.kind || undefined,
-        from: filters.range?.[0] || undefined,
-        to: filters.range?.[1] || undefined,
-        customer: filters.customer || undefined,
-        customer_name: filters.customer ? filters.customerName || undefined : undefined,
-        sort: sort.prop !== 'payment_date' ? sort.prop : undefined,
-        direction: sort.order === 'ascending' ? 'asc' : undefined,
-        page: currentPage.value > 1 ? currentPage.value : undefined,
-        per_page: pageSize.value !== 20 ? pageSize.value : undefined,
-    };
+    let query;
+    if (tab.value === 'expenses') {
+        query = {
+            tab: 'expenses',
+            search: expenseFilters.search || undefined,
+            category: expenseFilters.category || undefined,
+            status: expenseFilters.status || undefined,
+            from: expenseFilters.range?.[0] || undefined,
+            to: expenseFilters.range?.[1] || undefined,
+            sort: expenseSort.prop !== 'expense_date' ? expenseSort.prop : undefined,
+            direction: expenseSort.order === 'ascending' ? 'asc' : undefined,
+            page: expenseCurrentPage.value > 1 ? expenseCurrentPage.value : undefined,
+            per_page: expensePageSize.value !== 20 ? expensePageSize.value : undefined,
+        };
+    } else {
+        query = {
+            tab: undefined,
+            search: filters.search || undefined,
+            method: filters.method || undefined,
+            kind: filters.kind || undefined,
+            from: filters.range?.[0] || undefined,
+            to: filters.range?.[1] || undefined,
+            customer: filters.customer || undefined,
+            customer_name: filters.customer ? filters.customerName || undefined : undefined,
+            sort: sort.prop !== 'payment_date' ? sort.prop : undefined,
+            direction: sort.order === 'ascending' ? 'asc' : undefined,
+            page: currentPage.value > 1 ? currentPage.value : undefined,
+            per_page: pageSize.value !== 20 ? pageSize.value : undefined,
+        };
+    }
     Object.keys(query).forEach((k) => query[k] === undefined && delete query[k]);
     lastQueryKey = queryKey(query);
     router.replace({ query });
@@ -547,16 +819,18 @@ const fetchPayments = () => store.fetchPayments({
     date_from: filters.range?.[0] || undefined,
     date_to: filters.range?.[1] || undefined,
     customer_id: filters.customer || undefined,
-    // The server clock is UTC; "today" on the cards is the day here.
     today: localIsoDate(),
     sort: sort.prop === 'amount' ? 'amount' : 'date',
     direction: sort.order === 'ascending' ? 'asc' : 'desc',
 }).catch(() => {});
 
 const reload = () => {
-    fetchPayments();
-    store.fetchCurrencyWallets().catch(() => {});
-    if (tab.value === 'expenses') fetchExpenses();
+    if (tab.value === 'expenses') {
+        fetchExpenses();
+    } else {
+        fetchPayments();
+        store.fetchCurrencyWallets().catch(() => {});
+    }
 };
 
 const applyFilters = () => {
@@ -626,7 +900,7 @@ const dateShortcuts = computed(() => {
     ];
 });
 
-// ── Recording, correcting and reversing ──────────────────────────────────
+// ── Recording, correcting and reversing Payments ──────────────────────────
 const paymentDialogVisible = ref(false);
 
 const onPaymentSaved = () => {
@@ -654,7 +928,6 @@ const openEdit = (payment) => {
 
 const editAmountChanged = computed(() => editing.value && Math.abs(Number(editForm.amount) - Number(editing.value.amount)) > 0.009);
 
-// What the invoice leaves room for: its balance plus what this payment already covers.
 const editMax = computed(() => {
     if (!editing.value?.invoice) return Infinity;
     return invoiceOwed(editing.value) + Number(editing.value.amount);
@@ -701,34 +974,123 @@ const reversePayment = async (payment) => {
     }
 };
 
-// ── Expenses ─────────────────────────────────────────────────────────────
+// ── Expenses Logic & State ────────────────────────────────────────────────
 const EXPENSE_CATEGORIES = ['shipping', 'packaging', 'handling', 'other'];
-const EXPENSE_CATEGORY_LABELS = { shipping: t('shipping'), packaging: t('packaging'), handling: t('process'), other: t('subject_other') };
-const expenseCategoryLabel = (category) => EXPENSE_CATEGORY_LABELS[normalizeStatus(category)] || category || '—';
+const EXPENSE_CATEGORY_LABELS = computed(() => ({
+    shipping: t('shipping'),
+    packaging: t('packaging'),
+    handling: t('process'),
+    other: t('subject_other'),
+}));
+const expenseCategoryLabel = (category) => EXPENSE_CATEGORY_LABELS.value[normalizeStatus(category)] || category || '—';
+
+const CATEGORY_ICONS = {
+    shipping: 'fas fa-truck',
+    packaging: 'fas fa-box-open',
+    handling: 'fas fa-dolly',
+    other: 'fas fa-receipt',
+};
+const categoryIcon = (category) => CATEGORY_ICONS[normalizeStatus(category)] || 'fas fa-tag';
+
+const EXPENSE_STATUS_LABELS = computed(() => ({
+    paid: t('expense_paid'),
+    pending: t('expense_pending'),
+    approved: t('pay_expense_status_approved'),
+    rejected: t('pay_expense_status_rejected'),
+}));
+const expenseStatusLabel = (status) => EXPENSE_STATUS_LABELS.value[normalizeStatus(status)] || status || '—';
+
+const statusTagType = (status) => {
+    switch (normalizeStatus(status)) {
+        case 'paid': return 'success';
+        case 'pending': return 'warning';
+        case 'approved': return 'primary';
+        case 'rejected': return 'danger';
+        default: return 'info';
+    }
+};
+
+const statusIcon = (status) => {
+    switch (normalizeStatus(status)) {
+        case 'paid': return 'fas fa-check';
+        case 'pending': return 'fas fa-clock';
+        case 'approved': return 'fas fa-thumbs-up';
+        case 'rejected': return 'fas fa-ban';
+        default: return 'fas fa-circle-question';
+    }
+};
 
 const expenses = ref([]);
 const expensesLoading = ref(false);
 const expensesError = ref('');
-const expenseSearch = ref('');
-const savingExpense = ref(false);
-const showExpenseDialog = ref(false);
-const expenseForm = reactive({ description: '', amount: 0, category: 'other', expense_date: localIsoDate(), notes: '' });
-
-// The expenses endpoint returns every row, so filtering here does see them all.
-const filteredExpenses = computed(() => {
-    const q = expenseSearch.value.trim();
-    if (!q) return expenses.value;
-    return expenses.value.filter((e) => matchesSearch([e.expense_number, e.description, expenseCategoryLabel(e.category), e.invoice?.invoice_number], q));
+const expensesSummary = ref({
+    total: 0,
+    count: 0,
+    today: 0,
+    today_count: 0,
+    this_month: 0,
+    this_month_count: 0,
+    by_category: {},
+    by_status: {},
 });
-const expenseTotal = computed(() => filteredExpenses.value.reduce((sum, e) => sum + (Number(e.amount) || 0), 0));
+
+const expenseCategorySplit = computed(() => {
+    const byCat = expensesSummary.value.by_category || {};
+    const total = expensesSummary.value.total || 0;
+    if (!total) return [];
+    return Object.entries(byCat)
+        .map(([category, data]) => ({
+            category,
+            total: Number(data.total || 0),
+            share: Number(data.share || (total > 0 ? Number(data.total || 0) / total : 0)),
+        }))
+        .filter((p) => p.total > 0)
+        .sort((a, b) => b.total - a.total);
+});
+
+const expenseCategorySplitText = computed(() => (
+    expenseCategorySplit.value.length > 1
+        ? expenseCategorySplit.value.map((p) => `${expenseCategoryLabel(p.category)} ${Math.round(p.share * 100)}%`).join(' · ')
+        : ''
+));
+
+const expensePeriodLabel = computed(() => {
+    if (!expenseFilters.range?.length) return t('spay_all_time');
+    const [from, to] = expenseFilters.range;
+    return `${formatDate(from)} – ${formatDate(to)}`;
+});
+
+const activeExpenseFilterCount = computed(() =>
+    [expenseFilters.search, expenseFilters.category, expenseFilters.status, expenseFilters.range?.length ? '1' : ''].filter(Boolean).length
+);
 
 const fetchExpenses = async () => {
     expensesLoading.value = true;
     expensesError.value = '';
     try {
-        const response = await axios.get('/api/v1/expenses');
-        const payload = response.data?.data;
-        expenses.value = Array.isArray(payload) ? payload : (payload?.expenses || []);
+        const res = await expensesApi.getAll({
+            with_summary: 1,
+            page: expenseCurrentPage.value,
+            per_page: expensePageSize.value,
+            search: expenseFilters.search.trim() || undefined,
+            category: expenseFilters.category || undefined,
+            status: expenseFilters.status || undefined,
+            date_from: expenseFilters.range?.[0] || undefined,
+            date_to: expenseFilters.range?.[1] || undefined,
+            today: localIsoDate(),
+            sort: expenseSort.prop === 'amount' ? 'amount' : (expenseSort.prop === 'expense_number' ? 'expense_number' : 'date'),
+            direction: expenseSort.order === 'ascending' ? 'asc' : 'desc',
+        });
+        const payload = res.data?.data;
+        if (payload) {
+            expenses.value = payload.expenses || (Array.isArray(payload) ? payload : []);
+            if (payload.summary) expensesSummary.value = payload.summary;
+            if (payload.pagination) {
+                expensesTotalCount.value = payload.pagination.total;
+            } else {
+                expensesTotalCount.value = expenses.value.length;
+            }
+        }
         expensesLoaded = true;
     } catch (error) {
         expensesError.value = apiErrorMessage(error, t('failed_to_load_expenses'));
@@ -737,34 +1099,97 @@ const fetchExpenses = async () => {
     }
 };
 
-const openExpenseDialog = () => {
-    // The local day: toISOString() gave yesterday before 3am in Damascus.
-    Object.assign(expenseForm, { description: '', amount: 0, category: 'other', expense_date: localIsoDate(), notes: '' });
-    showExpenseDialog.value = true;
+let expenseSearchTimer = null;
+const onExpenseSearchInput = (text) => {
+    clearTimeout(expenseSearchTimer);
+    if (!text) applyExpenseFilters();
+    else expenseSearchTimer = setTimeout(applyExpenseFilters, 400);
 };
 
-const addExpense = async () => {
-    if (!expenseForm.description.trim()) {
-        ElMessage.warning(t('enter_expense_description'));
-        return;
-    }
-    if (!expenseForm.amount || expenseForm.amount <= 0) {
-        ElMessage.warning(t('enter_amount_above_zero'));
+const applyExpenseFilters = () => {
+    clearTimeout(expenseSearchTimer);
+    expenseCurrentPage.value = 1;
+    writeQuery();
+    fetchExpenses();
+};
+
+const resetExpenseFilters = () => {
+    Object.assign(expenseFilters, blankExpenseFilters());
+    applyExpenseFilters();
+};
+
+const setExpenseStatus = (status) => {
+    expenseFilters.status = expenseFilters.status === status ? '' : status;
+    applyExpenseFilters();
+};
+
+const onExpenseSortChange = ({ prop, order }) => {
+    expenseSort.prop = order ? prop : 'expense_date';
+    expenseSort.order = order || 'descending';
+    expenseCurrentPage.value = 1;
+    writeQuery();
+    fetchExpenses();
+};
+
+const onExpensePageChange = (sizeChanged) => {
+    if (sizeChanged) expenseCurrentPage.value = 1;
+    writeQuery();
+    fetchExpenses();
+};
+
+const expenseRangeFrom = computed(() => (expensesTotalCount.value ? (expenseCurrentPage.value - 1) * expensePageSize.value + 1 : 0));
+const expenseRangeTo = computed(() => Math.min(expenseCurrentPage.value * expensePageSize.value, expensesTotalCount.value));
+
+// Expense Dialog & Actions
+const expenseDialogVisible = ref(false);
+const editingExpense = ref(null);
+
+const openExpenseDialog = (expense = null) => {
+    editingExpense.value = expense;
+    expenseDialogVisible.value = true;
+};
+
+const onExpenseSaved = () => {
+    fetchExpenses();
+};
+
+const markExpenseAsPaid = async (row) => {
+    try {
+        await ElMessageBox.confirm(
+            t('pay_expense_mark_paid_confirm', { number: row.expense_number || `#${row.id}`, amount: formatCurrency(row.amount) }),
+            t('pay_expense_mark_paid'),
+            { type: 'info', confirmButtonText: t('pay_expense_mark_paid'), cancelButtonText: t('cancel') }
+        );
+    } catch {
         return;
     }
 
-    savingExpense.value = true;
     try {
-        await axios.post('/api/v1/expenses', { ...expenseForm });
-        showExpenseDialog.value = false;
-        ElMessage.success(t('expense_added'));
-        tab.value = 'expenses';
-        writeQuery();
-        await fetchExpenses();
+        await expensesApi.update(row.id, { status: 'paid' });
+        ElMessage.success(t('pay_expense_saved'));
+        fetchExpenses();
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, t('failed_to_add_expense')));
-    } finally {
-        savingExpense.value = false;
+        ElMessage.error(apiErrorMessage(error, t('pay_save_failed')));
+    }
+};
+
+const deleteExpense = async (row) => {
+    try {
+        await ElMessageBox.confirm(
+            t('pay_expense_reverse_confirm', { number: row.expense_number || `#${row.id}`, amount: formatCurrency(row.amount) }),
+            t('delete'),
+            { type: 'warning', confirmButtonText: t('delete'), cancelButtonText: t('cancel'), confirmButtonClass: 'el-button--danger' }
+        );
+    } catch {
+        return;
+    }
+
+    try {
+        await expensesApi.delete(row.id);
+        ElMessage.success(t('pay_expense_deleted'));
+        fetchExpenses();
+    } catch (error) {
+        ElMessage.error(apiErrorMessage(error, t('pay_save_failed')));
     }
 };
 
@@ -785,8 +1210,11 @@ watch(() => route.query, (query) => {
     if (route.name !== 'admin.payments.index' || queryKey(query) === lastQueryKey) return;
     readQuery();
     lastQueryKey = queryKey(query);
-    fetchPayments();
-    if (tab.value === 'expenses' && !expensesLoaded) fetchExpenses();
+    if (tab.value === 'expenses') {
+        fetchExpenses();
+    } else {
+        fetchPayments();
+    }
 });
 
 onMounted(() => {
@@ -802,6 +1230,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
     clearTimeout(searchTimer);
+    clearTimeout(expenseSearchTimer);
 });
 </script>
 
@@ -827,6 +1256,7 @@ onBeforeUnmount(() => {
 .stat-icon.blue { background: #eff6ff; color: #2563eb; }
 .stat-icon.purple { background: #f5f3ff; color: #7c3aed; }
 .stat-icon.red { background: #fef2f2; color: #dc2626; }
+.stat-icon.amber { background: #fef3c7; color: #d97706; }
 .stat-details { min-width: 0; flex: 1; }
 .stat-details h3 {
     margin: 0;
@@ -848,6 +1278,11 @@ onBeforeUnmount(() => {
 .m-bank_transfer { --m: #2563eb; }
 .m-check { --m: #d97706; }
 
+.cat-shipping { background: #2563eb !important; }
+.cat-packaging { background: #d97706 !important; }
+.cat-handling { background: #7c3aed !important; }
+.cat-other { background: #64748b !important; }
+
 /* ── Wallets ── */
 .wallets { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
 .wallet { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.7rem 0.9rem; display: grid; gap: 0.1rem; }
@@ -864,17 +1299,33 @@ onBeforeUnmount(() => {
 .filter-search { flex: 1 1 240px; max-width: 340px; }
 .filter-select { width: 170px; }
 .filter-dates { max-width: 270px; }
+.expenses-stat-badge {
+    margin-inline-start: auto;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #0f172a;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+}
 
 /* ── Table ── */
 .cell-stack { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; align-items: flex-start; }
 .cell-secondary { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; color: #64748b; }
+.text-truncate {
+    max-width: 280px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .mono { font-family: ui-monospace, monospace; font-weight: 700; color: #0f172a; font-size: 0.85rem; }
 .strong { font-weight: 600; }
 .amount { font-weight: 700; font-variant-numeric: tabular-nums; }
 .amount.in { color: #15803d; }
 .amount.out { color: #b91c1c; }
 
-.link-button { all: unset; cursor: pointer; color: #2563eb; font-weight: 600; }
+.link-button { all: unset; cursor: pointer; color: #2563eb; font-weight: 600; display: inline-flex; align-items: center; gap: 0.3rem; }
 .link-button:hover { text-decoration: underline; }
 .link-button.plain { color: #0f172a; }
 .link-button.plain:hover { color: #2563eb; }
@@ -903,9 +1354,52 @@ onBeforeUnmount(() => {
 }
 .locked { color: #cbd5e1; }
 
+/* ── Expense Category & Status Tags ── */
+.expense-cat-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.12rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+.expense-cat-tag.cat-shipping { color: #1d4ed8; background: #eff6ff; }
+.expense-cat-tag.cat-packaging { color: #b45309; background: #fffbeb; }
+.expense-cat-tag.cat-handling { color: #6d28d9; background: #f5f3ff; }
+.expense-cat-tag.cat-other { color: #475569; background: #f1f5f9; }
+
+.expense-status-tag {
+    font-weight: 600;
+    font-size: 0.76rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.actions-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.effect-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+}
+.effect-tag.success { background: #f0fdf4; color: #15803d; }
+.effect-tag.warning { background: #fffbeb; color: #b45309; }
+.effect-tag.primary { background: #eff6ff; color: #1d4ed8; }
+.effect-tag.danger { background: #fef2f2; color: #b91c1c; }
+
 .row-details {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 0.75rem 1.25rem;
     margin: 0;
     padding: 0.5rem 1.25rem 0.75rem;
@@ -932,6 +1426,7 @@ onBeforeUnmount(() => {
     .filter-search { max-width: none; flex-basis: 100%; }
     .filter-select { width: calc(50% - 0.375rem); }
     .filter-dates { max-width: none; width: 100% !important; }
+    .expenses-stat-badge { width: 100%; text-align: center; }
     .pagination-row { justify-content: center; }
     .edit-row { grid-template-columns: 1fr; }
 }
