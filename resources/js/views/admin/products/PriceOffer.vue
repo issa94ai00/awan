@@ -1010,7 +1010,7 @@ import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue
 import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
 import SpecsEditDialog from '@/components/admin/products/SpecsEditDialog.vue';
-import { parseDescriptionSpecs, serializeDescriptionSpecs } from '@/utils/productSpecs';
+import { parseDescriptionLines, serializeDescriptionSpecs } from '@/utils/productSpecs';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
@@ -2014,14 +2014,17 @@ let importMsgTimeout = null;
 // Which columns appear on the printed/exported price list — persisted per
 // browser so the choice sticks across visits.
 const COLUMNS_STORAGE_KEY = 'price_offer_visible_columns';
-const defaultColumns = { image: true, product: false, details: true, specs: true, price: true, offer: true, inventory: true };
+const defaultColumns = { code: true, image: true, product: false, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true };
 const columnOptions = [
+    { key: 'code', label: 'item_code' },
     { key: 'image', label: 'image' },
     { key: 'product', label: 'product' },
+    { key: 'illustration', label: 'illustrative_image' },
     { key: 'details', label: 'details' },
     { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
     { key: 'offer', label: 'offer_price' },
+    { key: 'pack', label: 'pack_quantity' },
     { key: 'inventory', label: 'inventory' },
 ];
 
@@ -2055,7 +2058,7 @@ function toggleColumn(key, val) {
 // height of one product group, in the CSS pixels the PDF capture measures in;
 // null means "leave it to the default fifth of a page".
 const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
-const defaultColumnWidths = { image: 50, product: 35, details: 25, specs: 35, price: 15, offer: 15, inventory: 15 };
+const defaultColumnWidths = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
 const DEFAULT_ROW_HEIGHT = 295;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 520;
@@ -2622,7 +2625,7 @@ function buildGroups(list) {
         const variants = Array.isArray(p.variants) ? p.variants : [];
         // The product's "Label: value" description lines, which each row's
         // specifications cell shows under its own, as the storefront does.
-        const baseSpecs = parseDescriptionSpecs(p.description_ar || p.description_en);
+        const baseSpecs = parseDescriptionLines(p.description_ar || p.description_en);
         const productId = p.id;
         const items = variants.length
             ? variants.map((v) => makeItem(`v-${v.id}`, {
@@ -2632,6 +2635,7 @@ function buildGroups(list) {
                 specs: cleanSpecs(v.specs),
                 baseSpecs,
                 productId,
+                sku: v.sku || p.sku || '',
                 price: parseFloat(v.price) || 0,
                 stock_quantity: v.stock_quantity ?? 0,
             }))
@@ -2641,6 +2645,7 @@ function buildGroups(list) {
                 unit: p.unit || '',
                 baseSpecs,
                 productId,
+                sku: p.sku || '',
                 price: parseFloat(p.price) || 0,
                 stock_quantity: p.stock_quantity ?? 0,
             })];

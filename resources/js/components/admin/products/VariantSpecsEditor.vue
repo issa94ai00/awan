@@ -127,8 +127,9 @@ const props = defineProps({
     title: { type: String, default: '' },
     hint: { type: String, default: '' },
     emptyText: { type: String, default: '' },
-    // For a list stored as "Label: value • …" text: every line needs a label,
-    // and neither half may hold the characters that text is split on.
+    // For a list stored as description text: neither half may hold the
+    // characters that text is split on. A line may go without a label — it is
+    // kept as a plain line, as supplier price lists write them.
     strict: { type: Boolean, default: false },
 });
 const { t } = useI18n();
@@ -175,7 +176,6 @@ function addRow(at = rows.value.length) {
 function labelProblem(row) {
     if (!props.strict) return '';
     const label = row.label.trim();
-    if (!label && row.value.trim()) return t('vs_label_required');
     if (/[:：•\n]/.test(label)) return t('vs_label_bad_chars');
     return '';
 }

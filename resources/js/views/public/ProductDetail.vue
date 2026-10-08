@@ -405,7 +405,7 @@ import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
-import { parseDescriptionSpecs, mergeSpecs } from '@/utils/productSpecs';
+import { parseDescriptionSpecs, parseDescriptionLines, mergeSpecs } from '@/utils/productSpecs';
 import axios from 'axios';
 
 // Stores
@@ -538,8 +538,15 @@ const viewName = computed(() => {
 });
 
 // Descriptions written as "Label: value • Label: value" read as a specs table;
-// the chosen variant's own details are laid over the product's.
-const descriptionSpecs = computed(() => parseDescriptionSpecs(localized('description')));
+// the chosen variant's own details are laid over the product's. A supplier
+// list that mixes pairs with plain lines ("بطارية ليثيوم") reads as one too,
+// the plain lines spanning the row — but only with several lines and at least
+// one pair, so a paragraph of prose is still shown as prose.
+const descriptionSpecs = computed(() => {
+    const text = localized('description');
+    const rows = parseDescriptionLines(text);
+    return rows.length > 1 && rows.some(r => r.label) ? rows : parseDescriptionSpecs(text);
+});
 const specs = computed(() => mergeSpecs(descriptionSpecs.value, selectedVariant.value?.specs));
 
 // The comparison: one row per detail label any option sets for itself, one
@@ -1461,6 +1468,12 @@ watch(() => route.query.variant, (id) => {
 }
 
 /* Specs table */
+/* A description kept as text keeps its line breaks: supplier lists such as
+   Ingco's put one fact per line, and run together they read as one sentence. */
+.product-description p {
+    white-space: pre-line;
+}
+
 .specs-table {
     width: 100%;
     border-collapse: collapse;

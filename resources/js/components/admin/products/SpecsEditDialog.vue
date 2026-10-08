@@ -39,19 +39,6 @@
                 </template>
 
                 <div class="sed-product">
-                    <!-- A description written as prose is not a list this
-                         editor can round-trip. It is shown, and only replaced
-                         if the user actually writes specifications here. -->
-                    <el-alert
-                        v-if="proseDescription"
-                        type="warning"
-                        :closable="false"
-                        show-icon
-                        class="sed-prose"
-                        :title="$t('sed_prose_title')"
-                    >
-                        <p class="sed-prose-text">{{ proseDescription }}</p>
-                    </el-alert>
                     <VariantSpecsEditor
                         ref="productRef"
                         v-model="productRows"
@@ -111,7 +98,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessageBox } from 'element-plus';
 import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
-import { parseDescriptionSpecs, mergeSpecs } from '@/utils/productSpecs';
+import { parseDescriptionLines, mergeSpecs } from '@/utils/productSpecs';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
@@ -143,11 +130,9 @@ const ownBaseline = ref('');
 const productRef = ref(null);
 const ownRef = ref(null);
 
-const parsedDescription = computed(() => parseDescriptionSpecs(props.description));
-const proseDescription = computed(() => {
-    const text = String(props.description || '').trim();
-    return text && !parsedDescription.value.length ? text : '';
-});
+// Read the way the price list reads it: a supplier's plain lines ("بطارية
+// ليثيوم") come in as label-less rows instead of the whole text being dropped.
+const parsedDescription = computed(() => parseDescriptionLines(props.description));
 
 // Seeded each time the dialog opens, from whatever row it was opened on.
 watch(() => props.modelValue, (open) => {
@@ -167,7 +152,7 @@ const invalid = computed(() => !!productRef.value?.hasProblems?.());
 // What the row will read as once saved, each of its own lines marked so the
 // user can see which product line it stands in for.
 const previewRows = computed(() => {
-    const base = clean(productRows.value).filter((r) => r.label);
+    const base = clean(productRows.value);
     const own = props.isVariant ? clean(ownRows.value) : [];
     const baseLabels = new Set(base.map((r) => r.label));
     const ownLabels = new Set(own.map((r) => r.label).filter(Boolean));
@@ -268,12 +253,6 @@ async function requestClose() {
     gap: 8px;
 }
 
-.sed-prose-text {
-    margin: 4px 0 0;
-    white-space: pre-wrap;
-    max-height: 90px;
-    overflow: auto;
-}
 
 .sed-error {
     margin: 0;

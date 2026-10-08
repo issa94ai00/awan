@@ -54,6 +54,10 @@
                     :style="[{ background: gIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }, rowStyle(group)]"
                     :id="!printMode && iIdx === 0 ? `item-${group.product.id}` : undefined"
                 >
+                    <td v-if="visibleColumns.code" class="cell-code">
+                        <span v-if="item.sku" class="code-value">{{ item.sku }}</span>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
                     <td v-if="visibleColumns.image && iIdx === 0" :rowspan="group.items.length" class="cell-image">
                         <div class="cell-image-inner">
                             <div class="cell-image-frame">
@@ -222,6 +226,27 @@
                             </button>
                         </div>
                     </td>
+                    <!-- The supplier's illustrated explanation of the product —
+                         the second picture a price list such as Ingco's carries
+                         beside the photo. Stored as the gallery's first image. -->
+                    <td
+                        v-if="visibleColumns.illustration && iIdx === 0"
+                        :rowspan="group.items.length"
+                        class="cell-image cell-illustration"
+                    >
+                        <div v-if="illustrationOf(group.product)" class="cell-illustration-frame">
+                            <EntityImage
+                                :src="illustrationOf(group.product)"
+                                type="product"
+                                :size="160"
+                                shape="square"
+                                fit="contain"
+                                :lazy="!printMode"
+                                :preview-src-list="printMode ? [] : getPreviewList(group.product)"
+                            />
+                        </div>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
                     <td
                         v-if="visibleColumns.details"
                         class="cell-detail"
@@ -387,6 +412,13 @@
                             <el-icon v-else><WarningFilled /></el-icon>
                         </span>
                     </td>
+                    <td v-if="visibleColumns.pack && iIdx === 0" :rowspan="group.items.length" class="cell-pack">
+                        <template v-if="packQuantity(group.product)">
+                            <span class="pack-value">{{ packQuantity(group.product) }}</span>
+                            <span class="pack-unit">{{ $t('units_per_carton_short') }}</span>
+                        </template>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
                     <td
                         v-if="visibleColumns.inventory"
                         class="cell-stock"
@@ -452,7 +484,7 @@ const props = defineProps({
     printMode: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
-        default: () => ({ image: true, product: true, details: true, specs: true, price: true, offer: true, inventory: true }),
+        default: () => ({ code: true, image: true, product: true, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true }),
     },
     // Per-column width shares that override the defaults below. Shares, not
     // percentages: they are re-normalised over the visible columns, so one
@@ -518,8 +550,20 @@ const visibleColumnCount = computed(() => Object.values(props.visibleColumns).fi
  * not percentages — they are re-normalised over whatever subset is visible, so
  * hiding a column widens the others instead of leaving the table short.
  */
-const COLUMN_SHARES = { image: 50, product: 35, details: 25, specs: 35, price: 15, offer: 15, inventory: 15 };
-const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', specs: 'specifications', price: 'the_price', offer: 'offer_price', inventory: 'inventory' };
+const COLUMN_SHARES = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
+const COLUMN_LABELS = {
+    code: 'item_code',
+    image: 'image',
+    product: 'product',
+    illustration: 'illustrative_image',
+    details: 'details',
+    specs: 'specifications',
+    price: 'the_price',
+    offer: 'offer_price',
+    pack: 'pack_quantity',
+    inventory: 'inventory',
+};
+
 
 /** The showing columns, in table order — drives the colgroup and the header. */
 const activeColumns = computed(() => Object.keys(COLUMN_SHARES).filter((key) => props.visibleColumns[key]));
@@ -561,7 +605,8 @@ const tableVars = computed(() => (props.rowHeight > 0
  * native print that variable is millimetres of paper.
  */
 const rowStyle = (group) => {
-    if (!hasFixedRows.value || props.visibleColumns.image || props.visibleColumns.product || props.visibleColumns.offer) return null;
+    const { image, product, illustration, offer, pack } = props.visibleColumns;
+    if (!hasFixedRows.value || image || product || illustration || offer || pack) return null;
     return { height: `calc(var(--offer-image-cell-height) / ${Math.max(group.items.length, 1)})` };
 };
 
@@ -725,6 +770,16 @@ const removeItemImage = (group) => {
 };
 
 const getPreviewList = (product) => productImages(product);
+/** The illustration picture: the first gallery image that is not the main photo. */
+const illustrationOf = (product) => {
+    const gallery = Array.isArray(product?.image_gallery) ? product.image_gallery : [];
+    return gallery.find((img) => img && img !== product.image_main) || null;
+};
+
+const packQuantity = (product) => {
+    const n = Number(product?.pack_quantity);
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 const formatPrice = (price) => {
     if (price === null || price === undefined) return '—';
@@ -787,7 +842,8 @@ const formatPrice = (price) => {
    where the product cell is the one holding the group together. */
 .offer-table.has-fixed-rows .cell-image,
 .offer-table.has-fixed-rows .cell-product,
-.offer-table.has-fixed-rows .cell-offer {
+.offer-table.has-fixed-rows .cell-offer,
+.offer-table.has-fixed-rows .cell-pack {
     height: var(--offer-image-cell-height);
 }
 /* Nothing more to say about the picture here: the frame below is the cell's
@@ -1423,6 +1479,51 @@ const formatPrice = (price) => {
     outline: none;
     background: #fff;
     padding: 2px 4px;
+}
+
+/* The supplier's item code: what a buyer quotes back when ordering. */
+.cell-code {
+    text-align: center;
+    vertical-align: middle;
+    padding: 5px 6px;
+}
+.code-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9pt;
+    font-weight: 700;
+    color: #1e293b;
+    direction: ltr;
+    unicode-bidi: isolate;
+    word-break: break-all;
+}
+
+/* The illustration has no caption under it, so its frame is the whole cell. */
+.cell-illustration-frame {
+    position: relative;
+    width: 100%;
+    height: var(--offer-image-cell-height, auto);
+    min-height: 120px;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.cell-pack {
+    text-align: center;
+    vertical-align: middle;
+    padding: 5px 6px;
+}
+.pack-value {
+    display: block;
+    font-size: 12pt;
+    font-weight: 800;
+    color: #1e3a8a;
+    line-height: 1.2;
+}
+.pack-unit {
+    display: block;
+    font-size: 7.5pt;
+    color: #64748b;
+    white-space: nowrap;
 }
 
 .cell-stock {

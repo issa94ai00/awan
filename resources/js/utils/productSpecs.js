@@ -24,6 +24,23 @@ export function parseDescriptionSpecs(text) {
 }
 
 /**
+ * The price list's reading of a description: a supplier sheet such as Ingco's
+ * mixes "Label: value" lines with bare ones ("بطارية ليثيوم"), which the strict
+ * reading above treats as prose and drops whole. Here each line stays a row —
+ * a pair where it has a short label, a label-less line where it does not.
+ */
+export function parseDescriptionLines(text) {
+    const strict = parseDescriptionSpecs(text);
+    if (strict.length) return strict;
+    return String(text || '').split(/\s*[•\n]\s*/).map((s) => s.trim()).filter(Boolean).map((line) => {
+        const idx = line.indexOf(':');
+        return idx > 0 && idx <= SINGLE_LINE_LABEL_MAX && idx < line.length - 1
+            ? { label: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() }
+            : { label: '', value: line };
+    });
+}
+
+/**
  * A variant's own details over its product's: a line with the same label
  * replaces the product's ("Power" of this size, not of the range), the rest
  * follow after it.
@@ -44,12 +61,16 @@ export function mergeSpecs(base, own) {
 /**
  * The other way: rows back to the description text the storefront parses.
  * Rows without a value are dropped; an empty list is no description at all.
+ * A label-less row is written as a bare line, and then the list is one line
+ * per row, the way the supplier sheets lay it out; an all-pairs list keeps
+ * the "Label: value • …" form it always had.
  */
 export function serializeDescriptionSpecs(rows) {
-    const text = (Array.isArray(rows) ? rows : [])
+    const clean = (Array.isArray(rows) ? rows : [])
         .map((r) => ({ label: String(r?.label ?? '').trim(), value: String(r?.value ?? '').trim() }))
-        .filter((r) => r.label && r.value)
-        .map((r) => `${r.label}: ${r.value}`)
-        .join(' • ');
+        .filter((r) => r.value);
+    const text = clean
+        .map((r) => (r.label ? `${r.label}: ${r.value}` : r.value))
+        .join(clean.every((r) => r.label) ? ' • ' : '\n');
     return text || null;
 }
