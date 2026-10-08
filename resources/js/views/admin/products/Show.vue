@@ -195,6 +195,9 @@
                                 <el-descriptions-item :label="$t('reorder_point')">
                                     <span>{{ product.reorder_point ?? '—' }}</span>
                                 </el-descriptions-item>
+                                <el-descriptions-item :label="$t('pack_quantity')">
+                                    <span>{{ product.pack_quantity ?? '—' }}</span>
+                                </el-descriptions-item>
                                 <el-descriptions-item :label="$t('the_weight')">
                                     <span>{{ product.weight ? product.weight + ' كجم' : '—' }}</span>
                                 </el-descriptions-item>

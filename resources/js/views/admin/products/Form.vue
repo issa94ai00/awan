@@ -100,14 +100,19 @@
                             </el-row>
 
                             <el-row :gutter="24">
-                                <el-col :xs="24" :md="12">
+                                <el-col :xs="24" :md="8">
                                     <el-form-item :label="$t('brand')">
                                         <el-input v-model="form.brand" placeholder="Brand" size="large" />
                                     </el-form-item>
                                 </el-col>
-                                <el-col :xs="24" :md="12">
+                                <el-col :xs="24" :md="8">
                                     <el-form-item :label="$t('model')">
                                         <el-input v-model="form.model" placeholder="Model" size="large" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="8">
+                                    <el-form-item :label="$t('pack_quantity')">
+                                        <el-input-number v-model="form.pack_quantity" :min="1" :controls="false" size="large" style="width:100%" />
                                     </el-form-item>
                                 </el-col>
                             </el-row>
@@ -698,6 +703,7 @@ const form = reactive({
     tax_rate: 0,
     taxable: true,
     unit: 'piece',
+    pack_quantity: null,
     stock_quantity: 0,
     min_stock: 0,
     max_stock: null,
@@ -1142,6 +1148,7 @@ const loadProduct = async () => {
             tax_rate: p.tax_rate ?? 0,
             taxable: p.taxable ?? true,
             unit: p.unit || 'piece',
+            pack_quantity: p.pack_quantity ?? null,
             stock_quantity: p.stock_quantity ?? 0,
             min_stock: p.min_stock ?? 0,
             max_stock: p.max_stock ?? null,

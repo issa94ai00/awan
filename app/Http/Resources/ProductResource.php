@@ -127,6 +127,7 @@ class ProductResource extends JsonResource
             'tax_rate' => $this->tax_rate,
             'taxable' => (bool) $this->taxable,
             'unit' => $this->unit,
+            'pack_quantity' => $this->pack_quantity,
             'price' => $this->price,
             'sale_price' => $this->sale_price,
             'show_price' => (bool) $this->show_price,
