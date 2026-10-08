@@ -79,3 +79,20 @@ export const priceOfferListsApi = {
         return api.delete(`/admin/price-offer-lists/${id}`);
     },
 };
+
+// The selling units of one product: a box or carton, with its size in base
+// units, its price multiplier and its own barcode.
+export const productUnitsApi = {
+    list(productId) {
+        return api.get(`/admin/products/${productId}/units`);
+    },
+    create(productId, data) {
+        return api.post(`/admin/products/${productId}/units`, data);
+    },
+    update(productId, unitId, data) {
+        return api.put(`/admin/products/${productId}/units/${unitId}`, data);
+    },
+    remove(productId, unitId) {
+        return api.delete(`/admin/products/${productId}/units/${unitId}`);
+    },
+};
