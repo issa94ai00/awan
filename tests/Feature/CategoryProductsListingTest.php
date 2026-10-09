@@ -57,3 +57,14 @@ it('sorts the all-products listing the way a category page does', function () us
         ->and(array_column($all('&sort=name&lang=en')['data'], 'sku'))->toBe(['LST-A', 'LST-B', 'LST-C', 'LST-D'])
         ->and($all('&in_stock=1')['pagination']['total'])->toBe(3);
 });
+
+it('lends each category a product photo, preferring a real one to a placeholder', function () {
+    Product::where('sku', 'LST-B')->update(['image_main' => 'uploads/saw.png']);
+    Product::where('sku', 'LST-A')->update(['image_main' => 'images_items/generic/saw.svg']); // newer, but a drawing
+
+    $thumbs = collect(test()->getJson('/api/v1/categories')->assertOk()->json('data'))->pluck('thumbnail', 'slug');
+
+    expect($thumbs['saws'])->toContain('uploads/saw.png')
+        ->and($thumbs['tools'])->toContain('uploads/saw.png') // the section borrows its subcategory's
+        ->and($thumbs->get('empty'))->toBeNull();
+});

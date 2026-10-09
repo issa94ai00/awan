@@ -30,6 +30,8 @@ class CategoryResource extends JsonResource
             'description_en' => $this->description_en,
             'icon' => $this->icon,
             'image' => image_url($this->image),
+            // Storefront index only: a product photo standing in for a missing image.
+            'thumbnail' => $this->when(isset($this->thumbnail), $this->thumbnail),
             'is_active' => (bool) $this->is_active,
             'sort_order' => $this->sort_order,
             'product_count' => $this->when(isset($this->product_count), $this->product_count),

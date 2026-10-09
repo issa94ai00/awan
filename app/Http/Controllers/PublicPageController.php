@@ -329,13 +329,58 @@ class PublicPageController extends Controller
         $locale = app()->getLocale();
         [$siteName, $siteDescription, $siteKeywords, $siteImage] = $this->getCommonSeo($locale);
 
-        $seo_title = ($locale === 'en' ? 'Categories' : 'الفئات').' - '.$siteName;
-        $seo_description = $locale === 'en' ? 'Browse our main construction product categories.' : 'تصفح الفئات الرئيسية لمواد البناء ومستلزمات التثبيت.';
+        $pageName = $locale === 'en' ? 'Categories' : 'الفئات';
+        $nameOf = fn (Category $category) => $locale === 'en' ? ($category->name_en ?: $category->name_ar) : $category->name_ar;
+
+        // The sections the page shows: top level, with something in them.
+        $sections = Category::where('is_active', 1)
+            ->whereNull('parent_id')
+            ->withProductCount()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Category $category) => (int) $category->product_count > 0)
+            ->values();
+
+        $sectionCount = $sections->count();
+        $names = $sections->take(5)->map($nameOf)->implode($locale === 'en' ? ', ' : '، ');
+
+        $seo_title = $pageName.' - '.$siteName;
+        $seo_description = $this->cleanString($locale === 'en'
+            ? "{$sectionCount} product sections at {$siteName}: {$names} and more sanitary ware and building supplies."
+            : "{$sectionCount} قسماً في {$siteName}: {$names} وغيرها من الأدوات الصحية ومستلزمات البناء.");
         $seo_keywords = $siteKeywords;
         $seo_image = $siteImage;
         $seo_links = $this->categoryLinks();
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
+        // ?q= is a search over products; one indexed page per typed query
+        // would be thin duplicates of /categories.
+        $seo_robots = request()->filled('q') ? 'noindex, follow' : null;
+
+        $homeLabel = $locale === 'en' ? 'Home' : 'الرئيسية';
+        $seo_json_ld = $this->generateBreadcrumbJsonLd([
+            $homeLabel => url('/'),
+            $pageName => route('categories.index'),
+        ]).'<script type="application/ld+json">'.json_encode([
+            '@context' => 'https://schema.org',
+            '@type' => 'CollectionPage',
+            'name' => $pageName,
+            'description' => $seo_description,
+            'url' => route('categories.index'),
+            'inLanguage' => $locale === 'en' ? 'en' : 'ar',
+            'mainEntity' => [
+                '@type' => 'ItemList',
+                'numberOfItems' => $sectionCount,
+                'itemListElement' => $sections->map(fn (Category $category, int $index) => [
+                    '@type' => 'ListItem',
+                    'position' => $index + 1,
+                    'name' => $nameOf($category),
+                    'url' => route('category.show', $category->slug),
+                ])->all(),
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).'</script>';
+
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links', 'seo_json_ld', 'seo_robots'));
     }
 
     public function categoryShow($categorySlug)

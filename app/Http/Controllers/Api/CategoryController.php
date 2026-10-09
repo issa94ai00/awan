@@ -21,12 +21,6 @@ class CategoryController extends Controller
         $categoriesQuery = Category::query()
             ->where('is_active', 1)
             ->withProductCount()
-            // include a single sample active product to help clients show thumbnails
-            ->with(['products' => function ($q) {
-                $q->where('is_active', 1)
-                  ->orderByDesc('created_at')
-                  ->limit(1);
-            }])
             ->orderBy('sort_order');
 
         // Optionally return only categories that have active products
@@ -35,12 +29,48 @@ class CategoryController extends Controller
         }
 
         $categories = $categoriesQuery->get();
+        $this->attachThumbnails($categories);
 
         return response()->json([
             'success' => true,
             'message' => 'Categories retrieved successfully',
             'data' => CategoryResource::collection($categories)
         ]);
+    }
+
+    /**
+     * A picture for each category that has none of its own: the newest photo
+     * among its products, or else its subcategories' (in their order). No
+     * category had an image, so the storefront showed a wall of icons.
+     *
+     * Two queries for the whole tree rather than one per category.
+     */
+    private function attachThumbnails($categories): void
+    {
+        $latestIds = Product::query()
+            ->where('is_active', 1)
+            ->whereNotNull('image_main')
+            ->where('image_main', '!=', '')
+            // A real photo beats the generic placeholder drawings, which
+            // only stand in when a category has nothing else.
+            ->selectRaw("category_id, COALESCE(MAX(CASE WHEN image_main NOT LIKE '%images_items/generic/%' THEN id END), MAX(id)) as id")
+            ->groupBy('category_id')
+            ->pluck('id', 'category_id');
+
+        $images = Product::whereIn('id', $latestIds->values())->pluck('image_main', 'id');
+        $own = $latestIds->map(fn ($id) => $images[$id] ?? null)->filter();
+        $children = $categories->groupBy('parent_id');
+
+        foreach ($categories as $category) {
+            if ($category->image) {
+                continue;
+            }
+            $candidates = [$category->id, ...($children[$category->id] ?? collect())->pluck('id')];
+            $image = collect($candidates)->map(fn ($id) => $own[$id] ?? null)->first(fn ($value) => $value);
+            if ($image) {
+                $category->thumbnail = image_url($image);
+            }
+        }
     }
 
     /**

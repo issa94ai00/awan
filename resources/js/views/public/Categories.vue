@@ -110,13 +110,19 @@
                         </button>
                     </form>
 
-                    <p v-if="catalogLoaded && !catalogError" class="result-count">
-                        {{ t('catl_summary', { sections: formatCount(visibleSections.length), products: formatCount(totalProducts) }) }}
-                    </p>
+                    <div v-if="catalogLoaded && !catalogError" class="summary-row">
+                        <p class="result-count">
+                            {{ t('catl_summary', { sections: formatCount(visibleSections.length), products: formatCount(totalProducts) }) }}
+                        </p>
+                        <router-link to="/products" class="all-products-link">
+                            {{ t('catl_all_products') }}
+                            <i :class="isRtl ? 'fas fa-arrow-left' : 'fas fa-arrow-right'" aria-hidden="true"></i>
+                        </router-link>
+                    </div>
 
                     <div v-if="!catalogLoaded" class="sections-grid" aria-busy="true">
                         <div v-for="n in 8" :key="n" class="section-card skeleton">
-                            <span class="skeleton-block icon"></span>
+                            <span class="skeleton-block media"></span>
                             <span class="skeleton-block line wide"></span>
                             <span class="skeleton-block line"></span>
                         </div>
@@ -134,16 +140,28 @@
                              so a section and a sub-subsection sat side by side
                              with nothing saying which held which. -->
                         <article v-for="section in visibleSections" :key="section.id" class="section-card">
+                            <!-- No section has an image of its own, so the API
+                                 lends each one a photo of its products. -->
                             <router-link :to="`/category/${section.slug}`" class="section-link">
-                                <span v-if="section.image" class="section-image">
-                                    <img :src="getImageUrl(section.image)" :alt="$p(section, 'name')" loading="lazy" decoding="async">
-                                </span>
-                                <span v-else class="section-icon"><i class="fas" :class="section.icon || 'fa-cube'"></i></span>
-                                <span class="section-text">
-                                    <h3>{{ $p(section, 'name') }}</h3>
-                                    <span class="section-count">{{ t('catl_products_n', { count: formatCount(section.product_count) }) }}</span>
-                                </span>
-                                <i :class="isRtl ? 'fas fa-chevron-left' : 'fas fa-chevron-right'" class="section-arrow"></i>
+                                <div class="section-media">
+                                    <img
+                                        v-if="section.image || section.thumbnail"
+                                        :src="getImageUrl(section.image || section.thumbnail)"
+                                        :alt="$p(section, 'name')"
+                                        loading="lazy"
+                                        decoding="async"
+                                        width="320"
+                                        height="160"
+                                    >
+                                    <i v-else class="fas section-icon" :class="section.icon || 'fa-cube'" aria-hidden="true"></i>
+                                </div>
+                                <div class="section-title-row">
+                                    <div class="section-text">
+                                        <h3>{{ $p(section, 'name') }}</h3>
+                                        <span class="section-count">{{ t('catl_products_n', { count: formatCount(section.product_count) }) }}</span>
+                                    </div>
+                                    <i :class="isRtl ? 'fas fa-chevron-left' : 'fas fa-chevron-right'" class="section-arrow" aria-hidden="true"></i>
+                                </div>
                             </router-link>
 
                             <p v-if="$p(section, 'description')" class="section-desc">{{ $p(section, 'description') }}</p>
@@ -200,6 +218,7 @@ import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { matchesSearch } from '@/utils/search';
 import { useListingQuery } from '@/Composables/useListingQuery';
+import { useSeo } from '@/Composables/useSeo';
 import ProductListingCard from '@/components/public/ProductListingCard.vue';
 import ListingPagination from '@/components/public/ListingPagination.vue';
 import ListingToolbar from '@/components/public/ListingToolbar.vue';
@@ -208,8 +227,6 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
-// SEO <head> for this page is fully covered by PublicLayout's route defaults
-// (localized categories title/description matching the server).
 
 const isRtl = computed(() => locale.value === 'ar');
 const isSearch = computed(() => typeof route.query.q === 'string' && route.query.q.trim() !== '');
@@ -233,6 +250,7 @@ const loadCategories = async () => {
         const res = await axios.get('/api/v1/categories');
         if (!res.data?.success) throw new Error('Unexpected response');
         categories.value = res.data.data || [];
+        if (!isSearch.value) applySeo();
     } catch (e) {
         catalogError.value = true;
     } finally {
@@ -320,6 +338,7 @@ const loadSearch = async () => {
         products.value = data.products || [];
         matchingCategories.value = (data.categories || []).filter((cat) => Number(cat.product_count) > 0);
         pagination.value = data.pagination || {};
+        applySeo();
 
         const last = pagination.value.last_page || 1;
         if (page > last) router.replace(pageLink(last));
@@ -354,6 +373,62 @@ watch(() => query.value.q, (q) => {
 
 const rangeFrom = computed(() => ((pagination.value.current_page || 1) - 1) * (pagination.value.per_page || query.value.per) + 1);
 const rangeTo = computed(() => Math.min(rangeFrom.value + products.value.length - 1, pagination.value.total || 0));
+
+/* ------------------------------------------------------------------ *
+ * SEO — PublicLayout sets the route defaults; once the sections are in,
+ * add the breadcrumb and the sections as an ItemList (what the server
+ * sends on a direct visit). A search is a results page: not indexed.
+ * ------------------------------------------------------------------ */
+const seo = useSeo();
+
+const applySeo = () => {
+    const crumbs = [
+        { name: t('nav_home'), url: '/' },
+        { name: t('nav_categories'), url: '/categories' },
+    ];
+
+    if (isSearch.value) {
+        seo.setOverride({
+            title: t('catl_results_for', { q: query.value.q }),
+            description: t('catl_search_placeholder'),
+            noindex: true,
+            jsonLd: [seo.breadcrumbSchema(crumbs)],
+        });
+        return;
+    }
+
+    seo.setOverride({
+        title: t('nav_categories'),
+        description: t('catl_meta_description', {
+            count: formatCount(sections.value.length),
+            names: sections.value.slice(0, 5).map((section) => (locale.value === 'en'
+                ? (section.name_en || section.name_ar)
+                : section.name_ar)).join(locale.value === 'en' ? ', ' : '، '),
+        }),
+        jsonLd: [
+            seo.breadcrumbSchema(crumbs),
+            {
+                '@context': 'https://schema.org',
+                '@type': 'ItemList',
+                name: t('nav_categories'),
+                numberOfItems: sections.value.length,
+                itemListElement: sections.value.map((section, index) => ({
+                    '@type': 'ListItem',
+                    position: index + 1,
+                    name: locale.value === 'en' ? (section.name_en || section.name_ar) : section.name_ar,
+                    url: `${window.location.origin}/category/${section.slug}`,
+                })),
+            },
+        ],
+    });
+};
+
+// Applied after each load (below), which lands after PublicLayout has reset
+// the head for the new URL; these cover the moves that load nothing.
+watch([isSearch, locale], () => {
+    if (isSearch.value ? loaded.value : (catalogLoaded.value && !catalogError.value)) applySeo();
+}, { flush: 'post' });
+
 
 /* ------------------------------------------------------------------ *
  * Which of the two to load
@@ -409,6 +484,45 @@ onBeforeUnmount(() => {
     margin: 1rem 0 0;
     font-size: 0.88rem;
     color: #64748b;
+}
+
+.summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-top: 1rem;
+}
+
+.summary-row .result-count {
+    margin: 0;
+}
+
+.all-products-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--mobile-primary);
+    text-decoration: none;
+}
+
+.all-products-link:hover {
+    text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .section-card,
+    .section-media img {
+        transition: none;
+    }
+
+    .section-card:hover,
+    .section-link:hover .section-media img {
+        transform: none;
+    }
 }
 
 /* ── Chips (subcategories, matching categories) ── */
@@ -579,7 +693,7 @@ onBeforeUnmount(() => {
 
 .section-link {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 14px;
     color: inherit;
     text-decoration: none;
@@ -591,30 +705,44 @@ onBeforeUnmount(() => {
     border-radius: 12px;
 }
 
-.section-image,
-.section-icon {
-    flex: none;
-    width: 64px;
-    height: 64px;
+/* Product photos are cut-outs on white, so they are fitted, not cropped. */
+.section-media {
+    height: 160px;
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: color-mix(in srgb, var(--mobile-primary) 10%, #fff);
-    color: var(--mobile-primary);
-    font-size: 1.6rem;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-[data-theme="dark"] .section-image,
-[data-theme="dark"] .section-icon {
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.section-image img {
+.section-media img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    padding: 14px;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.section-link:hover .section-media img {
+    transform: scale(1.05);
+}
+
+.section-icon {
+    font-size: 2.6rem;
+    color: var(--mobile-primary);
+}
+
+[data-theme="dark"] .section-media {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: transparent;
+}
+
+.section-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .section-text {
@@ -694,9 +822,10 @@ onBeforeUnmount(() => {
     animation: skeleton-shimmer 1.4s ease infinite;
 }
 
-.skeleton-block.icon { width: 64px; height: 64px; border-radius: 16px; }
 .skeleton-block.line { height: 14px; width: 55%; }
 .skeleton-block.line.wide { width: 80%; height: 18px; }
+
+.skeleton-block.media { width: 100%; height: 160px; border-radius: 16px; }
 
 @keyframes skeleton-shimmer {
     0% { background-position: 100% 50%; }
