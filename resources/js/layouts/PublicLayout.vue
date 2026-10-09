@@ -147,8 +147,8 @@
                 color: {{ settings.theme_footer_text_color || '#f8f9fa' }} !important;
             }
 
-            /* Dark Mode Footer Overrides */
-            [data-theme="dark"] footer, 
+            /* Dark Mode Footer Overrides (legacy layouts; SiteFooter themes itself) */
+            [data-theme="dark"] footer:not(.site-footer), 
             [data-theme="dark"] .footer-grid,
             [data-theme="dark"] .footer-simple-content,
             [data-theme="dark"] .footer-modern-grid,
@@ -163,22 +163,22 @@
                 background: #04080e !important;
                 border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
             }
-            [data-theme="dark"] footer a, 
-            [data-theme="dark"] footer p, 
-            [data-theme="dark"] footer span, 
-            [data-theme="dark"] footer i, 
-            [data-theme="dark"] footer h3, 
-            [data-theme="dark"] footer h4,
+            [data-theme="dark"] footer:not(.site-footer) a, 
+            [data-theme="dark"] footer:not(.site-footer) p, 
+            [data-theme="dark"] footer:not(.site-footer) span, 
+            [data-theme="dark"] footer:not(.site-footer) i, 
+            [data-theme="dark"] footer:not(.site-footer) h3, 
+            [data-theme="dark"] footer:not(.site-footer) h4,
             [data-theme="dark"] .footer-bottom p,
             [data-theme="dark"] .footer-bottom a,
             [data-theme="dark"] .footer-bottom span {
                 color: rgba(255, 255, 255, 0.8) !important;
             }
-            [data-theme="dark"] footer h3, 
-            [data-theme="dark"] footer h4 {
+            [data-theme="dark"] footer:not(.site-footer) h3, 
+            [data-theme="dark"] footer:not(.site-footer) h4 {
                 color: #ffffff !important;
             }
-            [data-theme="dark"] footer a:hover {
+            [data-theme="dark"] footer:not(.site-footer) a:hover {
                 color: var(--mobile-primary-light, var(--mobile-primary)) !important;
             }
             [data-theme="dark"] .footer-social .social-link {
@@ -519,51 +519,13 @@
             </router-link>
         </div>
 
-        <!-- Footer -->
-        <footer :class="'footer-' + (settings.theme_footer_layout || 'multicolumn')" id="site-contact">
+        <!-- Footer: the default (multicolumn) layout is its own component; the
+             'simple' and 'modern' layouts the theme settings also offer stay here. -->
+        <SiteFooter v-if="(settings.theme_footer_layout || 'multicolumn') === 'multicolumn'" :settings="settings" />
+        <footer v-else :class="'footer-' + settings.theme_footer_layout" id="site-contact">
             <div class="container">
-                <!-- 1. Multicolumn Layout (Default) -->
-                <div v-if="(settings.theme_footer_layout || 'multicolumn') === 'multicolumn'" class="footer-grid">
-                    <div class="footer-column">
-                        <h3>{{ t('about') || 'عن' }} {{ $p(settings, 'site_name') || '' }}</h3>
-                        <p>{{ $p(settings, 'site_description') || t('about_default_desc') || '' }}</p>
-                        <div class="footer-social">
-                            <a :href="settings.contact_facebook || '#'" class="social-link facebook" target="_blank"><i class="fab fa-facebook-f"></i></a>
-                            <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000')" class="social-link whatsapp" target="_blank"><i class="fab fa-whatsapp"></i></a>
-                            <a :href="settings.contact_instagram || '#'" class="social-link instagram" target="_blank"><i class="fab fa-instagram"></i></a>
-                        </div>
-                    </div>
-                    
-                    <div class="footer-column">
-                        <h3>{{ t('quick_links') || 'روابط سريعة' }}</h3>
-                        <ul>
-                            <li><router-link to="/">{{ t('nav_home') || 'الرئيسية' }}</router-link></li>
-                            <li><router-link to="/about">{{ t('nav_about') || 'من نحن' }}</router-link></li>
-                            <li><router-link to="/vision">{{ t('nav_vision') || 'الهوية والرؤية' }}</router-link></li>
-                            <li><router-link to="/contact">{{ t('nav_contact') || 'اتصل بنا' }}</router-link></li>
-                        </ul>
-                    </div>
-                    
-                    <div class="footer-column">
-                        <h3>{{ t('our_services') || 'خدماتنا' }}</h3>
-                        <ul>
-                            <li><router-link to="/contact">{{ t('technical_consultation') || 'استشارة فنية' }}</router-link></li>
-                            <li><router-link to="/contact">{{ t('price_quote_reason') || 'طلب عرض سعر' }}</router-link></li>
-                            <li><router-link to="/contact">{{ t('delivery_shipping') || 'التوصيل والشحن' }}</router-link></li>
-                            <li><router-link to="/contact">{{ t('technical_support') || 'الدعم الفني' }}</router-link></li>
-                        </ul>
-                    </div>
-                    
-                    <div class="footer-column">
-                        <h3>{{ t('nav_contact') || 'اتصل بنا' }}</h3>
-                        <p><i class="fas fa-map-marker-alt"></i> {{ $p(settings, 'address') || (currentLocale === 'en' ? 'Syria - Damascus' : 'سورية - دمشق') }}</p>
-                        <p><i class="fas fa-phone"></i> <span dir="ltr">{{ settings.contact_phone || '+963 900 000 000' }}</span></p>
-                        <p><i class="fas fa-envelope"></i> {{ settings.contact_email || 'info@awan-altakaddom.com' }}</p>
-                    </div>
-                </div>
-
                 <!-- 2. Simple Layout -->
-                <div v-else-if="settings.theme_footer_layout === 'simple'" class="footer-simple-content" style="text-align: center; padding: 2rem 0;">
+                <div v-if="settings.theme_footer_layout === 'simple'" class="footer-simple-content" style="text-align: center; padding: 2rem 0;">
                     <div class="footer-logo" style="margin-bottom: 1rem;">
                         <img :src="getImageUrl(settings.site_logo || 'assets/images/logo.png')" :alt="$p(settings, 'site_name')" style="height: 50px; object-fit: contain;">
                         <h3 style="margin-top: 0.5rem; color: #fff;">{{ $p(settings, 'site_name') }}</h3>
@@ -751,6 +713,7 @@ import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';
 import { updateDirection } from '@/app';
 import axios from 'axios';
+import SiteFooter from '@/components/public/SiteFooter.vue';
 
 // Stores
 const settingsStore = useSettingsStore();
