@@ -320,13 +320,13 @@
                                     :class="{ 'is-highlighted': index === searchHighlight }"
                                     role="option"
                                     :aria-selected="index === searchHighlight ? 'true' : 'false'"
-                                    @click="goToProduct(item.slug)"
+                                    @click="goToProduct(item)"
                                     @mousemove="searchHighlight = index"
                                 >
                                     <img :src="getImageUrl(item.image_main)" :alt="$p(item, 'name')" class="glass-result-img">
                                     <div class="glass-result-info">
                                         <div class="glass-result-title">{{ $p(item, 'name') }}</div>
-                                        <div class="glass-result-category">{{ $p(item.category, 'name') || t('spare_parts') || 'قطع غيار' }}</div>
+                                        <div v-if="item.category" class="glass-result-category">{{ $p(item.category, 'name') }}</div>
                                     </div>
                                 </div>
                                 <button type="button" class="glass-result-all" @click="triggerSearch">
@@ -340,10 +340,21 @@
                         </div>
                     </div>
 
+                    <!-- Phones: the bar has no room for the search box, so this
+                         opens the drawer with its search field focused. -->
+                    <button
+                        type="button"
+                        class="glass-action-btn show-on-phone"
+                        :aria-label="t('search_product') || 'ابحث عن منتج...'"
+                        @click="openDrawerSearch"
+                    >
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                    </button>
+
                     <!-- Orders -->
                     <router-link
                         to="/customer-orders"
-                        class="glass-action-btn"
+                        class="glass-action-btn hide-on-phone"
                         :title="t('orders') || 'الطلبات'"
                         :aria-label="t('orders') || 'الطلبات'"
                     >
@@ -361,24 +372,18 @@
                         <span v-if="cartStore.totalItems > 0" class="glass-badge" aria-hidden="true">{{ cartBadge }}</span>
                     </router-link>
 
-                    <!-- Language Switcher -->
-                    <div class="glass-profile-dropdown" v-click-outside="closeLangDropdown">
-                        <button
-                            type="button"
-                            class="glass-action-btn"
-                            @click="toggleLangDropdown"
-                            :title="t('switch_language') || 'تغيير اللغة'"
-                            :aria-label="t('switch_language') || 'تغيير اللغة'"
-                            aria-haspopup="true"
-                            :aria-expanded="langDropdownOpen ? 'true' : 'false'"
-                        >
-                            <i class="fas fa-globe" aria-hidden="true"></i>
-                        </button>
-                        <div class="glass-dropdown-menu" :class="{ 'show': langDropdownOpen }">
-                            <button type="button" class="glass-dropdown-item" :class="{'active': currentLocale === 'ar'}" :aria-current="currentLocale === 'ar' ? 'true' : null" @click="changeLanguage('ar')">العربية</button>
-                            <button type="button" class="glass-dropdown-item" :class="{'active': currentLocale === 'en'}" :aria-current="currentLocale === 'en' ? 'true' : null" @click="changeLanguage('en')">English</button>
-                        </div>
-                    </div>
+                    <!-- Language: with two languages a dropdown is one click too
+                         many; the button names the language it switches to. -->
+                    <button
+                        type="button"
+                        class="glass-action-btn glass-lang-btn hide-on-phone"
+                        :lang="otherLocale"
+                        :title="otherLocaleLabel"
+                        :aria-label="otherLocaleLabel"
+                        @click="changeLanguage(otherLocale)"
+                    >
+                        {{ otherLocale === 'en' ? 'EN' : 'ع' }}
+                    </button>
 
                     <!-- User -->
                     <div class="glass-profile-dropdown" v-click-outside="closeDropdown">
@@ -471,7 +476,9 @@
             <div class="drawer-search">
                 <div class="drawer-search-container">
                     <input
-                        type="text"
+                        ref="drawerSearchInput"
+                        type="search"
+                        enterkeyhint="search"
                         v-model="searchQuery"
                         @input="handleSearchInput"
                         @keyup.enter="triggerSearchAndClose"
@@ -495,6 +502,33 @@
                     </router-link>
                 </li>
             </ul>
+
+            <!-- What the bar hides on a phone: language and theme, and the
+                 two quickest ways to reach the shop. -->
+            <div class="drawer-footer">
+                <div class="drawer-prefs">
+                    <div class="drawer-lang" role="group" :aria-label="t('switch_language') || 'تغيير اللغة'">
+                        <button type="button" lang="ar" :class="{ active: currentLocale === 'ar' }" :aria-pressed="currentLocale === 'ar'" @click="changeLanguage('ar')">العربية</button>
+                        <button type="button" lang="en" :class="{ active: currentLocale === 'en' }" :aria-pressed="currentLocale === 'en'" @click="changeLanguage('en')">English</button>
+                    </div>
+                    <button
+                        type="button"
+                        class="drawer-theme"
+                        :aria-label="theme === 'dark' ? (t('light_mode') || 'الوضع الفاتح') : (t('dark_mode') || 'الوضع الداكن')"
+                        @click="toggleTheme"
+                    >
+                        <i class="fas" :class="theme === 'dark' ? 'fa-sun' : 'fa-moon'" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="drawer-contact">
+                    <a v-if="settings.contact_phone" :href="`tel:+${phoneDigits(settings.contact_phone)}`" class="drawer-contact-btn">
+                        <i class="fas fa-phone" aria-hidden="true"></i> {{ t('nav_call') }}
+                    </a>
+                    <a v-if="whatsappUrl" :href="whatsappUrl" class="drawer-contact-btn is-whatsapp" target="_blank" rel="noopener">
+                        <i class="fab fa-whatsapp" aria-hidden="true"></i> WhatsApp
+                    </a>
+                </div>
+            </div>
         </aside>
 
         <!-- Main Content Area -->
@@ -508,14 +542,15 @@
 
         <!-- Floating Action Buttons -->
         <div class="float-buttons">
-            <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000')" class="float-button whatsapp" data-tooltip="تواصل معنا واتساب" target="_blank">
-                <i class="fab fa-whatsapp"></i>
+            <!-- wa.me takes the number without its 00; the old link kept it. -->
+            <a v-if="whatsappUrl" :href="whatsappUrl" class="float-button whatsapp" :data-tooltip="t('float_whatsapp')" :aria-label="t('float_whatsapp')" target="_blank" rel="noopener">
+                <i class="fab fa-whatsapp" aria-hidden="true"></i>
             </a>
-            <a :href="settings.contact_facebook || '#'" class="float-button facebook" data-tooltip="تابعنا على فيسبوك" target="_blank">
-                <i class="fab fa-facebook"></i>
+            <a v-if="settings.contact_facebook" :href="settings.contact_facebook" class="float-button facebook" :data-tooltip="t('float_facebook')" :aria-label="t('float_facebook')" target="_blank" rel="noopener">
+                <i class="fab fa-facebook" aria-hidden="true"></i>
             </a>
-            <router-link to="/inquiry" class="float-button inquiry" data-tooltip="إرسال استفسار">
-                <i class="fas fa-comment-dots"></i>
+            <router-link to="/inquiry" class="float-button inquiry" :data-tooltip="t('send_inquiry')" :aria-label="t('send_inquiry')">
+                <i class="fas fa-comment-dots" aria-hidden="true"></i>
             </router-link>
         </div>
 
@@ -702,7 +737,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useCustomerAuthStore } from '@/stores/customerAuth';
@@ -824,20 +859,27 @@ const closeDropdown = () => {
     dropdownOpen.value = false;
 };
 
-// Toggle language dropdown
-const langDropdownOpen = ref(false);
-const toggleLangDropdown = () => {
-    langDropdownOpen.value = !langDropdownOpen.value;
-};
-const closeLangDropdown = () => {
-    langDropdownOpen.value = false;
+const otherLocale = computed(() => (currentLocale.value === 'en' ? 'ar' : 'en'));
+const otherLocaleLabel = computed(() => (otherLocale.value === 'en' ? 'Switch to English' : 'التبديل إلى العربية'));
+
+// "00963…" → "963…", as tel: (with a +) and wa.me want it.
+const phoneDigits = (value) => String(value || '').replace(/\D/g, '').replace(/^00/, '');
+const whatsappUrl = computed(() => {
+    const digits = phoneDigits(settings.value.contact_whatsapp);
+    return digits ? `https://wa.me/${digits}` : '';
+});
+
+const drawerSearchInput = ref(null);
+const openDrawerSearch = () => {
+    mobileMenuOpen.value = true;
+    // After the drawer stops being inert, or focus() is refused.
+    nextTick(() => drawerSearchInput.value?.focus());
 };
 
 const changeLanguage = (lang) => {
     locale.value = lang;
     localStorage.setItem('locale', lang);
     updateDirection(lang);
-    closeLangDropdown();
 };
 
 const scrolledDropdownOpen = ref(false);
@@ -863,7 +905,6 @@ watch(mobileMenuOpen, (open) => {
     document.body.style.overflow = open ? 'hidden' : '';
     if (open) {
         dropdownOpen.value = false;
-        langDropdownOpen.value = false;
         scrolledDropdownOpen.value = false;
         closeSearchPanel();
     }
@@ -1001,7 +1042,7 @@ const moveSearchHighlight = (step) => {
 const onSearchEnter = () => {
     const highlighted = searchResults.value[searchHighlight.value];
     if (highlighted) {
-        goToProduct(highlighted.slug);
+        goToProduct(highlighted);
         return;
     }
     triggerSearch();
@@ -1020,8 +1061,9 @@ const triggerSearchAndClose = () => {
     mobileMenuOpen.value = false;
 };
 
-const goToProduct = (slug) => {
-    router.push(`/product/${slug}`);
+// A suggestion for one variant opens the product with that variant picked.
+const goToProduct = (item) => {
+    router.push({ path: `/product/${item.slug}`, query: item.variant_id ? { variant: item.variant_id } : {} });
     searchQuery.value = '';
     searchResults.value = [];
     closeSearchPanel();
@@ -1059,9 +1101,8 @@ const handleKeydown = (event) => {
         mobileMenuOpen.value = false;
         return;
     }
-    if (dropdownOpen.value || langDropdownOpen.value) {
+    if (dropdownOpen.value) {
         closeDropdown();
-        closeLangDropdown();
         return;
     }
     if (searchPanelOpen.value) closeSearchPanel();
@@ -1100,7 +1141,6 @@ const seo = useSeo();
 watch(route, () => {
     mobileMenuOpen.value = false;
     dropdownOpen.value = false;
-    langDropdownOpen.value = false;
     scrolledDropdownOpen.value = false;
     closeSearchPanel();
     
@@ -1189,7 +1229,8 @@ onUnmounted(() => {
 
 <style>
 :root {
-    --navbar-height: 112px;
+    /* The bar is ~77px tall above 1240px; page headers pad by this plus 2rem. */
+    --navbar-height: 96px;
     --navbar-top-height: 74px;
     --content-padding-offset: 18px;
 }
@@ -1282,7 +1323,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.5rem 2rem;
+    padding: 1rem 2rem;
     max-width: 1400px;
     margin: 0 auto;
     gap: 2rem;
@@ -1314,7 +1355,7 @@ onUnmounted(() => {
 }
 
 .glass-dropdown-item:focus-visible {
-    outline: 2px solid #667eea;
+    outline: 2px solid var(--mobile-primary);
     outline-offset: -2px;
 }
 
@@ -1338,7 +1379,7 @@ onUnmounted(() => {
 
 .glass-skip-link:focus-visible {
     transform: translate(-50%, 0);
-    outline: 2px solid #667eea;
+    outline: 2px solid var(--mobile-primary);
     outline-offset: 2px;
 }
 
@@ -1386,32 +1427,44 @@ onUnmounted(() => {
     gap: 0.5rem;
 }
 
+/* Plain text links, every one in the navbar's own colour: six boxed pills
+   read as six buttons, and the hover/active purple was no theme colour. The
+   current page is marked by a bar under it. */
 .glass-nav-link {
-    padding: 0.6rem 1rem;
-    color: color-mix(in srgb, var(--nav-fg, #ffffff) 85%, transparent);
+    position: relative;
+    padding: 0.55rem 0.9rem;
+    color: color-mix(in srgb, var(--nav-fg, #ffffff) 78%, transparent);
     text-decoration: none;
     font-weight: 600;
     font-size: 0.95rem;
-    border-radius: 12px;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 .glass-nav-link:hover {
-    background: rgba(255, 255, 255, 0.15);
     color: var(--nav-fg, #ffffff);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--nav-fg, #ffffff) 10%, transparent);
+}
+
+.glass-nav-link::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0.9rem;
+    bottom: 0.2rem;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--nav-fg, #ffffff);
+    transform: scaleX(0);
+    transition: transform 0.25s ease;
 }
 
 .glass-nav-link-active {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
     color: var(--nav-fg, #ffffff);
-    border-color: rgba(102, 126, 234, 0.4);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    font-weight: 800;
+}
+
+.glass-nav-link-active::after {
+    transform: scaleX(1);
 }
 
 /* Actions */
@@ -1450,8 +1503,8 @@ onUnmounted(() => {
 .glass-search-input:focus {
     width: 240px;
     background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(102, 126, 234, 0.5);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+    border-color: color-mix(in srgb, var(--nav-fg, #ffffff) 45%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--nav-fg, #ffffff) 15%, transparent);
 }
 
 .glass-search-icon {
@@ -1465,7 +1518,7 @@ onUnmounted(() => {
 }
 
 .glass-search-input:focus ~ .glass-search-icon {
-    color: rgba(102, 126, 234, 0.8);
+    color: var(--nav-fg, #ffffff);
 }
 
 .glass-search-results {
@@ -1494,7 +1547,7 @@ onUnmounted(() => {
 }
 
 .glass-result-item:hover {
-    background: rgba(102, 126, 234, 0.1);
+    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
 }
 
 .glass-result-item:last-child {
@@ -1503,7 +1556,7 @@ onUnmounted(() => {
 
 /* Pointer hover and keyboard arrow-down land on the same visual state. */
 .glass-result-item.is-highlighted {
-    background: rgba(102, 126, 234, 0.14);
+    background: color-mix(in srgb, var(--mobile-primary) 14%, transparent);
 }
 
 .glass-result-info {
@@ -1527,8 +1580,8 @@ onUnmounted(() => {
     padding: 0.8rem 1rem;
     border: none;
     border-top: 1px solid rgba(0, 0, 0, 0.06);
-    background: rgba(102, 126, 234, 0.06);
-    color: #667eea;
+    background: color-mix(in srgb, var(--mobile-primary) 6%, transparent);
+    color: var(--mobile-primary);
     font-family: inherit;
     font-weight: 700;
     font-size: 0.85rem;
@@ -1537,7 +1590,7 @@ onUnmounted(() => {
 }
 
 .glass-result-all:hover {
-    background: rgba(102, 126, 234, 0.14);
+    background: color-mix(in srgb, var(--mobile-primary) 14%, transparent);
 }
 
 .glass-result-img {
@@ -1583,18 +1636,28 @@ onUnmounted(() => {
 }
 
 .glass-action-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(102, 126, 234, 0.5);
-    color: rgba(102, 126, 234, 0.9);
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.2);
+    background: color-mix(in srgb, var(--nav-fg, #ffffff) 20%, transparent);
+    border-color: color-mix(in srgb, var(--nav-fg, #ffffff) 40%, transparent);
+    color: var(--nav-fg, #ffffff);
+}
+
+.glass-lang-btn {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+/* Which controls the bar carries on a phone (see the 768px block). */
+.show-on-phone {
+    display: none;
 }
 
 .glass-badge {
     position: absolute;
     top: -4px;
     inset-inline-end: -4px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: #ef4444;
     color: white;
     font-size: 0.7rem;
     font-weight: 700;
@@ -1606,7 +1669,7 @@ onUnmounted(() => {
     justify-content: center;
     padding: 0 4px;
     border: 2px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
 /* Profile Dropdown */
@@ -1643,7 +1706,7 @@ onUnmounted(() => {
 .glass-dropdown-header {
     padding: 1rem 1.25rem;
     font-weight: 700;
-    color: #667eea;
+    color: var(--mobile-primary);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     font-size: 0.9rem;
 }
@@ -1666,19 +1729,19 @@ onUnmounted(() => {
 }
 
 .glass-dropdown-item:hover {
-    background: rgba(102, 126, 234, 0.1);
-    color: #667eea;
+    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
+    color: var(--mobile-primary);
 }
 
 /* The language menu marks the current locale; nothing styled it before. */
 .glass-dropdown-item.active {
-    background: rgba(102, 126, 234, 0.12);
-    color: #667eea;
+    background: color-mix(in srgb, var(--mobile-primary) 12%, transparent);
+    color: var(--mobile-primary);
 }
 
 .glass-dropdown-item i {
     width: 18px;
-    color: #667eea;
+    color: var(--mobile-primary);
 }
 
 /* Mobile Menu Toggle */
@@ -1729,8 +1792,12 @@ onUnmounted(() => {
     }
 
     .glass-nav-link {
-        padding: 0.55rem 0.8rem;
-        font-size: 0.88rem;
+        padding: 0.5rem 0.7rem;
+        font-size: 0.9rem;
+    }
+
+    .glass-nav-link::after {
+        inset-inline: 0.7rem;
     }
 
     .glass-search-input {
@@ -1782,8 +1849,13 @@ onUnmounted(() => {
         gap: 0.6rem;
     }
 
-    .glass-search {
+    .glass-search,
+    .hide-on-phone {
         display: none;
+    }
+
+    .show-on-phone {
+        display: flex;
     }
 
     .glass-logo-text {
@@ -2390,7 +2462,8 @@ onUnmounted(() => {
 
 /* ===== MOBILE DRAWER ===== */
 .mobile-drawer {
-    display: block;
+    display: flex;
+    flex-direction: column;
     /* `visibility` (not just the off-canvas offset) is what keeps the closed
        drawer's links out of the keyboard tab order. */
     visibility: hidden;
@@ -2592,6 +2665,89 @@ onUnmounted(() => {
     border-radius: 4px 0 0 4px;
 }
 
+/* Drawer footer: language, theme, and call / WhatsApp */
+.drawer-footer {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 20px 28px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.drawer-prefs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.drawer-lang {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.drawer-lang button,
+.drawer-theme {
+    min-height: 40px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.drawer-lang button.active {
+    background: #ffffff;
+    color: var(--mobile-primary-dark, #1e293b);
+}
+
+.drawer-theme {
+    flex: none;
+    width: 48px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    font-size: 1rem;
+}
+
+.drawer-contact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.drawer-contact-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.drawer-contact-btn.is-whatsapp {
+    background: #16a34a;
+    border-color: #16a34a;
+}
+
+.drawer-lang button:focus-visible,
+.drawer-theme:focus-visible,
+.drawer-contact-btn:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
 /* ===== MODALS ===== */
 .modal-title-primary {
     margin: 0 0 5px 0;
@@ -2726,7 +2882,7 @@ onUnmounted(() => {
 
 [data-theme="dark"] .glass-result-item:hover,
 [data-theme="dark"] .glass-result-item.is-highlighted {
-    background: rgba(102, 126, 234, 0.22);
+    background: rgba(255, 255, 255, 0.11);
 }
 
 [data-theme="dark"] .glass-result-title {
@@ -2743,12 +2899,12 @@ onUnmounted(() => {
 
 [data-theme="dark"] .glass-result-all {
     border-top-color: rgba(255, 255, 255, 0.08);
-    background: rgba(102, 126, 234, 0.16);
-    color: #c7d2fe;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
 }
 
 [data-theme="dark"] .glass-result-all:hover {
-    background: rgba(102, 126, 234, 0.28);
+    background: rgba(255, 255, 255, 0.14);
 }
 
 [data-theme="dark"] .glass-dropdown-item {
@@ -2757,12 +2913,12 @@ onUnmounted(() => {
 
 [data-theme="dark"] .glass-dropdown-item:hover,
 [data-theme="dark"] .glass-dropdown-item.active {
-    background: rgba(102, 126, 234, 0.22);
+    background: rgba(255, 255, 255, 0.11);
     color: #ffffff;
 }
 
 [data-theme="dark"] .glass-dropdown-header {
-    color: #c7d2fe;
+    color: #ffffff;
     border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -2774,6 +2930,10 @@ onUnmounted(() => {
 /* Respect the OS "reduce motion" setting: the bar keeps its colour changes but
    drops the lifts, scales and slides. */
 @media (prefers-reduced-motion: reduce) {
+    .glass-nav-link::after {
+        transition: none;
+    }
+
     .glass-navbar,
     .glass-container,
     .glass-logo,
