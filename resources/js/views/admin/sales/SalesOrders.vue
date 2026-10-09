@@ -450,7 +450,11 @@
                             <div class="amount-row" v-if="toNum(selectedOrder.tax)">
                                 <span>{{ $t('plus_tax') }}</span><span>{{ formatCurrency(selectedOrder.tax) }}</span>
                             </div>
-                            <div class="amount-row" v-if="toNum(selectedOrder.shipping_cost)">
+                            <div class="amount-row" v-if="orderExpenses.length">
+                                <span>{{ $t('additional_charges') }} ({{ orderExpenses.length }})</span>
+                                <span>{{ formatCurrency(orderExpensesTotal) }}</span>
+                            </div>
+                            <div class="amount-row" v-else-if="toNum(selectedOrder.shipping_cost)">
                                 <span>{{ $t('plus_shipping_cost') }}</span><span>{{ formatCurrency(selectedOrder.shipping_cost) }}</span>
                             </div>
                             <div class="amount-row grand">
@@ -485,6 +489,10 @@
                                         <div class="info-item"><span class="lbl">{{ $t('address') }}</span><strong>{{ shippingAddressText || '—' }}</strong></div>
                                         <div class="info-item"><span class="lbl">{{ $t('order_date') }}</span><strong>{{ formatDate(selectedOrder.order_date) }}</strong></div>
                                         <div class="info-item"><span class="lbl">{{ $t('expected_delivery') }}</span><strong>{{ formatDate(selectedOrder.expected_delivery) }}</strong></div>
+                                        <div class="info-item" v-if="orderExpenses.length">
+                                            <span class="lbl">{{ $t('additional_charges') }}</span>
+                                            <strong class="text-primary">{{ formatCurrency(orderExpensesTotal) }} ({{ orderExpenses.length }})</strong>
+                                        </div>
                                         <div class="info-item" v-if="selectedOrder.carrier"><span class="lbl">{{ $t('shipping_company') }}</span><strong>{{ selectedOrder.carrier }}</strong></div>
                                         <div class="info-item" v-if="selectedOrder.tracking_number"><span class="lbl">{{ $t('tracking_number') }}</span><strong dir="ltr">{{ selectedOrder.tracking_number }}</strong></div>
                                     </div>
@@ -848,6 +856,91 @@
                             <el-empty v-else :description="$t('so_no_purchase_orders')" :image-size="60" />
                         </el-card>
 
+                        <!-- Additional Expenses & Shipping -->
+                        <el-card shadow="never" class="info-card mb-3">
+                            <template #header>
+                                <div class="card-head-row">
+                                    <span class="card-title-txt">
+                                        <i class="fas fa-truck-fast"></i> {{ $t('additional_expenses_and_shipping') }}
+                                        <span v-if="orderExpenses.length" class="text-muted fs-xs">({{ orderExpenses.length }})</span>
+                                    </span>
+                                    <el-button
+                                        v-if="normalizeStatus(selectedOrder.status) !== 'cancelled'"
+                                        size="small"
+                                        type="primary"
+                                        plain
+                                        @click="openExpenseDialogForOrder()"
+                                    >
+                                        <i class="fas fa-plus"></i>&nbsp;{{ $t('add_expense') }}
+                                    </el-button>
+                                </div>
+                            </template>
+                            <div v-if="orderExpenses.length" class="order-expenses-table-wrap">
+                                <el-table :data="orderExpenses" stripe size="small" style="width: 100%">
+                                    <el-table-column :label="$t('category')" width="130">
+                                        <template #default="{ row }">
+                                            <span class="expense-cat-badge">
+                                                <i :class="expenseCategoryIcon(row.category)"></i>
+                                                {{ expenseCategoryLabel(row.category) }}
+                                            </span>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('description')" min-width="180">
+                                        <template #default="{ row }">
+                                            <strong>{{ row.description }}</strong>
+                                            <div v-if="row.notes" class="text-muted fs-xs">{{ row.notes }}</div>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('status')" width="110" align="center">
+                                        <template #default="{ row }">
+                                            <el-tag :type="expenseStatusTag(row.status)" size="small" effect="plain">
+                                                {{ row.status === 'paid' ? $t('pay_expense_status_paid') : (row.status === 'pending' ? $t('pay_expense_status_pending') : row.status) }}
+                                            </el-tag>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('sales_invoice')" width="150" align="center">
+                                        <template #default="{ row }">
+                                            <span v-if="row.invoice?.invoice_number || row.invoice_id" class="mono text-primary fs-xs">
+                                                <i class="fas fa-file-invoice"></i> {{ row.invoice?.invoice_number || `#${row.invoice_id}` }}
+                                            </span>
+                                            <span v-else class="text-muted fs-xs">
+                                                {{ $t('not_linked_yet') || 'لم تُربط بعد' }}
+                                            </span>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="$t('amount')" width="130" align="center">
+                                        <template #default="{ row }">
+                                            <strong class="text-primary">{{ formatCurrency(row.amount) }}</strong>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column width="70" align="center">
+                                        <template #default="{ row }">
+                                            <el-button link type="primary" size="small" @click="openExpenseDialogForOrder(row)">
+                                                <i class="fas fa-edit"></i>
+                                            </el-button>
+                                        </template>
+                                    </el-table-column>
+                                </el-table>
+                                <div class="expenses-summary-footer">
+                                    <span>{{ $t('total') }}:</span>
+                                    <strong>{{ formatCurrency(orderExpensesTotal) }}</strong>
+                                </div>
+                            </div>
+                            <el-empty v-else :description="$t('no_expenses_recorded')" :image-size="60">
+                                <template #extra>
+                                    <el-button
+                                        v-if="normalizeStatus(selectedOrder.status) !== 'cancelled'"
+                                        size="small"
+                                        type="primary"
+                                        plain
+                                        @click="openExpenseDialogForOrder()"
+                                    >
+                                        <i class="fas fa-plus"></i>&nbsp;{{ $t('add_expense') }}
+                                    </el-button>
+                                </template>
+                            </el-empty>
+                        </el-card>
+
                         <!-- Payments -->
                         <el-card v-if="payments.length" shadow="never" class="info-card mb-3">
                             <template #header><span class="card-title-txt"><i class="fas fa-hand-holding-dollar"></i> {{ $t('payments_list') }}</span></template>
@@ -1086,182 +1179,19 @@
             </template>
 
             <!-- Print Settings Toolbar (Screen Only) -->
-            <div class="so-print-toolbar so-screen-only">
-                <!-- Row 1: Presets, Zoom & Actions -->
-                <div class="so-toolbar-row so-toolbar-primary-row">
-                    <!-- Preset Selector -->
-                    <div class="so-tb-unit">
-                        <span class="so-tb-label">
-                            <i class="fas fa-wand-magic-sparkles text-primary"></i>
-                            {{ $t('so_preset') || 'نمط المستند' }}:
-                        </span>
-                        <el-radio-group v-model="printSettings.preset" size="small" @change="applyPreset">
-                            <el-radio-button value="official">
-                                <i class="fas fa-crown"></i> {{ $t('so_preset_official') || 'أمر رسمي كامل' }}
-                            </el-radio-button>
-                            <el-radio-button value="dispatch">
-                                <i class="fas fa-boxes-packing"></i> {{ $t('so_preset_dispatch') || 'صرف مستودعي' }}
-                            </el-radio-button>
-                            <el-radio-button value="customer">
-                                <i class="fas fa-receipt"></i> {{ $t('so_preset_customer') || 'إشعار عميل' }}
-                            </el-radio-button>
-                        </el-radio-group>
-                    </div>
-
-                    <!-- Interactive Zoom Controls -->
-                    <div class="so-tb-unit so-tb-zoom">
-                        <span class="so-tb-label">
-                            <i class="fas fa-magnifying-glass"></i>
-                            {{ $t('zoom') || 'الحجم' }}:
-                        </span>
-                        <el-button-group size="small">
-                            <el-button :disabled="zoomLevel <= 65" @click="zoomOut" :title="$t('zoom_out') || 'تصغير'">
-                                <i class="fas fa-minus"></i>
-                            </el-button>
-                            <el-button @click="resetZoom" class="so-zoom-badge" :title="$t('reset_zoom') || 'إعادة ضبط 100%'">
-                                {{ zoomLevel }}%
-                            </el-button>
-                            <el-button :disabled="zoomLevel >= 150" @click="zoomIn" :title="$t('zoom_in') || 'تكبير'">
-                                <i class="fas fa-plus"></i>
-                            </el-button>
-                        </el-button-group>
-                    </div>
-
-                    <!-- Primary Execution Buttons -->
-                    <div class="so-tb-actions-cluster">
-                        <el-button
-                            type="warning"
-                            plain
-                            size="default"
-                            :loading="isExportingPdf"
-                            class="btn-export-pdf"
-                            @click="exportOrderPdf"
-                        >
-                            <i class="fas fa-file-pdf"></i> {{ $t('download_pdf') || 'تحميل PDF' }}
-                        </el-button>
-                        <el-button
-                            type="primary"
-                            :icon="Printer"
-                            size="default"
-                            class="btn-print-prominent"
-                            @click="triggerPrintOrder"
-                        >
-                            <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة الأمر الآن' }}
-                        </el-button>
-                    </div>
-                </div>
-
-                <!-- Row 2: Format & Color Palette Controls -->
-                <div class="so-toolbar-row so-toolbar-secondary-row">
-                    <!-- Header Style -->
-                    <div class="so-tb-unit">
-                        <span class="so-tb-label">
-                            <i class="fas fa-heading"></i>
-                            {{ $t('po_header_style') || 'الترويسة' }}:
-                        </span>
-                        <el-radio-group v-model="printSettings.headerStyle" size="small">
-                            <el-radio-button value="official">
-                                <i class="fas fa-file-invoice"></i> {{ $t('po_header_official') || 'رسمية' }}
-                            </el-radio-button>
-                            <el-radio-button value="banner">
-                                <i class="fas fa-image"></i> {{ $t('po_header_banner') || 'بانر' }}
-                            </el-radio-button>
-                            <el-radio-button value="compact">
-                                <i class="fas fa-compress-alt"></i> {{ $t('po_header_compact') || 'مدمجة' }}
-                            </el-radio-button>
-                        </el-radio-group>
-                    </div>
-
-                    <!-- Color Accent Palette -->
-                    <div class="so-tb-unit">
-                        <span class="so-tb-label">
-                            <i class="fas fa-palette"></i>
-                            {{ $t('so_theme') || 'اللون' }}:
-                        </span>
-                        <el-radio-group v-model="printSettings.theme" size="small">
-                            <el-radio-button value="navy">
-                                <span class="theme-dot dot-navy"></span> {{ $t('so_theme_navy') || 'كحلي' }}
-                            </el-radio-button>
-                            <el-radio-button value="emerald">
-                                <span class="theme-dot dot-emerald"></span> {{ $t('so_theme_emerald') || 'زمردي' }}
-                            </el-radio-button>
-                            <el-radio-button value="charcoal">
-                                <span class="theme-dot dot-charcoal"></span> {{ $t('so_theme_charcoal') || 'رمادي' }}
-                            </el-radio-button>
-                            <el-radio-button value="indigo">
-                                <span class="theme-dot dot-indigo"></span> {{ $t('so_theme_indigo') || 'نيلي' }}
-                            </el-radio-button>
-                        </el-radio-group>
-                    </div>
-
-                    <!-- Page Density -->
-                    <div class="so-tb-unit">
-                        <span class="so-tb-label">
-                            <i class="fas fa-table-cells"></i>
-                            {{ $t('so_density') || 'الكثافة' }}:
-                        </span>
-                        <el-radio-group v-model="printSettings.density" size="small">
-                            <el-radio-button value="standard">
-                                <i class="fas fa-expand"></i> {{ $t('so_density_standard') || 'قياسي' }}
-                            </el-radio-button>
-                            <el-radio-button value="compact">
-                                <i class="fas fa-compress"></i> {{ $t('so_density_compact') || 'مدمج' }}
-                            </el-radio-button>
-                        </el-radio-group>
-                    </div>
-
-                    <!-- Watermark -->
-                    <div class="so-tb-unit">
-                        <span class="so-tb-label">
-                            <i class="fas fa-stamp"></i>
-                            {{ $t('so_watermark') || 'العلامة المائية' }}:
-                        </span>
-                        <el-select v-model="printSettings.watermark" size="small" style="width: 145px;">
-                            <el-option value="" :label="$t('so_watermark_none') || 'بدون علامة'" />
-                            <el-option value="draft" :label="$t('so_watermark_draft') || 'مسودة DRAFT'" />
-                            <el-option value="approved" :label="$t('so_watermark_approved') || 'معتمد APPROVED'" />
-                            <el-option value="paid" :label="$t('so_watermark_paid') || 'مدفوع بالكامل PAID'" />
-                            <el-option value="official" :label="$t('so_watermark_official') || 'أمر رسمي OFFICIAL'" />
-                        </el-select>
-                    </div>
-                </div>
-
-                <!-- Row 3: Component Visibility Toggles -->
-                <div class="so-toolbar-row so-toolbar-toggles-row">
-                    <span class="so-toolbar-sublabel">
-                        <i class="fas fa-sliders"></i> {{ $t('display_options') || 'خيارات العرض' }}:
-                    </span>
-                    <div class="so-toggles-grid">
-                        <el-checkbox v-model="printSettings.showPrices">
-                            <i class="fas fa-dollar-sign"></i> {{ $t('so_show_prices') || 'الأسعار والإجماليات' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showQrCode">
-                            <i class="fas fa-qrcode"></i> {{ $t('so_show_qr') || 'رمز التحقق QR' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showLogo">
-                            <i class="fas fa-image"></i> {{ $t('po_show_logo') || 'الشعار' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showContacts">
-                            <i class="fas fa-address-book"></i> {{ $t('po_show_contacts') || 'بيانات التواصل' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showImages">
-                            <i class="fas fa-box-open"></i> {{ $t('po_show_images') || 'صور المنتجات' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showSku">
-                            <i class="fas fa-barcode"></i> {{ $t('so_show_sku') || 'الأكواد والباركود' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showCustomerInfo">
-                            <i class="fas fa-user-check"></i> {{ $t('customer_info') || 'بيانات العميل' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showNotes">
-                            <i class="fas fa-note-sticky"></i> {{ $t('notes') || 'الملاحظات والشروط' }}
-                        </el-checkbox>
-                        <el-checkbox v-model="printSettings.showSignatures">
-                            <i class="fas fa-signature"></i> {{ $t('po_show_signatures') || 'التوقيعات والختم' }}
-                        </el-checkbox>
-                    </div>
-                </div>
-            </div>
+            <PrintSettingsToolbar
+                v-model="printSettings"
+                :zoom-level="zoomLevel"
+                :is-exporting-pdf="isExportingPdf"
+                @apply-preset="applyPreset"
+                @save-default="saveAsDefault"
+                @reset-default="resetToDefaults"
+                @zoom-in="zoomIn"
+                @zoom-out="zoomOut"
+                @reset-zoom="resetZoom"
+                @export-pdf="exportOrderPdf"
+                @print-now="triggerPrintOrder"
+            />
 
             <!-- Paper simulation stage with Zoom Container -->
             <div
@@ -1278,13 +1208,21 @@
                         :class="[
                             `theme-${printSettings.theme}`,
                             { 'density-compact': printSettings.density === 'compact' },
-                            { 'mode-dispatch': !printSettings.showPrices }
+                            { 'mode-dispatch': !printSettings.showPrices },
+                            { 'has-cover': printSettings.showCover }
                         ]"
                     >
-                        <!-- Diagonal Watermark Overlay if selected -->
-                        <div v-if="printSettings.watermark && watermarkText" class="so-sheet-watermark" :class="`wm-${printSettings.watermark}`">
-                            <span>{{ watermarkText }}</span>
+                        <!-- Optional Full-page Cover with edge-to-edge fulfill -->
+                        <div v-if="printSettings.showCover" class="so-print-cover">
+                            <img :src="coverImageUrl" alt="Sales Order Cover" />
                         </div>
+
+                        <!-- Main Printable Order Document Sheet -->
+                        <div class="so-document-body">
+                            <!-- Diagonal Watermark Overlay if selected -->
+                            <div v-if="printSettings.watermark && watermarkText" class="so-sheet-watermark" :class="`wm-${printSettings.watermark}`">
+                                <span>{{ watermarkText }}</span>
+                            </div>
 
                         <!-- Official Print Header with Logo & Brand Details -->
                         <PrintDocumentHeader
@@ -1295,7 +1233,7 @@
                             :title="printSettings.showPrices ? ($t('official_sales_order') || 'أمر بيع رسمي') : ($t('dispatch_note_title') || 'مذكرة صرف واستلام بضاعة')"
                             :subtitle="printSettings.showPrices ? 'OFFICIAL SALES ORDER' : 'WAREHOUSE PICKING & DISPATCH SLIP'"
                             :document-number="printOrderData.order_number"
-                            :banner-src="'/Header.jpeg'"
+                            :banner-src="headerBannerUrl"
                         />
 
                         <!-- Document Executive Ribbon / Status, QR & Reference Bar -->
@@ -1491,7 +1429,7 @@
                             </tbody>
                             <tfoot>
                                 <tr class="so-table-summary-row">
-                                    <td :colspan="(printSettings.showImages ? 1 : 0) + (printSettings.showSku ? 1 : 0) + 2" class="so-sum-label">
+                                    <td :colspan="(printSettings.showImages ? 1 : 0) + (printSettings.showSku ? 1 : 0) + 3" class="so-sum-label">
                                         <i class="fas fa-layer-group text-primary"></i>
                                         <span>{{ $t('summary') || 'إجمالي بنود الطلب' }}:</span>
                                         <strong class="so-sum-count">{{ printItemsCount }}</strong> {{ $t('items') || 'أصناف' }}
@@ -1513,8 +1451,10 @@
                             </tfoot>
                         </table>
 
-                        <!-- Totals & Notes Block -->
-                        <div class="so-print-summary-row">
+                        <!-- Executive Closing Section: Totals, Notes, Signatures & Footer -->
+                        <div class="so-print-closing-section">
+                            <!-- Totals & Notes Block -->
+                            <div class="so-print-summary-row">
                             <div class="so-print-notes-col">
                                 <div v-if="printSettings.showNotes && printOrderData.notes" class="so-print-notes-box">
                                     <div class="so-notes-header">
@@ -1540,7 +1480,7 @@
                                 <div class="so-print-legal-notice">
                                     <i class="fas fa-circle-info"></i>
                                     <span v-if="printSettings.showPrices">
-                                        {{ $t('so_print_legal_notice') || 'تخضع المواد المسلمة لشروط الضمان المعتمدة لدى شركة أوان التقدم للتجهيزات الصحية ومواد البناء.' }}
+                                        {{ printSettings.customNotes || $t('so_print_legal_notice') || 'تخضع المواد المسلمة لشروط الضمان المعتمدة لدى شركة أوان التقدم للتجهيزات الصحية ومواد البناء.' }}
                                     </span>
                                     <span v-else>
                                         {{ $t('dispatch_non_priced_notice') || 'مذكرة صرف رسمية غير مسعرة معتمدة لأغراض النقل والتحميل والمطابقة والتسليم المستودعي.' }}
@@ -1550,40 +1490,46 @@
 
                             <!-- Commercial Totals Card -->
                             <div v-if="printSettings.showPrices" class="so-print-totals-col">
-                                <table class="so-totals-table">
-                                    <tr>
-                                        <td>{{ $t('items_subtotal') || 'المجموع الفرعي' }}:</td>
-                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</td>
-                                    </tr>
-                                    <tr v-if="toNum(printOrderData.discount) > 0">
-                                        <td>{{ $t('less_discount') || 'الخصم الممنوح' }}:</td>
-                                        <td class="val discount-val" dir="ltr">− {{ formatCurrency(printOrderData.discount) }}</td>
-                                    </tr>
-                                    <tr v-if="toNum(printOrderData.tax) > 0">
-                                        <td>{{ $t('plus_tax') || 'ضريبة القيمة المضافة' }}:</td>
-                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.tax) }}</td>
-                                    </tr>
-                                    <tr v-if="toNum(printOrderData.shipping_cost) > 0">
-                                        <td>{{ $t('plus_shipping_cost') || 'أجور التوصيل / الشحن' }}:</td>
-                                        <td class="val" dir="ltr">{{ formatCurrency(printOrderData.shipping_cost) }}</td>
-                                    </tr>
-                                    <tr class="grand-total-row">
-                                        <td>{{ $t('grand_total_amount') || 'المجموع الإجمالي النهائي' }}:</td>
-                                        <td class="val grand-val" dir="ltr">{{ formatCurrency(printOrderData.total) }}</td>
-                                    </tr>
-                                    <tr v-if="printOrderData.invoice" class="invoice-status-row">
-                                        <td>{{ $t('invoice_number') }}:</td>
-                                        <td class="val" dir="ltr">
-                                            <span class="so-mono">{{ printOrderData.invoice.invoice_number }}</span>
-                                            <span v-if="toNum(printOrderData.invoice.paid_amount) >= toNum(printOrderData.invoice.total)" class="badge-paid">
-                                                ({{ $t('fully_paid') }})
-                                            </span>
-                                            <span v-else-if="toNum(printOrderData.invoice.paid_amount) > 0" class="badge-partial">
-                                                ({{ $t('partially_paid') }}: {{ formatCurrency(printOrderData.invoice.paid_amount) }})
-                                            </span>
-                                        </td>
-                                    </tr>
-                                </table>
+                                <div class="so-totals-card">
+                                    <div class="so-totals-header">
+                                        <i class="fas fa-coins text-primary"></i>
+                                        <strong>{{ $t('financial_summary') || 'الملخص المالي النهائي' }}</strong>
+                                    </div>
+                                    <table class="so-totals-table">
+                                        <tr>
+                                            <td>{{ $t('items_subtotal') || 'المجموع الفرعي' }}:</td>
+                                            <td class="val" dir="ltr">{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</td>
+                                        </tr>
+                                        <tr v-if="toNum(printOrderData.discount) > 0">
+                                            <td>{{ $t('less_discount') || 'الخصم الممنوح' }}:</td>
+                                            <td class="val discount-val" dir="ltr">− {{ formatCurrency(printOrderData.discount) }}</td>
+                                        </tr>
+                                        <tr v-if="toNum(printOrderData.tax) > 0">
+                                            <td>{{ $t('plus_tax') || 'ضريبة القيمة المضافة' }}:</td>
+                                            <td class="val" dir="ltr">{{ formatCurrency(printOrderData.tax) }}</td>
+                                        </tr>
+                                        <tr v-if="toNum(printOrderData.shipping_cost) > 0">
+                                            <td>{{ $t('plus_shipping_cost') || 'أجور التوصيل / الشحن' }}:</td>
+                                            <td class="val" dir="ltr">{{ formatCurrency(printOrderData.shipping_cost) }}</td>
+                                        </tr>
+                                        <tr class="grand-total-row">
+                                            <td>{{ $t('grand_total_amount') || 'المجموع الإجمالي النهائي' }}:</td>
+                                            <td class="val grand-val" dir="ltr">{{ formatCurrency(printOrderData.total) }}</td>
+                                        </tr>
+                                        <tr v-if="printOrderData.invoice" class="invoice-status-row">
+                                            <td>{{ $t('invoice_number') }}:</td>
+                                            <td class="val" dir="ltr">
+                                                <span class="so-mono">{{ printOrderData.invoice.invoice_number }}</span>
+                                                <span v-if="toNum(printOrderData.invoice.paid_amount) >= toNum(printOrderData.invoice.total)" class="badge-paid">
+                                                    ({{ $t('fully_paid') }})
+                                                </span>
+                                                <span v-else-if="toNum(printOrderData.invoice.paid_amount) > 0" class="badge-partial">
+                                                    ({{ $t('partially_paid') }}: {{ formatCurrency(printOrderData.invoice.paid_amount) }})
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
                             </div>
 
                             <!-- Warehouse Dispatch Summary Card (Non-Priced) -->
@@ -1637,9 +1583,15 @@
                             </div>
                             <div class="sig-card">
                                 <span class="sig-title"><i class="fas fa-stamp"></i> {{ $t('company_seal') || 'ختم واعتماد الشركة' }}</span>
-                                <div class="sig-seal-box">
-                                    <span>{{ $t('official_seal') || 'الختم الرسمي' }}</span>
+                                <div v-if="printSettings.authorizedPerson" class="sig-name">
+                                    {{ printSettings.authorizedPerson }}
+                                    <small v-if="printSettings.authorizedTitle" style="display: block; font-size: 9px; color: #64748b;">{{ printSettings.authorizedTitle }}</small>
                                 </div>
+                                <div class="sig-seal-box" :class="{ 'has-stamp': !!stampImageUrl }">
+                                    <img v-if="stampImageUrl" :src="stampImageUrl" alt="Official Seal" class="sig-stamp-img" />
+                                    <span v-else>{{ $t('official_seal') || 'الختم الرسمي' }}</span>
+                                </div>
+                                <img v-if="signatureImageUrl" :src="signatureImageUrl" alt="Authorized Signature" class="sig-digital-img" />
                             </div>
                         </div>
 
@@ -1671,7 +1623,7 @@
                         </div>
 
                         <!-- Document Running Footer -->
-                        <div class="so-print-footer">
+                        <div v-if="printSettings.showFooter" class="so-print-footer">
                             <div class="so-footer-line">
                                 <span>{{ $t('official_doc_footer_notice') || 'وثيقة رسمية صادرة آلياً من نظام أوان التقدم للتجهيزات الصحية ومواد البناء · صالحة للاستخدام الإداري والمالي' }}</span>
                             </div>
@@ -1680,7 +1632,9 @@
                                 <span>REF: {{ printOrderData.order_number }}</span>
                             </div>
                         </div>
-                    </div>
+                        </div><!-- /so-print-closing-section -->
+                    </div><!-- /so-document-body -->
+                    </div><!-- /sales-order-printable-doc -->
                 </div>
             </div>
 
@@ -1703,6 +1657,16 @@
                 </div>
             </template>
         </el-dialog>
+
+        <!-- Expense Dialog for linking or adding extra expenses to order -->
+        <ExpenseDialog
+            v-model="expenseDialogVisible"
+            :expense="editingExpense"
+            :sales-order-id="selectedOrder?.id"
+            :customer-id="selectedOrder?.customer_id"
+            :invoice-id="selectedOrder?.invoice_id || invoice?.id"
+            @saved="onExpenseSaved"
+        />
     </div>
 </template>
 
@@ -1718,7 +1682,10 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
+import PrintSettingsToolbar from '@/components/admin/PrintSettingsToolbar.vue';
+import { usePrintSettings } from '@/composables/usePrintSettings';
 import EntityImage from '@/components/admin/EntityImage.vue';
+import ExpenseDialog from '@/components/admin/sales/ExpenseDialog.vue';
 import { variantLabelOf } from '@/utils/productPick';
 import { useStockShortage } from '@/Composables/useStockShortage';
 import QRCode from 'qrcode';
@@ -2419,6 +2386,57 @@ const diagnostics = computed(() => detail.value.diagnostics || []);
 const history = computed(() => detail.value.history || []);
 const followUp = computed(() => detail.value.follow_up || {});
 
+// Additional Expenses state & helpers
+const expenseDialogVisible = ref(false);
+const editingExpense = ref(null);
+
+const openExpenseDialogForOrder = (exp = null) => {
+    editingExpense.value = exp;
+    expenseDialogVisible.value = true;
+};
+
+const onExpenseSaved = async () => {
+    expenseDialogVisible.value = false;
+    await refreshDetail();
+};
+
+const orderExpenses = computed(() => {
+    const list = detail.value.expenses || selectedOrder.value?.expenses || [];
+    return Array.isArray(list) ? list : [];
+});
+
+const orderExpensesTotal = computed(() => {
+    return orderExpenses.value.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+});
+
+const expenseCategoryIcon = (cat) => {
+    switch (cat) {
+        case 'shipping': return 'fas fa-truck';
+        case 'packaging': return 'fas fa-box-open';
+        case 'handling': return 'fas fa-dolly';
+        default: return 'fas fa-receipt';
+    }
+};
+
+const expenseCategoryLabel = (cat) => {
+    switch (cat) {
+        case 'shipping': return t('shipping');
+        case 'packaging': return t('packaging');
+        case 'handling': return t('process');
+        default: return t('subject_other');
+    }
+};
+
+const expenseStatusTag = (status) => {
+    switch (status) {
+        case 'paid': return 'success';
+        case 'pending': return 'warning';
+        case 'approved': return 'primary';
+        case 'rejected': return 'danger';
+        default: return 'info';
+    }
+};
+
 const followUpClass = computed(() => {
     if (!followUp.value.is_open) return 'fu-done';
     if (followUp.value.is_overdue) return 'fu-overdue';
@@ -2588,101 +2606,57 @@ const printOrderDialogVisible = ref(false);
 const printOrderLoading = ref(false);
 const isFullScreenPreview = ref(false);
 const isExportingPdf = ref(false);
-const zoomLevel = ref(100);
 const qrCodeDataUrl = ref('');
 
-const printSettings = reactive({
-    preset: 'official', // 'official' | 'dispatch' | 'customer'
-    headerStyle: 'official', // 'official' | 'banner' | 'compact'
-    density: 'standard', // 'standard' | 'compact'
-    theme: 'navy', // 'navy' | 'emerald' | 'charcoal' | 'indigo'
-    watermark: '', // '' | 'draft' | 'approved' | 'paid' | 'official'
-    showPrices: true,
-    showQrCode: true,
-    showLogo: true,
-    showContacts: true,
-    showImages: true,
-    showSku: true,
-    showCustomerInfo: true,
-    showNotes: true,
-    showSignatures: true,
+const {
+    printSettings,
+    zoomLevel,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    zoomContainerStyle,
+    applyPreset: baseApplyPreset,
+    saveAsDefault,
+    resetToDefaults,
+    getWatermarkLabel,
+} = usePrintSettings('sales_order', { showPrices: true });
+
+const watermarkText = computed(() => getWatermarkLabel(printSettings.watermark));
+
+const coverImageUrl = computed(() => {
+    const c = printSettings.coverImage || '/cover.jpeg';
+    return c.startsWith('/') || c.startsWith('http') ? c : `/storage/${c}`;
+});
+
+const headerBannerUrl = computed(() => {
+    const b = printSettings.headerBanner || '/Header.jpeg';
+    return b.startsWith('/') || b.startsWith('http') ? b : `/storage/${b}`;
+});
+
+const stampImageUrl = computed(() => {
+    if (!printSettings.stampImage) return '';
+    const s = printSettings.stampImage;
+    return s.startsWith('/') || s.startsWith('http') ? s : `/storage/${s}`;
+});
+
+const signatureImageUrl = computed(() => {
+    if (!printSettings.signatureImage) return '';
+    const s = printSettings.signatureImage;
+    return s.startsWith('/') || s.startsWith('http') ? s : `/storage/${s}`;
 });
 
 const applyPreset = (presetName) => {
-    printSettings.preset = presetName;
-    if (presetName === 'official') {
-        printSettings.showPrices = true;
-        printSettings.headerStyle = 'official';
-        printSettings.density = 'standard';
-        printSettings.watermark = '';
-        printSettings.showLogo = true;
-        printSettings.showContacts = true;
-        printSettings.showImages = true;
-        printSettings.showSku = true;
-        printSettings.showCustomerInfo = true;
-        printSettings.showNotes = true;
-        printSettings.showSignatures = true;
-        printSettings.showQrCode = true;
-    } else if (presetName === 'dispatch') {
+    baseApplyPreset(presetName);
+    if (presetName === 'warehouse' || presetName === 'dispatch') {
         printSettings.showPrices = false;
-        printSettings.headerStyle = 'compact';
-        printSettings.density = 'compact';
-        printSettings.watermark = '';
-        printSettings.showLogo = true;
-        printSettings.showContacts = false;
-        printSettings.showImages = true;
-        printSettings.showSku = true;
-        printSettings.showCustomerInfo = true;
-        printSettings.showNotes = true;
-        printSettings.showSignatures = true;
-        printSettings.showQrCode = true;
-    } else if (presetName === 'customer') {
+    } else {
         printSettings.showPrices = true;
-        printSettings.headerStyle = 'banner';
-        printSettings.density = 'standard';
+    }
+    if (presetName === 'customer') {
+        printSettings.showCover = true;
         printSettings.watermark = printOrderData.value?.payment?.state === 'paid' ? 'paid' : 'approved';
-        printSettings.showLogo = true;
-        printSettings.showContacts = true;
-        printSettings.showImages = true;
-        printSettings.showSku = false;
-        printSettings.showCustomerInfo = true;
-        printSettings.showNotes = true;
-        printSettings.showSignatures = true;
-        printSettings.showQrCode = true;
     }
 };
-
-const zoomIn = () => {
-    if (zoomLevel.value < 150) zoomLevel.value = Math.min(150, zoomLevel.value + 15);
-};
-
-const zoomOut = () => {
-    if (zoomLevel.value > 65) zoomLevel.value = Math.max(65, zoomLevel.value - 15);
-};
-
-const resetZoom = () => {
-    zoomLevel.value = 100;
-};
-
-const zoomContainerStyle = computed(() => {
-    if (zoomLevel.value === 100) return {};
-    return {
-        transform: `scale(${zoomLevel.value / 100})`,
-        transformOrigin: 'top center',
-        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-    };
-});
-
-const watermarkLabels = {
-    draft: 'مسودة — DRAFT',
-    approved: 'طلب معتمد — APPROVED',
-    paid: 'مدفوع بالكامل — PAID',
-    official: 'أمر بيع رسمي — OFFICIAL',
-};
-
-const watermarkText = computed(() => {
-    return watermarkLabels[printSettings.watermark] || '';
-});
 
 const printItemsCount = computed(() => {
     return printOrderData.value?.items?.length || 0;
@@ -2696,7 +2670,8 @@ const estimatedPages = computed(() => {
     const items = printOrderData.value?.items?.length || 0;
     const isCompact = printSettings.density === 'compact';
     const limit = isCompact ? 14 : 9;
-    return items <= limit ? 1 : Math.ceil(items / limit);
+    const docPages = items <= limit ? 1 : Math.ceil(items / limit);
+    return printSettings.showCover ? docPages + 1 : docPages;
 });
 
 const printFormattedDate = computed(() => {
@@ -2742,15 +2717,36 @@ watch(printOrderData, (newOrder) => {
 }, { immediate: true });
 
 const exportOrderPdf = async () => {
-    const el = document.getElementById('sales-order-printable-doc');
-    if (!el) return;
+    const docEl = document.getElementById('sales-order-printable-doc');
+    if (!docEl) return;
     isExportingPdf.value = true;
     try {
         const prevZoom = zoomLevel.value;
         zoomLevel.value = 100;
         await nextTick();
 
-        const canvas = await html2canvas(el, {
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pageWidth = 210;
+        const pageHeight = 297;
+
+        const coverEl = docEl.querySelector('.so-print-cover');
+        const bodyEl = docEl.querySelector('.so-document-body') || docEl;
+
+        // 1. If cover page is enabled, capture and render as full-bleed page 1
+        if (printSettings.showCover && coverEl) {
+            const coverCanvas = await html2canvas(coverEl, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+            });
+            const coverData = coverCanvas.toDataURL('image/jpeg', 0.95);
+            pdf.addImage(coverData, 'JPEG', 0, 0, pageWidth, pageHeight);
+            pdf.addPage();
+        }
+
+        // 2. Capture document body
+        const bodyCanvas = await html2canvas(bodyEl, {
             scale: 2,
             useCORS: true,
             backgroundColor: '#ffffff',
@@ -2759,21 +2755,18 @@ const exportOrderPdf = async () => {
 
         zoomLevel.value = prevZoom;
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-        const imgWidth = 210;
-        const pageHeight = 297;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const bodyData = bodyCanvas.toDataURL('image/jpeg', 0.95);
+        const imgHeight = (bodyCanvas.height * pageWidth) / bodyCanvas.width;
         let heightLeft = imgHeight;
         let position = 0;
 
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
         heightLeft -= pageHeight;
 
         while (heightLeft > 0) {
             position = heightLeft - imgHeight;
             pdf.addPage();
-            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
             heightLeft -= pageHeight;
         }
 
@@ -2806,7 +2799,7 @@ const openPrintDialog = async (orderOrRow) => {
 
     const orderId = typeof orderOrRow === 'object' ? orderOrRow.id : Number(orderOrRow);
     // If an object was provided, show it immediately while details load
-    printOrderData.value = typeof orderOrRow === 'object' ? orderOrRow : null;
+    printOrderData.value = typeof orderOrRow === 'object' ? { ...orderOrRow } : null;
     printOrderDialogVisible.value = true;
     printOrderLoading.value = true;
 
@@ -2825,16 +2818,18 @@ const openPrintDialog = async (orderOrRow) => {
             } catch (err) {
                 console.warn('salesOrdersApi.detail failed, trying getById', err);
                 const alt = await salesOrdersApi.getById(orderId);
-                if (alt.data?.data) {
+                const fetched = alt.data?.data || alt.data;
+                if (fetched) {
                     full = {
-                        ...alt.data.data,
-                        items: alt.data.data.items || [],
+                        ...fetched,
+                        items: fetched.items || [],
                     };
                 }
             }
         }
 
         if (full) {
+            if (!full.items) full.items = [];
             printOrderData.value = full;
             generateQrCode(full);
         }
@@ -2849,7 +2844,10 @@ const openPrintDialog = async (orderOrRow) => {
 const triggerPrintOrder = async () => {
     const docEl = document.getElementById('sales-order-printable-doc');
     if (!docEl) {
+        const origTitle = document.title;
+        document.title = '';
         window.print();
+        document.title = origTitle;
         return;
     }
 
@@ -2860,12 +2858,23 @@ const triggerPrintOrder = async () => {
             headStyles.push(node.outerHTML);
         });
 
-        // Dedicated print stylesheet for A4 portrait
+        // Dedicated print stylesheet for A4 portrait with zero margin (removes URL/date/headers)
         const extraPrintStyles = `
             <style>
+                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+
                 @page {
                     size: A4 portrait;
-                    margin: 8mm 10mm 10mm 10mm;
+                    margin: 0 !important;
+                }
+                @page :left {
+                    margin: 0 !important;
+                }
+                @page :right {
+                    margin: 0 !important;
+                }
+                @page :first {
+                    margin: 0 !important;
                 }
                 * {
                     -webkit-print-color-adjust: exact !important;
@@ -2873,6 +2882,8 @@ const triggerPrintOrder = async () => {
                     box-sizing: border-box !important;
                 }
                 html, body {
+                    visibility: visible !important;
+                    opacity: 1 !important;
                     margin: 0 !important;
                     padding: 0 !important;
                     background: #ffffff !important;
@@ -2887,10 +2898,17 @@ const triggerPrintOrder = async () => {
                     text-decoration: none !important;
                     color: inherit !important;
                 }
-                a[href]:after {
+                a[href]:after,
+                abbr[title]:after {
                     content: none !important;
                 }
+                .brand-domain-badge,
+                .domain-badge {
+                    display: none !important;
+                }
                 #sales-order-printable-doc {
+                    visibility: visible !important;
+                    opacity: 1 !important;
                     width: 100% !important;
                     max-width: 100% !important;
                     margin: 0 !important;
@@ -2900,11 +2918,54 @@ const triggerPrintOrder = async () => {
                     background: #ffffff !important;
                     display: block !important;
                 }
+                .so-print-cover {
+                    display: block !important;
+                    position: relative !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    min-height: 296mm !important;
+                    max-height: 297mm !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    overflow: hidden !important;
+                    page-break-before: avoid !important;
+                    page-break-after: always !important;
+                    break-after: page !important;
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                    box-sizing: border-box !important;
+                }
+                .so-print-cover img {
+                    width: 100% !important;
+                    height: 100% !important;
+                    min-height: 296mm !important;
+                    max-height: 297mm !important;
+                    object-fit: cover !important;
+                    display: block !important;
+                }
+                .so-document-body {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    padding: 10mm 12mm !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    background: #ffffff !important;
+                    display: block !important;
+                    box-sizing: border-box !important;
+                    position: relative !important;
+                    page-break-before: auto !important;
+                    break-before: auto !important;
+                }
+                .so-printable-sheet.has-cover .so-document-body {
+                    page-break-before: auto !important;
+                    break-before: auto !important;
+                }
                 .so-print-table thead {
                     display: table-header-group !important;
                 }
                 .so-print-table tfoot {
-                    display: table-footer-group !important;
+                    display: table-row-group !important;
                 }
                 .so-print-table tr {
                     break-inside: avoid !important;
@@ -2914,7 +2975,8 @@ const triggerPrintOrder = async () => {
                 .so-print-meta-grid,
                 .so-print-summary-row,
                 .so-print-signatures,
-                .so-print-footer {
+                .so-print-footer,
+                .so-print-closing-section {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
                 }
@@ -2933,12 +2995,16 @@ const triggerPrintOrder = async () => {
         iframe = document.createElement('iframe');
         iframe.id = 'so-print-hidden-iframe';
         iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = 'none';
-        iframe.style.visibility = 'hidden';
+        iframe.style.left = '0';
+        iframe.style.top = '0';
+        iframe.style.width = '100vw';
+        iframe.style.height = '100vh';
+        iframe.style.border = '0';
+        iframe.style.margin = '0';
+        iframe.style.padding = '0';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+        iframe.style.zIndex = '-9999';
         document.body.appendChild(iframe);
 
         const iframeDoc = iframe.contentWindow.document;
@@ -2947,11 +3013,12 @@ const triggerPrintOrder = async () => {
 <html dir="rtl" lang="ar">
 <head>
     <meta charset="utf-8">
-    <title>${escapeHtml(printOrderData.value?.order_number || 'أمر بيع')}</title>
+    <base href="${window.location.origin}/">
+    <title></title>
     ${headStyles.join('\n')}
     ${extraPrintStyles}
 </head>
-<body>
+<body class="so-print-body-isolated">
     ${docEl.outerHTML}
 </body>
 </html>`);
@@ -2959,27 +3026,25 @@ const triggerPrintOrder = async () => {
 
         // Wait for images in the iframe to finish loading
         await new Promise((resolve) => {
-            const images = iframeDoc.images;
-            if (!images || images.length === 0) {
-                setTimeout(resolve, 150);
+            const images = Array.from(iframeDoc.images || []);
+            const uncompleted = images.filter((img) => !img.complete);
+            if (uncompleted.length === 0) {
+                setTimeout(resolve, 200);
                 return;
             }
-            let loaded = 0;
-            const total = images.length;
+            let remaining = uncompleted.length;
             const onDone = () => {
-                loaded++;
-                if (loaded >= total) resolve();
+                remaining--;
+                if (remaining <= 0) resolve();
             };
-            for (let i = 0; i < total; i++) {
-                if (images[i].complete) {
-                    onDone();
-                } else {
-                    images[i].onload = onDone;
-                    images[i].onerror = onDone;
-                }
-            }
-            setTimeout(resolve, 800); // Failsafe timeout
+            uncompleted.forEach((img) => {
+                img.onload = onDone;
+                img.onerror = onDone;
+            });
+            setTimeout(resolve, 1500); // Failsafe timeout
         });
+
+        await new Promise((r) => setTimeout(r, 200));
 
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -2989,8 +3054,11 @@ const triggerPrintOrder = async () => {
         }, 60000);
     } catch (e) {
         console.error('Iframe print error, falling back to window.print():', e);
+        const origTitle = document.title;
+        document.title = '';
         await nextTick();
         window.print();
+        document.title = origTitle;
     }
 };
 
@@ -4509,13 +4577,39 @@ onMounted(async () => {
     position: relative;
     width: 100%;
     max-width: 860px;
+    margin: 0 auto;
+    direction: rtl;
+    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
+}
+
+/* Screen cover preview */
+.so-print-cover {
+    width: 100%;
+    max-width: 860px;
+    aspect-ratio: 1 / 1.4142;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.05);
+    background: #0f172a;
+}
+
+.so-print-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Document Sheet Body */
+.so-document-body {
+    position: relative;
+    width: 100%;
     background: #ffffff;
     color: #0f172a;
-    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
-    padding: 16px 22px;
+    padding: 18px 24px;
     box-sizing: border-box;
-    direction: rtl;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--so-border-color);
     border-radius: 8px;
     box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
@@ -5117,8 +5211,27 @@ onMounted(async () => {
 }
 
 .so-print-totals-col {
-    width: 290px;
+    width: 300px;
     flex-shrink: 0;
+}
+
+.so-totals-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.so-totals-header {
+    font-size: 11.5px;
+    font-weight: 800;
+    color: var(--so-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    border-bottom: 1px dashed #cbd5e1;
+    padding-bottom: 6px;
 }
 
 .so-totals-table {
@@ -5128,7 +5241,7 @@ onMounted(async () => {
 }
 
 .so-totals-table td {
-    padding: 4px 6px;
+    padding: 4px 4px;
     color: #334155;
 }
 
@@ -5144,7 +5257,7 @@ onMounted(async () => {
 
 .so-totals-table .grand-total-row td {
     font-weight: 900;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--so-primary);
     border-top: 2px solid var(--so-primary);
     padding-top: 6px;
@@ -5262,8 +5375,8 @@ onMounted(async () => {
 }
 
 .sig-seal-box {
-    width: 52px;
-    height: 52px;
+    width: 60px;
+    height: 60px;
     border: 2px dashed #94a3b8;
     border-radius: 50%;
     display: flex;
@@ -5272,6 +5385,25 @@ onMounted(async () => {
     font-size: 8.5px;
     color: #94a3b8;
     text-align: center;
+    overflow: hidden;
+}
+
+.sig-seal-box.has-stamp {
+    border: none;
+    background: transparent;
+}
+
+.sig-stamp-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.sig-digital-img {
+    max-width: 85px;
+    max-height: 35px;
+    object-fit: contain;
+    margin-top: 4px;
 }
 
 /* ── Document Running Footer ── */
@@ -5295,7 +5427,7 @@ onMounted(async () => {
 }
 
 /* ── Compact Density Mode ── */
-.so-printable-sheet.density-compact {
+.so-printable-sheet.density-compact .so-document-body {
     padding: 10px 14px;
 }
 
@@ -5338,11 +5470,25 @@ onMounted(async () => {
     margin-bottom: 12px;
 }
 
+.so-print-closing-section {
+    position: relative;
+    width: 100%;
+}
+
 /* ── Media Print Rules ── */
 @media print {
     @page {
         size: A4 portrait;
-        margin: 8mm 10mm 10mm 10mm;
+        margin: 0 !important;
+    }
+    @page :left {
+        margin: 0 !important;
+    }
+    @page :right {
+        margin: 0 !important;
+    }
+    @page :first {
+        margin: 0 !important;
     }
 
     html, body {
@@ -5355,14 +5501,25 @@ onMounted(async () => {
         min-height: 100% !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        font-family: 'Cairo', 'Almarai', Tahoma, -apple-system, sans-serif !important;
+        direction: rtl !important;
     }
 
-    a[href]:after {
+    a {
+        text-decoration: none !important;
+        color: inherit !important;
+    }
+    a[href]:after,
+    abbr[title]:after {
         content: none !important;
     }
 
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
+    }
+
     /* Hide background app layout & screen elements only when print modal is active */
-    :global(body.so-print-dialog-open #app),
     :global(body.so-print-dialog-open .admin-layout),
     :global(body.so-print-dialog-open .admin-sidebar),
     :global(body.so-print-dialog-open .admin-header),
@@ -5375,6 +5532,18 @@ onMounted(async () => {
     :global(body.so-print-dialog-open .el-dialog__headerbtn),
     .so-screen-only,
     .so-print-toolbar {
+        display: none !important;
+    }
+
+    /* Clean printing for listing table when printing page without modal */
+    :global(body:not(.so-print-dialog-open)) .admin-sidebar,
+    :global(body:not(.so-print-dialog-open)) .admin-header,
+    :global(body:not(.so-print-dialog-open)) .page-actions-bar,
+    :global(body:not(.so-print-dialog-open)) .table-filter-bar,
+    :global(body:not(.so-print-dialog-open)) .pagination-container,
+    :global(body:not(.so-print-dialog-open)) .detail-drawer,
+    :global(body:not(.so-print-dialog-open)) .action-buttons,
+    :global(body:not(.so-print-dialog-open)) .bulk-actions-toolbar {
         display: none !important;
     }
 
@@ -5436,6 +5605,55 @@ onMounted(async () => {
         border: none !important;
         background: #ffffff !important;
         display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .so-print-cover {
+        display: block !important;
+        position: relative !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 296mm !important;
+        max-height: 297mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        page-break-before: avoid !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        box-sizing: border-box !important;
+    }
+
+    .so-print-cover img {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 296mm !important;
+        max-height: 297mm !important;
+        object-fit: cover !important;
+        display: block !important;
+    }
+
+    .so-document-body {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 10mm 12mm !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: #ffffff !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        page-break-before: auto !important;
+        break-before: auto !important;
+    }
+
+    .so-printable-sheet.has-cover .so-document-body {
+        page-break-before: auto !important;
+        break-before: auto !important;
     }
 
     .so-doc-ribbon,
@@ -5444,7 +5662,8 @@ onMounted(async () => {
     .so-print-table tr,
     .so-print-summary-row,
     .so-print-signatures,
-    .so-print-footer {
+    .so-print-footer,
+    .so-print-closing-section {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }
@@ -5454,7 +5673,7 @@ onMounted(async () => {
     }
 
     .so-print-table tfoot {
-        display: table-footer-group !important;
+        display: table-row-group !important;
     }
 
     .so-ribbon-status,
@@ -5471,5 +5690,36 @@ onMounted(async () => {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
+}
+
+.expense-cat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #475569;
+}
+
+.order-expenses-table-wrap {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.expenses-summary-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+}
+
+.expenses-summary-footer strong {
+    color: #1d4ed8;
+    font-size: 1rem;
 }
 </style>

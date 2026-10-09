@@ -116,8 +116,35 @@
                 </div>
             </el-form-item>
 
-            <!-- Optional links: Invoice & Customer -->
+            <!-- Optional links: Sales Order, Invoice & Customer -->
             <div class="dialog-grid-2">
+                <el-form-item :label="$t('sales_order')" prop="sales_order_id">
+                    <el-select
+                        v-model="form.sales_order_id"
+                        filterable
+                        remote
+                        clearable
+                        style="width: 100%"
+                        :placeholder="$t('sales_order')"
+                        :remote-method="searchSalesOrders"
+                        :loading="loadingSalesOrders"
+                        @change="onSalesOrderSelected"
+                    >
+                        <el-option
+                            v-for="so in salesOrderOptions"
+                            :key="so.id"
+                            :value="so.id"
+                            :label="so.order_number"
+                        >
+                            <div class="select-option-row">
+                                <span class="mono" dir="ltr">{{ so.order_number }}</span>
+                                <span class="option-muted" v-if="so.customer?.name">{{ so.customer.name }}</span>
+                                <strong class="option-amount">{{ formatCurrency(so.total) }}</strong>
+                            </div>
+                        </el-option>
+                    </el-select>
+                </el-form-item>
+
                 <el-form-item :label="$t('pay_expense_link_invoice')" prop="invoice_id">
                     <el-select
                         v-model="form.invoice_id"
@@ -144,32 +171,32 @@
                         </el-option>
                     </el-select>
                 </el-form-item>
-
-                <el-form-item :label="$t('pay_expense_link_customer')" prop="customer_id">
-                    <el-select
-                        v-model="form.customer_id"
-                        filterable
-                        remote
-                        clearable
-                        style="width: 100%"
-                        :placeholder="$t('client')"
-                        :remote-method="searchCustomers"
-                        :loading="loadingCustomers"
-                    >
-                        <el-option
-                            v-for="cust in customerOptions"
-                            :key="cust.id"
-                            :value="cust.id"
-                            :label="cust.name"
-                        >
-                            <div class="select-option-row">
-                                <span>{{ cust.name }}</span>
-                                <small v-if="cust.phone" class="option-muted" dir="ltr">{{ cust.phone }}</small>
-                            </div>
-                        </el-option>
-                    </el-select>
-                </el-form-item>
             </div>
+
+            <el-form-item :label="$t('pay_expense_link_customer')" prop="customer_id">
+                <el-select
+                    v-model="form.customer_id"
+                    filterable
+                    remote
+                    clearable
+                    style="width: 100%"
+                    :placeholder="$t('client')"
+                    :remote-method="searchCustomers"
+                    :loading="loadingCustomers"
+                >
+                    <el-option
+                        v-for="cust in customerOptions"
+                        :key="cust.id"
+                        :value="cust.id"
+                        :label="cust.name"
+                    >
+                        <div class="select-option-row">
+                            <span>{{ cust.name }}</span>
+                            <small v-if="cust.phone" class="option-muted" dir="ltr">{{ cust.phone }}</small>
+                        </div>
+                    </el-option>
+                </el-select>
+            </el-form-item>
 
             <!-- Notes -->
             <el-form-item :label="$t('notes')" prop="notes">
@@ -209,12 +236,16 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import { expensesApi } from '@/api/expenses';
 import { invoicesApi } from '@/api/invoices';
+import { salesOrdersApi } from '@/api/salesOrders';
 import { customersApi } from '@/api/customers';
 import { apiErrorMessage, formatCurrency, formatDate, localIsoDate } from '@/utils/sales';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
     expense: { type: Object, default: null },
+    salesOrderId: { type: [Number, String], default: null },
+    invoiceId: { type: [Number, String], default: null },
+    customerId: { type: [Number, String], default: null },
 });
 
 const emit = defineEmits(['update:modelValue', 'saved']);
@@ -247,6 +278,7 @@ const form = reactive({
     category: 'shipping',
     status: 'paid',
     expense_date: localIsoDate(),
+    sales_order_id: null,
     invoice_id: null,
     customer_id: null,
     notes: '',
@@ -256,6 +288,39 @@ const rules = {
     description: [{ required: true, message: t('enter_expense_description'), trigger: 'blur' }],
     amount: [{ required: true, message: t('enter_amount_above_zero'), trigger: 'change' }],
     expense_date: [{ required: true, message: t('date'), trigger: 'change' }],
+};
+
+// Sales orders search
+const loadingSalesOrders = ref(false);
+const salesOrderOptions = ref([]);
+
+const searchSalesOrders = async (query = '') => {
+    loadingSalesOrders.value = true;
+    try {
+        const res = await salesOrdersApi.getAll({ search: query?.trim() || undefined, per_page: 20 });
+        const list = res.data?.data?.sales_orders || [];
+        salesOrderOptions.value = Array.isArray(list) ? list : [];
+    } catch {
+        salesOrderOptions.value = [];
+    } finally {
+        loadingSalesOrders.value = false;
+    }
+};
+
+const onSalesOrderSelected = (soId) => {
+    if (!soId) return;
+    const so = salesOrderOptions.value.find((s) => s.id === soId);
+    if (so) {
+        if (so.customer_id && !form.customer_id) {
+            form.customer_id = so.customer_id;
+            if (so.customer && !customerOptions.value.some((c) => c.id === form.customer_id)) {
+                customerOptions.value.push(so.customer);
+            }
+        }
+        if (so.invoice_id && !form.invoice_id) {
+            form.invoice_id = so.invoice_id;
+        }
+    }
 };
 
 // Invoices search
@@ -285,6 +350,9 @@ const onInvoiceSelected = (invId) => {
             customerOptions.value.push(inv.customer);
         }
     }
+    if (inv?.sales_order_id && !form.sales_order_id) {
+        form.sales_order_id = inv.sales_order_id;
+    }
 };
 
 // Customers search
@@ -312,9 +380,16 @@ const onOpen = () => {
         form.category = props.expense.category || 'other';
         form.status = props.expense.status || 'paid';
         form.expense_date = String(props.expense.expense_date || localIsoDate()).slice(0, 10);
+        form.sales_order_id = props.expense.sales_order_id || null;
         form.invoice_id = props.expense.invoice_id || null;
         form.customer_id = props.expense.customer_id || null;
         form.notes = props.expense.notes || '';
+
+        if (props.expense.sales_order || props.expense.salesOrder) {
+            salesOrderOptions.value = [props.expense.sales_order || props.expense.salesOrder];
+        } else {
+            searchSalesOrders();
+        }
 
         if (props.expense.invoice) {
             invoiceOptions.value = [props.expense.invoice];
@@ -333,9 +408,11 @@ const onOpen = () => {
         form.category = 'shipping';
         form.status = 'paid';
         form.expense_date = localIsoDate();
-        form.invoice_id = null;
-        form.customer_id = null;
+        form.sales_order_id = props.salesOrderId || null;
+        form.invoice_id = props.invoiceId || null;
+        form.customer_id = props.customerId || null;
         form.notes = '';
+        searchSalesOrders();
         searchInvoices();
         searchCustomers();
     }
@@ -359,6 +436,7 @@ const submit = async () => {
             category: form.category,
             status: form.status,
             expense_date: form.expense_date,
+            sales_order_id: form.sales_order_id || null,
             invoice_id: form.invoice_id || null,
             customer_id: form.customer_id || null,
             notes: form.notes ? form.notes.trim() : null,

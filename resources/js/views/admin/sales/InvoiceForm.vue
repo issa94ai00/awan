@@ -470,28 +470,11 @@
                         </label>
                     </div>
 
-                    <!-- Costs billed on this invoice. Folded away until used, so
-                         the common sale is not asked about the rare one. -->
-                    <div class="extras">
-                        <button type="button" class="extras-toggle" @click="showExpenses = !showExpenses">
-                            <el-icon><component :is="showExpenses ? Minus : Plus" /></el-icon>
-                            {{ t('additional_charges') }}
-                            <span v-if="totalExpenses > 0" class="extras-badge">{{ money(totalExpenses) }}</span>
-                        </button>
-
-                        <div v-if="showExpenses" class="extras-body">
-                            <div v-for="(expense, index) in form.expenses" :key="index" class="extra-row">
-                                <el-input v-model="expense.description" :placeholder="t('description')" size="small" class="expense-desc" />
-                                <el-input v-model.number="expense.amount" type="number" min="0" size="small" class="expense-amount" />
-                                <el-button text type="danger" size="small" @click="removeExpense(index)">
-                                    <el-icon><Delete /></el-icon>
-                                </el-button>
-                            </div>
-                            <el-button text size="small" @click="addExpense">
-                                <el-icon><Plus /></el-icon> {{ t('add_expense') }}
-                            </el-button>
-                        </div>
-                    </div>
+                    <!-- Additional charges and shipping recorded as expenses -->
+                    <OrderExpensesEditor
+                        v-model="form.expenses"
+                        class="invoice-expenses-section"
+                    />
 
                     <dl class="totals">
                         <div class="total-line">
@@ -690,6 +673,7 @@ import {
 } from '@/utils/stockSources';
 import { getImageUrl } from '@/utils/imageUrl';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -1516,7 +1500,15 @@ const submitInvoice = async () => {
                     warehouse_id: allocation.warehouse_id,
                     product_unit_id: item.selectedUnit?.id || null,
                 }))),
-            expenses: form.expenses.filter((expense) => expense.description && expense.amount > 0),
+            expenses: form.expenses
+                .filter((expense) => expense.description && Number(expense.amount) > 0)
+                .map((expense) => ({
+                    category: expense.category || 'other',
+                    description: expense.description,
+                    amount: Number(expense.amount),
+                    status: expense.status || 'paid',
+                    notes: expense.notes || null,
+                })),
         };
 
         if (isEdit.value) {
@@ -1624,6 +1616,14 @@ const loadInvoice = async () => {
     form.paid_amount = parseFloat(invoice.paid_amount) || 0;
     form.status = invoice.status || 'pending';
     form.notes = invoice.notes || '';
+    form.expenses = (invoice.expenses || []).map((exp) => ({
+        id: exp.id || null,
+        category: exp.category || 'shipping',
+        description: exp.description || '',
+        amount: parseFloat(exp.amount) || 0,
+        status: exp.status || 'paid',
+        notes: exp.notes || '',
+    }));
 
     // Every field the form can change is restored. This used to reload the
     // product, price and quantity only — so reopening an invoice lost the

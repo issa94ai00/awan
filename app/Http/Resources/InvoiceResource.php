@@ -22,6 +22,11 @@ class InvoiceResource extends JsonResource
             'customer_name' => $this->customer?->name ?? 'عميل عام',
             'customer_email' => $this->customer?->email,
             'customer_phone' => $this->customer?->phone,
+            'customer_address' => $this->customer?->address,
+            'customer_tax_number' => $this->customer?->tax_number,
+            'customer_city' => $this->customer?->city,
+            'customer_state' => $this->customer?->state,
+            'customer_country' => $this->customer?->country,
             'subtotal' => (float) $this->subtotal,
             'tax' => (float) $this->tax,
             'discount' => (float) $this->discount,
@@ -72,10 +77,37 @@ class InvoiceResource extends JsonResource
             // Relationships
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
             'payments' => $this->whenLoaded('payments'),
+            'expenses' => $this->whenLoaded('expenses', function () {
+                return $this->expenses->map(fn ($exp) => [
+                    'id' => $exp->id,
+                    'expense_number' => $exp->expense_number,
+                    'description' => $exp->description,
+                    'amount' => (float) $exp->amount,
+                    'category' => $exp->category,
+                    'category_label' => $exp->category_label,
+                    'status' => $exp->status,
+                    'status_label' => $exp->status_label,
+                    'notes' => $exp->notes,
+                    'expense_date' => $exp->expense_date?->format('Y-m-d'),
+                    'created_at' => $exp->created_at?->format('Y-m-d H:i:s'),
+                ]);
+            }),
             'user' => $this->when($this->relationLoaded('user'), function () {
                 return $this->user ? [
                     'id' => $this->user->id,
                     'name' => $this->user->name,
+                ] : null;
+            }),
+            'assigned_employee' => $this->when($this->relationLoaded('assignedEmployee'), function () {
+                return $this->assignedEmployee ? [
+                    'id' => $this->assignedEmployee->id,
+                    'name' => $this->assignedEmployee->name,
+                ] : null;
+            }),
+            'warehouse' => $this->when($this->relationLoaded('warehouse'), function () {
+                return $this->warehouse ? [
+                    'id' => $this->warehouse->id,
+                    'name' => $this->warehouse->name,
                 ] : null;
             }),
 

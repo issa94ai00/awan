@@ -28,6 +28,17 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        if (auth()->check()) {
+            app(\App\Services\AuditService::class)->log(
+                action: \App\Models\AuditLog::ACTION_LOGIN,
+                entityType: \App\Models\User::class,
+                entityId: auth()->id(),
+                description: 'تسجيل دخول ويب ناجح للمستخدم: ' . auth()->user()->name,
+                module: \App\Models\AuditLog::MODULE_SECURITY,
+                userId: auth()->id()
+            );
+        }
+
         if (auth()->user()->is_admin) {
             return redirect()->intended(route('admin.dashboard'));
         }
@@ -40,6 +51,17 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        if (auth()->check()) {
+            app(\App\Services\AuditService::class)->log(
+                action: \App\Models\AuditLog::ACTION_LOGOUT,
+                entityType: \App\Models\User::class,
+                entityId: auth()->id(),
+                description: 'تسجيل خروج ويب للمستخدم: ' . auth()->user()->name,
+                module: \App\Models\AuditLog::MODULE_SECURITY,
+                userId: auth()->id()
+            );
+        }
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

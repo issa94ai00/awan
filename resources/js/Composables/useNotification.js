@@ -1,91 +1,85 @@
-// resources/js/Composables/useNotification.js
 import { ref } from 'vue';
 
-export function useNotification() {
-    const notifications = ref([]);
+const globalNotifications = ref([]);
 
+export function useNotification() {
     /**
-     * عرض إشعار
      * Show notification
      */
-    function show(message, type = 'info', duration = 5000) {
-        const id = Date.now();
-        notifications.value.push({ 
-            id, 
-            message, 
-            type,
-            duration,
-        });
-        
-        // إزالة الإشعار تلقائياً بعد المدة المحددة
-        // Auto-remove notification after specified duration
-        if (duration > 0) {
+    function show(options) {
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        const item = typeof options === 'string'
+            ? { id, message: options, type: 'info', duration: 5000, dismissible: true }
+            : {
+                id,
+                title: options.title || '',
+                message: options.message || '',
+                type: options.type || 'info',
+                duration: options.duration !== undefined ? options.duration : 5000,
+                position: options.position || 'top-right',
+                actionText: options.actionText || '',
+                onAction: options.onAction || null,
+                dismissible: options.dismissible !== false,
+            };
+
+        globalNotifications.value.push(item);
+
+        if (item.duration > 0) {
             setTimeout(() => {
                 remove(id);
-            }, duration);
+            }, item.duration);
         }
-        
+
         return id;
     }
 
     /**
-     * إزالة إشعار
-     * Remove notification
+     * Remove specific notification by id
      */
     function remove(id) {
-        notifications.value = notifications.value.filter(n => n.id !== id);
+        globalNotifications.value = globalNotifications.value.filter((n) => n.id !== id);
     }
 
     /**
-     * إزالة جميع الإشعارات
-     * Remove all notifications
+     * Clear all active notifications
      */
     function clear() {
-        notifications.value = [];
+        globalNotifications.value = [];
     }
 
     /**
-     * إشعار نجاح
-     * Success notification
+     * Helpers for specific types
      */
-    function success(message, duration = 5000) {
-        return show(message, 'success', duration);
+    function success(message, titleOrDuration = '', duration = 5000) {
+        const title = typeof titleOrDuration === 'string' ? titleOrDuration : '';
+        const dur = typeof titleOrDuration === 'number' ? titleOrDuration : duration;
+        return show({ message, title, type: 'success', duration: dur });
     }
 
-    /**
-     * إشعار خطأ
-     * Error notification
-     */
-    function error(message, duration = 7000) {
-        return show(message, 'error', duration);
+    function error(message, titleOrDuration = '', duration = 7000) {
+        const title = typeof titleOrDuration === 'string' ? titleOrDuration : '';
+        const dur = typeof titleOrDuration === 'number' ? titleOrDuration : duration;
+        return show({ message, title, type: 'error', duration: dur });
     }
 
-    /**
-     * إشعار تحذير
-     * Warning notification
-     */
-    function warning(message, duration = 6000) {
-        return show(message, 'warning', duration);
+    function warning(message, titleOrDuration = '', duration = 6000) {
+        const title = typeof titleOrDuration === 'string' ? titleOrDuration : '';
+        const dur = typeof titleOrDuration === 'number' ? titleOrDuration : duration;
+        return show({ message, title, type: 'warning', duration: dur });
     }
 
-    /**
-     * إشعار معلومات
-     * Info notification
-     */
-    function info(message, duration = 5000) {
-        return show(message, 'info', duration);
+    function info(message, titleOrDuration = '', duration = 5000) {
+        const title = typeof titleOrDuration === 'string' ? titleOrDuration : '';
+        const dur = typeof titleOrDuration === 'number' ? titleOrDuration : duration;
+        return show({ message, title, type: 'info', duration: dur });
     }
 
-    /**
-     * إشعار دائم (لا يختفي تلقائياً)
-     * Persistent notification (doesn't auto-dismiss)
-     */
-    function persistent(message, type = 'info') {
-        return show(message, type, 0);
+    function persistent(message, type = 'info', title = '') {
+        return show({ message, title, type, duration: 0 });
     }
 
     return {
-        notifications,
+        notifications: globalNotifications,
         show,
         remove,
         clear,
@@ -96,3 +90,5 @@ export function useNotification() {
         persistent,
     };
 }
+
+export default useNotification;

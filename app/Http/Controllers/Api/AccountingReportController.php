@@ -688,9 +688,10 @@ class AccountingReportController extends Controller
         $isCustomer = $validated['type'] === 'customer';
         $partyId = (int) $validated['party_id'];
 
+        $partyColumns = ['id', 'name', 'balance', 'phone', 'company', 'address'];
         $party = $isCustomer
-            ? DB::table('customers')->where('id', $partyId)->first(['id', 'name', 'balance'])
-            : DB::table('suppliers')->where('id', $partyId)->first(['id', 'name', 'balance']);
+            ? DB::table('customers')->where('id', $partyId)->first($partyColumns)
+            : DB::table('suppliers')->where('id', $partyId)->first($partyColumns);
 
         if (! $party) {
             return response()->json([
@@ -716,7 +717,13 @@ class AccountingReportController extends Controller
 
         $rows = collect($documents)
             ->filter(fn ($row) => $row['date'] >= $fromDate && $row['date'] <= $toDate)
-            ->sortBy([['date', 'asc'], ['number', 'asc']])
+            ->sortBy([
+                ['date', 'asc'],
+                ['datetime', 'asc'],
+                ['type_order', 'asc'],
+                ['id', 'asc'],
+                ['number', 'asc'],
+            ])
             ->values();
 
         $balance = $opening;
@@ -736,7 +743,14 @@ class AccountingReportController extends Controller
             'message' => 'Party statement retrieved successfully',
             'data' => [
                 'period' => ['from' => $fromDate, 'to' => $toDate],
-                'party' => ['id' => $party->id, 'name' => $party->name, 'type' => $validated['type']],
+                'party' => [
+                    'id' => $party->id,
+                    'name' => $party->name,
+                    'type' => $validated['type'],
+                    'phone' => $party->phone ?? null,
+                    'company' => $party->company ?? null,
+                    'address' => $party->address ?? null,
+                ],
                 'opening_balance' => $opening,
                 'movements' => $movements,
                 'totals' => [
@@ -763,42 +777,70 @@ class AccountingReportController extends Controller
 
         foreach (DB::table('invoices')->where('customer_id', $customerId)
             ->where('status', '!=', 'cancelled')
-            ->get(['invoice_number', 'created_at', 'total']) as $invoice) {
+            ->get(['id', 'invoice_number', 'created_at', 'total', 'payment_method', 'notes', 'due_date']) as $invoice) {
+            $createdAt = (string) $invoice->created_at;
+            $date = substr($createdAt, 0, 10);
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
             $rows[] = [
-                'date' => substr((string) $invoice->created_at, 0, 10),
+                'id' => $invoice->id,
+                'datetime' => $createdAt,
+                'date' => $date,
+                'time' => substr($time, 0, 5),
                 'type' => 'invoice',
+                'type_order' => 1,
                 'label' => 'فاتورة',
                 'number' => (string) $invoice->invoice_number,
                 'debit' => round((float) $invoice->total, 2),
                 'credit' => 0.0,
+                'payment_method' => $invoice->payment_method ?? null,
+                'notes' => $invoice->notes ?? null,
+                'due_date' => $invoice->due_date ?? null,
             ];
         }
 
         foreach (DB::table('payments')->where('customer_id', $customerId)
-            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            ->get(['id', 'payment_number', 'payment_date', 'amount', 'payment_method', 'notes', 'reference', 'created_at']) as $payment) {
             $amount = round((float) $payment->amount, 2);
-
+            $createdAt = (string) $payment->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $pDate = substr((string) $payment->payment_date, 0, 10);
+            $datetime = "{$pDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $payment->payment_date, 0, 10),
+                'id' => $payment->id,
+                'datetime' => $datetime,
+                'date' => $pDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'payment',
+                'type_order' => $amount < 0 ? 2 : 4,
                 'label' => $amount < 0 ? 'استرداد' : 'تحصيل',
                 'number' => (string) $payment->payment_number,
-                // A refund is stored as a negative payment, so it lands on the
-                // other side rather than as a negative credit.
                 'debit' => $amount < 0 ? abs($amount) : 0.0,
                 'credit' => $amount > 0 ? $amount : 0.0,
+                'payment_method' => $payment->payment_method ?? null,
+                'notes' => $payment->notes ?? null,
+                'reference' => $payment->reference ?? null,
             ];
         }
 
         foreach (DB::table('credit_notes')->where('customer_id', $customerId)
-            ->get(['credit_note_number', 'issue_date', 'total']) as $note) {
+            ->whereNull('deleted_at')
+            ->get(['id', 'credit_note_number', 'issue_date', 'total', 'reason', 'notes', 'created_at']) as $note) {
+            $createdAt = (string) $note->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $nDate = substr((string) $note->issue_date, 0, 10);
+            $datetime = "{$nDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $note->issue_date, 0, 10),
+                'id' => $note->id,
+                'datetime' => $datetime,
+                'date' => $nDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'credit_note',
+                'type_order' => 3,
                 'label' => 'إشعار دائن',
                 'number' => (string) $note->credit_note_number,
                 'debit' => 0.0,
                 'credit' => round((float) $note->total, 2),
+                'notes' => $note->notes ?: $note->reason,
             ];
         }
 
@@ -818,19 +860,28 @@ class AccountingReportController extends Controller
         $receipts = DB::table('purchase_receipts as r')
             ->leftJoin('purchase_receipt_items as i', 'i.purchase_receipt_id', '=', 'r.id')
             ->where('r.supplier_id', $supplierId)
-            ->groupBy('r.id', 'r.receipt_number', 'r.receipt_date', 'r.tax_amount')
-            ->selectRaw('r.receipt_number, r.receipt_date, r.tax_amount,
+            ->groupBy('r.id', 'r.receipt_number', 'r.receipt_date', 'r.tax_amount', 'r.notes', 'r.created_at')
+            ->selectRaw('r.id, r.receipt_number, r.receipt_date, r.tax_amount, r.notes, r.created_at,
                          COALESCE(SUM(i.quantity * i.unit_price), 0) as goods')
             ->get();
 
         foreach ($receipts as $receipt) {
+            $createdAt = (string) $receipt->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $rDate = substr((string) $receipt->receipt_date, 0, 10);
+            $datetime = "{$rDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $receipt->receipt_date, 0, 10),
+                'id' => $receipt->id,
+                'datetime' => $datetime,
+                'date' => $rDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'receipt',
+                'type_order' => 1,
                 'label' => 'إيصال استلام',
                 'number' => (string) $receipt->receipt_number,
                 'debit' => 0.0,
                 'credit' => round((float) $receipt->goods + (float) $receipt->tax_amount, 2),
+                'notes' => $receipt->notes ?? null,
             ];
         }
 
@@ -841,9 +892,14 @@ class AccountingReportController extends Controller
                 ->selectRaw('l.id, l.created_at, r.receipt_number,
                              (l.shipping_charges + l.customs_duties + l.insurance_cost + l.other_charges) as total')
                 ->get() as $landed) {
+                $createdAt = (string) $landed->created_at;
                 $rows[] = [
-                    'date' => substr((string) $landed->created_at, 0, 10),
+                    'id' => $landed->id,
+                    'datetime' => $createdAt,
+                    'date' => substr($createdAt, 0, 10),
+                    'time' => strlen($createdAt) >= 19 ? substr($createdAt, 11, 5) : '00:00',
                     'type' => 'landed_cost',
+                    'type_order' => 2,
                     'label' => 'تكاليف إضافية',
                     'number' => (string) ($landed->receipt_number ?? ('#'.$landed->id)),
                     'debit' => 0.0,
@@ -854,28 +910,48 @@ class AccountingReportController extends Controller
 
         foreach (DB::table('supplier_payments')->where('supplier_id', $supplierId)
             ->whereNull('deleted_at')
-            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            ->get(['id', 'payment_number', 'payment_date', 'amount', 'payment_method', 'notes', 'reference', 'created_at']) as $payment) {
+            $createdAt = (string) $payment->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $pDate = substr((string) $payment->payment_date, 0, 10);
+            $datetime = "{$pDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $payment->payment_date, 0, 10),
+                'id' => $payment->id,
+                'datetime' => $datetime,
+                'date' => $pDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'payment',
+                'type_order' => 4,
                 'label' => 'سداد',
                 'number' => (string) $payment->payment_number,
                 'debit' => round((float) $payment->amount, 2),
                 'credit' => 0.0,
+                'payment_method' => $payment->payment_method ?? null,
+                'notes' => $payment->notes ?? null,
+                'reference' => $payment->reference ?? null,
             ];
         }
 
         if (DB::getSchemaBuilder()->hasTable('purchase_returns')) {
             foreach (DB::table('purchase_returns')->where('supplier_id', $supplierId)
                 ->whereNull('deleted_at')
-                ->get(['return_number', 'return_date', 'credit_amount', 'tax_amount']) as $return) {
+                ->get(['id', 'return_number', 'return_date', 'credit_amount', 'tax_amount', 'notes', 'reason', 'created_at']) as $return) {
+                $createdAt = (string) $return->created_at;
+                $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+                $rDate = substr((string) $return->return_date, 0, 10);
+                $datetime = "{$rDate} {$time}";
                 $rows[] = [
-                    'date' => substr((string) $return->return_date, 0, 10),
+                    'id' => $return->id,
+                    'datetime' => $datetime,
+                    'date' => $rDate,
+                    'time' => substr($time, 0, 5),
                     'type' => 'return',
+                    'type_order' => 3,
                     'label' => 'مردود مشتريات',
                     'number' => (string) $return->return_number,
                     'debit' => round((float) $return->credit_amount + (float) $return->tax_amount, 2),
                     'credit' => 0.0,
+                    'notes' => $return->notes ?: $return->reason,
                 ];
             }
         }

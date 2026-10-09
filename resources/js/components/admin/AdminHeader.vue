@@ -68,57 +68,232 @@
                 v-model:visible="notificationsOpen"
                 trigger="click"
                 placement="bottom-end"
-                width="360"
-                popper-class="notifications-popover"
+                :width="430"
+                popper-class="notifications-center-popover"
             >
                 <template #reference>
-                    <el-badge :value="notificationsStore.unreadCount" :hidden="notificationsStore.unreadCount === 0" class="notification-badge">
-                        <el-button :icon="Bell" circle @click="onOpenNotifications" />
+                    <el-badge
+                        :value="notificationsStore.totalBadgeCount"
+                        :hidden="notificationsStore.totalBadgeCount === 0"
+                        :is-dot="notificationsStore.unreadCount === 0 && notificationsStore.systemAlertsCount > 0"
+                        class="notification-badge"
+                        :class="{ 'has-critical': notificationsStore.hasCriticalAlerts }"
+                    >
+                        <el-button :icon="Bell" circle @click="onOpenNotifications" class="bell-btn" />
                     </el-badge>
                 </template>
 
-                <div class="notifications-dropdown">
-                    <div class="notifications-header">
-                        <span>{{ t('notifications.title') }}</span>
-                        <el-button
-                            link
-                            type="primary"
-                            size="small"
-                            :disabled="notificationsStore.unreadCount === 0"
-                            @click="handleMarkAllAsRead"
-                        >
-                            {{ t('notifications.mark_all_read') }}
-                        </el-button>
+                <div class="notifications-center">
+                    <!-- Top Bar with Tabs and Quick Actions -->
+                    <div class="nc-top-bar">
+                        <div class="nc-tabs">
+                            <button
+                                type="button"
+                                class="nc-tab-btn"
+                                :class="{ active: activeNotificationTab === 'notifications' }"
+                                @click="activeNotificationTab = 'notifications'"
+                            >
+                                <span>{{ t('notifications.title') }}</span>
+                                <span v-if="notificationsStore.unreadCount > 0" class="nc-tab-badge">
+                                    {{ notificationsStore.unreadCount }}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                class="nc-tab-btn"
+                                :class="{ active: activeNotificationTab === 'alerts' }"
+                                @click="activeNotificationTab = 'alerts'"
+                            >
+                                <span>{{ t('notifications.system_alerts') || 'تنبيهات النظام' }}</span>
+                                <span
+                                    v-if="notificationsStore.systemAlertsCount > 0"
+                                    class="nc-tab-badge"
+                                    :class="{ 'critical': notificationsStore.hasCriticalAlerts }"
+                                >
+                                    {{ notificationsStore.systemAlertsCount }}
+                                </span>
+                            </button>
+                        </div>
+
+                        <div class="nc-controls">
+                            <el-tooltip :content="notificationsStore.soundEnabled ? (t('notifications.sound_enabled') || 'الصوت مفعل') : (t('notifications.sound_disabled') || 'الصوت معطل')" placement="top">
+                                <button
+                                    type="button"
+                                    class="nc-icon-btn"
+                                    :class="{ active: notificationsStore.soundEnabled }"
+                                    @click="notificationsStore.toggleSound()"
+                                >
+                                    <el-icon :size="15">
+                                        <component :is="notificationsStore.soundEnabled ? BellFilled : MuteNotification" />
+                                    </el-icon>
+                                </button>
+                            </el-tooltip>
+                            <el-tooltip :content="t('common.refresh') || 'تحديث'" placement="top">
+                                <button
+                                    type="button"
+                                    class="nc-icon-btn"
+                                    :disabled="notificationsStore.loading || notificationsStore.alertsLoading"
+                                    @click="refreshNotificationData"
+                                >
+                                    <el-icon :size="14" :class="{ 'is-loading': notificationsStore.loading || notificationsStore.alertsLoading }">
+                                        <Refresh />
+                                    </el-icon>
+                                </button>
+                            </el-tooltip>
+                        </div>
                     </div>
 
-                    <div v-if="notificationsStore.loading" class="notifications-empty">
-                        <el-icon class="is-loading"><Loading /></el-icon>
-                    </div>
-                    <div v-else-if="notificationsStore.items.length === 0" class="notifications-empty">
-                        <el-icon :size="28"><Bell /></el-icon>
-                        <span>{{ t('no_notifications') }}</span>
-                    </div>
-                    <div v-else class="notifications-list">
-                        <div
-                            v-for="item in notificationsStore.items"
-                            :key="item.id"
-                            class="notification-row"
-                            :class="{ unread: !item.is_read }"
-                            @click="handleNotificationClick(item)"
-                        >
-                            <span class="notification-dot" :class="`type-${item.type}`"></span>
-                            <div class="notification-body">
-                                <span class="notification-title">{{ item.title }}</span>
-                                <span class="notification-message">{{ item.message }}</span>
-                                <span class="notification-time">{{ timeAgo(item.created_at) }}</span>
+                    <!-- TAB 1: User Notifications -->
+                    <div v-show="activeNotificationTab === 'notifications'" class="nc-tab-content">
+                        <!-- Subheader with Filter and Mark All Read -->
+                        <div class="nc-sub-bar">
+                            <div class="nc-filter-pills">
+                                <button
+                                    type="button"
+                                    class="nc-pill"
+                                    :class="{ active: notificationFilter === 'all' }"
+                                    @click="notificationFilter = 'all'"
+                                >
+                                    {{ t('common.all') || 'الكل' }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="nc-pill"
+                                    :class="{ active: notificationFilter === 'unread' }"
+                                    @click="notificationFilter = 'unread'"
+                                >
+                                    {{ t('notifications.unread') }}
+                                    <span v-if="notificationsStore.unreadCount > 0">({{ notificationsStore.unreadCount }})</span>
+                                </button>
+                            </div>
+
+                            <el-button
+                                link
+                                type="primary"
+                                size="small"
+                                :disabled="notificationsStore.unreadCount === 0"
+                                @click="handleMarkAllAsRead"
+                                class="nc-mark-all-btn"
+                            >
+                                <el-icon :size="12"><Check /></el-icon>
+                                <span>{{ t('notifications.mark_all_read') }}</span>
+                            </el-button>
+                        </div>
+
+                        <!-- Notification List -->
+                        <div v-if="notificationsStore.loading" class="nc-state-box">
+                            <el-icon class="is-loading" :size="22"><Loading /></el-icon>
+                            <span>{{ t('common.loading') || 'جاري التحميل...' }}</span>
+                        </div>
+                        <div v-else-if="filteredNotifications.length === 0" class="nc-state-box">
+                            <el-icon :size="32" class="text-slate-300"><Bell /></el-icon>
+                            <span>{{ notificationFilter === 'unread' ? (t('notifications.no_unread') || 'لا توجد إشعارات غير مقروءة') : t('no_notifications') }}</span>
+                        </div>
+                        <div v-else class="nc-list">
+                            <div
+                                v-for="item in filteredNotifications"
+                                :key="item.id"
+                                class="nc-item"
+                                :class="{ unread: !item.is_read }"
+                                @click="handleNotificationClick(item)"
+                            >
+                                <div class="nc-item-icon" :class="`icon-${item.type}`">
+                                    <el-icon :size="16"><component :is="getNotificationIcon(item.type)" /></el-icon>
+                                </div>
+                                <div class="nc-item-body">
+                                    <div class="nc-item-header">
+                                        <span class="nc-item-title">{{ item.title }}</span>
+                                        <span class="nc-item-time">{{ timeAgo(item.created_at) }}</span>
+                                    </div>
+                                    <p class="nc-item-message">{{ item.message }}</p>
+                                    <div class="nc-item-actions">
+                                        <span v-if="item.target_route" class="nc-target-chip">
+                                            <span>{{ t('notifications.view_event') || 'معاينة' }}</span>
+                                            <el-icon :size="11"><ArrowRight /></el-icon>
+                                        </span>
+                                        <div class="nc-quick-btns" @click.stop>
+                                            <el-tooltip :content="item.is_read ? (t('notifications.mark_unread') || 'تحديد كغير مقروء') : t('notifications.marked_read')" placement="top">
+                                                <button
+                                                    type="button"
+                                                    class="nc-action-btn"
+                                                    @click="handleToggleItemRead(item)"
+                                                >
+                                                    <el-icon :size="13"><Check /></el-icon>
+                                                </button>
+                                            </el-tooltip>
+                                            <el-tooltip :content="t('common.delete')" placement="top">
+                                                <button
+                                                    type="button"
+                                                    class="nc-action-btn danger"
+                                                    @click="handleDeleteItem(item)"
+                                                >
+                                                    <el-icon :size="13"><Delete /></el-icon>
+                                                </button>
+                                            </el-tooltip>
+                                        </div>
+                                    </div>
+                                </div>
+                                <span v-if="!item.is_read" class="nc-unread-indicator"></span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="notifications-footer">
-                        <el-button link type="primary" @click="goToAllNotifications">
-                            {{ t('notifications_view_all') }}
-                        </el-button>
+                    <!-- TAB 2: System Business Alerts -->
+                    <div v-show="activeNotificationTab === 'alerts'" class="nc-tab-content">
+                        <div class="nc-sub-bar">
+                            <span class="nc-sub-title">{{ t('notifications.live_system_alerts') || 'تنبيهات فورية للمخزون والطلبات والمالية' }}</span>
+                        </div>
+
+                        <div v-if="notificationsStore.alertsLoading" class="nc-state-box">
+                            <el-icon class="is-loading" :size="22"><Loading /></el-icon>
+                            <span>{{ t('common.loading') || 'جاري فحص تنبيهات النظام...' }}</span>
+                        </div>
+                        <div v-else-if="notificationsStore.systemAlerts.length === 0" class="nc-state-box ok-state">
+                            <el-icon :size="32" class="text-emerald-400"><CircleCheck /></el-icon>
+                            <span class="ok-title">{{ t('notifications.all_systems_normal') || 'جميع العمليات بحالة ممتازة' }}</span>
+                            <span class="ok-desc">{{ t('notifications.no_operational_alerts') || 'لا توجد طلبات معلقة أو نواقص مخزون حرجة.' }}</span>
+                        </div>
+                        <div v-else class="nc-alerts-list">
+                            <div
+                                v-for="alert in notificationsStore.systemAlerts"
+                                :key="alert.id"
+                                class="nc-alert-card"
+                                :class="`severity-${alert.severity}`"
+                                @click="handleSystemAlertClick(alert)"
+                            >
+                                <div class="nc-alert-top">
+                                    <div class="nc-alert-heading">
+                                        <el-icon :size="18" class="nc-alert-icon">
+                                            <component :is="getAlertIcon(alert.type)" />
+                                        </el-icon>
+                                        <span class="nc-alert-title">{{ currentLocale === 'ar' ? alert.title : (alert.title_en || alert.title) }}</span>
+                                    </div>
+                                    <span class="nc-alert-badge" :class="alert.severity">
+                                        {{ alert.count }}
+                                    </span>
+                                </div>
+                                <p class="nc-alert-msg">{{ currentLocale === 'ar' ? alert.message : (alert.message_en || alert.message) }}</p>
+
+                                <div class="nc-alert-footer">
+                                    <button type="button" class="nc-alert-cta-btn">
+                                        <span>{{ t('notifications.take_action') || 'معالجة الأمر الآن' }}</span>
+                                        <el-icon :size="12"><ArrowRight /></el-icon>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="nc-footer">
+                        <button type="button" class="nc-footer-link" @click="goToAllNotifications">
+                            <el-icon :size="14"><Document /></el-icon>
+                            <span>{{ t('notifications_view_all') || 'عرض كل الإشعارات والتنبيهات' }}</span>
+                        </button>
+                        <button type="button" class="nc-footer-link secondary" @click="goToPreferences">
+                            <el-icon :size="14"><Setting /></el-icon>
+                            <span>{{ t('notifications.preferences') || 'التفضيلات' }}</span>
+                        </button>
                     </div>
                 </div>
             </el-popover>
@@ -161,7 +336,9 @@ import { adminSearchApi } from '@/api/search';
 import {
     Menu, Search, Bell, User, Setting,
     SwitchButton, ArrowDown, Loading, Box, ShoppingCart,
-    Document, UserFilled, Tickets
+    Document, UserFilled, Tickets, Check, Delete, Refresh,
+    Warning, WarningFilled, InfoFilled, CircleCheck, ArrowRight,
+    Money, MuteNotification, BellFilled
 } from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
@@ -310,11 +487,28 @@ const onSearchKeydown = (event) => {
     }
 };
 
-// ---- Notifications ----
+// ---- Notifications Center ----
 const notificationsOpen = ref(false);
+const activeNotificationTab = ref('notifications');
+const notificationFilter = ref('all');
+
+const filteredNotifications = computed(() => {
+    const list = notificationsStore.items || [];
+    if (notificationFilter.value === 'unread') {
+        return list.filter((n) => !n.is_read);
+    }
+    return list;
+});
 
 const onOpenNotifications = () => {
-    notificationsStore.fetchRecent();
+    refreshNotificationData();
+};
+
+const refreshNotificationData = async () => {
+    await Promise.all([
+        notificationsStore.fetchRecent(),
+        notificationsStore.fetchSystemAlerts(),
+    ]);
 };
 
 const handleMarkAllAsRead = async () => {
@@ -325,6 +519,30 @@ const handleNotificationClick = async (item) => {
     if (!item.is_read) {
         await notificationsStore.markAsRead(item.id);
     }
+    if (item.target_route) {
+        notificationsOpen.value = false;
+        router.push(item.target_route);
+    }
+};
+
+const handleToggleItemRead = async (item) => {
+    if (item.is_read) {
+        item.is_read = false;
+        notificationsStore.unreadCount = Math.max(0, notificationsStore.unreadCount + 1);
+    } else {
+        await notificationsStore.markAsRead(item.id);
+    }
+};
+
+const handleDeleteItem = async (item) => {
+    await notificationsStore.removeNotification(item.id);
+};
+
+const handleSystemAlertClick = (alert) => {
+    notificationsOpen.value = false;
+    if (alert.route) {
+        router.push(alert.route);
+    }
 };
 
 const goToAllNotifications = () => {
@@ -332,16 +550,45 @@ const goToAllNotifications = () => {
     router.push('/admin/notifications');
 };
 
+const goToPreferences = () => {
+    notificationsOpen.value = false;
+    router.push('/admin/notifications/preferences');
+};
+
+const getNotificationIcon = (type) => {
+    switch (type) {
+        case 'success': return CircleCheck;
+        case 'warning': return Warning;
+        case 'error': return WarningFilled;
+        case 'order': return ShoppingCart;
+        case 'inventory': return Box;
+        case 'warehouse': return Box;
+        case 'financial': return Money;
+        default: return InfoFilled;
+    }
+};
+
+const getAlertIcon = (type) => {
+    switch (type) {
+        case 'inventory': return Box;
+        case 'order': return ShoppingCart;
+        case 'warehouse': return Box;
+        case 'financial': return Money;
+        default: return WarningFilled;
+    }
+};
+
 const timeAgo = (dateStr) => {
     if (!dateStr) return '';
     const diffMs = Date.now() - new Date(dateStr).getTime();
     const minutes = Math.floor(diffMs / 60000);
-    if (minutes < 1) return t('now');
-    if (minutes < 60) return `${minutes}m`;
+    const isAr = locale.value === 'ar';
+    if (minutes < 1) return isAr ? 'الآن' : 'just now';
+    if (minutes < 60) return isAr ? `منذ ${minutes} د` : `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
+    if (hours < 24) return isAr ? `منذ ${hours} س` : `${hours}h ago`;
     const days = Math.floor(hours / 24);
-    return `${days}d`;
+    return isAr ? `منذ ${days} ي` : `${days}d ago`;
 };
 
 onMounted(() => {
@@ -560,104 +807,522 @@ onUnmounted(() => {
     box-shadow: 0 2px 8px rgba(238, 90, 36, 0.4);
 }
 
-.notifications-dropdown {
-    display: flex;
-    flex-direction: column;
+.notification-badge.has-critical :deep(.el-badge__content) {
+    animation: badge-pulse 2s infinite ease-in-out;
 }
 
-.notifications-header {
+@keyframes badge-pulse {
+    0%, 100% { transform: translateY(-50%) translateX(100%) scale(1); }
+    50% { transform: translateY(-50%) translateX(100%) scale(1.15); box-shadow: 0 0 12px rgba(239, 68, 68, 0.7); }
+}
+
+[dir="rtl"] @keyframes badge-pulse {
+    0%, 100% { transform: translateY(-50%) translateX(-100%) scale(1); }
+    50% { transform: translateY(-50%) translateX(-100%) scale(1.15); box-shadow: 0 0 12px rgba(239, 68, 68, 0.7); }
+}
+
+.notifications-center {
     display: flex;
+    flex-direction: column;
+    margin: -12px;
+}
+
+.nc-top-bar {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: center;
-    padding-bottom: 0.6rem;
-    margin-bottom: 0.4rem;
-    border-bottom: 1px solid #f0f2f7;
-    font-weight: 700;
-    color: #1f2d3d;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eef2f6;
+    background: #f8fafc;
+    border-radius: 12px 12px 0 0;
 }
 
-.notifications-empty {
+.nc-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.nc-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nc-tab-btn:hover {
+    background: rgba(100, 116, 139, 0.08);
+    color: #1e293b;
+}
+
+.nc-tab-btn.active {
+    background: #ffffff;
+    color: #3b82f6;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.nc-tab-badge {
+    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.nc-tab-btn.active .nc-tab-badge {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.nc-tab-badge.critical {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.nc-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nc-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nc-icon-btn:hover {
+    background: rgba(100, 116, 139, 0.1);
+    color: #1e293b;
+}
+
+.nc-icon-btn.active {
+    color: #2563eb;
+}
+
+.nc-sub-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.nc-sub-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.nc-filter-pills {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.nc-pill {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nc-pill:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.nc-pill.active {
+    background: #f1f5f9;
+    color: #2563eb;
+    font-weight: 700;
+}
+
+.nc-mark-all-btn {
+    font-size: 0.74rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nc-tab-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.nc-state-box {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
-    padding: 2rem 0;
+    padding: 2.5rem 1rem;
     color: #94a3b8;
     font-size: 0.85rem;
+    text-align: center;
 }
 
-.notifications-list {
-    max-height: 340px;
+.nc-state-box.ok-state {
+    padding: 2rem 1rem;
+}
+
+.ok-title {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 0.9rem;
+}
+
+.ok-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.nc-list {
+    max-height: 360px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
 }
 
-.notification-row {
+.nc-item {
+    position: relative;
     display: flex;
-    gap: 0.6rem;
-    padding: 0.6rem 0.25rem;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
     cursor: pointer;
-    border-radius: 8px;
+    border-bottom: 1px solid #f8fafc;
     transition: background 0.15s ease;
 }
 
-.notification-row:hover {
+.nc-item:hover {
     background: #f8fafc;
 }
 
-.notification-row.unread {
-    background: #f4f7ff;
+.nc-item.unread {
+    background: #f0f7ff;
 }
 
-.notification-dot {
-    width: 8px;
-    height: 8px;
+.nc-item.unread:hover {
+    background: #e6f1fe;
+}
+
+.nc-unread-indicator {
+    position: absolute;
+    top: 1rem;
+    inset-inline-end: 0.75rem;
+    width: 7px;
+    height: 7px;
     border-radius: 999px;
-    margin-top: 0.4rem;
+    background: #3b82f6;
+}
+
+.nc-item-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    background: #cbd5e1;
+    margin-top: 0.1rem;
+    background: #f1f5f9;
+    color: #64748b;
 }
 
-.notification-row.unread .notification-dot {
-    background: #667eea;
-}
+.nc-item-icon.icon-order { background: #dbeafe; color: #2563eb; }
+.nc-item-icon.icon-inventory { background: #fef3c7; color: #d97706; }
+.nc-item-icon.icon-warehouse { background: #e0e7ff; color: #4f46e5; }
+.nc-item-icon.icon-financial { background: #d1fae5; color: #059669; }
+.nc-item-icon.icon-warning { background: #ffedd5; color: #ea580c; }
+.nc-item-icon.icon-error { background: #fee2e2; color: #dc2626; }
+.nc-item-icon.icon-success { background: #dcfce7; color: #16a34a; }
+.nc-item-icon.icon-info { background: #e0f2fe; color: #0284c7; }
 
-.notification-dot.type-warning { background: #f59e0b; }
-.notification-dot.type-error { background: #ef4444; }
-.notification-dot.type-success { background: #10b981; }
-
-.notification-body {
+.nc-item-body {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    min-width: 0;
 }
 
-.notification-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #1f2d3d;
+.nc-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.2rem;
 }
 
-.notification-message {
-    font-size: 0.78rem;
-    color: #64748b;
+.nc-item-title {
+    font-size: 0.83rem;
+    font-weight: 700;
+    color: #1e293b;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.notification-time {
-    font-size: 0.7rem;
-    color: #a3adc2;
-    margin-top: 0.1rem;
+.nc-item-time {
+    font-size: 0.69rem;
+    color: #94a3b8;
+    flex-shrink: 0;
 }
 
-.notifications-footer {
-    border-top: 1px solid #f0f2f7;
-    margin-top: 0.4rem;
-    padding-top: 0.4rem;
-    text-align: center;
+.nc-item-message {
+    margin: 0;
+    font-size: 0.77rem;
+    line-height: 1.35;
+    color: #64748b;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.nc-item-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.35rem;
+}
+
+.nc-target-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.68rem;
+    font-weight: 600;
+    transition: background 0.15s ease;
+}
+
+.nc-item:hover .nc-target-chip {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.nc-quick-btns {
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+}
+
+.nc-item:hover .nc-quick-btns {
+    opacity: 1;
+}
+
+.nc-action-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.nc-action-btn:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.nc-action-btn.danger:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* System Alerts Tab Styles */
+.nc-alerts-list {
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.nc-alert-card {
+    padding: 0.75rem 0.85rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nc-alert-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.nc-alert-card.severity-critical {
+    border-color: #fecaca;
+    background: linear-gradient(to bottom, #fff5f5, #ffffff);
+}
+
+.nc-alert-card.severity-warning {
+    border-color: #fef3c7;
+    background: linear-gradient(to bottom, #fffbeb, #ffffff);
+}
+
+.nc-alert-card.severity-info {
+    border-color: #e0e7ff;
+    background: linear-gradient(to bottom, #f8faff, #ffffff);
+}
+
+.nc-alert-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+
+.nc-alert-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.nc-alert-card.severity-critical .nc-alert-icon { color: #dc2626; }
+.nc-alert-card.severity-warning .nc-alert-icon { color: #d97706; }
+.nc-alert-card.severity-info .nc-alert-icon { color: #2563eb; }
+
+.nc-alert-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.nc-alert-badge {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.nc-alert-badge.critical { background: #fee2e2; color: #dc2626; }
+.nc-alert-badge.warning { background: #fef3c7; color: #b45309; }
+.nc-alert-badge.info { background: #e0e7ff; color: #3730a3; }
+
+.nc-alert-msg {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.76rem;
+    color: #475569;
+    line-height: 1.35;
+}
+
+.nc-alert-footer {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.nc-alert-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    border: none;
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.nc-alert-card.severity-critical .nc-alert-cta-btn {
+    background: #dc2626;
+}
+
+.nc-alert-card.severity-critical .nc-alert-cta-btn:hover {
+    background: #b91c1c;
+}
+
+.nc-alert-card.severity-warning .nc-alert-cta-btn {
+    background: #d97706;
+}
+
+.nc-alert-card.severity-warning .nc-alert-cta-btn:hover {
+    background: #b45309;
+}
+
+.nc-alert-card.severity-info .nc-alert-cta-btn {
+    background: #2563eb;
+}
+
+.nc-alert-card.severity-info .nc-alert-cta-btn:hover {
+    background: #1d4ed8;
+}
+
+.nc-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+    border-radius: 0 0 12px 12px;
+}
+
+.nc-footer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: none;
+    background: transparent;
+    color: #2563eb;
+    font-size: 0.77rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+}
+
+.nc-footer-link:hover {
+    background: #eff6ff;
+}
+
+.nc-footer-link.secondary {
+    color: #64748b;
+}
+
+.nc-footer-link.secondary:hover {
+    background: #e2e8f0;
+    color: #1e293b;
 }
 
 .user-dropdown {

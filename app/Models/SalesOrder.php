@@ -164,6 +164,11 @@ class SalesOrder extends Model
         return $this->hasMany(RmaRequest::class);
     }
 
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
+    }
+
     /** Append-only record of every stage this order has moved through. */
     public function statusHistory()
     {

@@ -286,8 +286,12 @@
                         </el-popover>
                         <div class="export-actions">
                             <button type="button" class="btn-ghost btn-print-settings" :title="$t('print_settings')" @click="openPrintSettings">
-                                <el-icon><Printer /></el-icon>
+                                <el-icon><Operation /></el-icon>
                                 <span>{{ $t('print_settings') }}</span>
+                            </button>
+                            <button type="button" class="btn-ghost btn-print-preview" :title="$t('print_preview')" @click="openPrintPreview">
+                                <el-icon><View /></el-icon>
+                                <span>{{ $t('print_preview') }}</span>
                             </button>
                             <button type="button" class="btn-pdf" :disabled="printLoading || total === 0" @click="printPage">
                                 <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
@@ -779,7 +783,7 @@
         <el-dialog
             v-model="printSettingsVisible"
             :title="$t('print_settings')"
-            width="680px"
+            width="820px"
             class="print-settings-dialog"
             :close-on-click-modal="true"
             append-to-body
@@ -806,7 +810,7 @@
                     </div>
                 </div>
 
-                <!-- Quick Presets -->
+                <!-- Quick Presets Row -->
                 <div class="presets-row">
                     <span class="presets-title">{{ $t('common.quick_actions') || 'قوالب سريعة' }}:</span>
                     <button type="button" class="preset-chip" @click="applyClientPreset">
@@ -817,29 +821,52 @@
                         <el-icon><Collection /></el-icon>
                         {{ $t('full_catalog_preset') }}
                     </button>
+                    <button type="button" class="preset-chip" @click="applyInkSaverPreset">
+                        <i class="fas fa-leaf"></i>
+                        {{ $t('ink_saver_preset') || 'موفر للحبر (نص فقط)' }}
+                    </button>
+                    <button type="button" class="preset-chip" @click="applyInternalPreset">
+                        <i class="fas fa-warehouse"></i>
+                        {{ $t('internal_preset') || 'مخزون داخلي' }}
+                    </button>
                 </div>
 
-                <div class="settings-sections">
-                    <!-- Section 1: Document Branding & Layout -->
-                    <div class="settings-section">
-                        <h4 class="section-title">
-                            <el-icon><Picture /></el-icon>
-                            {{ $t('print_options') }}
-                        </h4>
-                        <div class="settings-grid">
-                            <div class="setting-item-box" :class="{ active: printSettings.showCover }">
+                <!-- Settings Tabs -->
+                <el-tabs v-model="activePrintSettingsTab" class="print-settings-tabs">
+                    <!-- Tab 1: Design, Header & Structure -->
+                    <el-tab-pane :label="$t('print_options') || 'قالب ونمط الطباعة'" name="design">
+                        <div class="tab-pane-content">
+                            <!-- Orientation Selector -->
+                            <div class="setting-item-box">
                                 <div class="setting-item-head">
                                     <div class="setting-info">
-                                        <div class="setting-title">{{ $t('include_cover_page') }}</div>
-                                        <div class="setting-desc">{{ $t('include_cover_page_desc') }}</div>
+                                        <div class="setting-title">{{ $t('page_orientation') || 'اتجاه الصفحة' }}</div>
+                                        <div class="setting-desc">{{ (printSettings.orientation || 'portrait') === 'portrait' ? 'A4 عمودي - مناسب للعروض القياسية' : 'A4 أفقي - مناسب للجداول العريضة وتعدد الأعمدة' }}</div>
                                     </div>
-                                    <el-switch v-model="printSettings.showCover" @change="savePrintSettings" />
-                                </div>
-                                <div v-if="printSettings.showCover" class="setting-thumb-preview cover-thumb">
-                                    <img :src="'/cover.jpeg'" alt="Cover Preview" />
+                                    <div class="orient-pill-selector">
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: (printSettings.orientation || 'portrait') === 'portrait' }"
+                                            @click="setOrientation('portrait')"
+                                        >
+                                            <i class="fas fa-file-alt"></i>
+                                            <span>{{ $t('portrait') || 'عمودي' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.orientation === 'landscape' }"
+                                            @click="setOrientation('landscape')"
+                                        >
+                                            <i class="fas fa-file-alt fa-rotate-90"></i>
+                                            <span>{{ $t('landscape') || 'أفقي' }}</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
+                            <!-- Header Style Box -->
                             <div class="setting-item-box" :class="{ active: printSettings.showHeader }">
                                 <div class="setting-item-head">
                                     <div class="setting-info">
@@ -894,79 +921,174 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="settings-toggles-row">
-                            <label class="toggle-checkbox-label">
-                                <el-checkbox v-model="printSettings.showContacts" @change="savePrintSettings" />
-                                <span>{{ $t('show_contacts_in_header') || 'إظهار بيانات التواصل في الترويسة' }}</span>
-                            </label>
-                            <label class="toggle-checkbox-label">
-                                <el-checkbox v-model="printSettings.showPageNumbers" @change="savePrintSettings" />
-                                <span>{{ $t('show_page_numbers') }}</span>
-                            </label>
-                            <label class="toggle-checkbox-label">
-                                <el-checkbox v-model="printSettings.showFooter" @change="savePrintSettings" />
-                                <span>{{ $t('show_print_footer') }}</span>
-                            </label>
-                            <label class="toggle-checkbox-label is-warning">
-                                <el-checkbox v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
-                                <span>{{ $t('hide_stock_for_clients') }}</span>
-                            </label>
-                        </div>
-                    </div>
+                            <!-- Cover Page Box -->
+                            <div class="setting-item-box" :class="{ active: printSettings.showCover }">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('include_cover_page') }}</div>
+                                        <div class="setting-desc">{{ $t('include_cover_page_desc') }}</div>
+                                    </div>
+                                    <el-switch v-model="printSettings.showCover" @change="savePrintSettings" />
+                                </div>
+                                <div v-if="printSettings.showCover" class="setting-thumb-preview cover-thumb">
+                                    <img :src="'/cover.jpeg'" alt="Cover Preview" />
+                                </div>
+                            </div>
 
-                    <!-- Section 2: Offer & Client Details -->
-                    <div class="settings-section">
-                        <h4 class="section-title">
-                            <el-icon><Document /></el-icon>
-                            {{ $t('offer_title') }} &amp; {{ $t('client_name') }}
-                        </h4>
-                        <div class="fields-grid">
-                            <div class="field-group">
-                                <label class="field-label">{{ $t('offer_title') }}</label>
-                                <el-input
-                                    v-model="printSettings.title"
-                                    :placeholder="$t('price_offer')"
-                                    clearable
-                                    @input="savePrintSettings"
-                                />
-                            </div>
-                            <div class="field-group">
-                                <label class="field-label">{{ $t('client_name') }}</label>
-                                <el-input
-                                    v-model="printSettings.customerName"
-                                    :placeholder="$t('client_name_placeholder')"
-                                    clearable
-                                    @input="savePrintSettings"
-                                />
-                            </div>
-                            <div class="field-group">
-                                <label class="field-label">{{ $t('offer_date') }}</label>
-                                <el-input
-                                    v-model="printSettings.date"
-                                    type="date"
-                                    @change="savePrintSettings"
-                                />
-                            </div>
-                            <div class="field-group">
-                                <label class="field-label">{{ $t('offer_notes') }}</label>
-                                <el-input
-                                    v-model="printSettings.notes"
-                                    :placeholder="$t('offer_notes_placeholder')"
-                                    clearable
-                                    @input="savePrintSettings"
-                                />
+                            <!-- Document Structure Toggles -->
+                            <div class="settings-toggles-row">
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showContacts" @change="savePrintSettings" />
+                                    <span>{{ $t('show_contacts_in_header') || 'إظهار بيانات التواصل في الترويسة' }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showPageNumbers" @change="savePrintSettings" />
+                                    <span>{{ $t('show_page_numbers') }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showFooter" @change="savePrintSettings" />
+                                    <span>{{ $t('show_print_footer') }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label is-warning">
+                                    <el-checkbox v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
+                                    <span>{{ $t('hide_stock_for_clients') }}</span>
+                                </label>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </el-tab-pane>
+
+                    <!-- Tab 2: Offer Info & Client Details -->
+                    <el-tab-pane :label="$t('offer_title') + ' & ' + $t('client_name')" name="info">
+                        <div class="tab-pane-content">
+                            <div class="fields-grid">
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_title') }}</label>
+                                    <el-input
+                                        v-model="printSettings.title"
+                                        :placeholder="$t('price_offer')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('client_name') }}</label>
+                                    <el-input
+                                        v-model="printSettings.customerName"
+                                        :placeholder="$t('client_name_placeholder')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_date') }}</label>
+                                    <el-input
+                                        v-model="printSettings.date"
+                                        type="date"
+                                        @change="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_notes') }}</label>
+                                    <el-input
+                                        v-model="printSettings.notes"
+                                        :placeholder="$t('offer_notes_placeholder')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Quick Note Chips -->
+                            <div class="quick-notes-section">
+                                <div class="quick-notes-title">
+                                    <i class="fas fa-magic"></i>
+                                    <span>{{ $t('quick_terms') || 'شروط وملاحظات سريعة (انقر للإضافة)' }}:</span>
+                                </div>
+                                <div class="quick-notes-chips">
+                                    <button
+                                        v-for="(n, nIdx) in quickNoteSuggestions"
+                                        :key="nIdx"
+                                        type="button"
+                                        class="quick-note-chip"
+                                        @click="appendQuickNote(n)"
+                                    >
+                                        + {{ n }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- Tab 3: Columns & Products -->
+                    <el-tab-pane :label="$t('print_columns_options') || 'الأعمدة والمنتجات'" name="columns">
+                        <div class="tab-pane-content">
+                            <div class="columns-toggles-grid">
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_images_in_print') || 'تضمين صور المنتجات' }}</strong>
+                                        <small>{{ printSettings.showImages !== false ? 'يتم عرض صور المنتجات بجودة عالية' : 'نص فقط - يوفر حبر الطابعة' }}</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showImages" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_details_in_print') || 'تضمين تفاصيل المنتج' }}</strong>
+                                        <small>{{ $t('details') }} (المقاس واللون والوحدة)</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showDetails" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_specs_in_print') || 'تضمين المواصفات الفنية' }}</strong>
+                                        <small>{{ $t('specifications') }} والجداول التفصيلية</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showSpecs" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_offer_price_in_print') || 'تضمين سعر العرض' }}</strong>
+                                        <small>{{ $t('offer_price') }} وسعر التخفيض الموحد</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showOfferPrice" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card is-warn">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('hide_stock_for_clients') }}</strong>
+                                        <small>{{ $t('hide_stock_for_clients_hint') }}</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
+                                </div>
+                            </div>
+
+                            <div class="rows-estimate-card">
+                                <span class="rows-label">{{ $t('rows_per_page_estimate', { n: rowsPerPage }) }}</span>
+                                <div class="rows-chips">
+                                    <button
+                                        v-for="n in [3, 4, 5, 6]"
+                                        :key="n"
+                                        type="button"
+                                        class="rows-per-page-chip"
+                                        :class="{ active: rowsPerPage === n }"
+                                        @click="setRowsPerPage(n)"
+                                    >{{ n }}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
             </div>
 
             <template #footer>
                 <div class="print-dialog-footer">
                     <el-button @click="printSettingsVisible = false">{{ $t('common.cancel') }}</el-button>
                     <div class="footer-primary-actions">
+                        <el-button
+                            :icon="View"
+                            @click="openPrintPreview"
+                        >
+                            {{ $t('print_preview') }}
+                        </el-button>
                         <el-button
                             type="primary"
                             :loading="printLoading && prepMode === 'pdf'"
@@ -988,6 +1110,143 @@
                     </div>
                 </div>
             </template>
+        </el-dialog>
+
+        <!-- High-Fidelity Print Preview Dialog -->
+        <el-dialog
+            v-model="previewModalVisible"
+            :title="$t('print_preview_title') || 'معاينة عرض الأسعار قبل الطباعة'"
+            fullscreen
+            class="print-preview-dialog"
+            append-to-body
+            destroy-on-close
+        >
+            <div class="preview-dialog-body">
+                <!-- Preview Top Control Bar -->
+                <div class="preview-control-bar">
+                    <div class="preview-stats">
+                        <span class="preview-stat-item">
+                            <strong>{{ printableCount }}</strong> {{ $t('product') }}
+                        </span>
+                        <span class="preview-sep">·</span>
+                        <span class="preview-stat-item is-price">
+                            <strong>{{ formatSummaryPrice(printableSum) }}</strong>
+                        </span>
+                        <span v-if="printSettings.customerName" class="preview-client-badge">
+                            <el-icon><User /></el-icon> {{ printSettings.customerName }}
+                        </span>
+                    </div>
+
+                    <div class="preview-options-quick">
+                        <div class="preview-orient-toggle">
+                            <button
+                                type="button"
+                                class="orient-btn"
+                                :class="{ active: (printSettings.orientation || 'portrait') === 'portrait' }"
+                                @click="setOrientation('portrait')"
+                            >
+                                <i class="fas fa-file-alt"></i>
+                                <span>{{ $t('portrait') }}</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="orient-btn"
+                                :class="{ active: printSettings.orientation === 'landscape' }"
+                                @click="setOrientation('landscape')"
+                            >
+                                <i class="fas fa-file-alt fa-rotate-90"></i>
+                                <span>{{ $t('landscape') }}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="preview-main-actions">
+                        <el-button
+                            :icon="Operation"
+                            @click="openPrintSettings"
+                        >
+                            {{ $t('print_settings') }}
+                        </el-button>
+                        <el-button
+                            type="primary"
+                            :loading="printLoading && prepMode === 'pdf'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Download"
+                            @click="downloadPdf"
+                        >
+                            {{ $t('download_pdf_now') }}
+                        </el-button>
+                        <el-button
+                            type="danger"
+                            :loading="printLoading && prepMode === 'print'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Printer"
+                            @click="printFromPreview"
+                        >
+                            {{ $t('print_now') }}
+                        </el-button>
+                    </div>
+                </div>
+
+                <!-- Realistic A4 Canvas Frame -->
+                <div class="preview-scroll-viewport">
+                    <!-- Full-bleed Cover Page Sheet (Page 1) -->
+                    <div
+                        v-if="printSettings.showCover"
+                        class="preview-page-canvas preview-cover-canvas"
+                        :class="`orient-${printSettings.orientation || 'portrait'}`"
+                    >
+                        <div class="preview-sheet-cover">
+                            <img :src="'/cover.jpeg'" alt="Catalog Cover" />
+                        </div>
+                    </div>
+
+                    <!-- Document Sheet (Page 2+) -->
+                    <div
+                        class="preview-page-canvas"
+                        :class="`orient-${printSettings.orientation || 'portrait'}`"
+                    >
+                        <div class="preview-sheet-content">
+                            <PrintDocumentHeader
+                                v-if="printSettings.showHeader"
+                                :header-style="printSettings.headerStyle || 'official'"
+                                :title="printSettings.title || $t('price_offer')"
+                                :subtitle="'OFFICIAL PRICE QUOTATION'"
+                                :customer-name="printSettings.customerName"
+                                :date="printSettings.date"
+                                :notes="printSettings.notes"
+                                :show-contacts="printSettings.showContacts !== false"
+                                :banner-src="'/Header.jpeg'"
+                            />
+
+                            <div class="preview-table-container">
+                                <ProductOfferTable
+                                    :groups="printGroups.length ? printGroups : groupedProducts"
+                                    :loading="false"
+                                    :editing-id="null"
+                                    :edit-value="''"
+                                    print-mode
+                                    :visible-columns="effectivePrintColumns"
+                                    :column-widths="columnWidths"
+                                    :row-height="rowHeight"
+                                />
+                            </div>
+
+                            <div v-if="printSettings.showFooter" class="print-document-footer">
+                                <div class="footer-company-info">
+                                    <span class="f-comp">{{ $t('site_fallback_name') }}</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-cr">س.ت: 5048</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-addr">ريف دمشق - معربا</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-phone" dir="ltr">0980831477 - 0962889577</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </el-dialog>
 
         <div v-if="total > 0 && !arrangeMode" class="pagination-wrapper screen-only">
@@ -1013,14 +1272,14 @@ import SpecsEditDialog from '@/components/admin/products/SpecsEditDialog.vue';
 import { parseDescriptionLines, serializeDescriptionSpecs } from '@/utils/productSpecs';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { matchesSearch } from '@/utils/search';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document, View } from '@element-plus/icons-vue';
 
 // vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
 // bundling it statically costs every visit to this screen ~200 kB for a control
@@ -2495,6 +2754,8 @@ const fullPrintGroups = ref([]);
 const printTableRef = ref(null);
 const printHeaderRef = ref(null);
 const printSettingsVisible = ref(false);
+const previewModalVisible = ref(false);
+const activePrintSettingsTab = ref('design');
 const printLoading = ref(false);
 const printCancelled = ref(false);
 const printProgress = ref({ loaded: 0, total: 0 });
@@ -2513,10 +2774,15 @@ const PRINT_SETTINGS_STORAGE_KEY = 'price_offer_print_settings';
 const defaultPrintSettings = {
     showCover: false,
     showHeader: true,
-    showFooter: true,
-    showPageNumbers: true,
+    showFooter: false,
+    showPageNumbers: false,
     headerStyle: 'official',
     showContacts: true,
+    orientation: 'portrait',
+    showImages: true,
+    showSpecs: true,
+    showDetails: true,
+    showOfferPrice: true,
     title: '',
     customerName: '',
     date: new Date().toISOString().slice(0, 10),
@@ -2550,8 +2816,67 @@ function setHeaderStyle(style) {
     savePrintSettings();
 }
 
+function setOrientation(orient) {
+    printSettings.value.orientation = orient;
+    savePrintSettings();
+    applyPrintPageStyle();
+}
+
+function applyPrintPageStyle() {
+    let styleEl = document.getElementById('price-offer-print-page-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'price-offer-print-page-style';
+        document.head.appendChild(styleEl);
+    }
+    const isLandscape = printSettings.value.orientation === 'landscape';
+    const sizeStr = isLandscape ? 'A4 landscape' : 'A4 portrait';
+
+    styleEl.textContent = `
+        @page {
+            size: ${sizeStr};
+            margin: 0 !important;
+        }
+        a[href]:after {
+            content: none !important;
+        }
+    `;
+}
+
 function openPrintSettings() {
+    previewModalVisible.value = false;
     printSettingsVisible.value = true;
+}
+
+async function openPrintPreview() {
+    printSettingsVisible.value = false;
+    if (!printGroups.value.length) {
+        await hydratePrintCatalog();
+    }
+    previewModalVisible.value = true;
+}
+
+async function printFromPreview() {
+    previewModalVisible.value = false;
+    await nextTick();
+    await printPage();
+}
+
+const quickNoteSuggestions = [
+    'الأسعار صالحة لمدة 7 أيام من تاريخ صدورها',
+    'الأسعار صالحة لمدة 15 يوماً من تاريخ صدورها',
+    'الأسعار قابلة للتعديل دون إشعار مسبق',
+    'الأسعار تشمل أجور التوصيل',
+    'طريقة الدفع: نقداً عند الاستلام',
+];
+
+function appendQuickNote(note) {
+    if (!printSettings.value.notes) {
+        printSettings.value.notes = note;
+    } else if (!printSettings.value.notes.includes(note)) {
+        printSettings.value.notes = `${printSettings.value.notes} · ${note}`;
+    }
+    savePrintSettings();
 }
 
 function applyClientPreset() {
@@ -2560,12 +2885,18 @@ function applyClientPreset() {
     printSettings.value.showFooter = true;
     printSettings.value.showPageNumbers = true;
     printSettings.value.hideInventoryInPrint = true;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
     printSettings.value.headerStyle = 'official';
     printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
     if (!printSettings.value.title) {
-        printSettings.value.title = t('price_offer');
+        printSettings.value.title = t('official_price_offer') || 'عرض أسعار رسمي';
     }
     savePrintSettings();
+    applyPrintPageStyle();
     flashMsg(t('client_preset'));
 }
 
@@ -2575,10 +2906,56 @@ function applyFullCatalogPreset() {
     printSettings.value.showFooter = true;
     printSettings.value.showPageNumbers = true;
     printSettings.value.hideInventoryInPrint = false;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
     printSettings.value.headerStyle = 'official';
     printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
+    if (!printSettings.value.title) {
+        printSettings.value.title = t('catalog') || 'كتالوج المنتجات';
+    }
     savePrintSettings();
+    applyPrintPageStyle();
     flashMsg(t('full_catalog_preset'));
+}
+
+function applyInkSaverPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = true;
+    printSettings.value.showImages = false;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'compact';
+    printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('ink_saver_preset') || 'تم تطبيق القالب الاقتصادي الموفر للحبر');
+}
+
+function applyInternalPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = false;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'compact';
+    printSettings.value.showContacts = false;
+    printSettings.value.orientation = 'portrait';
+    printSettings.value.title = t('internal_preset') || 'قائمة الأسعار وجرد المستودع';
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('internal_preset') || 'تم تطبيق قالب المخزون الداخلي');
 }
 
 const hasPrintMeta = computed(() => !!(
@@ -2592,10 +2969,23 @@ const printableCount = computed(() => (
     fullPrintGroups.value.length ? fullPrintGroups.value.length : groupedProducts.value.length
 ));
 
+// Crucial: unwrapping visibleColumns.value so all columns are included in print/PDF
 const effectivePrintColumns = computed(() => {
-    const cols = { ...visibleColumns };
+    const cols = { ...visibleColumns.value };
     if (printSettings.value.hideInventoryInPrint) {
         cols.inventory = false;
+    }
+    if (printSettings.value.showImages === false) {
+        cols.image = false;
+    }
+    if (printSettings.value.showSpecs === false) {
+        cols.specs = false;
+    }
+    if (printSettings.value.showDetails === false) {
+        cols.details = false;
+    }
+    if (printSettings.value.showOfferPrice === false) {
+        cols.offer = false;
     }
     return cols;
 });
@@ -2978,17 +3368,27 @@ async function prepareFullCatalog() {
 }
 
 const printPage = async () => {
+    printSettingsVisible.value = false;
+    previewModalVisible.value = false;
     prepMode.value = 'print';
     printLoading.value = true;
     try {
+        applyPrintPageStyle();
         const tableEl = await prepareFullCatalog();
         if (!tableEl) return;
         printLoading.value = false;
+
+        // Force remove any popup lock class that Element Plus might have left
+        document.body.classList.remove('el-popup-parent--hidden');
+        document.body.style.removeProperty('overflow');
+        document.documentElement.style.removeProperty('overflow');
+
         // Allow the DOM, transitions, and image paints to settle cleanly before opening the print dialog
         await nextTick();
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        await new Promise((resolve) => setTimeout(resolve, 200));
         window.print();
-    } catch {
+    } catch (e) {
+        console.error('Print error:', e);
         if (!printCancelled.value) ElMessage.error(t('failed_to_bring_products'));
     } finally {
         printLoading.value = false;
@@ -3019,6 +3419,7 @@ const downloadPdf = async () => {
             coverSrc: printSettings.value.showCover ? '/cover.jpeg' : null,
             headerEl: printSettings.value.showHeader ? printHeaderRef.value : null,
             showPageNumbers: printSettings.value.showPageNumbers,
+            orientation: printSettings.value.orientation || 'portrait',
             footerBrand: 'AWAAN AL-TAKADOM - Sanitary Ware & Building Materials',
             onPageProgress: (loaded, total) => {
                 printProgress.value = { loaded, total };
@@ -3047,7 +3448,16 @@ function flashMsg(msg) {
     importMsgTimeout = setTimeout(() => { importMsg.value = ''; }, 2500);
 }
 
+const handlePrintKeydown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        printPage();
+    }
+};
+
 onMounted(async () => {
+    window.addEventListener('keydown', handlePrintKeydown);
+    applyPrintPageStyle();
     await store.fetchCategories();
     await fetchProducts();
     hydratePrintCatalog();
@@ -3055,6 +3465,10 @@ onMounted(async () => {
     // if the connection has already returned.
     applyPendingStatuses();
     if (isOnline.value && pendingCount.value > 0) syncPending();
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handlePrintKeydown);
 });
 </script>
 
@@ -4708,14 +5122,343 @@ onMounted(async () => {
     color: #94a3b8;
 }
 
-/* Zero page margin so the browser has no room to draw its own URL/date
-   header and footer line — same trick used by public/file_with_images.html. */
-@page {
-    margin: 0;
+.btn-print-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(37, 99, 235, 0.22);
+    border: 1px solid rgba(147, 197, 253, 0.45);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.btn-print-preview:hover {
+    background: rgba(37, 99, 235, 0.38);
+    border-color: rgba(147, 197, 253, 0.8);
+    transform: translateY(-1px);
 }
 
-/* Print styles */
+.print-settings-tabs :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background-color: #e2e8f0;
+}
+.print-settings-tabs :deep(.el-tabs__item) {
+    font-size: 13px;
+    font-weight: 700;
+}
+.tab-pane-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 6px;
+}
+.orient-pill-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.quick-notes-section {
+    margin-top: 6px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+.quick-notes-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+}
+.quick-notes-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.quick-note-chip {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: right;
+}
+.quick-note-chip:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
+    transform: translateY(-1px);
+}
+.columns-toggles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+}
+.column-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    gap: 10px;
+}
+.column-toggle-card.is-warn {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.column-toggle-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.column-toggle-info strong {
+    font-size: 12px;
+    color: #1e293b;
+}
+.column-toggle-info small {
+    font-size: 10.5px;
+    color: #64748b;
+}
+.rows-estimate-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 6px;
+}
+.rows-estimate-card .rows-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+}
+.rows-estimate-card .rows-chips {
+    display: flex;
+    gap: 6px;
+}
+
+/* Print Preview Modal Styles */
+.print-preview-dialog :deep(.el-dialog__header) {
+    margin-right: 0;
+    padding: 14px 20px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+.print-preview-dialog :deep(.el-dialog__title) {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 800;
+}
+.print-preview-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+    color: #94a3b8;
+    font-size: 18px;
+}
+.print-preview-dialog :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
+    color: #f8fafc;
+}
+.print-preview-dialog :deep(.el-dialog__body) {
+    padding: 0;
+    background: #0f172a;
+    height: calc(100vh - 56px);
+    overflow: hidden;
+}
+.preview-dialog-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.preview-control-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 24px;
+    background: #1e293b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    z-index: 10;
+    flex-wrap: wrap;
+}
+.preview-stats {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+.preview-stat-item strong {
+    color: #ffffff;
+    font-weight: 800;
+}
+.preview-stat-item.is-price strong {
+    color: #f87171;
+}
+.preview-sep {
+    color: #475569;
+}
+.preview-client-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+}
+.preview-options-quick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.preview-orient-toggle {
+    display: flex;
+    align-items: center;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+.orient-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.orient-btn:hover {
+    color: #f8fafc;
+}
+.orient-btn.active {
+    background: #3b82f6;
+    color: #ffffff;
+    font-weight: 700;
+}
+.preview-main-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.preview-scroll-viewport {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 32px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    background: #0f172a;
+}
+.preview-page-canvas {
+    background: #ffffff;
+    color: #0f172a;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    padding: 12mm 14mm 14mm 14mm;
+    box-sizing: border-box;
+    transition: width 0.2s ease, max-width 0.2s ease;
+    width: 100%;
+}
+.preview-page-canvas.orient-portrait {
+    max-width: 960px;
+    min-height: 1200px;
+}
+.preview-page-canvas.orient-landscape {
+    max-width: 1240px;
+    min-height: 850px;
+}
+.preview-cover-canvas {
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: none !important;
+}
+.preview-cover-canvas.orient-portrait {
+    max-width: 960px;
+    height: 1358px;
+    min-height: 1358px;
+}
+.preview-cover-canvas.orient-landscape {
+    max-width: 1240px;
+    height: 876px;
+    min-height: 876px;
+}
+.preview-cover-canvas .preview-sheet-cover {
+    width: 100%;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: #000;
+    display: flex;
+}
+.preview-cover-canvas .preview-sheet-cover img {
+    width: 100%;
+    height: 100%;
+    max-height: none !important;
+    object-fit: cover !important;
+    display: block;
+}
+.preview-sheet-content {
+    width: 100%;
+}
+.preview-table-container {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* Native Print Styles */
 @media print {
+    html, body {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    :global(.el-popup-parent--hidden) {
+        overflow: visible !important;
+    }
+    :global(.admin-layout),
+    :global(.admin-main-wrapper),
+    :global(.admin-content) {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        position: static !important;
+    }
     .offer-toolbar,
     .screen-only,
     :global(.admin-sidebar),
@@ -4725,13 +5468,9 @@ onMounted(async () => {
     :global(.el-dialog__wrapper),
     :global(.columns-popover),
     :global(.categories-popover),
-    :global(.image-editor-popover) {
+    :global(.image-editor-popover),
+    :global(.print-preview-dialog) {
         display: none !important;
-    }
-    body {
-        background: #fff !important;
-        margin: 0 !important;
-        padding: 0 !important;
     }
     .price-offer-page {
         padding: 0 !important;
@@ -4739,30 +5478,45 @@ onMounted(async () => {
     }
     .print-sheet-wrap.print-only {
         display: block !important;
-        padding: 8mm 8mm 10mm !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
     .print-cover {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        display: block !important;
+        position: relative !important;
         width: 100vw !important;
         height: 100vh !important;
-        margin: -8mm -8mm 0 !important;
+        min-height: 100vh !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
+        page-break-before: avoid !important;
         page-break-after: always !important;
         break-after: page !important;
+        box-sizing: border-box !important;
     }
     .print-cover img {
         width: 100% !important;
-        height: 100% !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
         max-height: 100vh !important;
-        object-fit: contain !important;
+        object-fit: cover !important;
+        display: block !important;
     }
     .print-document-content {
         page-break-before: auto !important;
+        padding: 10mm 12mm !important;
+        box-sizing: border-box !important;
     }
-    .print-document-header {
+    a[href]:after {
+        content: none !important;
+    }
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
+    }
+    .print-document-header-box {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
         margin-bottom: 8px !important;

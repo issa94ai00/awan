@@ -108,6 +108,9 @@ class AuthController extends Controller
                 : User::where('phone', $request->phone)->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
+                $identifier = $request->email ?: $request->phone;
+                app(\App\Services\AuditService::class)->logFailedLogin($identifier, !$user ? 'user_not_found' : 'invalid_password', $user?->id);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'بيانات الدخول غير صحيحة',
@@ -120,6 +123,19 @@ class AuthController extends Controller
             $user->tokens()->where('name', $deviceName)->delete();
 
             $token = $user->createToken($deviceName)->plainTextToken;
+
+            app(\App\Services\AuditService::class)->log(
+                action: \App\Models\AuditLog::ACTION_LOGIN,
+                entityType: \App\Models\User::class,
+                entityId: $user->id,
+                description: "تسجيل دخول ناجح للمستخدم: {$user->name}",
+                module: \App\Models\AuditLog::MODULE_SECURITY,
+                userId: $user->id,
+                metadata: [
+                    'device' => $deviceName,
+                    'identifier' => $request->email ?: $request->phone,
+                ]
+            );
 
             return response()->json([
                 'success' => true,
@@ -146,6 +162,18 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
+            $user = $request->user();
+            if ($user) {
+                app(\App\Services\AuditService::class)->log(
+                    action: \App\Models\AuditLog::ACTION_LOGOUT,
+                    entityType: \App\Models\User::class,
+                    entityId: $user->id,
+                    description: "تسجيل خروج للمستخدم: {$user->name}",
+                    module: \App\Models\AuditLog::MODULE_SECURITY,
+                    userId: $user->id
+                );
+            }
+
             $request->user()->currentAccessToken()->delete();
 
             return response()->json([
@@ -278,6 +306,8 @@ class AuthController extends Controller
                 ->when($currentId, fn ($query) => $query->where('id', '!=', $currentId))
                 ->delete();
 
+            app(\App\Services\AuditService::class)->logPasswordChange($user->id);
+
             return response()->json([
                 'success' => true,
                 'message' => 'تم تغيير كلمة المرور بنجاح وتسجيل الخروج من الأجهزة الأخرى',
@@ -344,6 +374,11 @@ class AuthController extends Controller
             ], 404);
         }
 
+        app(\App\Services\AuditService::class)->logRevokeSession(
+            $request->user()->id,
+            "تم إنهاء جلسة محددة (ID: {$id}) للمستخدم: {$request->user()->name}"
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'تم تسجيل الخروج من الجهاز',
@@ -361,6 +396,11 @@ class AuthController extends Controller
         $count = $request->user()->tokens()
             ->when($currentId, fn ($query) => $query->where('id', '!=', $currentId))
             ->delete();
+
+        app(\App\Services\AuditService::class)->logRevokeSession(
+            $request->user()->id,
+            "تم إنهاء كافة الجلسات الأخرى ({$count} جلسة) للمستخدم: {$request->user()->name}"
+        );
 
         return response()->json([
             'success' => true,

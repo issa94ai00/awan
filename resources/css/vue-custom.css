@@ -773,3 +773,19 @@ body {
     border-color: var(--mobile-accent, var(--accent-gold, #c9a959)) !important;
     box-shadow: 0 0 12px color-mix(in srgb, var(--mobile-accent) 30%, transparent);
 }
+
+/* Global Print Settings: Remove browser headers, footers, URLs, and date/title text */
+@media print {
+    @page {
+        margin: 0;
+    }
+
+    a[href]:after {
+        content: none !important;
+    }
+
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
+    }
+}

@@ -2,6 +2,7 @@
 
 namespace App\Services\Sales;
 
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
@@ -1476,6 +1477,11 @@ class SalesOrderWorkflowService
                 'tax_amount' => $item->tax ?? 0,
             ]);
         }
+
+        // Link any expenses recorded on this sales order to the generated invoice
+        Expense::where('sales_order_id', $order->id)
+            ->whereNull('invoice_id')
+            ->update(['invoice_id' => $invoice->id]);
 
         return $invoice;
     }

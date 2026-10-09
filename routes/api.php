@@ -1098,7 +1098,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
             // them as ids, so /unread-count (polled by the admin header on every
             // page), /preferences and /templates all answered 404.
             Route::get('/unread-count', [NotificationController::class, 'getUnreadCount'])->name('api.notifications.unread-count');
+            Route::get('/stats', [NotificationController::class, 'getStats'])->name('api.notifications.stats');
+            Route::get('/system-alerts', [NotificationController::class, 'getSystemAlerts'])->name('api.notifications.system-alerts');
+            Route::get('/users', [NotificationController::class, 'getUsers'])->name('api.notifications.users');
             Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('api.notifications.read-all');
+            Route::post('/mark-multiple-read', [NotificationController::class, 'markMultipleAsRead'])->name('api.notifications.mark-multiple-read');
+            Route::post('/delete-multiple', [NotificationController::class, 'destroyMultiple'])->name('api.notifications.delete-multiple');
+            Route::delete('/read-all', [NotificationController::class, 'destroyAllRead'])->name('api.notifications.destroy-all-read');
             Route::get('/preferences', [NotificationController::class, 'getPreferences'])->name('api.notifications.preferences');
             Route::put('/preferences', [NotificationController::class, 'updatePreferences'])->name('api.notifications.update-preferences');
             /*
@@ -1160,6 +1166,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/activity-timeline', [AuditController::class, 'getActivityTimeline'])->name('api.audit.timeline');
             Route::get('/user-summary/{userId}', [AuditController::class, 'getUserActivitySummary'])->name('api.audit.user-summary');
             Route::get('/my-summary', [AuditController::class, 'getMyActivitySummary'])->name('api.audit.my-summary');
+            Route::get('/export', [AuditController::class, 'export'])->name('api.audit.export');
             Route::get('/', [AuditController::class, 'index'])->name('api.audit.index');
             Route::get('/{id}', [AuditController::class, 'show'])->whereNumber('id')->name('api.audit.show');
             Route::post('/cleanup', [AuditController::class, 'cleanupOldLogs'])->name('api.audit.cleanup');

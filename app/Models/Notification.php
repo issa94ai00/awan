@@ -25,6 +25,13 @@ class Notification extends Model
         'data' => 'array',
     ];
 
+    protected $appends = [
+        'type_text',
+        'icon',
+        'badge_type',
+        'target_route',
+    ];
+
     const TYPE_INFO = 'info';
     const TYPE_SUCCESS = 'success';
     const TYPE_WARNING = 'warning';
@@ -106,6 +113,70 @@ class Notification extends Model
             self::TYPE_WAREHOUSE => 'warehouse',
             self::TYPE_FINANCIAL => 'dollar-sign',
             default => 'info',
+        };
+    }
+    public function scopeSearch($query, $search)
+    {
+        if (empty($search)) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($search) {
+            $q->where('title', 'like', "%{$search}%")
+              ->orWhere('message', 'like', "%{$search}%")
+              ->orWhere('type', 'like', "%{$search}%");
+        });
+    }
+
+    public function getBadgeTypeAttribute(): string
+    {
+        return match($this->type) {
+            self::TYPE_SUCCESS => 'success',
+            self::TYPE_WARNING => 'warning',
+            self::TYPE_ERROR => 'danger',
+            self::TYPE_ORDER => 'primary',
+            self::TYPE_INVENTORY => 'warning',
+            self::TYPE_WAREHOUSE => 'info',
+            self::TYPE_FINANCIAL => 'success',
+            self::TYPE_SYSTEM => 'info',
+            default => 'info',
+        };
+    }
+
+    public function getTargetRouteAttribute(): ?string
+    {
+        $data = $this->data ?? [];
+        if (!empty($data['route'])) {
+            return $data['route'];
+        }
+        if (!empty($data['url'])) {
+            return $data['url'];
+        }
+        if (!empty($data['order_id'])) {
+            return "/admin/sales/sales-orders/{$data['order_id']}/edit";
+        }
+        if (!empty($data['invoice_id'])) {
+            return "/admin/sales/invoices/{$data['invoice_id']}/edit";
+        }
+        if (!empty($data['order_number'])) {
+            return "/admin/sales/sales-orders?search=" . urlencode($data['order_number']);
+        }
+        if (!empty($data['invoice_number'])) {
+            return "/admin/sales/invoices?search=" . urlencode($data['invoice_number']);
+        }
+        if (!empty($data['product_id'])) {
+            return "/admin/inventory";
+        }
+        if (!empty($data['action_url'])) {
+            return $data['action_url'];
+        }
+
+        return match($this->type) {
+            self::TYPE_ORDER => '/admin/sales/sales-orders',
+            self::TYPE_INVENTORY => '/admin/stock',
+            self::TYPE_WAREHOUSE => '/admin/wms/warehouses',
+            self::TYPE_FINANCIAL => '/admin/sales/invoices',
+            default => null,
         };
     }
 }

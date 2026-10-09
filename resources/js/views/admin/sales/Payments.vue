@@ -469,6 +469,14 @@
                                 <dt>{{ $t('client') }}</dt>
                                 <dd>{{ row.customer.name }} {{ row.customer.phone ? `(${row.customer.phone})` : '' }}</dd>
                             </div>
+                            <div v-if="row.sales_order || row.salesOrder">
+                                <dt>{{ $t('sales_order') }}</dt>
+                                <dd>
+                                    <button type="button" class="link-button" @click="goToSalesOrder(row.sales_order || row.salesOrder)">
+                                        <i class="fas fa-file-lines"></i> {{ (row.sales_order || row.salesOrder).order_number }}
+                                    </button>
+                                </dd>
+                            </div>
                             <div v-if="row.invoice">
                                 <dt>{{ $t('invoice') }}</dt>
                                 <dd>
@@ -512,16 +520,19 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column :label="$t('spay_applied_to')" min-width="150">
+                <el-table-column :label="$t('spay_applied_to')" min-width="160">
                     <template #default="{ row }">
                         <div class="cell-stack">
+                            <button v-if="row.sales_order || row.salesOrder" type="button" class="link-button" @click="goToSalesOrder(row.sales_order || row.salesOrder)">
+                                <i class="fas fa-file-lines"></i> <span dir="ltr">{{ (row.sales_order || row.salesOrder).order_number }}</span>
+                            </button>
                             <button v-if="row.invoice" type="button" class="link-button" @click="goToInvoice(row.invoice)">
                                 <i class="fas fa-file-invoice"></i> <span dir="ltr">{{ row.invoice.invoice_number }}</span>
                             </button>
                             <span v-else-if="row.customer" class="cell-secondary">
                                 <i class="fas fa-user"></i> {{ row.customer.name }}
                             </span>
-                            <span v-else class="cell-secondary">—</span>
+                            <span v-else-if="!(row.sales_order || row.salesOrder)" class="cell-secondary">—</span>
                         </div>
                     </template>
                 </el-table-column>
@@ -670,6 +681,7 @@ const formatWalletTotal = (wallet) => formatMoney(wallet.total, { code: wallet.c
 const showWallets = computed(() => store.wallets.length > 1 || store.wallets.some((w) => !w.is_base));
 
 const goToInvoice = (invoice) => router.push(`/admin/sales/invoices/${invoice.id}/edit`);
+const goToSalesOrder = (so) => router.push({ path: '/admin/sales/sales-orders', query: { open: so.id } });
 
 // What the invoice still owes, net of credit notes (sent by the server); the
 // old reading, total less paid, is only a fallback for a stale row.

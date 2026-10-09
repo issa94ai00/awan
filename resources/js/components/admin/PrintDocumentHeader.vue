@@ -25,7 +25,7 @@
                         <div class="brand-tagline">
                             <span>{{ resolvedTagline }}</span>
                         </div>
-                        <div class="brand-domain-badge">
+                        <div v-if="showWebsite && resolvedWebsite" class="brand-domain-badge">
                             <i class="fas fa-globe"></i>
                             <span>{{ resolvedWebsite }}</span>
                         </div>
@@ -282,6 +282,10 @@ const props = defineProps({
     showContacts: {
         type: Boolean,
         default: true,
+    },
+    showWebsite: {
+        type: Boolean,
+        default: false,
     },
     showMeta: {
         type: Boolean,
@@ -943,6 +947,10 @@ const hasMetadata = computed(() => {
         page-break-inside: avoid !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+    .brand-domain-badge {
+        display: none !important;
     }
 
     .document-badge-card {

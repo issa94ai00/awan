@@ -66,34 +66,39 @@ class NotificationService
     /**
      * Send notification using template
      */
-    public function sendFromTemplate($templateKey, $userId, array $data = [], $locale = 'en'): ?Notification
+    public function sendFromTemplate($templateKey, $userId, array $data = [], $locale = 'ar'): ?Notification
     {
         $template = NotificationTemplate::active()
             ->byKey($templateKey)
             ->first();
 
-        if (!$template) {
-            Log::warning("Notification template not found: {$templateKey}");
-            return null;
+        if ($template) {
+            $subject = $template->renderSubject($data, $locale) ?? $template->name_ar ?? $template->name;
+            $message = $template->render($data, $locale);
+            $type = $this->getNotificationTypeFromTemplate($template->type, $templateKey);
+            $templateType = $template->type;
+        } else {
+            $fallback = $this->getFallbackTemplate($templateKey, $data, $locale);
+            $subject = $fallback['subject'];
+            $message = $fallback['message'];
+            $type = $fallback['type'];
+            $templateType = NotificationTemplate::TYPE_IN_APP;
         }
-
-        $subject = $template->renderSubject($data, $locale);
-        $message = $template->render($data, $locale);
 
         $notification = Notification::create([
             'user_id' => $userId,
-            'title' => $subject ?? $template->name,
+            'title' => $subject,
             'message' => $message,
-            'type' => $this->getNotificationTypeFromTemplate($template->type),
+            'type' => $type,
             'data' => $data,
         ]);
 
         // Send based on template type
-        if ($template->type === NotificationTemplate::TYPE_EMAIL) {
+        if ($templateType === NotificationTemplate::TYPE_EMAIL) {
             $this->sendEmail($userId, $subject, $message, $data);
-        } elseif ($template->type === NotificationTemplate::TYPE_SMS) {
+        } elseif ($templateType === NotificationTemplate::TYPE_SMS) {
             $this->sendSms($userId, $message);
-        } elseif ($template->type === NotificationTemplate::TYPE_PUSH) {
+        } elseif ($templateType === NotificationTemplate::TYPE_PUSH) {
             $this->sendPushNotification($userId, $subject, $message, $data);
         }
 
@@ -264,10 +269,90 @@ class NotificationService
     }
 
     /**
-     * Get notification type from template type
+     * Notify all administrators
      */
-    protected function getNotificationTypeFromTemplate($templateType): string
+    public function notifyAdmins($title, $message, $type = 'info', array $data = []): array
     {
+        $adminIds = User::whereHas('roles', function ($q) {
+            $q->where('name', 'admin');
+        })->orWhere('id', 1)->pluck('id')->unique()->all();
+
+        return $this->sendToUsers($adminIds, $title, $message, $type, $data);
+    }
+
+    /**
+     * Fallback templates when template row is absent
+     */
+    protected function getFallbackTemplate(string $templateKey, array $data = [], string $locale = 'ar'): array
+    {
+        $orderNumber = $data['order_number'] ?? $data['number'] ?? '';
+        $productName = $data['product_name'] ?? '';
+        $currentStock = $data['current_stock'] ?? 0;
+        $minStock = $data['min_stock'] ?? 0;
+
+        return match ($templateKey) {
+            'order_confirmed' => [
+                'subject' => $locale === 'ar' ? "تأكيد الطلب #{$orderNumber}" : "Order #{$orderNumber} Confirmed",
+                'message' => $locale === 'ar' ? "تم تأكيد طلب المبيعات #{$orderNumber} بنجاح." : "Sales order #{$orderNumber} has been confirmed.",
+                'type' => 'order',
+            ],
+            'order_shipped' => [
+                'subject' => $locale === 'ar' ? "شحن الطلب #{$orderNumber}" : "Order #{$orderNumber} Shipped",
+                'message' => $locale === 'ar' ? "تم شحن الطلب #{$orderNumber} إلى العميل." : "Order #{$orderNumber} has been shipped to customer.",
+                'type' => 'order',
+            ],
+            'order_delivered' => [
+                'subject' => $locale === 'ar' ? "تسليم الطلب #{$orderNumber}" : "Order #{$orderNumber} Delivered",
+                'message' => $locale === 'ar' ? "تم تسليم الطلب #{$orderNumber} بنجاح." : "Order #{$orderNumber} has been delivered successfully.",
+                'type' => 'order',
+            ],
+            'order_cancelled' => [
+                'subject' => $locale === 'ar' ? "إلغاء الطلب #{$orderNumber}" : "Order #{$orderNumber} Cancelled",
+                'message' => $locale === 'ar' ? "تم إلغاء الطلب #{$orderNumber}." : "Order #{$orderNumber} has been cancelled.",
+                'type' => 'order',
+            ],
+            'low_stock_alert' => [
+                'subject' => $locale === 'ar' ? "تنبيه انخفاض المخزون: {$productName}" : "Low Stock Alert: {$productName}",
+                'message' => $locale === 'ar'
+                    ? "المنتج '{$productName}' وصل إلى رصيد منخفض ({$currentStock}) أقل من نقطة إعادة الطلب ({$minStock})."
+                    : "Product '{$productName}' is low in stock ({$currentStock}) below reorder point ({$minStock}).",
+                'type' => 'inventory',
+            ],
+            'out_of_stock' => [
+                'subject' => $locale === 'ar' ? "نفاد المخزون: {$productName}" : "Out of Stock: {$productName}",
+                'message' => $locale === 'ar' ? "المنتج '{$productName}' نفد من المخزون تماماً." : "Product '{$productName}' is completely out of stock.",
+                'type' => 'inventory',
+            ],
+            'payment_received' => [
+                'subject' => $locale === 'ar' ? "استلام دفعة مالية" : "Payment Received",
+                'message' => $locale === 'ar' ? "تم تسجيل دفعة جديدة بنجاح." : "A new payment has been recorded.",
+                'type' => 'financial',
+            ],
+            'invoice_created' => [
+                'subject' => $locale === 'ar' ? "إصدار فاتورة جديدة" : "New Invoice Issued",
+                'message' => $locale === 'ar' ? "تم إنشاء فاتورة جديدة في النظام." : "A new invoice has been issued in the system.",
+                'type' => 'financial',
+            ],
+            default => [
+                'subject' => ucwords(str_replace('_', ' ', $templateKey)),
+                'message' => "System notification: {$templateKey}",
+                'type' => 'info',
+            ],
+        };
+    }
+
+    /**
+     * Get notification type from template type or template key
+     */
+    protected function getNotificationTypeFromTemplate($templateType, $templateKey = null): string
+    {
+        if ($templateKey) {
+            if (str_contains($templateKey, 'order')) return 'order';
+            if (str_contains($templateKey, 'stock') || str_contains($templateKey, 'inventory')) return 'inventory';
+            if (str_contains($templateKey, 'payment') || str_contains($templateKey, 'invoice') || str_contains($templateKey, 'financial')) return 'financial';
+            if (str_contains($templateKey, 'warehouse') || str_contains($templateKey, 'cycle_count')) return 'warehouse';
+        }
+
         return match($templateType) {
             NotificationTemplate::TYPE_EMAIL => 'info',
             NotificationTemplate::TYPE_SMS => 'info',

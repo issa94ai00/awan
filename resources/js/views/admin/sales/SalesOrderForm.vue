@@ -680,6 +680,13 @@
                     </div>
                 </div>
 
+                <!-- ── Additional Expenses & Shipping ── -->
+                <OrderExpensesEditor
+                    v-model="form.expenses"
+                    class="order-expenses-section"
+                    @total-change="onExpensesTotalChange"
+                />
+
                 <!-- ── Bottom Grid: Notes & Totals ── -->
                 <div class="bottom-grid">
                     <div>
@@ -735,7 +742,9 @@
                         </div>
                         <div class="totals-row">
                             <span>{{ $t('so_shipping_cost') }}</span>
+                            <span v-if="form.expenses && form.expenses.length" class="num">{{ formatCurrency(form.shipping_cost) }}</span>
                             <el-input-number
+                                v-else
                                 v-model="form.shipping_cost"
                                 :min="0"
                                 :precision="2"
@@ -966,6 +975,7 @@ import api from '@/api/index';
 import { useStockShortage } from '@/Composables/useStockShortage';
 import { formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
 import { optionKey, variantLabelOf } from '@/utils/productPick';
+import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1009,6 +1019,7 @@ const blank = () => ({
     tax: 0,
     notes: '',
     items: [],
+    expenses: [],
 });
 
 const form = reactive(blank());
@@ -1508,6 +1519,11 @@ const total = computed(() => round2(Math.max(0, subtotal.value - toNum(form.disc
 
 const overStockLines = computed(() => form.items.filter(overStock));
 
+const onExpensesTotalChange = (newTotal) => {
+    form.shipping_cost = toNum(newTotal);
+    dirty.value = true;
+};
+
 /**
  * Everything still standing between the form and a save, in the order the user
  * meets it walking down the page. This used to be a single string, so a new
@@ -1787,6 +1803,24 @@ const loadOrder = async () => {
         form.discount = toNum(order.discount);
         form.tax = toNum(order.tax);
         form.notes = order.notes || '';
+        form.expenses = (order.expenses || []).map((exp) => ({
+            id: exp.id || null,
+            category: exp.category || 'shipping',
+            description: exp.description || '',
+            amount: toNum(exp.amount),
+            status: exp.status || 'paid',
+            notes: exp.notes || '',
+        }));
+
+        if (!form.expenses.length && toNum(order.shipping_cost) > 0) {
+            form.expenses.push({
+                category: 'shipping',
+                description: t('quick_add_shipping') || 'شحن وتوصيل',
+                amount: toNum(order.shipping_cost),
+                status: 'paid',
+                notes: '',
+            });
+        }
 
         form.items = (order.items || []).map((item) => {
             const unit = {
@@ -1856,6 +1890,16 @@ const submit = async (andConfirm) => {
             discount: toNum(line.discount),
             tax: toNum(line.tax),
         })),
+        expenses: (form.expenses || [])
+            .filter((exp) => Number(exp.amount) > 0 || (exp.description && exp.description.trim()))
+            .map((exp) => ({
+                id: exp.id || null,
+                category: exp.category || 'shipping',
+                description: exp.description?.trim() || t('quick_add_shipping') || 'شحن وتوصيل',
+                amount: toNum(exp.amount),
+                status: exp.status || 'paid',
+                notes: exp.notes || null,
+            })),
         ...(andConfirm && !isEdit.value ? { execute: 'confirm' } : {}),
     };
 
@@ -3329,6 +3373,10 @@ onUnmounted(() => {
    note hits the 1000-character cap, so it needs to be readable. */
 .quote-form :deep(.el-input__count) {
     color: #64748b;
+}
+
+.order-expenses-section {
+    margin-top: 1.5rem;
 }
 
 /* Bottom Grid: Notes & Totals */

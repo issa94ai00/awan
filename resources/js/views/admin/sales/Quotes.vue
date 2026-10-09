@@ -821,13 +821,15 @@ const printQuote = async (quote) => {
 
     win.document.open();
     win.document.write(`<!doctype html><html dir="${rtl ? 'rtl' : 'ltr'}" lang="${rtl ? 'ar' : 'en'}"><head><meta charset="utf-8">
-        <title>${escapeHtml(full.quote_number)}</title>
+        <title></title>
         <style>
-            body { font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; margin: 2rem; font-size: 13px; }
+            @page { size: A4 portrait; margin: 0 !important; }
+            body { font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; margin: 0; padding: 12mm; font-size: 13px; }
+            a { text-decoration: none !important; color: inherit !important; }
+            a[href]:after { content: none !important; }
             .official-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; margin-bottom: 0.5rem; }
             .header-brand { display: flex; align-items: center; gap: 0.85rem; }
             .header-logo { width: 62px; height: 62px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; padding: 2px; }
-            .domain-badge { font-size: 0.72rem; font-weight: 700; color: #0284c7; direction: ltr; display: inline-block; margin-top: 2px; padding: 1px 6px; background: #f1f5f9; border-radius: 4px; }
             .header-doc-badge { text-align: ${rtl ? 'left' : 'right'}; }
             .doc-num { font-weight: 800; font-family: monospace; color: #1e3a8a; font-size: 1.1rem; }
             .accent-bar { height: 3px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 30%, #06b6d4 70%, #f59e0b 100%); border-radius: 2px; margin-bottom: 1.25rem; }
@@ -841,14 +843,17 @@ const printQuote = async (quote) => {
             .totals { width: 280px; margin-${rtl ? 'right' : 'left'}: auto; margin-top: 1rem; }
             .totals td { padding: 0.3rem 0.4rem; } .totals tr:last-child td { font-weight: 800; font-size: 1.05rem; border-top: 2px solid #0f172a; }
             .notes { margin-top: 1.5rem; white-space: pre-line; } .notes h3 { font-size: 0.9rem; margin: 0 0 0.25rem; }
-            @media print { body { margin: 1cm; } }
+            @media print {
+                @page { size: A4 portrait; margin: 0 !important; }
+                body { margin: 0 !important; padding: 12mm !important; }
+                a[href]:after { content: none !important; }
+            }
         </style></head><body>
         <header class="official-header">
             <div class="header-brand">
                 <img src="/assets/images/logo.png" alt="Awaan Al-Takadom" class="header-logo" onerror="this.style.display='none'">
                 <div>
                     <h2>${escapeHtml(company)}</h2>
-                    <div class="domain-badge">sanitary.awaanaltakadom.sy</div>
                     <div class="muted">${escapeHtml(s.contact_address || s.address || 'دمشق - سوريا / الرياض - السعودية')}</div>
                 </div>
             </div>

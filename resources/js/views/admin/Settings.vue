@@ -1227,6 +1227,218 @@
                         </el-row>
                     </el-form>
                 </section>
+
+                <section v-show="activeSection === 'printing'" class="settings-section">
+                    <el-form :model="form" label-position="top" @submit.prevent>
+                        <el-alert
+                            :title="$t('print_settings_hint') || 'إعدادات وخيارات الطباعة وتصميم المستندات الرسمية'"
+                            type="info"
+                            :closable="false"
+                            show-icon
+                            class="mb-4"
+                        />
+
+                        <!-- 1. Document Format & Header Layout -->
+                        <h3 class="sub-head">{{ $t('print_header_and_layout') || 'نمط الترويسة وتخطيط المستند' }}</h3>
+                        <el-row :gutter="20">
+                            <el-col :xs="24" :md="8">
+                                <el-form-item :label="$t('header_style') || 'نمط الترويسة'">
+                                    <el-select v-model="form.print_header_style" class="w-full">
+                                        <el-option value="official" :label="$t('header_official') || 'ترويسة رسمية كاملة (شعار + بيانات المؤسسة)'" />
+                                        <el-option value="banner" :label="$t('header_banner') || 'بانر جرافيكي علوي عريض'" />
+                                        <el-option value="compact" :label="$t('header_compact') || 'ترويسة مدمجة مختصرة'" />
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :md="8">
+                                <el-form-item :label="$t('theme') || 'السمة اللونية'">
+                                    <el-select v-model="form.print_theme" class="w-full">
+                                        <el-option value="navy" :label="$t('theme_navy') || 'أزرق كحلي رسمي'" />
+                                        <el-option value="emerald" :label="$t('theme_emerald') || 'أخضر زمردي'" />
+                                        <el-option value="charcoal" :label="$t('theme_charcoal') || 'رمادي فحمي عصري'" />
+                                        <el-option value="indigo" :label="$t('theme_indigo') || 'نيلي داكن'" />
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :md="8">
+                                <el-form-item :label="$t('density') || 'كثافة المسافات والجدول'">
+                                    <el-select v-model="form.print_density" class="w-full">
+                                        <el-option value="standard" :label="$t('density_standard') || 'قياسي ومتوازن'" />
+                                        <el-option value="compact" :label="$t('density_compact') || 'مدمج (توفير الورق لكشوفات البنود)'" />
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <el-row :gutter="20">
+                            <el-col :xs="24" :md="12">
+                                <el-form-item :label="$t('watermark') || 'العلامة المائية الافتراضية'">
+                                    <el-select v-model="form.print_watermark" class="w-full">
+                                        <el-option value="" :label="$t('watermark_none') || 'بدون علامة مائية'" />
+                                        <el-option value="draft" :label="$t('watermark_draft') || 'مسودة غير معتمدة (DRAFT)'" />
+                                        <el-option value="approved" :label="$t('watermark_approved') || 'معتمد رسمياً (APPROVED)'" />
+                                        <el-option value="paid" :label="$t('watermark_paid') || 'مدفوع بالكامل (PAID)'" />
+                                        <el-option value="official" :label="$t('watermark_official') || 'وثيقة رسمية (OFFICIAL)'" />
+                                    </el-select>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <!-- 2. Official Seal, Signature & Authorized Person -->
+                        <h3 class="sub-head mt-4">{{ $t('stamp_and_signature') || 'الأختام والتواقيع والاعتماد الرسمي' }}</h3>
+                        <div class="image-grid mb-4">
+                            <el-form-item :label="$t('stamp_image') || 'ختم المؤسسة الرسمي (شفاف PNG)'">
+                                <ImageDropzone
+                                    :preview="stampImagePreview"
+                                    :label="$t('stamp_image') || 'ختم المؤسسة'"
+                                    shape="square"
+                                    transparent-bg
+                                    :pending-name="pendingFiles.stampImage"
+                                    @select="(file) => onFileSelect(file, 'stampImage')"
+                                />
+                            </el-form-item>
+                            <el-form-item :label="$t('signature_image') || 'توقيع المفوض الرقمي (شفاف PNG)'">
+                                <ImageDropzone
+                                    :preview="signatureImagePreview"
+                                    :label="$t('signature_image') || 'توقيع المفوض'"
+                                    shape="square"
+                                    transparent-bg
+                                    :pending-name="pendingFiles.signatureImage"
+                                    @select="(file) => onFileSelect(file, 'signatureImage')"
+                                />
+                            </el-form-item>
+                        </div>
+
+                        <el-row :gutter="20">
+                            <el-col :xs="24" :md="12">
+                                <el-form-item :label="$t('print_authorized_person') || 'اسم الشخص المفوض بالتوقيع'">
+                                    <el-input v-model="form.print_authorized_person" placeholder="م. محمد الأحمد / المدير العام" />
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :md="12">
+                                <el-form-item :label="$t('print_authorized_title') || 'الصفة أو المسمى الوظيفي'">
+                                    <el-input v-model="form.print_authorized_title" placeholder="المدير المالي والتنفيذي" />
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <!-- 3. Header Banner & Cover Page Images -->
+                        <h3 class="sub-head mt-4">{{ $t('header_banner_and_cover') || 'بانر الترويسة وغلاف A4 المخصص' }}</h3>
+                        <div class="image-grid mb-4">
+                            <el-form-item :label="$t('header_banner') || 'بانر الترويسة العلوي المطبوع'">
+                                <ImageDropzone
+                                    :preview="headerBannerPreview"
+                                    :label="$t('header_banner') || 'بانر الترويسة'"
+                                    shape="wide"
+                                    :pending-name="pendingFiles.headerBanner"
+                                    @select="(file) => onFileSelect(file, 'headerBanner')"
+                                />
+                            </el-form-item>
+                            <el-form-item :label="$t('cover_image') || 'صورة غلاف المستند الرسمي (A4)'">
+                                <ImageDropzone
+                                    :preview="coverImagePreview"
+                                    :label="$t('cover_image') || 'صورة الغلاف A4'"
+                                    shape="wide"
+                                    :pending-name="pendingFiles.coverImage"
+                                    @select="(file) => onFileSelect(file, 'coverImage')"
+                                />
+                            </el-form-item>
+                        </div>
+
+                        <!-- 4. Default Visible Elements -->
+                        <h3 class="sub-head mt-4">{{ $t('default_print_elements') || 'عناصر الطباعة الافتراضية' }}</h3>
+                        <div class="toggle-list mb-4">
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_cover_page') || 'إرفاق صفحة الغلاف A4 افتراضياً' }}</strong>
+                                    <small>{{ $t('show_cover_page_hint') || 'إظهار صفحة غلاف متكاملة قبل تفاصيل الفاتورة أو أمر البيع' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_cover" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_logo') || 'إظهار شعار المؤسسة' }}</strong>
+                                    <small>{{ $t('show_logo_hint') || 'طباعة شعار الشركة الرسمي في أعلى الوثيقة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_logo" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_contacts') || 'إظهار بيانات التواصل والعناوين' }}</strong>
+                                    <small>{{ $t('show_contacts_hint') || 'أرقام الهواتف، البريد الإلكتروني، وعنوان المركز الرئيسي في الترويسة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_contacts" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_qr_code') || 'رمز الاستجابة السريعة (QR Code)' }}</strong>
+                                    <small>{{ $t('show_qr_hint') || 'طباعة رمز التحقق الرقمي المعتمد في زاوية الوثيقة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_qr" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_customer_info') || 'بيانات العميل ومعلومات الشحن' }}</strong>
+                                    <small>{{ $t('show_customer_info_hint') || 'اسم العميل، العنوان، رقم الاتصال، وبيانات الفوترة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_customer_info" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_product_images') || 'صور المنتجات المصغرة' }}</strong>
+                                    <small>{{ $t('show_product_images_hint') || 'إظهار صورة مصغرة لكل بند في جدول الأصناف المطبوعة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_images" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_item_sku') || 'رمز المنتج / الباركود (SKU)' }}</strong>
+                                    <small>{{ $t('show_item_sku_hint') || 'إظهار رمز الصنف في سطر تفاصيل البند' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_sku" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_payment_details') || 'تفاصيل الدفع والمتبقي' }}</strong>
+                                    <small>{{ $t('show_payment_details_hint') || 'جدول طريقة السداد والمبلغ المدفوع والمتبقي' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_payment_details" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_notes') || 'الملاحظات والتعليمات' }}</strong>
+                                    <small>{{ $t('show_notes_hint') || 'إظهار قسم الملاحظات والشروط الملحقة بالوثيقة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_notes" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_signatures') || 'الأختام والتواقيع الرسمية' }}</strong>
+                                    <small>{{ $t('show_signatures_hint') || 'إظهار مساحة وتواقيع المستلم والمحاسب والختم المعتمد' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_signatures" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
+                                    <strong>{{ $t('show_footer') || 'تذييل الصفحة وأرقام الصفحات' }}</strong>
+                                    <small>{{ $t('show_footer_hint') || 'طباعة الشريط السفلي الرسمي ورقم الصفحة وتاريخ الطباعة' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_footer" />
+                            </label>
+                        </div>
+
+                        <!-- 5. Default Terms and Guarantees -->
+                        <h3 class="sub-head mt-4">{{ $t('print_terms_label') || 'الشروط والأحكام وفترة الضمان الثابتة' }}</h3>
+                        <el-form-item :label="$t('print_terms_hint') || 'النص المطبوع أسفل الفواتير وعروض الأسعار وأوامر البيع بشكل افتراضي'">
+                            <el-input
+                                type="textarea"
+                                :rows="4"
+                                v-model="form.print_terms"
+                                placeholder="مثال: البضاعة المباعة تخضع للضمان الفني لمدة سنة... الدفع خلال 30 يوم من تاريخ الاستلام..."
+                            />
+                        </el-form-item>
+                    </el-form>
+                </section>
             </div>
         </div>
 
@@ -1258,7 +1470,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import {
     Setting, Money, Phone, Share, Search, Bell, OfficeBuilding, Aim, Brush,
-    Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor,
+    Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor, Printer,
     Plus, Delete, ArrowUp, ArrowDown, Location
 } from '@element-plus/icons-vue';
 import { useSettingsStore } from '@/stores/settings';
@@ -1311,13 +1523,14 @@ const sectionGroups = computed(() => [
         label: t('settings_group_system'),
         sections: [
             { key: 'design', label: t('design'), hint: t('settings_hint_design'), icon: Brush },
+            { key: 'printing', label: t('print_settings') || 'إعدادات وخيارات الطباعة', hint: t('print_settings_hint') || 'الترويسة الافتراضية، التنسيق، الألوان، الأختام والتوقيعات الرسمية', icon: Printer },
             { key: 'notifications', label: t('notifications'), hint: t('settings_hint_notifications'), icon: Bell },
         ],
     },
 ]);
 
 const allSections = computed(() => sectionGroups.value.flatMap((group) => group.sections));
-const sectionKeys = ['general', 'localization', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'notifications'];
+const sectionKeys = ['general', 'localization', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'printing', 'notifications'];
 
 // Kept in the URL so a reload or a shared link lands on the same section.
 const activeSection = ref(sectionKeys.includes(route.query.section) ? route.query.section : 'general');
@@ -1340,6 +1553,7 @@ const sectionFor = (key) => {
     if (/_notifications$/.test(key)) return 'notifications';
     if (/^about_/.test(key)) return 'about';
     if (/^vision_/.test(key)) return 'vision';
+    if (/^print_|^stamp_image$|^signature_image$|^header_banner$|^cover_image$|^stampImage$|^signatureImage$|^headerBanner$|^coverImage$/.test(key)) return 'printing';
     return 'design';
 };
 const generalLang = ref('ar');
@@ -1467,7 +1681,26 @@ const form = reactive({
     theme_footer_bg_color: '',
     theme_footer_text_color: '',
     theme_page_header_bg_color: '',
-    theme_page_header_text_color: ''
+    theme_page_header_text_color: '',
+    // Printing options & defaults
+    print_header_style: 'official',
+    print_theme: 'navy',
+    print_density: 'standard',
+    print_watermark: '',
+    print_show_cover: false,
+    print_show_qr: true,
+    print_show_logo: true,
+    print_show_contacts: true,
+    print_show_images: true,
+    print_show_sku: true,
+    print_show_customer_info: true,
+    print_show_payment_details: true,
+    print_show_notes: true,
+    print_show_signatures: true,
+    print_show_footer: true,
+    print_authorized_person: '',
+    print_authorized_title: '',
+    print_terms: ''
 });
 
 const colorPalettes = [
@@ -1809,8 +2042,26 @@ const faviconPreview = ref('');
 const ogImagePreview = ref('');
 const heroBgPreview = ref('');
 
+const stampImageFile = ref(null);
+const stampImagePreview = ref('');
+const signatureImageFile = ref(null);
+const signatureImagePreview = ref('');
+const headerBannerFile = ref(null);
+const headerBannerPreview = ref('');
+const coverImageFile = ref(null);
+const coverImagePreview = ref('');
+
 // Names of images chosen but not uploaded yet, shown on each dropzone.
-const pendingFiles = reactive({ logo: '', favicon: '', ogImage: '', heroBg: '' });
+const pendingFiles = reactive({
+    logo: '',
+    favicon: '',
+    ogImage: '',
+    heroBg: '',
+    stampImage: '',
+    signatureImage: '',
+    headerBanner: '',
+    coverImage: '',
+});
 const objectUrls = [];
 
 const currencyOptions = computed(() => {
@@ -2007,8 +2258,29 @@ const loadSettings = (settings) => {
     form.theme_page_header_bg_color = settings.theme_page_header_bg_color || '';
     form.theme_page_header_text_color = settings.theme_page_header_text_color || '';
 
+    // Print options
+    form.print_header_style = settings.print_header_style || 'official';
+    form.print_theme = settings.print_theme || 'navy';
+    form.print_density = settings.print_density || 'standard';
+    form.print_watermark = settings.print_watermark || '';
+    form.print_show_cover = normalizeBoolean(settings.print_show_cover ?? '0');
+    form.print_show_qr = normalizeBoolean(settings.print_show_qr ?? '1');
+    form.print_show_logo = normalizeBoolean(settings.print_show_logo ?? '1');
+    form.print_show_contacts = normalizeBoolean(settings.print_show_contacts ?? '1');
+    form.print_show_images = normalizeBoolean(settings.print_show_images ?? '1');
+    form.print_show_sku = normalizeBoolean(settings.print_show_sku ?? '1');
+    form.print_show_customer_info = normalizeBoolean(settings.print_show_customer_info ?? '1');
+    form.print_show_payment_details = normalizeBoolean(settings.print_show_payment_details ?? '1');
+    form.print_show_notes = normalizeBoolean(settings.print_show_notes ?? '1');
+    form.print_show_signatures = normalizeBoolean(settings.print_show_signatures ?? '1');
+    form.print_show_footer = normalizeBoolean(settings.print_show_footer ?? '1');
+    form.print_authorized_person = settings.print_authorized_person || '';
+    form.print_authorized_title = settings.print_authorized_title || '';
+    form.print_terms = settings.print_terms || '';
+
     const getPreviewUrl = (value) => {
         if (!value) return '';
+        if (value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://')) return value;
         return value.startsWith('assets/') ? `/${value}` : `/storage/${value}`;
     };
 
@@ -2017,10 +2289,19 @@ const loadSettings = (settings) => {
     ogImagePreview.value = getPreviewUrl(settings.og_image);
     heroBgPreview.value = getPreviewUrl(settings.hero_bg);
 
+    stampImagePreview.value = getPreviewUrl(settings.stamp_image);
+    signatureImagePreview.value = getPreviewUrl(settings.signature_image);
+    headerBannerPreview.value = getPreviewUrl(settings.header_banner);
+    coverImagePreview.value = getPreviewUrl(settings.cover_image);
+
     logoFile.value = null;
     faviconFile.value = null;
     ogImageFile.value = null;
     heroBgFile.value = null;
+    stampImageFile.value = null;
+    signatureImageFile.value = null;
+    headerBannerFile.value = null;
+    coverImageFile.value = null;
     Object.keys(pendingFiles).forEach((key) => { pendingFiles[key] = ''; });
     takeSnapshot();
 };
@@ -2304,6 +2585,18 @@ const onFileSelect = (file, field) => {
     } else if (field === 'heroBg') {
         heroBgFile.value = file;
         heroBgPreview.value = previewUrl;
+    } else if (field === 'stampImage') {
+        stampImageFile.value = file;
+        stampImagePreview.value = previewUrl;
+    } else if (field === 'signatureImage') {
+        signatureImageFile.value = file;
+        signatureImagePreview.value = previewUrl;
+    } else if (field === 'headerBanner') {
+        headerBannerFile.value = file;
+        headerBannerPreview.value = previewUrl;
+    } else if (field === 'coverImage') {
+        coverImageFile.value = file;
+        coverImagePreview.value = previewUrl;
     }
 };
 
@@ -2370,6 +2663,18 @@ const submitSettings = async () => {
         }
         if (heroBgFile.value) {
             formData.append('hero_bg', heroBgFile.value);
+        }
+        if (stampImageFile.value) {
+            formData.append('stamp_image', stampImageFile.value);
+        }
+        if (signatureImageFile.value) {
+            formData.append('signature_image', signatureImageFile.value);
+        }
+        if (headerBannerFile.value) {
+            formData.append('header_banner', headerBannerFile.value);
+        }
+        if (coverImageFile.value) {
+            formData.append('cover_image', coverImageFile.value);
         }
 
         const response = await settingsStore.save(formData);

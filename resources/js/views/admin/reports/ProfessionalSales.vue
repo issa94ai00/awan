@@ -19,6 +19,27 @@
             </template>
         </AdminPageHeader>
 
+        <!-- Quick Period Presets Bar -->
+        <div class="quick-period-bar">
+            <div class="quick-period-title">
+                <i class="fas fa-calendar-days text-primary"></i>
+                <span>{{ $t('quick_periods') }}:</span>
+            </div>
+            <div class="quick-period-pills">
+                <button
+                    v-for="preset in PERIOD_PRESETS"
+                    :key="preset"
+                    type="button"
+                    class="period-pill"
+                    :class="{ 'is-active': filters.date_filter_type === preset }"
+                    @click="selectPeriodPreset(preset)"
+                >
+                    <span v-if="filters.date_filter_type === preset" class="period-pill-dot"></span>
+                    {{ periodLabel(preset) }}
+                </button>
+            </div>
+        </div>
+
         <AdminFilterBar>
             <div class="filter-field">
                 <label>{{ $t('employee') }}</label>
@@ -120,9 +141,12 @@
                     class="active-filter-chip"
                     @close="clearFilter(chip.key)"
                 >
-                    <span class="active-filter-name">{{ chip.label }}:</span> {{ chip.value }}
+                    <i v-if="chip.icon" :class="chip.icon" class="chip-icon"></i>
+                    <span class="active-filter-name">{{ chip.label }}:</span>
+                    <strong class="chip-val">{{ chip.value }}</strong>
                 </el-tag>
                 <el-button link type="primary" class="active-filters-clear" @click="resetFilters">
+                    <i class="fas fa-trash-can mr-1"></i>
                     {{ $t('clear_all') }}
                 </el-button>
             </template>
@@ -144,7 +168,15 @@
         <el-tabs v-model="activeTab" class="report-tabs">
             <!-- lazy: a tab's tables and chart are built the first time it is
                  opened, not both on arrival with one of them hidden. -->
-            <el-tab-pane :label="$t('invoices')" name="invoices" lazy>
+            <el-tab-pane name="invoices" lazy>
+                <template #label>
+                    <span class="tab-label-custom">
+                        <i class="fas fa-file-invoice-dollar tab-icon"></i>
+                        <span>{{ $t('invoices') }}</span>
+                        <span v-if="invoicePagination.total > 0" class="tab-badge">{{ Number(invoicePagination.total).toLocaleString() }}</span>
+                    </span>
+                </template>
+
                 <el-alert
                     v-if="!invoicesLoading && !hasInvoicesData"
                     :title="$t('no_data_for_current_filters')"
@@ -157,13 +189,12 @@
                 <SalesReportPanel
                     :stats-loading="invoicesListLoading"
                     :insights-loading="invoicesInsightsLoading"
-                    :chart-loading="invoicesInsightsLoading"
+                    :chart-loading="invoicesChartLoading"
                     :profitability-loading="invoicesProfitLoading"
                     :stat-cards="invoiceStatCards"
                     :metrics="invoicePerformanceData.summary"
                     :chart-mode="invoicesChartMode"
                     :chart-title="invoicesChartTitle"
-                    :chart-note="$t('chart_unavailable_for_invoices')"
                     :chart-labels="invoicesChartLabels"
                     :chart-values="invoicesChartValues"
                     :dimension-data="invoiceDimensionData"
@@ -205,20 +236,22 @@
                              number is a link, rather than the whole row: the sole
                              detail screen these have is the edit form, and a
                              stray click on a report row should not land in it. -->
-                        <el-table-column :label="$t('invoice_number')" width="130">
+                        <el-table-column :label="$t('invoice_number')" width="140">
                             <template #default="{ row }">
-                                <router-link class="record-link" :to="`/admin/sales/invoices/${row.id}/edit`">
+                                <router-link class="record-badge" :to="`/admin/sales/invoices/${row.id}/edit`">
+                                    <i class="fas fa-file-invoice mr-1"></i>
                                     {{ row.invoice_number }}
                                 </router-link>
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('source_order')" width="120">
+                        <el-table-column :label="$t('source_order')" width="130">
                             <template #default="{ row }">
                                 <router-link
                                     v-if="row.sales_order"
-                                    class="record-link"
+                                    class="record-badge record-badge--order"
                                     :to="`/admin/sales/sales-orders/${row.sales_order.id}/edit`"
                                 >
+                                    <i class="fas fa-cart-shopping mr-1"></i>
                                     {{ row.sales_order.order_number }}
                                 </router-link>
                                 <span v-else class="table-sub-note">{{ $t('direct_sale') }}</span>
@@ -243,9 +276,11 @@
                                 <span v-else class="table-sub-note">{{ $t('unassigned') }}</span>
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('status')" width="100">
+                        <el-table-column :label="$t('status')" width="115" align="center">
                             <template #default="{ row }">
-                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+                                <el-tag :type="getStatusType(row.status)" effect="light" round size="small">
+                                    {{ getStatusText(row.status) }}
+                                </el-tag>
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('total')" width="120">
@@ -330,11 +365,14 @@
                         <el-table-column :label="$t('paid_amount')" width="120">
                             <template #default="{ row }">{{ formatMoney(row.paid_amount) }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('due_amount')" width="120">
+                        <el-table-column :label="$t('due_amount')" width="125">
                             <template #default="{ row }">
-                                <strong :class="Number(row.due_amount) > 0 ? 'profit-negative' : 'profit-positive'">
+                                <span
+                                    class="due-pill"
+                                    :class="Number(row.due_amount) > 0 ? 'is-due' : 'is-clear'"
+                                >
                                     {{ formatMoney(row.due_amount) }}
-                                </strong>
+                                </span>
                             </template>
                         </el-table-column>
                     </el-table>
@@ -364,7 +402,14 @@
                 />
             </el-tab-pane>
 
-            <el-tab-pane :label="$t('sales_orders_pipeline')" name="orders" lazy>
+            <el-tab-pane name="orders" lazy>
+                <template #label>
+                    <span class="tab-label-custom">
+                        <i class="fas fa-boxes-packing tab-icon"></i>
+                        <span>{{ $t('sales_orders_pipeline') }}</span>
+                        <span v-if="pagination.total > 0" class="tab-badge">{{ Number(pagination.total).toLocaleString() }}</span>
+                    </span>
+                </template>
                 <el-alert
                     v-if="!ordersLoading && !hasOrdersData"
                     :title="$t('no_data_for_current_filters')"
@@ -412,9 +457,10 @@
                         :row-class-name="orderRowClass"
                         @sort-change="handleOrdersSortChange"
                     >
-                        <el-table-column :label="$t('order_number')" width="120">
+                        <el-table-column :label="$t('order_number')" width="140">
                             <template #default="{ row }">
-                                <router-link class="record-link" :to="`/admin/sales/sales-orders/${row.id}/edit`">
+                                <router-link class="record-badge record-badge--order" :to="`/admin/sales/sales-orders/${row.id}/edit`">
+                                    <i class="fas fa-cart-shopping mr-1"></i>
                                     {{ row.order_number }}
                                 </router-link>
                             </template>
@@ -428,9 +474,11 @@
                         <el-table-column :label="$t('employee')">
                             <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('status')" width="100">
+                        <el-table-column :label="$t('status')" width="115" align="center">
                             <template #default="{ row }">
-                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+                                <el-tag :type="getStatusType(row.status)" effect="light" round size="small">
+                                    {{ getStatusText(row.status) }}
+                                </el-tag>
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('subtotal')">
@@ -504,7 +552,9 @@
                         </el-table-column>
                         <el-table-column :label="$t('invoiced')" width="150">
                             <template #default="{ row }">
-                                <el-tag :type="invoiceCoverageType(row)" size="small">{{ invoiceCoverageText(row) }}</el-tag>
+                                <el-tag :type="invoiceCoverageType(row)" effect="light" round size="small">
+                                    {{ invoiceCoverageText(row) }}
+                                </el-tag>
                                 <p v-if="Number(row.invoices_count) > 0" class="table-sub-note">{{ formatMoney(row.invoiced_total) }}</p>
                             </template>
                         </el-table-column>
@@ -874,13 +924,13 @@ const hasOrdersData = computed(() => {
 });
 
 const orderStatCards = computed(() => [
-    { key: 'total_orders', label: t('total_orders'), value: summary.value.total_orders || 0, icon: ShoppingCart, format: 'number' },
-    { key: 'total_revenue', label: t('total_revenue'), value: performanceData.value.summary?.total_revenue ?? summary.value.total_sales ?? 0, icon: Coin, format: 'currency' },
-    { key: 'total_cost', label: t('cost_of_goods'), value: performanceData.value.summary?.total_cost ?? 0, icon: PriceTag, format: 'currency' },
-    { key: 'gross_margin', label: t('profit_margin'), value: performanceData.value.summary?.gross_margin ?? 0, icon: PieChart, format: 'percent' },
-    { key: 'average_order_value', label: t('average_order_value'), value: summary.value.average_order_value || 0, icon: TrendCharts, format: 'currency' },
-    { key: 'invoiced_orders', label: t('invoiced_orders'), value: summary.value.invoiced_orders || 0, icon: Document, format: 'number' },
-    { key: 'uninvoiced_amount', label: t('uninvoiced_amount'), value: summary.value.uninvoiced_amount || 0, icon: Warning, format: 'currency' },
+    { key: 'total_orders', label: t('total_orders'), value: summary.value.total_orders || 0, icon: ShoppingCart, format: 'number', color: 'primary' },
+    { key: 'total_revenue', label: t('total_revenue'), value: performanceData.value.summary?.total_revenue ?? summary.value.total_sales ?? 0, icon: Coin, format: 'currency', color: 'success' },
+    { key: 'total_cost', label: t('cost_of_goods'), value: performanceData.value.summary?.total_cost ?? 0, icon: PriceTag, format: 'currency', color: 'warning' },
+    { key: 'gross_margin', label: t('profit_margin'), value: performanceData.value.summary?.gross_margin ?? 0, icon: PieChart, format: 'percent', color: 'indigo' },
+    { key: 'average_order_value', label: t('average_order_value'), value: summary.value.average_order_value || 0, icon: TrendCharts, format: 'currency', color: 'purple' },
+    { key: 'invoiced_orders', label: t('invoiced_orders'), value: summary.value.invoiced_orders || 0, icon: Document, format: 'number', color: 'teal' },
+    { key: 'uninvoiced_amount', label: t('uninvoiced_amount'), value: summary.value.uninvoiced_amount || 0, icon: Warning, format: 'currency', color: 'danger' },
 ]);
 
 const TREND_GROUPINGS = ['day', 'week', 'month'];
@@ -1062,48 +1112,76 @@ const hasInvoicesData = computed(() => {
 });
 
 const invoiceStatCards = computed(() => [
-    { key: 'total_invoices', label: t('invoices_count'), value: invoiceSummary.value.total_invoices || 0, icon: Document, format: 'number' },
-    { key: 'total_invoiced', label: t('total_invoiced'), value: invoiceSummary.value.total_invoiced || 0, icon: Coin, format: 'currency' },
-    { key: 'paid_amount', label: t('paid_amount'), value: invoiceSummary.value.paid_amount || 0, icon: Wallet, format: 'currency' },
-    { key: 'due_amount', label: t('due_amount'), value: invoiceSummary.value.due_amount || 0, icon: Warning, format: 'currency' },
-    { key: 'average_invoice_value', label: t('average_invoice_value'), value: invoiceSummary.value.average_invoice_value || 0, icon: TrendCharts, format: 'currency' },
+    { key: 'total_invoices', label: t('invoices_count'), value: invoiceSummary.value.total_invoices || 0, icon: Document, format: 'number', color: 'primary' },
+    { key: 'total_invoiced', label: t('total_invoiced'), value: invoiceSummary.value.total_invoiced || 0, icon: Coin, format: 'currency', color: 'success' },
+    { key: 'paid_amount', label: t('paid_amount'), value: invoiceSummary.value.paid_amount || 0, icon: Wallet, format: 'currency', color: 'teal' },
+    { key: 'due_amount', label: t('due_amount'), value: invoiceSummary.value.due_amount || 0, icon: Warning, format: 'currency', color: 'danger' },
+    { key: 'average_invoice_value', label: t('average_invoice_value'), value: invoiceSummary.value.average_invoice_value || 0, icon: TrendCharts, format: 'currency', color: 'purple' },
 ]);
 
-// Invoices have no day/week/month/status trend endpoint (see
-// SalesReportController) — only the three dimensions both tabs share.
-const BREAKDOWN_GROUPINGS = ['employee', 'customer', 'warehouse'];
+const invoiceTrendChart = ref({ rows: [], group_by: 'day' });
+const invoicesChartLoading = ref(false);
+const invoicesChartStale = ref(true);
 
-const invoicesChartMode = computed(() => (BREAKDOWN_GROUPINGS.includes(filters.group_by) ? 'bar' : 'none'));
+const loadInvoicesChart = latestOnly(invoicesChartLoading, async (superseded) => {
+    invoicesChartStale.value = false;
+    if (!TREND_GROUPINGS.includes(filters.group_by)) {
+        return;
+    }
+    try {
+        const response = await api.get('/admin/reports/invoices/trend', {
+            params: { ...baseFilterParams(), group_by: filters.group_by },
+        });
+        if (superseded()) return;
+        invoiceTrendChart.value = {
+            rows: Array.isArray(response.data?.data?.trend) ? response.data.data.trend : [],
+            group_by: response.data?.data?.group_by || filters.group_by,
+        };
+    } catch (error) {
+        if (superseded()) return;
+        invoiceTrendChart.value = { rows: [], group_by: filters.group_by };
+    }
+});
 
-/**
- * The groupings this tab *can* chart, offered from the empty chart itself.
- *
- * The default grouping is 'day' — a trend, which the invoice report has no
- * series for — so the tab that now opens the page also opens with a blank
- * chart. The note explained that; these make it one click to fix instead of a
- * hunt through the collapsed advanced filters.
- */
-const GROUPING_LABELS = { employee: 'by_employee', customer: 'by_customer', warehouse: 'by_warehouse' };
-
-const invoiceChartSuggestions = computed(() =>
-    BREAKDOWN_GROUPINGS.map((value) => ({ value, label: t(GROUPING_LABELS[value]) }))
-);
+const invoicesChartMode = computed(() => (TREND_GROUPINGS.includes(filters.group_by) ? 'trend' : 'bar'));
 
 const invoicesChartTitle = computed(() => {
-    const key = GROUPING_LABELS[filters.group_by];
-    return key ? t(key) : t('distribution_by_criteria');
+    const labels = {
+        day: t('invoiced_by_day') || t('sales_by_day'),
+        week: t('invoiced_by_week') || t('sales_by_week'),
+        month: t('invoiced_by_month') || t('sales_by_month'),
+        employee: t('by_employee'),
+        customer: t('by_customer'),
+        warehouse: t('by_warehouse'),
+        status: t('by_status'),
+    };
+    return labels[filters.group_by] || t('sales_by_period');
 });
 
 const invoicesChartLabels = computed(() => {
+    if (TREND_GROUPINGS.includes(filters.group_by)) {
+        return invoiceTrendChart.value.rows.map((row) => row.period || '-');
+    }
+    if (filters.group_by === 'status') {
+        return (invoiceDimensionData.value.status_summary || []).map((row) => getStatusText(row.status));
+    }
     const key = `${filters.group_by}_summary`;
     const nameKey = { employee: 'employee_name', customer: 'customer_name', warehouse: 'warehouse_name' }[filters.group_by];
     return (invoiceDimensionData.value[key] || []).map((row) => row[nameKey] || t('undefined'));
 });
 
 const invoicesChartValues = computed(() => {
+    if (TREND_GROUPINGS.includes(filters.group_by)) {
+        return invoiceTrendChart.value.rows.map((row) => Number(row.total_invoiced) || 0);
+    }
+    if (filters.group_by === 'status') {
+        return (invoiceDimensionData.value.status_summary || []).map((row) => Number(row.total_invoiced) || 0);
+    }
     const key = `${filters.group_by}_summary`;
     return (invoiceDimensionData.value[key] || []).map((row) => Number(row.total_invoiced) || 0);
 });
+
+const invoiceChartSuggestions = computed(() => []);
 
 /* ------------------------------------------------------------------ *
  * Per-invoice profit
@@ -1176,6 +1254,7 @@ const loadInvoicesInsights = latestOnly(invoicesInsightsLoading, async (supersed
         employee_summary: dims.employee_summary || [],
         customer_summary: dims.customer_summary || [],
         warehouse_summary: dims.warehouse_summary || [],
+        status_summary: dims.status_summary || [],
     };
     invoicePerformanceData.value = { summary: perfRes.value?.data?.data?.summary || null };
 });
@@ -1207,7 +1286,7 @@ const invoicesTopSection = deferredSection(latestOnly(loadingInvoiceTopPerformer
 
 const loadInvoicesTab = async () => {
     invoicesStale.value = false;
-    await Promise.all([loadInvoicesList(), loadInvoicesInsights()]);
+    await Promise.all([loadInvoicesList(), loadInvoicesInsights(), loadInvoicesChart()]);
 };
 
 const handleInvoicePageChange = (page) => { invoicePagination.current_page = page; loadInvoicesList(); };
@@ -1219,9 +1298,14 @@ const handleInvoiceSizeChange = (size) => { invoicePagination.per_page = size; i
 const loadActiveTab = () => (activeTab.value === 'invoices' ? loadInvoicesTab() : loadOrdersTab());
 
 watch(activeTab, (tab) => {
-    if (tab === 'invoices' && invoicesStale.value) loadInvoicesTab();
-    if (tab === 'orders' && ordersStale.value) loadOrdersTab();
-    else if (tab === 'orders' && ordersChartStale.value) loadOrdersChart();
+    if (tab === 'invoices') {
+        if (invoicesStale.value) loadInvoicesTab();
+        else if (invoicesChartStale.value) loadInvoicesChart();
+    }
+    if (tab === 'orders') {
+        if (ordersStale.value) loadOrdersTab();
+        else if (ordersChartStale.value) loadOrdersChart();
+    }
 
     // replace, not push: flipping a tab is not a step to be walked back
     // through, and stacking history entries would trap the back button here.
@@ -1243,17 +1327,22 @@ const applyFilters = () => {
     invoicePagination.current_page = 1;
     ordersStale.value = true;
     invoicesStale.value = true;
+    ordersChartStale.value = true;
+    invoicesChartStale.value = true;
     loadActiveTab();
     // Below the fold, these reload only if they are actually showing.
     DEFERRED_SECTIONS.forEach((section) => section.invalidate());
 };
 
-/** A new grouping re-draws the chart and leaves every other figure alone.
- *  The invoice chart is built from breakdowns already loaded; only the orders
- *  trend has to be asked for again. */
+/** A new grouping re-draws the chart and leaves every other figure alone. */
 const applyGroupingChange = () => {
-    ordersChartStale.value = true;
-    if (activeTab.value === 'orders') loadOrdersChart();
+    if (activeTab.value === 'orders') {
+        ordersChartStale.value = true;
+        loadOrdersChart();
+    } else {
+        invoicesChartStale.value = true;
+        loadInvoicesChart();
+    }
 };
 
 /**
@@ -1281,7 +1370,7 @@ watch(
 
 /** Anything on the open tab still on its way, for the "updating" note. */
 const refreshing = computed(() => (activeTab.value === 'invoices'
-    ? invoicesLoading.value || invoicesProfitLoading.value || loadingInvoiceTopPerformers.value
+    ? invoicesLoading.value || invoicesChartLoading.value || invoicesProfitLoading.value || loadingInvoiceTopPerformers.value
     : ordersLoading.value || ordersChartLoading.value || ordersProfitLoading.value || loadingTopPerformers.value));
 
 /** Switch grouping from the empty chart's own suggestion. */
@@ -1340,15 +1429,25 @@ const periodChipValue = () => {
     return `${from} – ${to}`;
 };
 
+const selectPeriodPreset = (preset) => {
+    if (preset === 'custom') {
+        filters.date_filter_type = 'custom';
+    } else {
+        filters.date_filter_type = preset;
+        filters.start_date = null;
+        filters.end_date = null;
+    }
+};
+
 const activeFilterChips = computed(() => {
     const chips = [];
     if (filters.date_filter_type !== 'all' && !awaitingRange.value) {
-        chips.push({ key: 'period', label: t('sr_period'), value: periodChipValue() });
+        chips.push({ key: 'period', icon: 'fas fa-calendar-day', label: t('sr_period'), value: periodChipValue() });
     }
-    if (filters.employee_id) chips.push({ key: 'employee_id', label: t('employee'), value: nameOf(employees, filters.employee_id) });
-    if (filters.customer_id) chips.push({ key: 'customer_id', label: t('customer'), value: nameOf(customers, filters.customer_id) });
-    if (filters.warehouse_id) chips.push({ key: 'warehouse_id', label: t('warehouse'), value: nameOf(warehouses, filters.warehouse_id) });
-    if (filters.status) chips.push({ key: 'status', label: t('status'), value: getStatusText(filters.status) });
+    if (filters.employee_id) chips.push({ key: 'employee_id', icon: 'fas fa-user-tie', label: t('employee'), value: nameOf(employees, filters.employee_id) });
+    if (filters.customer_id) chips.push({ key: 'customer_id', icon: 'fas fa-building', label: t('customer'), value: nameOf(customers, filters.customer_id) });
+    if (filters.warehouse_id) chips.push({ key: 'warehouse_id', icon: 'fas fa-warehouse', label: t('warehouse'), value: nameOf(warehouses, filters.warehouse_id) });
+    if (filters.status) chips.push({ key: 'status', icon: 'fas fa-circle-check', label: t('status'), value: getStatusText(filters.status) });
     return chips;
 });
 
@@ -1419,6 +1518,98 @@ onMounted(() => {
 <style scoped>
 .reports-page {
     padding: 0;
+}
+
+/* Quick Period Bar */
+.quick-period-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.9rem;
+    background: #ffffff;
+    border: 1px solid #e8eef7;
+    border-radius: 12px;
+}
+
+.quick-period-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #334155;
+    white-space: nowrap;
+}
+
+.quick-period-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.period-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.period-pill:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+.period-pill.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.period-pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
+/* Custom Tab Labels with Badges */
+.tab-label-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.tab-icon {
+    font-size: 0.95rem;
+}
+
+.tab-badge {
+    padding: 0.1rem 0.45rem;
+    background: #e2e8f0;
+    color: #475569;
+    border-radius: 10px;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+:deep(.el-tabs__item.is-active) .tab-badge {
+    background: #dbeafe;
+    color: #1d4ed8;
 }
 
 .empty-alert {
@@ -1513,6 +1704,75 @@ onMounted(() => {
 }
 
 
+
+/* Record badges */
+.record-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.84rem;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.record-badge:hover {
+    background: #dbeafe;
+    text-decoration: none;
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
+}
+
+.record-badge--order {
+    background: #f0fdf4;
+    color: #15803d;
+    border-color: #bbf7d0;
+}
+
+.record-badge--order:hover {
+    background: #dcfce7;
+}
+
+.table-money-bold {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+/* Due Amount Pill */
+.due-pill {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+.due-pill.is-due {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.due-pill.is-clear {
+    background: #f8fafc;
+    color: #16a34a;
+}
+
+/* Chip formatting */
+.chip-icon {
+    margin-inline-end: 4px;
+    font-size: 0.75rem;
+    opacity: 0.75;
+}
+
+.chip-val {
+    margin-inline-start: 3px;
+    color: #1e293b;
+    font-weight: 700;
+}
 
 /* The way into the underlying order or invoice. */
 .record-link {

@@ -15,6 +15,7 @@ class Expense extends Model
     protected $fillable = [
         'expense_number',
         'invoice_id',
+        'sales_order_id',
         'customer_id',
         'description',
         'notes',
@@ -82,6 +83,11 @@ class Expense extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
     }
 
     public function customer(): BelongsTo

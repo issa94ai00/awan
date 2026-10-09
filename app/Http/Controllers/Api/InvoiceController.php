@@ -411,6 +411,8 @@ class InvoiceController extends Controller
                 'expenses.*.description' => 'required_with:expenses|string|max:255',
                 'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
                 'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+                'expenses.*.notes' => 'nullable|string|max:1000',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -626,16 +628,18 @@ class InvoiceController extends Controller
             $createdExpenses = [];
             if (isset($validated['expenses']) && is_array($validated['expenses'])) {
                 foreach ($validated['expenses'] as $expense) {
-                    if (!empty($expense['description']) && $expense['amount'] > 0) {
+                    if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
                         $createdExpenses[] = Expense::create([
-                            'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                            'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                             'invoice_id' => $invoice->id,
+                            'sales_order_id' => $invoice->sales_order_id,
                             'customer_id' => $invoice->customer_id,
                             'description' => $expense['description'],
-                            'amount' => $expense['amount'],
+                            'amount' => (float) $expense['amount'],
                             'category' => $expense['category'] ?? 'other',
                             'expense_date' => now(),
-                            'status' => 'pending',
+                            'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                            'notes' => $expense['notes'] ?? null,
                             'created_by' => auth()->check() ? auth()->id() : null,
                             // The books' own currency: a literal here made the
                             // expense claim a currency nobody had configured.
@@ -774,7 +778,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses', 'customer', 'salesOrder', 'user', 'payments', 'assignedEmployee', 'warehouse')),
             ]);
 
         } catch (\Exception $e) {
@@ -828,6 +832,8 @@ class InvoiceController extends Controller
                 'expenses.*.description' => 'required_with:expenses|string|max:255',
                 'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
                 'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+                'expenses.*.notes' => 'nullable|string|max:1000',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -1040,24 +1046,39 @@ class InvoiceController extends Controller
                     $this->correctInvoicePosting($invoice, $before);
                 }
 
-                // Delete old expenses and create new ones
+                // Reverse previous ledger entries for old expenses and recreate them
+                $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+                foreach ($invoice->expenses()->get() as $oldExpense) {
+                    try {
+                        $ledger->reverseFor($oldExpense->postingKey());
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
                 $invoice->expenses()->delete();
                 if (isset($validated['expenses']) && is_array($validated['expenses'])) {
                     foreach ($validated['expenses'] as $expense) {
-                        if (!empty($expense['description']) && $expense['amount'] > 0) {
-                            Expense::create([
-                                'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                        if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
+                            $newExpense = Expense::create([
+                                'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                                 'invoice_id' => $invoice->id,
+                                'sales_order_id' => $invoice->sales_order_id,
                                 'customer_id' => $invoice->customer_id,
                                 'description' => $expense['description'],
-                                'amount' => $expense['amount'],
+                                'amount' => (float) $expense['amount'],
                                 'category' => $expense['category'] ?? 'other',
                                 'expense_date' => now(),
-                                'status' => 'pending',
+                                'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                                'notes' => $expense['notes'] ?? null,
                                 'created_by' => auth()->check() ? auth()->id() : null,
                                 'currency' => base_currency_code(),
                                 'exchange_rate' => 1.0000,
                             ]);
+                            try {
+                                $ledger->postExpense($newExpense);
+                            } catch (\Throwable $e) {
+                                report($e);
+                            }
                         }
                     }
                 }
@@ -1075,7 +1096,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم تحديث الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses')),
             ]);
 
         } catch (ValidationException $e) {

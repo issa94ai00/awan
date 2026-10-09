@@ -564,7 +564,6 @@ const COLUMN_LABELS = {
     inventory: 'inventory',
 };
 
-
 /** The showing columns, in table order — drives the colgroup and the header. */
 const activeColumns = computed(() => Object.keys(COLUMN_SHARES).filter((key) => props.visibleColumns[key]));
 
@@ -770,6 +769,7 @@ const removeItemImage = (group) => {
 };
 
 const getPreviewList = (product) => productImages(product);
+
 /** The illustration picture: the first gallery image that is not the main photo. */
 const illustrationOf = (product) => {
     const gallery = Array.isArray(product?.image_gallery) ? product.image_gallery : [];
@@ -1716,10 +1716,38 @@ const formatPrice = (price) => {
     }
     .offer-table thead th {
         position: static;
-        background: #bcdcfb !important;
+        background: #f1f5f9 !important;
         color: #0f172a !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        font-weight: 800 !important;
+        font-size: 8.5pt !important;
+        padding: 6px 8px !important;
+        border: 1px solid #94a3b8 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table td {
+        border: 1px solid #cbd5e1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table tr:nth-child(even) td {
+        background-color: #f8fafc !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table tbody tr.section-row th {
+        background: #e2e8f0 !important;
+        color: #0f172a !important;
+        font-size: 9.5pt !important;
+        font-weight: 800 !important;
+        padding: 6px 10px !important;
+        border: 1px solid #94a3b8 !important;
+        border-top: 2px solid #1e3a8a !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .cell-detail {
+        padding-inline-end: 8px !important;
     }
     /* The box itself is sized by the screen rule above, which reads the same
        variable this medium has just overridden. */
@@ -1731,8 +1759,8 @@ const formatPrice = (price) => {
         page-break-inside: avoid !important;
     }
     .offer-table tr {
-        break-inside: avoid;
-        page-break-inside: avoid;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
     }
     /* Never leave a classification heading alone at the foot of a page. The
        PDF path already keeps it with its first group; this is for a native
@@ -1749,6 +1777,8 @@ const formatPrice = (price) => {
     .add-item-variant-icon,
     .cell-row-actions,
     .cell-image-edit,
+    .cell-specs-btn,
+    .image-save-status,
     .save-status {
         display: none !important;
     }

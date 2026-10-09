@@ -81,6 +81,7 @@ export async function renderTableToPdf({
     headerEl,
     showPageNumbers = true,
     footerBrand,
+    orientation = 'portrait',
     onPageProgress,
 }) {
     const scale = 2;
@@ -108,13 +109,15 @@ export async function renderTableToPdf({
         rowIdx += rowsInGroup;
         const first = groupRows[0];
         const last = groupRows[groupRows.length - 1] || first;
+        if (!first) return null;
         return {
             top: first.getBoundingClientRect().top - tableRect.top,
-            bottom: last.getBoundingClientRect().bottom - tableRect.top,
+            bottom: (last || first).getBoundingClientRect().bottom - tableRect.top,
         };
     }).filter((c) => c && c.bottom > c.top);
 
-    const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+    const isLandscape = orientation === 'landscape';
+    const pdf = new jsPDF({ orientation: isLandscape ? 'l' : 'p', unit: 'pt', format: 'a4' });
     const pageWidthPt = pdf.internal.pageSize.getWidth();
     const pageHeightPt = pdf.internal.pageSize.getHeight();
     const contentWidthPt = pageWidthPt - PAGE_MARGIN_PT * 2;
@@ -192,17 +195,27 @@ export async function renderTableToPdf({
                 coverCanvas.getContext('2d').drawImage(coverImg, 0, 0);
                 const coverData = coverCanvas.toDataURL('image/jpeg', 0.92);
 
+                // Cover page fulfillment: fulfill the entire page with no white margins
                 const imgRatio = coverImg.naturalWidth / coverImg.naturalHeight;
                 const pageRatio = pageWidthPt / pageHeightPt;
                 let drawW, drawH, offX = 0, offY = 0;
-                if (imgRatio > pageRatio) {
+
+                // If portrait or aspect ratios are within 5% of each other, fulfill exact page boundaries
+                if (Math.abs(imgRatio - pageRatio) < 0.05) {
                     drawW = pageWidthPt;
-                    drawH = pageWidthPt / imgRatio;
-                    offY = (pageHeightPt - drawH) / 2;
-                } else {
+                    drawH = pageHeightPt;
+                    offX = 0;
+                    offY = 0;
+                } else if (imgRatio > pageRatio) {
                     drawH = pageHeightPt;
                     drawW = pageHeightPt * imgRatio;
                     offX = (pageWidthPt - drawW) / 2;
+                    offY = 0;
+                } else {
+                    drawW = pageWidthPt;
+                    drawH = pageWidthPt / imgRatio;
+                    offX = 0;
+                    offY = (pageHeightPt - drawH) / 2;
                 }
                 pdf.addImage(coverData, 'JPEG', offX, offY, drawW, drawH);
                 pageCount += 1;

@@ -77,6 +77,53 @@ test('a customer statement lists the documents with a running balance', function
     expect((float) $data['closing_balance'])->toBe(300.0);
 });
 
+test('same-day documents are sorted chronologically by time so balance does not fluctuate artificially', function () {
+    ($this->invoice)(50, '2026-03-10 09:00:00');
+
+    $p1 = Payment::create([
+        'payment_number' => 'PAY-0001',
+        'customer_id' => $this->customer->id,
+        'payment_method' => 'cash',
+        'amount' => 50,
+        'payment_date' => '2026-03-10',
+        'status' => 'completed',
+    ]);
+    $p1->forceFill(['created_at' => '2026-03-10 10:00:00'])->save();
+
+    ($this->invoice)(100, '2026-03-10 14:00:00');
+
+    $p2 = Payment::create([
+        'payment_number' => 'PAY-0002',
+        'customer_id' => $this->customer->id,
+        'payment_method' => 'cash',
+        'amount' => 100,
+        'payment_date' => '2026-03-10',
+        'status' => 'completed',
+    ]);
+    $p2->forceFill(['created_at' => '2026-03-10 15:00:00'])->save();
+
+    $data = ($this->statement)('customer', $this->customer->id, [
+        'date_from' => '2026-03-01', 'date_to' => '2026-03-31',
+    ])->assertOk()->json('data');
+
+    expect($data['movements'])->toHaveCount(4);
+    expect((float) $data['movements'][0]['balance'])->toBe(50.0);
+    expect($data['movements'][0]['type'])->toBe('invoice');
+    expect($data['movements'][0]['time'])->toBe('09:00');
+
+    expect((float) $data['movements'][1]['balance'])->toBe(0.0);
+    expect($data['movements'][1]['type'])->toBe('payment');
+    expect($data['movements'][1]['time'])->toBe('10:00');
+
+    expect((float) $data['movements'][2]['balance'])->toBe(100.0);
+    expect($data['movements'][2]['type'])->toBe('invoice');
+    expect($data['movements'][2]['time'])->toBe('14:00');
+
+    expect((float) $data['movements'][3]['balance'])->toBe(0.0);
+    expect($data['movements'][3]['type'])->toBe('payment');
+    expect($data['movements'][3]['time'])->toBe('15:00');
+});
+
 test('what happened before the period is one opening figure', function () {
     ($this->invoice)(400, '2026-01-10');
     ($this->invoice)(150, '2026-03-04');

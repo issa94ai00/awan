@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Expense;
 use App\Models\Invoice;
+use App\Models\SalesOrder;
 use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class ExpenseController extends Controller
     {
         $query = Expense::query()->with([
             'invoice:id,invoice_number,customer_id,status,total',
+            'salesOrder:id,order_number,status,total',
             'customer:id,name,phone,company',
             'creator:id,name',
         ]);
@@ -40,6 +42,10 @@ class ExpenseController extends Controller
 
         if ($request->filled('invoice_id')) {
             $query->where('invoice_id', $request->invoice_id);
+        }
+
+        if ($request->filled('sales_order_id')) {
+            $query->where('sales_order_id', $request->sales_order_id);
         }
 
         if ($request->filled('category')) {
@@ -222,12 +228,23 @@ class ExpenseController extends Controller
             'status' => 'nullable|string|in:pending,approved,paid,rejected',
             'notes' => 'nullable|string',
             'invoice_id' => 'nullable|exists:invoices,id',
+            'sales_order_id' => 'nullable|exists:sales_orders,id',
             'customer_id' => 'nullable|exists:customers,id',
         ]);
 
         $customerId = $validated['customer_id'] ?? null;
         if (! $customerId && ! empty($validated['invoice_id'])) {
             $customerId = Invoice::where('id', $validated['invoice_id'])->value('customer_id');
+        }
+        if (! $customerId && ! empty($validated['sales_order_id'])) {
+            $order = SalesOrder::find($validated['sales_order_id']);
+            $customerId = $order?->customer_id;
+            if (empty($validated['invoice_id'])) {
+                $validated['invoice_id'] = $order?->invoices()->where('status', '!=', Invoice::STATUS_CANCELLED)->latest('id')->value('id');
+            }
+        }
+        if (empty($validated['sales_order_id']) && ! empty($validated['invoice_id'])) {
+            $validated['sales_order_id'] = Invoice::where('id', $validated['invoice_id'])->value('sales_order_id');
         }
 
         try {
@@ -240,6 +257,7 @@ class ExpenseController extends Controller
                     'expense_date' => $validated['expense_date'],
                     'notes' => $validated['notes'] ?? null,
                     'invoice_id' => $validated['invoice_id'] ?? null,
+                    'sales_order_id' => $validated['sales_order_id'] ?? null,
                     'customer_id' => $customerId,
                     'status' => $validated['status'] ?? Expense::STATUS_PENDING,
                     'created_by' => auth()->id(),
@@ -258,7 +276,7 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $expense->load(['invoice', 'customer', 'creator'])], 201);
+        return response()->json(['data' => $expense->load(['invoice', 'salesOrder', 'customer', 'creator'])], 201);
     }
 
     /**
@@ -266,7 +284,7 @@ class ExpenseController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $expense = Expense::with(['invoice', 'customer', 'creator'])->findOrFail($id);
+        $expense = Expense::with(['invoice', 'salesOrder', 'customer', 'creator'])->findOrFail($id);
         return response()->json(['data' => $expense]);
     }
 
@@ -285,6 +303,7 @@ class ExpenseController extends Controller
             'notes' => 'nullable|string',
             'status' => 'sometimes|string|in:pending,approved,rejected,paid',
             'invoice_id' => 'nullable|exists:invoices,id',
+            'sales_order_id' => 'nullable|exists:sales_orders,id',
             'customer_id' => 'nullable|exists:customers,id',
         ]);
 
@@ -294,6 +313,9 @@ class ExpenseController extends Controller
             } else {
                 $validated['customer_id'] = null;
             }
+        }
+        if (array_key_exists('sales_order_id', $validated) && empty($validated['customer_id']) && $validated['sales_order_id']) {
+            $validated['customer_id'] = SalesOrder::where('id', $validated['sales_order_id'])->value('customer_id');
         }
 
         $affectsLedger = collect(['amount', 'category', 'expense_date', 'status'])
@@ -319,7 +341,7 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $expense->refresh()->load(['invoice', 'customer', 'creator'])]);
+        return response()->json(['data' => $expense->refresh()->load(['invoice', 'salesOrder', 'customer', 'creator'])]);
     }
 
     /**

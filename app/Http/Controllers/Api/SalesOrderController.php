@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\ProductUnit;
@@ -335,7 +336,21 @@ class SalesOrderController extends Controller
             'items.*.allocations' => 'nullable|array',
             'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
             'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
+
+        $expensesInput = $validated['expenses'] ?? [];
+        unset($validated['expenses']);
+
+        $expensesTotal = collect($expensesInput)->sum(fn ($e) => (float) ($e['amount'] ?? 0));
+        if ($expensesTotal > 0 && empty($validated['shipping_cost'])) {
+            $validated['shipping_cost'] = round($expensesTotal, 2);
+        }
 
         // Who the order belongs to comes from the caller: the back office files
         // orders on behalf of the rep who took them, and the apps send their own
@@ -402,13 +417,33 @@ class SalesOrderController extends Controller
 
         unset($validated['execute']);
 
+        $createdExpenses = [];
         try {
-            $salesOrder = DB::transaction(function () use ($validated, $lineItems, $request) {
+            $salesOrder = DB::transaction(function () use ($validated, $lineItems, $expensesInput, $request, &$createdExpenses) {
                 $salesOrder = SalesOrder::create($validated);
 
                 $created = [];
                 foreach ($lineItems as $item) {
                     $created[] = $salesOrder->items()->create($item);
+                }
+
+                foreach ($expensesInput as $exp) {
+                    if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
+                        $createdExpenses[] = Expense::create([
+                            'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                            'sales_order_id' => $salesOrder->id,
+                            'customer_id' => $salesOrder->customer_id,
+                            'description' => $exp['description'],
+                            'amount' => (float) $exp['amount'],
+                            'category' => $exp['category'] ?? 'shipping',
+                            'expense_date' => now(),
+                            'status' => $exp['status'] ?? Expense::STATUS_PENDING,
+                            'notes' => $exp['notes'] ?? null,
+                            'created_by' => auth()->id(),
+                            'currency' => base_currency_code(),
+                            'exchange_rate' => 1.0000,
+                        ]);
+                    }
                 }
 
                 // Opens the stage history, so the trail starts where the order
@@ -434,11 +469,19 @@ class SalesOrderController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
+        foreach ($createdExpenses as $exp) {
+            try {
+                $this->ledger->postExpense($exp);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         $execution = $request->input('execute') === 'confirm'
             ? $this->confirmNow($salesOrder)
             : null;
 
-        $salesOrder->refresh()->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'items.allocations']);
+        $salesOrder->refresh()->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'items.allocations', 'expenses']);
 
         return response()->json([
             'success' => true,
@@ -452,7 +495,7 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse', 'expenses']);
 
         return response()->json([
             'success' => true,
@@ -505,6 +548,12 @@ class SalesOrderController extends Controller
             'items.*.allocations' => 'nullable|array',
             'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
             'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
 
         // The stage is moved through the workflow endpoints, never by writing
@@ -579,6 +628,17 @@ class SalesOrderController extends Controller
         $validated['tax'] = $taxAmount;
         $validated['tax_percent'] = $taxPercent;
 
+        $expensesProvided = $request->has('expenses');
+        $expensesInput = $validated['expenses'] ?? [];
+        unset($validated['expenses']);
+
+        if ($expensesProvided) {
+            $expensesTotal = collect($expensesInput)->sum(fn ($e) => (float) ($e['amount'] ?? 0));
+            if (! $request->has('shipping_cost') || empty($validated['shipping_cost'])) {
+                $validated['shipping_cost'] = round($expensesTotal, 2);
+            }
+        }
+
         $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
 
         // Derived from whoever the order now belongs to — which may be a rep it
@@ -592,9 +652,42 @@ class SalesOrderController extends Controller
             $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
         }
 
+        $createdExpenses = [];
         try {
-            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $request) {
+            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $expensesProvided, $expensesInput, $request, &$createdExpenses) {
                 $salesOrder->update($validated);
+
+                if ($expensesProvided) {
+                    foreach ($salesOrder->expenses()->get() as $oldExp) {
+                        try {
+                            $this->ledger->reverseFor($oldExp->postingKey());
+                        } catch (\Throwable $e) {
+                            report($e);
+                        }
+                    }
+                    $salesOrder->expenses()->delete();
+
+                    if (is_array($expensesInput)) {
+                        foreach ($expensesInput as $exp) {
+                            if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
+                                $createdExpenses[] = Expense::create([
+                                    'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                                    'sales_order_id' => $salesOrder->id,
+                                    'customer_id' => $salesOrder->customer_id,
+                                    'description' => $exp['description'],
+                                    'amount' => (float) $exp['amount'],
+                                    'category' => $exp['category'] ?? 'shipping',
+                                    'expense_date' => now(),
+                                    'status' => $exp['status'] ?? Expense::STATUS_PENDING,
+                                    'notes' => $exp['notes'] ?? null,
+                                    'created_by' => auth()->id(),
+                                    'currency' => base_currency_code(),
+                                    'exchange_rate' => 1.0000,
+                                ]);
+                            }
+                        }
+                    }
+                }
 
                 // The lines are rewritten, and their allocations with them; the
                 // warehouses the order was routed through go too when a plan is
@@ -615,7 +708,15 @@ class SalesOrderController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant']);
+        foreach ($createdExpenses as $exp) {
+            try {
+                $this->ledger->postExpense($exp);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'expenses']);
 
         return response()->json([
             'success' => true,
@@ -828,6 +929,7 @@ class SalesOrderController extends Controller
         $salesOrder->load([
             'customer', 'creator', 'assignedEmployee', 'quote',
             'items.product', 'items.variant', 'fulfillmentWarehouse', 'statusHistory.user',
+            'expenses.invoice',
         ]);
 
         $invoice = $this->workflow->existingInvoice($salesOrder);
@@ -840,8 +942,13 @@ class SalesOrderController extends Controller
         $paymentKeys = collect($invoice?->payments ?? [])
             ->flatMap(fn ($p) => ['payment:'.$p->id, 'payment:'.$p->id.':reversal']);
 
+        $expenseKeys = $salesOrder->expenses->flatMap(fn ($e) => [
+            $e->postingKey(),
+            $e->postingKey().':reversal',
+        ])->filter()->all();
+
         $entries = JournalEntryHeader::with('lines.ledgerAccount')
-            ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys) {
+            ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys, $expenseKeys) {
                 $q->whereIn('posting_key', [
                     'so_cogs:'.$salesOrder->id,
                     'so_cogs:'.$salesOrder->id.':reversal',
@@ -857,6 +964,10 @@ class SalesOrderController extends Controller
                 if ($paymentKeys->isNotEmpty()) {
                     $q->orWhereIn('posting_key', $paymentKeys->all());
                 }
+
+                if (! empty($expenseKeys)) {
+                    $q->orWhereIn('posting_key', $expenseKeys);
+                }
             })
             ->orderBy('entry_date')
             ->orderBy('id')
@@ -868,6 +979,7 @@ class SalesOrderController extends Controller
                 'sales_order' => $salesOrder,
                 'invoice' => $invoice,
                 'payments' => $invoice?->payments ?? [],
+                'expenses' => $salesOrder->expenses,
                 'journal_entries' => $entries,
                 'stock_movements' => $this->workflow->movementsFor($salesOrder),
                 'diagnostics' => $this->workflow->diagnose($salesOrder),

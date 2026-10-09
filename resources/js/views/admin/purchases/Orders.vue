@@ -4897,7 +4897,7 @@ onMounted(async () => {
 @media print {
     @page {
         size: A4 portrait;
-        margin: 8mm 10mm;
+        margin: 0 !important;
     }
 
     html, body {
@@ -4907,6 +4907,15 @@ onMounted(async () => {
         color: #0f172a !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+    a[href]:after {
+        content: none !important;
+    }
+
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
     }
 
     /* Hide background app layout & screen elements */
@@ -4960,7 +4969,7 @@ onMounted(async () => {
         position: static !important;
         width: 100% !important;
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 10mm 12mm !important;
         box-shadow: none !important;
         border: none !important;
         background: #ffffff !important;
