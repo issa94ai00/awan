@@ -121,7 +121,7 @@
                     </div>
 
                     <div v-if="!catalogLoaded" class="sections-grid" aria-busy="true">
-                        <div v-for="n in 8" :key="n" class="section-card skeleton">
+                        <div v-for="n in 6" :key="n" class="section-card skeleton">
                             <span class="skeleton-block media"></span>
                             <span class="skeleton-block line wide"></span>
                             <span class="skeleton-block line"></span>
@@ -139,34 +139,40 @@
                              was one flat grid of every category at every level,
                              so a section and a sub-subsection sat side by side
                              with nothing saying which held which. -->
+                        <!-- The whole card opens the section (the title link is
+                             stretched over it); the subcategory chips sit above
+                             that and open their own pages. -->
                         <article v-for="section in visibleSections" :key="section.id" class="section-card">
                             <!-- No section has an image of its own, so the API
-                                 lends each one a photo of its products. -->
-                            <router-link :to="`/category/${section.slug}`" class="section-link">
-                                <div class="section-media">
-                                    <img
-                                        v-if="section.image || section.thumbnail"
-                                        :src="getImageUrl(section.image || section.thumbnail)"
-                                        :alt="$p(section, 'name')"
-                                        loading="lazy"
-                                        decoding="async"
-                                        width="320"
-                                        height="160"
-                                    >
-                                    <i v-else class="fas section-icon" :class="section.icon || 'fa-cube'" aria-hidden="true"></i>
-                                </div>
-                                <div class="section-title-row">
-                                    <div class="section-text">
-                                        <h3>{{ $p(section, 'name') }}</h3>
-                                        <span class="section-count">{{ t('catl_products_n', { count: formatCount(section.product_count) }) }}</span>
-                                    </div>
-                                    <i :class="isRtl ? 'fas fa-chevron-left' : 'fas fa-chevron-right'" class="section-arrow" aria-hidden="true"></i>
-                                </div>
-                            </router-link>
+                                 lends each one a photo of its products — or, for
+                                 a section with none, a placeholder drawing. -->
+                            <div class="section-media" :class="{ 'is-drawing': isDrawing(section) }">
+                                <img
+                                    v-if="section.image || section.thumbnail"
+                                    :src="getImageUrl(section.image || section.thumbnail)"
+                                    alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                    width="320"
+                                    height="160"
+                                >
+                                <i v-else class="fas section-icon" :class="section.icon || 'fa-cube'" aria-hidden="true"></i>
+                                <span class="media-badge">{{ t('catl_products_n', { count: formatCount(section.product_count) }) }}</span>
+                            </div>
+
+                            <div class="section-body">
+                                <h3 class="section-title">
+                                    <router-link :to="`/category/${section.slug}`" class="section-link">{{ $p(section, 'name') }}</router-link>
+                                </h3>
+                                <span class="section-go" aria-hidden="true">
+                                    <i :class="isRtl ? 'fas fa-arrow-left' : 'fas fa-arrow-right'"></i>
+                                </span>
+                            </div>
 
                             <p v-if="$p(section, 'description')" class="section-desc">{{ $p(section, 'description') }}</p>
 
                             <div v-if="section.children.length" class="section-children">
+                                <span class="children-label">{{ t('catl_subsections_n', { count: formatCount(section.children.length) }) }}</span>
                                 <router-link
                                     v-for="child in shownChildren(section)"
                                     :key="child.id"
@@ -242,7 +248,10 @@ const catalogError = ref(false);
 const finder = ref('');
 const expanded = reactive({});
 
-const CHILDREN_SHOWN = 8;
+const CHILDREN_SHOWN = 6;
+
+/** The generic drawings carry their own slate tile; the card frames them as an icon, not a photo. */
+const isDrawing = (section) => !section.image && /\/images_items\/generic\//.test(section.thumbnail || '');
 
 const loadCategories = async () => {
     catalogError.value = false;
@@ -515,12 +524,14 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
     .section-card,
-    .section-media img {
+    .section-media img,
+    .section-go {
         transition: none;
     }
 
     .section-card:hover,
-    .section-link:hover .section-media img {
+    .section-card:hover .section-media img,
+    .section-card:hover .section-go {
         transform: none;
     }
 }
@@ -660,135 +671,182 @@ onBeforeUnmount(() => {
 /* ── Sections ── */
 .sections-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 20px;
     margin-top: 1.5rem;
 }
 
 .section-card {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 18px;
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03);
-    border-radius: 24px;
-    transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+    gap: 14px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+    border-radius: 22px;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
 }
 
 .section-card:hover {
     transform: translateY(-4px);
-    border-color: color-mix(in srgb, var(--mobile-primary) 25%, transparent);
-    box-shadow: 0 20px 40px color-mix(in srgb, var(--mobile-primary) 8%, transparent), 0 15px 30px rgba(0, 0, 0, 0.04);
+    border-color: color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+    box-shadow: 0 18px 38px color-mix(in srgb, var(--mobile-primary) 10%, transparent), 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 [data-theme="dark"] .section-card {
-    background: rgba(30, 41, 59, 0.45);
+    background: rgba(30, 41, 59, 0.55);
     border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
 }
 
-.section-link {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    color: inherit;
-    text-decoration: none;
-}
-
-.section-link:focus-visible {
-    outline: 2px solid var(--mobile-primary);
-    outline-offset: 4px;
-    border-radius: 12px;
-}
-
+/* ── Media ── */
 /* Product photos are cut-outs on white, so they are fitted, not cropped. */
 .section-media {
-    height: 160px;
+    position: relative;
+    height: 170px;
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
     background: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.05);
 }
 
 .section-media img {
     width: 100%;
     height: 100%;
-    padding: 14px;
+    padding: 16px;
     object-fit: contain;
-    transition: transform 0.3s ease;
+    transition: transform 0.35s ease;
 }
 
-.section-link:hover .section-media img {
-    transform: scale(1.05);
+/* A drawing is a slate tile with a grey glyph: on a panel of the same slate
+   it reads as an icon, not a small grey square in a white box. */
+.section-media.is-drawing {
+    background: #f1f5f9;
+}
+
+.section-media.is-drawing img {
+    padding: 0;
+}
+
+.section-card:hover .section-media img {
+    transform: scale(1.06);
 }
 
 .section-icon {
-    font-size: 2.6rem;
+    font-size: 3rem;
     color: var(--mobile-primary);
 }
 
 [data-theme="dark"] .section-media {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     border-color: transparent;
 }
 
-.section-title-row {
+[data-theme="dark"] .section-media.is-drawing {
+    background: #f1f5f9;
+}
+
+.media-badge {
+    position: absolute;
+    inset-block-end: 10px;
+    inset-inline-start: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.1);
+    color: var(--mobile-primary);
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Title ── */
+.section-body {
     display: flex;
     align-items: center;
     gap: 12px;
+    padding-inline: 4px;
 }
 
-.section-text {
+.section-title {
     flex: 1;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.section-text h3 {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 1.08rem;
     font-weight: 800;
+    line-height: 1.45;
     color: #1e293b;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
-[data-theme="dark"] .section-text h3 {
+[data-theme="dark"] .section-title {
     color: #f1f5f9;
 }
 
-.section-link:hover h3 {
+.section-link {
+    color: inherit;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+/* Stretched over the card, so a click anywhere on it opens the section. */
+.section-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+}
+
+.section-card:hover .section-link {
     color: var(--mobile-primary);
 }
 
-.section-count {
-    font-size: 0.82rem;
-    font-weight: 600;
+.section-link:focus-visible {
+    outline: none;
+}
+
+.section-link:focus-visible::after {
+    outline: 3px solid var(--mobile-primary);
+    outline-offset: 2px;
+    border-radius: 22px;
+}
+
+.section-go {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
     color: var(--mobile-primary);
+    font-size: 0.9rem;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
-.section-arrow {
-    color: #94a3b8;
-    transition: transform 0.2s ease;
-}
-
-.section-link:hover .section-arrow {
+.section-card:hover .section-go {
+    background: var(--mobile-primary);
+    color: #fff;
     transform: translateX(var(--nudge, 3px));
 }
 
-[dir='rtl'] .section-link:hover .section-arrow {
+[dir='rtl'] .section-card:hover .section-go {
     --nudge: -3px;
 }
 
 .section-desc {
-    margin: 0;
+    margin: -6px 0 0;
+    padding-inline: 4px;
     font-size: 0.85rem;
     color: #64748b;
     display: -webkit-box;
@@ -797,16 +855,29 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 
+/* ── Subcategories: pinned to the card's foot so a row lines up ── */
 .section-children {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
-    padding-top: 12px;
-    border-top: 1px dashed rgba(0, 0, 0, 0.08);
+    margin-top: auto;
+    padding: 12px 4px 2px;
+    border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 [data-theme="dark"] .section-children {
     border-color: rgba(255, 255, 255, 0.08);
+}
+
+.children-label {
+    flex-basis: 100%;
+    margin-bottom: 2px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
 }
 
 /* ── Loading and empty states ── */
@@ -825,7 +896,7 @@ onBeforeUnmount(() => {
 .skeleton-block.line { height: 14px; width: 55%; }
 .skeleton-block.line.wide { width: 80%; height: 18px; }
 
-.skeleton-block.media { width: 100%; height: 160px; border-radius: 16px; }
+.skeleton-block.media { width: 100%; height: 170px; border-radius: 16px; }
 
 @keyframes skeleton-shimmer {
     0% { background-position: 100% 50%; }
@@ -901,6 +972,12 @@ onBeforeUnmount(() => {
 @media (max-width: 640px) {
     .sections-grid {
         grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .section-media,
+    .skeleton-block.media {
+        height: 150px;
     }
 
     .finder-submit {
