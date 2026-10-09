@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\URL as UrlGenerator;
 use Spatie\Sitemap\Sitemap;
 use Spatie\Sitemap\SitemapIndex;
@@ -64,43 +66,85 @@ class GenerateSitemap extends Command
 
         $this->info("Generating sitemap for {$baseUrl} ...");
 
-        // Only advertise URLs that actually render: PublicPageController 404s on
-        // inactive categories/products, so listing them here would create dead entries.
-        $categories = Category::where('is_active', 1)->get();
-        $products = Product::where('is_active', 1)->get();
-
-        $publicDir = public_path();
-
         // Content is split into per-type child sitemaps and a sitemap index at
         // /sitemap.xml. Crawlers read only the index; Search Console then
         // reports indexing status separately for pages, categories and products.
-        $this->buildPagesSitemap()->writeToFile($publicDir.'/sitemap-pages.xml');
+        //
+        // Only advertise URLs that actually render: PublicPageController 404s on
+        // inactive categories/products, so listing them here would create dead entries.
+        $children = [
+            'pages' => $this->buildPagesSitemap(),
+            'categories' => $this->buildModelSitemap(Category::where('is_active', 1)),
+            'products' => $this->buildModelSitemap(Product::where('is_active', 1)),
+        ];
 
-        Sitemap::create()
-            ->add($categories)
-            ->writeToFile($publicDir.'/sitemap-categories.xml');
+        $publicDir = public_path();
+        $index = SitemapIndex::create();
 
-        Sitemap::create()
-            ->add($products)
-            ->writeToFile($publicDir.'/sitemap-products.xml');
+        foreach ($children as $name => $sitemap) {
+            $this->writeAtomically("{$publicDir}/sitemap-{$name}.xml", $sitemap->render());
 
-        SitemapIndex::create()
-            ->add(SitemapTag::create("{$baseUrl}/sitemap-pages.xml")
-                ->setLastModificationDate(now()))
-            ->add(SitemapTag::create("{$baseUrl}/sitemap-categories.xml")
-                ->setLastModificationDate(now()))
-            ->add(SitemapTag::create("{$baseUrl}/sitemap-products.xml")
-                ->setLastModificationDate(now()))
-            ->writeToFile($publicDir.'/sitemap.xml');
+            // The index's <lastmod> tells a crawler which child to refetch, so it
+            // carries the newest entry in that child rather than the time of this
+            // run — otherwise the daily schedule marks every file as changed.
+            $tag = SitemapTag::create("{$baseUrl}/sitemap-{$name}.xml");
+            $lastModified = $this->newestModification($sitemap);
+
+            if ($lastModified !== null) {
+                $tag->setLastModificationDate($lastModified);
+            } else {
+                // The tag defaults to now() and its property is not nullable;
+                // left uninitialised, the index view omits <lastmod> entirely.
+                unset($tag->lastModificationDate);
+            }
+
+            $index->add($tag);
+        }
+
+        // Written last, so it never points at a child that is not on disk yet.
+        $this->writeAtomically("{$publicDir}/sitemap.xml", $index->render());
 
         $this->info(sprintf(
             'Sitemap generated successfully! (%d pages, %d categories, %d products)',
-            10,
-            $categories->count(),
-            $products->count()
+            count($children['pages']->getTags()),
+            count($children['categories']->getTags()),
+            count($children['products']->getTags())
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * One entry per model, in id order so consecutive runs write identical
+     * files when nothing changed. Streamed in chunks rather than loaded at once.
+     */
+    private function buildModelSitemap(Builder $query): Sitemap
+    {
+        $sitemap = Sitemap::create();
+
+        $query->lazyById(500)->each(fn ($model) => $sitemap->add($model));
+
+        return $sitemap;
+    }
+
+    private function newestModification(Sitemap $sitemap): ?Carbon
+    {
+        return collect($sitemap->getTags())
+            ->map(fn ($tag) => $tag instanceof Url ? $tag->lastModificationDate : null)
+            ->filter()
+            ->max();
+    }
+
+    /**
+     * The files are served straight from public/, so a crawler fetching one
+     * mid-write would get truncated XML. Rename is atomic on the same filesystem.
+     */
+    private function writeAtomically(string $path, string $contents): void
+    {
+        $temporary = $path.'.tmp';
+
+        file_put_contents($temporary, $contents);
+        rename($temporary, $path);
     }
 
     /**
