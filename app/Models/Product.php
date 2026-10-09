@@ -100,16 +100,25 @@ class Product extends Model implements Sitemapable
         $tag = Url::create(route('product.show', $this))
             ->setLastModificationDate($this->updated_at)
             ->setChangeFrequency('weekly')
-            ->setPriority(0.8);
+            // Product pages are the long tail — template-thin next to the
+            // category hubs, so they rank below a parent category (0.7) and
+            // level with a subcategory (0.6). The old flat 0.8 put ~4,000
+            // near-identical pages above almost everything worth promoting.
+            ->setPriority(0.6);
 
         // Surface the product photos to Google Images via <image:image>.
         // image_url() resolves storage-relative paths to absolute URLs; gallery
         // entries cap at 8 per product so a heavily-photographed item cannot
         // bloat the sitemap (Google allows up to 1000, but more is rarely worth it).
+        //
+        // The generic placeholder drawings (images_items/generic/*.svg) are
+        // skipped: they are not the product, and advertising hundreds of
+        // identical icons to Google Images only dilutes the real photos.
         $gallery = json_decode($this->image_gallery ?? '[]', true) ?: [];
         $images = collect([$this->image_main])
             ->merge($gallery)
             ->filter()
+            ->reject(fn (string $path) => str_contains($path, 'images_items/generic/'))
             ->map(fn (string $path) => image_url($path))
             ->filter()
             ->take(9);

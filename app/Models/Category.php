@@ -132,10 +132,19 @@ class Category extends Model implements Sitemapable
 
     public function toSitemapTag(): Url|string
     {
-        return Url::create(route('category.show', $this))
+        $tag = Url::create(route('category.show', $this))
             ->setLastModificationDate($this->updated_at)
             ->setChangeFrequency('weekly')
-            ->setPriority(0.7);
+            // A top-level section is the hub a crawler should reach before the
+            // shelves under it; outranking the products themselves only for the
+            // sections keeps the scale honest.
+            ->setPriority($this->parent_id === null ? 0.7 : 0.6);
+
+        if ($this->image) {
+            $tag->addImage(image_url($this->image));
+        }
+
+        return $tag;
     }
 
     public function getNameAttribute(): string
