@@ -7,6 +7,9 @@ import { readPagination, requireAuth } from '@/stores/salesShared';
 export const usePaymentsStore = defineStore('payments', {
     state: () => ({
         payments: [],
+        // Collected, refunded, by method and today, over the whole search —
+        // PaymentController::listSummary(). Only sent when asked for.
+        summary: null,
         loading: false,
         saving: false,
         error: null,
@@ -42,6 +45,7 @@ export const usePaymentsStore = defineStore('payments', {
                 const res = await paymentsApi.getAll(params);
                 const data = res.data?.data || {};
                 this.payments = data.payments || [];
+                if (data.summary) this.summary = data.summary;
                 this.pagination = readPagination(data.pagination, this.pagination, this.payments.length);
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load payments';
@@ -63,6 +67,17 @@ export const usePaymentsStore = defineStore('payments', {
                 const created = res.data?.data || res.data;
                 if (created) this.payments.unshift(created);
                 return created;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /** Corrects amount, method, date, reference or notes — never the invoice or customer. */
+        async updatePayment(id, payload) {
+            this.saving = true;
+            try {
+                const res = await paymentsApi.update(id, payload);
+                return res.data?.data || res.data;
             } finally {
                 this.saving = false;
             }

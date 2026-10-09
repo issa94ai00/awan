@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\ProductResource;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
@@ -39,24 +40,44 @@ class PosController extends Controller
     {
         $sku = $request->get('sku');
         $query = $request->get('q');
+        // Order forms pick a line per variant ("floor drain - 4\""); the till
+        // and older callers keep one row per product.
+        $expand = $request->boolean('expand_variants');
 
         $products = Product::query()
-            ->where('is_active', 1)
+            ->when($expand, fn ($q) => $q->withVariantRows())
+            ->where('products.is_active', 1)
             ->with('category');
 
         if ($sku) {
-            $products->where('sku', $sku);
+            $products->where(function ($q) use ($sku, $expand) {
+                $q->where('products.sku', $sku);
+                if ($expand) {
+                    $q->orWhere('pv.sku', $sku);
+                }
+            });
         }
 
         if ($query) {
-            $searchTerm = '%' . $query . '%';
-            $products->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                    ->orWhere('name_en', 'like', $searchTerm)
-                    ->orWhere('brand', 'like', $searchTerm)
-                    ->orWhere('model', 'like', $searchTerm)
-                    ->orWhere('sku', 'like', $searchTerm);
-            });
+            $columns = [
+                'products.name_ar', 'products.name_en', 'products.brand',
+                'products.model', 'products.sku', 'products.barcode',
+            ];
+            if ($expand) {
+                $columns = [...$columns, 'pv.sku', 'pv.barcode', 'pv.size', 'pv.color'];
+            }
+            $products->whereSearch($columns, $query);
+        }
+
+        // An order form narrows its search to one category, or browses it. A
+        // section covers the products filed under its subcategories too.
+        if ($request->filled('category_id')) {
+            $category = Category::find($request->integer('category_id'));
+            $products->whereIn('products.category_id', $category ? $category->descendantIds() : [0]);
+        }
+
+        if ($expand) {
+            $products->orderBy('products.name_ar')->orderBy('products.id')->orderBy('pv.id');
         }
 
         $products = $products->limit(50)->get();
@@ -76,13 +97,7 @@ class PosController extends Controller
         $query = Customer::query();
 
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name', 'like', $searchTerm)
-                    ->orWhere('phone', 'like', $searchTerm)
-                    ->orWhere('email', 'like', $searchTerm)
-                    ->orWhere('company', 'like', $searchTerm);
-            });
+            $query->whereSearch(['name', 'phone', 'email', 'company'], $request->search);
         }
 
         $perPage = min(max((int) $request->get('per_page', 20), 1), 100);

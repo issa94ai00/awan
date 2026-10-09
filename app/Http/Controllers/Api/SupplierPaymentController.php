@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Services\Accounting\LedgerPostingService;
+use App\Services\Purchasing\SupplierPaymentRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,8 +26,10 @@ use Illuminate\Support\Facades\DB;
  */
 class SupplierPaymentController extends Controller
 {
-    public function __construct(private LedgerPostingService $ledger)
-    {
+    public function __construct(
+        private LedgerPostingService $ledger,
+        private SupplierPaymentRecorder $recorder,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -45,12 +48,38 @@ class SupplierPaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
 
+        if ($request->filled('payment_method')) {
+            $query->where('payment_method', $request->payment_method);
+        }
+
+        if ($request->filled('purchase_receipt_id')) {
+            $query->where('purchase_receipt_id', $request->purchase_receipt_id);
+        }
+
+        // Searched on the server: filtering the loaded page in the browser
+        // reported "nothing found" for a payment that was simply on page two.
+        if ($request->filled('search')) {
+            $query->whereSearch([
+                'payment_number', 'reference', 'notes',
+                'supplier.name', 'purchaseReceipt.receipt_number',
+            ], $request->search);
+        }
+
         // Summed before paginating: paginate() puts a limit on the builder, so
         // a sum taken afterwards would only cover the page being shown.
         $totalPaid = round((float) (clone $query)->sum('amount'), 2);
 
+        $byMethod = (clone $query)->reorder()
+            ->selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
+            ->groupBy('payment_method')
+            ->get()
+            ->mapWithKeys(fn ($row) => [$row->payment_method => [
+                'count' => (int) $row->count,
+                'total' => round((float) $row->total, 2),
+            ]]);
+
         $payments = $query->latest('payment_date')->latest('id')
-            ->paginate($request->input('per_page', 20));
+            ->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
 
         return response()->json([
             'success' => true,
@@ -60,6 +89,7 @@ class SupplierPaymentController extends Controller
                 // What the filtered period cost in total, so the screen does
                 // not add up one page of rows and call it the answer.
                 'total_paid' => $totalPaid,
+                'by_method' => $byMethod,
                 'pagination' => [
                     'current_page' => $payments->currentPage(),
                     'last_page' => $payments->lastPage(),
@@ -91,39 +121,17 @@ class SupplierPaymentController extends Controller
         $supplier = Supplier::findOrFail($validated['supplier_id']);
 
         try {
-            $payment = DB::transaction(function () use ($validated, $supplier) {
-                // Derived from the last id rather than a count: counting reuses
-                // a number the moment any payment is deleted.
-                $payment = SupplierPayment::create(array_merge($validated, [
-                    'payment_number' => 'SPY-'.str_pad(
-                        (string) (((int) SupplierPayment::withTrashed()->max('id')) + 1),
-                        6,
-                        '0',
-                        STR_PAD_LEFT
-                    ),
-                    // Overwritten rather than defaulted: `nullable|date` lets an
-                    // explicit null through, and the column will not take one.
-                    'payment_date' => ($validated['payment_date'] ?? null) ?: now()->toDateString(),
-                    'status' => 'completed',
-                    'created_by' => auth()->id(),
-                ]));
-
-                // The supplier balance is what we owe them, raised by every
-                // receipt. Paying brings it down.
-                $supplier->updateBalance(-(float) $payment->amount);
-
-                $payment->setRelation('supplier', $supplier);
-                $this->ledger->postSupplierPayment($payment);
-
-                return $payment;
-            });
+            $payment = DB::transaction(
+                fn () => $this->recorder->record($supplier, collect($validated)->except('supplier_id')->all())
+            );
         } catch (\RuntimeException $e) {
             // A chart of accounts missing `accounts_payable`, `cash` or `bank`
             // cannot record this, and a payment that is not in the books is
-            // worse than one that was refused.
+            // worse than one that was refused. So is one against another
+            // supplier's receipt, or past what the receipt cost.
             return response()->json([
                 'success' => false,
-                'message' => 'تعذّر ترحيل قيد السداد: '.$e->getMessage(),
+                'message' => $e->getMessage(),
                 'data' => null,
             ], 422);
         }
@@ -190,7 +198,7 @@ class SupplierPaymentController extends Controller
     public function outstanding(Request $request): JsonResponse
     {
         $suppliers = Supplier::query()
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
+            ->when($request->filled('search'), fn ($q) => $q->whereSearch(['name'], $request->search))
             ->orderByDesc('balance')
             ->get(['id', 'name', 'balance', 'currency'])
             ->map(fn ($supplier) => [
@@ -200,12 +208,20 @@ class SupplierPaymentController extends Controller
                 'balance' => round((float) $supplier->balance, 2),
             ]);
 
+        // A negative balance is money paid ahead, not a smaller debt: netting
+        // the two understated what is owed by every advance on the books.
+        $owed = $suppliers->where('balance', '>', 0);
+        $advances = $suppliers->where('balance', '<', 0);
+
         return response()->json([
             'success' => true,
             'message' => 'Supplier balances retrieved successfully',
             'data' => [
                 'suppliers' => $suppliers->values(),
-                'total_outstanding' => round($suppliers->sum('balance'), 2),
+                'total_outstanding' => round($owed->sum('balance'), 2),
+                'owed_count' => $owed->count(),
+                'total_advances' => round(-$advances->sum('balance'), 2),
+                'advances_count' => $advances->count(),
             ],
         ]);
     }

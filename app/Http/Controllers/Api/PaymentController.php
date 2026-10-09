@@ -94,23 +94,99 @@ class PaymentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Payment::with(['invoice', 'customer', 'creator']);
+        $query = Payment::query()->with([
+            // Credit notes summed alongside, so what each invoice still owes is
+            // read net of returns without a query per row.
+            'invoice' => fn ($q) => $q->select('id', 'invoice_number', 'status', 'total', 'paid_amount', 'sales_order_id')
+                ->withSum(['creditNotes as credited_total' => fn ($c) => $c->where('status', '!=', 'cancelled')], 'total'),
+            'customer:id,name,phone,company',
+            'creator:id,name',
+        ]);
 
-        if ($request->has('status') && $request->status) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('customer_id') && $request->customer_id) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
 
-        $payments = $query->latest()->paginate(20);
+        if ($request->filled('payment_method')) {
+            $query->where('payment_method', $request->payment_method);
+        }
+
+        // payment_date is optional on older rows; they fall back to the day
+        // they were recorded, so a date filter does not silently drop them.
+        // DATE() on both: the date column comes back with a time on some drivers.
+        $day = 'COALESCE(DATE(payments.payment_date), DATE(payments.created_at))';
+        if ($request->filled('date_from')) {
+            $query->whereRaw("{$day} >= ?", [$request->date_from]);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereRaw("{$day} <= ?", [$request->date_to]);
+        }
+
+        // Searching used to happen in the browser over the twenty rows loaded,
+        // so a payment on page two could not be found at all.
+        if ($request->filled('search')) {
+            $query->whereSearch([
+                'payment_number', 'reference', 'notes',
+                'customer.name', 'customer.phone', 'customer.company',
+                'invoice.invoice_number',
+            ], $request->search);
+        }
+
+        // The cards describe the search and dates, before the status and kind
+        // filters narrow it — they are how those are picked.
+        // "Today" is the browser's day: the app clock is UTC, which put the
+        // first three hours of a Damascus morning on the day before.
+        $today = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->input('today'))
+            ? (string) $request->input('today')
+            : now()->toDateString();
+        $summary = $request->boolean('with_summary') ? $this->listSummary(clone $query, $today) : null;
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Against an invoice, on account (no invoice), or a refund paid out.
+        match ($request->input('kind')) {
+            'invoice' => $query->whereNotNull('invoice_id')->where('status', '!=', Payment::STATUS_REFUNDED),
+            'on_account' => $query->whereNull('invoice_id')->where('status', '!=', Payment::STATUS_REFUNDED),
+            'refund' => $query->where('status', Payment::STATUS_REFUNDED),
+            default => null,
+        };
+
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        if ($request->input('sort') === 'amount') {
+            $query->orderBy('amount', $direction);
+        } else {
+            $query->orderByRaw("{$day} {$direction}");
+        }
+        $query->orderBy('id', $direction);
+
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $payments = $query->paginate($perPage);
+
+        $rows = collect($payments->items())->map(fn (Payment $payment) => $payment->toArray() + [
+            // Net of credit notes, as the invoices list reads it; never below
+            // zero here — an overpaid invoice has nothing left to collect.
+            'invoice_owed' => $payment->invoice ? max(0, $payment->invoice->outstanding()) : null,
+            // Refunds belong to the return that paid them out; reversing one
+            // here would undo the cash without undoing the credit note.
+            'is_refund' => $payment->status === Payment::STATUS_REFUNDED,
+            'can_change' => $payment->status !== Payment::STATUS_REFUNDED,
+            // A payment taken in another currency is corrected by reversing it
+            // and recording it again: its base amount and what was handed over
+            // would otherwise disagree.
+            // So is one whose invoice has been cancelled.
+            'amount_locked' => $payment->status === Payment::STATUS_REFUNDED
+                || ($payment->tendered_amount !== null && $payment->currency !== $this->currencies->baseCode())
+                || $payment->invoice?->status === Invoice::STATUS_CANCELLED,
+        ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Payments retrieved successfully',
             'data' => [
-                'payments' => $payments->items(),
+                'payments' => $rows,
+                'summary' => $summary,
                 'pagination' => [
                     'current_page' => $payments->currentPage(),
                     'last_page' => $payments->lastPage(),
@@ -120,6 +196,47 @@ class PaymentController extends Controller
                 ]
             ]
         ]);
+    }
+
+    /**
+     * Money in, split by method; refunds paid out; how much was taken on
+     * account; and today's takings — over the search and dates.
+     */
+    private function listSummary($query, string $today): array
+    {
+        $base = fn () => (clone $query)->reorder()->setEagerLoads([])->getQuery()->select([]);
+
+        $in = $base()->where('status', Payment::STATUS_COMPLETED)
+            ->selectRaw('COUNT(*) as n, COALESCE(SUM(amount), 0) as total')
+            ->selectRaw('COALESCE(SUM(CASE WHEN invoice_id IS NULL THEN amount ELSE 0 END), 0) as on_account')
+            ->selectRaw('SUM(CASE WHEN invoice_id IS NULL THEN 1 ELSE 0 END) as on_account_n')
+            ->selectRaw('COALESCE(SUM(CASE WHEN COALESCE(DATE(payment_date), DATE(created_at)) = ? THEN amount ELSE 0 END), 0) as today', [$today])
+            ->selectRaw('SUM(CASE WHEN COALESCE(DATE(payment_date), DATE(created_at)) = ? THEN 1 ELSE 0 END) as today_n', [$today])
+            ->first();
+
+        $byMethod = $base()->where('status', Payment::STATUS_COMPLETED)
+            ->select('payment_method')
+            ->selectRaw('COUNT(*) as n, COALESCE(SUM(amount), 0) as total')
+            ->groupBy('payment_method')
+            ->get()
+            ->mapWithKeys(fn ($row) => [$row->payment_method => ['count' => (int) $row->n, 'total' => round((float) $row->total, 2)]]);
+
+        $out = $base()->where('status', Payment::STATUS_REFUNDED)
+            ->selectRaw('COUNT(*) as n, COALESCE(SUM(ABS(amount)), 0) as total')
+            ->first();
+
+        return [
+            'collected' => round((float) $in->total, 2),
+            'collected_count' => (int) $in->n,
+            'by_method' => $byMethod,
+            'on_account' => round((float) $in->on_account, 2),
+            'on_account_count' => (int) $in->on_account_n,
+            'today' => round((float) $in->today, 2),
+            'today_count' => (int) $in->today_n,
+            'refunded' => round((float) $out->total, 2),
+            'refunded_count' => (int) $out->n,
+            'net' => round((float) $in->total - (float) $out->total, 2),
+        ];
     }
 
     public function store(Request $request)
@@ -269,40 +386,61 @@ class PaymentController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
+        if ($payment->status === Payment::STATUS_REFUNDED) {
+            return $this->refuse('هذا استرداد صُرف من مرتجع؛ يُدار من المرتجع نفسه.');
+        }
+
         $oldAmount = round((float) $payment->amount, 5);
         $newAmount = round((float) $validated['amount'], 5);
         $invoice = $payment->invoice;
+        $amountChanged = abs($newAmount - $oldAmount) > 0.009;
 
-        if ($invoice && abs($newAmount - $oldAmount) > 0.009) {
-            // What the invoice's other payments already cover, so the new
-            // amount is checked against what is actually left rather than
-            // against the total this payment used to claim.
-            $otherPaid = round((float) $invoice->paid_amount - $oldAmount, 5);
+        if ($amountChanged && $payment->tendered_amount !== null && $payment->currency !== $this->currencies->baseCode()) {
+            return $this->refuse('دُفعت هذه الدفعة بعملة أخرى؛ لتصحيح مبلغها اعكسها وسجّلها من جديد.');
+        }
 
-            if ($newAmount - ((float) $invoice->total - $otherPaid) > 0.009) {
-                return response()->json([
-                    'success' => false,
-                    'message' => sprintf(
-                        'المبلغ (%s) يتجاوز المتبقي على الفاتورة %s.',
-                        number_format($newAmount, 2),
-                        $invoice->invoice_number
-                    ),
-                    'data' => null,
-                ], 422);
+        if ($invoice && $amountChanged) {
+            // Its sale has been undone; re-pricing money held against it
+            // would settle a debt that no longer exists.
+            if ($invoice->status === Invoice::STATUS_CANCELLED) {
+                return $this->refuse(sprintf('الفاتورة %s ملغاة؛ لا يُعدّل مبلغ دفعاتها.', $invoice->invoice_number));
             }
 
-            \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $invoice, $validated, $oldAmount, $newAmount, $otherPaid) {
+            // What the invoice leaves room for: what it still owes, net of
+            // credit notes, plus what this payment already covers. Reading
+            // total less paid let a correction pay again for returned goods.
+            $room = round($invoice->outstanding() + $oldAmount, 5);
+
+            if ($newAmount - $room > 0.009) {
+                return $this->refuse(sprintf(
+                    'المبلغ (%s) يتجاوز المتبقي على الفاتورة %s (%s).',
+                    number_format($newAmount, 2),
+                    $invoice->invoice_number,
+                    number_format(max(0, $room), 2)
+                ));
+            }
+
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $invoice, $validated, $oldAmount, $newAmount) {
                 $payment->update($validated);
 
-                $paid = round($otherPaid + $newAmount, 5);
-                $invoice->update([
-                    'paid_amount' => $paid,
-                    'due_amount' => max(0, round((float) $invoice->total - $paid, 5)),
-                    'paid_at' => $paid + 0.009 >= (float) $invoice->total ? now() : null,
-                ]);
+                $invoice->applyPaid((float) $invoice->paid_amount - $oldAmount + $newAmount);
 
                 // The customer owes the difference more, or less, than before.
                 $invoice->customer?->updateBalance($oldAmount - $newAmount);
+
+                app(\App\Services\Accounting\LedgerPostingService::class)->reverseFor('payment:' . $payment->id);
+                app(\App\Services\Accounting\LedgerPostingService::class)->postPayment(
+                    $payment,
+                    'payment:' . $payment->id . ':corrected:' . now()->getTimestamp()
+                );
+            });
+        } elseif (! $invoice && $amountChanged) {
+            // On account: nothing to settle, but the customer's balance and the
+            // entry still carry the old amount. Only the fields changed here
+            // used to move, so the books kept the figure as first typed.
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment, $validated, $oldAmount, $newAmount) {
+                $payment->update($validated);
+                $payment->customer?->updateBalance($oldAmount - $newAmount);
 
                 app(\App\Services\Accounting\LedgerPostingService::class)->reverseFor('payment:' . $payment->id);
                 app(\App\Services\Accounting\LedgerPostingService::class)->postPayment(
@@ -335,14 +473,20 @@ class PaymentController extends Controller
      */
     public function destroy(Payment $payment)
     {
+        if ($payment->status === Payment::STATUS_REFUNDED) {
+            return $this->refuse('هذا استرداد صُرف من مرتجع؛ عكسه هنا يعيد المال دون أن يلغي الإشعار الدائن.');
+        }
+
         try {
             \Illuminate\Support\Facades\DB::transaction(function () use ($payment) {
                 app(\App\Services\Accounting\LedgerPostingService::class)
                     ->reverseFor('payment:' . $payment->id);
 
-                if ($payment->invoice) {
-                    $payment->invoice->decrement('paid_amount', $payment->amount);
-                    $payment->invoice->increment('due_amount', $payment->amount);
+                if ($invoice = $payment->invoice) {
+                    // Recomputed from total and paid rather than nudging the
+                    // due column, which is not always in step; the paid stamp
+                    // comes off once anything is owed again, net of credit notes.
+                    $invoice->applyPaid((float) $invoice->paid_amount - (float) $payment->amount);
                 }
 
                 $payment->customer?->updateBalance($payment->amount);
@@ -361,5 +505,10 @@ class PaymentController extends Controller
             'message' => 'تم حذف الدفعة وترحيل قيد عكسي لها',
             'data' => null
         ]);
+    }
+
+    private function refuse(string $message)
+    {
+        return response()->json(['success' => false, 'message' => $message, 'data' => null], 422);
     }
 }

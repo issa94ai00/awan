@@ -1,5 +1,7 @@
 <!-- resources/js/Components/Common/StatusBadge.vue -->
 <script setup>
+import { computed } from 'vue';
+
 const props = defineProps({
     status: {
         type: String,

@@ -72,11 +72,24 @@ class BankReconciliation extends Model
      * appear on a statement that was printed before them, so including them
      * would make every reconciliation fail by the amount of next week's trading.
      *
+     * A movement an earlier completed reconciliation of this account already
+     * cleared stays cleared here. The bank saw it last month; without carrying
+     * that forward, every reconciliation after the first would list the whole
+     * history of the account as still in transit.
+     *
      * @return \Illuminate\Support\Collection<int,object>
      */
     public function movements()
     {
         $cleared = $this->clearedLines()->pluck('journal_entry_lines.id')->all();
+
+        $clearedEarlier = DB::table('bank_reconciliation_lines as rl')
+            ->join('bank_reconciliations as r', 'r.id', '=', 'rl.bank_reconciliation_id')
+            ->where('r.account_id', $this->account_id)
+            ->where('r.status', self::STATUS_COMPLETED)
+            ->when($this->exists, fn ($query) => $query->where('r.id', '!=', $this->id))
+            ->pluck('r.reference', 'rl.journal_entry_line_id')
+            ->all();
 
         return DB::table('journal_entry_lines as l')
             ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
@@ -91,9 +104,10 @@ class BankReconciliation extends Model
                 'h.entry_number', 'h.entry_date', 'h.description', 'h.source_module',
             ])
             ->get()
-            ->map(function ($row) use ($cleared) {
+            ->map(function ($row) use ($cleared, $clearedEarlier) {
                 $row->amount = round((float) $row->debit - (float) $row->credit, 2);
-                $row->is_cleared = in_array((int) $row->id, $cleared, true);
+                $row->cleared_in = $clearedEarlier[$row->id] ?? null;
+                $row->is_cleared = $row->cleared_in !== null || in_array((int) $row->id, $cleared, true);
 
                 return $row;
             });
@@ -109,22 +123,31 @@ class BankReconciliation extends Model
     public function summary(): array
     {
         $movements = $this->movements();
+        $outstanding = $movements->reject(fn ($row) => $row->is_cleared);
 
         $book = round($movements->sum('amount'), 2);
-        $outstanding = round($movements->reject(fn ($row) => $row->is_cleared)->sum('amount'), 2);
+        $outstandingTotal = round($outstanding->sum('amount'), 2);
         $statement = round((float) $this->statement_balance, 2);
 
-        $difference = round($book - $outstanding - $statement, 2);
+        $difference = round($book - $outstandingTotal - $statement, 2);
 
         return [
             'book_balance' => $book,
-            'cleared_total' => round($book - $outstanding, 2),
-            'outstanding_total' => $outstanding,
+            'cleared_total' => round($book - $outstandingTotal, 2),
+            'outstanding_total' => $outstandingTotal,
+            // The two halves of what is in transit, the way a reconciliation is
+            // written on paper: deposits the bank has not credited yet, and
+            // payments it has not paid out yet.
+            'deposits_in_transit' => round($outstanding->where('amount', '>', 0)->sum('amount'), 2),
+            'payments_in_transit' => round(-$outstanding->where('amount', '<', 0)->sum('amount'), 2),
             'statement_balance' => $statement,
             'difference' => $difference,
             // Anything left over is not timing — it is an error in one of the
             // two records, and the only useful thing to do is say so.
             'is_reconciled' => abs($difference) < 0.005,
+            'movement_count' => $movements->count(),
+            'outstanding_count' => $outstanding->count(),
+            'cleared_earlier_count' => $movements->whereNotNull('cleared_in')->count(),
         ];
     }
 }

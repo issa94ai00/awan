@@ -16,10 +16,7 @@ class PurchaseReceiptController extends Controller
         $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator']);
 
         if ($request->has('search') && $request->search) {
-            $query->where('receipt_number', 'like', '%' . $request->search . '%')
-                ->orWhereHas('supplier', function ($q) use ($request) {
-                    $q->where('name', 'like', '%' . $request->search . '%');
-                });
+            $query->whereSearch(['receipt_number', 'supplier.name'], $request->search);
         }
 
         $receipts = $query->latest()->paginate(20);

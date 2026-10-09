@@ -56,3 +56,9 @@ Schedule::command('accounting:accrue-end-of-service')
 Schedule::command('commissions:purge-trashed')
     ->dailyAt('02:15')
     ->withoutOverlapping();
+
+// Operational ERP metrics alert scan (stock shortages, pending orders, overdue invoices)
+Schedule::command('alerts:check --notify')
+    ->hourly()
+    ->withoutOverlapping();
+

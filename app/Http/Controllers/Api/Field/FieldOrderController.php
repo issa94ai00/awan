@@ -63,11 +63,7 @@ class FieldOrderController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(fn ($q) => $q
-                ->where('order_number', 'like', "%{$search}%")
-                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")));
+            $query->whereSearch(['order_number', 'customer.name', 'customer.phone'], $request->search);
         }
 
         $rows = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));

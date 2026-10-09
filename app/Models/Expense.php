@@ -15,6 +15,7 @@ class Expense extends Model
     protected $fillable = [
         'expense_number',
         'invoice_id',
+        'sales_order_id',
         'customer_id',
         'description',
         'notes',
@@ -35,6 +36,7 @@ class Expense extends Model
 
     const STATUS_PENDING = 'pending';
     const STATUS_APPROVED = 'approved';
+    const STATUS_PAID = 'paid';
     const STATUS_REJECTED = 'rejected';
 
     const CATEGORY_SHIPPING = 'shipping';
@@ -51,6 +53,7 @@ class Expense extends Model
     public static function getStatusOptions(): array
     {
         return [
+            self::STATUS_PAID => 'مدفوع',
             self::STATUS_PENDING => 'معلق',
             self::STATUS_APPROVED => 'موافق عليه',
             self::STATUS_REJECTED => 'مرفوض',
@@ -80,6 +83,11 @@ class Expense extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
     }
 
     public function customer(): BelongsTo

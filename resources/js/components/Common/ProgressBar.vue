@@ -1,5 +1,7 @@
 <!-- resources/js/Components/Common/ProgressBar.vue -->
 <script setup>
+import { computed } from 'vue';
+
 const props = defineProps({
     value: {
         type: Number,

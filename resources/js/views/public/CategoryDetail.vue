@@ -4,178 +4,193 @@
         <section class="page-header" v-if="category">
             <div class="container">
                 <h1>{{ $p(category, 'name') }}</h1>
-                <div class="breadcrumb">
-                    <router-link to="/">{{ t('nav_home') || 'الرئيسية' }}</router-link>
+                <nav class="breadcrumb" :aria-label="t('nav_categories')">
+                    <router-link to="/">{{ t('nav_home') }}</router-link>
                     <span class="sep">›</span>
-                    <router-link to="/categories">{{ t('nav_categories') || 'الفئات' }}</router-link>
+                    <router-link to="/categories">{{ t('nav_categories') }}</router-link>
+                    <template v-if="parent">
+                        <span class="sep">›</span>
+                        <router-link :to="`/category/${parent.slug}`">{{ $p(parent, 'name') }}</router-link>
+                    </template>
                     <span class="sep">›</span>
-                    <span>{{ $p(category, 'name') }}</span>
-                </div>
+                    <span aria-current="page">{{ $p(category, 'name') }}</span>
+                </nav>
             </div>
         </section>
 
         <!-- Products List Section -->
-        <section class="products-section category-products-section fade-up">
+        <section ref="sectionRef" class="products-section category-products-section fade-up">
             <div class="container">
                 <div class="products-header" v-if="category">
-                    <div>
-                        <h2 class="section-title" style="margin-bottom: 0.5rem;">{{ t('nav_products') || 'منتجات' }} {{ $p(category, 'name') }}</h2>
-                        <p style="color:#556;">{{ $p(category, 'description') || t('browse_category_products') || 'تصفح المنتجات ضمن هذه الفئة' }}</p>
-                    </div>
+                    <h2 class="section-title">{{ t('nav_products') }} {{ $p(category, 'name') }}</h2>
+                    <p class="section-lead">{{ $p(category, 'description') || t('browse_category_products') }}</p>
                 </div>
 
-                <div v-if="loading" style="text-align: center; padding: 3rem;">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--mobile-primary);"></i>
+                <!-- Subcategories: a category with twenty-seven of them used to
+                     offer no way into any but the site menu. -->
+                <div v-if="subcategories.length || parent" class="subcategory-strip" role="list">
+                    <router-link
+                        v-if="parent"
+                        :to="`/category/${parent.slug}`"
+                        class="sub-chip sub-chip--back"
+                        role="listitem"
+                    >
+                        <i :class="isRtl ? 'fas fa-arrow-right' : 'fas fa-arrow-left'"></i>
+                        {{ t('catp_back_to', { name: $p(parent, 'name') }) }}
+                    </router-link>
+                    <router-link
+                        v-for="sub in subcategories"
+                        :key="sub.id"
+                        :to="`/category/${sub.slug}`"
+                        class="sub-chip"
+                        role="listitem"
+                    >
+                        {{ $p(sub, 'name') }}
+                        <span class="sub-count">{{ formatCount(sub.product_count) }}</span>
+                    </router-link>
                 </div>
 
-                <div v-else>
+                <ListingToolbar
+                    v-model:search="searchInput"
+                    :sort="query.sort"
+                    :stock="query.stock"
+                    :sort-options="sortOptions"
+                    :placeholder="t('catp_search', { name: category ? $p(category, 'name') : '' })"
+                    @update:sort="setQuery({ sort: $event })"
+                    @update:stock="setQuery({ stock: $event })"
+                />
+
+                <p v-if="pagination.total" class="result-count" aria-live="polite">
+                    {{ t('catp_range', { from: formatCount(rangeFrom), to: formatCount(rangeTo), total: formatCount(pagination.total) }) }}
+                </p>
+
+                <!-- First visit: placeholders the shape of the cards. -->
+                <div v-if="!loaded" class="products-grid" aria-busy="true">
+                    <ProductListingCard v-for="n in query.per" :key="n" skeleton />
+                </div>
+
+                <div v-else-if="loadError" class="empty-state">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <p>{{ t('catp_load_failed') }}</p>
+                    <button type="button" class="empty-action" @click="fetchProducts">{{ t('catp_retry') }}</button>
+                </div>
+
+                <!-- A later page or filter keeps the current cards up, dimmed,
+                     until the new ones land — the grid used to collapse to a
+                     spinner and throw the page back up to the header. -->
+                <div v-else class="grid-wrap" :class="{ 'is-loading': loading }" :aria-busy="loading">
                     <div v-if="products.length" class="products-grid">
-                        <div v-for="product in products" :key="product.id" class="product-card">
-                            <div class="product-image">
-                                <div class="badges-container">
-                                    <span v-if="!product.in_stock" class="badge badge-out">{{ t('out_of_stock') || 'غير متوفر' }}</span>
-                                    <span v-else class="badge badge-in">{{ t('in_stock') || 'متوفر' }}</span>
-                                </div>
-                                <img :src="getImageUrl(product.image_main)" :alt="product.name_ar" loading="lazy">
-                                <router-link :to="'/product/' + product.slug" class="product-overlay">
-                                    <span class="view-btn"><i class="fas fa-eye"></i></span>
-                                </router-link>
-                            </div>
-                            <div class="product-info">
-                                <!-- Row 1: Title -->
-                                <div class="product-title-row">
-                                    <h3 class="product-title">{{ $p(product, 'name') }}</h3>
-                                </div>
-                                <!-- Row 2: Details -->
-                                <div class="product-details-row">
-                                    <div class="product-category">{{ $p(category, 'name') || t('category') || 'منتجات' }}</div>
-                                    <div v-if="product.brand || product.model" class="product-meta-info">
-                                        <span v-if="product.brand">{{ product.brand }}</span>
-                                        <span v-if="product.model">{{ product.model }}</span>
-                                    </div>
-                                    <div v-if="settings.show_product_price === '1' && product.show_price && parseFloat(product.price) > 0" class="product-price">
-                                        <span>${{ parseFloat(product.price).toFixed(2) }}</span>
-                                    </div>
-                                </div>
-                                <!-- Row 3: Action Buttons -->
-                                <div class="product-actions-row">
-                                    <button class="btn-add-to-cart" @click="handleAddToCart(product)">
-                                        <i class="fas fa-cart-plus"></i>
-                                        <span>{{ t('add_to_cart') || 'أضف للسلة' }}</span>
-                                    </button>
-                                    <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000') + '?text=' + encodeURIComponent('مرحباً، أنا مهتم بمنتج: ' + $p(product, 'name'))" class="btn-whatsapp" target="_blank">
-                                        <i class="fab fa-whatsapp"></i>
-                                        <span>WhatsApp</span>
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
+                        <ProductListingCard
+                            v-for="product in products"
+                            :key="product.listing_key || product.id"
+                            :product="product"
+                            :fallback-category="category"
+                            @added="showToast(t('catp_added', { name: $event }))"
+                            @add-failed="showToast(t('catp_add_failed'), true)"
+                        />
                     </div>
 
-                    <div v-else style="text-align:center; padding: 4rem 2rem; color:#666;">
-                        <i class="fas fa-box-open" style="font-size: 2.5rem; margin-bottom: 15px; display: block; color: #909399;"></i>
-                        {{ t('no_products_found') || 'لا توجد منتجات حالياً ضمن هذه الفئة' }}
+                    <div v-else class="empty-state">
+                        <i class="fas fa-box-open"></i>
+                        <p v-if="query.q">{{ t('catp_no_match', { q: query.q }) }}</p>
+                        <p v-else-if="query.stock">{{ t('catp_none_in_stock') }}</p>
+                        <p v-else>{{ t('no_products_found') }}</p>
+                        <button v-if="query.q || query.stock" type="button" class="empty-action" @click="clearFilters">
+                            {{ t('catp_clear_filters') }}
+                        </button>
                     </div>
-
-                    <!-- Tailwind Pagination -->
-                    <nav v-if="pagination.last_page > 1" class="pagination-tailwind" aria-label="Pagination">
-                        <!-- Mobile view -->
-                        <div class="mobile-pagination">
-                            <span v-if="pagination.current_page === 1" class="btn-prev disabled">
-                                <i class="fas fa-chevron-right"></i>
-                                {{ t('previous') || 'السابق' }}
-                            </span>
-                            <a v-else href="#" @click.prevent="goToPage(pagination.current_page - 1)" class="btn-prev">
-                                <i class="fas fa-chevron-right"></i>
-                                {{ t('previous') || 'السابق' }}
-                            </a>
-
-                            <a v-if="pagination.has_more_pages" href="#" @click.prevent="goToPage(pagination.current_page + 1)" class="btn-next">
-                                {{ t('next') || 'التالي' }}
-                                <i class="fas fa-chevron-left"></i>
-                            </a>
-                            <span v-else class="btn-next disabled">
-                                {{ t('next') || 'التالي' }}
-                                <i class="fas fa-chevron-left"></i>
-                            </span>
-                        </div>
-
-                        <!-- Desktop view -->
-                        <div class="desktop-pagination">
-                            <p class="pagination-info">
-                                {{ t('showing_page') || 'عرض الصفحة' }} <span>{{ pagination.current_page }}</span> {{ t('of') || 'من أصل' }} <span>{{ pagination.last_page }}</span> {{ t('pages') || 'صفحات' }}
-                            </p>
-
-                            <div class="pagination-buttons">
-                                <!-- Previous -->
-                                <span v-if="pagination.current_page === 1" class="page-btn prev disabled">
-                                    <i class="fas fa-chevron-right"></i>
-                                </span>
-                                <a v-else href="#" @click.prevent="goToPage(pagination.current_page - 1)" class="page-btn prev">
-                                    <i class="fas fa-chevron-right"></i>
-                                </a>
-
-                                <!-- Page Numbers -->
-                                <template v-for="page in pagination.last_page" :key="page">
-                                    <span v-if="page === pagination.current_page" class="page-btn active">{{ page }}</span>
-                                    <a v-else href="#" @click.prevent="goToPage(page)" class="page-btn">{{ page }}</a>
-                                </template>
-
-                                <!-- Next -->
-                                <a v-if="pagination.current_page < pagination.last_page" href="#" @click.prevent="goToPage(pagination.current_page + 1)" class="page-btn next">
-                                    <i class="fas fa-chevron-left"></i>
-                                </a>
-                                <span v-else class="page-btn next disabled">
-                                    <i class="fas fa-chevron-left"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </nav>
+                    <div v-if="loading" class="grid-spinner"><i class="fas fa-spinner fa-spin"></i></div>
                 </div>
+
+                <ListingPagination
+                    v-if="loaded"
+                    :pagination="pagination"
+                    :link-for="pageLink"
+                    :per="query.per"
+                    @update:per="setQuery({ per: $event })"
+                />
             </div>
         </section>
 
         <!-- Notification Toast -->
-        <div v-if="toast.show" class="cart-notification success show" style="top: 100px;">
-            <i class="fas fa-check-circle"></i>
+        <div v-if="toast.show" class="cart-notification show" :class="toast.error ? 'error' : 'success'" role="status" style="top: 100px;">
+            <i :class="toast.error ? 'fas fa-circle-exclamation' : 'fas fa-check-circle'"></i>
             <span>{{ toast.message }}</span>
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch, reactive } from 'vue';
-import { useRoute } from 'vue-router';
-import { useSettingsStore } from '@/stores/settings';
-import { useCartStore } from '@/stores/cart';
-import { getImageUrl } from '@/utils/imageUrl';
+import { ref, computed, watch, reactive, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useSeo } from '@/Composables/useSeo';
+import { useListingQuery } from '@/Composables/useListingQuery';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+import ProductListingCard from '@/components/public/ProductListingCard.vue';
+import ListingPagination from '@/components/public/ListingPagination.vue';
+import ListingToolbar from '@/components/public/ListingToolbar.vue';
 
-// Stores
-const settingsStore = useSettingsStore();
-const cartStore = useCartStore();
 const { t, locale } = useI18n();
-
-// Router
 const route = useRoute();
+const router = useRouter();
 
 // State
 const category = ref(null);
+const parent = ref(null);
+const subcategories = ref([]);
 const products = ref([]);
 const pagination = ref({});
-const loading = ref(true);
-const toast = reactive({ show: false, message: '' });
+const loading = ref(false);
+const loaded = ref(false);
+const loadError = ref(false);
+const sectionRef = ref(null);
+const toast = reactive({ show: false, message: '', error: false });
 
-// Computed
-const settings = computed(() => settingsStore.data);
 const categorySlug = computed(() => route.params.slug);
+const isRtl = computed(() => locale.value === 'ar');
 
-// SEO Meta Tags — owned by the shared useSeo composable (routed through
-// PublicLayout). Breadcrumb structured data is re-emitted here so the client-side
-// head matches the server's BreadcrumbList for category pages.
+/* ------------------------------------------------------------------ *
+ * The listing's state lives in the URL — see useListingQuery.
+ * ------------------------------------------------------------------ */
+const { query, pageLink, setQuery, apiParams } = useListingQuery({
+    sorts: ['newest', 'price_asc', 'price_desc', 'name'],
+    defaultSort: 'newest',
+});
+
+const clearFilters = () => {
+    searchInput.value = '';
+    setQuery({ q: '', stock: false });
+};
+
+// Search as you type, gathered for a moment; replace rather than push so
+// each keystroke is not a step for the back button.
+const searchInput = ref(query.value.q);
+let searchTimer = null;
+watch(searchInput, (value) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+        const q = value.trim();
+        if (q !== query.value.q) setQuery({ q }, { replace: true });
+    }, 350);
+});
+watch(() => query.value.q, (q) => {
+    if (q !== searchInput.value.trim()) searchInput.value = q;
+});
+
+const sortOptions = computed(() => [
+    { value: 'newest', label: t('newest') },
+    { value: 'price_asc', label: t('price_low_high') },
+    { value: 'price_desc', label: t('price_high_low') },
+    { value: 'name', label: t('name') },
+]);
+
+/* ------------------------------------------------------------------ *
+ * SEO — owned by the shared useSeo composable (routed through
+ * PublicLayout). Breadcrumb structured data is re-emitted here so the
+ * client-side head matches the server's BreadcrumbList for category pages.
+ * ------------------------------------------------------------------ */
 const seo = useSeo();
 
 const dispatchSeoEvent = () => {
@@ -204,65 +219,99 @@ const dispatchSeoEvent = () => {
 };
 
 watch(locale, () => {
-    if (category.value) {
-        dispatchSeoEvent();
-    }
+    if (category.value) dispatchSeoEvent();
 });
 
-// Helpers
+/* ------------------------------------------------------------------ *
+ * Loading
+ * ------------------------------------------------------------------ */
+let controller = null;
 
-const handleAddToCart = async (product) => {
-    try {
-        await cartStore.addToCart(product.id, 1);
-        showToast(`تم إضافة "${product.name_ar}" إلى السلة`);
-    } catch (e) {
-        showToast('حدث خطأ أثناء إضافة المنتج');
-    }
-};
+const fetchProducts = async () => {
+    // A newer request cancels the one still in flight, so a quick run of page
+    // clicks cannot end on an older page's cards.
+    controller?.abort();
+    controller = new AbortController();
+    const { signal } = controller;
+    const { page } = query.value;
 
-const showToast = (msg) => {
-    toast.message = msg;
-    toast.show = true;
-    setTimeout(() => {
-        toast.show = false;
-    }, 3000);
-};
-
-// Fetch products for category
-const fetchCategoryProducts = async (page = 1) => {
     loading.value = true;
+    loadError.value = false;
     try {
-        const res = await axios.get(`/api/v1/categories/${categorySlug.value}/products?page=${page}`);
-        if (res.data?.success) {
-            category.value = res.data.data.category;
-            dispatchSeoEvent();
-            products.value = res.data.data.products || [];
-            pagination.value = res.data.data.pagination || {};
-        }
+        const res = await axios.get(`/api/v1/categories/${categorySlug.value}/products`, {
+            signal,
+            params: apiParams(locale.value),
+        });
+        if (!res.data?.success) throw new Error('Unexpected response');
+        const data = res.data.data;
+        category.value = data.category;
+        parent.value = data.parent || null;
+        subcategories.value = data.subcategories || [];
+        products.value = data.products || [];
+        pagination.value = data.pagination || {};
+        dispatchSeoEvent();
+
+        // Past the end — a stale link, or a filter that shrank the list: go to
+        // the last page there is, in place of this one.
+        const last = pagination.value.last_page || 1;
+        if (page > last) router.replace(pageLink(last));
     } catch (e) {
-        console.error('Failed to load category products', e);
+        if (axios.isCancel(e) || e?.name === 'CanceledError') return;
+        loadError.value = true;
     } finally {
-        loading.value = false;
-        triggerFadeUp();
+        if (!signal.aborted) {
+            loading.value = false;
+            loaded.value = true;
+            triggerFadeUp();
+        }
     }
 };
 
-const goToPage = (page) => {
-    fetchCategoryProducts(page);
-    // Smooth scroll to products section
-    const sec = document.querySelector('.category-products-section');
-    if (sec) {
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+const scrollToList = () => {
+    const top = sectionRef.value?.getBoundingClientRect().top;
+    // Only when the list's top is out of view: a click near the top of the
+    // page should not jump.
+    if (top !== undefined && top < 0) {
+        sectionRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 };
 
-onMounted(() => {
-    fetchCategoryProducts();
+// Everything the list depends on; a change of category starts over.
+watch(
+    () => [categorySlug.value, query.value.page, query.value.sort, query.value.q, query.value.stock, query.value.per],
+    ([slug, page], previous) => {
+        if (!slug) return;
+        if (previous && slug !== previous[0]) {
+            loaded.value = false;
+            window.scrollTo({ top: 0 });
+        } else if (previous && page !== previous[1]) {
+            scrollToList();
+        }
+        fetchProducts();
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(() => {
+    controller?.abort();
+    clearTimeout(searchTimer);
+    clearTimeout(toastTimer);
 });
 
-watch(categorySlug, () => {
-    fetchCategoryProducts();
-});
+/* ------------------------------------------------------------------ *
+ * Display
+ * ------------------------------------------------------------------ */
+const rangeFrom = computed(() => ((pagination.value.current_page || 1) - 1) * (pagination.value.per_page || query.value.per) + 1);
+const rangeTo = computed(() => Math.min(rangeFrom.value + products.value.length - 1, pagination.value.total || 0));
+
+const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+
+let toastTimer = null;
+const showToast = (message, error = false) => {
+    Object.assign(toast, { message, error, show: true });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.show = false; }, 3000);
+};
 </script>
 
 <style scoped>
@@ -281,395 +330,137 @@ watch(categorySlug, () => {
     margin-top: 30px;
 }
 
-.product-card {
-    background: rgba(255, 255, 255, 0.7) !important;
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03) !important;
-    border-radius: 24px !important;
-    overflow: hidden;
+.products-header .section-title {
+    margin-bottom: 0.5rem;
+}
+
+.section-lead {
+    color: #556;
+    margin: 0;
+}
+
+[data-theme="dark"] .section-lead {
+    color: #94a3b8;
+}
+
+/* ── Subcategories ── */
+.subcategory-strip {
     display: flex;
-    flex-direction: column;
-    height: 100%;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    gap: 8px;
+    margin-top: 1.25rem;
+    padding-bottom: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
 }
 
-.product-card:hover {
-    transform: translateY(-8px) scale(1.01) !important;
-    background: rgba(255, 255, 255, 0.85) !important;
-    box-shadow: 0 20px 40px color-mix(in srgb, var(--mobile-primary) 8%, transparent), 0 15px 30px rgba(0, 0, 0, 0.04) !important;
-    border-color: color-mix(in srgb, var(--mobile-primary) 25%, transparent) !important;
-}
-
-[data-theme="dark"] .product-card {
-    background: rgba(30, 41, 59, 0.45) !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
-}
-
-[data-theme="dark"] .product-card:hover {
-    background: rgba(30, 41, 59, 0.6) !important;
-    border-color: color-mix(in srgb, var(--mobile-primary) 25%, transparent) !important;
-    box-shadow: 0 20px 40px color-mix(in srgb, var(--mobile-primary) 10%, transparent), 0 15px 30px rgba(0, 0, 0, 0.3) !important;
-}
-
-.product-image {
-    position: relative;
-    height: 250px;
-    background: #f8fafc;
-    overflow: hidden;
-    display: flex;
+.sub-chip {
+    flex: none;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.2s ease;
 }
 
-[data-theme="dark"] .product-image {
-    background: #1e293b;
+.sub-chip:hover {
+    border-color: var(--mobile-primary);
+    color: var(--mobile-primary);
 }
 
-.product-image img {
-    max-height: 100%;
-    max-width: 100%;
-    object-fit: contain;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+.sub-chip--back {
+    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
+    color: var(--mobile-primary);
 }
 
-.product-card:hover .product-image img {
-    transform: scale(1.06);
-}
-
-.badges-container {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.badge {
-    padding: 6px 12px;
-    border-radius: 30px;
+.sub-count {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.05);
     font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    color: #64748b;
 }
 
-.badge-in {
-    background: #e6f4ea;
-    color: #137333;
+[data-theme="dark"] .sub-chip {
+    background: rgba(30, 41, 59, 0.5);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
 }
 
-[data-theme="dark"] .badge-in {
-    background: rgba(19, 115, 51, 0.2);
-    color: #81c995;
-    border: 1px solid rgba(129, 201, 149, 0.2);
+[data-theme="dark"] .sub-count {
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
 }
 
-.badge-out {
-    background: #fce8e6;
-    color: #c5221f;
+.result-count {
+    margin: 1rem 0 0;
+    font-size: 0.88rem;
+    color: #64748b;
 }
 
-[data-theme="dark"] .badge-out {
-    background: rgba(197, 34, 31, 0.2);
-    color: #f28b82;
-    border: 1px solid rgba(242, 139, 130, 0.2);
+/* ── Grid states ── */
+.grid-wrap {
+    position: relative;
 }
 
-.product-overlay {
+.grid-wrap .products-grid {
+    transition: opacity 0.2s ease;
+}
+
+.grid-wrap.is-loading .products-grid {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.grid-spinner {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: color-mix(in srgb, var(--mobile-primary) 20%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: all 0.4s ease;
-    z-index: 5;
-}
-
-.product-card:hover .product-overlay {
-    opacity: 1;
-}
-
-.view-btn {
-    width: 50px;
-    height: 50px;
-    background: white;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--el-color-primary);
-    font-size: 1.2rem;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    transform: translateY(20px);
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    background: #fff;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    color: var(--mobile-primary);
+    font-size: 1.3rem;
 }
 
-.product-card:hover .view-btn {
-    transform: translateY(0);
-}
-
-.product-info {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    gap: 12px;
-}
-
-.product-title-row {
-    margin-bottom: 4px;
-}
-
-.product-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0 0 4px 0;
-    line-height: 1.4;
-    transition: color 0.3s;
-}
-
-[data-theme="dark"] .product-title {
-    color: #f1f5f9;
-}
-
-.product-subtitle {
-    font-size: 0.85rem;
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
     color: #64748b;
+}
+
+.empty-state > i {
     display: block;
+    margin-bottom: 15px;
+    font-size: 2.5rem;
+    color: #909399;
 }
 
-.product-details-row {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    border-top: 1px dashed rgba(0, 0, 0, 0.08);
-    padding-top: 12px;
-    margin-bottom: 6px;
+.empty-state p {
+    margin: 0 0 1rem;
 }
 
-[data-theme="dark"] .product-details-row {
-    border-color: rgba(255, 255, 255, 0.08);
-}
-
-.product-category {
-    font-size: 0.8rem;
-    color: var(--mobile-primary);
-    font-weight: 600;
-}
-
-.product-meta-info {
-    font-size: 0.8rem;
-    color: #64748b;
-    display: flex;
-    gap: 8px;
-}
-
-.product-meta-info span {
-    background: rgba(0, 0, 0, 0.04);
-    padding: 2px 8px;
-    border-radius: 4px;
-}
-
-[data-theme="dark"] .product-meta-info span {
-    background: rgba(255, 255, 255, 0.05);
-    color: #94a3b8;
-}
-
-.product-price {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--mobile-primary);
-    margin-top: 4px;
-}
-
-[data-theme="dark"] .product-price {
-    color: var(--mobile-primary);
-}
-
-.product-actions-row {
-    display: flex;
-    gap: 10px;
-    margin-top: auto;
-}
-
-.btn-add-to-cart, .btn-whatsapp {
-    padding: 10px 14px;
-    border-radius: 12px;
-    font-weight: 700;
-    font-size: 0.88rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: all 0.3s ease;
-    cursor: pointer;
-    flex: 1;
+.empty-action {
+    padding: 10px 20px;
     border: none;
-}
-
-.btn-add-to-cart {
+    border-radius: 12px;
     background: var(--mobile-primary);
-    color: white;
-}
-
-.btn-add-to-cart:hover {
-    background: var(--el-color-primary-light-3);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--mobile-primary) 20%, transparent);
-}
-
-.btn-whatsapp {
-    background: #25d366;
-    color: white;
-    text-decoration: none;
-}
-
-.btn-whatsapp:hover {
-    background: #20ba5a;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.2);
-}
-
-/* Pagination modern glass style */
-.pagination-tailwind {
-    margin-top: 40px;
-}
-
-.mobile-pagination {
-    display: none;
-}
-
-.desktop-pagination {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(10px);
-    padding: 12px 24px;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-}
-
-[data-theme="dark"] .desktop-pagination {
-    background: rgba(30, 41, 59, 0.3);
-    border-color: rgba(255, 255, 255, 0.05);
-}
-
-.pagination-info {
-    font-size: 0.9rem;
-    color: #475569;
-    margin: 0;
-}
-
-[data-theme="dark"] .pagination-info {
-    color: #94a3b8;
-}
-
-.pagination-buttons {
-    display: flex;
-    gap: 8px;
-}
-
-.page-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    color: #475569;
-    text-decoration: none;
-    background: rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    transition: all 0.3s ease;
-}
-
-[data-theme="dark"] .page-btn {
-    background: rgba(30, 41, 59, 0.5);
-    color: #f1f5f9;
-    border-color: rgba(255, 255, 255, 0.05);
-}
-
-.page-btn:hover:not(.disabled) {
-    background: var(--mobile-primary);
-    color: white !important;
-    border-color: var(--mobile-primary);
-    transform: translateY(-2px);
-}
-
-.page-btn.active {
-    background: var(--mobile-primary);
-    color: white !important;
-    border-color: var(--mobile-primary);
-}
-
-[data-theme="dark"] .page-btn.active {
-    background: var(--mobile-primary);
-    color: #0f172a !important;
-    border-color: var(--mobile-primary);
-}
-
-.page-btn.disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-@media (max-width: 640px) {
-    .desktop-pagination {
-        display: none;
-    }
-    
-    .mobile-pagination {
-        display: flex;
-        justify-content: space-between;
-        gap: 15px;
-    }
-    
-    .btn-prev, .btn-next {
-        flex: 1;
-        padding: 12px;
-        background: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(0,0,0,0.05);
-        border-radius: 12px;
-        color: #475569;
-        text-align: center;
-        text-decoration: none;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-    }
-    
-    [data-theme="dark"] .btn-prev, 
-    [data-theme="dark"] .btn-next {
-        background: rgba(30, 41, 59, 0.5);
-        color: #f1f5f9;
-        border-color: rgba(255, 255, 255, 0.05);
-    }
-    
-    .btn-prev:hover:not(.disabled), 
-    .btn-next:hover:not(.disabled) {
-        background: var(--mobile-primary);
-        color: white;
-    }
-    
-    .btn-prev.disabled, .btn-next.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
 }
 </style>
-

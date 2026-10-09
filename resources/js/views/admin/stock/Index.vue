@@ -10,6 +10,9 @@
                 <router-link to="/admin/inventory">
                     <el-button><i class="fas fa-chart-pie mr-1"></i> {{ $t('inventory_board') }}</el-button>
                 </router-link>
+                <el-button @click="costMethodModalVisible = true">
+                    <i class="fas fa-calculator mr-1"></i> {{ $t('cost_calculation_method') }}
+                </el-button>
                 <el-button type="info" plain @click="refreshData" :loading="refreshing">
                     <i class="fas fa-sync-alt mr-1"></i> {{ $t('update') }}
                 </el-button>
@@ -130,6 +133,13 @@
                             <el-tag :type="assignmentStatus(row).type" effect="light" size="small">{{ assignmentStatus(row).label }}</el-tag>
                         </template>
                     </el-table-column>
+                    <el-table-column :label="$t('cost_method')" width="130" align="center">
+                        <template #default="{ row }">
+                            <el-tag size="small" :type="costMethodTagType(row.cost_basis)" effect="plain">
+                                {{ costMethodLabel(row.cost_basis) }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
                     <el-table-column :label="$t('actions')" width="160" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button size="small" text type="primary" @click="openEditModal(row)">
@@ -247,6 +257,16 @@
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="12">
+                        <el-form-item :label="$t('cost_calculation_method')">
+                            <el-select v-model="form.cost_basis" style="width: 100%">
+                                <el-option :label="$t('cost_method_fifo')" value="FIFO" />
+                                <el-option :label="$t('cost_method_weighted_average')" value="WEIGHTED_AVERAGE" />
+                                <el-option :label="$t('cost_method_lifo')" value="LIFO" />
+                                <el-option :label="$t('cost_method_fefo')" value="FEFO" />
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :xs="24" :sm="12">
                         <el-form-item :label="$t('dates')">
                             <el-date-picker
                                 v-model="effectiveRange"
@@ -286,6 +306,12 @@
                 </el-button>
             </template>
         </el-dialog>
+
+        <!-- Cost Calculation Method Management Modal -->
+        <CostCalculationMethodModal
+            v-model="costMethodModalVisible"
+            @saved="fetchData"
+        />
     </div>
 </template>
 
@@ -299,12 +325,14 @@ import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import CostCalculationMethodModal from '@/components/admin/inventory/CostCalculationMethodModal.vue';
 
 const { t } = useI18n();
 
 const productsStore = useProductsStore();
 const inventoryStore = useInventoryStore();
 
+const costMethodModalVisible = ref(false);
 const loading = ref(false);
 const assignments = ref([]);
 const error = ref(null);
@@ -338,6 +366,7 @@ const defaultForm = () => ({
     lead_time_days: 1,
     supplier_id: null,
     putaway_strategy: 'fifo',
+    cost_basis: 'FIFO',
     auto_reorder_enabled: false,
     is_active: true,
     notes: '',
@@ -360,6 +389,34 @@ const filteredAssignments = computed(() => assignments.value);
 const assignmentStatus = (row) => {
     if (Number(row.available_quantity) <= Number(row.min_stock_level)) return { label: t('low'), type: 'danger' };
     return { label: t('available'), type: 'success' };
+};
+
+const costMethodLabel = (method) => {
+    switch (method) {
+        case 'WEIGHTED_AVERAGE':
+            return t('cost_method_weighted_average');
+        case 'LIFO':
+            return t('cost_method_lifo');
+        case 'FEFO':
+            return t('cost_method_fefo');
+        case 'FIFO':
+        default:
+            return t('cost_method_fifo');
+    }
+};
+
+const costMethodTagType = (method) => {
+    switch (method) {
+        case 'WEIGHTED_AVERAGE':
+            return 'primary';
+        case 'LIFO':
+            return 'warning';
+        case 'FEFO':
+            return 'info';
+        case 'FIFO':
+        default:
+            return 'success';
+    }
 };
 
 const fetchData = async () => {
@@ -448,6 +505,7 @@ const submitAssignment = async () => {
         lead_time_days: form.lead_time_days,
         primary_bin_id: form.primary_bin_id,
         putaway_strategy: form.putaway_strategy,
+        cost_basis: form.cost_basis,
         auto_reorder_enabled: form.auto_reorder_enabled,
         effective_date: effectiveRange.value?.[0] || null,
         expiry_date: effectiveRange.value?.[1] || null,

@@ -347,6 +347,7 @@ import { ref, onMounted, computed, reactive } from 'vue';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { suppliersApi } from '@/api/suppliers';
+import { matchesSearch } from '@/utils/search';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -427,15 +428,14 @@ const getArabicStatus = (status) => {
 
 const filteredSuppliers = computed(() => {
     if (!searchQuery.value.trim()) return store.suppliers;
-    const query = searchQuery.value.toLowerCase();
     return store.suppliers.filter((supplier) => {
-        return [
+        return matchesSearch([
             supplier.name,
             supplier.company,
             supplier.email,
             supplier.phone,
             supplier.status
-        ].some((field) => String(field || '').toLowerCase().includes(query));
+        ], searchQuery.value);
     });
 });
 

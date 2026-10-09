@@ -18,9 +18,21 @@ class InvoiceItemResource extends JsonResource
             'id' => $this->id,
             'invoice_id' => $this->invoice_id,
             'product_id' => $this->product_id,
+            // The size or colour sold, when the line is for one.
+            'product_variant_id' => $this->product_variant_id,
             'product_name' => $this->product_name,
+            // Where the line came off the shelf and the unit it was priced in.
+            // The edit form restores both; without them a reopened invoice
+            // lost its warehouses and units and saved them back empty.
+            'warehouse_id' => $this->warehouse_id,
+            'product_unit_id' => $this->product_unit_id,
+            'unit_name' => $this->unit_name,
+            'unit_multiplier' => $this->unit_multiplier !== null ? (float) $this->unit_multiplier : null,
             'quantity' => (int) $this->quantity,
             'unit_price' => (float) $this->unit_price,
+            'discount' => (float) ($this->discount ?? 0),
+            'tax_rate' => $this->tax_rate !== null ? (float) $this->tax_rate : null,
+            'tax_amount' => (float) ($this->tax_amount ?? 0),
             'total_price' => (float) $this->total_price,
             'notes' => $this->notes,
 
@@ -30,8 +42,20 @@ class InvoiceItemResource extends JsonResource
                     'id' => $this->product->id,
                     'name_ar' => $this->product->name_ar,
                     'name_en' => $this->product->name_en,
+                    'sku' => $this->product->sku,
                     'slug' => $this->product->slug,
                     'image_main' => image_url($this->product->image_main),
+                ] : null;
+            }),
+
+            'variant' => $this->when($this->relationLoaded('variant'), function () {
+                return $this->variant ? [
+                    'id' => $this->variant->id,
+                    'sku' => $this->variant->sku,
+                    'size' => $this->variant->size,
+                    'color' => $this->variant->color,
+                    'material' => $this->variant->material,
+                    'label' => $this->variant->label,
                 ] : null;
             }),
 

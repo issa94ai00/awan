@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SalesReportController extends Controller
@@ -23,7 +24,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
@@ -198,7 +199,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'group_by' => 'nullable|in:day,week,month,employee,customer,warehouse,status',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
@@ -266,7 +267,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -310,7 +311,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -446,8 +447,9 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = SalesOrder::query()->with(['items.product', 'items.allocations.warehouse', 'fulfillmentWarehouse']);
@@ -467,6 +469,17 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('sales_orders.status', $request->status);
+        }
+
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('sales_orders.status', '!=', SalesOrder::STATUS_CANCELLED);
+        }
+
+        // Validated from the start but never applied, so choosing a product
+        // changed nothing. Narrowed twice: to the documents that sold it, then
+        // to its own lines within them.
+        if ($request->filled('product_id')) {
+            $query->whereHas('items', fn ($items) => $items->where('product_id', $request->product_id));
         }
 
         $orders = $query->get();
@@ -529,7 +542,8 @@ class SalesReportController extends Controller
                     'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
                 ]];
             });
-        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
+        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0)
+            ->when($request->filled('product_id'), fn ($rows) => $rows->where('product_id', (int) $request->product_id));
 
         $grouped = $productSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
 
@@ -561,6 +575,8 @@ class SalesReportController extends Controller
             'gross_profit' => (float) $grossProfit,
             'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
             'product_count' => $finalProductSummary->count(),
+            // `product_count` counts product-and-warehouse rows; this, products.
+            'distinct_products' => $finalProductSummary->pluck('product_id')->unique()->count(),
             'top_product' => $finalProductSummary->first() ?: null,
             'lowest_product' => $finalProductSummary->last() ?: null,
         ];
@@ -583,7 +599,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
         ]);
 
         $query = WarehouseInventory::query()
@@ -601,25 +617,73 @@ class SalesReportController extends Controller
 
         $this->applyInventoryDateFilters($query, $request);
 
-        $warehouseSummary = $query->clone()
+        // Without toBase()->select([]) this kept the base query's
+        // `warehouse_inventory.*` beside a GROUP BY, which MySQL's
+        // only_full_group_by rejects — the whole endpoint answered 500 in
+        // production while passing on the SQLite the tests run on.
+        $warehouseSummary = $query->clone()->toBase()
+            ->select([])
             ->join('warehouses', 'warehouses.id', '=', 'warehouse_inventory.warehouse_id')
             ->selectRaw('warehouse_inventory.warehouse_id as warehouse_id')
             ->selectRaw('warehouses.name as warehouse_name')
             ->selectRaw('SUM(warehouse_inventory.quantity) as total_quantity')
-            ->selectRaw('SUM(warehouse_inventory.available_quantity) as total_available')
+            ->selectRaw('SUM('.WarehouseInventory::availableSql().') as total_available')
             ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
             ->groupBy('warehouse_inventory.warehouse_id', 'warehouses.name')
+            ->orderByDesc('total_value')
             ->get();
 
-        $overallValue = (float) $query->clone()
-            ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
-            ->value('total_value');
+        // One pass for every headline figure, measured the way the inventory
+        // screens measure them (WarehouseInventory::availableSql), so this
+        // report and the stock screen give the same answer. The page used to
+        // take its counts from the dashboard's catalogue-wide stats, which
+        // ignored every filter set here.
+        $available = WarehouseInventory::availableSql();
+
+        // toBase(): plain rows, without the base query's `warehouse_inventory.*`
+        // column list or its eager loads, neither of which an aggregate wants.
+        $totals = $query->clone()->toBase()
+            ->select([])
+            ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as product_count')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
+            ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)), 0) as total_value')
+            ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity * COALESCE(products.cost_price, 0)), 0) as total_cost_value')
+            // Stock with no cost on file adds nothing to the value at cost, so the
+            // figure has to say how much of the stock it could not price.
+            ->selectRaw('COUNT(DISTINCT CASE WHEN COALESCE(products.cost_price, 0) <= 0 THEN warehouse_inventory.product_id END) as uncosted_products')
+            ->selectRaw("SUM(CASE WHEN ({$available}) > COALESCE(warehouse_inventory.reorder_point, 0) THEN 1 ELSE 0 END) as healthy_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= COALESCE(warehouse_inventory.reorder_point, 0) AND ({$available}) > 0 THEN 1 ELSE 0 END) as low_stock_rows")
+            ->selectRaw("SUM(CASE WHEN ({$available}) <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows")
+            ->reorder()
+            ->first();
 
         $overall = [
-            'total_quantity' => (float) $query->clone()->sum('warehouse_inventory.quantity'),
-            'total_available' => (float) $query->clone()->sum('warehouse_inventory.available_quantity'),
-            'total_value' => $overallValue,
+            'total_quantity' => (float) ($totals->total_quantity ?? 0),
+            'total_available' => (float) ($totals->total_available ?? 0),
+            'total_value' => (float) ($totals->total_value ?? 0),
+            'total_cost_value' => (float) ($totals->total_cost_value ?? 0),
+            'product_count' => (int) ($totals->product_count ?? 0),
+            'uncosted_products' => (int) ($totals->uncosted_products ?? 0),
+            'healthy_rows' => (int) ($totals->healthy_rows ?? 0),
+            'low_stock_rows' => (int) ($totals->low_stock_rows ?? 0),
+            'out_of_stock_rows' => (int) ($totals->out_of_stock_rows ?? 0),
         ];
+
+        // The products holding the most stock, across the filtered warehouses.
+        $topProducts = $query->clone()->toBase()
+            ->select([])
+            ->selectRaw('warehouse_inventory.product_id as product_id')
+            ->selectRaw('COALESCE(products.name_ar, products.name_en) as product_name')
+            ->selectRaw('products.sku as sku')
+            ->selectRaw('SUM(warehouse_inventory.quantity) as total_quantity')
+            ->selectRaw("SUM({$available}) as total_available")
+            ->selectRaw('SUM(warehouse_inventory.quantity * COALESCE(products.price, 0)) as total_value')
+            ->groupBy('warehouse_inventory.product_id', 'products.name_ar', 'products.name_en', 'products.sku')
+            ->reorder()
+            ->orderByDesc('total_quantity')
+            ->limit(10)
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -634,6 +698,14 @@ class SalesReportController extends Controller
                         'total_value' => (float) ($item->total_value ?? 0),
                     ];
                 }),
+                'top_products' => $topProducts->map(fn ($item) => [
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product_name,
+                    'sku' => $item->sku,
+                    'total_quantity' => (float) ($item->total_quantity ?? 0),
+                    'total_available' => (float) ($item->total_available ?? 0),
+                    'total_value' => (float) ($item->total_value ?? 0),
+                ]),
                 'overall' => $overall,
             ],
         ]);
@@ -648,8 +720,9 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query();
@@ -665,6 +738,13 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // The status breakdown sees every status, so a report can say how many
+        // cancelled invoices it left out; everything else may leave them out.
+        $statusQuery = $query->clone();
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
         }
 
         $customerRows = $query
@@ -734,6 +814,25 @@ class SalesReportController extends Controller
             ];
         });
 
+        // Per status, so a report can leave cancelled invoices out of what
+        // was billed — `overall` below counts them — and say how many it left.
+        $statusSummary = $statusQuery
+            ->select('status')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
+            ->groupBy('status')
+            ->get()
+            ->map(fn ($item) => [
+                'status' => $item->status,
+                'total_invoices' => (int) ($item->total_invoices ?? 0),
+                'total_invoiced' => (float) ($item->total_invoiced ?? 0),
+                'paid_amount' => (float) ($item->paid_amount ?? 0),
+                'due_amount' => (float) ($item->due_amount ?? 0),
+            ])
+            ->values();
+
         return response()->json([
             'success' => true,
             'message' => 'Invoice dimensions retrieved successfully',
@@ -741,12 +840,117 @@ class SalesReportController extends Controller
                 'employee_summary' => $employeeSummary,
                 'customer_summary' => $customerSummary,
                 'warehouse_summary' => $warehouseSummary,
+                'status_summary' => $statusSummary,
                 'overall' => [
                     'total_invoices' => (int) $query->count(),
                     'total_invoiced' => (float) $query->sum('total'),
                     'paid_amount' => (float) $query->sum('paid_amount'),
                     'due_amount' => (float) $query->sum('due_amount'),
                 ],
+            ],
+        ]);
+    }
+
+    /**
+     * Billed and collected over time, by day, week or month.
+     *
+     * Grouped by calendar day in SQL — DATE() reads the same in MySQL and
+     * SQLite, where YEAR()/WEEK() do not — and folded into weeks or months
+     * here, which a day-per-row result keeps cheap. Empty periods are filled
+     * in, so a quiet week shows as a zero rather than as the line skipping it.
+     *
+     * Cancelled invoices are left out unless they are what was asked for:
+     * a trend of billing that counts voided bills is not one.
+     */
+    public function invoiceTrend(Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'nullable|exists:employees,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'date' => 'nullable|date',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
+            'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'group_by' => 'nullable|in:day,week,month',
+        ]);
+
+        $query = Invoice::query();
+        $this->applyInvoiceDateFilters($query, $request);
+
+        foreach (['customer_id' => 'customer_id', 'warehouse_id' => 'warehouse_id', 'employee_id' => 'assigned_employee_id'] as $param => $column) {
+            if ($request->filled($param)) {
+                $query->where($column, $request->input($param));
+            }
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        } else {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
+        }
+
+        $days = $query
+            ->selectRaw('DATE(created_at) as day')
+            ->selectRaw('COUNT(*) as total_invoices')
+            ->selectRaw('SUM(total) as total_invoiced')
+            ->selectRaw('SUM(paid_amount) as paid_amount')
+            ->selectRaw('SUM(due_amount) as due_amount')
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get();
+
+        $groupBy = $request->input('group_by', 'day');
+        $bucket = fn (Carbon $date) => match ($groupBy) {
+            'week' => $date->copy()->startOfWeek()->toDateString(),
+            'month' => $date->format('Y-m'),
+            default => $date->toDateString(),
+        };
+        $step = fn (Carbon $date) => match ($groupBy) {
+            'week' => $date->addWeek(),
+            'month' => $date->addMonthNoOverflow(),
+            default => $date->addDay(),
+        };
+
+        $rows = [];
+        foreach ($days as $day) {
+            $key = $bucket(Carbon::parse($day->day));
+            $rows[$key] ??= ['period' => $key, 'total_invoices' => 0, 'total_invoiced' => 0.0, 'paid_amount' => 0.0, 'due_amount' => 0.0];
+            $rows[$key]['total_invoices'] += (int) $day->total_invoices;
+            $rows[$key]['total_invoiced'] += (float) $day->total_invoiced;
+            $rows[$key]['paid_amount'] += (float) $day->paid_amount;
+            $rows[$key]['due_amount'] += (float) $day->due_amount;
+        }
+
+        // From the start of the period asked for (or the first invoice) to its
+        // end, but never past today: a month in progress is not a month of
+        // zeros still to come.
+        [$from, $to] = $this->resolveDateRange($request);
+        $first = $from ?? $days->first()?->day;
+        $last = $to ?? $days->last()?->day;
+        if ($first && $last) {
+            $end = Carbon::parse(min($last, now()->toDateString()));
+            $cursor = Carbon::parse($first);
+            if ($groupBy === 'week') {
+                $cursor->startOfWeek();
+            } elseif ($groupBy === 'month') {
+                $cursor->startOfMonth();
+            }
+            // Bounded, so "all time" by day cannot run to thousands of rows.
+            for ($n = 0; $cursor->lte($end) && $n < 400; $n++, $step($cursor)) {
+                $key = $bucket($cursor);
+                $rows[$key] ??= ['period' => $key, 'total_invoices' => 0, 'total_invoiced' => 0.0, 'paid_amount' => 0.0, 'due_amount' => 0.0];
+            }
+        }
+        ksort($rows);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice trend retrieved successfully',
+            'data' => [
+                'group_by' => $groupBy,
+                'trend' => array_values($rows),
             ],
         ]);
     }
@@ -767,7 +971,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
             'per_page' => 'nullable|integer|min:1|max:500',
             'sort' => 'nullable|in:profit_asc,profit_desc,margin_asc,margin_desc',
@@ -953,8 +1157,9 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query();
@@ -974,6 +1179,11 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // Asked for by a report that leaves voided bills out of its billing.
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
         }
 
         // Same shape as salesPerformance(): revenue/count straight off
@@ -1068,8 +1278,9 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'exclude_cancelled' => 'nullable|boolean',
         ]);
 
         $query = Invoice::query()->with(['items.product', 'items.warehouse', 'warehouse']);
@@ -1089,6 +1300,17 @@ class SalesReportController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->boolean('exclude_cancelled') && ! $request->filled('status')) {
+            $query->where('status', '!=', Invoice::STATUS_CANCELLED);
+        }
+
+        // Validated from the start but never applied, so choosing a product
+        // changed nothing. Narrowed twice: to the documents that sold it, then
+        // to its own lines within them.
+        if ($request->filled('product_id')) {
+            $query->whereHas('items', fn ($items) => $items->where('product_id', $request->product_id));
         }
 
         $invoices = $query->get();
@@ -1123,7 +1345,8 @@ class SalesReportController extends Controller
                     'gross_margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
                 ];
             });
-        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0);
+        })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0)
+            ->when($request->filled('product_id'), fn ($rows) => $rows->where('product_id', (int) $request->product_id));
 
         $grouped = $lineSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
 
@@ -1159,6 +1382,7 @@ class SalesReportController extends Controller
                     'gross_profit' => (float) $grossProfit,
                     'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
                     'product_count' => $productSummary->count(),
+                    'distinct_products' => $productSummary->pluck('product_id')->unique()->count(),
                     'top_product' => $productSummary->first() ?: null,
                     'lowest_product' => $productSummary->last() ?: null,
                 ],
@@ -1177,7 +1401,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
@@ -1228,7 +1452,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
@@ -1281,7 +1505,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1355,7 +1579,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
         ]);
 
         $query = WarehouseInventory::query()->with(['product', 'warehouse']);
@@ -1405,7 +1629,7 @@ class SalesReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'date' => 'nullable|date',
-            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,custom',
+            'date_filter_type' => 'nullable|in:all,today,yesterday,this_week,this_month,last_month,this_year,custom',
             'status' => 'nullable|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
 
@@ -1478,149 +1702,90 @@ class SalesReportController extends Controller
 
     private function applyDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
-
-        if ($request->filled('date')) {
-            $query->whereDate('order_date', $request->date);
-
-            return;
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('order_date', [$request->start_date, $request->end_date]);
-
-            return;
-        }
-
-        if ($request->filled('start_date')) {
-            $query->whereDate('order_date', '>=', $request->start_date);
-
-            return;
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('order_date', '<=', $request->end_date);
-
-            return;
-        }
-
-        if ($type === 'today') {
-            $query->whereDate('order_date', today());
-
-            return;
-        }
-
-        if ($type === 'yesterday') {
-            $query->whereDate('order_date', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('order_date', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('order_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('order_date', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        $this->applyDateRange($query, 'order_date', $request);
     }
 
     private function applyInventoryDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
-
-        if ($request->filled('date')) {
-            $query->whereDate('updated_at', $request->date);
-
-            return;
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('updated_at', [$request->start_date, $request->end_date]);
-
-            return;
-        }
-
-        if ($type === 'today') {
-            $query->whereDate('updated_at', today());
-
-            return;
-        }
-
-        if ($type === 'yesterday') {
-            $query->whereDate('updated_at', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('updated_at', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('updated_at', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('updated_at', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        $this->applyDateRange($query, 'updated_at', $request);
     }
 
     private function applyInvoiceDateFilters($query, Request $request): void
     {
-        $type = $request->input('date_filter_type', 'all');
+        $this->applyDateRange($query, 'created_at', $request);
+    }
 
+    /**
+     * Narrows `$column` to the period the request asks for, whole days at both
+     * ends.
+     *
+     * The three filters used to be three copies of whereBetween($column,
+     * [from, to]) with bare dates. On a timestamp column the end date reads as
+     * its midnight, so "this month" dropped every invoice raised on the
+     * month's last day, and a custom range lost its end day. Invoices also
+     * ignored a range with only one end set. Comparing on the date part fixes
+     * all of it, and one resolver keeps the three from drifting apart again.
+     */
+    private function applyDateRange($query, string $column, Request $request): void
+    {
+        [$from, $to] = $this->resolveDateRange($request);
+
+        // Qualified with the query's own table: the invoice summary joins the
+        // lines and products to cost the set, and all three have a created_at.
+        if (! str_contains($column, '.')) {
+            $table = $query instanceof \Illuminate\Database\Eloquent\Builder
+                ? $query->getModel()->getTable()
+                : $query->from;
+            if (is_string($table) && $table !== '') {
+                $column = $table.'.'.$column;
+            }
+        }
+
+        if ($from !== null) {
+            $query->whereDate($column, '>=', $from);
+        }
+
+        if ($to !== null) {
+            $query->whereDate($column, '<=', $to);
+        }
+    }
+
+    /**
+     * The requested period as [from, to] date strings, either end null for
+     * open. An explicit date or range wins over the named preset.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolveDateRange(Request $request): array
+    {
         if ($request->filled('date')) {
-            $query->whereDate('created_at', $request->date);
+            $day = Carbon::parse($request->input('date'))->toDateString();
 
-            return;
+            return [$day, $day];
         }
 
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
-
-            return;
+        if ($request->filled('start_date') || $request->filled('end_date')) {
+            return [
+                $request->filled('start_date') ? Carbon::parse($request->input('start_date'))->toDateString() : null,
+                $request->filled('end_date') ? Carbon::parse($request->input('end_date'))->toDateString() : null,
+            ];
         }
 
-        if ($type === 'today') {
-            $query->whereDate('created_at', today());
+        $now = now();
 
-            return;
-        }
+        // NoOverflow: on the 31st, subMonth() lands back in the current month
+        // (31 March less a month is "31 February", i.e. 3 March).
+        $lastMonth = $now->copy()->subMonthNoOverflow();
 
-        if ($type === 'yesterday') {
-            $query->whereDate('created_at', now()->subDay()->toDateString());
-
-            return;
-        }
-
-        if ($type === 'this_week') {
-            $query->whereBetween('created_at', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'this_month') {
-            $query->whereBetween('created_at', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()]);
-
-            return;
-        }
-
-        if ($type === 'last_month') {
-            $query->whereBetween('created_at', [now()->subMonth()->startOfMonth()->toDateString(), now()->subMonth()->endOfMonth()->toDateString()]);
-        }
+        return match ($request->input('date_filter_type', 'all')) {
+            'today' => [$now->toDateString(), $now->toDateString()],
+            'yesterday' => [$now->copy()->subDay()->toDateString(), $now->copy()->subDay()->toDateString()],
+            'this_week' => [$now->copy()->startOfWeek()->toDateString(), $now->copy()->endOfWeek()->toDateString()],
+            'this_month' => [$now->copy()->startOfMonth()->toDateString(), $now->copy()->endOfMonth()->toDateString()],
+            'last_month' => [$lastMonth->copy()->startOfMonth()->toDateString(), $lastMonth->copy()->endOfMonth()->toDateString()],
+            'this_year' => [$now->copy()->startOfYear()->toDateString(), $now->copy()->endOfYear()->toDateString()],
+            default => [null, null],
+        };
     }
 
     private function calculateSummary($query)

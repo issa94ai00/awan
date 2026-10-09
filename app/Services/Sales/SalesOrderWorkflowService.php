@@ -2,11 +2,13 @@
 
 namespace App\Services\Sales;
 
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
 use App\Models\Product;
 use App\Models\PurchaseOrderItem;
+use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
@@ -17,6 +19,7 @@ use App\Models\WarehouseInventory;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PickingService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -416,7 +419,7 @@ class SalesOrderWorkflowService
                     // Keyed per source as well as per product: a split line
                     // writes one movement per warehouse, and sharing a key would
                     // make the second look like a repeat of the first.
-                    'movement_key' => 'SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId,
+                    'movement_key' => $this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId),
                 ];
             }
         }
@@ -442,6 +445,12 @@ class SalesOrderWorkflowService
         $cost = $issued['cost'];
 
         $this->recordLineCosts($order, $sourcesByItem, $issued['cost_by_key'] ?? []);
+
+        // Warehouse stock moved per product above; the variant's own count
+        // follows so the store and the next order see the size that left.
+        foreach ($order->items as $item) {
+            ProductVariant::adjustStockCount($item->product_variant_id, -array_sum($sourcesByItem[$item->id] ?? []));
+        }
 
         // A shipment with items but no OUT movements means the stock settlement
         // never ran — status alone would say the goods left while the shelves
@@ -717,7 +726,7 @@ class SalesOrderWorkflowService
      */
     public function stockShortages(SalesOrder $order): array
     {
-        $order->loadMissing('items.product');
+        $order->loadMissing('items.product', 'items.variant');
 
         $candidates = $this->sourceCandidates($order);
         $pool = [];
@@ -749,18 +758,29 @@ class SalesOrderWorkflowService
             }
 
             $product = $item->product;
+            $variant = $item->variant;
 
             $shortages[] = [
                 'product_id' => $productId,
-                'name' => $product?->name_ar ?: ($product?->name_en ?: ('#'.$productId)),
-                'sku' => $product?->sku,
+                // The size too, so the purchase line buys the one that was sold.
+                'product_variant_id' => $variant?->id,
+                // A variant line's stored name says which size; the product's does not.
+                'name' => ($variant ? $item->description : null)
+                    ?: ($product?->name_ar ?: ($product?->name_en ?: ('#'.$productId))),
+                'sku' => $variant?->sku ?: $product?->sku,
                 'required' => $required,
                 'available' => $covered,
                 'shortfall' => $shortfall,
                 // What to put on the purchase order. The shortfall itself: buying
                 // more is a stocking decision the buyer makes, not one to assume.
                 'suggested_quantity' => $shortfall,
-                'unit_price' => $this->lastPurchasePrice($productId, $product),
+                'unit_price' => $product
+                    ? $this->lastPurchasePriceFor($product, $variant)
+                    : $this->lastPurchasePrice($productId, null),
+                'sale_price' => round((float) $item->unit_price, 5),
+                // Enough for the purchase screen's picker to label the line.
+                'product' => $product?->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
             ];
         }
 
@@ -786,6 +806,128 @@ class SalesOrderWorkflowService
         }
 
         return round((float) ($product?->cost_price ?? 0), 5);
+    }
+
+    /**
+     * A purchase order with the same lines as this sales order, to prefill the
+     * purchase screen — buying in what a customer ordered, whether or not the
+     * stock could cover it today (unlike stockShortages, which asks only for
+     * what is missing).
+     *
+     * Each line carries what it sells at as its sale price and the last price
+     * paid for it (that size first) as its cost. Nothing is written; the buyer
+     * picks the supplier and saves.
+     *
+     * @return array{sales_order: array<string,mixed>, items: list<array<string,mixed>>}
+     */
+    public function purchaseDraft(SalesOrder $order): array
+    {
+        $order->loadMissing('customer', 'items.product', 'items.variant');
+
+        $items = $this->purchaseDraftLines($order->items, fn (SalesOrderItem $item) => $item->description);
+
+        return [
+            'sales_order' => [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'status' => $order->status,
+                'customer_name' => $order->customer?->name,
+                'expected_delivery' => $order->expected_delivery?->format('Y-m-d'),
+                'notes' => $order->notes,
+            ],
+            'items' => $items,
+        ];
+    }
+
+    /**
+     * The same draft from a sales invoice: every line it sold, for a purchase
+     * order raised against the invoice rather than an order.
+     *
+     * @return array{invoice: array<string,mixed>, items: list<array<string,mixed>>}
+     */
+    public function invoicePurchaseDraft(Invoice $invoice): array
+    {
+        $invoice->loadMissing('customer', 'salesOrder', 'items.product', 'items.variant');
+
+        return [
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'status' => $invoice->status,
+                'customer_name' => $invoice->customer?->name,
+                'sales_order_id' => $invoice->sales_order_id,
+                'order_number' => $invoice->salesOrder?->order_number,
+                'notes' => $invoice->notes,
+            ],
+            'items' => $this->purchaseDraftLines($invoice->items, fn ($item) => $item->product_name),
+        ];
+    }
+
+    /**
+     * Sale lines as purchase lines: the size sold, what it sold at, and the
+     * last price paid for it as the cost. One line per product and size, the
+     * way the purchase screen holds them.
+     *
+     * @param  iterable<\Illuminate\Database\Eloquent\Model>  $lines
+     * @param  callable(\Illuminate\Database\Eloquent\Model): ?string  $storedName
+     * @return list<array<string,mixed>>
+     */
+    private function purchaseDraftLines(iterable $lines, callable $storedName): array
+    {
+        $out = [];
+
+        foreach ($lines as $item) {
+            $product = $item->product;
+            if ((int) $item->product_id <= 0 || ! $product) {
+                continue;
+            }
+
+            $variant = $item->variant;
+            $key = $product->id.':'.($variant?->id ?? 0);
+
+            // An invoice may sell one size on two lines; the purchase screen
+            // refuses a product twice, so they become one line.
+            if (isset($out[$key])) {
+                $out[$key]['quantity'] += (int) $item->quantity;
+
+                continue;
+            }
+
+            $out[$key] = [
+                'product_id' => (int) $item->product_id,
+                'product_variant_id' => $variant?->id,
+                'product_name' => $storedName($item) ?: $product->name_ar,
+                'quantity' => (int) $item->quantity,
+                'unit_price' => $this->lastPurchasePriceFor($product, $variant),
+                'sale_price' => round((float) $item->unit_price, 5),
+                // Enough for the purchase screen's picker to label the line.
+                'product' => $product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
+            ];
+        }
+
+        return array_values($out);
+    }
+
+    /** The last price paid for this size, else its own cost, else the product's. */
+    private function lastPurchasePriceFor(Product $product, ?ProductVariant $variant): float
+    {
+        if ($variant) {
+            $lastPaid = PurchaseOrderItem::query()
+                ->where('product_variant_id', $variant->id)
+                ->latest('id')
+                ->value('unit_price');
+
+            if ($lastPaid !== null && (float) $lastPaid > 0) {
+                return round((float) $lastPaid, 5);
+            }
+
+            if ((float) $variant->cost_price > 0) {
+                return round((float) $variant->cost_price, 5);
+            }
+        }
+
+        return $this->lastPurchasePrice((int) $product->id, $product);
     }
 
     /**
@@ -924,6 +1066,21 @@ class SalesOrderWorkflowService
      * @return array<int,int>
      */
     /**
+     * The stock-movement key for one order line at one source warehouse.
+     *
+     * Per product and warehouse, as it always was, so orders already shipped
+     * keep the keys they were written with. A variant line adds its variant:
+     * the 4" and 5" of one drain on the same order are two issues, and a
+     * shared key would make the second look like a repeat and be skipped.
+     */
+    private function lineMovementKey(string $prefix, SalesOrder $order, $item, int $warehouseId): string
+    {
+        $key = $prefix.'-'.$order->id.'-'.$item->product_id.'-W'.$warehouseId;
+
+        return $item->product_variant_id ? $key.'-V'.$item->product_variant_id : $key;
+    }
+
+    /**
      * Writes what the shipped goods cost onto the lines that ordered them.
      *
      * The cost comes out of the FIFO layers the issue consumed, so it is what
@@ -950,7 +1107,7 @@ class SalesOrderWorkflowService
             $shipped = 0;
 
             foreach ($sources as $sourceWarehouseId => $quantity) {
-                $issued = $costByKey['SO-'.$order->id.'-'.$item->product_id.'-W'.$sourceWarehouseId] ?? null;
+                $issued = $costByKey[$this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId)] ?? null;
 
                 if ($issued === null) {
                     continue;
@@ -1105,7 +1262,7 @@ class SalesOrderWorkflowService
                             // the shipment: one return per warehouse, and a
                             // shared key would make the second look like a
                             // repeat of the first and be skipped.
-                            'key' => 'SO-CANCEL-'.$order->id.'-'.$item->product_id.'-W'.$sourceId,
+                            'key' => $this->lineMovementKey('SO-CANCEL', $order, $item, (int) $sourceId),
                             'reference' => 'sales_order_cancelled',
                             'source' => $order->id,
                             'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم '.$order->order_number,
@@ -1114,6 +1271,7 @@ class SalesOrderWorkflowService
                     );
 
                     $returned[(int) $sourceId] = ($returned[(int) $sourceId] ?? 0) + (int) $quantity;
+                    ProductVariant::adjustStockCount($item->product_variant_id, (int) $quantity);
                 }
             }
 
@@ -1308,13 +1466,22 @@ class SalesOrderWorkflowService
             $invoice->items()->create([
                 'warehouse_id' => $warehouseId,
                 'product_id' => $item->product_id,
-                'product_name' => $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
+                'product_variant_id' => $item->product_variant_id,
+                // A variant line is named for its variant ("floor drain - 4\""),
+                // which the order line already carries.
+                'product_name' => ($item->product_variant_id ? $item->description : null)
+                    ?? $item->product->name_ar ?? $item->product->name_en ?? $item->product->name ?? ('#'.$item->product_id),
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'discount' => $item->discount ?? 0,
                 'tax_amount' => $item->tax ?? 0,
             ]);
         }
+
+        // Link any expenses recorded on this sales order to the generated invoice
+        Expense::where('sales_order_id', $order->id)
+            ->whereNull('invoice_id')
+            ->update(['invoice_id' => $invoice->id]);
 
         return $invoice;
     }
@@ -1872,6 +2039,151 @@ class SalesOrderWorkflowService
         return $ids->unique()->values()->all();
     }
 
+    /**
+     * Where each line of an order not yet saved should come from.
+     *
+     * The new-order wizard asks this before anything is written, so the seller
+     * sees — and can change — which warehouse fills what, instead of finding
+     * out at confirmation.
+     *
+     * Stock is counted per product, and two lines can draw on the same
+     * product (two sizes of it), so availability is shared across the lines
+     * rather than offered to each in full. One warehouse that can fill the
+     * whole order is preferred — one pick, one shipment — with the order's own
+     * warehouse first among equals, then the primary. Failing that, each line
+     * is filled greedily: its preferred warehouse, then whichever holds most.
+     *
+     * Nothing is reserved; the result is a starting point the seller edits.
+     *
+     * @param  array<int, array{product_id:int, quantity:int}>  $items
+     * @return array{preferred_warehouse_id: ?int, single_source: bool, warehouses: list<array<string,mixed>>, lines: list<array<string,mixed>>}
+     */
+    public function suggestSourcing(array $items, ?int $preferredWarehouseId = null): array
+    {
+        $warehouses = Warehouse::where('is_active', true)->orderByDesc('is_primary')->orderBy('id')->get();
+        $productIds = collect($items)->pluck('product_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        // Free stock per product per warehouse, net of what is already held.
+        $free = [];
+        foreach ($productIds as $productId) {
+            foreach ($warehouses as $warehouse) {
+                $free[$productId][$warehouse->id] = $this->inventory->sellableQuantity($productId, $warehouse->id);
+            }
+        }
+
+        $need = [];
+        foreach ($items as $item) {
+            $need[(int) $item['product_id']] = ($need[(int) $item['product_id']] ?? 0) + max(0, (int) $item['quantity']);
+        }
+
+        $rank = function (Warehouse $w) use ($preferredWarehouseId) {
+            return [(int) $w->id === (int) $preferredWarehouseId ? 0 : 1, $w->is_primary ? 0 : 1, $w->id];
+        };
+        $ordered = $warehouses->sortBy($rank)->values();
+
+        $single = $ordered->first(function (Warehouse $w) use ($need, $free) {
+            foreach ($need as $productId => $quantity) {
+                if (($free[$productId][$w->id] ?? 0) < $quantity) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        $left = $free;
+        $lines = [];
+
+        foreach (array_values($items) as $index => $item) {
+            $productId = (int) $item['product_id'];
+            $remaining = max(0, (int) $item['quantity']);
+            $allocations = [];
+
+            $sources = $single
+                ? collect([$single])
+                : $ordered->sortBy(fn (Warehouse $w) => [
+                    (int) $w->id === (int) $preferredWarehouseId ? 0 : 1,
+                    -($left[$productId][$w->id] ?? 0),
+                    $w->id,
+                ])->values();
+
+            foreach ($sources as $warehouse) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $take = min($remaining, (int) ($left[$productId][$warehouse->id] ?? 0));
+                if ($take <= 0) {
+                    continue;
+                }
+                $allocations[] = ['warehouse_id' => $warehouse->id, 'quantity' => $take];
+                $left[$productId][$warehouse->id] -= $take;
+                $remaining -= $take;
+            }
+
+            $lines[] = [
+                'index' => $index,
+                'product_id' => $productId,
+                'quantity' => (int) $item['quantity'],
+                'allocations' => $allocations,
+                'shortfall' => $remaining,
+                // What each warehouse holds of this product for the order,
+                // before any line takes its share — the figure the screen
+                // shows beside each source.
+                'available' => collect($free[$productId] ?? [])->map(fn ($q) => (int) $q)->all(),
+            ];
+        }
+
+        return [
+            'preferred_warehouse_id' => $single?->id ?? ($preferredWarehouseId ?: $ordered->first()?->id),
+            'single_source' => (bool) $single,
+            'warehouses' => $warehouses->map(fn (Warehouse $w) => [
+                'id' => $w->id,
+                'name' => $w->name,
+                'is_primary' => (bool) $w->is_primary,
+                'location_type' => $w->location_type,
+            ])->values()->all(),
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * Records the per-line warehouse plan a new or edited order was saved
+     * with: the routings it draws on and each line's split.
+     *
+     * Goes through the same saveRoutings / saveSourcingPlan the order screen
+     * uses, so a plan from the wizard is held to the same rules — active
+     * warehouses, one for a pickup, every unit placed.
+     *
+     * @param  array<int, array<int,int>>  $plan  item id => [warehouse id => quantity]
+     *
+     * @throws RuntimeException
+     */
+    public function applyInitialPlan(SalesOrder $order, array $plan): void
+    {
+        $plan = array_filter($plan, fn ($sources) => array_sum($sources) > 0);
+        if ($plan === []) {
+            return;
+        }
+
+        $totals = [];
+        foreach ($plan as $sources) {
+            foreach ($sources as $warehouseId => $quantity) {
+                $totals[(int) $warehouseId] = ($totals[(int) $warehouseId] ?? 0) + (int) $quantity;
+            }
+        }
+        arsort($totals);
+
+        // The order belongs to the warehouse supplying most of it, unless it
+        // already has one among the sources.
+        if (! $order->fulfillment_warehouse_id || ! isset($totals[(int) $order->fulfillment_warehouse_id])) {
+            $order->fulfillment_warehouse_id = array_key_first($totals);
+            $order->save();
+        }
+
+        $this->saveRoutings($order, array_keys($totals));
+        $this->saveSourcingPlan($order->refresh(), $plan);
+    }
+
     /** Sourcing may be changed until the goods leave; after that it is history. */
     public function sourcingEditable(SalesOrder $order): bool
     {
@@ -1990,32 +2302,43 @@ class SalesOrderWorkflowService
      *
      * @return array<string,mixed>
      */
+    /**
+     * How long each open stage may sit before the order is called stalled: a
+     * pending order is waiting on a decision, a shipped one on a courier. The
+     * list's "needs attention" filter reads the same numbers.
+     */
+    public const STALL_DAYS = [
+        SalesOrder::STATUS_PENDING => 2,
+        SalesOrder::STATUS_CONFIRMED => 3,
+        SalesOrder::STATUS_PROCESSING => 2,
+        SalesOrder::STATUS_SHIPPED => 7,
+    ];
+
     public function followUp(SalesOrder $order): array
     {
         $status = (string) $order->status;
         $isOpen = ! in_array($status, [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED], true);
 
         // When the order last moved. Falls back to when it was raised, so an
-        // order that has never moved still ages from a real date.
-        $since = SalesOrderStatusHistory::where('sales_order_id', $order->id)
-            ->latest('id')
-            ->value('created_at') ?? $order->created_at;
+        // order that has never moved still ages from a real date. A list can
+        // hand the last move in as `stage_since_at` rather than cost a query
+        // per row.
+        $attributes = $order->getAttributes();
+        $since = array_key_exists('stage_since_at', $attributes)
+            ? ($attributes['stage_since_at'] ? Carbon::parse($attributes['stage_since_at']) : null)
+            : SalesOrderStatusHistory::where('sales_order_id', $order->id)->latest('id')->value('created_at');
+        $since ??= $order->created_at;
 
-        $daysInStage = $since ? (int) $since->startOfDay()->diffInDays(now()->startOfDay()) : 0;
+        // Copies throughout: startOfDay() changes the date in place, and these
+        // are the order's own attributes — the list then showed every order as
+        // raised at midnight.
+        $daysInStage = $since ? (int) $since->copy()->startOfDay()->diffInDays(now()->startOfDay()) : 0;
 
-        $expected = $order->expected_delivery;
+        $expected = $order->expected_delivery?->copy();
         $isOverdue = $isOpen && $expected && $expected->isBefore(now()->startOfDay());
         $daysOverdue = $isOverdue ? (int) $expected->startOfDay()->diffInDays(now()->startOfDay()) : 0;
 
-        // What counts as "too long" differs by stage: a pending order is waiting
-        // on a decision, a shipped one on a courier.
-        $threshold = match ($status) {
-            SalesOrder::STATUS_PENDING => 2,
-            SalesOrder::STATUS_CONFIRMED => 3,
-            SalesOrder::STATUS_PROCESSING => 2,
-            SalesOrder::STATUS_SHIPPED => 7,
-            default => null,
-        };
+        $threshold = self::STALL_DAYS[$status] ?? null;
 
         $isStalled = $threshold !== null && $daysInStage > $threshold;
 

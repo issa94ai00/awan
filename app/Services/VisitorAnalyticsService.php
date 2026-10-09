@@ -181,13 +181,7 @@ class VisitorAnalyticsService
         ]);
 
         if (!empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('ip_address', 'like', "%{$search}%")
-                    ->orWhere('page_url', 'like', "%{$search}%")
-                    ->orWhere('browser', 'like', "%{$search}%")
-                    ->orWhere('os', 'like', "%{$search}%");
-            });
+            $query->whereSearch(['ip_address', 'page_url', 'browser', 'os'], $filters['search']);
         }
 
         if (!empty($filters['device_type'])) {

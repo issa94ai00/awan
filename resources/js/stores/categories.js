@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia';
 import { categoriesApi } from '@/api/categories';
 import api from '@/api';
-import { useAuthStore } from '@/stores/auth';
-import router from '@/router';
 
 export const useCategoriesStore = defineStore('categories', {
     state: () => ({
@@ -23,16 +21,11 @@ export const useCategoriesStore = defineStore('categories', {
             this.loading = true;
             this.error = null;
             try {
-                const auth = useAuthStore();
-                const token = localStorage.getItem('token') || (auth.user ? '1' : null);
-                let response;
-
-                // If user is authenticated use admin endpoint, otherwise use public categories
-                if (token) {
-                    response = await categoriesApi.getAll(params);
-                } else {
-                    response = await api.get('/categories', { params });
-                }
+                // Always the storefront list. The admin endpoint also returns
+                // inactive categories, which must not leak onto public pages
+                // just because the visitor happens to be signed in. The admin
+                // list screen calls categoriesApi.getAll() itself.
+                const response = await api.get('/categories', { params });
 
                 this.categories = response.data.data || response.data;
             } catch (error) {

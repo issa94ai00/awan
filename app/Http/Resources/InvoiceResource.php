@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,9 +22,19 @@ class InvoiceResource extends JsonResource
             'customer_name' => $this->customer?->name ?? 'عميل عام',
             'customer_email' => $this->customer?->email,
             'customer_phone' => $this->customer?->phone,
+            'customer_address' => $this->customer?->address,
+            'customer_tax_number' => $this->customer?->tax_number,
+            'customer_city' => $this->customer?->city,
+            'customer_state' => $this->customer?->state,
+            'customer_country' => $this->customer?->country,
             'subtotal' => (float) $this->subtotal,
             'tax' => (float) $this->tax,
             'discount' => (float) $this->discount,
+            // The rates behind those two figures, so a form reopening the
+            // invoice can offer back what was typed instead of inferring a rate
+            // from an amount. Null on an invoice written in amounts.
+            'tax_percent' => $this->tax_percent === null ? null : (float) $this->tax_percent,
+            'discount_percent' => $this->discount_percent === null ? null : (float) $this->discount_percent,
             // Charges billed on top of the goods (delivery, packaging, …).
             // Without this the client cannot reconcile subtotal against total.
             'additional_charges' => (float) $this->additional_charges,
@@ -35,6 +46,19 @@ class InvoiceResource extends JsonResource
             'paid_amount' => (float) $this->paid_amount,
             'due_amount' => (float) $this->due_amount,
 
+            // Owed, from the figures themselves: negative when the customer paid
+            // more than the invoice and holds a credit. The stored due_amount
+            // above is kept for older clients but was left out of step by
+            // earlier edits on some invoices.
+            'outstanding' => $this->outstanding(),
+            'payment_state' => $this->paymentState(),
+            'age_days' => $this->created_at ? (int) $this->created_at->copy()->startOfDay()->diffInDays(now()->startOfDay()) : null,
+
+            // The moves this screen may offer. None on an order's invoice —
+            // the order moves it — nor on a cancelled one.
+            'allowed_statuses' => $this->sales_order_id ? [] : (Invoice::TRANSITIONS[$this->status] ?? []),
+            'items_count' => $this->whenCounted('items'),
+
             'payment_method' => $this->payment_method,
             'payment_method_label' => $this->payment_method_label,
             'status' => $this->status,
@@ -45,14 +69,45 @@ class InvoiceResource extends JsonResource
 
             // Link back to the sales order this invoice was converted from.
             'sales_order_id' => $this->sales_order_id,
+            'sales_order' => $this->when($this->relationLoaded('salesOrder'), fn () => $this->salesOrder
+                ? ['id' => $this->salesOrder->id, 'order_number' => $this->salesOrder->order_number]
+                : null),
+            'customer_company' => $this->customer?->company,
 
             // Relationships
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
             'payments' => $this->whenLoaded('payments'),
+            'expenses' => $this->whenLoaded('expenses', function () {
+                return $this->expenses->map(fn ($exp) => [
+                    'id' => $exp->id,
+                    'expense_number' => $exp->expense_number,
+                    'description' => $exp->description,
+                    'amount' => (float) $exp->amount,
+                    'category' => $exp->category,
+                    'category_label' => $exp->category_label,
+                    'status' => $exp->status,
+                    'status_label' => $exp->status_label,
+                    'notes' => $exp->notes,
+                    'expense_date' => $exp->expense_date?->format('Y-m-d'),
+                    'created_at' => $exp->created_at?->format('Y-m-d H:i:s'),
+                ]);
+            }),
             'user' => $this->when($this->relationLoaded('user'), function () {
                 return $this->user ? [
                     'id' => $this->user->id,
                     'name' => $this->user->name,
+                ] : null;
+            }),
+            'assigned_employee' => $this->when($this->relationLoaded('assignedEmployee'), function () {
+                return $this->assignedEmployee ? [
+                    'id' => $this->assignedEmployee->id,
+                    'name' => $this->assignedEmployee->name,
+                ] : null;
+            }),
+            'warehouse' => $this->when($this->relationLoaded('warehouse'), function () {
+                return $this->warehouse ? [
+                    'id' => $this->warehouse->id,
+                    'name' => $this->warehouse->name,
                 ] : null;
             }),
 
@@ -62,5 +117,21 @@ class InvoiceResource extends JsonResource
             'created_at_formatted' => $this->created_at?->format('Y-m-d H:i:s'),
             'created_at_human' => $this->created_at?->diffForHumans(),
         ];
+    }
+
+    private function paymentState(): ?string
+    {
+        if ($this->status === Invoice::STATUS_CANCELLED) {
+            return null;
+        }
+
+        $owed = $this->outstanding();
+
+        return match (true) {
+            $owed < -0.009 => 'credit',
+            $owed <= 0.009 => 'paid',
+            (float) $this->paid_amount > 0.009 => 'partial',
+            default => 'unpaid',
+        };
     }
 }

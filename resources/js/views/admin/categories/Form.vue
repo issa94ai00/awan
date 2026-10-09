@@ -28,6 +28,30 @@
                     </el-col>
                 </el-row>
 
+                <el-form-item :label="$t('cat_admin_parent')">
+                    <el-select
+                        v-model="form.parent_id"
+                        clearable
+                        filterable
+                        :disabled="hasChildren"
+                        :placeholder="$t('cat_admin_parent_none')"
+                        style="width: 100%"
+                    >
+                        <el-option
+                            v-for="option in parentOptions"
+                            :key="option.id"
+                            :label="option.name_ar || option.name_en"
+                            :value="option.id"
+                        >
+                            <span>{{ option.name_ar || option.name_en }}</span>
+                            <span v-if="!option.is_active" class="option-muted">· {{ $t('inactive') }}</span>
+                        </el-option>
+                    </el-select>
+                    <div class="field-hint">
+                        {{ hasChildren ? $t('cat_admin_parent_locked') : $t('cat_admin_parent_hint') }}
+                    </div>
+                </el-form-item>
+
                 <el-form-item label="Slug" prop="slug">
                     <el-input v-model="form.slug" placeholder="category-slug" />
                 </el-form-item>
@@ -102,6 +126,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useCategoriesStore } from '@/stores/categories';
+import { categoriesApi } from '@/api/categories';
 import { Plus } from '@element-plus/icons-vue';
 import { resolveImageUrl, toImagePath } from '@/utils/productImages';
 
@@ -126,8 +151,16 @@ const form = ref({
     description_en: '',
     image: '',
     is_active: true,
-    sort_order: 0
+    sort_order: 0,
+    parent_id: route.query.parent_id ? Number(route.query.parent_id) : null,
 });
+
+// Only top-level categories can take subcategories (the taxonomy is two levels
+// deep), and a category that already has its own subcategories stays on top.
+const allCategories = ref([]);
+const hasChildren = computed(() => (form.value.children_count ?? 0) > 0);
+const parentOptions = computed(() => allCategories.value.filter((c) =>
+    !c.parent_id && String(c.id) !== String(route.params.id ?? '')));
 
 const rules = {
     name_ar: [{ required: true, message: window.t('required_field'), trigger: 'blur' }],
@@ -192,9 +225,14 @@ const submitForm = async () => {
         await formRef.value.validate();
         submitting.value = true;
 
+        const {
+            children_count, product_count, products_count, active_products_count,
+            url, created_at, updated_at, description, icon, ...fields
+        } = form.value;
         const payload = {
-            ...form.value,
-            image: form.value.image ? toImagePath(form.value.image) : null,
+            ...fields,
+            parent_id: fields.parent_id || null,
+            image: fields.image ? toImagePath(fields.image) : null,
         };
 
         if (isEdit.value) {
@@ -218,6 +256,10 @@ const goBack = () => {
 };
 
 onMounted(async () => {
+    categoriesApi.getAll()
+        .then((response) => { allCategories.value = response.data.data || []; })
+        .catch(() => { /* the picker just stays empty; saving still works */ });
+
     if (isEdit.value) {
         try {
             await categoriesStore.fetchCategory(route.params.id);
@@ -254,6 +296,20 @@ onMounted(async () => {
 
 .image-uploader:hover {
     border-color: #409eff;
+}
+
+.field-hint {
+    width: 100%;
+    margin-top: 0.3rem;
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.option-muted {
+    color: #94a3b8;
+    font-size: 0.8rem;
+    margin-inline-start: 0.25rem;
 }
 
 .remove-image-btn {

@@ -45,12 +45,7 @@ class FieldInventoryController extends Controller
             ->withAvailable();
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->whereHas('product', fn ($p) => $p
-                ->where('name_ar', 'like', "%{$search}%")
-                ->orWhere('name_en', 'like', "%{$search}%")
-                ->orWhere('sku', 'like', "%{$search}%")
-                ->orWhere('barcode', 'like', "%{$search}%"));
+            $query->whereSearch(['product.name_ar', 'product.name_en', 'product.sku', 'product.barcode'], $request->search);
         }
 
         // The two filters a rep standing in a warehouse actually needs.

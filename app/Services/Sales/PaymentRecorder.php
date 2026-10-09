@@ -49,6 +49,12 @@ class PaymentRecorder
             throw new RuntimeException('مبلغ التحصيل يجب أن يكون أكبر من صفر.');
         }
 
+        // Its sale has been undone; money taken against it would settle a debt
+        // that no longer exists.
+        if ($invoice->status === Invoice::STATUS_CANCELLED) {
+            throw new RuntimeException(sprintf('الفاتورة %s ملغاة ولا يُحصّل عليها.', $invoice->invoice_number));
+        }
+
         $due = $this->outstanding($invoice);
 
         // Overpaying turns the receivable negative — the books would then say
@@ -88,17 +94,12 @@ class PaymentRecorder
                 'created_by' => $options['created_by'] ?? auth()->id(),
             ]);
 
-            $paid = round((float) $invoice->paid_amount + $amount, 5);
-
-            $invoice->update([
-                'paid_amount' => $paid,
-                'due_amount' => max(0, round((float) $invoice->total - $paid, 5)),
-                // Stamped only when nothing is left owing. The status is left
-                // alone: whether the goods arrived is the order's business, and
-                // moving the invoice to "delivered" because it was paid is what
-                // used to make paid and delivered indistinguishable.
-                'paid_at' => $paid + 0.009 >= (float) $invoice->total ? now() : $invoice->paid_at,
-            ]);
+            // Stamped paid only when nothing is left owing, net of credit notes.
+            // The status is left alone: whether the goods arrived is the
+            // order's business, and moving the invoice to "delivered" because
+            // it was paid is what used to make paid and delivered
+            // indistinguishable.
+            $invoice->applyPaid((float) $invoice->paid_amount + $amount, false);
 
             // The customer owes us less now.
             $invoice->customer?->updateBalance(-$amount);
@@ -109,9 +110,12 @@ class PaymentRecorder
         });
     }
 
-    /** What is still owed, trusting the amounts rather than the stored column. */
+    /**
+     * What is still owed, trusting the amounts rather than the stored column —
+     * and net of credit notes, so a returned item cannot be paid for again.
+     */
     public function outstanding(Invoice $invoice): float
     {
-        return max(0, round((float) $invoice->total - (float) $invoice->paid_amount, 5));
+        return max(0, $invoice->outstanding());
     }
 }

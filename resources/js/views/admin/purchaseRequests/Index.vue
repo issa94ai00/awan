@@ -81,27 +81,33 @@
                     </el-table-column>
                     <el-table-column prop="total" :label="$t('total')" width="120">
                         <template #default="{ row }">
-                            ${{ parseFloat(row.total).toFixed(2) }}
+                            {{ formatCurrency(row.total) }}
                         </template>
                     </el-table-column>
                     <el-table-column :label="$t('status')" width="160">
                         <template #default="{ row }">
-                            <el-dropdown @command="(val) => updateStatus(row.id, val)" trigger="click">
+                            <!-- Only the moves the workflow accepts from here, each
+                                 carried out on the order screen — with its
+                                 dialogs, reasons and stock checks. -->
+                            <el-dropdown v-if="row.allowed_transitions?.length" @command="(val) => executeStage(row, val)" trigger="click">
                                 <el-tag :type="statusTagType(row.status)" style="cursor:pointer">
                                     {{ row.status_text || row.status }}
                                     <el-icon class="el-icon--right"><ArrowDown /></el-icon>
                                 </el-tag>
                                 <template #dropdown>
                                     <el-dropdown-menu>
-                                        <el-dropdown-item command="pending">{{ $t('hanging') }}</el-dropdown-item>
-                                        <el-dropdown-item command="confirmed">{{ $t('certain') }}</el-dropdown-item>
-                                        <el-dropdown-item command="processing">{{ $t('in_process') }}</el-dropdown-item>
-                                        <el-dropdown-item command="shipped">{{ $t('shipped') }}</el-dropdown-item>
-                                        <el-dropdown-item command="delivered">{{ $t('delivered') }}</el-dropdown-item>
-                                        <el-dropdown-item command="cancelled" divided>{{ $t('canceled') }}</el-dropdown-item>
+                                        <el-dropdown-item
+                                            v-for="stage in row.allowed_transitions"
+                                            :key="stage"
+                                            :command="stage"
+                                            :divided="stage === 'cancelled'"
+                                        >
+                                            {{ stageActionLabel(stage) }}
+                                        </el-dropdown-item>
                                     </el-dropdown-menu>
                                 </template>
                             </el-dropdown>
+                            <el-tag v-else :type="statusTagType(row.status)">{{ row.status_text || row.status }}</el-tag>
                         </template>
                     </el-table-column>
                     <el-table-column :label="$t('the_date')" width="120">
@@ -146,8 +152,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { formatCurrency } from '@/utils/sales';
 import { usePurchaseRequestsStore } from '@/stores/purchaseRequests';
-import { ElMessage } from 'element-plus';
 import { ArrowDown, Refresh, Loading, Folder } from '@element-plus/icons-vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
@@ -200,13 +207,25 @@ const viewDetails = (row) => {
     router.push({ name: 'admin.purchase-requests.show', params: { id: row.id } });
 };
 
-const updateStatus = async (id, status) => {
-    try {
-        await store.updateOrderStatus(id, status);
-        ElMessage.success(window.t('status_updated_successfully'));
-    } catch {
-        ElMessage.error(window.t('status_update_failed'));
-    }
+const { t } = useI18n();
+
+const stageActionLabel = (stage) => ({
+    confirmed: t('confirm_order'),
+    processing: t('start_preparation'),
+    shipped: t('confirm_shipping'),
+    delivered: t('deliver_and_settle_action'),
+    cancelled: t('cancel_the_request'),
+}[stage] || stage);
+
+/**
+ * A request is a sales order. Moving it is done where every sales order is
+ * moved — the order screen opens on its execution tab and starts the step —
+ * so confirming reserves stock and reports a shortage, shipping asks for the
+ * tracking, delivery takes the payment and cancelling asks why. The status
+ * menu here used to set any of six values directly and skip all of that.
+ */
+const executeStage = (row, stage) => {
+    router.push({ path: '/admin/sales/sales-orders', query: { open: row.id, tab: 'execution', do: stage } });
 };
 
 const refresh = () => {

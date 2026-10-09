@@ -68,7 +68,11 @@ class PurchaseReportController extends Controller
             'message' => 'Purchase report retrieved successfully',
             'data' => [
                 'purchase_orders' => $orders->items(),
-                'summary' => $this->calculateSummary($filtered),
+                'summary' => array_merge($this->calculateSummary($filtered), [
+                    'cancelled_orders' => $request->filled('status') && $request->status !== PurchaseOrder::STATUS_CANCELLED
+                        ? 0
+                        : $this->cancelledCount($request),
+                ]),
                 'pagination' => [
                     'current_page' => $orders->currentPage(),
                     'last_page' => $orders->lastPage(),
@@ -401,7 +405,8 @@ class PurchaseReportController extends Controller
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
-        $query = PurchaseOrder::query()->whereNotNull('supplier_id');
+        $query = PurchaseOrder::query()->whereNotNull('supplier_id')
+            ->where(fn ($q) => $q->where('status', '!=', PurchaseOrder::STATUS_CANCELLED)->orWhereNull('status'));
         $this->applyDateFilters($query, $request);
 
         $limit = min((int) $request->input('limit', 10) ?: 10, 50);
@@ -414,13 +419,15 @@ class PurchaseReportController extends Controller
             ->groupBy('supplier_id')
             ->orderByDesc('total_spend')
             ->limit($limit)
-            ->get()
-            ->map(function ($item) {
-                $supplier = Supplier::find($item->supplier_id);
+            ->get();
 
+        $names = $this->supplierNames($topSuppliers->pluck('supplier_id'));
+
+        $topSuppliers = $topSuppliers
+            ->map(function ($item) use ($names) {
                 return [
                     'supplier_id' => $item->supplier_id,
-                    'supplier_name' => $supplier ? $supplier->name : 'Unknown',
+                    'supplier_name' => $names[$item->supplier_id] ?? 'Unknown',
                     'total_orders' => (int) ($item->total_orders ?? 0),
                     'total_spend' => (float) ($item->total_spend ?? 0),
                     'average_order_value' => (float) ($item->average_order_value ?? 0),
@@ -496,12 +503,39 @@ class PurchaseReportController extends Controller
     private function applyCommonFilters($query, Request $request): void
     {
         if ($request->filled('supplier_id')) {
+            $query->where('purchase_orders.supplier_id', $request->supplier_id);
+        }
+
+        // A cancelled order bought nothing. Counting it in spend, the average
+        // order and the supplier ranking overstated all three by every order
+        // that was called off; it is only included when asked for by status.
+        if ($request->filled('status')) {
+            $query->where('purchase_orders.status', $request->status);
+        } else {
+            $query->where(fn ($q) => $q->where('purchase_orders.status', '!=', PurchaseOrder::STATUS_CANCELLED)
+                ->orWhereNull('purchase_orders.status'));
+        }
+    }
+
+    /** Cancelled orders in the same period and supplier, for the count the totals leave out. */
+    private function cancelledCount(Request $request): int
+    {
+        $query = PurchaseOrder::query()->where('status', PurchaseOrder::STATUS_CANCELLED);
+        $this->applyDateFilters($query, $request);
+
+        if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
         }
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
+        return (int) $query->count();
+    }
+
+    /** @return array<int,string> supplier names by id, in one query */
+    private function supplierNames($ids): array
+    {
+        return Supplier::whereIn('id', collect($ids)->filter()->unique()->values())
+            ->pluck('name', 'id')
+            ->all();
     }
 
     private function applyDateFilters($query, Request $request): void
@@ -617,26 +651,26 @@ class PurchaseReportController extends Controller
 
     private function groupBySupplier($query)
     {
-        return $query
+        $rows = $query
             ->select('supplier_id')
             ->selectRaw('COUNT(*) as total_orders')
             ->selectRaw('SUM(total) as total_spend')
             ->selectRaw('SUM(subtotal) as total_subtotal')
             ->selectRaw('AVG(total) as average_order_value')
             ->groupBy('supplier_id')
-            ->get()
-            ->map(function ($item) {
-                $supplier = Supplier::find($item->supplier_id);
+            ->orderByDesc('total_spend')
+            ->get();
 
-                return [
-                    'supplier_id' => $item->supplier_id,
-                    'supplier_name' => $supplier ? $supplier->name : 'Unknown',
-                    'total_orders' => (int) ($item->total_orders ?? 0),
-                    'total_spend' => (float) ($item->total_spend ?? 0),
-                    'total_subtotal' => (float) ($item->total_subtotal ?? 0),
-                    'average_order_value' => (float) ($item->average_order_value ?? 0),
-                ];
-            });
+        $names = $this->supplierNames($rows->pluck('supplier_id'));
+
+        return $rows->map(fn ($item) => [
+            'supplier_id' => $item->supplier_id,
+            'supplier_name' => $names[$item->supplier_id] ?? 'Unknown',
+            'total_orders' => (int) ($item->total_orders ?? 0),
+            'total_spend' => (float) ($item->total_spend ?? 0),
+            'total_subtotal' => (float) ($item->total_subtotal ?? 0),
+            'average_order_value' => (float) ($item->average_order_value ?? 0),
+        ])->values();
     }
 
     private function groupByStatus($query)
@@ -693,6 +727,9 @@ class PurchaseReportController extends Controller
             ->get()
             ->map(function ($item) {
                 return [
+                    // A label the chart can use as is; it used to look for
+                    // one, find none and call every week "Unknown".
+                    'period' => sprintf('%04d-W%02d', $item->year, $item->week),
                     'year' => $item->year,
                     'week' => $item->week,
                     'total_orders' => $item->total_orders,
@@ -716,6 +753,7 @@ class PurchaseReportController extends Controller
             ->get()
             ->map(function ($item) {
                 return [
+                    'period' => sprintf('%04d-%02d', $item->year, $item->month),
                     'year' => $item->year,
                     'month' => $item->month,
                     'total_orders' => $item->total_orders,

@@ -35,15 +35,8 @@ class AdminSearchController extends Controller
             ]);
         }
 
-        $like = '%' . $query . '%';
-
         $products = Product::query()
-            ->where(function ($q) use ($like) {
-                $q->where('name_ar', 'like', $like)
-                    ->orWhere('name_en', 'like', $like)
-                    ->orWhere('sku', 'like', $like)
-                    ->orWhere('barcode', 'like', $like);
-            })
+            ->whereSearch(['name_ar', 'name_en', 'sku', 'barcode'], $query)
             ->limit(5)
             ->get()
             ->map(function ($product) {
@@ -57,11 +50,7 @@ class AdminSearchController extends Controller
             });
 
         $customers = Customer::query()
-            ->where(function ($q) use ($like) {
-                $q->where('name', 'like', $like)
-                    ->orWhere('email', 'like', $like)
-                    ->orWhere('phone', 'like', $like);
-            })
+            ->whereSearch(['name', 'email', 'phone'], $query)
             ->limit(5)
             ->get()
             ->map(function ($customer) {
@@ -76,7 +65,7 @@ class AdminSearchController extends Controller
 
         $invoices = Invoice::query()
             ->with('customer:id,name')
-            ->where('invoice_number', 'like', $like)
+            ->whereSearch(['invoice_number'], $query)
             ->limit(5)
             ->get()
             ->map(function ($invoice) {
@@ -91,7 +80,7 @@ class AdminSearchController extends Controller
 
         $salesOrders = SalesOrder::query()
             ->with('customer:id,name')
-            ->where('order_number', 'like', $like)
+            ->whereSearch(['order_number'], $query)
             ->limit(5)
             ->get()
             ->map(function ($order) {
@@ -105,10 +94,7 @@ class AdminSearchController extends Controller
             });
 
         $employees = Employee::query()
-            ->where(function ($q) use ($like) {
-                $q->where('name', 'like', $like)
-                    ->orWhere('email', 'like', $like);
-            })
+            ->whereSearch(['name', 'email'], $query)
             ->limit(5)
             ->get()
             ->map(function ($employee) {

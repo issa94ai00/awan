@@ -176,6 +176,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useEmployeesStore } from '@/stores/employees';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { matchesSearch } from '@/utils/search';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import {
     Plus,
@@ -251,17 +252,16 @@ const selectedStatus = ref('');
 
 const filteredEmployees = computed(() => {
     return store.employees.filter((employee) => {
-        const query = searchQuery.value.trim().toLowerCase();
-        const matchesSearch = [
+        const matchesQuery = matchesSearch([
             employee.name,
             employee.department,
             employee.position,
             employee.email,
             employee.phone
-        ].some((field) => String(field || '').toLowerCase().includes(query));
+        ], searchQuery.value);
 
         const matchesStatus = !selectedStatus.value || employee.status === selectedStatus.value;
-        return matchesSearch && matchesStatus;
+        return matchesQuery && matchesStatus;
     });
 });
 

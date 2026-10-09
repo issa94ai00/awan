@@ -427,7 +427,9 @@ onMounted(refreshSummary);
 }
 
 /* The chevron points along the reading direction. */
-:global([dir='ltr']) .pipeline-arrow i {
+/* A plain descendant selector: `:global([dir='ltr']) .pipeline-arrow i` kept
+   only the `:global()` part and rotated the whole document in English. */
+[dir='ltr'] .pipeline-arrow i {
     transform: rotate(180deg);
 }
 

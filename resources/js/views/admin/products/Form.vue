@@ -100,14 +100,19 @@
                             </el-row>
 
                             <el-row :gutter="24">
-                                <el-col :xs="24" :md="12">
+                                <el-col :xs="24" :md="8">
                                     <el-form-item :label="$t('brand')">
                                         <el-input v-model="form.brand" placeholder="Brand" size="large" />
                                     </el-form-item>
                                 </el-col>
-                                <el-col :xs="24" :md="12">
+                                <el-col :xs="24" :md="8">
                                     <el-form-item :label="$t('model')">
                                         <el-input v-model="form.model" placeholder="Model" size="large" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="8">
+                                    <el-form-item :label="$t('pack_quantity')">
+                                        <el-input-number v-model="form.pack_quantity" :min="1" :controls="false" size="large" style="width:100%" />
                                     </el-form-item>
                                 </el-col>
                             </el-row>
@@ -138,7 +143,7 @@
                                 </el-col>
                                 <el-col :xs="24" :md="6">
                                     <el-form-item :label="$t('currency')">
-                                        <el-select v-model="form.currency" size="large" style="width:100%">
+                                        <el-select v-model="form.currency" size="large" style="width:100%" disabled>
                                             <el-option
                                                 v-for="c in currencyOptions"
                                                 :key="c.code"
@@ -679,7 +684,9 @@ const uploadHeaders = reactive({
     'Accept': 'application/json'
 });
 
-const currencyOptions = computed(() => buildCurrencyOptions());
+// Prices are stored in the base currency (USD) — there is no per-product
+// currency column — so the picker only shows it and cannot be changed.
+const currencyOptions = computed(() => buildCurrencyOptions().filter((c) => c.code === baseCurrencyCode()));
 
 const form = reactive({
     name_ar: '',
@@ -696,6 +703,7 @@ const form = reactive({
     tax_rate: 0,
     taxable: true,
     unit: 'piece',
+    pack_quantity: null,
     stock_quantity: 0,
     min_stock: 0,
     max_stock: null,
@@ -1080,12 +1088,14 @@ const submitForm = async () => {
         if (isEdit.value) {
             await store.updateProduct(route.params.id, formData);
             ElMessage.success(window.t('the_product_has_been_updated'));
+            backToList();
         } else {
             await store.createProduct(formData);
             ElMessage.success(window.t('the_product_has_been_added_successfully'));
+            // The plain list, newest first, is where a new product shows up;
+            // a filtered page might not include it.
+            router.push({ name: 'admin.products.index' });
         }
-
-        router.push('/admin/products');
     } catch (error) {
         if (error?.response?.data?.errors) {
             const errs = error.response.data.errors;
@@ -1100,9 +1110,12 @@ const submitForm = async () => {
     }
 };
 
-const goBack = () => {
-    router.push('/admin/products');
+// Returns to the list as it was left: same filters, sort and page.
+const backToList = () => {
+    router.push({ name: 'admin.products.index', query: store.adminListQuery || {} });
 };
+
+const goBack = backToList;
 
 const safeParseGallery = (value) => {
     try {
@@ -1130,11 +1143,12 @@ const loadProduct = async () => {
             price: p.price ?? 0,
             cost_price: p.cost_price ?? 0,
             sale_price: p.sale_price ?? null,
-            currency: p.currency || baseCurrencyCode(),
+            currency: baseCurrencyCode(),
             show_price: p.show_price ?? true,
             tax_rate: p.tax_rate ?? 0,
             taxable: p.taxable ?? true,
             unit: p.unit || 'piece',
+            pack_quantity: p.pack_quantity ?? null,
             stock_quantity: p.stock_quantity ?? 0,
             min_stock: p.min_stock ?? 0,
             max_stock: p.max_stock ?? null,

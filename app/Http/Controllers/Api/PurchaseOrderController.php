@@ -6,18 +6,27 @@ use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderController extends Controller
 {
+    /** The sale an order buys in for, with enough to name it and its customer. */
+    private const SALE_LINKS = [
+        'salesOrder:id,order_number,status,customer_id',
+        'salesOrder.customer:id,name',
+        'invoice:id,invoice_number,status,customer_id',
+        'invoice.customer:id,name',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         // receipts_count tells the list whether an order's goods already
         // arrived, so a completed row can point at its receipt instead of
         // offering a receive action that would double-count the stock.
-        $query = PurchaseOrder::with(['supplier', 'items.product'])->withCount('receipts');
+        $query = PurchaseOrder::with(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts');
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -33,13 +42,10 @@ class PurchaseOrderController extends Controller
         // Searching hits the table rather than the twenty rows the browser
         // happened to hold, so an order on page three can still be found.
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', "%{$search}%")
-                        ->orWhere('company', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%"));
-            });
+            $query->whereSearch(
+                ['order_number', 'supplier.name', 'supplier.company', 'supplier.phone', 'salesOrder.order_number', 'invoice.invoice_number'],
+                $request->input('search')
+            );
         }
 
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
@@ -111,10 +117,14 @@ class PurchaseOrderController extends Controller
                 'order_date' => 'nullable|date',
                 'due_date' => 'nullable|date|after_or_equal:order_date',
                 'discount' => 'nullable|numeric|min:0',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 'tax' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
+                'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+                'invoice_id' => 'nullable|integer|exists:invoices,id',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|integer|exists:products,id',
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.sale_price' => 'nullable|numeric|min:0',
@@ -131,12 +141,15 @@ class PurchaseOrderController extends Controller
                 'items.*.unit_price.min' => 'سعر الوحدة يجب أن يكون 0 على الأقل',
             ]);
 
+            $this->assertOneSaleLink($validated);
+
             $validated['order_number'] = $this->nextOrderNumber();
             $validated['status'] = $validated['status'] ?? 'pending';
             $validated['order_date'] = $validated['order_date'] ?? now()->toDateString();
             $validated['created_by'] = auth()->id();
 
             $this->applyTotals($validated);
+            ProductVariant::forLines($validated['items']);
 
             // The header carries totals computed from the lines, so the two must
             // land together. Written separately, a failure inside the loop left
@@ -144,24 +157,12 @@ class PurchaseOrderController extends Controller
             $order = DB::transaction(function () use ($validated) {
                 $order = PurchaseOrder::create($validated);
 
-                foreach ($validated['items'] as $item) {
-                    $product = Product::find($item['product_id']);
-                    PurchaseOrderItem::create([
-                        'purchase_order_id' => $order->id,
-                        'product_id' => $item['product_id'],
-                        'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'sale_price' => $item['sale_price'] ?? null,
-                        'total_price' => $item['unit_price'] * $item['quantity'],
-                        'notes' => $item['notes'] ?? null,
-                    ]);
-                }
+                $this->createLines($order, $validated['items']);
 
                 return $order;
             });
 
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -186,7 +187,7 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
-        $order->load(['supplier', 'items.product', 'receipts']);
+        $order->load(['supplier', 'items.product', 'items.variant', 'receipts', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([
@@ -213,10 +214,14 @@ class PurchaseOrderController extends Controller
                 'order_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
                 'notes' => 'nullable|string|max:1000',
+                // Which sale it was for is a reference, not goods: still fixable.
+                'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+                'invoice_id' => 'nullable|integer|exists:invoices,id',
             ]);
+            $this->assertOneSaleLink($validated);
 
             $order->update($validated);
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -234,15 +239,21 @@ class PurchaseOrderController extends Controller
             'order_date' => 'nullable|date',
             'due_date' => 'nullable|date|after_or_equal:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
+            'sales_order_id' => 'nullable|integer|exists:sales_orders,id',
+            'invoice_id' => 'nullable|integer|exists:invoices,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
             'items.*.notes' => 'nullable|string|max:500',
         ]);
+
+        $this->assertOneSaleLink($validated);
 
         // A full save used to accept any status at all, so the rules the
         // status endpoint enforces — no completing by hand, no reviving a
@@ -264,6 +275,7 @@ class PurchaseOrderController extends Controller
         }
 
         $this->applyTotals($validated);
+        ProductVariant::forLines($validated['items']);
 
         /*
          * Editing an order clears its lines and writes them again. Without a
@@ -275,28 +287,67 @@ class PurchaseOrderController extends Controller
             $order->update($validated);
             $order->items()->delete();
 
-            foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                PurchaseOrderItem::create([
-                    'purchase_order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'] ?? ($product ? $product->name : 'Unknown Product'),
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'sale_price' => $item['sale_price'] ?? null,
-                    'total_price' => $item['unit_price'] * $item['quantity'],
-                    'notes' => $item['notes'] ?? null,
-                ]);
-            }
+            $this->createLines($order, $validated['items']);
         });
 
-        $order->load(['supplier', 'items.product']);
+        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase order updated successfully',
             'data' => $order,
         ]);
+    }
+
+    /**
+     * A purchase order buys in for one sale at most: an order or an invoice.
+     * Naming one clears the other, so a save that sends only the new link
+     * cannot leave the order pointing at two sales.
+     */
+    private function assertOneSaleLink(array &$validated): void
+    {
+        if (!empty($validated['sales_order_id']) && !empty($validated['invoice_id'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'invoice_id' => 'اربط طلب الشراء بطلب بيع أو بفاتورة بيع، لا بالاثنين',
+            ]);
+        }
+
+        if (!empty($validated['sales_order_id'])) {
+            $validated['invoice_id'] = null;
+        } elseif (!empty($validated['invoice_id'])) {
+            $validated['sales_order_id'] = null;
+        }
+    }
+
+    /**
+     * Write an order's lines. A line for one variant is named for it
+     * ("floor drain - 4\"") so the supplier's copy and the goods receipt
+     * both say which size was asked for.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function createLines(PurchaseOrder $order, array $items): void
+    {
+        $products = Product::whereIn('id', collect($items)->pluck('product_id'))->get()->keyBy('id');
+        $variants = ProductVariant::forLines($items);
+
+        foreach ($items as $item) {
+            $product = $products->get($item['product_id']);
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+            $name = $product ? $product->name : 'Unknown Product';
+
+            PurchaseOrderItem::create([
+                'purchase_order_id' => $order->id,
+                'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'product_name' => $item['product_name'] ?? ($variant ? $variant->displayName($name) : $name),
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'sale_price' => $item['sale_price'] ?? null,
+                'total_price' => $item['unit_price'] * $item['quantity'],
+                'notes' => $item['notes'] ?? null,
+            ]);
+        }
     }
 
     /**
@@ -313,7 +364,18 @@ class PurchaseOrderController extends Controller
         }
 
         $tax = (float) ($validated['tax'] ?? 0);
-        $discount = (float) ($validated['discount'] ?? 0);
+        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : null;
+
+        if ($discountPercent !== null) {
+            $discount = round(max(0, $subtotal) * ($discountPercent / 100), 5);
+        } else {
+            $discount = round((float) ($validated['discount'] ?? 0), 5);
+            if ($subtotal > 0 && $discount > 0) {
+                $discountPercent = round(($discount / $subtotal) * 100, 2);
+            }
+        }
 
         if ($discount > $subtotal + $tax) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -321,8 +383,10 @@ class PurchaseOrderController extends Controller
             ]);
         }
 
+        $validated['discount'] = $discount;
+        $validated['discount_percent'] = $discountPercent;
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal + $tax - $discount;
+        $validated['total'] = max(0, $subtotal + $tax - $discount);
     }
 
     /**
@@ -378,7 +442,7 @@ class PurchaseOrderController extends Controller
         $target = PurchaseOrder::normalizeStatus($validated['status']);
 
         if ($current === $target) {
-            $order->load(['supplier', 'items.product']);
+            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -409,7 +473,7 @@ class PurchaseOrderController extends Controller
         }
 
         $order->update(['status' => $target]);
-        $order->load(['supplier', 'items.product']);
+        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([

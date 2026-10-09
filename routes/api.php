@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\PurchaseReportController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\InventoryCostMethodController;
 use App\Http\Controllers\Api\LedgerAccountController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\AccountingReportController;
@@ -243,6 +244,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user'])->middleware('auth:sanctum')->name('api.auth.user');
     Route::put('/auth/profile', [AuthController::class, 'updateProfile'])->middleware('auth:sanctum')->name('api.auth.profile');
     Route::post('/auth/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum')->name('api.auth.change-password');
+    Route::get('/auth/sessions', [AuthController::class, 'sessions'])->middleware('auth:sanctum')->name('api.auth.sessions');
+    Route::delete('/auth/sessions', [AuthController::class, 'revokeOtherSessions'])->middleware('auth:sanctum')->name('api.auth.sessions.revoke-others');
+    Route::delete('/auth/sessions/{id}', [AuthController::class, 'revokeSession'])->whereNumber('id')->middleware('auth:sanctum')->name('api.auth.sessions.revoke');
     
     // Protected Routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {
@@ -403,8 +407,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/inquiries/bulk-delete', [InquiryAdminController::class, 'bulkDelete'])->name('api.admin.inquiries.bulk-delete');
             
             // Admin Categories API
-            Route::get('/categories', [CategoryController::class, 'index'])->name('api.admin.categories.index');
-            Route::get('/categories/{category:id}', [CategoryController::class, 'show'])->name('api.admin.categories.show');
+            Route::get('/categories', [CategoryController::class, 'adminIndex'])->name('api.admin.categories.index');
+            Route::get('/categories/{category:id}', [CategoryController::class, 'adminShow'])->name('api.admin.categories.show');
             Route::post('/categories', [CategoryController::class, 'store'])->name('api.admin.categories.store');
             Route::put('/categories/{category:id}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
             Route::delete('/categories/{category:id}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
@@ -490,6 +494,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/reports/inventory/export', [SalesReportController::class, 'inventoryExport'])->name('api.admin.reports.inventory.export');
             Route::get('/reports/invoices', [SalesReportController::class, 'invoiceReport'])->name('api.admin.reports.invoices.index');
             Route::get('/reports/invoices/dimensions', [SalesReportController::class, 'invoiceDimensions'])->name('api.admin.reports.invoices.dimensions');
+            Route::get('/reports/invoices/trend', [SalesReportController::class, 'invoiceTrend'])->name('api.admin.reports.invoices.trend');
             Route::get('/reports/invoices/performance', [SalesReportController::class, 'invoicePerformance'])->name('api.admin.reports.invoices.performance');
             Route::get('/reports/invoices/product-profitability', [SalesReportController::class, 'invoiceProductProfitability'])->name('api.admin.reports.invoices.product-profitability');
             Route::get('/reports/invoices/top-performers', [SalesReportController::class, 'invoiceTopPerformers'])->name('api.admin.reports.invoices.top-performers');
@@ -539,6 +544,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/inventory/stock', [InventoryController::class, 'stock'])->name('api.admin.inventory.stock');
             Route::get('/inventory/export', [InventoryController::class, 'export'])->name('api.admin.inventory.export');
             Route::post('/inventory/import', [InventoryController::class, 'import'])->name('api.admin.inventory.import');
+            Route::get('/inventory/costing-method', [InventoryCostMethodController::class, 'show'])->name('api.admin.inventory.costing-method.show');
+            Route::post('/inventory/costing-method', [InventoryCostMethodController::class, 'update'])->name('api.admin.inventory.costing-method.update');
 
             // Admin Accounting
             //
@@ -568,7 +575,11 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // the periods that use them, not to the month they were paid.
                 Route::get('/accounting/fixed-assets', [FixedAssetController::class, 'index'])->name('api.admin.accounting.fixed-assets.index');
                 Route::post('/accounting/fixed-assets', [FixedAssetController::class, 'store'])->name('api.admin.accounting.fixed-assets.store');
+                // Declared before {fixedAsset} so "depreciation" is never read as an id.
+                Route::get('/accounting/fixed-assets/depreciation', [FixedAssetController::class, 'depreciationPreview'])->name('api.admin.accounting.fixed-assets.depreciation.preview');
+                Route::post('/accounting/fixed-assets/depreciation', [FixedAssetController::class, 'depreciate'])->name('api.admin.accounting.fixed-assets.depreciation.run');
                 Route::get('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('api.admin.accounting.fixed-assets.show');
+                Route::put('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'update'])->name('api.admin.accounting.fixed-assets.update');
                 Route::post('/accounting/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('api.admin.accounting.fixed-assets.dispose');
                 Route::delete('/accounting/fixed-assets/{fixedAsset}', [FixedAssetController::class, 'destroy'])->name('api.admin.accounting.fixed-assets.destroy');
 
@@ -593,7 +604,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/accounting/bank-reconciliations', [BankReconciliationController::class, 'index'])->name('api.admin.accounting.bank-reconciliations.index');
                 Route::post('/accounting/bank-reconciliations', [BankReconciliationController::class, 'store'])->name('api.admin.accounting.bank-reconciliations.store');
                 Route::get('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'show'])->name('api.admin.accounting.bank-reconciliations.show');
+                Route::put('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'update'])->name('api.admin.accounting.bank-reconciliations.update');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/toggle-line', [BankReconciliationController::class, 'toggleLine'])->name('api.admin.accounting.bank-reconciliations.toggle');
+                Route::post('/accounting/bank-reconciliations/{bankReconciliation}/lines', [BankReconciliationController::class, 'setLines'])->name('api.admin.accounting.bank-reconciliations.lines');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/complete', [BankReconciliationController::class, 'complete'])->name('api.admin.accounting.bank-reconciliations.complete');
                 Route::post('/accounting/bank-reconciliations/{bankReconciliation}/reopen', [BankReconciliationController::class, 'reopen'])->name('api.admin.accounting.bank-reconciliations.reopen');
                 Route::delete('/accounting/bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'destroy'])->name('api.admin.accounting.bank-reconciliations.destroy');
@@ -602,6 +615,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 // month final, so it sits with the rest of the books.
                 Route::get('/accounting/periods', [AccountingPeriodController::class, 'index'])->name('api.admin.accounting.periods.index');
                 Route::post('/accounting/periods', [AccountingPeriodController::class, 'store'])->name('api.admin.accounting.periods.store');
+                Route::post('/accounting/periods/batch', [AccountingPeriodController::class, 'batch'])->name('api.admin.accounting.periods.batch');
                 Route::post('/accounting/periods/{accountingPeriod}/close', [AccountingPeriodController::class, 'close'])->name('api.admin.accounting.periods.close');
                 Route::post('/accounting/periods/{accountingPeriod}/reopen', [AccountingPeriodController::class, 'reopen'])->name('api.admin.accounting.periods.reopen');
                 Route::delete('/accounting/periods/{accountingPeriod}', [AccountingPeriodController::class, 'destroy'])->name('api.admin.accounting.periods.destroy');
@@ -666,6 +680,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/invoices', [InvoiceController::class, 'index'])->name('api.invoices.index');
         Route::post('/invoices', [InvoiceController::class, 'store'])->name('api.invoices.store');
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('api.invoices.show');
+        Route::get('/invoices/{invoice}/purchase-draft', [InvoiceController::class, 'purchaseDraft'])->whereNumber('invoice')->name('api.invoices.purchase-draft');
         Route::put('/invoices/{invoice}', [InvoiceController::class, 'update'])->name('api.invoices.update');
         Route::put('/invoices/{invoice}/status', [InvoiceController::class, 'updateStatus'])->name('api.invoices.update-status');
         Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('api.invoices.destroy');
@@ -720,6 +735,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::put('/quotes/{quote}/status', [QuoteController::class, 'updateStatus'])->name('api.quotes.update-status');
         Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])->name('api.quotes.destroy');
         Route::post('/quotes/{quote}/convert-to-sales-order', [QuoteController::class, 'convertToSalesOrder'])->name('api.quotes.convert-to-sales-order');
+        Route::post('/quotes/{quote}/duplicate', [QuoteController::class, 'duplicate'])->name('api.quotes.duplicate');
 
         // Sales Orders (طلبات بيع)
         // The {salesOrder} wildcard is constrained to numeric ids: without it, it
@@ -728,6 +744,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // which are declared later and would never be reached.
         Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('api.sales-orders.index');
         Route::post('/sales-orders', [SalesOrderController::class, 'store'])->name('api.sales-orders.store');
+        // Where each line of an order not yet saved should come from (new-order wizard).
+        Route::post('/sales-orders/suggest-routing', [SalesOrderController::class, 'suggestRouting'])->name('api.sales-orders.suggest-routing');
         Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->whereNumber('salesOrder')->name('api.sales-orders.show');
         Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->whereNumber('salesOrder')->name('api.sales-orders.update');
         Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->whereNumber('salesOrder')->name('api.sales-orders.destroy');
@@ -739,6 +757,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/sales-orders/{salesOrder}/routing', [SalesOrderController::class, 'routingOptions'])->whereNumber('salesOrder')->name('api.sales-orders.routing');
         // What stock cannot cover, for prefilling a purchase order.
         Route::get('/sales-orders/{salesOrder}/shortages', [SalesOrderController::class, 'stockShortages'])->whereNumber('salesOrder')->name('api.sales-orders.shortages');
+        // The order's lines as a purchase order, to open the purchase screen prefilled.
+        Route::get('/sales-orders/{salesOrder}/purchase-draft', [SalesOrderController::class, 'purchaseDraft'])->whereNumber('salesOrder')->name('api.sales-orders.purchase-draft');
         // Where each line's goods come from. A line may be split across
         // warehouses; saving the plan moves the stock hold with it.
         Route::get('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'sourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing');
@@ -1078,7 +1098,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
             // them as ids, so /unread-count (polled by the admin header on every
             // page), /preferences and /templates all answered 404.
             Route::get('/unread-count', [NotificationController::class, 'getUnreadCount'])->name('api.notifications.unread-count');
+            Route::get('/stats', [NotificationController::class, 'getStats'])->name('api.notifications.stats');
+            Route::get('/system-alerts', [NotificationController::class, 'getSystemAlerts'])->name('api.notifications.system-alerts');
+            Route::get('/users', [NotificationController::class, 'getUsers'])->name('api.notifications.users');
             Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('api.notifications.read-all');
+            Route::post('/mark-multiple-read', [NotificationController::class, 'markMultipleAsRead'])->name('api.notifications.mark-multiple-read');
+            Route::post('/delete-multiple', [NotificationController::class, 'destroyMultiple'])->name('api.notifications.delete-multiple');
+            Route::delete('/read-all', [NotificationController::class, 'destroyAllRead'])->name('api.notifications.destroy-all-read');
             Route::get('/preferences', [NotificationController::class, 'getPreferences'])->name('api.notifications.preferences');
             Route::put('/preferences', [NotificationController::class, 'updatePreferences'])->name('api.notifications.update-preferences');
             /*
@@ -1140,6 +1166,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/activity-timeline', [AuditController::class, 'getActivityTimeline'])->name('api.audit.timeline');
             Route::get('/user-summary/{userId}', [AuditController::class, 'getUserActivitySummary'])->name('api.audit.user-summary');
             Route::get('/my-summary', [AuditController::class, 'getMyActivitySummary'])->name('api.audit.my-summary');
+            Route::get('/export', [AuditController::class, 'export'])->name('api.audit.export');
             Route::get('/', [AuditController::class, 'index'])->name('api.audit.index');
             Route::get('/{id}', [AuditController::class, 'show'])->whereNumber('id')->name('api.audit.show');
             Route::post('/cleanup', [AuditController::class, 'cleanupOldLogs'])->name('api.audit.cleanup');

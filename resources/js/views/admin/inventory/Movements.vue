@@ -241,6 +241,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, reactive } from 'vue';
+import { useRoute } from 'vue-router';
 import { useStockMovementsStore } from '@/stores/stockMovements';
 import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
@@ -418,12 +419,34 @@ const quantityColorClass = (type) => {
     return 'text-warning';
 };
 
+const route = useRoute();
+
 onMounted(async () => {
+    // The inventory screen links here for one product in one warehouse.
+    const productId = Number(route.query.product_id) || null;
+    const warehouseId = Number(route.query.warehouse_id) || null;
+    if (productId || warehouseId) {
+        filters.product_id = productId || '';
+        filters.warehouse_id = warehouseId || '';
+        store.pagination.current_page = 1;
+    }
+
     store.fetchMovements(buildParams()).catch(() => {});
     inventoryStore.fetchWarehouses().catch(() => {});
 
     await productsStore.fetchProducts({ per_page: 200 }).catch(() => {});
     productOptions.value = productsStore.products;
+
+    // Outside the first page of products the select would show a bare id.
+    if (productId && !productOptions.value.some((p) => p.id === productId)) {
+        try {
+            const res = await productsApi.getById(productId);
+            const product = res.data?.data;
+            if (product?.id) productOptions.value = [product, ...productOptions.value];
+        } catch (e) {
+            // The filter still applies; only the label is missing.
+        }
+    }
 });
 </script>
 

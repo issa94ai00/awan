@@ -13,15 +13,11 @@ class AttendanceController extends Controller
         $query = Attendance::with('employee');
 
         if ($request->filled('search')) {
-            $search = strtolower($request->search);
-            $query->where(function ($query) use ($search) {
-                $query->whereHas('employee', function ($query) use ($search) {
-                    $query->whereRaw('LOWER(CONCAT(first_name, \' \' , last_name)) LIKE ?', ["%{$search}%"])
-                        ->orWhereRaw('LOWER(department) LIKE ?', ["%{$search}%"]);
-                })
-                ->orWhereRaw('LOWER(status) LIKE ?', ["%{$search}%"])
-                ->orWhereRaw('LOWER(notes) LIKE ?', ["%{$search}%"]);
-            });
+            // First and last name searched apart: one word each, so a full
+            // name still matches whichever way round it is typed.
+            $query->whereSearch([
+                'employee.first_name', 'employee.last_name', 'employee.department', 'status', 'notes',
+            ], $request->search);
         }
 
         if ($request->filled('employee_id')) {

@@ -21,6 +21,8 @@ class SalesOrder extends Model
         'subtotal',
         'tax',
         'discount',
+        'discount_percent',
+        'tax_percent',
         'total',
         'shipping_address',
         'notes',
@@ -53,6 +55,8 @@ class SalesOrder extends Model
         'subtotal' => 'decimal:5',
         'tax' => 'decimal:5',
         'discount' => 'decimal:5',
+        'discount_percent' => 'decimal:2',
+        'tax_percent' => 'decimal:2',
         'total' => 'decimal:5',
         'order_date' => 'date',
         'expected_delivery' => 'date',
@@ -116,6 +120,12 @@ class SalesOrder extends Model
         return $this->hasMany(Invoice::class, 'sales_order_id');
     }
 
+    /** Purchase orders raised to buy in for this order. */
+    public function purchaseOrders()
+    {
+        return $this->hasMany(PurchaseOrder::class);
+    }
+
     public function channel()
     {
         return $this->belongsTo(OrderChannel::class, 'channel_id');
@@ -152,6 +162,11 @@ class SalesOrder extends Model
     public function rmaRequests()
     {
         return $this->hasMany(RmaRequest::class);
+    }
+
+    public function expenses()
+    {
+        return $this->hasMany(Expense::class);
     }
 
     /** Append-only record of every stage this order has moved through. */

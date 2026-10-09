@@ -278,3 +278,68 @@ test('the books are not opened to a sales account', function () {
         ->getJson('/api/v1/admin/accounting/periods')
         ->assertForbidden();
 });
+
+test('the missing months of a year are created in one go, skipping any already covered', function () {
+    AccountingPeriod::create([
+        'name' => 'مارس',
+        'start_date' => '2026-03-01',
+        'end_date' => '2026-03-31',
+        'status' => AccountingPeriod::STATUS_OPEN,
+    ]);
+
+    $months = collect(range(1, 4))->map(fn ($m) => [
+        'name' => 'شهر '.$m,
+        'start_date' => sprintf('2026-%02d-01', $m),
+        'end_date' => now()->setDate(2026, $m, 1)->endOfMonth()->toDateString(),
+    ])->all();
+
+    $data = $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/periods/batch', ['periods' => $months])
+        ->assertCreated()->json('data');
+
+    expect($data['created'])->toHaveCount(3);
+    expect($data['skipped'])->toBe(['شهر 3']);
+    expect(AccountingPeriod::count())->toBe(4);
+});
+
+test('the list says how many unbalanced entries would stop a period closing', function () {
+    AccountingPeriod::create([
+        'name' => 'يناير',
+        'start_date' => '2026-01-01',
+        'end_date' => '2026-01-31',
+        'status' => AccountingPeriod::STATUS_OPEN,
+    ]);
+
+    $header = JournalEntryHeader::create([
+        'entry_number' => 'JE-BAD',
+        'entry_date' => '2026-01-10',
+        'description' => 'قيد تالف',
+        'total_debit' => 100,
+        'total_credit' => 40,
+        'status' => 'posted',
+    ]);
+    $header->lines()->create(['account_id' => LedgerAccount::where('posting_role', 'cash')->value('id'), 'debit' => 100, 'credit' => 0]);
+    $header->lines()->create(['account_id' => LedgerAccount::where('posting_role', 'capital')->value('id'), 'debit' => 0, 'credit' => 40]);
+
+    $period = $this->actingAs($this->admin)
+        ->getJson('/api/v1/admin/accounting/periods')
+        ->assertOk()->json('data.periods.0');
+
+    expect($period['unbalanced_entries'])->toBe(1);
+    expect($period['entry_count'])->toBe(1);
+});
+
+test('a reason given for reopening is kept in the notes beside the earlier ones', function () {
+    $period = ($this->closedPeriod)('2026-01-01', '2026-01-31');
+    $period->update(['notes' => 'مراجعة المدقق']);
+
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/periods/'.$period->id.'/reopen', ['reason' => 'فاتورة مورد متأخرة'])
+        ->assertOk();
+
+    $notes = $period->fresh()->notes;
+
+    expect($notes)->toContain('مراجعة المدقق');
+    expect($notes)->toContain('فاتورة مورد متأخرة');
+    expect($notes)->toContain($this->admin->name);
+});

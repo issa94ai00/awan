@@ -26,6 +26,16 @@ class JournalEntryController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('source_module')) {
+            $query->where('source_module', $request->source_module);
+        }
+
+        // Entry number or narration: the two things a person remembers an
+        // entry by when they come looking for it.
+        if ($request->filled('search')) {
+            $query->whereSearch(['entry_number', 'description'], $request->search);
+        }
+
         if ($request->filled('date_from')) {
             $query->whereDate('entry_date', '>=', $request->date_from);
         }

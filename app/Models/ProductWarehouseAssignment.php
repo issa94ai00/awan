@@ -27,6 +27,7 @@ class ProductWarehouseAssignment extends Model
         'lead_time_days',
         'primary_bin_id',
         'putaway_strategy',
+        'cost_basis',
         'auto_reorder_enabled',
         'notes',
     ];

@@ -13,18 +13,10 @@ class TicketController extends Controller
         $query = Ticket::with('customer');
 
         if ($request->filled('search')) {
-            $searchTerm = '%'.$request->search.'%';
-            $query->where(function ($query) use ($searchTerm) {
-                $query->where('subject', 'like', $searchTerm)
-                    ->orWhere('message', 'like', $searchTerm)
-                    ->orWhere('status', 'like', $searchTerm)
-                    ->orWhere('priority', 'like', $searchTerm)
-                    ->orWhereHas('customer', function ($query) use ($searchTerm) {
-                        $query->where('name', 'like', $searchTerm)
-                            ->orWhere('email', 'like', $searchTerm)
-                            ->orWhere('phone', 'like', $searchTerm);
-                    });
-            });
+            $query->whereSearch([
+                'subject', 'message', 'status', 'priority',
+                'customer.name', 'customer.email', 'customer.phone',
+            ], $request->search);
         }
 
         if ($request->filled('status')) {

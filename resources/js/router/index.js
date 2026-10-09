@@ -92,6 +92,11 @@ const routes = [
                 component: () => import('@/views/admin/categories/Form.vue')
             },
             {
+                path: 'profile',
+                name: 'admin.profile',
+                component: () => import('@/views/admin/Profile.vue')
+            },
+            {
                 path: 'settings',
                 name: 'admin.settings',
                 component: () => import('@/views/admin/Settings.vue')
@@ -224,6 +229,11 @@ const routes = [
             {
                 path: 'sales/quotes',
                 name: 'admin.quotes.index',
+                component: () => import('@/views/admin/sales/Quotes.vue')
+            },
+            {
+                path: 'sales/quotes/create',
+                name: 'admin.quotes.create',
                 component: () => import('@/views/admin/sales/Quotes.vue')
             },
             {

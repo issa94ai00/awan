@@ -3,7 +3,7 @@ import api from '@/api/index';
 const BASE = '/notifications';
 
 export const notificationsService = {
-    // Notifications
+    // Notifications Feed & Operations
     getNotifications(params = {}) {
         return api.get(`${BASE}`, { params });
     },
@@ -20,16 +20,44 @@ export const notificationsService = {
         return api.post(`${BASE}/read-all`);
     },
 
+    markMultipleAsRead(ids) {
+        return api.post(`${BASE}/mark-multiple-read`, { ids });
+    },
+
     deleteNotification(id) {
         return api.delete(`${BASE}/${id}`);
+    },
+
+    deleteMultiple(ids) {
+        return api.post(`${BASE}/delete-multiple`, { ids });
+    },
+
+    deleteAllRead() {
+        return api.delete(`${BASE}/read-all`);
     },
 
     sendNotification(data) {
         return api.post(`${BASE}/send`, data);
     },
 
+    sendBulkNotification(data) {
+        return api.post(`${BASE}/send-bulk`, data);
+    },
+
     getUnreadCount() {
         return api.get(`${BASE}/unread-count`);
+    },
+
+    getStats() {
+        return api.get(`${BASE}/stats`);
+    },
+
+    getSystemAlerts() {
+        return api.get(`${BASE}/system-alerts`);
+    },
+
+    getUsers() {
+        return api.get(`${BASE}/users`);
     },
 
     // Templates
@@ -53,14 +81,6 @@ export const notificationsService = {
         return api.delete(`${BASE}/templates/${id}`);
     },
 
-    previewTemplate(id, data = {}) {
-        return api.post(`${BASE}/templates/${id}/preview`, data);
-    },
-
-    duplicateTemplate(id) {
-        return api.post(`${BASE}/templates/${id}/duplicate`);
-    },
-
     // Preferences
     getPreferences() {
         return api.get(`${BASE}/preferences`);
@@ -69,36 +89,6 @@ export const notificationsService = {
     updatePreferences(data) {
         return api.put(`${BASE}/preferences`, data);
     },
-
-    getUserPreferences(userId) {
-        return api.get(`${BASE}/preferences/${userId}`);
-    },
-
-    updateUserPreferences(userId, data) {
-        return api.put(`${BASE}/preferences/${userId}`, data);
-    },
-
-    // Notification Channels
-    getChannels() {
-        return api.get(`${BASE}/channels`);
-    },
-
-    testChannel(channel, data) {
-        return api.post(`${BASE}/channels/${channel}/test`, data);
-    },
-
-    // Notification History
-    getHistory(params = {}) {
-        return api.get(`${BASE}/history`, { params });
-    },
-
-    getNotificationHistory(id) {
-        return api.get(`${BASE}/history/${id}`);
-    },
-
-    resendNotification(id) {
-        return api.post(`${BASE}/history/${id}/resend`);
-    }
 };
 
 export default notificationsService;

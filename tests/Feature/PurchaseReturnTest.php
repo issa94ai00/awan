@@ -161,3 +161,61 @@ test('a purchase return cannot be deleted once its goods are gone', function () 
         ->deleteJson('/api/v1/admin/purchase-returns/'.PurchaseReturn::latest('id')->value('id'))
         ->assertStatus(422);
 });
+
+test('the same product on two lines leaves the shelf once and is credited once', function () {
+    ($this->returnGoods)([
+        'items' => [
+            ['product_id' => $this->product->id, 'quantity' => 2],
+            ['product_id' => $this->product->id, 'quantity' => 3],
+        ],
+    ])->assertCreated();
+
+    $return = PurchaseReturn::with('items')->latest('id')->first();
+
+    // Five units out, five units credited at their cost of 40 — not the first
+    // line's movement reused for the second.
+    expect((int) WarehouseInventory::where('product_id', $this->product->id)->value('quantity'))->toBe(5);
+    expect($return->items)->toHaveCount(1);
+    expect((int) $return->items->first()->quantity)->toBe(5);
+    expect(round((float) $return->credit_amount, 2))->toBe(200.0);
+    expect($return->totalCost())->toBe(200.0);
+});
+
+test('the same product at two different credits is refused', function () {
+    ($this->returnGoods)([
+        'items' => [
+            ['product_id' => $this->product->id, 'quantity' => 2, 'unit_price' => 40],
+            ['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 30],
+        ],
+    ])->assertStatus(422);
+
+    expect(PurchaseReturn::count())->toBe(0);
+});
+
+test('the list filters, searches and totals what it shows', function () {
+    ($this->returnGoods)([
+        'items' => [['product_id' => $this->product->id, 'quantity' => 2, 'unit_price' => 35]],
+        'tax_amount' => 12,
+        'reason' => 'بضاعة معيبة',
+    ])->assertCreated();
+    ($this->returnGoods)([
+        'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        'reason' => 'صنف خاطئ',
+    ])->assertCreated();
+
+    $list = fn (array $query) => $this->actingAs($this->admin)
+        ->getJson('/api/v1/admin/purchase-returns?'.http_build_query($query))
+        ->assertOk()
+        ->json('data');
+
+    $all = $list(['with_summary' => 1]);
+    expect($all['returns'])->toHaveCount(2);
+    // 70 + 40 credited, against 120 of cost: 10 short.
+    expect($all['summary'])->toMatchArray(['count' => 2, 'credit' => 110.0, 'tax' => 12.0, 'cost' => 120.0, 'variance' => -10.0]);
+
+    $found = $list(['search' => 'خاطئ', 'with_summary' => 1]);
+    expect($found['returns'])->toHaveCount(1);
+    expect($found['summary']['credit'])->toEqual(40);
+
+    expect($list(['warehouse_id' => $this->warehouse->id + 99])['returns'])->toHaveCount(0);
+});

@@ -14,6 +14,7 @@ class SalesOrderItem extends Model
     protected $fillable = [
         'sales_order_id',
         'product_id',
+        'product_variant_id',
         'product_unit_id',
         'unit_name',
         'unit_multiplier',
@@ -70,5 +71,10 @@ class SalesOrderItem extends Model
         static::saving(function ($item) {
             $item->total = ($item->unit_price * $item->quantity) - $item->discount + $item->tax;
         });
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 }

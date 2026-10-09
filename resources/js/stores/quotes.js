@@ -7,6 +7,9 @@ import { readPagination, requireAuth } from '@/stores/salesShared';
 export const useQuotesStore = defineStore('quotes', {
     state: () => ({
         quotes: [],
+        // Counts and values across every quote the search matches, not just
+        // the page on screen — see QuoteController::summary().
+        summary: null,
         currentQuote: null,
         loading: false,
         saving: false,
@@ -28,6 +31,7 @@ export const useQuotesStore = defineStore('quotes', {
                 const res = await quotesApi.getAll(params);
                 const data = res.data?.data || {};
                 this.quotes = data.quotes || [];
+                this.summary = data.summary || null;
                 this.pagination = readPagination(data.pagination, this.pagination, this.quotes.length);
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load quotes';
@@ -50,6 +54,17 @@ export const useQuotesStore = defineStore('quotes', {
                 const created = res.data?.data || res.data;
                 if (created) this.quotes.unshift(created);
                 return created;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /** A new draft carrying the same customer and lines. */
+        async duplicateQuote(id) {
+            this.saving = true;
+            try {
+                const res = await quotesApi.duplicate(id);
+                return res.data?.data || res.data;
             } finally {
                 this.saving = false;
             }
@@ -102,9 +117,6 @@ export const useQuotesStore = defineStore('quotes', {
             this.saving = true;
             try {
                 const res = await quotesApi.convertToSalesOrder(id);
-                // The quote's own status is unchanged server-side, but the list
-                // needs refreshing so the new linkage shows up.
-                await this.fetchQuotes().catch(() => {});
                 return res.data?.data || res.data;
             } finally {
                 this.saving = false;

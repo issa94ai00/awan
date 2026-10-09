@@ -63,6 +63,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLeaveRequestsStore } from '@/stores/leaveRequests';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { matchesSearch } from '@/utils/search';
 
 const router = useRouter();
 const leaveStore = useLeaveRequestsStore();
@@ -84,13 +85,11 @@ const leaveRequests = computed(() => leaveStore.requests.map((request) => ({
 })));
 
 const filteredRequests = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    const query = searchQuery.value.trim();
     if (!query) return leaveRequests.value;
 
     return leaveRequests.value.filter((request) => {
-        return [request.employeeName, request.leave_type, request.statusLabel, request.reason].some((field) =>
-            String(field || '').toLowerCase().includes(query)
-        );
+        return matchesSearch([request.employeeName, request.leave_type, request.statusLabel, request.reason], query);
     });
 });
 

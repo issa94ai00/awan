@@ -1,6 +1,5 @@
 <template>
     <div class="price-offer-page">
-        <div class="print-cover"><img :src="'/cover.jpeg'" alt=""></div>
         <header class="offer-toolbar">
             <div class="toolbar-head">
                 <div class="toolbar-title">
@@ -286,14 +285,23 @@
                             </div>
                         </el-popover>
                         <div class="export-actions">
+                            <button type="button" class="btn-ghost btn-print-settings" :title="$t('print_settings')" @click="openPrintSettings">
+                                <el-icon><Operation /></el-icon>
+                                <span>{{ $t('print_settings') }}</span>
+                            </button>
+                            <button type="button" class="btn-ghost btn-print-preview" :title="$t('print_preview')" @click="openPrintPreview">
+                                <el-icon><View /></el-icon>
+                                <span>{{ $t('print_preview') }}</span>
+                            </button>
                             <button type="button" class="btn-pdf" :disabled="printLoading || total === 0" @click="printPage">
                                 <el-icon v-if="printLoading && prepMode === 'print'" class="is-loading"><Loading /></el-icon>
-                                {{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}
+                                <el-icon v-else><Printer /></el-icon>
+                                <span>{{ printLoading && prepMode === 'print' ? $t('loading') : $t('print') }}</span>
                             </button>
                             <button type="button" class="btn-pdf-download" :disabled="printLoading || total === 0" @click="downloadPdf">
                                 <el-icon v-if="printLoading && prepMode === 'pdf'" class="is-loading"><Loading /></el-icon>
                                 <el-icon v-else><Download /></el-icon>
-                                {{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}
+                                <span>{{ printLoading && prepMode === 'pdf' ? $t('loading') : $t('download_pdf') }}</span>
                             </button>
                         </div>
                     </div>
@@ -465,16 +473,61 @@
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
                 @start-edit-stock="startEditStock" @commit-edit-stock="commitEditStock" @cancel-edit-stock="cancelEditStock"
                 @edit-item="openEditItemDialog"
+                @edit-specs="openSpecsDialog"
                 @remove-variant="removeVariant"
                 @remove-item="removeItem"
                 @update-image="updateItemImage" @clear-image="clearItemImage"
                 @add-variant="openAddVariantDialog" />
         </div>
 
-        <!-- Print/PDF-only table: holds every product across every page, grouped by product name -->
-        <div class="offer-table-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
-            <ProductOfferTable ref="printTableRef" :groups="printGroups" :loading="false" :editing-id="null" :edit-value="''" print-mode
-                :visible-columns="visibleColumns" :column-widths="columnWidths" :row-height="rowHeight" />
+        <!-- Print/PDF-only layout: holds cover, official header banner, metadata, full catalogue table and footer -->
+        <div class="print-sheet-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
+            <!-- Optional Full-page Cover -->
+            <div v-if="printSettings.showCover" class="print-cover">
+                <img :src="'/cover.jpeg'" alt="Catalog Cover">
+            </div>
+
+            <div class="print-document-content">
+                <!-- Official Header Banner and Document Metadata -->
+                <div v-if="printSettings.showHeader" ref="printHeaderRef" class="print-document-header-box">
+                    <PrintDocumentHeader
+                        :header-style="printSettings.headerStyle || 'official'"
+                        :title="printSettings.title || $t('price_offer')"
+                        :subtitle="'OFFICIAL PRICE QUOTATION'"
+                        :customer-name="printSettings.customerName"
+                        :date="printSettings.date"
+                        :notes="printSettings.notes"
+                        :show-contacts="printSettings.showContacts !== false"
+                        :banner-src="'/Header.jpeg'"
+                    />
+                </div>
+
+                <div class="offer-table-wrap">
+                    <ProductOfferTable
+                        ref="printTableRef"
+                        :groups="printGroups"
+                        :loading="false"
+                        :editing-id="null"
+                        :edit-value="''"
+                        print-mode
+                        :visible-columns="effectivePrintColumns"
+                        :column-widths="columnWidths"
+                        :row-height="rowHeight"
+                    />
+                </div>
+
+                <div v-if="printSettings.showFooter" class="print-document-footer">
+                    <div class="footer-company-info">
+                        <span class="f-comp">{{ $t('site_fallback_name') }}</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-cr">س.ت: 5048</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-addr">ريف دمشق - معربا</span>
+                        <span class="f-sep">·</span>
+                        <span class="f-phone" dir="ltr">0980831477 - 0962889577</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Print/PDF-prep overlay: shows progress while every page is pulled, images are loaded, and (for PDF) pages are rendered -->
@@ -582,6 +635,11 @@
                         </el-form-item>
                     </el-col>
                 </el-row>
+                <VariantSpecsEditor
+                    v-model="addVariantForm.specs"
+                    :label-suggestions="specLabelSuggestions"
+                    :copy-sources="specCopySources(addVariantTarget?.product?.id)"
+                />
             </el-form>
             <template #footer>
                 <el-button @click="addVariantVisible = false">{{ $t('common.cancel') }}</el-button>
@@ -683,6 +741,19 @@
                         </el-form-item>
                     </el-col>
                 </el-row>
+                <template v-if="editItemIsVariant">
+                    <VariantSpecsEditor
+                        v-model="editItemSpecs"
+                        :label-suggestions="specLabelSuggestions"
+                        :copy-sources="specCopySources(editItemTarget?.group?.product?.id, editItemTarget?.item?.id)"
+                    />
+                    <div v-if="editItemSiblingCount > 0" class="specs-apply-siblings">
+                        <el-checkbox v-model="applySpecsToSiblings">
+                            {{ $t('vs_apply_to_siblings', { n: editItemSiblingCount }) }}
+                        </el-checkbox>
+                    </div>
+                    <p v-if="editItemServerErrors.specs" class="specs-server-error">{{ editItemServerErrors.specs }}</p>
+                </template>
             </el-form>
             <template #footer>
                 <el-button @click="closeEditItemDialog">{{ $t('common.cancel') }}</el-button>
@@ -690,6 +761,492 @@
                     {{ $t('common.save') }}
                 </el-button>
             </template>
+        </el-dialog>
+
+        <SpecsEditDialog
+            v-model="specsDialogVisible"
+            :product-name="specsDialog.productName"
+            :variant-label="specsDialog.variantLabel"
+            :is-variant="specsDialog.isVariant"
+            :description="specsDialog.description"
+            :own-specs="specsDialog.ownSpecs"
+            :option-count="specsDialog.optionCount"
+            :sibling-count="specsDialog.siblingIds.length"
+            :label-suggestions="specLabelSuggestions"
+            :copy-sources="specsDialog.copySources"
+            :saving="specsDialogSaving"
+            :server-error="specsDialogError"
+            @save="saveSpecsDialog"
+        />
+
+        <!-- Print & PDF Settings Dialog -->
+        <el-dialog
+            v-model="printSettingsVisible"
+            :title="$t('print_settings')"
+            width="820px"
+            class="print-settings-dialog"
+            :close-on-click-modal="true"
+            append-to-body
+        >
+            <div class="print-settings-content">
+                <!-- Scope Summary Banner -->
+                <div class="print-summary-card">
+                    <div class="summary-stat">
+                        <span class="stat-num">{{ printableCount }}</span>
+                        <span class="stat-lbl">{{ $t('product') }}</span>
+                    </div>
+                    <div class="summary-sep"></div>
+                    <div class="summary-stat">
+                        <span class="stat-num">{{ catalogueSections.length }}</span>
+                        <span class="stat-lbl">{{ $t('classifications') }}</span>
+                    </div>
+                    <div class="summary-sep"></div>
+                    <div class="summary-stat is-price">
+                        <span class="stat-num">{{ formatSummaryPrice(printableSum) }}</span>
+                        <span class="stat-lbl">{{ $t('sum_of_prices') }}</span>
+                    </div>
+                    <div v-if="divideOverrideCount > 0" class="summary-badge">
+                        {{ $t('divides_applied', { divisor: divideValueApplied }) }}
+                    </div>
+                </div>
+
+                <!-- Quick Presets Row -->
+                <div class="presets-row">
+                    <span class="presets-title">{{ $t('common.quick_actions') || 'قوالب سريعة' }}:</span>
+                    <button type="button" class="preset-chip" @click="applyClientPreset">
+                        <el-icon><User /></el-icon>
+                        {{ $t('client_preset') }}
+                    </button>
+                    <button type="button" class="preset-chip" @click="applyFullCatalogPreset">
+                        <el-icon><Collection /></el-icon>
+                        {{ $t('full_catalog_preset') }}
+                    </button>
+                    <button type="button" class="preset-chip" @click="applyInkSaverPreset">
+                        <i class="fas fa-leaf"></i>
+                        {{ $t('ink_saver_preset') || 'موفر للحبر (نص فقط)' }}
+                    </button>
+                    <button type="button" class="preset-chip" @click="applyInternalPreset">
+                        <i class="fas fa-warehouse"></i>
+                        {{ $t('internal_preset') || 'مخزون داخلي' }}
+                    </button>
+                </div>
+
+                <!-- Settings Tabs -->
+                <el-tabs v-model="activePrintSettingsTab" class="print-settings-tabs">
+                    <!-- Tab 1: Design, Header & Structure -->
+                    <el-tab-pane :label="$t('print_options') || 'قالب ونمط الطباعة'" name="design">
+                        <div class="tab-pane-content">
+                            <!-- Orientation Selector -->
+                            <div class="setting-item-box">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('page_orientation') || 'اتجاه الصفحة' }}</div>
+                                        <div class="setting-desc">{{ (printSettings.orientation || 'portrait') === 'portrait' ? 'A4 عمودي - مناسب للعروض القياسية' : 'A4 أفقي - مناسب للجداول العريضة وتعدد الأعمدة' }}</div>
+                                    </div>
+                                    <div class="orient-pill-selector">
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: (printSettings.orientation || 'portrait') === 'portrait' }"
+                                            @click="setOrientation('portrait')"
+                                        >
+                                            <i class="fas fa-file-alt"></i>
+                                            <span>{{ $t('portrait') || 'عمودي' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.orientation === 'landscape' }"
+                                            @click="setOrientation('landscape')"
+                                        >
+                                            <i class="fas fa-file-alt fa-rotate-90"></i>
+                                            <span>{{ $t('landscape') || 'أفقي' }}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Header Style Box -->
+                            <div class="setting-item-box" :class="{ active: printSettings.showHeader }">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('include_company_header') }}</div>
+                                        <div class="setting-desc">{{ $t('include_company_header_desc') }}</div>
+                                    </div>
+                                    <el-switch v-model="printSettings.showHeader" @change="savePrintSettings" />
+                                </div>
+                                <div v-if="printSettings.showHeader" class="setting-header-preview-box">
+                                    <div class="header-style-pill-selector">
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: (printSettings.headerStyle || 'official') === 'official' }"
+                                            @click="setHeaderStyle('official')"
+                                        >
+                                            <i class="fas fa-certificate"></i>
+                                            <span>{{ $t('official_header') || 'ترويسة رسمية بالشعار' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.headerStyle === 'compact' }"
+                                            @click="setHeaderStyle('compact')"
+                                        >
+                                            <i class="fas fa-compress-alt"></i>
+                                            <span>{{ $t('compact_header') || 'مدمجة' }}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="style-pill-btn"
+                                            :class="{ active: printSettings.headerStyle === 'banner' }"
+                                            @click="setHeaderStyle('banner')"
+                                        >
+                                            <i class="fas fa-image"></i>
+                                            <span>{{ $t('banner_header') || 'بانر' }}</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="live-header-preview-card">
+                                        <PrintDocumentHeader
+                                            preview-mode
+                                            :header-style="printSettings.headerStyle || 'official'"
+                                            :title="printSettings.title || $t('price_offer')"
+                                            :subtitle="'OFFICIAL PRICE QUOTATION'"
+                                            :customer-name="printSettings.customerName"
+                                            :date="printSettings.date"
+                                            :notes="printSettings.notes"
+                                            :show-contacts="printSettings.showContacts !== false"
+                                            :banner-src="'/Header.jpeg'"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cover Page Box -->
+                            <div class="setting-item-box" :class="{ active: printSettings.showCover }">
+                                <div class="setting-item-head">
+                                    <div class="setting-info">
+                                        <div class="setting-title">{{ $t('include_cover_page') }}</div>
+                                        <div class="setting-desc">{{ $t('include_cover_page_desc') }}</div>
+                                    </div>
+                                    <el-switch v-model="printSettings.showCover" @change="savePrintSettings" />
+                                </div>
+                                <div v-if="printSettings.showCover" class="setting-thumb-preview cover-thumb">
+                                    <img :src="'/cover.jpeg'" alt="Cover Preview" />
+                                </div>
+                            </div>
+
+                            <!-- Document Structure Toggles -->
+                            <div class="settings-toggles-row">
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showContacts" @change="savePrintSettings" />
+                                    <span>{{ $t('show_contacts_in_header') || 'إظهار بيانات التواصل في الترويسة' }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showPageNumbers" @change="savePrintSettings" />
+                                    <span>{{ $t('show_page_numbers') }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label">
+                                    <el-checkbox v-model="printSettings.showFooter" @change="savePrintSettings" />
+                                    <span>{{ $t('show_print_footer') }}</span>
+                                </label>
+                                <label class="toggle-checkbox-label is-warning">
+                                    <el-checkbox v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
+                                    <span>{{ $t('hide_stock_for_clients') }}</span>
+                                </label>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- Tab 2: Offer Info & Client Details -->
+                    <el-tab-pane :label="$t('offer_title') + ' & ' + $t('client_name')" name="info">
+                        <div class="tab-pane-content">
+                            <div class="fields-grid">
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_title') }}</label>
+                                    <el-input
+                                        v-model="printSettings.title"
+                                        :placeholder="$t('price_offer')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('client_name') }}</label>
+                                    <el-input
+                                        v-model="printSettings.customerName"
+                                        :placeholder="$t('client_name_placeholder')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_date') }}</label>
+                                    <el-input
+                                        v-model="printSettings.date"
+                                        type="date"
+                                        @change="savePrintSettings"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-label">{{ $t('offer_notes') }}</label>
+                                    <el-input
+                                        v-model="printSettings.notes"
+                                        :placeholder="$t('offer_notes_placeholder')"
+                                        clearable
+                                        @input="savePrintSettings"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Quick Note Chips -->
+                            <div class="quick-notes-section">
+                                <div class="quick-notes-title">
+                                    <i class="fas fa-magic"></i>
+                                    <span>{{ $t('quick_terms') || 'شروط وملاحظات سريعة (انقر للإضافة)' }}:</span>
+                                </div>
+                                <div class="quick-notes-chips">
+                                    <button
+                                        v-for="(n, nIdx) in quickNoteSuggestions"
+                                        :key="nIdx"
+                                        type="button"
+                                        class="quick-note-chip"
+                                        @click="appendQuickNote(n)"
+                                    >
+                                        + {{ n }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+
+                    <!-- Tab 3: Columns & Products -->
+                    <el-tab-pane :label="$t('print_columns_options') || 'الأعمدة والمنتجات'" name="columns">
+                        <div class="tab-pane-content">
+                            <div class="columns-toggles-grid">
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_images_in_print') || 'تضمين صور المنتجات' }}</strong>
+                                        <small>{{ printSettings.showImages !== false ? 'يتم عرض صور المنتجات بجودة عالية' : 'نص فقط - يوفر حبر الطابعة' }}</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showImages" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_details_in_print') || 'تضمين تفاصيل المنتج' }}</strong>
+                                        <small>{{ $t('details') }} (المقاس واللون والوحدة)</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showDetails" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_specs_in_print') || 'تضمين المواصفات الفنية' }}</strong>
+                                        <small>{{ $t('specifications') }} والجداول التفصيلية</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showSpecs" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_offer_price_in_print') || 'تضمين سعر العرض' }}</strong>
+                                        <small>{{ $t('offer_price') }} وسعر التخفيض الموحد</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showOfferPrice" @change="savePrintSettings" />
+                                </div>
+                                <div class="column-toggle-card is-warn">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('hide_stock_for_clients') }}</strong>
+                                        <small>{{ $t('hide_stock_for_clients_hint') }}</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.hideInventoryInPrint" @change="savePrintSettings" />
+                                </div>
+                            </div>
+
+                            <div class="rows-estimate-card">
+                                <span class="rows-label">{{ $t('rows_per_page_estimate', { n: rowsPerPage }) }}</span>
+                                <div class="rows-chips">
+                                    <button
+                                        v-for="n in [3, 4, 5, 6]"
+                                        :key="n"
+                                        type="button"
+                                        class="rows-per-page-chip"
+                                        :class="{ active: rowsPerPage === n }"
+                                        @click="setRowsPerPage(n)"
+                                    >{{ n }}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
+            </div>
+
+            <template #footer>
+                <div class="print-dialog-footer">
+                    <el-button @click="printSettingsVisible = false">{{ $t('common.cancel') }}</el-button>
+                    <div class="footer-primary-actions">
+                        <el-button
+                            :icon="View"
+                            @click="openPrintPreview"
+                        >
+                            {{ $t('print_preview') }}
+                        </el-button>
+                        <el-button
+                            type="primary"
+                            :loading="printLoading && prepMode === 'pdf'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Download"
+                            @click="downloadPdf"
+                        >
+                            {{ $t('download_pdf_now') }}
+                        </el-button>
+                        <el-button
+                            type="danger"
+                            :loading="printLoading && prepMode === 'print'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Printer"
+                            @click="printPage"
+                        >
+                            {{ $t('print_now') }}
+                        </el-button>
+                    </div>
+                </div>
+            </template>
+        </el-dialog>
+
+        <!-- High-Fidelity Print Preview Dialog -->
+        <el-dialog
+            v-model="previewModalVisible"
+            :title="$t('print_preview_title') || 'معاينة عرض الأسعار قبل الطباعة'"
+            fullscreen
+            class="print-preview-dialog"
+            append-to-body
+            destroy-on-close
+        >
+            <div class="preview-dialog-body">
+                <!-- Preview Top Control Bar -->
+                <div class="preview-control-bar">
+                    <div class="preview-stats">
+                        <span class="preview-stat-item">
+                            <strong>{{ printableCount }}</strong> {{ $t('product') }}
+                        </span>
+                        <span class="preview-sep">·</span>
+                        <span class="preview-stat-item is-price">
+                            <strong>{{ formatSummaryPrice(printableSum) }}</strong>
+                        </span>
+                        <span v-if="printSettings.customerName" class="preview-client-badge">
+                            <el-icon><User /></el-icon> {{ printSettings.customerName }}
+                        </span>
+                    </div>
+
+                    <div class="preview-options-quick">
+                        <div class="preview-orient-toggle">
+                            <button
+                                type="button"
+                                class="orient-btn"
+                                :class="{ active: (printSettings.orientation || 'portrait') === 'portrait' }"
+                                @click="setOrientation('portrait')"
+                            >
+                                <i class="fas fa-file-alt"></i>
+                                <span>{{ $t('portrait') }}</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="orient-btn"
+                                :class="{ active: printSettings.orientation === 'landscape' }"
+                                @click="setOrientation('landscape')"
+                            >
+                                <i class="fas fa-file-alt fa-rotate-90"></i>
+                                <span>{{ $t('landscape') }}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="preview-main-actions">
+                        <el-button
+                            :icon="Operation"
+                            @click="openPrintSettings"
+                        >
+                            {{ $t('print_settings') }}
+                        </el-button>
+                        <el-button
+                            type="primary"
+                            :loading="printLoading && prepMode === 'pdf'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Download"
+                            @click="downloadPdf"
+                        >
+                            {{ $t('download_pdf_now') }}
+                        </el-button>
+                        <el-button
+                            type="danger"
+                            :loading="printLoading && prepMode === 'print'"
+                            :disabled="printLoading || total === 0"
+                            :icon="Printer"
+                            @click="printFromPreview"
+                        >
+                            {{ $t('print_now') }}
+                        </el-button>
+                    </div>
+                </div>
+
+                <!-- Realistic A4 Canvas Frame -->
+                <div class="preview-scroll-viewport">
+                    <!-- Full-bleed Cover Page Sheet (Page 1) -->
+                    <div
+                        v-if="printSettings.showCover"
+                        class="preview-page-canvas preview-cover-canvas"
+                        :class="`orient-${printSettings.orientation || 'portrait'}`"
+                    >
+                        <div class="preview-sheet-cover">
+                            <img :src="'/cover.jpeg'" alt="Catalog Cover" />
+                        </div>
+                    </div>
+
+                    <!-- Document Sheet (Page 2+) -->
+                    <div
+                        class="preview-page-canvas"
+                        :class="`orient-${printSettings.orientation || 'portrait'}`"
+                    >
+                        <div class="preview-sheet-content">
+                            <PrintDocumentHeader
+                                v-if="printSettings.showHeader"
+                                :header-style="printSettings.headerStyle || 'official'"
+                                :title="printSettings.title || $t('price_offer')"
+                                :subtitle="'OFFICIAL PRICE QUOTATION'"
+                                :customer-name="printSettings.customerName"
+                                :date="printSettings.date"
+                                :notes="printSettings.notes"
+                                :show-contacts="printSettings.showContacts !== false"
+                                :banner-src="'/Header.jpeg'"
+                            />
+
+                            <div class="preview-table-container">
+                                <ProductOfferTable
+                                    :groups="printGroups.length ? printGroups : groupedProducts"
+                                    :loading="false"
+                                    :editing-id="null"
+                                    :edit-value="''"
+                                    print-mode
+                                    :visible-columns="effectivePrintColumns"
+                                    :column-widths="columnWidths"
+                                    :row-height="rowHeight"
+                                />
+                            </div>
+
+                            <div v-if="printSettings.showFooter" class="print-document-footer">
+                                <div class="footer-company-info">
+                                    <span class="f-comp">{{ $t('site_fallback_name') }}</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-cr">س.ت: 5048</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-addr">ريف دمشق - معربا</span>
+                                    <span class="f-sep">·</span>
+                                    <span class="f-phone" dir="ltr">0980831477 - 0962889577</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </el-dialog>
 
         <div v-if="total > 0 && !arrangeMode" class="pagination-wrapper screen-only">
@@ -709,15 +1266,20 @@
 
 <script setup>
 import ProductOfferTable from '@/components/admin/products/ProductOfferTable.vue';
+import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
+import VariantSpecsEditor from '@/components/admin/products/VariantSpecsEditor.vue';
+import SpecsEditDialog from '@/components/admin/products/SpecsEditDialog.vue';
+import { parseDescriptionLines, serializeDescriptionSpecs } from '@/utils/productSpecs';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { useI18n } from 'vue-i18n';
-import { ref, computed, reactive, onMounted, nextTick, watch, defineAsyncComponent } from 'vue';
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
+import { matchesSearch } from '@/utils/search';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document, View } from '@element-plus/icons-vue';
 
 // vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
 // bundling it statically costs every visit to this screen ~200 kB for a control
@@ -936,6 +1498,7 @@ const emptyVariantForm = () => ({
     price: 0,
     cost_price: null,
     stock_quantity: 0,
+    specs: [],
 });
 const addVariantForm = reactive(emptyVariantForm());
 const addVariantRules = {
@@ -1108,14 +1671,14 @@ const generateVariantSku = async () => {
 // paper — refuse it up front instead of letting it confuse people later.
 function unitDetailKey() {
     const v = addVariantForm;
-    return [v.size, v.color, v.material].map((s) => String(s || '').trim()).join('|');
+    return [v.size, v.color, v.material].map((s) => String(s || '').trim()).join('|') + '|' + specsKey(v.specs);
 }
 
 async function saveAddVariant() {
     if (!addVariantFormRef.value || !addVariantTarget.value) return;
     const group = addVariantTarget.value;
     const already = group.items.some((item) =>
-        [item.size, item.color, item.unit].map((s) => String(s || '').trim()).join('|') === unitDetailKey()
+        [item.size, item.color, item.unit].map((s) => String(s || '').trim()).join('|') + '|' + specsKey(item.specs) === unitDetailKey()
     );
     if (already) {
         ElMessage.warning(t('duplicate_variant_warning'));
@@ -1138,6 +1701,7 @@ async function saveAddVariant() {
         price: addVariantForm.price ?? 0,
         cost_price: addVariantForm.cost_price || null,
         stock_quantity: addVariantForm.stock_quantity ?? 0,
+        specs: cleanSpecs(addVariantForm.specs),
     };
     try {
         const res = await productsApi.createVariant(payload);
@@ -1250,6 +1814,9 @@ function openEditItemDialog(group, item) {
         cost_price: source.cost_price != null ? parseFloat(source.cost_price) : null,
         stock_quantity: source.stock_quantity ?? product.stock_quantity ?? 0,
     });
+    editItemSpecs.value = editItemIsVariant.value ? cleanSpecs(source.specs) : [];
+    editItemSpecsBaseline.value = specsKey(editItemSpecs.value);
+    applySpecsToSiblings.value = false;
     editItemServerErrors.value = {};
     editItemBaseline.value = { ...editItemForm };
     nextTick(() => editItemFormRef.value?.clearValidate());
@@ -1268,7 +1835,9 @@ const editItemDirty = computed(() => {
     const baseline = editItemBaseline.value;
     if (!baseline) return false;
 
-    return Object.keys(editItemForm).some((key) => !sameFieldValue(editItemForm[key], baseline[key]));
+    return Object.keys(editItemForm).some((key) => !sameFieldValue(editItemForm[key], baseline[key]))
+        || specsKey(editItemSpecs.value) !== editItemSpecsBaseline.value
+        || applySpecsToSiblings.value;
 });
 
 // Any keystroke clears the standing server errors: they describe the values
@@ -1359,12 +1928,13 @@ async function saveEditItem() {
 
     // Same guard as "add variant": a change that makes this row duplicate a
     // sibling's size/color/unit would silently vanish on the printed table.
-    const newKey = [editItemForm.size, editItemForm.color, editItemForm.unit]
+    const newDetails = [editItemForm.size, editItemForm.color, editItemForm.unit]
         .map((s) => String(s || '').trim()).join('|');
+    const newKey = newDetails + '|' + specsKey(isVariant ? editItemSpecs.value : []);
     const collides = group.items.some((other) => {
         if (String(other.id) === rowId) return false;
         return [other.size, other.color, other.unit]
-            .map((s) => String(s || '').trim()).join('|') === newKey && newKey !== '||';
+            .map((s) => String(s || '').trim()).join('|') + '|' + specsKey(other.specs) === newKey && newDetails !== '||';
     });
     if (collides) {
         ElMessage.warning(t('duplicate_variant_warning'));
@@ -1396,6 +1966,12 @@ async function saveEditItem() {
         rowPatch.material = rowPatch.unit;
         delete rowPatch.unit;
     }
+    const newSpecs = cleanSpecs(editItemSpecs.value);
+    if (isVariant && specsKey(newSpecs) !== editItemSpecsBaseline.value) {
+        rowPatch.specs = newSpecs;
+    }
+    // Every other variant under the same product, when the box is ticked.
+    const siblingIds = isVariant && applySpecsToSiblings.value ? editItemSiblingIds() : [];
 
     try {
         const results = [];
@@ -1408,6 +1984,9 @@ async function saveEditItem() {
             }
             if (Object.keys(rowPatch).length) {
                 results.push(await saveField(rowId, rowPatch));
+            }
+            for (const sid of siblingIds) {
+                results.push(await saveField(`v-${sid}`, { specs: newSpecs }));
             }
         } else {
             const merged = { ...productPatch, ...rowPatch };
@@ -1448,10 +2027,166 @@ async function saveEditItem() {
     }
 }
 
+// ---- Specifications dialog ------------------------------------------------
+// Opened from a row's specifications cell. It edits the two lists the cell
+// merges: the variant's own details and the product's "Label: value" lines,
+// which are stored in its Arabic description and read under every option.
+const specsDialogVisible = ref(false);
+const specsDialogSaving = ref(false);
+const specsDialogError = ref('');
+const specsDialog = reactive({
+    productId: null,
+    variantId: null,
+    productName: '',
+    variantLabel: '',
+    isVariant: false,
+    description: '',
+    ownSpecs: [],
+    optionCount: 0,
+    siblingIds: [],
+    copySources: [],
+});
+
+function openSpecsDialog(group, item) {
+    const productId = item.productId ?? group.product.id;
+    const product = store.products.find((p) => String(p.id) === String(productId)) || group.product;
+    const isVariant = String(item.id).startsWith('v-');
+    const variantId = isVariant ? Number(String(item.id).slice(2)) : null;
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const variant = isVariant ? variants.find((v) => Number(v.id) === variantId) : null;
+    Object.assign(specsDialog, {
+        productId: product.id,
+        variantId,
+        productName: product.name_ar || product.name_en || '',
+        variantLabel: isVariant
+            ? [variant?.size, variant?.color, variant?.material].filter(Boolean).join(' · ') || variant?.sku || ''
+            : '',
+        isVariant,
+        // The Arabic text is what the price list reads; an English-only
+        // product is edited through its English text instead.
+        description: String((product.description_ar || product.description_en) ?? ''),
+        ownSpecs: isVariant ? cleanSpecs(variant?.specs) : [],
+        optionCount: variants.length,
+        siblingIds: isVariant ? variants.map((v) => Number(v.id)).filter((id) => id !== variantId) : [],
+        copySources: isVariant ? specCopySources(product.id, item.id) : [],
+    });
+    specsDialogError.value = '';
+    specsDialogVisible.value = true;
+}
+
+async function saveSpecsDialog({ productRows, ownRows, applyToSiblings }) {
+    const product = store.products.find((p) => String(p.id) === String(specsDialog.productId));
+    const field = product && !product.description_ar && product.description_en ? 'description_en' : 'description_ar';
+    specsDialogSaving.value = true;
+    specsDialogError.value = '';
+    try {
+        const results = [];
+        if (productRows) {
+            results.push(await saveField(`p-${specsDialog.productId}`, { [field]: serializeDescriptionSpecs(productRows) }));
+        }
+        if (ownRows && specsDialog.isVariant) {
+            results.push(await saveField(`v-${specsDialog.variantId}`, { specs: ownRows }));
+            if (applyToSiblings) {
+                for (const sid of specsDialog.siblingIds) {
+                    results.push(await saveField(`v-${sid}`, { specs: ownRows }));
+                }
+            }
+        }
+        const failed = results.find((r) => !r.ok);
+        if (failed) {
+            // The dialog stays open with what was typed; some of the requests
+            // may already have gone through, and the cells show those.
+            specsDialogError.value = fieldErrorMessage(failed.error) || t('failed_to_save');
+            return;
+        }
+        specsDialogVisible.value = false;
+        if (results.some((r) => !r.queued)) ElMessage.success(t('saved_successfully'));
+    } finally {
+        specsDialogSaving.value = false;
+    }
+}
+
+// ---- Variant details (specs) ----------------------------------------------
+// Each variant carries its own ordered [{label, value}] list — "Power: 750W".
+// Blank rows are the editor's scratch space, so they never leave the page.
+const editItemSpecs = ref([]);
+const editItemSpecsBaseline = ref('');
+const applySpecsToSiblings = ref(false);
+
+function cleanSpecs(list) {
+    return (Array.isArray(list) ? list : [])
+        .map((r) => ({ label: String(r?.label ?? '').trim(), value: String(r?.value ?? '').trim() }))
+        .filter((r) => r.value !== '');
+}
+
+function specsKey(list) {
+    return cleanSpecs(list).map((r) => `${r.label}:${r.value}`).join('¦');
+}
+
+function variantsOf(productId) {
+    const product = store.products.find((p) => String(p.id) === String(productId));
+    return Array.isArray(product?.variants) ? product.variants : [];
+}
+
+// Sibling variants whose details can be copied in, the one being edited left out.
+function specCopySources(productId, excludeRowId = null) {
+    if (productId == null) return [];
+    const exclude = excludeRowId && String(excludeRowId).startsWith('v-') ? Number(String(excludeRowId).slice(2)) : null;
+    return variantsOf(productId)
+        .filter((v) => Number(v.id) !== exclude)
+        .map((v) => ({
+            id: v.id,
+            label: [v.size, v.color, v.material].filter(Boolean).join(' · ') || v.sku || `#${v.id}`,
+            specs: cleanSpecs(v.specs),
+        }));
+}
+
+function editItemSiblingIds() {
+    const target = editItemTarget.value;
+    if (!target || !editItemIsVariant.value) return [];
+    const self = Number(String(target.item.id).slice(2));
+    return variantsOf(target.group.product.id).map((v) => Number(v.id)).filter((id) => id !== self);
+}
+
+const editItemSiblingCount = computed(() => (editItemVisible.value ? editItemSiblingIds().length : 0));
+
+// Labels already in use anywhere on the loaded list — variant details first,
+// then the "Label: value • …" lines product descriptions are written in —
+// most used first, so typing "Po" offers "Power" the same way every time.
+const specLabelSuggestions = computed(() => {
+    const counts = new Map();
+    const bump = (label) => {
+        const l = String(label || '').trim();
+        if (l && l.length <= 100) counts.set(l, (counts.get(l) || 0) + 1);
+    };
+    for (const p of store.products) {
+        for (const v of Array.isArray(p.variants) ? p.variants : []) {
+            for (const row of Array.isArray(v.specs) ? v.specs : []) bump(row.label);
+        }
+        const desc = String(p.description_ar || '');
+        if (desc.includes('•')) {
+            for (const part of desc.split('•')) {
+                const idx = part.indexOf(':');
+                if (idx > 0) bump(part.slice(0, idx));
+            }
+        }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+});
+
 // Server field names to form field names. Only `material` differs: the variant
 // endpoint calls it that, the dialog shows it in the shared "unit" input.
 function mapServerErrorsToForm(error, isVariant) {
     const errors = serverFieldErrors(error);
+
+    // A detail row's error arrives as `specs.2.value`; the dialog shows one
+    // line under the details list for all of them.
+    for (const key of Object.keys(errors)) {
+        if (key.startsWith('specs.')) {
+            errors.specs = errors.specs || errors[key];
+            delete errors[key];
+        }
+    }
 
     if (isVariant && errors.material) {
         const { material, ...rest } = errors;
@@ -1538,12 +2273,17 @@ let importMsgTimeout = null;
 // Which columns appear on the printed/exported price list — persisted per
 // browser so the choice sticks across visits.
 const COLUMNS_STORAGE_KEY = 'price_offer_visible_columns';
-const defaultColumns = { image: true, product: false, details: true, price: true, inventory: true };
+const defaultColumns = { code: true, image: true, product: false, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true };
 const columnOptions = [
+    { key: 'code', label: 'item_code' },
     { key: 'image', label: 'image' },
     { key: 'product', label: 'product' },
+    { key: 'illustration', label: 'illustrative_image' },
     { key: 'details', label: 'details' },
+    { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
+    { key: 'offer', label: 'offer_price' },
+    { key: 'pack', label: 'pack_quantity' },
     { key: 'inventory', label: 'inventory' },
 ];
 
@@ -1577,7 +2317,7 @@ function toggleColumn(key, val) {
 // height of one product group, in the CSS pixels the PDF capture measures in;
 // null means "leave it to the default fifth of a page".
 const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
-const defaultColumnWidths = { image: 50, product: 35, details: 35, price: 15, inventory: 15 };
+const defaultColumnWidths = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
 const DEFAULT_ROW_HEIGHT = 295;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 520;
@@ -1711,9 +2451,7 @@ function categoryLabel(cat) {
 }
 
 function categoryMatches(cat, q) {
-    if (!q) return true;
-    return (cat.name_ar || '').toLowerCase().includes(q)
-        || (cat.name_en || '').toLowerCase().includes(q);
+    return matchesSearch([cat.name_ar, cat.name_en], q);
 }
 
 function categoryProductCount(cat) {
@@ -1742,7 +2480,7 @@ const parentCategoryCount = computed(() => fullCategoryTree.value.filter((n) => 
 // children come along) or when any child matches (only the matching children
 // are shown), so a hit is always shown in the context it lives in.
 const categoryTree = computed(() => {
-    const q = categorySearch.value.trim().toLowerCase();
+    const q = categorySearch.value;
     const hideEmpty = hideEmptyCategories.value;
     const out = [];
     for (const node of fullCategoryTree.value) {
@@ -2014,6 +2752,10 @@ const printGroups = ref([]);
 // work off every page in the active filter rather than the one on screen.
 const fullPrintGroups = ref([]);
 const printTableRef = ref(null);
+const printHeaderRef = ref(null);
+const printSettingsVisible = ref(false);
+const previewModalVisible = ref(false);
+const activePrintSettingsTab = ref('design');
 const printLoading = ref(false);
 const printCancelled = ref(false);
 const printProgress = ref({ loaded: 0, total: 0 });
@@ -2027,6 +2769,226 @@ const prepMode = ref('print');
 const exportPhase = ref('fetch');
 // Rendered off-screen (not display:none) only while html2canvas needs to see it.
 const pdfRendering = ref(false);
+
+const PRINT_SETTINGS_STORAGE_KEY = 'price_offer_print_settings';
+const defaultPrintSettings = {
+    showCover: false,
+    showHeader: true,
+    showFooter: false,
+    showPageNumbers: false,
+    headerStyle: 'official',
+    showContacts: true,
+    orientation: 'portrait',
+    showImages: true,
+    showSpecs: true,
+    showDetails: true,
+    showOfferPrice: true,
+    title: '',
+    customerName: '',
+    date: new Date().toISOString().slice(0, 10),
+    notes: '',
+    hideInventoryInPrint: true,
+};
+
+function readStoredPrintSettings() {
+    try {
+        const raw = localStorage.getItem(PRINT_SETTINGS_STORAGE_KEY);
+        if (!raw) return { ...defaultPrintSettings };
+        const parsed = JSON.parse(raw);
+        return { ...defaultPrintSettings, ...parsed };
+    } catch {
+        return { ...defaultPrintSettings };
+    }
+}
+
+const printSettings = ref(readStoredPrintSettings());
+
+function savePrintSettings() {
+    try {
+        localStorage.setItem(PRINT_SETTINGS_STORAGE_KEY, JSON.stringify(printSettings.value));
+    } catch {
+        // quota or private mode
+    }
+}
+
+function setHeaderStyle(style) {
+    printSettings.value.headerStyle = style;
+    savePrintSettings();
+}
+
+function setOrientation(orient) {
+    printSettings.value.orientation = orient;
+    savePrintSettings();
+    applyPrintPageStyle();
+}
+
+function applyPrintPageStyle() {
+    let styleEl = document.getElementById('price-offer-print-page-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'price-offer-print-page-style';
+        document.head.appendChild(styleEl);
+    }
+    const isLandscape = printSettings.value.orientation === 'landscape';
+    const sizeStr = isLandscape ? 'A4 landscape' : 'A4 portrait';
+
+    styleEl.textContent = `
+        @page {
+            size: ${sizeStr};
+            margin: 0 !important;
+        }
+        a[href]:after {
+            content: none !important;
+        }
+    `;
+}
+
+function openPrintSettings() {
+    previewModalVisible.value = false;
+    printSettingsVisible.value = true;
+}
+
+async function openPrintPreview() {
+    printSettingsVisible.value = false;
+    if (!printGroups.value.length) {
+        await hydratePrintCatalog();
+    }
+    previewModalVisible.value = true;
+}
+
+async function printFromPreview() {
+    previewModalVisible.value = false;
+    await nextTick();
+    await printPage();
+}
+
+const quickNoteSuggestions = [
+    'الأسعار صالحة لمدة 7 أيام من تاريخ صدورها',
+    'الأسعار صالحة لمدة 15 يوماً من تاريخ صدورها',
+    'الأسعار قابلة للتعديل دون إشعار مسبق',
+    'الأسعار تشمل أجور التوصيل',
+    'طريقة الدفع: نقداً عند الاستلام',
+];
+
+function appendQuickNote(note) {
+    if (!printSettings.value.notes) {
+        printSettings.value.notes = note;
+    } else if (!printSettings.value.notes.includes(note)) {
+        printSettings.value.notes = `${printSettings.value.notes} · ${note}`;
+    }
+    savePrintSettings();
+}
+
+function applyClientPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = true;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'official';
+    printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
+    if (!printSettings.value.title) {
+        printSettings.value.title = t('official_price_offer') || 'عرض أسعار رسمي';
+    }
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('client_preset'));
+}
+
+function applyFullCatalogPreset() {
+    printSettings.value.showCover = true;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = false;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'official';
+    printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
+    if (!printSettings.value.title) {
+        printSettings.value.title = t('catalog') || 'كتالوج المنتجات';
+    }
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('full_catalog_preset'));
+}
+
+function applyInkSaverPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = true;
+    printSettings.value.showImages = false;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'compact';
+    printSettings.value.showContacts = true;
+    printSettings.value.orientation = 'portrait';
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('ink_saver_preset') || 'تم تطبيق القالب الاقتصادي الموفر للحبر');
+}
+
+function applyInternalPreset() {
+    printSettings.value.showCover = false;
+    printSettings.value.showHeader = true;
+    printSettings.value.showFooter = true;
+    printSettings.value.showPageNumbers = true;
+    printSettings.value.hideInventoryInPrint = false;
+    printSettings.value.showImages = true;
+    printSettings.value.showSpecs = true;
+    printSettings.value.showDetails = true;
+    printSettings.value.showOfferPrice = true;
+    printSettings.value.headerStyle = 'compact';
+    printSettings.value.showContacts = false;
+    printSettings.value.orientation = 'portrait';
+    printSettings.value.title = t('internal_preset') || 'قائمة الأسعار وجرد المستودع';
+    savePrintSettings();
+    applyPrintPageStyle();
+    flashMsg(t('internal_preset') || 'تم تطبيق قالب المخزون الداخلي');
+}
+
+const hasPrintMeta = computed(() => !!(
+    printSettings.value.title ||
+    printSettings.value.customerName ||
+    printSettings.value.date ||
+    printSettings.value.notes
+));
+
+const printableCount = computed(() => (
+    fullPrintGroups.value.length ? fullPrintGroups.value.length : groupedProducts.value.length
+));
+
+// Crucial: unwrapping visibleColumns.value so all columns are included in print/PDF
+const effectivePrintColumns = computed(() => {
+    const cols = { ...visibleColumns.value };
+    if (printSettings.value.hideInventoryInPrint) {
+        cols.inventory = false;
+    }
+    if (printSettings.value.showImages === false) {
+        cols.image = false;
+    }
+    if (printSettings.value.showSpecs === false) {
+        cols.specs = false;
+    }
+    if (printSettings.value.showDetails === false) {
+        cols.details = false;
+    }
+    if (printSettings.value.showOfferPrice === false) {
+        cols.offer = false;
+    }
+    return cols;
+});
 
 // Groups rows by product name (not just product id), so products stored as
 // separate rows sharing a name (e.g. color variants) print as one entry.
@@ -2051,11 +3013,19 @@ function buildGroups(list) {
         }
         if (!map.get(key).productIds.includes(p.id)) map.get(key).productIds.push(p.id);
         const variants = Array.isArray(p.variants) ? p.variants : [];
+        // The product's "Label: value" description lines, which each row's
+        // specifications cell shows under its own, as the storefront does.
+        const baseSpecs = parseDescriptionLines(p.description_ar || p.description_en);
+        const productId = p.id;
         const items = variants.length
             ? variants.map((v) => makeItem(`v-${v.id}`, {
                 size: v.size || '',
                 color: v.color || '',
                 unit: v.material || '',
+                specs: cleanSpecs(v.specs),
+                baseSpecs,
+                productId,
+                sku: v.sku || p.sku || '',
                 price: parseFloat(v.price) || 0,
                 stock_quantity: v.stock_quantity ?? 0,
             }))
@@ -2063,6 +3033,9 @@ function buildGroups(list) {
                 size: p.size || '',
                 color: p.color || '',
                 unit: p.unit || '',
+                baseSpecs,
+                productId,
+                sku: p.sku || '',
                 price: parseFloat(p.price) || 0,
                 stock_quantity: p.stock_quantity ?? 0,
             })];
@@ -2073,11 +3046,18 @@ function buildGroups(list) {
         const seen = seenDetails.get(key);
         const group = map.get(key);
         for (const item of items) {
-            const detailKey = `${item.size}|${item.color}|${item.unit}`;
+            const detailKey = `${item.size}|${item.color}|${item.unit}|${specsKey(item.specs)}`;
             if (seen.has(detailKey)) continue;
             seen.add(detailKey);
             group.items.push(item);
         }
+    }
+    for (const group of map.values()) {
+        const p = group.product;
+        group.offerItem = makeItem(`p-${p.id}`, {
+            productId: p.id,
+            price: parseFloat(p.price) || 0,
+        });
     }
     return order.map((k) => map.get(k));
 }
@@ -2307,7 +3287,11 @@ const divideAllPrices = () => {
     // Every row in the filtered catalogue, not just the page on screen —
     // otherwise pages 2+ print at their undivided price.
     const source = fullPrintGroups.value.length ? fullPrintGroups.value : groupedProducts.value;
+    const isGroupWithVariants = (group) => (group.items?.length > 1) || String(group.items?.[0]?.id ?? '').startsWith('v-');
     for (const group of source) {
+        if (group.offerItem && isGroupWithVariants(group) && group.offerItem.originalPrice > 0) {
+            overrides.value[group.offerItem.id] = Math.round((group.offerItem.originalPrice / v) * 10) / 10;
+        }
         for (const item of group.items) {
             overrides.value[item.id] = Math.round((item.originalPrice / v) * 10) / 10;
         }
@@ -2384,14 +3368,27 @@ async function prepareFullCatalog() {
 }
 
 const printPage = async () => {
+    printSettingsVisible.value = false;
+    previewModalVisible.value = false;
     prepMode.value = 'print';
     printLoading.value = true;
     try {
+        applyPrintPageStyle();
         const tableEl = await prepareFullCatalog();
         if (!tableEl) return;
         printLoading.value = false;
+
+        // Force remove any popup lock class that Element Plus might have left
+        document.body.classList.remove('el-popup-parent--hidden');
+        document.body.style.removeProperty('overflow');
+        document.documentElement.style.removeProperty('overflow');
+
+        // Allow the DOM, transitions, and image paints to settle cleanly before opening the print dialog
+        await nextTick();
+        await new Promise((resolve) => setTimeout(resolve, 200));
         window.print();
-    } catch {
+    } catch (e) {
+        console.error('Print error:', e);
         if (!printCancelled.value) ElMessage.error(t('failed_to_bring_products'));
     } finally {
         printLoading.value = false;
@@ -2409,17 +3406,28 @@ const downloadPdf = async () => {
         printProgress.value = { loaded: 0, total: 0 };
         pdfRendering.value = true;
         await nextTick();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const baseTitle = printSettings.value.title || 'price-offer';
+        const safeTitle = baseTitle.replace(/[/\\?%*:|"<>]/g, '-').trim();
+        const dateStr = printSettings.value.date || new Date().toISOString().slice(0, 10);
+
         await renderTableToPdf({
             table: tableEl,
             groups: printGroups.value,
-            filename: `price-offer-${new Date().toISOString().slice(0, 10)}.pdf`,
-            coverSrc: '/cover.jpeg',
+            filename: `${safeTitle}-${dateStr}.pdf`,
+            coverSrc: printSettings.value.showCover ? '/cover.jpeg' : null,
+            headerEl: printSettings.value.showHeader ? printHeaderRef.value : null,
+            showPageNumbers: printSettings.value.showPageNumbers,
+            orientation: printSettings.value.orientation || 'portrait',
+            footerBrand: 'AWAAN AL-TAKADOM - Sanitary Ware & Building Materials',
             onPageProgress: (loaded, total) => {
                 printProgress.value = { loaded, total };
             },
         });
         flashMsg(t('pdf_ready'));
-    } catch {
+    } catch (err) {
+        console.error('PDF export error:', err);
         if (!printCancelled.value) ElMessage.error(t('failed_to_generate_pdf'));
     } finally {
         pdfRendering.value = false;
@@ -2440,7 +3448,16 @@ function flashMsg(msg) {
     importMsgTimeout = setTimeout(() => { importMsg.value = ''; }, 2500);
 }
 
+const handlePrintKeydown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        printPage();
+    }
+};
+
 onMounted(async () => {
+    window.addEventListener('keydown', handlePrintKeydown);
+    applyPrintPageStyle();
     await store.fetchCategories();
     await fetchProducts();
     hydratePrintCatalog();
@@ -2448,6 +3465,10 @@ onMounted(async () => {
     // if the connection has already returned.
     applyPendingStatuses();
     if (isOnline.value && pendingCount.value > 0) syncPending();
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handlePrintKeydown);
 });
 </script>
 
@@ -2683,6 +3704,18 @@ onMounted(async () => {
 .btn-ghost:hover {
     background: rgba(255, 255, 255, .12);
     border-color: rgba(255, 255, 255, .6);
+}
+.btn-print-settings {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, .1);
+    border: 1px solid rgba(255, 255, 255, .35);
+}
+.btn-print-settings:hover {
+    background: rgba(255, 255, 255, .2);
+    border-color: rgba(255, 255, 255, .65);
+    transform: translateY(-1px);
 }
 .btn-pdf,
 .btn-pdf-download {
@@ -3649,6 +4682,16 @@ onMounted(async () => {
     padding: 2px 10px;
     border-radius: 999px;
 }
+.specs-apply-siblings {
+    margin-top: 8px;
+}
+
+.specs-server-error {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--el-color-danger);
+}
+
 .edit-item-hint {
     margin-bottom: 14px;
 }
@@ -3748,64 +4791,746 @@ onMounted(async () => {
     opacity: 0;
 }
 
-/* Zero page margin so the browser has no room to draw its own URL/date
-   header and footer line — same trick used by public/file_with_images.html. */
-@page {
-    margin: 0;
+/* Print Settings Dialog Styles */
+.print-settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.print-summary-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.summary-stat .stat-num {
+    font-size: 17px;
+    font-weight: 800;
+    color: #1e293b;
+}
+.summary-stat .stat-lbl {
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 600;
+}
+.summary-stat.is-price .stat-num {
+    color: #b00e0e;
+}
+.summary-sep {
+    width: 1px;
+    height: 28px;
+    background: #cbd5e1;
+}
+.summary-badge {
+    background: #e0f2fe;
+    color: #0284c7;
+    border: 1px solid #bae6fd;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.presets-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+.presets-title {
+    font-weight: 700;
+    color: #475569;
+}
+.preset-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    padding: 5px 13px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #334155;
+    transition: all .15s ease;
+}
+.preset-chip:hover {
+    background: #f8fafc;
+    border-color: #3b82f6;
+    color: #2563eb;
+    transform: translateY(-1px);
+}
+.settings-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.settings-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 12px 0;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1e293b;
+}
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.setting-item-box {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.setting-item-box.active {
+    border-color: #93c5fd;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+}
+.setting-item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+.setting-info {
+    flex: 1 1 auto;
+}
+.setting-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 3px;
+}
+.setting-desc {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.35;
+}
+.setting-thumb-preview {
+    margin-top: 10px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 4px;
+}
+.cover-thumb img {
+    max-height: 85px;
+    width: auto;
+    object-fit: contain;
+}
+.header-thumb img {
+    max-height: 38px;
+    width: 100%;
+    object-fit: contain;
+}
+.settings-toggles-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+}
+.toggle-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+}
+.toggle-checkbox-label.is-warning {
+    color: #b45309;
+}
+.fields-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+}
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.field-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #475569;
+}
+.print-dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+}
+.footer-primary-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-/* Print styles */
+/* Document Print/PDF Layout Elements */
+.print-sheet-wrap {
+    display: none;
+}
+.print-sheet-wrap.pdf-render {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: -99999px;
+    width: 960px;
+    background: #fff;
+    padding: 16px;
+}
+.print-document-header-box {
+    margin-bottom: 12px;
+    width: 100%;
+}
+.print-document-header {
+    margin-bottom: 12px;
+}
+.setting-header-preview-box {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.header-style-pill-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.style-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.style-pill-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.style-pill-btn.active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(59, 130, 246, 0.15);
+}
+.style-pill-btn i {
+    font-size: 10px;
+}
+.live-header-preview-card {
+    border-radius: 8px;
+    overflow: hidden;
+}
+.print-header-top {
+    text-align: center;
+    margin-bottom: 8px;
+}
+.print-header-img {
+    max-width: 100%;
+    height: auto;
+    max-height: 85px;
+    object-fit: contain;
+    border-radius: 4px;
+}
+.print-meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 14px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 11px;
+    margin-bottom: 10px;
+}
+.print-meta-bar .meta-title-item .meta-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0f172a;
+}
+.print-meta-bar .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.print-meta-bar .meta-label {
+    color: #64748b;
+    font-weight: 600;
+}
+.print-meta-bar .meta-val {
+    color: #0f172a;
+    font-weight: 700;
+}
+.print-document-footer {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #cbd5e1;
+}
+.footer-company-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 9.5pt;
+    color: #64748b;
+    font-weight: 600;
+}
+.footer-company-info .f-sep {
+    color: #94a3b8;
+}
+
+.btn-print-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(37, 99, 235, 0.22);
+    border: 1px solid rgba(147, 197, 253, 0.45);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.btn-print-preview:hover {
+    background: rgba(37, 99, 235, 0.38);
+    border-color: rgba(147, 197, 253, 0.8);
+    transform: translateY(-1px);
+}
+
+.print-settings-tabs :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background-color: #e2e8f0;
+}
+.print-settings-tabs :deep(.el-tabs__item) {
+    font-size: 13px;
+    font-weight: 700;
+}
+.tab-pane-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 6px;
+}
+.orient-pill-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.quick-notes-section {
+    margin-top: 6px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+.quick-notes-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+}
+.quick-notes-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.quick-note-chip {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: right;
+}
+.quick-note-chip:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
+    transform: translateY(-1px);
+}
+.columns-toggles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+}
+.column-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    gap: 10px;
+}
+.column-toggle-card.is-warn {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.column-toggle-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.column-toggle-info strong {
+    font-size: 12px;
+    color: #1e293b;
+}
+.column-toggle-info small {
+    font-size: 10.5px;
+    color: #64748b;
+}
+.rows-estimate-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 6px;
+}
+.rows-estimate-card .rows-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+}
+.rows-estimate-card .rows-chips {
+    display: flex;
+    gap: 6px;
+}
+
+/* Print Preview Modal Styles */
+.print-preview-dialog :deep(.el-dialog__header) {
+    margin-right: 0;
+    padding: 14px 20px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+.print-preview-dialog :deep(.el-dialog__title) {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 800;
+}
+.print-preview-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+    color: #94a3b8;
+    font-size: 18px;
+}
+.print-preview-dialog :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
+    color: #f8fafc;
+}
+.print-preview-dialog :deep(.el-dialog__body) {
+    padding: 0;
+    background: #0f172a;
+    height: calc(100vh - 56px);
+    overflow: hidden;
+}
+.preview-dialog-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.preview-control-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 24px;
+    background: #1e293b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    z-index: 10;
+    flex-wrap: wrap;
+}
+.preview-stats {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+.preview-stat-item strong {
+    color: #ffffff;
+    font-weight: 800;
+}
+.preview-stat-item.is-price strong {
+    color: #f87171;
+}
+.preview-sep {
+    color: #475569;
+}
+.preview-client-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+}
+.preview-options-quick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.preview-orient-toggle {
+    display: flex;
+    align-items: center;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+.orient-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.orient-btn:hover {
+    color: #f8fafc;
+}
+.orient-btn.active {
+    background: #3b82f6;
+    color: #ffffff;
+    font-weight: 700;
+}
+.preview-main-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.preview-scroll-viewport {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 32px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    background: #0f172a;
+}
+.preview-page-canvas {
+    background: #ffffff;
+    color: #0f172a;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    padding: 12mm 14mm 14mm 14mm;
+    box-sizing: border-box;
+    transition: width 0.2s ease, max-width 0.2s ease;
+    width: 100%;
+}
+.preview-page-canvas.orient-portrait {
+    max-width: 960px;
+    min-height: 1200px;
+}
+.preview-page-canvas.orient-landscape {
+    max-width: 1240px;
+    min-height: 850px;
+}
+.preview-cover-canvas {
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: none !important;
+}
+.preview-cover-canvas.orient-portrait {
+    max-width: 960px;
+    height: 1358px;
+    min-height: 1358px;
+}
+.preview-cover-canvas.orient-landscape {
+    max-width: 1240px;
+    height: 876px;
+    min-height: 876px;
+}
+.preview-cover-canvas .preview-sheet-cover {
+    width: 100%;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: #000;
+    display: flex;
+}
+.preview-cover-canvas .preview-sheet-cover img {
+    width: 100%;
+    height: 100%;
+    max-height: none !important;
+    object-fit: cover !important;
+    display: block;
+}
+.preview-sheet-content {
+    width: 100%;
+}
+.preview-table-container {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* Native Print Styles */
 @media print {
-    .offer-toolbar,
-    .screen-only {
-        display: none !important;
+    html, body {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
-    .print-only {
+    :global(.el-popup-parent--hidden) {
+        overflow: visible !important;
+    }
+    :global(.admin-layout),
+    :global(.admin-main-wrapper),
+    :global(.admin-content) {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
         display: block !important;
+        position: static !important;
     }
-    .print-cover {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100vh;
-        /* Chromium resolves 100vh against the screen viewport, not the @page
-           print box, so the cover renders a hair taller than one physical
-           page. That sliver used to spill onto a blank page 2 before this
-           break was reached — clipping it here keeps everything on page 1. */
-        overflow: hidden;
-        page-break-after: always;
-        break-after: page;
-    }
-    .print-cover img {
-        max-width: 100%;
-        max-height: 100vh;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-    }
-    body {
-        background: #fff;
-        margin: 0;
+    .offer-toolbar,
+    .screen-only,
+    :global(.admin-sidebar),
+    :global(.admin-header),
+    :global(.sidebar-overlay),
+    :global(.el-overlay),
+    :global(.el-dialog__wrapper),
+    :global(.columns-popover),
+    :global(.categories-popover),
+    :global(.image-editor-popover),
+    :global(.print-preview-dialog) {
+        display: none !important;
     }
     .price-offer-page {
-        /* Zero here (not on .print-cover) — any padding on this wrapper adds
-           to the cover's height too, pushing it past one full page and
-           spilling a near-blank page behind it before the real content. */
-        padding: 0;
+        padding: 0 !important;
+        margin: 0 !important;
     }
-    .print-only {
-        padding: 8px;
+    .print-sheet-wrap.print-only {
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    .print-cover {
+        display: block !important;
+        position: relative !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        page-break-before: avoid !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        box-sizing: border-box !important;
+    }
+    .print-cover img {
+        width: 100% !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+        max-height: 100vh !important;
+        object-fit: cover !important;
+        display: block !important;
+    }
+    .print-document-content {
+        page-break-before: auto !important;
+        padding: 10mm 12mm !important;
+        box-sizing: border-box !important;
+    }
+    a[href]:after {
+        content: none !important;
+    }
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
+    }
+    .print-document-header-box {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-bottom: 8px !important;
+    }
+    .print-document-footer {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-top: 10px !important;
     }
     .offer-table-wrap {
-        max-height: none;
-        overflow: visible;
-        border: none;
-        box-shadow: none;
-    }
-    :global(.columns-popover),
-    :global(.categories-popover) {
-        display: none !important;
+        max-height: none !important;
+        overflow: visible !important;
+        border: none !important;
+        box-shadow: none !important;
     }
 }
 </style>

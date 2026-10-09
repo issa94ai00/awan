@@ -7,17 +7,38 @@
             :subtitle="$t('advanced_sales_filtering_and_analytics')"
         >
             <template #actions>
-                <el-button :icon="Refresh" @click="resetFilters">
+                <el-button :icon="Refresh" :disabled="!activeFilterChips.length" @click="resetFilters">
                     {{ $t('reset') }}
                 </el-button>
                 <!-- One button that exports whichever tab is open. It never said
                      which, so naming the dataset is the difference between an
                      export and a guess. -->
-                <el-button type="primary" :icon="Download" :loading="exporting" @click="exportActiveTab">
+                <el-button type="primary" :icon="Download" :loading="exporting" :disabled="awaitingRange" @click="exportActiveTab">
                     {{ $t('export_report') }} — {{ activeTabLabel }}
                 </el-button>
             </template>
         </AdminPageHeader>
+
+        <!-- Quick Period Presets Bar -->
+        <div class="quick-period-bar">
+            <div class="quick-period-title">
+                <i class="fas fa-calendar-days text-primary"></i>
+                <span>{{ $t('quick_periods') }}:</span>
+            </div>
+            <div class="quick-period-pills">
+                <button
+                    v-for="preset in PERIOD_PRESETS"
+                    :key="preset"
+                    type="button"
+                    class="period-pill"
+                    :class="{ 'is-active': filters.date_filter_type === preset }"
+                    @click="selectPeriodPreset(preset)"
+                >
+                    <span v-if="filters.date_filter_type === preset" class="period-pill-dot"></span>
+                    {{ periodLabel(preset) }}
+                </button>
+            </div>
+        </div>
 
         <AdminFilterBar>
             <div class="filter-field">
@@ -28,29 +49,44 @@
             </div>
             <div class="filter-field">
                 <label>{{ $t('customer') }}</label>
-                <el-select v-model="filters.customer_id" :placeholder="$t('all_customers')" clearable filterable>
-                    <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id" />
+                <el-select
+                    v-model="filters.customer_id"
+                    :placeholder="$t('all_customers')"
+                    clearable
+                    filterable
+                    remote
+                    remote-show-suffix
+                    :remote-method="searchCustomers"
+                    :loading="customerSearching"
+                >
+                    <el-option v-for="customer in customers" :key="customer.id" :label="customer.name" :value="customer.id">
+                        <span>{{ customer.name }}</span>
+                        <span v-if="customer.phone" class="option-hint">{{ customer.phone }}</span>
+                    </el-option>
                 </el-select>
             </div>
             <div class="filter-field">
-                <label>{{ $t('date_filter_type') }}</label>
+                <label>{{ $t('sr_period') }}</label>
                 <el-select v-model="filters.date_filter_type">
-                    <el-option :label="$t('all')" value="all" />
-                    <el-option :label="$t('today')" value="today" />
-                    <el-option :label="$t('yesterday')" value="yesterday" />
-                    <el-option :label="$t('this_week')" value="this_week" />
-                    <el-option :label="$t('this_month')" value="this_month" />
-                    <el-option :label="$t('last_month')" value="last_month" />
-                    <el-option :label="$t('custom')" value="custom" />
+                    <el-option v-for="preset in PERIOD_PRESETS" :key="preset" :label="periodLabel(preset)" :value="preset" />
                 </el-select>
             </div>
-            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
-                <label>{{ $t('start_date') }}</label>
-                <el-date-picker v-model="filters.start_date" type="date" :placeholder="$t('start_date')" />
-            </div>
-            <div v-if="filters.date_filter_type === 'custom'" class="filter-field">
-                <label>{{ $t('end_date') }}</label>
-                <el-date-picker v-model="filters.end_date" type="date" :placeholder="$t('end_date')" />
+            <!-- One picker for both ends, with the common spans one click away.
+                 Dates travel as plain YYYY-MM-DD strings: the two Date pickers
+                 this replaces were sent through toISOString(), which is UTC, so
+                 in Damascus the day picked arrived as the day before. -->
+            <div v-if="filters.date_filter_type === 'custom'" class="filter-field filter-field--range">
+                <label>{{ $t('date_range') }}</label>
+                <el-date-picker
+                    v-model="customRange"
+                    type="daterange"
+                    value-format="YYYY-MM-DD"
+                    unlink-panels
+                    :shortcuts="rangeShortcuts"
+                    :start-placeholder="$t('start_date')"
+                    :end-placeholder="$t('end_date')"
+                    :range-separator="$t('to')"
+                />
             </div>
 
             <template #advanced>
@@ -86,15 +122,61 @@
                 </div>
             </template>
 
-            <template #actions>
-                <el-button type="primary" :icon="Search" @click="applyFilters">
-                    {{ $t('apply_filters') }}
-                </el-button>
-            </template>
         </AdminFilterBar>
 
+        <!-- What the numbers below are for, in words, with each part one click
+             from undone. Filters now apply as they change, and several are set
+             from elsewhere — a breakdown row, the collapsed advanced panel, a
+             shared link — so the scope has to be readable without opening
+             anything. -->
+        <div class="active-filters" aria-live="polite">
+            <span class="active-filters-label">{{ $t('sr_showing') }}</span>
+            <template v-if="activeFilterChips.length">
+                <el-tag
+                    v-for="chip in activeFilterChips"
+                    :key="chip.key"
+                    closable
+                    effect="plain"
+                    round
+                    class="active-filter-chip"
+                    @close="clearFilter(chip.key)"
+                >
+                    <i v-if="chip.icon" :class="chip.icon" class="chip-icon"></i>
+                    <span class="active-filter-name">{{ chip.label }}:</span>
+                    <strong class="chip-val">{{ chip.value }}</strong>
+                </el-tag>
+                <el-button link type="primary" class="active-filters-clear" @click="resetFilters">
+                    <i class="fas fa-trash-can mr-1"></i>
+                    {{ $t('clear_all') }}
+                </el-button>
+            </template>
+            <span v-else-if="!awaitingRange" class="active-filters-all">{{ $t('sr_everything') }}</span>
+            <span v-if="awaitingRange" class="active-filters-hint">{{ $t('sr_pick_range_hint') }}</span>
+            <!-- Old figures stay on screen, dimmed, while new ones load; this
+                 says so in words rather than leaving the dimming to explain it. -->
+            <span v-else-if="refreshing" class="active-filters-updating">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                {{ $t('sr_updating') }}
+            </span>
+            <span class="active-filters-spacer"></span>
+            <el-button link type="primary" class="active-filters-clear" @click="setAllCollapsed(!allCollapsed)">
+                <el-icon class="collapse-all-icon"><component :is="allCollapsed ? Expand : Fold" /></el-icon>
+                {{ allCollapsed ? $t('expand_all') : $t('collapse_all') }}
+            </el-button>
+        </div>
+
         <el-tabs v-model="activeTab" class="report-tabs">
-            <el-tab-pane :label="$t('invoices')" name="invoices">
+            <!-- lazy: a tab's tables and chart are built the first time it is
+                 opened, not both on arrival with one of them hidden. -->
+            <el-tab-pane name="invoices" lazy>
+                <template #label>
+                    <span class="tab-label-custom">
+                        <i class="fas fa-file-invoice-dollar tab-icon"></i>
+                        <span>{{ $t('invoices') }}</span>
+                        <span v-if="invoicePagination.total > 0" class="tab-badge">{{ Number(invoicePagination.total).toLocaleString() }}</span>
+                    </span>
+                </template>
+
                 <el-alert
                     v-if="!invoicesLoading && !hasInvoicesData"
                     :title="$t('no_data_for_current_filters')"
@@ -105,12 +187,14 @@
                 />
 
                 <SalesReportPanel
-                    :loading="invoicesLoading"
+                    :stats-loading="invoicesListLoading"
+                    :insights-loading="invoicesInsightsLoading"
+                    :chart-loading="invoicesChartLoading"
+                    :profitability-loading="invoicesProfitLoading"
                     :stat-cards="invoiceStatCards"
                     :metrics="invoicePerformanceData.summary"
                     :chart-mode="invoicesChartMode"
                     :chart-title="invoicesChartTitle"
-                    :chart-note="$t('chart_unavailable_for_invoices')"
                     :chart-labels="invoicesChartLabels"
                     :chart-values="invoicesChartValues"
                     :dimension-data="invoiceDimensionData"
@@ -125,20 +209,18 @@
                     :profitability="invoiceProductProfitabilityData"
                     @select-grouping="applyGrouping"
                     @select-dimension="applyDimensionFilter"
+                    @profitability-active="invoicesProfitSection.setActive"
                 />
 
-                <el-card shadow="hover" class="table-card">
-                    <!-- Both tabs used to head this card with a bare "detailed
-                         report", which named neither what was listed nor how much
-                         of it the filters had matched. -->
-                    <template #header>
-                        <div class="table-card-header">
-                            <span>{{ $t('detailed_report') }} — {{ $t('invoices') }}</span>
-                            <span v-if="invoicePagination.total" class="table-card-count">
-                                {{ formatCount(invoicePagination.total) }}
-                            </span>
-                        </div>
-                    </template>
+                <!-- Both tabs used to head this card with a bare "detailed
+                     report", which named neither what was listed nor how much
+                     of it the filters had matched. -->
+                <CollapsibleCard
+                    id="detail-invoices"
+                    :title="`${$t('detailed_report')} — ${$t('invoices')}`"
+                    :count="invoicePagination.total || null"
+                    class="table-card"
+                >
 
                     <el-table
                         ref="invoiceTableRef"
@@ -154,20 +236,22 @@
                              number is a link, rather than the whole row: the sole
                              detail screen these have is the edit form, and a
                              stray click on a report row should not land in it. -->
-                        <el-table-column :label="$t('invoice_number')" width="130">
+                        <el-table-column :label="$t('invoice_number')" width="140">
                             <template #default="{ row }">
-                                <router-link class="record-link" :to="`/admin/sales/invoices/${row.id}/edit`">
+                                <router-link class="record-badge" :to="`/admin/sales/invoices/${row.id}/edit`">
+                                    <i class="fas fa-file-invoice mr-1"></i>
                                     {{ row.invoice_number }}
                                 </router-link>
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('source_order')" width="120">
+                        <el-table-column :label="$t('source_order')" width="130">
                             <template #default="{ row }">
                                 <router-link
                                     v-if="row.sales_order"
-                                    class="record-link"
+                                    class="record-badge record-badge--order"
                                     :to="`/admin/sales/sales-orders/${row.sales_order.id}/edit`"
                                 >
+                                    <i class="fas fa-cart-shopping mr-1"></i>
                                     {{ row.sales_order.order_number }}
                                 </router-link>
                                 <span v-else class="table-sub-note">{{ $t('direct_sale') }}</span>
@@ -192,9 +276,11 @@
                                 <span v-else class="table-sub-note">{{ $t('unassigned') }}</span>
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('status')" width="100">
+                        <el-table-column :label="$t('status')" width="115" align="center">
                             <template #default="{ row }">
-                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+                                <el-tag :type="getStatusType(row.status)" effect="light" round size="small">
+                                    {{ getStatusText(row.status) }}
+                                </el-tag>
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('total')" width="120">
@@ -279,11 +365,14 @@
                         <el-table-column :label="$t('paid_amount')" width="120">
                             <template #default="{ row }">{{ formatMoney(row.paid_amount) }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('due_amount')" width="120">
+                        <el-table-column :label="$t('due_amount')" width="125">
                             <template #default="{ row }">
-                                <strong :class="Number(row.due_amount) > 0 ? 'profit-negative' : 'profit-positive'">
+                                <span
+                                    class="due-pill"
+                                    :class="Number(row.due_amount) > 0 ? 'is-due' : 'is-clear'"
+                                >
                                     {{ formatMoney(row.due_amount) }}
-                                </strong>
+                                </span>
                             </template>
                         </el-table-column>
                     </el-table>
@@ -299,7 +388,7 @@
                         @size-change="handleInvoiceSizeChange"
                         @current-change="handleInvoicePageChange"
                     />
-                </el-card>
+                </CollapsibleCard>
 
                 <TopPerformersTable
                     :title="$t('top_performing_employees')"
@@ -309,10 +398,18 @@
                     :count-label="$t('invoices_count')"
                     average-key="average_invoice_value"
                     :average-label="$t('average_invoice_value')"
+                    @active-change="invoicesTopSection.setActive"
                 />
             </el-tab-pane>
 
-            <el-tab-pane :label="$t('sales_orders_pipeline')" name="orders">
+            <el-tab-pane name="orders" lazy>
+                <template #label>
+                    <span class="tab-label-custom">
+                        <i class="fas fa-boxes-packing tab-icon"></i>
+                        <span>{{ $t('sales_orders_pipeline') }}</span>
+                        <span v-if="pagination.total > 0" class="tab-badge">{{ Number(pagination.total).toLocaleString() }}</span>
+                    </span>
+                </template>
                 <el-alert
                     v-if="!ordersLoading && !hasOrdersData"
                     :title="$t('no_data_for_current_filters')"
@@ -323,7 +420,10 @@
                 />
 
                 <SalesReportPanel
-                    :loading="ordersLoading"
+                    :stats-loading="ordersListLoading"
+                    :insights-loading="ordersInsightsLoading"
+                    :chart-loading="ordersChartLoading"
+                    :profitability-loading="ordersProfitLoading"
                     :stat-cards="orderStatCards"
                     :metrics="performanceData.summary"
                     :chart-mode="ordersChartMode"
@@ -337,17 +437,15 @@
                     :active-dimensions="activeDimensions"
                     :profitability="productProfitabilityData"
                     @select-dimension="applyDimensionFilter"
+                    @profitability-active="ordersProfitSection.setActive"
                 />
 
-                <el-card shadow="hover" class="table-card">
-                    <template #header>
-                        <div class="table-card-header">
-                            <span>{{ $t('detailed_report') }} — {{ $t('sales_orders_pipeline') }}</span>
-                            <span v-if="pagination.total" class="table-card-count">
-                                {{ formatCount(pagination.total) }}
-                            </span>
-                        </div>
-                    </template>
+                <CollapsibleCard
+                    id="detail-orders"
+                    :title="`${$t('detailed_report')} — ${$t('sales_orders_pipeline')}`"
+                    :count="pagination.total || null"
+                    class="table-card"
+                >
 
                     <el-table
                         ref="ordersTableRef"
@@ -359,9 +457,10 @@
                         :row-class-name="orderRowClass"
                         @sort-change="handleOrdersSortChange"
                     >
-                        <el-table-column :label="$t('order_number')" width="120">
+                        <el-table-column :label="$t('order_number')" width="140">
                             <template #default="{ row }">
-                                <router-link class="record-link" :to="`/admin/sales/sales-orders/${row.id}/edit`">
+                                <router-link class="record-badge record-badge--order" :to="`/admin/sales/sales-orders/${row.id}/edit`">
+                                    <i class="fas fa-cart-shopping mr-1"></i>
                                     {{ row.order_number }}
                                 </router-link>
                             </template>
@@ -375,9 +474,11 @@
                         <el-table-column :label="$t('employee')">
                             <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('status')" width="100">
+                        <el-table-column :label="$t('status')" width="115" align="center">
                             <template #default="{ row }">
-                                <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+                                <el-tag :type="getStatusType(row.status)" effect="light" round size="small">
+                                    {{ getStatusText(row.status) }}
+                                </el-tag>
                             </template>
                         </el-table-column>
                         <el-table-column :label="$t('subtotal')">
@@ -451,7 +552,9 @@
                         </el-table-column>
                         <el-table-column :label="$t('invoiced')" width="150">
                             <template #default="{ row }">
-                                <el-tag :type="invoiceCoverageType(row)" size="small">{{ invoiceCoverageText(row) }}</el-tag>
+                                <el-tag :type="invoiceCoverageType(row)" effect="light" round size="small">
+                                    {{ invoiceCoverageText(row) }}
+                                </el-tag>
                                 <p v-if="Number(row.invoices_count) > 0" class="table-sub-note">{{ formatMoney(row.invoiced_total) }}</p>
                             </template>
                         </el-table-column>
@@ -468,7 +571,7 @@
                         @size-change="handleOrdersSizeChange"
                         @current-change="handleOrdersPageChange"
                     />
-                </el-card>
+                </CollapsibleCard>
 
                 <TopPerformersTable
                     :title="$t('top_performing_employees')"
@@ -478,6 +581,7 @@
                     :count-label="$t('total_orders')"
                     average-key="average_order_value"
                     :average-label="$t('average_order_value')"
+                    @active-change="ordersTopSection.setActive"
                 />
             </el-tab-pane>
         </el-tabs>
@@ -486,16 +590,19 @@
 
 <script setup>
 import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import { formatDate as formatSalesDate } from '@/utils/sales';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Search, Refresh, Download, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
+import { Refresh, Download, Fold, Expand, Loading, ShoppingCart, Coin, PriceTag, PieChart, TrendCharts, Document, Wallet, Warning } from '@element-plus/icons-vue';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import SalesReportPanel from '@/components/admin/reports/SalesReportPanel.vue';
 import TopPerformersTable from '@/components/admin/reports/TopPerformersTable.vue';
+import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
+import { allCollapsed, setAllCollapsed } from '@/utils/collapsedSections';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -519,14 +626,60 @@ const loadEmployees = async () => {
     }
 };
 
-const loadCustomers = async () => {
+/**
+ * Customers are searched on the server as you type. The list used to be the
+ * newest hundred, fetched whole on mount — so anyone older than that could not
+ * be picked at all, and every visit paid for a hundred rows to show none.
+ */
+const customerSearching = ref(false);
+let customerSearchToken = 0;
+let customerSearchTimer = null;
+
+const fetchCustomers = async (search = '') => {
+    const token = ++customerSearchToken;
+    customerSearching.value = true;
     try {
-        const response = await api.get('/pos/customers', { params: { per_page: 100 } });
+        const response = await api.get('/pos/customers', { params: { per_page: 30, ...(search ? { search } : {}) } });
+        if (token !== customerSearchToken) return;
         const rows = response.data?.data?.customers;
-        customers.value = Array.isArray(rows) ? rows.map((item) => item.data || item) : [];
+        const found = Array.isArray(rows) ? rows.map((item) => item.data || item) : [];
+        // The chosen customer stays among the options whatever the search
+        // returned, or the select would fall back to showing its bare id.
+        const selected = customers.value.find((row) => Number(row.id) === Number(filters.customer_id));
+        customers.value = selected && !found.some((row) => row.id === selected.id) ? [selected, ...found] : found;
     } catch (error) {
-        customers.value = [];
+        if (token === customerSearchToken) customers.value = [];
+    } finally {
+        if (token === customerSearchToken) customerSearching.value = false;
     }
+};
+
+const searchCustomers = (query) => {
+    clearTimeout(customerSearchTimer);
+    customerSearchTimer = setTimeout(() => fetchCustomers(query?.trim() || ''), 250);
+};
+
+/** Makes sure a customer set from the URL or a breakdown row has a name to show. */
+const rememberCustomer = async (id, name = null) => {
+    if (!id || customers.value.some((row) => Number(row.id) === Number(id))) return;
+    if (name) {
+        customers.value = [{ id: Number(id), name }, ...customers.value];
+        return;
+    }
+    try {
+        const response = await api.get(`/pos/customers/${id}`);
+        const customer = response.data?.data?.data || response.data?.data;
+        if (customer?.id && !customers.value.some((row) => row.id === customer.id)) {
+            customers.value = [customer, ...customers.value];
+        }
+    } catch (error) {
+        // The chip falls back to "#id"; the report itself is unaffected.
+    }
+};
+
+const loadCustomers = async () => {
+    await fetchCustomers();
+    rememberCustomer(filters.customer_id);
 };
 
 const loadWarehouses = async () => {
@@ -548,7 +701,10 @@ const loadWarehouses = async () => {
  * difference, for no benefit, since the server already does this correctly.
  * Only 'custom' has dates the server cannot derive on its own.
  * ------------------------------------------------------------------ */
-const filters = reactive({
+const PERIOD_PRESETS = ['all', 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'];
+const GROUPINGS = ['day', 'week', 'month', 'employee', 'customer', 'warehouse', 'status'];
+
+const emptyFilters = () => ({
     employee_id: null,
     customer_id: null,
     warehouse_id: null,
@@ -559,10 +715,101 @@ const filters = reactive({
     group_by: 'day',
 });
 
-const toApiDate = (date) => {
-    const d = date instanceof Date ? date : new Date(date);
-    return d.toISOString().split('T')[0];
+/* ------------------------------------------------------------------ *
+ * The filters live in the address bar, so a refresh keeps the report on
+ * screen and a link hands someone else exactly this view. Short names keep
+ * the URL readable; empty filters are left out of it.
+ * ------------------------------------------------------------------ */
+const URL_KEYS = {
+    employee_id: 'employee',
+    customer_id: 'customer',
+    warehouse_id: 'warehouse',
+    status: 'status',
+    date_filter_type: 'period',
+    start_date: 'from',
+    end_date: 'to',
+    group_by: 'group',
 };
+
+const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+
+const filtersFromQuery = (query) => {
+    const next = emptyFilters();
+    const id = (value) => (/^\d+$/.test(String(value || '')) ? Number(value) : null);
+    next.employee_id = id(query.employee);
+    next.customer_id = id(query.customer);
+    next.warehouse_id = id(query.warehouse);
+    if (ORDER_STATUSES.includes(query.status)) next.status = query.status;
+    if (PERIOD_PRESETS.includes(query.period)) next.date_filter_type = query.period;
+    if (next.date_filter_type === 'custom') {
+        if (isIsoDate(query.from)) next.start_date = query.from;
+        if (isIsoDate(query.to)) next.end_date = query.to;
+    }
+    if (GROUPINGS.includes(query.group)) next.group_by = query.group;
+    return next;
+};
+
+const filtersToQuery = () => {
+    const defaults = emptyFilters();
+    const query = {};
+    for (const [field, key] of Object.entries(URL_KEYS)) {
+        const value = filters[field];
+        if (value === null || value === '' || value === defaults[field]) continue;
+        if ((field === 'start_date' || field === 'end_date') && filters.date_filter_type !== 'custom') continue;
+        query[key] = String(value);
+    }
+    return query;
+};
+
+const filters = reactive(filtersFromQuery(route.query));
+
+/** A calendar date as YYYY-MM-DD in local time — not toISOString(), which is UTC. */
+const toApiDate = (date) => {
+    if (isIsoDate(date)) return date;
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const periodLabel = (preset) => (preset === 'all' ? t('sr_all_time') : t(preset));
+
+/** Both ends of the custom period, as the range picker reads and writes them. */
+const customRange = computed({
+    get: () => (filters.start_date && filters.end_date ? [filters.start_date, filters.end_date] : null),
+    set: (range) => {
+        filters.start_date = range?.[0] || null;
+        filters.end_date = range?.[1] || null;
+    },
+});
+
+/** "Custom" is chosen but no dates yet: nothing to report until there are. */
+const awaitingRange = computed(() => filters.date_filter_type === 'custom' && !filters.start_date && !filters.end_date);
+
+const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+};
+
+const rangeShortcuts = computed(() => [
+    { text: t('sr_last_7_days'), value: () => [daysAgo(6), new Date()] },
+    { text: t('sr_last_30_days'), value: () => [daysAgo(29), new Date()] },
+    { text: t('sr_last_90_days'), value: () => [daysAgo(89), new Date()] },
+    {
+        text: t('sr_this_quarter'),
+        value: () => {
+            const now = new Date();
+            return [new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1), now];
+        },
+    },
+    {
+        text: t('sr_last_year'),
+        value: () => {
+            const year = new Date().getFullYear() - 1;
+            return [new Date(year, 0, 1), new Date(year, 11, 31)];
+        },
+    },
+]);
 
 const baseFilterParams = () => {
     const params = { date_filter_type: filters.date_filter_type || 'all' };
@@ -600,31 +847,63 @@ const activeTab = ref(TABS.includes(route.query.tab) ? route.query.tab : 'invoic
 const ordersStale = ref(true);
 const invoicesStale = ref(true);
 
-// Each loader gets its own counter, bumped every time that loader starts —
-// a loader that resolves after a newer call of *itself* has already started
-// discards its result instead of overwriting it, guarding against a slow
-// response from an old filter clobbering the current one when Apply is
-// clicked more than once in quick succession.
-//
-// This used to be one counter shared by all four loaders. loadOrdersTab()
-// runs loadOrdersList() and loadOrdersExtras() concurrently via Promise.all,
-// and each bumped the same counter at its own start — so whichever grabbed
-// the lower number found the shared counter had already moved on by the
-// time it resolved, and its `finally` block's `token === requestToken`
-// guard never matched. That block is the only place ordersListLoading gets
-// set back to false, so every load left the stat cards showing their
-// loading skeleton forever, even after the data had arrived.
-let ordersListToken = 0;
-let ordersExtrasToken = 0;
-let invoicesListToken = 0;
-let invoicesExtrasToken = 0;
+/**
+ * Wraps a loader so that only its latest call gets to land. A slow response
+ * from an old filter must not overwrite a newer one, and only the latest call
+ * may turn the spinner off — or it goes off while the current request is still
+ * out. Each loader gets its own counter: a single counter shared between
+ * loaders that run side by side once left every one but the last spinning
+ * forever, since each saw the counter had moved on.
+ *
+ * `run` receives `superseded()`, to check after each await.
+ */
+const latestOnly = (loading, run) => {
+    let token = 0;
+    return async () => {
+        const mine = ++token;
+        loading.value = true;
+        try {
+            await run(() => mine !== token);
+        } finally {
+            if (mine === token) loading.value = false;
+        }
+    };
+};
+
+/**
+ * A section that loads only while it is on screen and open (see
+ * CollapsibleCard's `active-change`). A filter change marks it stale; it
+ * reloads then if it is showing, or the next time it comes into view.
+ *
+ * Product profitability and the top performers are the costliest reports on
+ * the page and the furthest down it; they were fetched on every filter change
+ * whether or not anyone scrolled that far.
+ */
+const deferredSection = (load) => {
+    let active = false;
+    let stale = true;
+    const run = () => { stale = false; load(); };
+    return {
+        setActive(value) {
+            active = value;
+            if (active && stale) run();
+        },
+        invalidate() {
+            stale = true;
+            if (active) run();
+        },
+    };
+};
 
 /* ------------------------------------------------------------------ *
  * Orders tab
  * ------------------------------------------------------------------ */
 const ordersListLoading = ref(false);
-const ordersExtrasLoading = ref(false);
-const ordersLoading = computed(() => ordersListLoading.value || ordersExtrasLoading.value);
+const ordersInsightsLoading = ref(false);
+const ordersChartLoading = ref(false);
+const ordersProfitLoading = ref(false);
+const ordersLoading = computed(() => ordersListLoading.value || ordersInsightsLoading.value);
+const ordersChartStale = ref(true);
 
 const reportData = ref([]);
 const summary = ref({});
@@ -645,13 +924,13 @@ const hasOrdersData = computed(() => {
 });
 
 const orderStatCards = computed(() => [
-    { key: 'total_orders', label: t('total_orders'), value: summary.value.total_orders || 0, icon: ShoppingCart, format: 'number' },
-    { key: 'total_revenue', label: t('total_revenue'), value: performanceData.value.summary?.total_revenue ?? summary.value.total_sales ?? 0, icon: Coin, format: 'currency' },
-    { key: 'total_cost', label: t('cost_of_goods'), value: performanceData.value.summary?.total_cost ?? 0, icon: PriceTag, format: 'currency' },
-    { key: 'gross_margin', label: t('profit_margin'), value: performanceData.value.summary?.gross_margin ?? 0, icon: PieChart, format: 'percent' },
-    { key: 'average_order_value', label: t('average_order_value'), value: summary.value.average_order_value || 0, icon: TrendCharts, format: 'currency' },
-    { key: 'invoiced_orders', label: t('invoiced_orders'), value: summary.value.invoiced_orders || 0, icon: Document, format: 'number' },
-    { key: 'uninvoiced_amount', label: t('uninvoiced_amount'), value: summary.value.uninvoiced_amount || 0, icon: Warning, format: 'currency' },
+    { key: 'total_orders', label: t('total_orders'), value: summary.value.total_orders || 0, icon: ShoppingCart, format: 'number', color: 'primary' },
+    { key: 'total_revenue', label: t('total_revenue'), value: performanceData.value.summary?.total_revenue ?? summary.value.total_sales ?? 0, icon: Coin, format: 'currency', color: 'success' },
+    { key: 'total_cost', label: t('cost_of_goods'), value: performanceData.value.summary?.total_cost ?? 0, icon: PriceTag, format: 'currency', color: 'warning' },
+    { key: 'gross_margin', label: t('profit_margin'), value: performanceData.value.summary?.gross_margin ?? 0, icon: PieChart, format: 'percent', color: 'indigo' },
+    { key: 'average_order_value', label: t('average_order_value'), value: summary.value.average_order_value || 0, icon: TrendCharts, format: 'currency', color: 'purple' },
+    { key: 'invoiced_orders', label: t('invoiced_orders'), value: summary.value.invoiced_orders || 0, icon: Document, format: 'number', color: 'teal' },
+    { key: 'uninvoiced_amount', label: t('uninvoiced_amount'), value: summary.value.uninvoiced_amount || 0, icon: Warning, format: 'currency', color: 'danger' },
 ]);
 
 const TREND_GROUPINGS = ['day', 'week', 'month'];
@@ -712,11 +991,9 @@ const handleOrdersSortChange = ({ prop, order }) => {
 // surface, so it is marked on the row rather than left to be spotted.
 const orderRowClass = ({ row }) => (Number(row.gross_profit) < 0 ? 'row-loss' : '');
 
-/** Just the paginated list — used for page/size changes, which don't need
- *  the charts, dimensions or performance figures re-fetched. */
-const loadOrdersList = async () => {
-    ordersListLoading.value = true;
-    const token = ++ordersListToken;
+/** Just the paginated list — its summary feeds the stat cards, and page,
+ *  size and sort changes need nothing else re-fetched. */
+const loadOrdersList = latestOnly(ordersListLoading, async (superseded) => {
     try {
         const response = await api.get('/admin/reports/sales', {
             params: {
@@ -726,66 +1003,84 @@ const loadOrdersList = async () => {
                 ...(ordersSort.value ? { sort: ordersSort.value } : {}),
             },
         });
-        if (token !== ordersListToken) return;
+        if (superseded()) return;
         const data = response.data?.data;
         reportData.value = Array.isArray(data?.sales_orders) ? data.sales_orders : [];
         summary.value = data?.summary || {};
         Object.assign(pagination, data?.pagination || { current_page: 1, per_page: 20, total: 0 });
     } catch (error) {
-        if (token !== ordersListToken) return;
+        if (superseded()) return;
         ElMessage.error(t('failed_to_load_report'));
         reportData.value = [];
         summary.value = {};
-    } finally {
-        if (token === ordersListToken) ordersListLoading.value = false;
     }
-};
+});
 
-const loadOrdersExtras = async () => {
-    ordersExtrasLoading.value = true;
-    const token = ++ordersExtrasToken;
+const loadOrdersInsights = latestOnly(ordersInsightsLoading, async (superseded) => {
     const params = baseFilterParams();
+    const [dimRes, perfRes] = await Promise.allSettled([
+        api.get('/admin/reports/sales/dimensions', { params }),
+        api.get('/admin/reports/sales/performance', { params }),
+    ]);
+    if (superseded()) return;
 
+    // Settled one by one: a failure in one report no longer blanks the other.
+    const dims = dimRes.value?.data?.data || {};
+    dimensionData.value = {
+        employee_summary: dims.employee_summary || [],
+        customer_summary: dims.customer_summary || [],
+        warehouse_summary: dims.warehouse_summary || [],
+    };
+    performanceData.value = { summary: perfRes.value?.data?.data?.summary || null };
+});
+
+/** The trend is the only request that depends on the grouping, so changing
+ *  the grouping re-fetches this and nothing else. */
+const loadOrdersChart = latestOnly(ordersChartLoading, async (superseded) => {
+    ordersChartStale.value = false;
     try {
-        const [chartRes, dimRes, perfRes, profitRes, topRes] = await Promise.all([
-            api.get('/admin/reports/sales/summary', { params: { ...params, group_by: filters.group_by } }),
-            api.get('/admin/reports/sales/dimensions', { params }),
-            api.get('/admin/reports/sales/performance', { params }),
-            api.get('/admin/reports/sales/product-profitability', { params }),
-            api.get('/admin/reports/sales/top-performers', { params }),
-        ]);
-        if (token !== ordersExtrasToken) return;
-
+        const response = await api.get('/admin/reports/sales/summary', {
+            params: { ...baseFilterParams(), group_by: filters.group_by },
+        });
+        if (superseded()) return;
         summaryChart.value = {
-            rows: Array.isArray(chartRes.data?.data?.summary) ? chartRes.data.data.summary : [],
-            group_by: chartRes.data?.data?.group_by || filters.group_by,
+            rows: Array.isArray(response.data?.data?.summary) ? response.data.data.summary : [],
+            group_by: response.data?.data?.group_by || filters.group_by,
         };
-        dimensionData.value = {
-            employee_summary: dimRes.data?.data?.employee_summary || [],
-            customer_summary: dimRes.data?.data?.customer_summary || [],
-            warehouse_summary: dimRes.data?.data?.warehouse_summary || [],
-        };
-        performanceData.value = { summary: perfRes.data?.data?.summary || null };
-        productProfitabilityData.value = {
-            summary: profitRes.data?.data?.summary || null,
-            product_summary: profitRes.data?.data?.product_summary || [],
-        };
-        topPerformers.value = Array.isArray(topRes.data?.data) ? topRes.data.data : [];
     } catch (error) {
-        if (token !== ordersExtrasToken) return;
+        if (superseded()) return;
         summaryChart.value = { rows: [], group_by: filters.group_by };
-        dimensionData.value = { employee_summary: [], customer_summary: [], warehouse_summary: [] };
-        performanceData.value = { summary: null };
-        productProfitabilityData.value = { summary: null, product_summary: [] };
-        topPerformers.value = [];
-    } finally {
-        if (token === ordersExtrasToken) ordersExtrasLoading.value = false;
     }
-};
+});
+
+const ordersProfitSection = deferredSection(latestOnly(ordersProfitLoading, async (superseded) => {
+    try {
+        const response = await api.get('/admin/reports/sales/product-profitability', { params: baseFilterParams() });
+        if (superseded()) return;
+        productProfitabilityData.value = {
+            summary: response.data?.data?.summary || null,
+            product_summary: response.data?.data?.product_summary || [],
+        };
+    } catch (error) {
+        if (superseded()) return;
+        productProfitabilityData.value = { summary: null, product_summary: [] };
+    }
+}));
+
+const ordersTopSection = deferredSection(latestOnly(loadingTopPerformers, async (superseded) => {
+    try {
+        const response = await api.get('/admin/reports/sales/top-performers', { params: baseFilterParams() });
+        if (superseded()) return;
+        topPerformers.value = Array.isArray(response.data?.data) ? response.data.data : [];
+    } catch (error) {
+        if (superseded()) return;
+        topPerformers.value = [];
+    }
+}));
 
 const loadOrdersTab = async () => {
-    await Promise.all([loadOrdersList(), loadOrdersExtras()]);
     ordersStale.value = false;
+    await Promise.all([loadOrdersList(), loadOrdersInsights(), loadOrdersChart()]);
 };
 
 const handleOrdersPageChange = (page) => { pagination.current_page = page; loadOrdersList(); };
@@ -795,8 +1090,9 @@ const handleOrdersSizeChange = (size) => { pagination.per_page = size; paginatio
  * Invoices tab
  * ------------------------------------------------------------------ */
 const invoicesListLoading = ref(false);
-const invoicesExtrasLoading = ref(false);
-const invoicesLoading = computed(() => invoicesListLoading.value || invoicesExtrasLoading.value);
+const invoicesInsightsLoading = ref(false);
+const invoicesProfitLoading = ref(false);
+const invoicesLoading = computed(() => invoicesListLoading.value || invoicesInsightsLoading.value);
 
 const invoiceReportData = ref([]);
 const invoiceSummary = ref({});
@@ -816,48 +1112,76 @@ const hasInvoicesData = computed(() => {
 });
 
 const invoiceStatCards = computed(() => [
-    { key: 'total_invoices', label: t('invoices_count'), value: invoiceSummary.value.total_invoices || 0, icon: Document, format: 'number' },
-    { key: 'total_invoiced', label: t('total_invoiced'), value: invoiceSummary.value.total_invoiced || 0, icon: Coin, format: 'currency' },
-    { key: 'paid_amount', label: t('paid_amount'), value: invoiceSummary.value.paid_amount || 0, icon: Wallet, format: 'currency' },
-    { key: 'due_amount', label: t('due_amount'), value: invoiceSummary.value.due_amount || 0, icon: Warning, format: 'currency' },
-    { key: 'average_invoice_value', label: t('average_invoice_value'), value: invoiceSummary.value.average_invoice_value || 0, icon: TrendCharts, format: 'currency' },
+    { key: 'total_invoices', label: t('invoices_count'), value: invoiceSummary.value.total_invoices || 0, icon: Document, format: 'number', color: 'primary' },
+    { key: 'total_invoiced', label: t('total_invoiced'), value: invoiceSummary.value.total_invoiced || 0, icon: Coin, format: 'currency', color: 'success' },
+    { key: 'paid_amount', label: t('paid_amount'), value: invoiceSummary.value.paid_amount || 0, icon: Wallet, format: 'currency', color: 'teal' },
+    { key: 'due_amount', label: t('due_amount'), value: invoiceSummary.value.due_amount || 0, icon: Warning, format: 'currency', color: 'danger' },
+    { key: 'average_invoice_value', label: t('average_invoice_value'), value: invoiceSummary.value.average_invoice_value || 0, icon: TrendCharts, format: 'currency', color: 'purple' },
 ]);
 
-// Invoices have no day/week/month/status trend endpoint (see
-// SalesReportController) — only the three dimensions both tabs share.
-const BREAKDOWN_GROUPINGS = ['employee', 'customer', 'warehouse'];
+const invoiceTrendChart = ref({ rows: [], group_by: 'day' });
+const invoicesChartLoading = ref(false);
+const invoicesChartStale = ref(true);
 
-const invoicesChartMode = computed(() => (BREAKDOWN_GROUPINGS.includes(filters.group_by) ? 'bar' : 'none'));
+const loadInvoicesChart = latestOnly(invoicesChartLoading, async (superseded) => {
+    invoicesChartStale.value = false;
+    if (!TREND_GROUPINGS.includes(filters.group_by)) {
+        return;
+    }
+    try {
+        const response = await api.get('/admin/reports/invoices/trend', {
+            params: { ...baseFilterParams(), group_by: filters.group_by },
+        });
+        if (superseded()) return;
+        invoiceTrendChart.value = {
+            rows: Array.isArray(response.data?.data?.trend) ? response.data.data.trend : [],
+            group_by: response.data?.data?.group_by || filters.group_by,
+        };
+    } catch (error) {
+        if (superseded()) return;
+        invoiceTrendChart.value = { rows: [], group_by: filters.group_by };
+    }
+});
 
-/**
- * The groupings this tab *can* chart, offered from the empty chart itself.
- *
- * The default grouping is 'day' — a trend, which the invoice report has no
- * series for — so the tab that now opens the page also opens with a blank
- * chart. The note explained that; these make it one click to fix instead of a
- * hunt through the collapsed advanced filters.
- */
-const GROUPING_LABELS = { employee: 'by_employee', customer: 'by_customer', warehouse: 'by_warehouse' };
-
-const invoiceChartSuggestions = computed(() =>
-    BREAKDOWN_GROUPINGS.map((value) => ({ value, label: t(GROUPING_LABELS[value]) }))
-);
+const invoicesChartMode = computed(() => (TREND_GROUPINGS.includes(filters.group_by) ? 'trend' : 'bar'));
 
 const invoicesChartTitle = computed(() => {
-    const key = GROUPING_LABELS[filters.group_by];
-    return key ? t(key) : t('distribution_by_criteria');
+    const labels = {
+        day: t('invoiced_by_day') || t('sales_by_day'),
+        week: t('invoiced_by_week') || t('sales_by_week'),
+        month: t('invoiced_by_month') || t('sales_by_month'),
+        employee: t('by_employee'),
+        customer: t('by_customer'),
+        warehouse: t('by_warehouse'),
+        status: t('by_status'),
+    };
+    return labels[filters.group_by] || t('sales_by_period');
 });
 
 const invoicesChartLabels = computed(() => {
+    if (TREND_GROUPINGS.includes(filters.group_by)) {
+        return invoiceTrendChart.value.rows.map((row) => row.period || '-');
+    }
+    if (filters.group_by === 'status') {
+        return (invoiceDimensionData.value.status_summary || []).map((row) => getStatusText(row.status));
+    }
     const key = `${filters.group_by}_summary`;
     const nameKey = { employee: 'employee_name', customer: 'customer_name', warehouse: 'warehouse_name' }[filters.group_by];
     return (invoiceDimensionData.value[key] || []).map((row) => row[nameKey] || t('undefined'));
 });
 
 const invoicesChartValues = computed(() => {
+    if (TREND_GROUPINGS.includes(filters.group_by)) {
+        return invoiceTrendChart.value.rows.map((row) => Number(row.total_invoiced) || 0);
+    }
+    if (filters.group_by === 'status') {
+        return (invoiceDimensionData.value.status_summary || []).map((row) => Number(row.total_invoiced) || 0);
+    }
     const key = `${filters.group_by}_summary`;
     return (invoiceDimensionData.value[key] || []).map((row) => Number(row.total_invoiced) || 0);
 });
+
+const invoiceChartSuggestions = computed(() => []);
 
 /* ------------------------------------------------------------------ *
  * Per-invoice profit
@@ -892,9 +1216,7 @@ const formatMarginPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
 // negative on a bad sale — neither should draw a bar off the end of the cell.
 const marginBarWidth = (value) => `${Math.min(Math.abs(Number(value) || 0), 100)}%`;
 
-const loadInvoicesList = async () => {
-    invoicesListLoading.value = true;
-    const token = ++invoicesListToken;
+const loadInvoicesList = latestOnly(invoicesListLoading, async (superseded) => {
     try {
         const response = await api.get('/admin/reports/invoices', {
             params: {
@@ -904,60 +1226,67 @@ const loadInvoicesList = async () => {
                 ...(invoiceSort.value ? { sort: invoiceSort.value } : {}),
             },
         });
-        if (token !== invoicesListToken) return;
+        if (superseded()) return;
         const data = response.data?.data;
         invoiceReportData.value = Array.isArray(data?.invoices) ? data.invoices : [];
         invoiceSummary.value = data?.summary || {};
         Object.assign(invoicePagination, data?.pagination || { current_page: 1, per_page: 20, total: 0 });
     } catch (error) {
-        if (token !== invoicesListToken) return;
+        if (superseded()) return;
         ElMessage.error(t('failed_to_load_report'));
         invoiceReportData.value = [];
         invoiceSummary.value = {};
-    } finally {
-        if (token === invoicesListToken) invoicesListLoading.value = false;
     }
-};
+});
 
-const loadInvoicesExtras = async () => {
-    invoicesExtrasLoading.value = true;
-    const token = ++invoicesExtrasToken;
+/** Performance figures and the three breakdowns — which also feed the chart,
+ *  so a grouping change on this tab needs no request at all. */
+const loadInvoicesInsights = latestOnly(invoicesInsightsLoading, async (superseded) => {
     const params = baseFilterParams();
+    const [dimRes, perfRes] = await Promise.allSettled([
+        api.get('/admin/reports/invoices/dimensions', { params }),
+        api.get('/admin/reports/invoices/performance', { params }),
+    ]);
+    if (superseded()) return;
 
+    const dims = dimRes.value?.data?.data || {};
+    invoiceDimensionData.value = {
+        employee_summary: dims.employee_summary || [],
+        customer_summary: dims.customer_summary || [],
+        warehouse_summary: dims.warehouse_summary || [],
+        status_summary: dims.status_summary || [],
+    };
+    invoicePerformanceData.value = { summary: perfRes.value?.data?.data?.summary || null };
+});
+
+const invoicesProfitSection = deferredSection(latestOnly(invoicesProfitLoading, async (superseded) => {
     try {
-        const [dimRes, perfRes, profitRes, topRes] = await Promise.all([
-            api.get('/admin/reports/invoices/dimensions', { params }),
-            api.get('/admin/reports/invoices/performance', { params }),
-            api.get('/admin/reports/invoices/product-profitability', { params }),
-            api.get('/admin/reports/invoices/top-performers', { params }),
-        ]);
-        if (token !== invoicesExtrasToken) return;
-
-        invoiceDimensionData.value = {
-            employee_summary: dimRes.data?.data?.employee_summary || [],
-            customer_summary: dimRes.data?.data?.customer_summary || [],
-            warehouse_summary: dimRes.data?.data?.warehouse_summary || [],
-        };
-        invoicePerformanceData.value = { summary: perfRes.data?.data?.summary || null };
+        const response = await api.get('/admin/reports/invoices/product-profitability', { params: baseFilterParams() });
+        if (superseded()) return;
         invoiceProductProfitabilityData.value = {
-            summary: profitRes.data?.data?.summary || null,
-            product_summary: profitRes.data?.data?.product_summary || [],
+            summary: response.data?.data?.summary || null,
+            product_summary: response.data?.data?.product_summary || [],
         };
-        invoiceTopPerformers.value = Array.isArray(topRes.data?.data) ? topRes.data.data : [];
     } catch (error) {
-        if (token !== invoicesExtrasToken) return;
-        invoiceDimensionData.value = { employee_summary: [], customer_summary: [], warehouse_summary: [] };
-        invoicePerformanceData.value = { summary: null };
+        if (superseded()) return;
         invoiceProductProfitabilityData.value = { summary: null, product_summary: [] };
-        invoiceTopPerformers.value = [];
-    } finally {
-        if (token === invoicesExtrasToken) invoicesExtrasLoading.value = false;
     }
-};
+}));
+
+const invoicesTopSection = deferredSection(latestOnly(loadingInvoiceTopPerformers, async (superseded) => {
+    try {
+        const response = await api.get('/admin/reports/invoices/top-performers', { params: baseFilterParams() });
+        if (superseded()) return;
+        invoiceTopPerformers.value = Array.isArray(response.data?.data) ? response.data.data : [];
+    } catch (error) {
+        if (superseded()) return;
+        invoiceTopPerformers.value = [];
+    }
+}));
 
 const loadInvoicesTab = async () => {
-    await Promise.all([loadInvoicesList(), loadInvoicesExtras()]);
     invoicesStale.value = false;
+    await Promise.all([loadInvoicesList(), loadInvoicesInsights(), loadInvoicesChart()]);
 };
 
 const handleInvoicePageChange = (page) => { invoicePagination.current_page = page; loadInvoicesList(); };
@@ -969,8 +1298,14 @@ const handleInvoiceSizeChange = (size) => { invoicePagination.per_page = size; i
 const loadActiveTab = () => (activeTab.value === 'invoices' ? loadInvoicesTab() : loadOrdersTab());
 
 watch(activeTab, (tab) => {
-    if (tab === 'invoices' && invoicesStale.value) loadInvoicesTab();
-    if (tab === 'orders' && ordersStale.value) loadOrdersTab();
+    if (tab === 'invoices') {
+        if (invoicesStale.value) loadInvoicesTab();
+        else if (invoicesChartStale.value) loadInvoicesChart();
+    }
+    if (tab === 'orders') {
+        if (ordersStale.value) loadOrdersTab();
+        else if (ordersChartStale.value) loadOrdersChart();
+    }
 
     // replace, not push: flipping a tab is not a step to be walked back
     // through, and stacking history entries would trap the back button here.
@@ -979,26 +1314,68 @@ watch(activeTab, (tab) => {
     }
 });
 
+const DEFERRED_SECTIONS = [ordersProfitSection, ordersTopSection, invoicesProfitSection, invoicesTopSection];
+
+/** The filters that decide which documents are counted — everything but the
+ *  chart grouping, which only changes how they are drawn. */
+const scopeKey = () => JSON.stringify(baseFilterParams());
+let appliedScope = null;
+
 const applyFilters = () => {
+    appliedScope = scopeKey();
     pagination.current_page = 1;
     invoicePagination.current_page = 1;
     ordersStale.value = true;
     invoicesStale.value = true;
+    ordersChartStale.value = true;
+    invoicesChartStale.value = true;
     loadActiveTab();
+    // Below the fold, these reload only if they are actually showing.
+    DEFERRED_SECTIONS.forEach((section) => section.invalidate());
+};
+
+/** A new grouping re-draws the chart and leaves every other figure alone. */
+const applyGroupingChange = () => {
+    if (activeTab.value === 'orders') {
+        ordersChartStale.value = true;
+        loadOrdersChart();
+    } else {
+        invoicesChartStale.value = true;
+        loadInvoicesChart();
+    }
 };
 
 /**
- * Switch grouping from the empty chart's own suggestion.
- *
- * Goes through applyFilters() rather than only setting the value: the orders
- * trend is fetched *with* group_by, so changing it without a reload would
- * leave that tab charting the previous grouping's rows.
+ * Filters apply as they change: there used to be an Apply button, and a
+ * report showing the old numbers under freshly changed filters looked like an
+ * answer to the new question. Changes are gathered for a moment, so clearing
+ * two chips or stepping through a select is one reload, not several.
  */
-const applyGrouping = (grouping) => {
-    if (filters.group_by === grouping) return;
+let filterReloadTimer = null;
+watch(
+    () => ({ ...filters }),
+    () => {
+        clearTimeout(filterReloadTimer);
+        filterReloadTimer = setTimeout(() => {
+            const query = { ...filtersToQuery(), ...(route.query.tab ? { tab: route.query.tab } : {}) };
+            router.replace({ query });
+            // A custom period with no dates yet would report on everything —
+            // the opposite of what picking "custom" asked for.
+            if (awaitingRange.value) return;
+            if (scopeKey() !== appliedScope) applyFilters();
+            else applyGroupingChange();
+        }, 300);
+    },
+);
 
+/** Anything on the open tab still on its way, for the "updating" note. */
+const refreshing = computed(() => (activeTab.value === 'invoices'
+    ? invoicesLoading.value || invoicesChartLoading.value || invoicesProfitLoading.value || loadingInvoiceTopPerformers.value
+    : ordersLoading.value || ordersChartLoading.value || ordersProfitLoading.value || loadingTopPerformers.value));
+
+/** Switch grouping from the empty chart's own suggestion. */
+const applyGrouping = (grouping) => {
     filters.group_by = grouping;
-    applyFilters();
 };
 
 /** Which breakdown row each panel should show as the current scope. */
@@ -1019,26 +1396,67 @@ const activeDimensions = computed(() => ({
  */
 const DIMENSION_FILTERS = { employee: 'employee_id', customer: 'customer_id', warehouse: 'warehouse_id' };
 
-const applyDimensionFilter = ({ type, id }) => {
+const applyDimensionFilter = ({ type, id, name }) => {
     const field = DIMENSION_FILTERS[type];
     if (!field) return;
+    // Customers are searched, not preloaded, so the one clicked may not be
+    // among the select's options yet — the breakdown row already has its name.
+    if (type === 'customer' && id) rememberCustomer(id, name);
 
     filters[field] = id ?? null;
-    applyFilters();
 };
 
 const resetFilters = () => {
-    Object.assign(filters, {
-        employee_id: null, customer_id: null, warehouse_id: null, status: '',
-        date_filter_type: 'all', start_date: null, end_date: null, group_by: 'day',
-    });
+    // The chart grouping is a way of looking, not part of the scope: it stays.
+    Object.assign(filters, { ...emptyFilters(), group_by: filters.group_by });
     invoiceSort.value = null;
     ordersSort.value = null;
     // The header arrow is the table's own state; clearing ours would otherwise
     // leave it pointing at a sort no longer being applied.
     invoiceTableRef.value?.clearSort();
     ordersTableRef.value?.clearSort();
-    applyFilters();
+};
+
+/* ------------------------------------------------------------------ *
+ * Active filter chips
+ * ------------------------------------------------------------------ */
+const nameOf = (list, id) => list.value.find((row) => Number(row.id) === Number(id))?.name || `#${id}`;
+
+const periodChipValue = () => {
+    if (filters.date_filter_type !== 'custom') return periodLabel(filters.date_filter_type);
+    const from = filters.start_date ? formatDate(filters.start_date) : '…';
+    const to = filters.end_date ? formatDate(filters.end_date) : '…';
+    return `${from} – ${to}`;
+};
+
+const selectPeriodPreset = (preset) => {
+    if (preset === 'custom') {
+        filters.date_filter_type = 'custom';
+    } else {
+        filters.date_filter_type = preset;
+        filters.start_date = null;
+        filters.end_date = null;
+    }
+};
+
+const activeFilterChips = computed(() => {
+    const chips = [];
+    if (filters.date_filter_type !== 'all' && !awaitingRange.value) {
+        chips.push({ key: 'period', icon: 'fas fa-calendar-day', label: t('sr_period'), value: periodChipValue() });
+    }
+    if (filters.employee_id) chips.push({ key: 'employee_id', icon: 'fas fa-user-tie', label: t('employee'), value: nameOf(employees, filters.employee_id) });
+    if (filters.customer_id) chips.push({ key: 'customer_id', icon: 'fas fa-building', label: t('customer'), value: nameOf(customers, filters.customer_id) });
+    if (filters.warehouse_id) chips.push({ key: 'warehouse_id', icon: 'fas fa-warehouse', label: t('warehouse'), value: nameOf(warehouses, filters.warehouse_id) });
+    if (filters.status) chips.push({ key: 'status', icon: 'fas fa-circle-check', label: t('status'), value: getStatusText(filters.status) });
+    return chips;
+});
+
+const clearFilter = (key) => {
+    if (key === 'period') {
+        Object.assign(filters, { date_filter_type: 'all', start_date: null, end_date: null });
+        return;
+    }
+    filters[key] = key === 'status' ? '' : null;
 };
 
 const exporting = ref(false);
@@ -1069,19 +1487,17 @@ const exportActiveTab = async () => {
  * ------------------------------------------------------------------ */
 const formatMoney = (value) => formatMoneyWith(value || 0);
 
-/** Row counts read as quantities, so they get thousands separators. */
-const formatCount = (value) => Number(value || 0).toLocaleString();
 
 /** Names the dataset the export button is about to produce. */
 const activeTabLabel = computed(() =>
     activeTab.value === 'invoices' ? t('invoices') : t('sales_orders_pipeline')
 );
 
-const formatDate = (value) => {
-    if (!value) return '-';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('ar-SA');
-};
+// The shared sales formatter: Gregorian, in the interface's language. This
+// used toLocaleDateString('ar-SA'), which most browsers render in the Hijri
+// calendar — so the report dated its invoices differently from every other
+// sales screen.
+const formatDate = (value) => (value ? formatSalesDate(value) : '-');
 
 const STATUS_TAG_TYPES = { pending: 'info', confirmed: 'warning', processing: 'primary', shipped: 'success', delivered: 'success', cancelled: 'danger' };
 const getStatusType = (status) => STATUS_TAG_TYPES[status] || 'info';
@@ -1094,6 +1510,7 @@ onMounted(() => {
     // Whichever tab is actually on screen, not always the orders one: the
     // watcher above only fires on a *change*, so loading the wrong tab here
     // would leave the visible one empty until you clicked away and back.
+    appliedScope = scopeKey();
     loadActiveTab();
 });
 </script>
@@ -1103,9 +1520,172 @@ onMounted(() => {
     padding: 0;
 }
 
+/* Quick Period Bar */
+.quick-period-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.9rem;
+    background: #ffffff;
+    border: 1px solid #e8eef7;
+    border-radius: 12px;
+}
+
+.quick-period-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #334155;
+    white-space: nowrap;
+}
+
+.quick-period-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.period-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.period-pill:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+.period-pill.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.period-pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
+/* Custom Tab Labels with Badges */
+.tab-label-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.tab-icon {
+    font-size: 0.95rem;
+}
+
+.tab-badge {
+    padding: 0.1rem 0.45rem;
+    background: #e2e8f0;
+    color: #475569;
+    border-radius: 10px;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+:deep(.el-tabs__item.is-active) .tab-badge {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
 .empty-alert {
     margin-bottom: 1.25rem;
     border-radius: 0.9rem;
+}
+
+.filter-field--range {
+    /* Two dates and a separator do not fit the grid's one-field minimum. */
+    grid-column: span 2;
+}
+
+.active-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin: -0.5rem 0 1rem;
+    min-height: 28px;
+}
+
+.active-filters-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.active-filter-chip {
+    font-size: 0.82rem;
+}
+
+.active-filter-name {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.active-filters-all {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.active-filters-clear {
+    font-size: 0.82rem;
+}
+
+.active-filters-spacer {
+    flex: 1 1 auto;
+}
+
+.collapse-all-icon {
+    margin-inline-end: 4px;
+}
+
+.active-filters-updating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.82rem;
+    color: var(--el-color-primary);
+}
+
+.option-hint {
+    margin-inline-start: 0.5rem;
+    font-size: 0.78rem;
+    color: #94a3b8;
+}
+
+.active-filters-hint {
+    font-size: 0.82rem;
+    color: var(--el-color-warning-dark-2, #b45309);
+}
+
+@media (max-width: 640px) {
+    .filter-field--range {
+        grid-column: auto;
+    }
 }
 
 .report-tabs :deep(.el-tabs__content) {
@@ -1123,21 +1703,75 @@ onMounted(() => {
     justify-content: center;
 }
 
-.table-card-header {
-    display: flex;
+
+
+/* Record badges */
+.record-badge {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.84rem;
+    text-decoration: none;
+    transition: all 0.15s ease;
 }
 
-.table-card-count {
-    font-size: 0.8rem;
+.record-badge:hover {
+    background: #dbeafe;
+    text-decoration: none;
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
+}
+
+.record-badge--order {
+    background: #f0fdf4;
+    color: #15803d;
+    border-color: #bbf7d0;
+}
+
+.record-badge--order:hover {
+    background: #dcfce7;
+}
+
+.table-money-bold {
+    color: #0f172a;
     font-weight: 700;
-    color: #64748b;
-    background: #f1f5f9;
-    border-radius: 999px;
-    padding: 0.1rem 0.6rem;
-    font-variant-numeric: tabular-nums;
+}
+
+/* Due Amount Pill */
+.due-pill {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+.due-pill.is-due {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.due-pill.is-clear {
+    background: #f8fafc;
+    color: #16a34a;
+}
+
+/* Chip formatting */
+.chip-icon {
+    margin-inline-end: 4px;
+    font-size: 0.75rem;
+    opacity: 0.75;
+}
+
+.chip-val {
+    margin-inline-start: 3px;
+    color: #1e293b;
+    font-weight: 700;
 }
 
 /* The way into the underlying order or invoice. */

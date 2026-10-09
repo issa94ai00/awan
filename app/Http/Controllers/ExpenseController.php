@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Expense;
+use App\Models\Invoice;
+use App\Models\SalesOrder;
 use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -23,12 +25,194 @@ class ExpenseController extends Controller
     }
 
     /**
-     * Display a listing of the resource.
+     * Display a listing of operating expenses with filtering, summary, and pagination.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $expenses = Expense::with(['invoice', 'customer', 'creator'])->latest()->get();
-        return response()->json(['data' => $expenses]);
+        $query = Expense::query()->with([
+            'invoice:id,invoice_number,customer_id,status,total',
+            'salesOrder:id,order_number,status,total',
+            'customer:id,name,phone,company',
+            'creator:id,name',
+        ]);
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('invoice_id')) {
+            $query->where('invoice_id', $request->invoice_id);
+        }
+
+        if ($request->filled('sales_order_id')) {
+            $query->where('sales_order_id', $request->sales_order_id);
+        }
+
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $day = 'COALESCE(DATE(expenses.expense_date), DATE(expenses.created_at))';
+        if ($request->filled('date_from')) {
+            $query->whereRaw("{$day} >= ?", [$request->date_from]);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereRaw("{$day} <= ?", [$request->date_to]);
+        }
+
+        if ($request->filled('search')) {
+            $term = trim((string) $request->search);
+            $query->where(function ($q) use ($term) {
+                $q->where('expense_number', 'like', "%{$term}%")
+                    ->orWhere('description', 'like', "%{$term}%")
+                    ->orWhere('notes', 'like', "%{$term}%")
+                    ->orWhereHas('customer', function ($cq) use ($term) {
+                        $cq->where('name', 'like', "%{$term}%")
+                            ->orWhere('phone', 'like', "%{$term}%")
+                            ->orWhere('company', 'like', "%{$term}%");
+                    })
+                    ->orWhereHas('invoice', function ($iq) use ($term) {
+                        $iq->where('invoice_number', 'like', "%{$term}%");
+                    });
+            });
+        }
+
+        $today = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->input('today'))
+            ? (string) $request->input('today')
+            : now()->toDateString();
+
+        $summary = $request->boolean('with_summary', true)
+            ? $this->listSummary(clone $query, $today)
+            : null;
+
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        if ($request->input('sort') === 'amount') {
+            $query->orderBy('amount', $direction);
+        } elseif ($request->input('sort') === 'expense_number') {
+            $query->orderBy('expense_number', $direction);
+        } else {
+            $query->orderByRaw("{$day} {$direction}");
+        }
+        $query->orderBy('id', $direction);
+
+        if ($request->boolean('all') || $request->input('per_page') === 'all') {
+            $expenses = $query->get();
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'expenses' => $expenses,
+                    'summary' => $summary,
+                    'pagination' => [
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'per_page' => $expenses->count(),
+                        'total' => $expenses->count(),
+                        'has_more_pages' => false,
+                    ],
+                ],
+            ]);
+        }
+
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $paginated = $query->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'expenses' => $paginated->items(),
+                'summary' => $summary,
+                'pagination' => [
+                    'current_page' => $paginated->currentPage(),
+                    'last_page' => $paginated->lastPage(),
+                    'per_page' => $paginated->perPage(),
+                    'total' => $paginated->total(),
+                    'has_more_pages' => $paginated->hasMorePages(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Compute financial and operational summary for expenses matching the filters.
+     */
+    private function listSummary($query, string $today): array
+    {
+        $rows = (clone $query)->select([
+            'amount',
+            'category',
+            'status',
+            'expense_date',
+            'created_at',
+        ])->get();
+
+        $total = 0.0;
+        $count = 0;
+        $todayTotal = 0.0;
+        $todayCount = 0;
+        $thisMonthTotal = 0.0;
+        $thisMonthCount = 0;
+        $monthPrefix = substr($today, 0, 7);
+
+        $byCategory = [
+            'shipping' => ['total' => 0.0, 'count' => 0, 'share' => 0.0],
+            'packaging' => ['total' => 0.0, 'count' => 0, 'share' => 0.0],
+            'handling' => ['total' => 0.0, 'count' => 0, 'share' => 0.0],
+            'other' => ['total' => 0.0, 'count' => 0, 'share' => 0.0],
+        ];
+
+        $byStatus = [
+            'paid' => ['total' => 0.0, 'count' => 0],
+            'pending' => ['total' => 0.0, 'count' => 0],
+            'approved' => ['total' => 0.0, 'count' => 0],
+            'rejected' => ['total' => 0.0, 'count' => 0],
+        ];
+
+        foreach ($rows as $row) {
+            $amount = (float) $row->amount;
+            $date = $row->expense_date ? $row->expense_date->toDateString() : substr((string) $row->created_at, 0, 10);
+            $cat = in_array($row->category, ['shipping', 'packaging', 'handling', 'other'], true) ? $row->category : 'other';
+            $st = in_array($row->status, ['paid', 'pending', 'approved', 'rejected'], true) ? $row->status : 'pending';
+
+            $total += $amount;
+            $count++;
+
+            if ($date === $today) {
+                $todayTotal += $amount;
+                $todayCount++;
+            }
+
+            if (str_starts_with($date, $monthPrefix)) {
+                $thisMonthTotal += $amount;
+                $thisMonthCount++;
+            }
+
+            $byCategory[$cat]['total'] += $amount;
+            $byCategory[$cat]['count']++;
+
+            $byStatus[$st]['total'] += $amount;
+            $byStatus[$st]['count']++;
+        }
+
+        if ($total > 0) {
+            foreach ($byCategory as $catKey => $val) {
+                $byCategory[$catKey]['share'] = round($val['total'] / $total, 4);
+            }
+        }
+
+        return [
+            'total' => round($total, 2),
+            'count' => $count,
+            'today' => round($todayTotal, 2),
+            'today_count' => $todayCount,
+            'this_month' => round($thisMonthTotal, 2),
+            'this_month_count' => $thisMonthCount,
+            'by_category' => $byCategory,
+            'by_status' => $byStatus,
+        ];
     }
 
     /**
@@ -38,24 +222,34 @@ class ExpenseController extends Controller
     {
         $validated = $request->validate([
             'description' => 'required|string|max:255',
-            'amount' => 'required|numeric|min:0',
+            'amount' => 'required|numeric|min:0.01',
             'category' => 'nullable|string|in:shipping,packaging,handling,other',
             'expense_date' => 'required|date',
+            'status' => 'nullable|string|in:pending,approved,paid,rejected',
             'notes' => 'nullable|string',
             'invoice_id' => 'nullable|exists:invoices,id',
+            'sales_order_id' => 'nullable|exists:sales_orders,id',
             'customer_id' => 'nullable|exists:customers,id',
         ]);
 
+        $customerId = $validated['customer_id'] ?? null;
+        if (! $customerId && ! empty($validated['invoice_id'])) {
+            $customerId = Invoice::where('id', $validated['invoice_id'])->value('customer_id');
+        }
+        if (! $customerId && ! empty($validated['sales_order_id'])) {
+            $order = SalesOrder::find($validated['sales_order_id']);
+            $customerId = $order?->customer_id;
+            if (empty($validated['invoice_id'])) {
+                $validated['invoice_id'] = $order?->invoices()->where('status', '!=', Invoice::STATUS_CANCELLED)->latest('id')->value('id');
+            }
+        }
+        if (empty($validated['sales_order_id']) && ! empty($validated['invoice_id'])) {
+            $validated['sales_order_id'] = Invoice::where('id', $validated['invoice_id'])->value('sales_order_id');
+        }
+
         try {
-            // The expense and its entry are one transaction. This used to catch
-            // the posting failure, log it and answer 201 with the reason in an
-            // `accounting_warning` field that no screen displays — so a cost
-            // the books never heard of looked, to whoever entered it, exactly
-            // like one that posted.
-            $expense = DB::transaction(function () use ($validated) {
+            $expense = DB::transaction(function () use ($validated, $customerId) {
                 $expense = Expense::create([
-                    // Derived from the last id: counting hands out a number that
-                    // is already taken as soon as any expense is deleted.
                     'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                     'description' => $validated['description'],
                     'amount' => $validated['amount'],
@@ -63,8 +257,9 @@ class ExpenseController extends Controller
                     'expense_date' => $validated['expense_date'],
                     'notes' => $validated['notes'] ?? null,
                     'invoice_id' => $validated['invoice_id'] ?? null,
-                    'customer_id' => $validated['customer_id'] ?? null,
-                    'status' => 'pending',
+                    'sales_order_id' => $validated['sales_order_id'] ?? null,
+                    'customer_id' => $customerId,
+                    'status' => $validated['status'] ?? Expense::STATUS_PENDING,
                     'created_by' => auth()->id(),
                     'currency' => base_currency_code(),
                     'exchange_rate' => 1.0000,
@@ -81,7 +276,7 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $expense], 201);
+        return response()->json(['data' => $expense->load(['invoice', 'salesOrder', 'customer', 'creator'])], 201);
     }
 
     /**
@@ -89,17 +284,12 @@ class ExpenseController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $expense = Expense::with(['invoice', 'customer', 'creator'])->findOrFail($id);
+        $expense = Expense::with(['invoice', 'salesOrder', 'customer', 'creator'])->findOrFail($id);
         return response()->json(['data' => $expense]);
     }
 
     /**
      * Update the specified resource in storage.
-     *
-     * Changing what an expense cost, when it happened, or which account it
-     * belongs to changes the entry behind it — so the original is reversed and
-     * the corrected figures are posted under a new key. Both stay in the
-     * journal, which is how every other document here is corrected.
      */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -107,15 +297,27 @@ class ExpenseController extends Controller
 
         $validated = $request->validate([
             'description' => 'sometimes|string|max:255',
-            'amount' => 'sometimes|numeric|min:0',
+            'amount' => 'sometimes|numeric|min:0.01',
             'category' => 'sometimes|string|in:shipping,packaging,handling,other',
             'expense_date' => 'sometimes|date',
             'notes' => 'nullable|string',
             'status' => 'sometimes|string|in:pending,approved,rejected,paid',
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'sales_order_id' => 'nullable|exists:sales_orders,id',
+            'customer_id' => 'nullable|exists:customers,id',
         ]);
 
-        // Only fields that change the entry force a restatement; a corrected
-        // spelling in the description does not need to touch the books.
+        if (array_key_exists('invoice_id', $validated) && empty($validated['customer_id'])) {
+            if ($validated['invoice_id']) {
+                $validated['customer_id'] = Invoice::where('id', $validated['invoice_id'])->value('customer_id');
+            } else {
+                $validated['customer_id'] = null;
+            }
+        }
+        if (array_key_exists('sales_order_id', $validated) && empty($validated['customer_id']) && $validated['sales_order_id']) {
+            $validated['customer_id'] = SalesOrder::where('id', $validated['sales_order_id'])->value('customer_id');
+        }
+
         $affectsLedger = collect(['amount', 'category', 'expense_date', 'status'])
             ->contains(fn ($field) => array_key_exists($field, $validated)
                 && (string) $validated[$field] !== (string) $expense->{$field});
@@ -139,15 +341,11 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        return response()->json(['data' => $expense->refresh()]);
+        return response()->json(['data' => $expense->refresh()->load(['invoice', 'salesOrder', 'customer', 'creator'])]);
     }
 
     /**
      * Remove the specified resource from storage.
-     *
-     * The entry is reversed rather than deleted with the document: an expense
-     * that vanished silently kept its cost in the income statement of a period
-     * that had already been reported on, with no document left to explain it.
      */
     public function destroy(string $id): JsonResponse
     {
@@ -165,6 +363,10 @@ class ExpenseController extends Controller
             ], 422);
         }
 
-        return response()->json(['message' => 'Expense deleted successfully']);
+        return response()->json([
+            'success' => true,
+            'message' => 'تم عكس وحذف المصروف بنجاح',
+        ]);
     }
 }
+

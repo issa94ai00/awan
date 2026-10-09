@@ -119,6 +119,12 @@ watch(mobileSidebarOpen, (open) => {
    still rendering, pushing the real content down and spilling extra blank
    pages in front of it. */
 @media print {
+    @page {
+        margin: 0;
+    }
+    a[href]:after {
+        content: none !important;
+    }
     .admin-layout {
         display: block;
         min-height: 0;

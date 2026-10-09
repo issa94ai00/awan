@@ -184,3 +184,33 @@ test('the return is refused to a sales account', function () {
         ->getJson('/api/v1/admin/accounting/vat-return')
         ->assertForbidden();
 });
+
+test('a purchase return in the period still reconciles with input tax', function () {
+    ($this->receive)(40, 10, 60)->assertCreated();
+
+    $this->actingAs($this->admin)->postJson('/api/v1/admin/purchase-returns', [
+        'supplier_id' => $this->supplier->id,
+        'warehouse_id' => $this->warehouse->id,
+        'return_date' => now()->toDateString(),
+        'reason' => 'بضاعة معيبة',
+        'tax_amount' => 30,
+        'items' => [['product_id' => $this->product->id, 'quantity' => 5]],
+    ])->assertCreated();
+
+    $data = $this->actingAs($this->admin)
+        ->getJson('/api/v1/admin/accounting/vat-return?date_from='.now()->startOfMonth()->toDateString()
+            .'&date_to='.now()->endOfMonth()->toDateString())
+        ->assertOk()
+        ->json('data');
+
+    // 60 claimed on the receipt, 30 given back on the return: 30 of input tax,
+    // on the documents and in the ledger alike.
+    expect((float) $data['input_tax']['amount'])->toBe(30.0);
+    expect((float) $data['documents']['purchase_return_tax'])->toBe(30.0);
+    expect((float) $data['documents']['net_input_tax'])->toBe(30.0);
+    expect($data['reconciliation']['input_matches'])->toBeTrue();
+
+    $month = collect($data['months'])->firstWhere('month', now()->format('Y-m'));
+    expect((float) $month['input'])->toBe(30.0);
+    expect((float) $month['net'])->toBe(-30.0);
+});

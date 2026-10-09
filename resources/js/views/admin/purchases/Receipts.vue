@@ -79,8 +79,28 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="receipt_date" :label="$t('the_date')" width="180" align="center" />
-                    <el-table-column prop="notes" :label="$t('comments')" min-width="200" show-overflow-tooltip />
+                    <el-table-column prop="receipt_date" :label="$t('the_date')" width="120" align="center">
+                        <template #default="{ row }">{{ formatDate(row.receipt_date) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('rc_total')" width="120" align="center">
+                        <template #default="{ row }">{{ money(row.total_amount) }}</template>
+                    </el-table-column>
+                    <!-- What was paid against it, how, and what is still owed. -->
+                    <el-table-column :label="$t('rc_paid')" width="150" align="center">
+                        <template #default="{ row }">
+                            <div class="paid-cell">
+                                <strong>{{ money(row.paid_amount) }}</strong>
+                                <small v-if="row.payment_methods?.length">{{ methodsText(row.payment_methods) }}</small>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('rc_due')" width="130" align="center">
+                        <template #default="{ row }">
+                            <el-tag v-if="num(row.due_amount) < 0.01" type="success" size="small" effect="plain">{{ $t('fully_paid') }}</el-tag>
+                            <el-tag v-else :type="num(row.paid_amount) > 0 ? 'warning' : 'danger'" size="small" effect="plain">{{ money(row.due_amount) }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="notes" :label="$t('comments')" min-width="160" show-overflow-tooltip />
                     
                     <!-- Actions Column -->
                     <el-table-column :label="$t('actions')" width="220" align="center">
@@ -88,6 +108,16 @@
                             <el-button-group class="action-btn-group">
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button
+                                    v-if="mayPay && num(row.due_amount) >= 0.01"
+                                    size="small"
+                                    type="success"
+                                    plain
+                                    @click="openPayDialog(row)"
+                                    :title="$t('rc_pay_remaining')"
+                                >
+                                    <i class="fas fa-money-bill-wave"></i>
                                 </el-button>
                                 <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
                                     <i class="fas fa-edit"></i>
@@ -153,7 +183,14 @@
                                 <span class="card-title-txt"><i class="fas fa-list text-muted mr-1"></i> {{ $t('items_and_quantities_received') }}</span>
                             </template>
                             <el-table :data="selectedReceipt.items || []" style="width: 100%" stripe>
-                                <el-table-column prop="product.name_ar" :label="$t('item_product')" />
+                                <el-table-column :label="$t('item_product')" min-width="160">
+                                    <template #default="{ row }">
+                                        <span>{{ row.product?.name_ar || row.description || '-' }}</span>
+                                        <div v-if="row.product_variant_id" class="cell-variant">
+                                            <VariantChip :label="variantLabelOf(row.variant) || row.description" :sku="row.variant?.sku" show-sku />
+                                        </div>
+                                    </template>
+                                </el-table-column>
                                 <el-table-column prop="quantity" :label="$t('quantity_received')" width="140" align="center" />
                                 <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
                                     <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
@@ -169,7 +206,15 @@
                             <div class="financial-summary-block mt-4">
                                 <div class="financial-row grand-total">
                                     <span>{{ $t('grand_total_label') }}</span>
-                                    <span>${{ parseFloat(selectedReceipt.total || 0).toFixed(2) }}</span>
+                                    <span>{{ money(selectedReceipt.total_amount) }}</span>
+                                </div>
+                                <div class="financial-row">
+                                    <span>{{ $t('rc_paid') }}</span>
+                                    <span>{{ money(selectedReceipt.paid_amount) }}</span>
+                                </div>
+                                <div class="financial-row" :class="num(selectedReceipt.due_amount) >= 0.01 ? 'text-danger' : 'text-success'">
+                                    <span>{{ $t('rc_due') }}</span>
+                                    <span>{{ num(selectedReceipt.due_amount) >= 0.01 ? money(selectedReceipt.due_amount) : $t('fully_paid') }}</span>
                                 </div>
                             </div>
                         </el-card>
@@ -227,6 +272,33 @@
                                     <strong v-else>{{ $t('direct_receipt') }}</strong>
                                 </div>
                             </div>
+                        </el-card>
+
+                        <el-card shadow="never" class="mb-3">
+                            <template #header>
+                                <div class="payments-card-head">
+                                    <span class="card-title-txt"><i class="fas fa-money-bill-wave text-muted mr-1"></i> {{ $t('rc_payments') }}</span>
+                                    <el-button
+                                        v-if="mayPay && num(selectedReceipt.due_amount) >= 0.01"
+                                        size="small"
+                                        type="success"
+                                        plain
+                                        @click="openPayDialog(selectedReceipt)"
+                                    >
+                                        {{ $t('rc_pay_remaining') }}
+                                    </el-button>
+                                </div>
+                            </template>
+                            <div v-if="selectedReceipt.payments?.length" class="info-list">
+                                <div v-for="p in selectedReceipt.payments" :key="p.id" class="info-item">
+                                    <span class="lbl">
+                                        {{ formatDate(p.payment_date) }} · {{ paymentMethodLabel(p.payment_method) }}
+                                        <template v-if="p.reference"> · {{ p.reference }}</template>
+                                    </span>
+                                    <strong>{{ money(p.amount) }}</strong>
+                                </div>
+                            </div>
+                            <p v-else class="muted-txt">{{ $t('rc_no_payments') }}</p>
                         </el-card>
 
                         <el-card v-if="selectedReceipt.notes" shadow="never">
@@ -407,13 +479,13 @@
                             v-for="(item, idx) in form.items"
                             :key="item.key"
                             class="item-grid-row"
-                            :class="{ 'item-duplicate': duplicateProductIds.has(item.product_id), 'item-off-order': linkedOrder && item.product_id && lineVsOrder(item).state === 'extra' }"
+                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick), 'item-off-order': linkedOrder && item.product_id && lineVsOrder(item).state === 'extra' }"
                         >
                             <div class="item-row-top">
                                 <span class="item-index">{{ idx + 1 }}</span>
                                 <el-select
-                                    v-model="item.product_id"
-                                    :placeholder="$t('select_item')"
+                                    v-model="item.pick"
+                                    :placeholder="$t('po_select_item_or_variant')"
                                     filterable
                                     remote
                                     reserve-keyword
@@ -423,12 +495,22 @@
                                     :disabled="isEditMode"
                                     @change="(val) => updateItemPrice(val, idx)"
                                 >
+                                    <!-- Each size of a product is its own row: a delivery
+                                         says which one arrived. -->
                                     <el-option
                                         v-for="p in productOptions"
-                                        :key="p.id"
+                                        :key="optionKey(p)"
                                         :label="[p.name_ar || p.name, p.sku].filter(Boolean).join(' — ')"
-                                        :value="p.id"
-                                    />
+                                        :value="optionKey(p)"
+                                    >
+                                        <div class="product-option">
+                                            <span class="product-option-name">
+                                                {{ baseName(p) }}
+                                                <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                            </span>
+                                            <small v-if="p.sku">{{ p.sku }}</small>
+                                        </div>
+                                    </el-option>
                                 </el-select>
                                 <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" :disabled="isEditMode" />
                                 <el-button
@@ -498,12 +580,12 @@
                         <span>{{ $t('rc_missing_lines') }}</span>
                         <el-button
                             v-for="line in missingOrderLines"
-                            :key="line.product_id"
+                            :key="pickKey(line.product_id, line.product_variant_id)"
                             size="small"
                             plain
                             @click="restoreOrderLine(line)"
                         >
-                            <i class="fas fa-plus"></i> {{ line.product?.name_ar || line.product_name }} ({{ line.remaining_quantity }})
+                            <i class="fas fa-plus"></i> {{ line.product_variant_id ? line.product_name : (line.product?.name_ar || line.product_name) }} ({{ line.remaining_quantity }})
                         </el-button>
                     </div>
                 </div>
@@ -523,6 +605,41 @@
                         <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
                     </el-form-item>
 
+                    <!-- Paid as the goods come in, in part or in full. Recorded as a
+                         supplier payment linked to this receipt; the rest stays
+                         owed to the supplier. Paying is an admin task. -->
+                    <template v-if="!isEditMode && mayPay">
+                        <el-row :gutter="12">
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('rc_paid_now')">
+                                    <div class="paid-now-row">
+                                        <el-input-number
+                                            v-model="form.paid_amount"
+                                            :min="0"
+                                            :max="receiptTotal"
+                                            :precision="2"
+                                            :controls="false"
+                                            class="paid-now-input"
+                                        />
+                                        <el-button size="default" plain @click="form.paid_amount = Math.round(receiptTotal * 100) / 100">
+                                            {{ $t('rc_pay_in_full') }}
+                                        </el-button>
+                                    </div>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('payment_method')" :required="num(form.paid_amount) > 0">
+                                    <el-radio-group v-model="form.payment_method" :disabled="num(form.paid_amount) <= 0">
+                                        <el-radio-button v-for="m in PAY_METHODS" :key="m" :value="m">{{ paymentMethodLabel(m) }}</el-radio-button>
+                                    </el-radio-group>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+                        <el-form-item v-if="num(form.paid_amount) > 0 && form.payment_method !== 'cash'" :label="$t('rc_payment_reference')">
+                            <el-input v-model="form.payment_reference" maxlength="100" :placeholder="$t('rc_payment_reference_hint')" />
+                        </el-form-item>
+                    </template>
+
                     <el-form-item :label="$t('receipt_notes')">
                         <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('receipt_notes_placeholder')" />
                     </el-form-item>
@@ -537,8 +654,16 @@
                             <span>+ {{ money(form.tax_amount) }}</span>
                         </div>
                         <div class="financial-row grand-total">
-                            <span>{{ $t('rc_owed_to_supplier') }}</span>
+                            <span>{{ $t('rc_total') }}</span>
                             <span>{{ money(receiptTotal) }}</span>
+                        </div>
+                        <div v-if="num(form.paid_amount) > 0" class="financial-row">
+                            <span>{{ $t('rc_paid_now') }} ({{ paymentMethodLabel(form.payment_method) }})</span>
+                            <span>− {{ money(form.paid_amount) }}</span>
+                        </div>
+                        <div class="financial-row grand-total">
+                            <span>{{ $t('rc_owed_to_supplier') }}</span>
+                            <span>{{ money(owedAfterPayment) }}</span>
                         </div>
                         <div v-if="linkedOrder && Math.abs(receiptTotal - num(linkedOrder.total)) >= 0.01" class="financial-row order-diff">
                             <span>{{ $t('rc_vs_order_total') }}</span>
@@ -552,8 +677,8 @@
             <template #footer>
                 <div class="form-footer">
                     <div v-if="!isEditMode" class="footer-total">
-                        <span>{{ $t('rc_owed_to_supplier') }}</span>
-                        <strong>{{ money(receiptTotal) }}</strong>
+                        <span>{{ num(form.paid_amount) > 0 ? $t('rc_owed_to_supplier') : $t('rc_total') }}</span>
+                        <strong>{{ money(num(form.paid_amount) > 0 ? owedAfterPayment : receiptTotal) }}</strong>
                         <small>{{ $t('po_items_count', filledItemCount) }} · {{ $t('rc_units_n', { n: totalUnits }) }}</small>
                     </div>
                     <div class="footer-actions">
@@ -566,6 +691,37 @@
                 </div>
             </template>
         </el-drawer>
+
+        <!-- Paying what is left on a receipt: a supplier payment linked to it. -->
+        <el-dialog v-model="payDialog.visible" :title="$t('rc_pay_remaining')" width="440px" append-to-body>
+            <el-form label-position="top" @submit.prevent="submitPayment">
+                <p class="pay-dialog-meta">
+                    {{ payDialog.receipt?.receipt_number }} · {{ payDialog.receipt?.supplier?.name }}
+                    <br />
+                    {{ $t('rc_due') }}: <strong>{{ money(payDialog.receipt?.due_amount) }}</strong>
+                </p>
+                <el-form-item :label="$t('amount')" required>
+                    <el-input-number v-model="payDialog.amount" :min="0.01" :max="num(payDialog.receipt?.due_amount)" :precision="2" :controls="false" style="width: 100%" />
+                </el-form-item>
+                <el-form-item :label="$t('payment_method')" required>
+                    <el-radio-group v-model="payDialog.payment_method">
+                        <el-radio-button v-for="m in PAY_METHODS" :key="m" :value="m">{{ paymentMethodLabel(m) }}</el-radio-button>
+                    </el-radio-group>
+                </el-form-item>
+                <el-form-item :label="$t('rc_payment_date')">
+                    <el-date-picker v-model="payDialog.payment_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+                </el-form-item>
+                <el-form-item v-if="payDialog.payment_method !== 'cash'" :label="$t('rc_payment_reference')">
+                    <el-input v-model="payDialog.reference" maxlength="100" :placeholder="$t('rc_payment_reference_hint')" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="payDialog.visible = false">{{ $t('cancel') }}</el-button>
+                <el-button type="success" :loading="payDialog.saving" :disabled="!(num(payDialog.amount) > 0)" @click="submitPayment">
+                    {{ $t('rc_record_payment') }}
+                </el-button>
+            </template>
+        </el-dialog>
 
         <!-- Quick Add Product Dialog: lets an unlisted item be created and
              dropped straight into the receipt line that needed it, so a
@@ -648,6 +804,12 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
+import { paymentMethodLabel } from '@/utils/sales';
+import { matchesSearch } from '@/utils/search';
+import { supplierPaymentsApi } from '@/api/supplierPayments';
+import { useStockShortage } from '@/Composables/useStockShortage';
 
 const { t } = useI18n();
 
@@ -697,7 +859,10 @@ const quickAddForm = reactive({
 let rowSeq = 0;
 const blankRow = (overrides = {}) => ({
     key: ++rowSeq,
+    // What the select binds to: the product, or one variant of it.
+    pick: '',
     product_id: '',
+    product_variant_id: null,
     quantity: 1,
     unit_price: '',
     sale_price: '',
@@ -711,8 +876,23 @@ const form = reactive({
     receipt_date: '',
     tax_amount: 0,
     notes: '',
+    // Paid on the spot, if anything; the rest stays owed.
+    paid_amount: 0,
+    payment_method: 'cash',
+    payment_reference: '',
     items: []
 });
+
+// As on the supplier-payments screen: no card, which this business does not
+// pay suppliers by.
+const PAY_METHODS = ['cash', 'bank_transfer', 'check'];
+
+// Paying a supplier is an admin task (the payments API is behind role:admin),
+// so only an admin is offered it — here and on the receipt.
+const { canRaisePurchaseOrder: isPurchasingAdmin } = useStockShortage();
+const mayPay = computed(() => isPurchasingAdmin());
+
+const methodsText = (methods = []) => methods.map(paymentMethodLabel).join(' + ');
 
 const warehouses = computed(() => inventoryStore.warehouses);
 
@@ -744,6 +924,9 @@ const resetForm = () => {
     form.receipt_date = todayIso();
     form.tax_amount = 0;
     form.notes = '';
+    form.paid_amount = 0;
+    form.payment_method = 'cash';
+    form.payment_reference = '';
     form.items = [blankRow()];
     linkedOrder.value = null;
     orderLines.value = [];
@@ -852,11 +1035,23 @@ const loadSupplierOrders = async (supplierId) => {
     }
 };
 
-const orderLineFor = (productId) => orderLines.value.find((line) => line.product_id === productId);
+/**
+ * The request line a receipt line fills: the same variant, or — for a size the
+ * request only asked for as the product — the product's own line. The server
+ * settles received quantities the same way.
+ */
+const orderLineFor = (item) => {
+    const exact = orderLines.value.find((line) => line.product_id === item.product_id
+        && (line.product_variant_id || null) === (item.product_variant_id || null));
+    if (exact || !item.product_variant_id) return exact;
+    return orderLines.value.find((line) => line.product_id === item.product_id && !line.product_variant_id);
+};
+
+const linePick = (line) => pickKey(line.product_id, line.product_variant_id);
 
 /** How a receipt line compares with what the request still expects. */
 const lineVsOrder = (item) => {
-    const line = orderLineFor(item.product_id);
+    const line = orderLineFor(item);
     if (!line) return { state: 'extra' };
     const expected = line.remaining_quantity || line.quantity;
     const diff = Math.abs(num(item.quantity) - expected);
@@ -873,10 +1068,12 @@ const lineVsOrder = (item) => {
 // Requested lines still owed that nothing on this receipt covers.
 const missingOrderLines = computed(() => orderLines.value.filter((line) => line.product_id
     && line.remaining_quantity > 0
-    && !form.items.some((item) => item.product_id === line.product_id)));
+    && !form.items.some((item) => item.pick === linePick(line))));
 
 const rowFromOrderLine = (line, quantity) => blankRow({
+    pick: linePick(line),
     product_id: line.product_id,
+    product_variant_id: line.product_variant_id || null,
     quantity: Math.max(1, quantity),
     unit_price: num(line.unit_price),
     sale_price: line.sale_price != null ? num(line.sale_price) : '',
@@ -962,7 +1159,7 @@ const refillFromOrder = async () => {
 // The common case — everything came as asked — in one click.
 const receiveAllAsOrdered = () => {
     form.items.forEach((item) => {
-        const line = orderLineFor(item.product_id);
+        const line = orderLineFor(item);
         if (line) item.quantity = Math.max(1, line.remaining_quantity || line.quantity);
     });
     missingOrderLines.value.forEach((line) => restoreOrderLine(line));
@@ -986,22 +1183,28 @@ const productSearchLoading = ref(false);
 let productSearchTimer = null;
 
 const rememberProducts = (items = []) => {
-    const known = new Set(productOptions.value.map((p) => p.id));
-    const missing = items.map((item) => item.product).filter((p) => p && !known.has(p.id));
-    if (missing.length) productOptions.value = [...missing, ...productOptions.value];
+    productOptions.value = withOptions(
+        productOptions.value,
+        items.filter((item) => item.product_id).map(optionFromLine),
+    );
 };
+
+// What the line picker offers before anything is typed: the first page of the
+// catalogue, one row per size.
+const defaultOptions = ref([]);
 
 const searchProducts = (query) => {
     clearTimeout(productSearchTimer);
     if (!query) {
-        productOptions.value = productsStore.products;
+        productOptions.value = defaultOptions.value;
         rememberProducts(orderLines.value);
         return;
     }
     productSearchLoading.value = true;
     productSearchTimer = setTimeout(async () => {
         try {
-            const res = await productsApi.getAll({ search: query, per_page: 100 });
+            // One row per size, and a size's own code finds it.
+            const res = await productsApi.getAll({ search: query, per_page: 100, expand_variants: 1 });
             productOptions.value = res.data.data || [];
         } catch (e) {
             // Keep whatever was showing on a transient failure.
@@ -1013,32 +1216,33 @@ const searchProducts = (query) => {
 
 const goodsTotal = computed(() => form.items.reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
 const receiptTotal = computed(() => goodsTotal.value + num(form.tax_amount));
+const owedAfterPayment = computed(() => Math.max(0, receiptTotal.value - num(form.paid_amount)));
 const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
 const totalUnits = computed(() => form.items.reduce((sum, item) => sum + (item.product_id ? num(item.quantity) : 0), 0));
 
-// Stock is taken in once per product per receipt, so a second line for the
-// same product never reached the warehouse.
-const duplicateProductIds = computed(() => {
+// Stock is taken in once per product (or variant) per receipt, so a second
+// line for the same one never reached the warehouse. Two sizes of one product
+// are two lines.
+const duplicatePicks = computed(() => {
     const seen = new Set();
     const dupes = new Set();
-    form.items.forEach(({ product_id: id }) => {
-        if (!id) return;
-        (seen.has(id) ? dupes : seen).add(id);
+    form.items.forEach(({ pick }) => {
+        if (!pick) return;
+        (seen.has(pick) ? dupes : seen).add(pick);
     });
     return dupes;
 });
 
 const filteredReceipts = computed(() => {
     if (!searchQuery.value.trim()) return store.receipts;
-    const query = searchQuery.value.toLowerCase();
     return store.receipts.filter((receipt) => {
-        return [
+        return matchesSearch([
             receipt.receipt_number,
             receipt.supplier?.name,
             receipt.purchase_order?.order_number,
             receipt.receipt_date,
             receipt.notes
-        ].some((field) => String(field || '').toLowerCase().includes(query));
+        ], searchQuery.value);
     });
 });
 
@@ -1108,7 +1312,9 @@ const openEditDrawer = async (id) => {
         form.tax_amount = receipt.tax_amount ?? 0;
         form.notes = receipt.notes || '';
         form.items = receipt.items.map(item => blankRow({
+            pick: pickKey(item.product_id, item.product_variant_id),
             product_id: item.product_id,
+            product_variant_id: item.product_variant_id || null,
             quantity: item.quantity,
             unit_price: item.unit_price,
             sale_price: item.sale_price
@@ -1155,18 +1361,23 @@ const removeItemRow = (idx) => {
     form.items.splice(idx, 1);
 };
 
-const updateItemPrice = (productId, idx) => {
+const updateItemPrice = (pick, idx) => {
+    // The chosen row may only be in the current search results, not in the
+    // page that loaded first, so look there first.
+    const prod = productOptions.value.find(p => optionKey(p) === pick)
+        || defaultOptions.value.find(p => optionKey(p) === pick);
+    form.items[idx].product_id = prod?.id || '';
+    form.items[idx].product_variant_id = prod?.variant_id || null;
+
     // A product on the request is priced as agreed there, not at its
     // catalogue cost.
-    const line = orderLineFor(productId);
+    const line = orderLineFor(form.items[idx]);
     if (line) {
         form.items[idx].unit_price = num(line.unit_price);
         form.items[idx].sale_price = line.sale_price != null ? num(line.sale_price) : '';
         if (line.remaining_quantity > 0) form.items[idx].quantity = line.remaining_quantity;
         return;
     }
-    const prod = productOptions.value.find(p => p.id === productId)
-        || productsStore.products.find(p => p.id === productId);
     if (prod) {
         // The receipt's price is what the supplier is paid, so it starts
         // from the product's cost — not its retail price, which is what the
@@ -1230,7 +1441,9 @@ const submitQuickAddProduct = async () => {
 
         const idx = quickAddTargetIndex.value;
         if (idx !== null && form.items[idx]) {
+            form.items[idx].pick = pickKey(product.id);
             form.items[idx].product_id = product.id;
+            form.items[idx].product_variant_id = null;
             if (!form.items[idx].unit_price) {
                 form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
             }
@@ -1285,10 +1498,10 @@ const saveReceipt = async () => {
             ElMessage.warning(t('please_fill_all_item_fields'));
             return;
         }
-        if (duplicateProductIds.value.size) {
-            const id = [...duplicateProductIds.value][0];
-            const product = productOptions.value.find((p) => p.id === id);
-            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || id }));
+        if (duplicatePicks.value.size) {
+            const pick = [...duplicatePicks.value][0];
+            const product = productOptions.value.find((p) => optionKey(p) === pick);
+            ElMessage.warning(t('po_duplicate_product', { name: product?.name_ar || product?.name || pick }));
             return;
         }
 
@@ -1320,10 +1533,14 @@ const saveReceipt = async () => {
             });
             ElMessage.success(t('receipt_updated'));
         } else {
+            const paid = mayPay.value ? num(form.paid_amount) : 0;
             await purchaseReceiptsApi.create({
                 ...form,
+                paid_amount: paid > 0 ? paid : null,
+                payment_method: paid > 0 ? form.payment_method : null,
+                payment_reference: paid > 0 ? (form.payment_reference || null) : null,
                 purchase_order_id: form.purchase_order_id || null,
-                items: form.items.map(({ key, ...item }) => ({
+                items: form.items.map(({ key, pick, ...item }) => ({
                     ...item,
                     sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
                 })),
@@ -1339,6 +1556,60 @@ const saveReceipt = async () => {
         ElMessage.error(apiError(e, t('failed_to_save_receipt')));
     } finally {
         submittingForm.value = false;
+    }
+};
+
+/* ------------------------------------------------------------------ *
+ * Paying what is left on a receipt
+ * ------------------------------------------------------------------ */
+
+const payDialog = reactive({
+    visible: false,
+    saving: false,
+    receipt: null,
+    amount: 0,
+    payment_method: 'cash',
+    payment_date: '',
+    reference: '',
+});
+
+const openPayDialog = (receipt) => {
+    Object.assign(payDialog, {
+        visible: true,
+        saving: false,
+        receipt,
+        amount: num(receipt.due_amount),
+        payment_method: 'cash',
+        payment_date: todayIso(),
+        reference: '',
+    });
+};
+
+const submitPayment = async () => {
+    const receipt = payDialog.receipt;
+    if (!receipt || payDialog.saving || !(num(payDialog.amount) > 0)) return;
+    payDialog.saving = true;
+    try {
+        await supplierPaymentsApi.create({
+            supplier_id: receipt.supplier_id,
+            purchase_receipt_id: receipt.id,
+            purchase_order_id: receipt.purchase_order_id || null,
+            amount: num(payDialog.amount),
+            payment_method: payDialog.payment_method,
+            payment_date: payDialog.payment_date || null,
+            reference: payDialog.reference || null,
+        });
+        payDialog.visible = false;
+        ElMessage.success(t('rc_payment_recorded'));
+        await store.fetchReceipts();
+        if (detailDrawerVisible.value && selectedReceipt.value?.id === receipt.id) {
+            await openDetailDrawer(receipt.id);
+        }
+    } catch (error) {
+        const errors = error.response?.data?.errors;
+        ElMessage.error((errors && Object.values(errors).flat()[0]) || error.response?.data?.message || t('rc_payment_failed'));
+    } finally {
+        payDialog.saving = false;
     }
 };
 
@@ -1373,9 +1644,10 @@ onMounted(async () => {
     // Purchase orders load once a supplier is chosen (handleSupplierChange) or
     // when editing a receipt that already has one, so the list is always
     // scoped to a supplier instead of dumping every order in the system.
-    productsStore.fetchProducts({ per_page: 100 })
-        .then(() => {
-            productOptions.value = productsStore.products;
+    productsApi.getAll({ per_page: 100, expand_variants: 1 })
+        .then((res) => {
+            defaultOptions.value = res.data.data || [];
+            productOptions.value = defaultOptions.value;
             rememberProducts(orderLines.value);
         })
         .catch(() => {});
@@ -1918,6 +2190,30 @@ onMounted(async () => {
     border-style: dashed;
 }
 
+/* A line option: the product's name with its size, and its code. */
+.product-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.product-option small {
+    color: var(--text-muted);
+}
+
+.product-option-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* The size under the product's name in the detail table. */
+.cell-variant {
+    margin-top: 0.2rem;
+}
+
 .line-vs-order {
     display: flex;
     align-items: center;
@@ -2037,4 +2333,15 @@ onMounted(async () => {
         width: 100%;
     }
 }
+
+/* ---- Payment on the receipt ---- */
+.paid-cell { display: flex; flex-direction: column; line-height: 1.25; }
+.paid-cell small { color: var(--el-text-color-secondary); font-size: 0.75rem; }
+.paid-now-row { display: flex; gap: 0.5rem; width: 100%; }
+.paid-now-input { flex: 1; }
+.payments-card-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.muted-txt { color: var(--el-text-color-secondary); margin: 0; font-size: 0.85rem; }
+.pay-dialog-meta { margin: 0 0 1rem; color: var(--el-text-color-regular); line-height: 1.7; }
+.financial-row.text-danger { color: var(--el-color-danger); font-weight: 600; }
+.financial-row.text-success { color: var(--el-color-success); font-weight: 600; }
 </style>

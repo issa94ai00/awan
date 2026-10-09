@@ -159,11 +159,7 @@ class WmsController extends Controller
         $query = Product::with(['category', 'inventory.warehouse']);
 
         if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%')
-                    ->orWhere('sku', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name', 'code', 'sku'], $request->search);
         }
 
         if ($request->category) {
@@ -220,11 +216,7 @@ class WmsController extends Controller
 
         // Search by product name or code
         if ($request->filled('search')) {
-            $query->whereHas('product', function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%')
-                    ->orWhere('sku', 'like', '%'.$request->search.'%');
-            });
+            $query->whereHas('product', fn ($q) => $q->whereSearch(['name', 'code', 'sku'], $request->search));
         }
 
         $perPage = $request->input('per_page', 15);
@@ -259,10 +251,8 @@ class WmsController extends Controller
                 'min_stock_level' => $assignment->min_stock_level,
                 'max_stock_level' => $assignment->max_stock_level,
                 'safety_stock' => $assignment->safety_stock,
-                // `warehouse_inventory.cost_basis` is the FIFO/FEFO/LIFO
-                // costing-method enum, not a price — the product's cost_price
-                // is the correct figure to show here.
                 'cost_price' => $product->cost_price,
+                'cost_basis' => $inventory ? ($inventory->cost_basis ?? 'FIFO') : ($assignment->cost_basis ?? 'FIFO'),
                 'primary_bin_id' => $assignment->primary_bin_id,
                 'primary_bin_code' => $assignment->primaryBin ? $assignment->primaryBin->code : '',
                 'replenishment_method' => $assignment->replenishment_method,
@@ -325,11 +315,8 @@ class WmsController extends Controller
                 'quarantined_quantity' => $inventory ? $inventory->quarantined_quantity : 0,
                 'min_stock_level' => $assignment->min_stock_level,
                 'max_stock_level' => $assignment->max_stock_level,
-                'safety_stock' => $assignment->safety_stock,
-                // `warehouse_inventory.cost_basis` is the FIFO/FEFO/LIFO
-                // costing-method enum, not a price — the product's cost_price
-                // is the correct figure to show here.
                 'cost_price' => $product->cost_price,
+                'cost_basis' => $inventory ? ($inventory->cost_basis ?? 'FIFO') : ($assignment->cost_basis ?? 'FIFO'),
                 'primary_bin_id' => $assignment->primary_bin_id,
                 'primary_bin_code' => $assignment->primaryBin ? $assignment->primaryBin->code : '',
                 'replenishment_method' => $assignment->replenishment_method,
@@ -392,6 +379,15 @@ class WmsController extends Controller
             'putaway_strategy' => $request->putaway_strategy ?? $assignment->putaway_strategy,
             'notes' => $request->notes,
         ]);
+
+        if ($request->filled('cost_basis')) {
+            $assignment->cost_basis = $request->cost_basis;
+            $assignment->save();
+
+            WarehouseInventory::where('product_id', $assignment->product_id)
+                ->where('warehouse_id', $assignment->warehouse_id)
+                ->update(['cost_basis' => $request->cost_basis]);
+        }
 
         // Update inventory if quantity provided
         //
@@ -515,6 +511,7 @@ class WmsController extends Controller
             'supplier_id' => $request->supplier_id,
             'primary_bin_id' => $request->primary_bin_id,
             'putaway_strategy' => $request->putaway_strategy ?? 'fifo',
+            'cost_basis' => $request->cost_basis ?? app(InventoryCostingService::class)->resolveCostMethod((int) $request->product_id, (int) $request->warehouse_id),
             'auto_reorder_enabled' => $request->auto_reorder_enabled ?? false,
             'effective_date' => $request->effective_date ?? now(),
             'expiry_date' => $request->expiry_date,
@@ -531,7 +528,7 @@ class WmsController extends Controller
             'reorder_point' => $request->min_stock_level,
             'safety_stock' => $request->safety_stock,
             'bin_id' => $request->primary_bin_id,
-            'cost_basis' => WarehouseInventory::COST_BASIS_FIFO,
+            'cost_basis' => $assignment->cost_basis ?? WarehouseInventory::COST_BASIS_FIFO,
             'lead_time_days' => $request->lead_time_days,
             'average_daily_sales' => 0,
         ]);
@@ -932,10 +929,7 @@ class WmsController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(fn ($q) => $q
-                ->where('list_number', 'like', "%{$search}%")
-                ->orWhereHas('salesOrder', fn ($o) => $o->where('order_number', 'like', "%{$search}%")));
+            $query->whereSearch(['list_number', 'salesOrder.order_number'], $request->search);
         }
 
         $lists = $query->latest('id')->paginate(min((int) $request->input('per_page', 20) ?: 20, 100));
@@ -1725,10 +1719,7 @@ class WmsController extends Controller
         $query = Warehouse::withSum('inventory as total_stock', 'quantity');
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name', 'code'], $request->search);
         }
 
         if ($request->filled('is_active')) {

@@ -21,12 +21,6 @@ class CategoryController extends Controller
         $categoriesQuery = Category::query()
             ->where('is_active', 1)
             ->withProductCount()
-            // include a single sample active product to help clients show thumbnails
-            ->with(['products' => function ($q) {
-                $q->where('is_active', 1)
-                  ->orderByDesc('created_at')
-                  ->limit(1);
-            }])
             ->orderBy('sort_order');
 
         // Optionally return only categories that have active products
@@ -35,6 +29,7 @@ class CategoryController extends Controller
         }
 
         $categories = $categoriesQuery->get();
+        Category::attachThumbnails($categories);
 
         return response()->json([
             'success' => true,
@@ -83,30 +78,65 @@ class CategoryController extends Controller
         $perPage = (int) $request->get('per_page', 12);
         $perPage = $perPage > 0 ? min($perPage, 100) : 12;
 
+        // The storefront lists each variant as its own product (see
+        // ProductController::expandsVariants); `expand_variants=0` groups them.
+        $expand = $request->boolean('expand_variants', true);
+
         $productsQuery = Product::query()
-            ->whereIn('category_id', $category->descendantIds())
-            ->where('is_active', 1)
-            ->with('category')
-            ->orderByDesc('created_at');
+            ->when($expand, fn ($q) => $q->withVariantRows())
+            ->whereIn('products.category_id', $category->descendantIds())
+            ->where('products.is_active', 1)
+            ->with('category');
+
+        $productsQuery->storefrontSort($request->input('sort'), $expand, $request->input('lang'));
+
+        if ($request->boolean('in_stock')) {
+            $productsQuery->storefrontInStock($expand);
+        }
 
         // Allow optional simple search within the category
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $productsQuery->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm);
-            });
+            $columns = ['products.name_ar', 'products.name_en', 'products.brand', 'products.model'];
+            if ($expand) {
+                $columns = [...$columns, 'pv.sku', 'pv.size', 'pv.color'];
+            }
+            $productsQuery->whereSearch($columns, $request->search);
         }
 
         $products = $productsQuery->paginate($perPage);
+
+        // The subcategories worth offering as a shortcut — the ones with
+        // something in them — and the parent, for the way back up.
+        $subcategories = $category->children()
+            ->where('is_active', 1)
+            ->withProductCount()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn ($child) => (int) $child->product_count > 0)
+            ->map(fn ($child) => [
+                'id' => $child->id,
+                'slug' => $child->slug,
+                'name_ar' => $child->name_ar,
+                'name_en' => $child->name_en,
+                'product_count' => (int) $child->product_count,
+            ])
+            ->values();
+
+        $parent = $category->parent_id ? $category->parent()->where('is_active', 1)->first() : null;
 
         return response()->json([
             'success' => true,
             'message' => 'Category products retrieved successfully',
             'data' => [
                 'category' => new CategoryResource($category),
+                'subcategories' => $subcategories,
+                'parent' => $parent ? [
+                    'id' => $parent->id,
+                    'slug' => $parent->slug,
+                    'name_ar' => $parent->name_ar,
+                    'name_en' => $parent->name_en,
+                ] : null,
                 'products' => ProductResource::collection($products->items()),
                 'pagination' => [
                     'current_page' => $products->currentPage(),
@@ -120,6 +150,76 @@ class CategoryController extends Controller
     }
 
     /**
+     * Every category for the admin list, inactive ones included.
+     *
+     * The admin screen used to share the storefront's index, which filters on
+     * `is_active` — so switching a category off made it vanish from the one
+     * screen that could switch it back on.
+     */
+    public function adminIndex(): JsonResponse
+    {
+        $categories = Category::query()
+            ->withCount([
+                'products',
+                'products as active_products_count' => fn ($q) => $q->where('is_active', 1),
+                'children',
+            ])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Categories retrieved successfully',
+            'data' => CategoryResource::collection($categories)
+        ]);
+    }
+
+    /**
+     * One category for the admin form, whether or not it is live.
+     */
+    public function adminShow(Category $category): JsonResponse
+    {
+        $category->loadCount('children');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category retrieved successfully',
+            'data' => new CategoryResource($category)
+        ]);
+    }
+
+    /**
+     * Keeps the taxonomy two levels deep, which descendantIds() and the
+     * product-count scope both rely on: a parent must itself be top-level, and
+     * a category that already has subcategories cannot be filed under another.
+     */
+    private function parentRules(?Category $category = null): array
+    {
+        return [
+            'nullable',
+            'integer',
+            function (string $attribute, $value, \Closure $fail) use ($category) {
+                if ($value === null) {
+                    return;
+                }
+
+                $parent = Category::find($value);
+
+                if (! $parent) {
+                    $fail(__('The selected parent category does not exist.'));
+                } elseif ($category && (int) $value === $category->id) {
+                    $fail(__('A category cannot be its own parent.'));
+                } elseif ($parent->parent_id !== null) {
+                    $fail(__('Subcategories can only be filed under a top-level category.'));
+                } elseif ($category && $category->children()->exists()) {
+                    $fail(__('A category that has subcategories cannot be moved under another category.'));
+                }
+            },
+        ];
+    }
+
+    /**
      * Store a new category (Admin)
      */
     public function store(Request $request): JsonResponse
@@ -128,6 +228,7 @@ class CategoryController extends Controller
             'name_ar' => 'required|string|max:255',
             'name_en' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:categories,slug',
+            'parent_id' => $this->parentRules(),
             'description_ar' => 'nullable|string',
             'description_en' => 'nullable|string',
             'image' => 'nullable|string',
@@ -167,6 +268,7 @@ class CategoryController extends Controller
             'name_ar' => 'sometimes|required|string|max:255',
             'name_en' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|required|string|max:255|unique:categories,slug,' . $category->id,
+            'parent_id' => $this->parentRules($category),
             'description_ar' => 'nullable|string',
             'description_en' => 'nullable|string',
             'image' => 'nullable|string',

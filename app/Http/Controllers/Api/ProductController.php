@@ -47,76 +47,123 @@ class ProductController extends Controller
     }
 
     /**
+     * Whether this request lists each variant as its own product.
+     *
+     * The storefront does (a shopper picks "4 inch", not "floor drain"). Admin
+     * screens keep one row per product, since they edit the product and its
+     * variants together — except a line picker on an order or receipt, which
+     * asks for them with `expand_variants=1`. A public caller can still ask
+     * for grouped rows with `expand_variants=0`.
+     */
+    private function expandsVariants(Request $request): bool
+    {
+        return $request->boolean('expand_variants', ! $this->isAdminRequest($request));
+    }
+
+    private function isAdminRequest(Request $request): bool
+    {
+        return $request->routeIs('api.admin.*') || $request->is('*admin*');
+    }
+
+    /**
      * Build the shared filtered product query.
+     *
+     * Columns are qualified with `products.` throughout: with expanded variants
+     * the query joins `product_variants`, which has its own sku, barcode, price,
+     * size and color.
      */
     private function baseQuery(Request $request): Builder
     {
         $query = Product::query()
             ->with('category');
 
+        $expand = $this->expandsVariants($request);
+        if ($expand) {
+            $query->withVariantRows();
+        }
+
         if ($request->boolean('with_variants')) {
             $query->with('variants');
         }
 
-        // Check if admin route
-        $isAdmin = $request->routeIs('api.admin.*') || $request->is('*admin*');
-
-        if ($isAdmin) {
+        if ($this->isAdminRequest($request)) {
             if ($request->has('is_active')) {
-                $query->where('is_active', $request->boolean('is_active'));
+                $query->where('products.is_active', $request->boolean('is_active'));
             }
         } else {
             // Public frontend only gets active products
-            $query->where('is_active', 1);
+            $query->where('products.is_active', 1);
         }
 
         // Filter by category_id (single value or array, for multi-classification
         // filtering) or category_slug
         if ($request->filled('category_id')) {
-            $query->whereIn('category_id', $this->categoryFilterIds((array) $request->category_id));
+            $query->whereIn('products.category_id', $this->categoryFilterIds((array) $request->category_id));
         } elseif ($request->filled('category_slug')) {
             $cat = Category::where('slug', $request->category_slug)->first();
             if ($cat) {
-                $query->whereIn('category_id', $cat->descendantIds());
+                $query->whereIn('products.category_id', $cat->descendantIds());
             } else {
                 // No such category -> empty result
                 return $query->whereRaw('1 = 0');
             }
         }
 
-        // Filter by featured
+        // Filter by featured. Admin screens also ask for the opposite
+        // (`featured=0`); the storefront only ever narrows to featured ones.
         if ($request->boolean('featured')) {
-            $query->where('is_featured', 1);
+            $query->where('products.is_featured', 1);
+        } elseif ($this->isAdminRequest($request) && $request->has('featured') && $request->filled('featured')) {
+            $query->where('products.is_featured', 0);
         }
 
-        // Filter by stock availability
+        // Filter by stock availability. The storefront means it the way its
+        // card badge does, which also asks the listed size for stock.
         if ($request->boolean('in_stock')) {
-            $query->where('in_stock', 1);
+            $this->isAdminRequest($request)
+                ? $query->where('products.in_stock', 1)
+                : $query->storefrontInStock($expand);
         }
 
-        // Price range (accept both min_price/price_min and max_price/price_max)
+        // Admin: by the counted quantity rather than the in_stock flag, which
+        // can say "available" for a product with nothing on the shelf.
+        if ($this->isAdminRequest($request) && $request->filled('stock_level')) {
+            $low = self::lowStockSql();
+            match ($request->get('stock_level')) {
+                'available' => $query->where('products.stock_quantity', '>', 0),
+                'low' => $query->where('products.stock_quantity', '>', 0)->whereRaw("products.stock_quantity <= {$low}"),
+                'out' => $query->where(fn ($q) => $q->whereNull('products.stock_quantity')->orWhere('products.stock_quantity', '<=', 0)),
+                default => null,
+            };
+        }
+
+        // Price range (accept both min_price/price_min and max_price/price_max).
+        // A variant row is filtered by the price it is listed at.
+        $priceColumn = $expand ? DB::raw('('.Product::variantRowPriceSql().')') : 'products.price';
         $minPrice = $request->get('min_price') ?? $request->get('price_min');
         if ($minPrice !== null && $minPrice !== '') {
-            $query->where('price', '>=', (float) $minPrice);
+            $query->where($priceColumn, '>=', (float) $minPrice);
         }
         $maxPrice = $request->get('max_price') ?? $request->get('price_max');
         if ($maxPrice !== null && $maxPrice !== '') {
-            $query->where('price', '<=', (float) $maxPrice);
+            $query->where($priceColumn, '<=', (float) $maxPrice);
         }
 
         // Search by name, brand, model, SKU or barcode — a purchasing screen
         // looking up a product by its code needs this as much as a shopper
-        // searching by name does.
+        // searching by name does. With expanded variants a variant's own code
+        // or size finds it too.
         if ($request->filled('search')) {
-            $searchTerm = '%' . $request->search . '%';
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm)
-                  ->orWhere('sku', 'like', $searchTerm)
-                  ->orWhere('barcode', 'like', $searchTerm);
-            });
+            $columns = [
+                'products.name_ar', 'products.name_en', 'products.brand',
+                'products.model', 'products.sku', 'products.barcode',
+            ];
+
+            if ($expand) {
+                array_push($columns, 'pv.sku', 'pv.barcode', 'pv.size', 'pv.color');
+            }
+
+            $query->whereSearch($columns, $request->search);
         }
 
         return $query;
@@ -189,9 +236,42 @@ class ProductController extends Controller
     /**
      * Get all products with optional filters
      */
+    /**
+     * The quantity at or below which a product counts as running low: its own
+     * minimum when one is set, otherwise 10 (what the admin list has always
+     * coloured amber).
+     */
+    private static function lowStockSql(): string
+    {
+        return 'COALESCE(NULLIF(products.min_stock, 0), 10)';
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function adminSummary(): array
+    {
+        $low = self::lowStockSql();
+
+        $row = DB::table('products')->selectRaw(
+            'COUNT(*) as total,'
+            . ' SUM(is_active = 1) as active,'
+            . ' SUM(is_active = 0) as inactive,'
+            . ' SUM(is_featured = 1) as featured,'
+            . ' SUM(COALESCE(stock_quantity, 0) <= 0) as out_of_stock,'
+            . " SUM(stock_quantity > 0 AND stock_quantity <= {$low}) as low_stock"
+        )->first();
+
+        return array_map('intval', (array) $row);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = $this->baseQuery($request);
+        $expand = $this->expandsVariants($request);
+        // `products` has no sale_price column (the resource's sale fields are
+        // always empty), so sorting by it was a 500 — sort by the list price.
+        $priceSql = $expand ? Product::variantRowPriceSql() : 'products.price';
 
         // Per-page with max cap
         $perPage = (int) $request->get('per_page', 12);
@@ -203,16 +283,24 @@ class ProductController extends Controller
         $useRawSort = false;
         $rawSortQuery = '';
 
-        if ($request->filled('sort')) {
+        // The storefront listing sorts like a category page does (unpriced
+        // rows last, names in the shopper's language), so /products and
+        // /category/{slug} read the same under the same sort.
+        $storefrontSort = ! $this->isAdminRequest($request)
+            && in_array($request->get('sort'), ['newest', 'price_asc', 'price_desc', 'name'], true);
+
+        if ($storefrontSort) {
+            $query->storefrontSort($request->get('sort'), $expand, $request->get('lang'));
+        } elseif ($request->filled('sort')) {
             $sortVal = $request->get('sort');
             switch ($sortVal) {
                 case 'price_asc':
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END asc';
+                    $rawSortQuery = $priceSql . ' asc';
                     break;
                 case 'price_desc':
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END desc';
+                    $rawSortQuery = $priceSql . ' desc';
                     break;
                 case 'name_asc':
                     $sortBy = 'name_ar';
@@ -243,13 +331,13 @@ class ProductController extends Controller
                     break;
             }
         } else {
-            $allowedSorts = ['name_ar', 'name_en', 'price', 'created_at'];
+            $allowedSorts = ['name_ar', 'name_en', 'price', 'created_at', 'stock_quantity', 'cost_price'];
             $sortByInput = $request->get('sort_by', 'created_at');
             $sortOrderInput = strtolower($request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
             if (in_array($sortByInput, $allowedSorts, true)) {
                 if ($sortByInput === 'price') {
                     $useRawSort = true;
-                    $rawSortQuery = 'CASE WHEN sale_price IS NOT NULL AND sale_price > 0 AND sale_price < price THEN sale_price ELSE price END ' . $sortOrderInput;
+                    $rawSortQuery = $priceSql . ' ' . $sortOrderInput;
                 } else {
                     $sortBy = $sortByInput;
                     $sortOrder = $sortOrderInput;
@@ -257,15 +345,25 @@ class ProductController extends Controller
             }
         }
 
-        if ($useRawSort) {
-            $query->orderByRaw($rawSortQuery);
-        } else {
-            $query->orderBy($sortBy, $sortOrder);
+        // storefrontSort() has already ordered the query, ending on a stable
+        // id order of its own.
+        if (! $storefrontSort) {
+            if ($useRawSort) {
+                $query->orderByRaw($rawSortQuery);
+            } else {
+                $query->orderBy('products.' . $sortBy, $sortOrder);
+            }
+        }
+
+        // Keep a product's variants next to each other and in the order they
+        // were entered, so pages don't shuffle them between requests.
+        if ($expand && ! $storefrontSort) {
+            $query->orderBy('products.id')->orderBy('pv.id');
         }
 
         $products = $query->paginate($perPage);
 
-        return response()->json([
+        $response = [
             'success' => true,
             'message' => 'Products retrieved successfully',
             'data' => ProductResource::collection($products->items()),
@@ -276,7 +374,15 @@ class ProductController extends Controller
                 'total' => $products->total(),
                 'has_more_pages' => $products->hasMorePages(),
             ]
-        ]);
+        ];
+
+        // The admin list opens with catalogue-wide counts, unaffected by the
+        // filters, so the cards read the same whatever is being searched.
+        if ($this->isAdminRequest($request) && $request->boolean('with_summary')) {
+            $response['summary'] = $this->adminSummary();
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -300,11 +406,9 @@ class ProductController extends Controller
 
         $product->load('category');
 
-        // The admin product form's Variants tab needs the variant rows; the
-        // public product page doesn't (it relies on the base-product fields).
-        if ($isAdmin) {
-            $product->load('variants');
-        }
+        // The admin form's Variants tab edits these rows; the public page
+        // offers them as the sizes/colours to pick from.
+        $product->load('variants');
 
         return response()->json([
             'success' => true,
@@ -359,6 +463,7 @@ class ProductController extends Controller
             'min_stock' => 'nullable|integer|min:0',
             'max_stock' => 'nullable|integer|min:0',
             'reorder_point' => 'nullable|integer|min:0',
+            'pack_quantity' => 'nullable|integer|min:1',
             'weight' => 'nullable|numeric|min:0',
             'length' => 'nullable|numeric|min:0',
             'width' => 'nullable|numeric|min:0',
@@ -441,6 +546,7 @@ class ProductController extends Controller
             'min_stock' => 'sometimes|nullable|integer|min:0',
             'max_stock' => 'sometimes|nullable|integer|min:0',
             'reorder_point' => 'sometimes|nullable|integer|min:0',
+            'pack_quantity' => 'sometimes|nullable|integer|min:1',
             'weight' => 'sometimes|nullable|numeric|min:0',
             'length' => 'sometimes|nullable|numeric|min:0',
             'width' => 'sometimes|nullable|numeric|min:0',

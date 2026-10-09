@@ -107,10 +107,7 @@ class AdminController extends Controller
         $query = Category::query();
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name_ar', 'like', '%'.$request->search.'%')
-                    ->orWhere('name_en', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name_ar', 'name_en'], $request->search);
         }
 
         if ($request->filled('status')) {
@@ -222,11 +219,7 @@ class AdminController extends Controller
         $query = Product::query()->with('category');
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name_ar', 'like', '%'.$request->search.'%')
-                    ->orWhere('name_en', 'like', '%'.$request->search.'%')
-                    ->orWhere('brand', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name_ar', 'name_en', 'brand'], $request->search);
         }
 
         if ($request->filled('category')) {
@@ -419,11 +412,7 @@ class AdminController extends Controller
         $query = Inquiry::query();
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('email', 'like', '%'.$request->search.'%')
-                    ->orWhere('subject', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['name', 'email', 'subject'], $request->search);
         }
 
         if ($request->filled('status')) {
@@ -479,7 +468,7 @@ class AdminController extends Controller
         $currencies = app(CurrencyService::class);
         $availableCurrencies = $currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
-        $availableTimezones = ['Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
+        $availableTimezones = ['Asia/Damascus', 'Asia/Beirut', 'Asia/Baghdad', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
         $validated = $request->validate([
             'settings.site_name' => 'nullable|string|max:255',
@@ -608,11 +597,7 @@ class AdminController extends Controller
 
         // Search by IP or page URL
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('ip_address', 'like', '%'.$request->search.'%')
-                    ->orWhere('page_url', 'like', '%'.$request->search.'%')
-                    ->orWhere('browser', 'like', '%'.$request->search.'%');
-            });
+            $query->whereSearch(['ip_address', 'page_url', 'browser'], $request->search);
         }
 
         $visitors = $query->latest('visited_at')->paginate(20);

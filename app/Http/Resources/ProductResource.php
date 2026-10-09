@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,7 +15,102 @@ class ProductResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $data = $this->baseArray();
+        $data = $this->variant_id ? $this->asVariantRow($data) : $data;
+
+        return self::viewerSeesCost($request) ? $data : $this->withoutCost($data);
+    }
+
+    /**
+     * What a product cost to buy is for staff only. The purchase screens read
+     * it from the public /products list too, so it goes by who is signed in
+     * (an admin, or any user with a role) rather than by the URL; shoppers
+     * and anonymous visitors never get it.
+     */
+    public static function viewerSeesCost(Request $request): bool
+    {
+        $user = $request->user() ?? $request->user('sanctum');
+
+        return $user !== null && ($user->is_admin || $user->role_id !== null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withoutCost(array $data): array
+    {
+        unset($data['cost_price']);
+
+        if (isset($data['variants']) && ! $data['variants'] instanceof \Illuminate\Http\Resources\MissingValue) {
+            $data['variants'] = collect($data['variants'])
+                ->map(fn (array $variant) => array_diff_key($variant, ['cost_price' => true]))
+                ->values();
+        }
+
+        return $data;
+    }
+
+    /**
+     * A row from Product::withVariantRows() that stands for one variant: it
+     * reads as a product of its own — name, code, price and stock are the
+     * variant's — while `id` and `slug` stay the parent's, so links and the
+     * cart keep working. `listing_key` is unique per row for list keys.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function asVariantRow(array $data): array
+    {
+        $label = ProductVariant::labelFor($this->variant_size, $this->variant_color, $this->variant_material);
+        $suffix = $label !== '' ? ' - '.$label : '';
+
+        $hasOwnPrice = $this->variant_price !== null && (float) $this->variant_price > 0;
+        $stock = $this->variant_stock_quantity;
+
+        return array_merge($data, [
+            'listing_key' => $this->id.'-'.$this->variant_id,
+            'variant_id' => $this->variant_id,
+            'variant_label' => $label,
+            'product_name_ar' => $this->name_ar,
+            'product_name_en' => $this->name_en,
+            'name_ar' => $this->name_ar.$suffix,
+            'name_en' => $this->name_en ? $this->name_en.$suffix : $this->name_en,
+            'sku' => $this->variant_sku ?: $this->sku,
+            'barcode' => $this->variant_barcode ?: $this->barcode,
+            'size' => $this->variant_size ?: $this->size,
+            'color' => $this->variant_color ?: $this->color,
+            'material' => $this->variant_material,
+            // The product's sale price is a discount on the product's price,
+            // not on a variant's own price, so it only carries over to a
+            // variant that has no price of its own.
+            'price' => $hasOwnPrice ? $this->variant_price : $data['price'],
+            'sale_price' => $hasOwnPrice ? null : $data['sale_price'],
+            'has_sale' => $hasOwnPrice ? false : $data['has_sale'],
+            'discount_percentage' => $hasOwnPrice ? 0 : $data['discount_percentage'],
+            // What one of this size cost; the product's figure when the
+            // variant has none. Purchase screens prefill the buying price
+            // from it.
+            'cost_price' => $this->variant_cost_price !== null && (float) $this->variant_cost_price > 0
+                ? $this->variant_cost_price
+                : $data['cost_price'],
+            'stock_quantity' => $stock,
+            // Warehouse stock is counted per product, so what can actually be
+            // reserved for an order is the product's figure, not the size's.
+            'product_stock_quantity' => $this->stock_quantity,
+            'in_stock' => (bool) $this->in_stock && ($stock === null || (int) $stock > 0),
+            'url' => $data['url'].'?variant='.$this->variant_id,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function baseArray(): array
+    {
         return [
+            'listing_key' => (string) $this->id,
+            'variant_id' => null,
             'id' => $this->id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
@@ -31,6 +127,7 @@ class ProductResource extends JsonResource
             'tax_rate' => $this->tax_rate,
             'taxable' => (bool) $this->taxable,
             'unit' => $this->unit,
+            'pack_quantity' => $this->pack_quantity,
             'price' => $this->price,
             'sale_price' => $this->sale_price,
             'show_price' => (bool) $this->show_price,
@@ -75,6 +172,8 @@ class ProductResource extends JsonResource
                     'size' => $variant->size,
                     'color' => $variant->color,
                     'material' => $variant->material,
+                    'label' => $variant->label,
+                    'specs' => $variant->specs ?? [],
                     'price' => $variant->price,
                     'cost_price' => $variant->cost_price,
                     'stock_quantity' => $variant->stock_quantity,

@@ -19,10 +19,7 @@ class PayrollController extends Controller
         }
 
         if ($request->has('search') && $request->search) {
-            $query->where('payroll_number', 'like', '%' . $request->search . '%')
-                ->orWhereHas('employee', function ($q) use ($request) {
-                    $q->where('name', 'like', '%' . $request->search . '%');
-                });
+            $query->whereSearch(['payroll_number', 'employee.name'], $request->search);
         }
 
         $payrolls = $query->latest()->paginate(20);

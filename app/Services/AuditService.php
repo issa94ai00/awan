@@ -10,8 +10,17 @@ class AuditService
     /**
      * Log an audit entry
      */
-    public function log($action, $entityType = null, $entityId = null, $description = null, array $oldValues = null, array $newValues = null, $module = null, $userId = null): AuditLog
-    {
+    public function log(
+        $action,
+        $entityType = null,
+        $entityId = null,
+        $description = null,
+        ?array $oldValues = null,
+        ?array $newValues = null,
+        $module = null,
+        $userId = null,
+        ?array $metadata = null
+    ): AuditLog {
         return AuditLog::create([
             'user_id' => $userId ?? auth()->id(),
             'action' => $action,
@@ -23,8 +32,10 @@ class AuditService
             'ip_address' => Request::ip(),
             'user_agent' => Request::userAgent(),
             'module' => $module,
+            'metadata' => $metadata,
         ]);
     }
+
 
     /**
      * Log create action
@@ -127,6 +138,62 @@ class AuditService
             $userId
         );
     }
+
+    /**
+     * Log failed login attempt
+     */
+    public function logFailedLogin($identifier, $reason = null, $userId = null): AuditLog
+    {
+        return $this->log(
+            AuditLog::ACTION_FAILED_LOGIN,
+            \App\Models\User::class,
+            $userId,
+            "محاولة تسجيل دخول فاشلة ({$identifier})",
+            null,
+            null,
+            AuditLog::MODULE_SECURITY,
+            $userId,
+            [
+                'identifier' => $identifier,
+                'reason' => $reason ?? 'invalid_credentials',
+            ]
+        );
+    }
+
+    /**
+     * Log password change action
+     */
+    public function logPasswordChange($userId = null): AuditLog
+    {
+        return $this->log(
+            AuditLog::ACTION_PASSWORD_CHANGE,
+            \App\Models\User::class,
+            $userId ?? auth()->id(),
+            'تم تغيير كلمة المرور وتحديث بيانات الأمان',
+            null,
+            null,
+            AuditLog::MODULE_SECURITY,
+            $userId ?? auth()->id()
+        );
+    }
+
+    /**
+     * Log session revocation
+     */
+    public function logRevokeSession($userId = null, $description = null): AuditLog
+    {
+        return $this->log(
+            AuditLog::ACTION_REVOKE_SESSION,
+            \App\Models\User::class,
+            $userId ?? auth()->id(),
+            $description ?? 'تم إنهاء جلسة / جهاز للمستخدم',
+            null,
+            null,
+            AuditLog::MODULE_SECURITY,
+            $userId ?? auth()->id()
+        );
+    }
+
 
     /**
      * Log export action
@@ -290,20 +357,61 @@ class AuditService
      */
     public function getStatistics($days = 30): array
     {
-        // `recent()` is a scope, so it hands back a query builder. The rows have
-        // to be fetched before they can be grouped in PHP: calling `groupBy()`
-        // on the builder added a SQL GROUP BY instead, and the `->map` that
-        // followed does not exist there — so this endpoint answered 500 every
-        // time it was called, which is to say the audit statistics screen has
-        // never once loaded.
-        $logs = AuditLog::recent($days)->get();
+        $logs = AuditLog::recent($days)->with('user')->get();
+
+        $byAction = $logs->groupBy('action')->map->count();
+        $byModule = $logs->groupBy('module')->map->count();
+        $byUser = $logs->groupBy(fn ($item) => $item->user?->name ?? 'النظام')->map->count();
+
+        // Daily activity trend for the period
+        $timeline = [];
+        $windowDays = min(max((int)$days, 1), 60);
+        for ($i = $windowDays - 1; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $timeline[$date] = 0;
+        }
+        foreach ($logs as $log) {
+            $date = $log->created_at?->format('Y-m-d');
+            if ($date && isset($timeline[$date])) {
+                $timeline[$date]++;
+            }
+        }
+
+        // Security events count (failed logins, deletes, password changes, etc.)
+        $securityEventsCount = $logs->filter(fn ($l) => in_array($l->action, [
+            AuditLog::ACTION_FAILED_LOGIN,
+            AuditLog::ACTION_DELETE,
+            AuditLog::ACTION_PASSWORD_CHANGE,
+            AuditLog::ACTION_REVOKE_SESSION,
+        ]))->count();
+
+        // Top users by activity
+        $topUsers = $logs->groupBy('user_id')->map(function ($userLogs) {
+            $first = $userLogs->first();
+            return [
+                'user_id' => $first->user_id,
+                'user' => $first->user?->name ?? 'النظام (System)',
+                'email' => $first->user?->email ?? '-',
+                'actions_count' => $userLogs->count(),
+                'last_active' => $userLogs->sortByDesc('created_at')->first()?->created_at?->format('Y-m-d H:i') ?? '—',
+                'modules' => $userLogs->pluck('module')->unique()->filter()->values()->all(),
+            ];
+        })->sortByDesc('actions_count')->take(10)->values()->all();
 
         return [
             'total_logs' => $logs->count(),
-            'by_action' => $logs->groupBy('action')->map->count(),
-            'by_module' => $logs->groupBy('module')->map->count(),
-            'by_user' => $logs->groupBy('user_id')->map->count(),
+            'active_users' => $logs->pluck('user_id')->filter()->unique()->count(),
+            'active_modules' => $logs->pluck('module')->filter()->unique()->count(),
+            'security_events' => $securityEventsCount,
             'today_logs' => AuditLog::today()->count(),
+            'by_action' => $byAction,
+            'by_module' => $byModule,
+            'by_user' => $byUser,
+            'trends' => [
+                'dates' => array_keys($timeline),
+                'counts' => array_values($timeline),
+            ],
+            'top_users' => $topUsers,
         ];
     }
 
@@ -361,14 +469,20 @@ class AuditService
      */
     public function getUserActivitySummary($userId, $days = 30): array
     {
-        $logs = AuditLog::byUser($userId)->recent($days);
+        $logs = AuditLog::byUser($userId)->recent($days)->get();
+
+        $actionCounts = $logs->groupBy('action')->map->count();
+        $moduleCounts = $logs->groupBy('module')->map->count();
+        $daysCount = max((int)$days, 1);
 
         return [
             'total_actions' => $logs->count(),
-            'by_action' => $logs->groupBy('action')->map->count(),
-            'by_module' => $logs->groupBy('module')->map->count(),
-            'last_activity' => $logs->first()?->created_at,
-            'most_active_module' => $logs->groupBy('module')->map->count()->sortDesc()->keys()->first(),
+            'by_action' => $actionCounts,
+            'by_module' => $moduleCounts,
+            'last_active' => $logs->sortByDesc('created_at')->first()?->created_at?->format('Y-m-d H:i') ?? '—',
+            'avg_daily' => round($logs->count() / $daysCount, 1),
+            'most_active_module' => $moduleCounts->sortDesc()->keys()->first() ?? 'none',
         ];
     }
+
 }

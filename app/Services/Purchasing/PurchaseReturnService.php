@@ -36,6 +36,7 @@ class PurchaseReturnService
     public function record(array $items, array $attributes = []): PurchaseReturn
     {
         $items = array_values(array_filter($items, fn ($item) => (int) ($item['quantity'] ?? 0) > 0));
+        $items = $this->mergeRepeatedProducts($items);
 
         if ($items === []) {
             throw new RuntimeException('لا توجد أصناف للإرجاع.');
@@ -125,5 +126,37 @@ class PurchaseReturnService
 
             return $return->load(['items', 'supplier']);
         });
+    }
+
+    /**
+     * One line per product. Each line's stock movement is keyed by the return
+     * and the product, so a second line for the same product got the first
+     * line's movement back: its units never left the shelf, yet it was
+     * credited and costed all the same.
+     *
+     * @param  array<int,array{product_id:int,quantity:int,unit_price?:float|null}>  $items
+     * @return array<int,array{product_id:int,quantity:int,unit_price?:float}>
+     */
+    private function mergeRepeatedProducts(array $items): array
+    {
+        $merged = [];
+
+        foreach ($items as $line) {
+            $productId = (int) $line['product_id'];
+            $price = isset($line['unit_price']) && $line['unit_price'] !== '' ? round((float) $line['unit_price'], 5) : null;
+
+            if (! isset($merged[$productId])) {
+                $merged[$productId] = ['product_id' => $productId, 'quantity' => 0, 'unit_price' => $price];
+            } elseif ($merged[$productId]['unit_price'] !== $price) {
+                throw new RuntimeException('الصنف نفسه مكرر بسعرَي خصم مختلفين؛ اجمعه في سطر واحد.');
+            }
+
+            $merged[$productId]['quantity'] += (int) $line['quantity'];
+        }
+
+        return array_values(array_map(
+            fn ($line) => $line['unit_price'] === null ? array_diff_key($line, ['unit_price' => 1]) : $line,
+            $merged
+        ));
     }
 }

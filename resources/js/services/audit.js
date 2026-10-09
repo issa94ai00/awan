@@ -1,40 +1,37 @@
 import api from '@/api';
+
 const API_BASE_URL = '/audit';
 
 export const auditService = {
-    // Audit Logs
+    // Audit Logs Query & Show
     getAuditLogs(params = {}) {
-        return api.get(`${API_BASE_URL}`, { params });
+        return api.get(API_BASE_URL, { params });
     },
 
     getAuditLog(id) {
         return api.get(`${API_BASE_URL}/${id}`);
     },
 
-    // Entity Logs
+    // Entity Logs & Timelines
     getEntityLogs(params = {}) {
         return api.get(`${API_BASE_URL}/entity-logs`, { params });
     },
 
-    getEntityHistory(entityType, entityId, params = {}) {
-        return api.get(`${API_BASE_URL}/entity-logs/${entityType}/${entityId}`, { params });
+    getActivityTimeline(params = {}) {
+        return api.get(`${API_BASE_URL}/activity-timeline`, { params });
     },
 
-    getEntityChanges(entityType, entityId, params = {}) {
-        return api.get(`${API_BASE_URL}/entity-logs/${entityType}/${entityId}/changes`, { params });
+    // User Activity & Summary
+    getUserLogs(userId, params = {}) {
+        return api.get(`${API_BASE_URL}/user-logs/${userId}`, { params });
     },
 
-    // User Activity
-    getUserActivity(userId, params = {}) {
-        return api.get(`${API_BASE_URL}/user-activity/${userId}`, { params });
+    getUserSummary(userId, params = {}) {
+        return api.get(`${API_BASE_URL}/user-summary/${userId}`, { params });
     },
 
-    getUserTimeline(userId, params = {}) {
-        return api.get(`${API_BASE_URL}/user-activity/${userId}/timeline`, { params });
-    },
-
-    getUserStats(userId, params = {}) {
-        return api.get(`${API_BASE_URL}/user-activity/${userId}/stats`, { params });
+    getMySummary(params = {}) {
+        return api.get(`${API_BASE_URL}/my-summary`, { params });
     },
 
     // Module Logs
@@ -42,48 +39,47 @@ export const auditService = {
         return api.get(`${API_BASE_URL}/module-logs/${module}`, { params });
     },
 
-    getModuleActions(module, params = {}) {
-        return api.get(`${API_BASE_URL}/module-logs/${module}/actions`, { params });
+    // Recent & Today
+    getRecentLogs(params = {}) {
+        return api.get(`${API_BASE_URL}/recent`, { params });
     },
 
-    // Statistics
+    getTodayLogs() {
+        return api.get(`${API_BASE_URL}/today`);
+    },
+
+    // Statistics & Analytics
     getStatistics(params = {}) {
         return api.get(`${API_BASE_URL}/statistics`, { params });
     },
 
-    getActivityByModule(params = {}) {
-        return api.get(`${API_BASE_URL}/statistics/by-module`, { params });
+    // Risk Scan & Anomaly Reconciliation
+    getRiskScan() {
+        return api.get(`${API_BASE_URL}/risk-scan`);
     },
 
-    getActivityByAction(params = {}) {
-        return api.get(`${API_BASE_URL}/statistics/by-action`, { params });
-    },
-
-    getTopUsers(params = {}) {
-        return api.get(`${API_BASE_URL}/statistics/top-users`, { params });
-    },
-
-    getActivityTrends(params = {}) {
-        return api.get(`${API_BASE_URL}/statistics/trends`, { params });
-    },
-
-    // Export
-    exportLogs(params = {}, format = 'csv') {
-        return api.get(`${API_BASE_URL}/export`, {
-            params: { ...params, format },
-            responseType: 'blob'
+    exportRiskScan() {
+        return api.get(`${API_BASE_URL}/risk-scan/export`, {
+            responseType: 'blob',
         });
     },
 
-    // Search
-    searchLogs(params = {}) {
-        return api.post(`${API_BASE_URL}/search`, params);
+    getReconciliationSummary() {
+        return api.get(`${API_BASE_URL}/reconciliation`);
     },
 
-    // Restore (if applicable)
-    restoreFromLog(logId) {
-        return api.post(`${API_BASE_URL}/${logId}/restore`);
-    }
+    // Exports
+    exportLogs(params = {}) {
+        return api.get(`${API_BASE_URL}/export`, {
+            params,
+            responseType: 'blob',
+        });
+    },
+
+    // Log Retention / Cleanup
+    cleanupOldLogs(days = 90) {
+        return api.post(`${API_BASE_URL}/cleanup`, { days });
+    },
 };
 
 export default auditService;

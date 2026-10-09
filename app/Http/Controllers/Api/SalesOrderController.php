@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\ProductUnit;
+use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
+use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
@@ -32,49 +37,86 @@ class SalesOrderController extends Controller
 
     public function index(Request $request)
     {
-        // fulfillmentWarehouse is eager loaded because the list shows where each
-        // order is routed; without it the column would fire a query per row.
-        $query = SalesOrder::with(['customer', 'creator', 'items.product', 'fulfillmentWarehouse']);
+        // The list shows who, how much, where from and whether it is paid —
+        // not the lines. Loading every line and its product for every row cost
+        // more than the rest of the page; the count is enough here and the
+        // drawer loads the lines.
+        $query = SalesOrder::query()
+            ->with([
+                'customer:id,name,phone,company',
+                'fulfillmentWarehouse:id,name',
+                'assignedEmployee:id,first_name,last_name',
+                'quote:id,quote_number',
+                // The live invoice, for the paid / due column.
+                'invoices' => fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->select('id', 'sales_order_id', 'invoice_number', 'status', 'total', 'paid_amount'),
+            ])
+            // select() replaces the column list, so it comes before the count
+            // and the subquery that add to it.
+            ->select('sales_orders.*')
+            ->withCount('items')
+            // When the order last moved, read in the same query so the
+            // follow-up figures do not cost one lookup per row.
+            ->selectSub(
+                SalesOrderStatusHistory::selectRaw('MAX(created_at)')->whereColumn('sales_order_id', 'sales_orders.id'),
+                'stage_since_at'
+            );
+
+        // Search, customer, routing and dates shape the tab counts too, so a
+        // badge says how many of *these* orders sit in each stage.
+        $this->applyListScope($query, $request);
+        $counts = $this->statusCounts(clone $query);
+        $totals = $this->listTotals(clone $query);
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-
-        // Searching used to happen in the browser over whatever page happened to
-        // be loaded, so an order on page 2 could not be found at all. It is a
-        // filter on the query now, and the pagination reflects the matches.
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%"));
-            });
+            $query->where('sales_orders.status', $request->status);
+        } elseif ($request->boolean('open')) {
+            // Under way: confirmed and not yet delivered.
+            $query->whereIn('sales_orders.status', [SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING, SalesOrder::STATUS_SHIPPED]);
         }
 
         // Orders past their promised delivery date and still open — the follow-up
         // view's whole purpose.
         if ($request->boolean('overdue')) {
-            $query->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
-                ->whereNotNull('expected_delivery')
-                ->whereDate('expected_delivery', '<', now()->toDateString());
+            $this->whereOverdue($query);
         }
+
+        // Overdue, or sitting in one stage longer than it should.
+        if ($request->boolean('attention')) {
+            $query->where(function ($q) {
+                $this->whereOverdue($q);
+                $q->orWhere(fn ($stalled) => $this->whereStalled($stalled));
+            });
+        }
+
+        // Invoiced and not yet paid in full: what is left to collect.
+        if ($request->input('payment') === 'due') {
+            $query->whereHas('invoices', fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->whereColumn('paid_amount', '<', DB::raw('total - 0.009')));
+        } elseif ($request->input('payment') === 'paid') {
+            $query->whereHas('invoices', fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->whereColumn('paid_amount', '>=', DB::raw('total - 0.009')));
+        }
+
+        $sort = in_array($request->input('sort'), ['order_date', 'total', 'order_number', 'expected_delivery', 'created_at'], true)
+            ? $request->input('sort')
+            : 'created_at';
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $query->orderBy('sales_orders.'.$sort, $direction)->orderByDesc('sales_orders.id');
 
         // per_page was ignored, so callers asking for a larger page (the RMA
         // form requests the customer's delivered orders) silently received only
         // the newest 20 and could not find the order they needed.
         $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
 
-        $salesOrders = $query->latest()->paginate($perPage);
+        $salesOrders = $query->paginate($perPage);
 
-        // Follow-up figures per row, so the list can flag what is stuck without
-        // the browser re-deriving dates it does not have.
+        // Follow-up figures and the payment position per row, so the list can
+        // flag what is stuck or unpaid without the browser re-deriving either.
         $rows = collect($salesOrders->items())->map(function (SalesOrder $order) {
             $order->setAttribute('follow_up', $this->workflow->followUp($order));
+            $order->setAttribute('payment', $this->paymentPosition($order));
+            $order->unsetRelation('invoices');
 
             return $order;
         });
@@ -84,9 +126,11 @@ class SalesOrderController extends Controller
             'message' => 'Sales orders retrieved successfully',
             'data' => [
                 'sales_orders' => $rows,
-                // Counted across the whole table, not the page: a tab badge that
-                // only counted the current page would be meaningless.
-                'status_counts' => $this->statusCounts(),
+                'status_counts' => $counts,
+                'totals' => $totals,
+                // The warehouses and reps that actually hold orders, for the
+                // filters — asked for once, when the screen opens.
+                'options' => $request->boolean('with_options') ? $this->filterOptions() : null,
                 'pagination' => [
                     'current_page' => $salesOrders->currentPage(),
                     'last_page' => $salesOrders->lastPage(),
@@ -98,19 +142,87 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    /** How many orders sit in each stage, plus how many are past due. */
-    private function statusCounts(): array
+    private function applyListScope($query, Request $request): void
     {
-        $counts = SalesOrder::query()
-            ->selectRaw('status, COUNT(*) as total')
-            ->groupBy('status')
+        if ($request->filled('customer_id')) {
+            $query->where('sales_orders.customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('sales_orders.fulfillment_warehouse_id', $request->warehouse_id);
+        }
+
+        if ($request->filled('fulfillment_type')) {
+            $query->where('sales_orders.fulfillment_type', $request->fulfillment_type);
+        }
+
+        if ($request->filled('employee_id')) {
+            $query->where('sales_orders.assigned_employee_id', $request->employee_id);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('sales_orders.order_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('sales_orders.order_date', '<=', $request->date_to);
+        }
+
+        // Searching used to happen in the browser over whatever page happened to
+        // be loaded, so an order on page 2 could not be found at all. It is a
+        // filter on the query now, and the pagination reflects the matches.
+        if ($request->filled('search')) {
+            $query->whereSearch([
+                'sales_orders.order_number', 'sales_orders.tracking_number', 'sales_orders.notes',
+                'customer.name', 'customer.phone', 'customer.company',
+                'invoices.invoice_number',
+            ], $request->search);
+        }
+    }
+
+    private function whereOverdue($query): void
+    {
+        $query->whereNotIn('sales_orders.status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
+            ->whereNotNull('sales_orders.expected_delivery')
+            ->whereDate('sales_orders.expected_delivery', '<', now()->toDateString());
+    }
+
+    /**
+     * In one stage longer than SalesOrderWorkflowService::STALL_DAYS allows,
+     * counted from the last move or, failing one, from when it was raised —
+     * the same reading followUp() makes per row.
+     */
+    private function whereStalled($query): void
+    {
+        $lastMove = '(SELECT MAX(h.created_at) FROM sales_order_status_histories h WHERE h.sales_order_id = sales_orders.id)';
+
+        $query->where(function ($q) use ($lastMove) {
+            foreach (SalesOrderWorkflowService::STALL_DAYS as $status => $days) {
+                $q->orWhere(fn ($stage) => $stage->where('sales_orders.status', $status)
+                    ->whereRaw("COALESCE({$lastMove}, sales_orders.created_at) < ?", [
+                        now()->startOfDay()->subDays($days)->toDateTimeString(),
+                    ]));
+            }
+        });
+    }
+
+    /**
+     * How many orders sit in each stage, plus how many are past due or need
+     * attention — across every order the search matches, not just the page.
+     */
+    private function statusCounts($query): array
+    {
+        $counts = (clone $query)->reorder()->setEagerLoads([])->getQuery()
+            ->select('sales_orders.status', DB::raw('COUNT(*) as total'))
+            ->groupBy('sales_orders.status')
             ->pluck('total', 'status');
 
-        $overdue = SalesOrder::query()
-            ->whereNotIn('status', [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED])
-            ->whereNotNull('expected_delivery')
-            ->whereDate('expected_delivery', '<', now()->toDateString())
-            ->count();
+        $overdue = (clone $query)->reorder()->setEagerLoads([]);
+        $this->whereOverdue($overdue);
+
+        $attention = (clone $query)->reorder()->setEagerLoads([])->where(function ($q) {
+            $this->whereOverdue($q);
+            $q->orWhere(fn ($stalled) => $this->whereStalled($stalled));
+        });
 
         return [
             'all' => (int) $counts->sum(),
@@ -120,7 +232,73 @@ class SalesOrderController extends Controller
             'shipped' => (int) ($counts[SalesOrder::STATUS_SHIPPED] ?? 0),
             'delivered' => (int) ($counts[SalesOrder::STATUS_DELIVERED] ?? 0),
             'cancelled' => (int) ($counts[SalesOrder::STATUS_CANCELLED] ?? 0),
-            'overdue' => $overdue,
+            'overdue' => $overdue->count(),
+            'attention' => $attention->count(),
+        ];
+    }
+
+    /**
+     * The money behind the counts: what open orders are worth, what was
+     * delivered this month, and what invoiced orders still owe.
+     */
+    private function listTotals($query): array
+    {
+        $base = fn () => (clone $query)->reorder()->setEagerLoads([]);
+        $open = [SalesOrder::STATUS_PENDING, SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING, SalesOrder::STATUS_SHIPPED];
+
+        $delivered = $base()->where('sales_orders.status', SalesOrder::STATUS_DELIVERED)
+            ->where(fn ($q) => $q->where('sales_orders.delivered_at', '>=', now()->startOfMonth())
+                ->orWhere(fn ($legacy) => $legacy->whereNull('sales_orders.delivered_at')
+                    ->where('sales_orders.updated_at', '>=', now()->startOfMonth())));
+
+        $invoiced = Invoice::query()
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->whereIn('sales_order_id', $base()->whereNot('sales_orders.status', SalesOrder::STATUS_CANCELLED)
+                ->getQuery()->select('sales_orders.id'))
+            ->selectRaw('COALESCE(SUM(CASE WHEN total - paid_amount > 0 THEN total - paid_amount ELSE 0 END), 0) as due')
+            ->selectRaw('SUM(CASE WHEN total - paid_amount > 0.009 THEN 1 ELSE 0 END) as due_count')
+            ->first();
+
+        return [
+            'open_value' => round((float) $base()->whereIn('sales_orders.status', $open)->sum('sales_orders.total'), 2),
+            'delivered_month_value' => round((float) (clone $delivered)->sum('sales_orders.total'), 2),
+            'delivered_month_count' => (clone $delivered)->count(),
+            'to_collect' => round((float) ($invoiced->due ?? 0), 2),
+            'to_collect_count' => (int) ($invoiced->due_count ?? 0),
+        ];
+    }
+
+    private function filterOptions(): array
+    {
+        $warehouseIds = SalesOrder::whereNotNull('fulfillment_warehouse_id')->distinct()->pluck('fulfillment_warehouse_id');
+        $employeeIds = SalesOrder::whereNotNull('assigned_employee_id')->distinct()->pluck('assigned_employee_id');
+
+        return [
+            'warehouses' => Warehouse::whereIn('id', $warehouseIds)->orderBy('name')->get(['id', 'name']),
+            'employees' => Employee::whereIn('id', $employeeIds)->orderBy('first_name')->get(['id', 'first_name', 'last_name'])
+                ->map(fn (Employee $e) => ['id' => $e->id, 'name' => $e->name])->values(),
+        ];
+    }
+
+    /** Invoiced, paid, due — or not invoiced yet. */
+    private function paymentPosition(SalesOrder $order): ?array
+    {
+        $invoice = $order->invoices->sortByDesc('id')->first();
+        if (! $invoice) {
+            return null;
+        }
+
+        $total = (float) $invoice->total;
+        $paid = (float) $invoice->paid_amount;
+        $due = max(0, round($total - $paid, 5));
+
+        return [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'total' => $total,
+            'paid' => $paid,
+            'due' => $due,
+            'state' => $due <= 0.009 ? 'paid' : ($paid > 0.009 ? 'partial' : 'unpaid'),
         ];
     }
 
@@ -128,13 +306,19 @@ class SalesOrderController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
+            // "confirm": save and confirm in one step — the reservation, the
+            // invoice and the entry follow at once. A refusal (short stock)
+            // still leaves the order saved, as a draft, and says why.
+            'execute' => 'nullable|in:confirm',
             'assigned_employee_id' => 'nullable|exists:employees,id',
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
             'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
@@ -145,7 +329,28 @@ class SalesOrderController extends Controller
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
+
+        $expensesInput = $validated['expenses'] ?? [];
+        unset($validated['expenses']);
+
+        $expensesTotal = collect($expensesInput)->sum(fn ($e) => (float) ($e['amount'] ?? 0));
+        if ($expensesTotal > 0 && empty($validated['shipping_cost'])) {
+            $validated['shipping_cost'] = round($expensesTotal, 2);
+        }
 
         // Who the order belongs to comes from the caller: the back office files
         // orders on behalf of the rep who took them, and the apps send their own
@@ -181,45 +386,116 @@ class SalesOrderController extends Controller
         );
 
         $validated['subtotal'] = $subtotal;
+
+        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : null;
+        $taxPercent = isset($validated['tax_percent']) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
+            ? (float) $validated['tax_percent']
+            : null;
+
+        $discountAmount = $discountPercent !== null
+            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
+            : (float) ($validated['discount'] ?? 0);
+        $taxAmount = $taxPercent !== null
+            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
+            : (float) ($validated['tax'] ?? 0);
+
+        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
+            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        }
+
+        $validated['discount'] = $discountAmount;
+        $validated['discount_percent'] = $discountPercent;
+        $validated['tax'] = $taxAmount;
+        $validated['tax_percent'] = $taxPercent;
+
         // Delivery charged to the customer belongs in what they owe. It was
         // stored on the order but left out of the total, so every shipped order
         // was invoiced for less than it was worth.
-        $validated['total'] = $subtotal
-            - ($validated['discount'] ?? 0)
-            + ($validated['tax'] ?? 0)
-            + ($validated['shipping_cost'] ?? 0);
+        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? 0), 2);
 
-        $salesOrder = SalesOrder::create($validated);
+        unset($validated['execute']);
 
-        foreach ($lineItems as $item) {
-            $salesOrder->items()->create($item);
+        $createdExpenses = [];
+        try {
+            $salesOrder = DB::transaction(function () use ($validated, $lineItems, $expensesInput, $request, &$createdExpenses) {
+                $salesOrder = SalesOrder::create($validated);
+
+                $created = [];
+                foreach ($lineItems as $item) {
+                    $created[] = $salesOrder->items()->create($item);
+                }
+
+                foreach ($expensesInput as $exp) {
+                    if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
+                        $createdExpenses[] = Expense::create([
+                            'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                            'sales_order_id' => $salesOrder->id,
+                            'customer_id' => $salesOrder->customer_id,
+                            'description' => $exp['description'],
+                            'amount' => (float) $exp['amount'],
+                            'category' => $exp['category'] ?? 'shipping',
+                            'expense_date' => now(),
+                            'status' => $exp['status'] ?? Expense::STATUS_PENDING,
+                            'notes' => $exp['notes'] ?? null,
+                            'created_by' => auth()->id(),
+                            'currency' => base_currency_code(),
+                            'exchange_rate' => 1.0000,
+                        ]);
+                    }
+                }
+
+                // Opens the stage history, so the trail starts where the order
+                // does rather than at whatever its first transition happens to be.
+                //
+                // Creation is a draft: no stock reservation, no invoice, no
+                // ledger posting. Those start only when the order is confirmed.
+                SalesOrderStatusHistory::create([
+                    'sales_order_id' => $salesOrder->id,
+                    'from_status' => null,
+                    'to_status' => SalesOrder::STATUS_PENDING,
+                    'note' => 'إنشاء الطلب',
+                    'user_id' => auth()->id(),
+                ]);
+
+                // A plan that breaks the routing rules takes the order with
+                // it: better no order than one routed other than as shown.
+                $this->workflow->applyInitialPlan($salesOrder, $this->planFrom($created, $request->items));
+
+                return $salesOrder;
+            });
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
         }
 
-        // Opens the stage history, so the trail starts where the order does
-        // rather than at whatever its first transition happens to be.
-        //
-        // Creation is deliberately a draft: no stock reservation, no invoice,
-        // no ledger posting. Those start only when the order is confirmed.
-        SalesOrderStatusHistory::create([
-            'sales_order_id' => $salesOrder->id,
-            'from_status' => null,
-            'to_status' => SalesOrder::STATUS_PENDING,
-            'note' => 'إنشاء الطلب',
-            'user_id' => auth()->id(),
-        ]);
+        foreach ($createdExpenses as $exp) {
+            try {
+                $this->ledger->postExpense($exp);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
+        $execution = $request->input('execute') === 'confirm'
+            ? $this->confirmNow($salesOrder)
+            : null;
+
+        $salesOrder->refresh()->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'items.allocations', 'expenses']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم إنشاء طلب البيع بنجاح',
+            'message' => $execution && ! $execution['confirmed']
+                ? 'تم حفظ الطلب كمسودة، لكن تعذّر تأكيده.'
+                : ($execution ? 'تم إنشاء طلب البيع وتأكيده' : 'تم إنشاء طلب البيع بنجاح'),
             'data' => $salesOrder,
+            'execution' => $execution,
         ], 201);
     }
 
     public function show(SalesOrder $salesOrder)
     {
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'quote', 'fulfillmentWarehouse']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse', 'expenses']);
 
         return response()->json([
             'success' => true,
@@ -252,7 +528,9 @@ class SalesOrderController extends Controller
             'order_date' => 'nullable|date',
             'expected_delivery' => 'nullable|date|after:order_date',
             'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
             'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_address' => 'nullable|string|max:500',
             'notes' => 'nullable|string|max:1000',
@@ -263,6 +541,19 @@ class SalesOrderController extends Controller
             'items.*.discount' => 'nullable|numeric|min:0',
             'items.*.tax' => 'nullable|numeric|min:0',
             'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
 
         // The stage is moved through the workflow endpoints, never by writing
@@ -281,6 +572,8 @@ class SalesOrderController extends Controller
             'tax',
             'shipping_cost',
             'shipping_address',
+            'discount_percent',
+            'tax_percent',
             'notes',
         ];
 
@@ -311,10 +604,42 @@ class SalesOrderController extends Controller
         );
 
         $validated['subtotal'] = $subtotal;
-        $validated['total'] = $subtotal
-            - ($validated['discount'] ?? 0)
-            + ($validated['tax'] ?? 0)
-            + ($validated['shipping_cost'] ?? 0);
+
+        $discountPercent = array_key_exists('discount_percent', $validated) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
+            ? (float) $validated['discount_percent']
+            : ($salesOrder->discount_percent ?? null);
+        $taxPercent = array_key_exists('tax_percent', $validated) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
+            ? (float) $validated['tax_percent']
+            : ($salesOrder->tax_percent ?? null);
+
+        $discountAmount = $discountPercent !== null
+            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
+            : (float) ($validated['discount'] ?? $salesOrder->discount ?? 0);
+        $taxAmount = $taxPercent !== null
+            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
+            : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
+
+        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
+            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        }
+
+        $validated['discount'] = $discountAmount;
+        $validated['discount_percent'] = $discountPercent;
+        $validated['tax'] = $taxAmount;
+        $validated['tax_percent'] = $taxPercent;
+
+        $expensesProvided = $request->has('expenses');
+        $expensesInput = $validated['expenses'] ?? [];
+        unset($validated['expenses']);
+
+        if ($expensesProvided) {
+            $expensesTotal = collect($expensesInput)->sum(fn ($e) => (float) ($e['amount'] ?? 0));
+            if (! $request->has('shipping_cost') || empty($validated['shipping_cost'])) {
+                $validated['shipping_cost'] = round($expensesTotal, 2);
+            }
+        }
+
+        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
 
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than
@@ -327,22 +652,147 @@ class SalesOrderController extends Controller
             $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
         }
 
-        DB::transaction(function () use ($salesOrder, $validated, $lineItems) {
-            $salesOrder->update($validated);
+        $createdExpenses = [];
+        try {
+            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $expensesProvided, $expensesInput, $request, &$createdExpenses) {
+                $salesOrder->update($validated);
 
-            $salesOrder->items()->delete();
-            foreach ($lineItems as $item) {
-                $salesOrder->items()->create($item);
+                if ($expensesProvided) {
+                    foreach ($salesOrder->expenses()->get() as $oldExp) {
+                        try {
+                            $this->ledger->reverseFor($oldExp->postingKey());
+                        } catch (\Throwable $e) {
+                            report($e);
+                        }
+                    }
+                    $salesOrder->expenses()->delete();
+
+                    if (is_array($expensesInput)) {
+                        foreach ($expensesInput as $exp) {
+                            if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
+                                $createdExpenses[] = Expense::create([
+                                    'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                                    'sales_order_id' => $salesOrder->id,
+                                    'customer_id' => $salesOrder->customer_id,
+                                    'description' => $exp['description'],
+                                    'amount' => (float) $exp['amount'],
+                                    'category' => $exp['category'] ?? 'shipping',
+                                    'expense_date' => now(),
+                                    'status' => $exp['status'] ?? Expense::STATUS_PENDING,
+                                    'notes' => $exp['notes'] ?? null,
+                                    'created_by' => auth()->id(),
+                                    'currency' => base_currency_code(),
+                                    'exchange_rate' => 1.0000,
+                                ]);
+                            }
+                        }
+                    }
+                }
+
+                // The lines are rewritten, and their allocations with them; the
+                // warehouses the order was routed through go too when a plan is
+                // sent, so it is the whole plan rather than laid over the old.
+                $salesOrder->items()->delete();
+                $created = [];
+                foreach ($lineItems as $item) {
+                    $created[] = $salesOrder->items()->create($item);
+                }
+
+                $plan = $this->planFrom($created, $request->items);
+                if (array_filter($plan)) {
+                    $salesOrder->routings()->sync([]);
+                    $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
+                }
+            });
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
+        }
+
+        foreach ($createdExpenses as $exp) {
+            try {
+                $this->ledger->postExpense($exp);
+            } catch (\Throwable $e) {
+                report($e);
             }
-        });
+        }
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit']);
+        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'expenses']);
 
         return response()->json([
             'success' => true,
             'message' => 'تم تحديث طلب البيع بنجاح',
             'data' => $salesOrder,
         ]);
+    }
+
+    /**
+     * Where each line of an order being written should come from — the
+     * wizard's routing step asks before saving.
+     */
+    public function suggestRouting(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'fulfillment_warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->workflow->suggestSourcing(
+                $validated['items'],
+                isset($validated['fulfillment_warehouse_id']) ? (int) $validated['fulfillment_warehouse_id'] : null,
+            ),
+        ]);
+    }
+
+    /**
+     * The plan sent with the lines, keyed by the lines just written.
+     *
+     * @param  list<\App\Models\SalesOrderItem>  $created  in request order
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<int,int>>  item id => [warehouse id => quantity]
+     */
+    private function planFrom(array $created, array $items): array
+    {
+        $plan = [];
+
+        foreach (array_values($items) as $index => $item) {
+            $line = $created[$index] ?? null;
+            if (! $line || empty($item['allocations'])) {
+                continue;
+            }
+
+            foreach ($item['allocations'] as $allocation) {
+                $warehouseId = (int) $allocation['warehouse_id'];
+                $plan[$line->id][$warehouseId] = ($plan[$line->id][$warehouseId] ?? 0) + (int) $allocation['quantity'];
+            }
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Confirms an order just saved, reporting a refusal instead of throwing:
+     * the order stays, as a draft, with the reason and — for short stock —
+     * what is missing where.
+     *
+     * @return array{confirmed: bool, message?: string, shortages?: array, effects?: array}
+     */
+    private function confirmNow(SalesOrder $salesOrder): array
+    {
+        try {
+            $result = $this->workflow->transitionTo($salesOrder->refresh(), SalesOrder::STATUS_CONFIRMED);
+
+            return ['confirmed' => true, 'effects' => $result['effects'] ?? $result];
+        } catch (RuntimeException $e) {
+            return [
+                'confirmed' => false,
+                'message' => $e->getMessage(),
+                'shortages' => $this->workflow->stockShortages($salesOrder->refresh()),
+            ];
+        }
     }
 
     /**
@@ -358,9 +808,17 @@ class SalesOrderController extends Controller
             ? collect()
             : ProductUnit::query()->whereIn('id', $unitIds)->get()->keyBy('id');
 
+        // A line for one variant carries its name ("floor drain - 4\"") so the
+        // order, its invoice and the picking list all say which size.
+        $variants = ProductVariant::forLines($items);
+        $variantProducts = $variants->isEmpty()
+            ? collect()
+            : Product::whereIn('id', $variants->pluck('product_id'))->get(['id', 'name_ar', 'name_en'])->keyBy('id');
+
         $lines = [];
 
         foreach ($items as $item) {
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
             $unitName = null;
             $unitMultiplier = 1;
             $unitId = $item['product_unit_id'] ?? null;
@@ -375,8 +833,12 @@ class SalesOrderController extends Controller
                 }
             }
 
+            $product = $variant ? $variantProducts->get($variant->product_id) : null;
+
             $lines[] = [
                 'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'description' => $variant ? $variant->displayName($product->name_ar ?? $product->name_en) : null,
                 'product_unit_id' => $unitId,
                 'unit_name' => $unitName,
                 'unit_multiplier' => $unitMultiplier,
@@ -466,7 +928,8 @@ class SalesOrderController extends Controller
     {
         $salesOrder->load([
             'customer', 'creator', 'assignedEmployee', 'quote',
-            'items.product', 'fulfillmentWarehouse', 'statusHistory.user',
+            'items.product', 'items.variant', 'fulfillmentWarehouse', 'statusHistory.user',
+            'expenses.invoice',
         ]);
 
         $invoice = $this->workflow->existingInvoice($salesOrder);
@@ -479,8 +942,13 @@ class SalesOrderController extends Controller
         $paymentKeys = collect($invoice?->payments ?? [])
             ->flatMap(fn ($p) => ['payment:'.$p->id, 'payment:'.$p->id.':reversal']);
 
+        $expenseKeys = $salesOrder->expenses->flatMap(fn ($e) => [
+            $e->postingKey(),
+            $e->postingKey().':reversal',
+        ])->filter()->all();
+
         $entries = JournalEntryHeader::with('lines.ledgerAccount')
-            ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys) {
+            ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys, $expenseKeys) {
                 $q->whereIn('posting_key', [
                     'so_cogs:'.$salesOrder->id,
                     'so_cogs:'.$salesOrder->id.':reversal',
@@ -496,6 +964,10 @@ class SalesOrderController extends Controller
                 if ($paymentKeys->isNotEmpty()) {
                     $q->orWhereIn('posting_key', $paymentKeys->all());
                 }
+
+                if (! empty($expenseKeys)) {
+                    $q->orWhereIn('posting_key', $expenseKeys);
+                }
             })
             ->orderBy('entry_date')
             ->orderBy('id')
@@ -507,6 +979,7 @@ class SalesOrderController extends Controller
                 'sales_order' => $salesOrder,
                 'invoice' => $invoice,
                 'payments' => $invoice?->payments ?? [],
+                'expenses' => $salesOrder->expenses,
                 'journal_entries' => $entries,
                 'stock_movements' => $this->workflow->movementsFor($salesOrder),
                 'diagnostics' => $this->workflow->diagnose($salesOrder),
@@ -515,6 +988,8 @@ class SalesOrderController extends Controller
                 // picking jobs, and the single key above can only show one.
                 'picking_lists' => $this->workflow->pickingListsFor($salesOrder),
                 'follow_up' => $this->workflow->followUp($salesOrder),
+                // Null, not empty, for whoever may not see purchasing.
+                'purchase_orders' => $this->linkedPurchaseOrders($salesOrder),
                 'history' => $salesOrder->statusHistory,
                 'routing' => $this->routingPayload($salesOrder),
                 'timeline' => [
@@ -704,15 +1179,86 @@ class SalesOrderController extends Controller
      */
     public function stockShortages(SalesOrder $salesOrder)
     {
+        $salesOrder->loadMissing('customer');
+
         return response()->json([
             'success' => true,
             'data' => [
+                // What the purchase screen carries over besides the lines: who
+                // the goods are for, and when they are needed by.
                 'sales_order' => [
                     'id' => $salesOrder->id,
                     'order_number' => $salesOrder->order_number,
+                    'customer_name' => $salesOrder->customer?->name,
+                    'expected_delivery' => $salesOrder->expected_delivery?->format('Y-m-d'),
+                    'notes' => $salesOrder->notes,
                 ],
                 'shortages' => $this->workflow->stockShortages($salesOrder),
             ],
+        ]);
+    }
+
+    /**
+     * Purchase orders raised for this sale: linked to the order itself, or to
+     * one of its invoices. Purchasing is an admin area, so anyone else gets
+     * null, and the drawer leaves the card out.
+     *
+     * @return list<array<string,mixed>>|null
+     */
+    private function linkedPurchaseOrders(SalesOrder $salesOrder): ?array
+    {
+        $user = auth()->user();
+        if (! $user || ! ($user->isAdmin() || $user->hasRole('admin'))) {
+            return null;
+        }
+
+        $invoiceIds = $salesOrder->invoices()->pluck('id');
+
+        return PurchaseOrder::query()
+            ->with(['supplier:id,name,company', 'invoice:id,invoice_number'])
+            ->withCount(['items', 'receipts'])
+            ->where(function ($q) use ($salesOrder, $invoiceIds) {
+                $q->where('sales_order_id', $salesOrder->id);
+                if ($invoiceIds->isNotEmpty()) {
+                    $q->orWhereIn('invoice_id', $invoiceIds);
+                }
+            })
+            ->latest('id')
+            ->get()
+            ->map(fn (PurchaseOrder $po) => [
+                'id' => $po->id,
+                'order_number' => $po->order_number,
+                'status' => PurchaseOrder::normalizeStatus($po->status),
+                'supplier_name' => $po->supplier?->name,
+                'total' => (float) $po->total,
+                'order_date' => $po->order_date?->format('Y-m-d'),
+                'due_date' => $po->due_date?->format('Y-m-d'),
+                'items_count' => (int) $po->items_count,
+                'receipts_count' => (int) $po->receipts_count,
+                // Through which document it is linked: this order, or its invoice.
+                'invoice_number' => $po->invoice?->invoice_number,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The order's lines as a purchase order, for the purchase screen to open
+     * prefilled — "buy in what this customer ordered".
+     */
+    public function purchaseDraft(SalesOrder $salesOrder)
+    {
+        if ($salesOrder->status === SalesOrder::STATUS_CANCELLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الطلب ملغى — لا حاجة لشراء بنوده.',
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->workflow->purchaseDraft($salesOrder),
         ]);
     }
 

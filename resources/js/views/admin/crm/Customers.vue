@@ -217,6 +217,7 @@
 
 <script setup>
 import { formatMoney } from '@/utils/currency';
+import { matchesSearch } from '@/utils/search';
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
@@ -252,15 +253,14 @@ const filteredCustomers = computed(() => {
   }
 
   if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase();
     list = list.filter(customer => {
-      return [
+      return matchesSearch([
         customer.name,
         customer.company,
         customer.email,
         customer.phone,
         customer.tax_number
-      ].some(field => String(field || '').toLowerCase().includes(query));
+      ], searchQuery.value);
     });
   }
 

@@ -11,11 +11,11 @@ export const useAccountingReportsStore = defineStore('accountingReports', {
     }),
 
     actions: {
-        async fetchTrialBalance() {
+        async fetchTrialBalance(params = {}) {
             this.loading = true;
             this.error = null;
             try {
-                const res = await accountingReportsApi.trialBalance();
+                const res = await accountingReportsApi.trialBalance(params);
                 this.trialBalance = res.data.data || res.data;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load trial balance';

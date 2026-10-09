@@ -113,6 +113,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { wmsService } from '@/services/wms';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -172,8 +173,7 @@ const filteredAssigned = computed(() => filterProducts(assignedProducts.value));
 
 function filterProducts(list) {
     if (!searchQuery.value) return list;
-    const query = searchQuery.value.toLowerCase();
-    return list.filter((p) => (p.name && p.name.toLowerCase().includes(query)) || (p.code && p.code.toLowerCase().includes(query)));
+    return list.filter((p) => matchesSearch([p.name, p.code], searchQuery.value));
 }
 
 async function refreshData() {

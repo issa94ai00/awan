@@ -167,6 +167,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
+import { matchesSearch } from '@/utils/search';
 import { computed, ref } from 'vue';
 
 const { t } = useI18n();
@@ -274,9 +275,7 @@ const selectedPermissionsCount = computed(() => roleForm.value.permissions.lengt
 
 const filteredRoles = computed(() => {
     return roles.value.filter((role) => {
-        const matchSearch = !search.value ||
-            role.display_name.toLowerCase().includes(search.value.toLowerCase()) ||
-            role.name.toLowerCase().includes(search.value.toLowerCase());
+        const matchSearch = matchesSearch([role.display_name, role.name], search.value);
 
         const matchStatus = statusFilter.value === null || role.is_active === statusFilter.value;
         return matchSearch && matchStatus;

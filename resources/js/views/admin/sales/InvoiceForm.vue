@@ -84,7 +84,7 @@
                                 <ul v-else-if="searchResults.length" class="results-list">
                                     <li
                                         v-for="(product, index) in searchResults"
-                                        :key="product.id"
+                                        :key="optionKey(product)"
                                         class="result"
                                         :class="{ active: highlightedIndex === index }"
                                         @click="addProduct(product)"
@@ -96,7 +96,12 @@
                                         </div>
 
                                         <div class="result-body">
-                                            <span class="result-name">{{ product.name_ar || product.name_en }}</span>
+                                            <!-- Each size is its own result: the product's
+                                                 name with the size beside it. -->
+                                            <span class="result-name">
+                                                {{ baseName(product) || product.name_en }}
+                                                <VariantChip v-if="product.variant_id" :label="product.variant_label" />
+                                            </span>
                                             <span v-if="product.sku" class="result-sku">{{ product.sku }}</span>
                                         </div>
 
@@ -104,6 +109,11 @@
                                             <span class="result-price">{{ money(product.price) }}</span>
                                             <span class="result-stock" :class="stockTone(product.stock_quantity)">
                                                 {{ t('available') }} {{ formatNumber(product.stock_quantity || 0) }}
+                                            </span>
+                                            <!-- The warehouses hold the product, not the size:
+                                                 this is what a line can actually draw on. -->
+                                            <span v-if="product.variant_id && product.product_stock_quantity != null" class="result-stock-total">
+                                                {{ t('so_product_stock_total', { count: formatNumber(product.product_stock_quantity) }) }}
                                             </span>
                                         </div>
                                     </li>
@@ -135,7 +145,7 @@
                     <div v-else class="lines">
                         <article
                             v-for="(item, index) in items"
-                            :key="item.product_id"
+                            :key="item.pick"
                             class="line"
                             :class="{ short: isLineShort(item) }"
                         >
@@ -147,6 +157,7 @@
                                     </div>
                                     <div class="line-identity-text">
                                         <span class="line-name">{{ item.name }}</span>
+                                        <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
                                         <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
                                     </div>
                                 </div>
@@ -212,7 +223,7 @@
                                             min="1"
                                             step="1"
                                             @change="sanitizeAllocQty(index, aIdx)"
-                                            :ref="(el) => { if (aIdx === 0) setQtyRef(item.product_id, el); }"
+                                            :ref="(el) => { if (aIdx === 0) setQtyRef(item.pick, el); }"
                                         />
                                         <button type="button" @click="incrementAllocQty(index, aIdx)">
                                             <el-icon><Plus /></el-icon>
@@ -404,14 +415,27 @@
 
                     <div class="fields-row">
                         <label class="field">
-                            <span class="field-label">{{ t('discount') }}</span>
-                            <el-input v-model.number="form.discount" type="number" min="0" step="0.01" />
+                            <span class="field-label">{{ t('discount_percent') }}</span>
+                            <el-input v-model.number="form.discount_percent" type="number" min="0" max="100" step="0.01">
+                                <template #append>%</template>
+                            </el-input>
+                            <span v-if="discountAmount > 0" class="field-figure deduct">− {{ money(discountAmount) }}</span>
                         </label>
                         <label class="field">
-                            <span class="field-label">{{ t('tax') }}</span>
-                            <el-input v-model.number="form.tax" type="number" min="0" step="0.01" />
+                            <span class="field-label">{{ t('tax_percent') }}</span>
+                            <el-input v-model.number="form.tax_percent" type="number" min="0" max="100" step="0.01">
+                                <template #append>%</template>
+                            </el-input>
+                            <span v-if="taxAmount > 0" class="field-figure">+ {{ money(taxAmount) }}</span>
                         </label>
                     </div>
+
+                    <!-- Which figure each rate is struck on. Said once, and only
+                         when both are in play — that is the only case where the
+                         order they apply in changes the answer. -->
+                    <p v-if="discountAmount > 0 && form.tax_percent > 0" class="field-note">
+                        {{ t('sales.tax_applies_after_discount') }}
+                    </p>
 
                     <!-- The total is clamped at zero rather than going
                          negative, so a discount larger than what it is being
@@ -446,41 +470,24 @@
                         </label>
                     </div>
 
-                    <!-- Costs billed on this invoice. Folded away until used, so
-                         the common sale is not asked about the rare one. -->
-                    <div class="extras">
-                        <button type="button" class="extras-toggle" @click="showExpenses = !showExpenses">
-                            <el-icon><component :is="showExpenses ? Minus : Plus" /></el-icon>
-                            {{ t('additional_charges') }}
-                            <span v-if="totalExpenses > 0" class="extras-badge">{{ money(totalExpenses) }}</span>
-                        </button>
-
-                        <div v-if="showExpenses" class="extras-body">
-                            <div v-for="(expense, index) in form.expenses" :key="index" class="extra-row">
-                                <el-input v-model="expense.description" :placeholder="t('description')" size="small" class="expense-desc" />
-                                <el-input v-model.number="expense.amount" type="number" min="0" size="small" class="expense-amount" />
-                                <el-button text type="danger" size="small" @click="removeExpense(index)">
-                                    <el-icon><Delete /></el-icon>
-                                </el-button>
-                            </div>
-                            <el-button text size="small" @click="addExpense">
-                                <el-icon><Plus /></el-icon> {{ t('add_expense') }}
-                            </el-button>
-                        </div>
-                    </div>
+                    <!-- Additional charges and shipping recorded as expenses -->
+                    <OrderExpensesEditor
+                        v-model="form.expenses"
+                        class="invoice-expenses-section"
+                    />
 
                     <dl class="totals">
                         <div class="total-line">
                             <dt>{{ t('subtotal') }}</dt>
                             <dd>{{ money(subtotal) }}</dd>
                         </div>
-                        <div v-if="form.discount > 0" class="total-line deduct">
-                            <dt>{{ t('discount') }}</dt>
-                            <dd>− {{ money(form.discount) }}</dd>
+                        <div v-if="discountAmount > 0" class="total-line deduct">
+                            <dt>{{ t('discount') }} <span class="rate-chip">{{ percent(form.discount_percent) }}</span></dt>
+                            <dd>− {{ money(discountAmount) }}</dd>
                         </div>
-                        <div v-if="form.tax > 0" class="total-line">
-                            <dt>{{ t('tax') }}</dt>
-                            <dd>+ {{ money(form.tax) }}</dd>
+                        <div v-if="taxAmount > 0" class="total-line">
+                            <dt>{{ t('tax') }} <span class="rate-chip">{{ percent(form.tax_percent) }}</span></dt>
+                            <dd>+ {{ money(taxAmount) }}</dd>
                         </div>
                         <div v-if="totalExpenses > 0" class="total-line">
                             <dt>{{ t('additional_charges') }}</dt>
@@ -665,6 +672,9 @@ import {
     preferredSource,
 } from '@/utils/stockSources';
 import { getImageUrl } from '@/utils/imageUrl';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
+import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Search, ShoppingCart, User, Wallet, Notebook,
@@ -681,13 +691,13 @@ const customersStore = useCustomersStore();
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
 
-// Keyed by product_id, pointing at that line's first allocation quantity
+// Keyed by the line's pick (product, or product + size), pointing at that line's first allocation quantity
 // input — where addProduct() sends focus so the quantity can be typed right
 // away instead of clicking back into the row.
 const qtyInputRefs = reactive({});
-const setQtyRef = (productId, el) => {
-    if (el) qtyInputRefs[productId] = el;
-    else delete qtyInputRefs[productId];
+const setQtyRef = (pick, el) => {
+    if (el) qtyInputRefs[pick] = el;
+    else delete qtyInputRefs[pick];
 };
 
 const form = reactive({
@@ -695,8 +705,12 @@ const form = reactive({
     // The rep credited with the sale. Null is a valid answer.
     assigned_employee_id: null,
     payment_method: 'cash',
-    discount: 0,
-    tax: 0,
+    // Rates, not figures: a discount is agreed as a percentage and a tax is set
+    // as one, and both then track the lines instead of going stale the moment a
+    // quantity changes. The money they come to is computed below and is what
+    // the invoice is saved and posted with.
+    discount_percent: 0,
+    tax_percent: 0,
     // Collected at the moment the invoice is raised; the rest becomes the
     // customer's outstanding balance.
     paid_amount: 0,
@@ -1131,16 +1145,32 @@ const totalExpenses = computed(() =>
     form.expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
 );
 
+// A rate is only ever a rate on screen; what the invoice carries, and what the
+// ledger is told, is the figure it comes to. The server derives these again
+// from its own subtotal — see InvoiceController::resolveCharges() — so the two
+// agree without the client's arithmetic being trusted.
+const rate = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+
+const discountAmount = computed(() => round2(subtotal.value * rate(form.discount_percent) / 100));
+
+// Tax is charged on what is actually being asked for the goods, so it comes off
+// the discounted figure. Charges billed on top (delivery, packaging) are not
+// part of the goods and are added after both.
+const taxAmount = computed(() =>
+    round2(Math.max(0, subtotal.value - discountAmount.value) * rate(form.tax_percent) / 100)
+);
+
 const total = computed(() =>
-    Math.max(0, subtotal.value - (Number(form.discount) || 0) + (Number(form.tax) || 0) + totalExpenses.value)
+    Math.max(0, subtotal.value - discountAmount.value + taxAmount.value + totalExpenses.value)
 );
 
 // True once the discount alone would take the total past zero — the point
-// where it stops being the discount that determines the total.
+// where it stops being the discount that determines the total. A rate is capped
+// at 100%, so this now only fires on an invoice that is all charges and no
+// goods; it stays because the figure, not the rate, is what decides.
 const discountExceedsChargeable = computed(() => {
-    const discount = Number(form.discount) || 0;
-    if (discount <= 0) return false;
-    return subtotal.value + (Number(form.tax) || 0) + totalExpenses.value - discount < 0;
+    if (discountAmount.value <= 0) return false;
+    return subtotal.value + taxAmount.value + totalExpenses.value - discountAmount.value < 0;
 });
 
 // Positive: the customer still owes this. Negative: they overpaid and the
@@ -1159,6 +1189,18 @@ const availableStatuses = computed(() => [form.status, ...(statusTransitions[for
 const canSubmit = computed(() =>
     items.value.length > 0 && missingSource.value.length === 0 && shortLines.value.length === 0
 );
+
+// The rate an amount implies, for an invoice that only ever stored the amount.
+// No base to speak of means no rate to infer — a discount on nothing is not
+// 100% off, it is a figure that was never a percentage.
+const impliedRate = (amount, base) => {
+    if (!(base > 0) || !(Number(amount) > 0)) return 0;
+    return rate(Math.round((Number(amount) / base) * 10000) / 100);
+};
+
+// 10, not 10.00; 12.5, not 12.50 — a rate reads as it was typed.
+const percent = (value) =>
+    new Intl.NumberFormat('ar-SY', { maximumFractionDigits: 2 }).format(rate(value)) + '%';
 
 const money = (value) =>
     new Intl.NumberFormat('ar-SY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1188,7 +1230,8 @@ const onSearchInput = (query) => {
 
     searchTimeout = setTimeout(async () => {
         try {
-            const res = await posApi.productLookup({ q: query });
+            // One result per size, and a size's own code or barcode finds it.
+            const res = await posApi.productLookup({ q: query, expand_variants: 1 });
             const data = res.data?.data || res.data || [];
             searchResults.value = Array.isArray(data) ? data : [];
         } catch (error) {
@@ -1219,7 +1262,10 @@ const selectHighlighted = () => {
  * ------------------------------------------------------------------ */
 
 const addProduct = (product) => {
-    const existing = items.value.findIndex((line) => line.product_id === product.id);
+    // Another pick of the same size adds to its line; another size of the
+    // same product is a line of its own.
+    const pick = optionKey(product);
+    const existing = items.value.findIndex((line) => line.pick === pick);
 
     if (existing !== -1) {
         // Bumps the first source rather than opening a new allocation — most
@@ -1237,8 +1283,11 @@ const addProduct = (product) => {
         };
 
         const line = reactive({
+            pick,
             product_id: product.id,
-            name: product.name_ar || product.name_en,
+            product_variant_id: product.variant_id || null,
+            variant_label: product.variant_label || '',
+            name: baseName(product) || product.name_en,
             sku: product.sku || '',
             image: product.image_main || null,
             price: parseFloat(product.price) || 0,
@@ -1268,7 +1317,7 @@ const addProduct = (product) => {
     // typed straight away; fall back to the search box if the row isn't
     // rendered yet for some reason.
     nextTick(() => {
-        const qtyInput = qtyInputRefs[product.id];
+        const qtyInput = qtyInputRefs[pick];
         if (qtyInput) {
             qtyInput.focus();
             qtyInput.select();
@@ -1428,8 +1477,13 @@ const submitInvoice = async () => {
             customer_id: form.customer_id,
             assigned_employee_id: form.assigned_employee_id,
             payment_method: form.payment_method,
-            discount: form.discount || 0,
-            tax: form.tax || 0,
+            // Both: the rates decide the invoice, and the figures they come
+            // to are sent alongside so a client reading the request sees what
+            // was charged without recomputing it. The server takes the rates.
+            discount_percent: rate(form.discount_percent),
+            tax_percent: rate(form.tax_percent),
+            discount: discountAmount.value,
+            tax: taxAmount.value,
             paid_amount: form.paid_amount || 0,
             notes: form.notes,
             status: form.status,
@@ -1440,12 +1494,21 @@ const submitInvoice = async () => {
                 .filter((allocation) => allocation.warehouse_id && Number(allocation.quantity) > 0)
                 .map((allocation) => ({
                     product_id: item.product_id,
+                    product_variant_id: item.product_variant_id || null,
                     quantity: allocation.quantity,
                     unit_price: item.price,
                     warehouse_id: allocation.warehouse_id,
                     product_unit_id: item.selectedUnit?.id || null,
                 }))),
-            expenses: form.expenses.filter((expense) => expense.description && expense.amount > 0),
+            expenses: form.expenses
+                .filter((expense) => expense.description && Number(expense.amount) > 0)
+                .map((expense) => ({
+                    category: expense.category || 'other',
+                    description: expense.description,
+                    amount: Number(expense.amount),
+                    status: expense.status || 'paid',
+                    notes: expense.notes || null,
+                })),
         };
 
         if (isEdit.value) {
@@ -1539,30 +1602,54 @@ const loadInvoice = async () => {
         : null);
     form.assigned_employee_id = invoice.assigned_employee_id ?? null;
     form.payment_method = invoice.payment_method || 'cash';
-    form.discount = parseFloat(invoice.discount) || 0;
-    form.tax = parseFloat(invoice.tax) || 0;
+    // An invoice raised at a rate gives it back. One raised before rates
+    // existed — or by a client that posts figures — carries amounts only, so the
+    // rate behind them is read back off the subtotal it was struck on. That
+    // keeps a 50-off-1,000 invoice reopening as 5% and saving back as 50,
+    // rather than losing the discount to a field that can no longer hold it.
+    const savedSubtotal = parseFloat(invoice.subtotal) || 0;
+    const savedDiscount = parseFloat(invoice.discount) || 0;
+    const savedTax = parseFloat(invoice.tax) || 0;
+
+    form.discount_percent = invoice.discount_percent ?? impliedRate(savedDiscount, savedSubtotal);
+    form.tax_percent = invoice.tax_percent ?? impliedRate(savedTax, savedSubtotal - savedDiscount);
     form.paid_amount = parseFloat(invoice.paid_amount) || 0;
     form.status = invoice.status || 'pending';
     form.notes = invoice.notes || '';
+    form.expenses = (invoice.expenses || []).map((exp) => ({
+        id: exp.id || null,
+        category: exp.category || 'shipping',
+        description: exp.description || '',
+        amount: parseFloat(exp.amount) || 0,
+        status: exp.status || 'paid',
+        notes: exp.notes || '',
+    }));
 
     // Every field the form can change is restored. This used to reload the
     // product, price and quantity only — so reopening an invoice lost the
     // warehouse each line came from and the unit it was priced in, and saving
     // it again wrote those back as empty.
     //
-    // Several invoice items can share a product_id — that is how a line split
-    // across warehouses was saved — so they are regrouped into one line with
-    // several allocations, the same shape the builder edits them in.
+    // Several invoice items can share a product (and size) — that is how a
+    // line split across warehouses was saved — so they are regrouped into one
+    // line with several allocations, the same shape the builder edits them in.
+    // Two sizes of one product stay two lines.
     const grouped = new Map();
 
     for (const item of invoice.items ?? []) {
-        let line = grouped.get(item.product_id);
+        const pick = pickKey(item.product_id, item.product_variant_id);
+        let line = grouped.get(pick);
 
         if (!line) {
             line = reactive({
+                pick,
                 product_id: item.product_id,
-                name: item.product_name || item.product?.name_ar,
-                sku: item.product?.sku || '',
+                product_variant_id: item.product_variant_id || null,
+                variant_label: item.variant?.label || variantLabelOf(item.variant),
+                // The product's own name beside its size badge; the stored
+                // line name already carries the size.
+                name: (item.product_variant_id && item.product?.name_ar) || item.product_name || item.product?.name_ar,
+                sku: item.variant?.sku || item.product?.sku || '',
                 image: item.product?.image_main || null,
                 price: parseFloat(item.unit_price) || 0,
                 stock: item.product?.stock_quantity || 0,
@@ -1580,7 +1667,7 @@ const loadInvoice = async () => {
                 sources: [],
                 loadingStock: false,
             });
-            grouped.set(item.product_id, line);
+            grouped.set(pick, line);
         }
 
         line.allocations.push({
@@ -1851,6 +1938,7 @@ onUnmounted(() => {
 .result-price { font-weight: 700; font-size: 0.9rem; }
 
 .result-stock { font-size: 0.72rem; }
+.result-stock-total { font-size: 0.68rem; color: var(--ink-mute); }
 .result-stock.ok { color: var(--ok); }
 .result-stock.low { color: var(--warn); }
 .result-stock.out { color: var(--bad); }
@@ -1938,6 +2026,8 @@ onUnmounted(() => {
 
 .line-identity-text { display: flex; flex-direction: column; min-width: 0; }
 .line-name { font-weight: 700; }
+/* The size under the product's name, sized to its text in the column. */
+.line-variant { align-self: flex-start; margin: 0.15rem 0; }
 .line-sku {
     font-size: 0.74rem;
     color: var(--ink-mute);
@@ -2324,6 +2414,37 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 0.35rem;
+}
+
+/* What the rate above comes to in money, under the field that sets it — so the
+   seller reads the percentage and the figure in one place instead of waiting
+   for the totals below to tell them. */
+.field-figure {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+}
+
+.field-figure.deduct { color: var(--bad); }
+
+.field-note {
+    margin: -0.35rem 0 0;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+}
+
+/* The rate beside its figure in the totals — quiet, because the money is the
+   thing being read there and the rate is only saying where it came from. */
+.rate-chip {
+    display: inline-block;
+    margin-inline-start: 0.3rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, .18);
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
 .extras { border-top: 1px dashed var(--line); padding-top: 0.85rem; }

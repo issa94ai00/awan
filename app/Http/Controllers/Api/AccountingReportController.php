@@ -36,50 +36,84 @@ class AccountingReportController extends Controller
     {
         [$fromDate, $toDate] = $this->period($request);
 
-        $rows = DB::table('ledger_accounts as a')
-            ->leftJoin('journal_entry_lines as l', 'l.account_id', '=', 'a.id')
-            ->leftJoin('journal_entry_headers as h', function ($join) use ($fromDate, $toDate) {
-                $join->on('h.id', '=', 'l.journal_entry_header_id')
-                    ->whereNull('h.deleted_at')
-                    ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate]);
-            })
-            ->selectRaw('a.id, a.code, a.name, a.type, a.posting_role,
-                         COALESCE(SUM(CASE WHEN h.id IS NULL THEN 0 ELSE l.debit END), 0) as debits,
-                         COALESCE(SUM(CASE WHEN h.id IS NULL THEN 0 ELSE l.credit END), 0) as credits')
-            ->groupBy('a.id', 'a.code', 'a.name', 'a.type', 'a.posting_role')
-            ->orderBy('a.code')
-            ->get();
+        // Movement in the window, and everything before it collapsed into the
+        // opening figure. The window alone is not a trial balance: from the
+        // default 1 January, an asset account showed only this year's movement
+        // under a column headed "balance". Unposted entries stay out, as they
+        // do from every other report here.
+        $sums = fn (callable $dates) => DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->tap($dates)
+            ->groupBy('l.account_id')
+            ->selectRaw('l.account_id, COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c')
+            ->get()
+            ->keyBy('account_id');
 
-        $accounts = $rows->map(function ($row) {
-            $debits = (float) $row->debits;
-            $credits = (float) $row->credits;
+        $movement = $sums(fn ($q) => $q->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate]));
+        $before = $sums(fn ($q) => $q->whereDate('h.entry_date', '<', $fromDate));
 
-            return [
-                'id' => $row->id,
-                'code' => $row->code,
-                'name' => $row->name,
-                'type' => $row->type,
-                'debits' => round($debits, 2),
-                'credits' => round($credits, 2),
-                // Closing movement for the period, on the account's normal side.
-                'balance' => round(LedgerAccount::signedDelta($row->type, $debits, $credits), 2),
-            ];
-        });
+        /** A raw debit-minus-credit figure, split into the column it belongs in. */
+        $sides = fn (float $net) => [round(max($net, 0), 2), round(max(-$net, 0), 2)];
 
-        $totalDebits = round($accounts->sum('debits'), 2);
-        $totalCredits = round($accounts->sum('credits'), 2);
+        $accounts = DB::table('ledger_accounts')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type', 'posting_role', 'parent_id'])
+            ->map(function ($row) use ($movement, $before, $sides) {
+                $debits = (float) ($movement[$row->id]->d ?? 0);
+                $credits = (float) ($movement[$row->id]->c ?? 0);
+                $openD = (float) ($before[$row->id]->d ?? 0);
+                $openC = (float) ($before[$row->id]->c ?? 0);
+
+                [$openingDebit, $openingCredit] = $sides($openD - $openC);
+                [$closingDebit, $closingCredit] = $sides(($openD + $debits) - ($openC + $credits));
+
+                return [
+                    'id' => $row->id,
+                    'code' => $row->code,
+                    'name' => $row->name,
+                    'type' => $row->type,
+                    'posting_role' => $row->posting_role,
+                    'parent_id' => $row->parent_id,
+                    'debits' => round($debits, 2),
+                    'credits' => round($credits, 2),
+                    // Movement for the period, on the account's normal side.
+                    'balance' => round(LedgerAccount::signedDelta($row->type, $debits, $credits), 2),
+                    'opening_debit' => $openingDebit,
+                    'opening_credit' => $openingCredit,
+                    'closing_debit' => $closingDebit,
+                    'closing_credit' => $closingCredit,
+                    'opening_balance' => round(LedgerAccount::signedDelta($row->type, $openD, $openC), 2),
+                    'closing_balance' => round(LedgerAccount::signedDelta($row->type, $openD + $debits, $openC + $credits), 2),
+                ];
+            });
+
+        $total = fn (string $key) => round($accounts->sum($key), 2);
+        $totalDebits = $total('debits');
+        $totalCredits = $total('credits');
 
         return response()->json([
             'success' => true,
             'message' => 'Trial balance retrieved successfully',
             'data' => [
                 'period' => ['from' => $fromDate, 'to' => $toDate],
-                // Accounts with no movement in the period only add noise.
-                'accounts' => $accounts->filter(fn ($a) => $a['debits'] != 0.0 || $a['credits'] != 0.0)->values(),
+                // Accounts with nothing to show in any column only add noise.
+                'accounts' => $accounts->filter(fn ($a) => $a['debits'] != 0.0 || $a['credits'] != 0.0
+                    || $a['closing_debit'] != 0.0 || $a['closing_credit'] != 0.0
+                    || $a['opening_debit'] != 0.0 || $a['opening_credit'] != 0.0)->values(),
                 'all_accounts' => $accounts,
-                'totals' => ['debits' => $totalDebits, 'credits' => $totalCredits],
+                'totals' => [
+                    'debits' => $totalDebits,
+                    'credits' => $totalCredits,
+                    'opening_debits' => $total('opening_debit'),
+                    'opening_credits' => $total('opening_credit'),
+                    'closing_debits' => $total('closing_debit'),
+                    'closing_credits' => $total('closing_credit'),
+                ],
                 'difference' => round($totalDebits - $totalCredits, 2),
                 'is_balanced' => abs($totalDebits - $totalCredits) < self::EPSILON,
+                'closing_difference' => round($total('closing_debit') - $total('closing_credit'), 2),
                 // Surfaced so a corrupt entry is visible here instead of quietly
                 // skewing every downstream statement.
                 'unbalanced_entries' => $this->unbalancedEntries($fromDate, $toDate),
@@ -512,8 +546,9 @@ class AccountingReportController extends Controller
             ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
             ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
             ->whereIn('a.type', ['revenue', 'expense'])
-            ->groupBy('l.cost_center_id', 'c.code', 'c.name', 'a.type', 'a.posting_role')
-            ->selectRaw('l.cost_center_id, c.code, c.name, a.type, a.posting_role,
+            ->groupBy('l.cost_center_id', 'c.code', 'c.name', 'c.is_active', 'a.id', 'a.code', 'a.name', 'a.type', 'a.posting_role')
+            ->selectRaw('l.cost_center_id, c.code, c.name, c.is_active, a.id as account_id, a.code as account_code,
+                         a.name as account_name, a.type, a.posting_role,
                          COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c_amount')
             ->get();
 
@@ -526,9 +561,11 @@ class AccountingReportController extends Controller
                 'id' => $row->cost_center_id,
                 'code' => $row->code,
                 'name' => $row->name ?: 'غير موزّع',
+                'is_active' => $row->cost_center_id ? (bool) $row->is_active : null,
                 'revenue' => 0.0,
                 'cost_of_sales' => 0.0,
                 'operating_expenses' => 0.0,
+                'accounts' => [],
             ];
 
             $amount = round(
@@ -539,20 +576,25 @@ class AccountingReportController extends Controller
             if ($row->type === 'revenue') {
                 // Returns and discounts are debit-normal here, so this nets
                 // them off rather than adding them to revenue.
-                $centers[$key]['revenue'] = round(
-                    $centers[$key]['revenue']
-                    + (in_array($row->posting_role, self::CONTRA_REVENUE_ROLES, true) ? -$amount : $amount),
-                    2
-                );
-
-                continue;
+                $bucket = 'revenue';
+                $amount = in_array($row->posting_role, self::CONTRA_REVENUE_ROLES, true) ? -$amount : $amount;
+            } else {
+                $bucket = in_array($row->posting_role, self::COST_OF_SALES_ROLES, true)
+                    ? 'cost_of_sales'
+                    : 'operating_expenses';
             }
 
-            $bucket = in_array($row->posting_role, self::COST_OF_SALES_ROLES, true)
-                ? 'cost_of_sales'
-                : 'operating_expenses';
-
             $centers[$key][$bucket] = round($centers[$key][$bucket] + $amount, 2);
+
+            // The accounts behind the centre's figures: a result that cannot
+            // be taken apart cannot be questioned.
+            $centers[$key]['accounts'][] = [
+                'id' => $row->account_id,
+                'code' => $row->account_code,
+                'name' => $row->account_name,
+                'section' => $bucket,
+                'amount' => $amount,
+            ];
         }
 
         $centers = collect($centers)
@@ -562,6 +604,15 @@ class AccountingReportController extends Controller
                 $center['margin_percentage'] = abs($center['revenue']) > self::EPSILON
                     ? round(($center['gross_profit'] / $center['revenue']) * 100, 1)
                     : null;
+                $order = ['revenue' => 0, 'cost_of_sales' => 1, 'operating_expenses' => 2];
+                $center['accounts'] = collect($center['accounts'])
+                    ->reject(fn ($account) => abs($account['amount']) < self::EPSILON)
+                    ->sortBy([
+                        fn ($a, $b) => $order[$a['section']] <=> $order[$b['section']],
+                        fn ($a, $b) => abs($b['amount']) <=> abs($a['amount']),
+                    ])
+                    ->values()
+                    ->all();
 
                 return $center;
             })
@@ -637,9 +688,10 @@ class AccountingReportController extends Controller
         $isCustomer = $validated['type'] === 'customer';
         $partyId = (int) $validated['party_id'];
 
+        $partyColumns = ['id', 'name', 'balance', 'phone', 'company', 'address'];
         $party = $isCustomer
-            ? DB::table('customers')->where('id', $partyId)->first(['id', 'name', 'balance'])
-            : DB::table('suppliers')->where('id', $partyId)->first(['id', 'name', 'balance']);
+            ? DB::table('customers')->where('id', $partyId)->first($partyColumns)
+            : DB::table('suppliers')->where('id', $partyId)->first($partyColumns);
 
         if (! $party) {
             return response()->json([
@@ -665,7 +717,13 @@ class AccountingReportController extends Controller
 
         $rows = collect($documents)
             ->filter(fn ($row) => $row['date'] >= $fromDate && $row['date'] <= $toDate)
-            ->sortBy([['date', 'asc'], ['number', 'asc']])
+            ->sortBy([
+                ['date', 'asc'],
+                ['datetime', 'asc'],
+                ['type_order', 'asc'],
+                ['id', 'asc'],
+                ['number', 'asc'],
+            ])
             ->values();
 
         $balance = $opening;
@@ -685,7 +743,14 @@ class AccountingReportController extends Controller
             'message' => 'Party statement retrieved successfully',
             'data' => [
                 'period' => ['from' => $fromDate, 'to' => $toDate],
-                'party' => ['id' => $party->id, 'name' => $party->name, 'type' => $validated['type']],
+                'party' => [
+                    'id' => $party->id,
+                    'name' => $party->name,
+                    'type' => $validated['type'],
+                    'phone' => $party->phone ?? null,
+                    'company' => $party->company ?? null,
+                    'address' => $party->address ?? null,
+                ],
                 'opening_balance' => $opening,
                 'movements' => $movements,
                 'totals' => [
@@ -712,42 +777,70 @@ class AccountingReportController extends Controller
 
         foreach (DB::table('invoices')->where('customer_id', $customerId)
             ->where('status', '!=', 'cancelled')
-            ->get(['invoice_number', 'created_at', 'total']) as $invoice) {
+            ->get(['id', 'invoice_number', 'created_at', 'total', 'payment_method', 'notes', 'due_date']) as $invoice) {
+            $createdAt = (string) $invoice->created_at;
+            $date = substr($createdAt, 0, 10);
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
             $rows[] = [
-                'date' => substr((string) $invoice->created_at, 0, 10),
+                'id' => $invoice->id,
+                'datetime' => $createdAt,
+                'date' => $date,
+                'time' => substr($time, 0, 5),
                 'type' => 'invoice',
+                'type_order' => 1,
                 'label' => 'فاتورة',
                 'number' => (string) $invoice->invoice_number,
                 'debit' => round((float) $invoice->total, 2),
                 'credit' => 0.0,
+                'payment_method' => $invoice->payment_method ?? null,
+                'notes' => $invoice->notes ?? null,
+                'due_date' => $invoice->due_date ?? null,
             ];
         }
 
         foreach (DB::table('payments')->where('customer_id', $customerId)
-            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            ->get(['id', 'payment_number', 'payment_date', 'amount', 'payment_method', 'notes', 'reference', 'created_at']) as $payment) {
             $amount = round((float) $payment->amount, 2);
-
+            $createdAt = (string) $payment->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $pDate = substr((string) $payment->payment_date, 0, 10);
+            $datetime = "{$pDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $payment->payment_date, 0, 10),
+                'id' => $payment->id,
+                'datetime' => $datetime,
+                'date' => $pDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'payment',
+                'type_order' => $amount < 0 ? 2 : 4,
                 'label' => $amount < 0 ? 'استرداد' : 'تحصيل',
                 'number' => (string) $payment->payment_number,
-                // A refund is stored as a negative payment, so it lands on the
-                // other side rather than as a negative credit.
                 'debit' => $amount < 0 ? abs($amount) : 0.0,
                 'credit' => $amount > 0 ? $amount : 0.0,
+                'payment_method' => $payment->payment_method ?? null,
+                'notes' => $payment->notes ?? null,
+                'reference' => $payment->reference ?? null,
             ];
         }
 
         foreach (DB::table('credit_notes')->where('customer_id', $customerId)
-            ->get(['credit_note_number', 'issue_date', 'total']) as $note) {
+            ->whereNull('deleted_at')
+            ->get(['id', 'credit_note_number', 'issue_date', 'total', 'reason', 'notes', 'created_at']) as $note) {
+            $createdAt = (string) $note->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $nDate = substr((string) $note->issue_date, 0, 10);
+            $datetime = "{$nDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $note->issue_date, 0, 10),
+                'id' => $note->id,
+                'datetime' => $datetime,
+                'date' => $nDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'credit_note',
+                'type_order' => 3,
                 'label' => 'إشعار دائن',
                 'number' => (string) $note->credit_note_number,
                 'debit' => 0.0,
                 'credit' => round((float) $note->total, 2),
+                'notes' => $note->notes ?: $note->reason,
             ];
         }
 
@@ -767,19 +860,28 @@ class AccountingReportController extends Controller
         $receipts = DB::table('purchase_receipts as r')
             ->leftJoin('purchase_receipt_items as i', 'i.purchase_receipt_id', '=', 'r.id')
             ->where('r.supplier_id', $supplierId)
-            ->groupBy('r.id', 'r.receipt_number', 'r.receipt_date', 'r.tax_amount')
-            ->selectRaw('r.receipt_number, r.receipt_date, r.tax_amount,
+            ->groupBy('r.id', 'r.receipt_number', 'r.receipt_date', 'r.tax_amount', 'r.notes', 'r.created_at')
+            ->selectRaw('r.id, r.receipt_number, r.receipt_date, r.tax_amount, r.notes, r.created_at,
                          COALESCE(SUM(i.quantity * i.unit_price), 0) as goods')
             ->get();
 
         foreach ($receipts as $receipt) {
+            $createdAt = (string) $receipt->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $rDate = substr((string) $receipt->receipt_date, 0, 10);
+            $datetime = "{$rDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $receipt->receipt_date, 0, 10),
+                'id' => $receipt->id,
+                'datetime' => $datetime,
+                'date' => $rDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'receipt',
+                'type_order' => 1,
                 'label' => 'إيصال استلام',
                 'number' => (string) $receipt->receipt_number,
                 'debit' => 0.0,
                 'credit' => round((float) $receipt->goods + (float) $receipt->tax_amount, 2),
+                'notes' => $receipt->notes ?? null,
             ];
         }
 
@@ -790,9 +892,14 @@ class AccountingReportController extends Controller
                 ->selectRaw('l.id, l.created_at, r.receipt_number,
                              (l.shipping_charges + l.customs_duties + l.insurance_cost + l.other_charges) as total')
                 ->get() as $landed) {
+                $createdAt = (string) $landed->created_at;
                 $rows[] = [
-                    'date' => substr((string) $landed->created_at, 0, 10),
+                    'id' => $landed->id,
+                    'datetime' => $createdAt,
+                    'date' => substr($createdAt, 0, 10),
+                    'time' => strlen($createdAt) >= 19 ? substr($createdAt, 11, 5) : '00:00',
                     'type' => 'landed_cost',
+                    'type_order' => 2,
                     'label' => 'تكاليف إضافية',
                     'number' => (string) ($landed->receipt_number ?? ('#'.$landed->id)),
                     'debit' => 0.0,
@@ -803,28 +910,48 @@ class AccountingReportController extends Controller
 
         foreach (DB::table('supplier_payments')->where('supplier_id', $supplierId)
             ->whereNull('deleted_at')
-            ->get(['payment_number', 'payment_date', 'amount']) as $payment) {
+            ->get(['id', 'payment_number', 'payment_date', 'amount', 'payment_method', 'notes', 'reference', 'created_at']) as $payment) {
+            $createdAt = (string) $payment->created_at;
+            $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+            $pDate = substr((string) $payment->payment_date, 0, 10);
+            $datetime = "{$pDate} {$time}";
             $rows[] = [
-                'date' => substr((string) $payment->payment_date, 0, 10),
+                'id' => $payment->id,
+                'datetime' => $datetime,
+                'date' => $pDate,
+                'time' => substr($time, 0, 5),
                 'type' => 'payment',
+                'type_order' => 4,
                 'label' => 'سداد',
                 'number' => (string) $payment->payment_number,
                 'debit' => round((float) $payment->amount, 2),
                 'credit' => 0.0,
+                'payment_method' => $payment->payment_method ?? null,
+                'notes' => $payment->notes ?? null,
+                'reference' => $payment->reference ?? null,
             ];
         }
 
         if (DB::getSchemaBuilder()->hasTable('purchase_returns')) {
             foreach (DB::table('purchase_returns')->where('supplier_id', $supplierId)
                 ->whereNull('deleted_at')
-                ->get(['return_number', 'return_date', 'credit_amount', 'tax_amount']) as $return) {
+                ->get(['id', 'return_number', 'return_date', 'credit_amount', 'tax_amount', 'notes', 'reason', 'created_at']) as $return) {
+                $createdAt = (string) $return->created_at;
+                $time = strlen($createdAt) >= 19 ? substr($createdAt, 11, 8) : '00:00:00';
+                $rDate = substr((string) $return->return_date, 0, 10);
+                $datetime = "{$rDate} {$time}";
                 $rows[] = [
-                    'date' => substr((string) $return->return_date, 0, 10),
+                    'id' => $return->id,
+                    'datetime' => $datetime,
+                    'date' => $rDate,
+                    'time' => substr($time, 0, 5),
                     'type' => 'return',
+                    'type_order' => 3,
                     'label' => 'مردود مشتريات',
                     'number' => (string) $return->return_number,
                     'debit' => round((float) $return->credit_amount + (float) $return->tax_amount, 2),
                     'credit' => 0.0,
+                    'notes' => $return->notes ?: $return->reason,
                 ];
             }
         }
@@ -1065,14 +1192,29 @@ class AccountingReportController extends Controller
         $net = round($output['amount'] - $input['amount'], 2);
 
         // What the documents of the period say, independently of the ledger.
-        $invoiceTax = round((float) DB::table('invoices')
+        $invoices = DB::table('invoices')
             ->where('status', '!=', 'cancelled')
             ->whereBetween(DB::raw('DATE(created_at)'), [$fromDate, $toDate])
-            ->sum('tax'), 2);
+            ->selectRaw('COUNT(*) n, COALESCE(SUM(tax),0) tax')->first();
+        $invoiceTax = round((float) $invoices->tax, 2);
 
-        $receiptTax = round((float) DB::table('purchase_receipts')
+        $receipts = DB::table('purchase_receipts')
             ->whereBetween('receipt_date', [$fromDate, $toDate])
-            ->sum('tax_amount'), 2);
+            ->selectRaw('COUNT(*) n, COALESCE(SUM(tax_amount),0) tax')->first();
+        $receiptTax = round((float) $receipts->tax, 2);
+
+        // A purchase return gives back the tax its receipt claimed, and posts
+        // it out of input VAT. Leaving it off this side reported every period
+        // with a return as not matching the ledger.
+        $returns = DB::getSchemaBuilder()->hasTable('purchase_returns')
+            ? DB::table('purchase_returns')
+                ->whereNull('deleted_at')
+                ->where('status', '!=', 'cancelled')
+                ->whereBetween('return_date', [$fromDate, $toDate])
+                ->selectRaw('COUNT(*) n, COALESCE(SUM(tax_amount),0) tax')->first()
+            : (object) ['n' => 0, 'tax' => 0];
+        $returnTax = round((float) $returns->tax, 2);
+        $netInputDocuments = round($receiptTax - $returnTax, 2);
 
         $revenue = $this->movementsByType(['revenue'], $fromDate, $toDate)
             ->whereIn('posting_role', ['sales_revenue', 'additional_charges_revenue'])
@@ -1092,17 +1234,75 @@ class AccountingReportController extends Controller
                 'documents' => [
                     'invoice_tax' => $invoiceTax,
                     'receipt_tax' => $receiptTax,
+                    'purchase_return_tax' => $returnTax,
+                    'net_input_tax' => $netInputDocuments,
+                    'invoice_count' => (int) $invoices->n,
+                    'receipt_count' => (int) $receipts->n,
+                    'purchase_return_count' => (int) $returns->n,
                 ],
                 // A document total that disagrees with the account means
                 // something did not post, or posted twice.
                 'reconciliation' => [
                     'output_difference' => round($invoiceTax - $output['amount'], 2),
-                    'input_difference' => round($receiptTax - $input['amount'], 2),
+                    'input_difference' => round($netInputDocuments - $input['amount'], 2),
                     'output_matches' => abs($invoiceTax - $output['amount']) < self::EPSILON,
-                    'input_matches' => abs($receiptTax - $input['amount']) < self::EPSILON,
+                    'input_matches' => abs($netInputDocuments - $input['amount']) < self::EPSILON,
                 ],
+                'months' => $this->vatByMonth($fromDate, $toDate),
             ],
         ]);
+    }
+
+    /**
+     * Output, input and net tax per calendar month of the period.
+     *
+     * A return usually covers a quarter; which month the tax arose in is the
+     * first thing to look at when the total is not what was expected. Grouped
+     * in PHP so the same code runs on MySQL and SQLite.
+     *
+     * @return array<int,array{month:string,output:float,input:float,net:float}>
+     */
+    private function vatByMonth(string $fromDate, string $toDate): array
+    {
+        $accounts = LedgerAccount::whereIn('posting_role', ['tax_payable', 'input_vat'])->get(['id', 'type', 'posting_role']);
+
+        $months = [];
+        for ($m = \Carbon\Carbon::parse($fromDate)->startOfMonth(); $m->lte(\Carbon\Carbon::parse($toDate)); $m->addMonth()) {
+            $months[$m->format('Y-m')] = ['month' => $m->format('Y-m'), 'output' => 0.0, 'input' => 0.0, 'net' => 0.0];
+        }
+
+        if ($accounts->isEmpty() || count($months) > 36) {
+            return array_values($months);
+        }
+
+        $rows = DB::table('journal_entry_lines as l')
+            ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+            ->whereIn('l.account_id', $accounts->pluck('id'))
+            ->whereNull('h.deleted_at')
+            ->whereNotIn('h.status', self::UNPOSTED_STATUSES)
+            ->whereBetween(DB::raw('DATE(h.entry_date)'), [$fromDate, $toDate])
+            ->groupBy('l.account_id', DB::raw('DATE(h.entry_date)'))
+            ->selectRaw('l.account_id, DATE(h.entry_date) d, COALESCE(SUM(l.debit),0) dr, COALESCE(SUM(l.credit),0) cr')
+            ->get();
+
+        $byId = $accounts->keyBy('id');
+
+        foreach ($rows as $row) {
+            $key = substr((string) $row->d, 0, 7);
+            $account = $byId[$row->account_id];
+            if (! isset($months[$key])) {
+                continue;
+            }
+            $amount = LedgerAccount::signedDelta($account->type, (float) $row->dr, (float) $row->cr);
+            $side = $account->posting_role === 'tax_payable' ? 'output' : 'input';
+            $months[$key][$side] = round($months[$key][$side] + $amount, 2);
+        }
+
+        foreach ($months as &$month) {
+            $month['net'] = round($month['output'] - $month['input'], 2);
+        }
+
+        return array_values($months);
     }
 
     /**

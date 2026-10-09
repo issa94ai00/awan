@@ -41,6 +41,7 @@ class Product extends Model implements Sitemapable
         'tax_rate',
         'taxable',
         'unit',
+        'pack_quantity',
         'min_stock',
         'max_stock',
         'reorder_point',
@@ -67,6 +68,7 @@ class Product extends Model implements Sitemapable
         'cost_price' => 'decimal:5',
         'tax_rate' => 'decimal:2',
         'taxable' => 'boolean',
+        'pack_quantity' => 'integer',
         'weight' => 'decimal:2',
         'length' => 'decimal:2',
         'width' => 'decimal:2',
@@ -159,6 +161,75 @@ class Product extends Model implements Sitemapable
     public function variants(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    /**
+     * One row per variant instead of one row per product, so the storefront
+     * can list each size/colour as its own item. A product with no variants
+     * still comes back once, with a null `variant_id`.
+     *
+     * The variant's columns are aliased (`variant_*`) because `product_variants`
+     * shares sku, barcode, price, size and color with `products`; any condition
+     * added to a query using this scope must qualify its columns.
+     */
+    public function scopeWithVariantRows(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query
+            ->leftJoin('product_variants as pv', 'pv.product_id', '=', 'products.id')
+            ->select('products.*')
+            ->addSelect([
+                'pv.id as variant_id',
+                'pv.sku as variant_sku',
+                'pv.barcode as variant_barcode',
+                'pv.price as variant_price',
+                'pv.cost_price as variant_cost_price',
+                'pv.stock_quantity as variant_stock_quantity',
+                'pv.color as variant_color',
+                'pv.size as variant_size',
+                'pv.material as variant_material',
+            ]);
+    }
+
+    /**
+     * The storefront's listing orders — newest, price either way, name — for a
+     * query with or without withVariantRows(). Unpriced rows ("ask for a
+     * price") go last under a price sort rather than first as the cheapest,
+     * and a tie-break on id keeps rows from swapping between pages.
+     */
+    public function scopeStorefrontSort(\Illuminate\Database\Eloquent\Builder $query, ?string $sort, bool $variantRows, ?string $lang = null): \Illuminate\Database\Eloquent\Builder
+    {
+        $priceSql = $variantRows ? self::variantRowPriceSql() : 'products.price';
+        $unpricedLast = "CASE WHEN COALESCE({$priceSql}, 0) <= 0 THEN 1 ELSE 0 END";
+
+        match ($sort) {
+            'price_asc' => $query->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} asc"),
+            'price_desc' => $query->orderByRaw($unpricedLast)->orderByRaw("{$priceSql} desc"),
+            'name' => $query->orderBy($lang === 'en' ? 'products.name_en' : 'products.name_ar'),
+            default => $query->orderByDesc('products.created_at'),
+        };
+
+        return $query->orderBy('products.id')->when($variantRows, fn ($q) => $q->orderBy('pv.id'));
+    }
+
+    /**
+     * In stock the way the storefront card's badge says it: the product is,
+     * and the size listed has stock (or keeps none of its own).
+     */
+    public function scopeStorefrontInStock(\Illuminate\Database\Eloquent\Builder $query, bool $variantRows): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where('products.in_stock', 1)
+            ->when($variantRows, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)));
+    }
+
+    /**
+     * The price a shopper pays for a row from withVariantRows(): the variant's
+     * own price when it has one, otherwise the product's. Cast so the two
+     * tables' decimal columns compare as numbers on every driver.
+     */
+    public static function variantRowPriceSql(): string
+    {
+        return 'CAST(CASE WHEN pv.id IS NOT NULL AND pv.price > 0 THEN pv.price'
+            .' ELSE products.price END AS DECIMAL(20, 5))';
     }
 
     public function warehouseAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany

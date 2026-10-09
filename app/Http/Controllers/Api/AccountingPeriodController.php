@@ -38,6 +38,7 @@ class AccountingPeriodController extends Controller
                 // What today is subject to, so a screen can warn before someone
                 // starts entering documents that will be refused.
                 'today_is_closed' => AccountingPeriod::isClosed(now()->toDateString()),
+                'today' => now()->toDateString(),
             ],
         ]);
     }
@@ -78,6 +79,62 @@ class AccountingPeriodController extends Controller
     }
 
     /**
+     * Creates several periods at once — in practice the missing months of a
+     * year, which otherwise meant filling the same form twelve times.
+     *
+     * A period that would overlap an existing one is skipped and named rather
+     * than failing the rest: the point is to cover what is not covered.
+     */
+    public function batch(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'periods' => 'required|array|min:1|max:60',
+            'periods.*.name' => 'required|string|max:100',
+            'periods.*.start_date' => 'required|date',
+            'periods.*.end_date' => 'required|date',
+        ]);
+
+        $created = [];
+        $skipped = [];
+
+        DB::transaction(function () use ($validated, &$created, &$skipped) {
+            foreach ($validated['periods'] as $row) {
+                if ($row['end_date'] < $row['start_date']) {
+                    $skipped[] = $row['name'];
+
+                    continue;
+                }
+
+                $overlaps = AccountingPeriod::where('start_date', '<=', $row['end_date'])
+                    ->where('end_date', '>=', $row['start_date'])
+                    ->exists();
+
+                if ($overlaps) {
+                    $skipped[] = $row['name'];
+
+                    continue;
+                }
+
+                $created[] = AccountingPeriod::create([
+                    'name' => $row['name'],
+                    'start_date' => $row['start_date'],
+                    'end_date' => $row['end_date'],
+                    'status' => AccountingPeriod::STATUS_OPEN,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'تم إنشاء '.count($created).' فترة',
+            'data' => [
+                'created' => collect($created)->map(fn ($period) => $this->present($period))->values(),
+                'skipped' => $skipped,
+            ],
+        ], 201);
+    }
+
+    /**
      * Closes a period.
      *
      * Refuses while the period still holds an entry whose own lines do not add
@@ -108,7 +165,7 @@ class AccountingPeriodController extends Controller
             'status' => AccountingPeriod::STATUS_CLOSED,
             'closed_at' => now(),
             'closed_by' => auth()->id(),
-            'notes' => $request->input('notes', $accountingPeriod->notes),
+            'notes' => $this->withReason($request, $accountingPeriod, 'إقفال'),
         ]);
 
         return response()->json([
@@ -133,7 +190,7 @@ class AccountingPeriodController extends Controller
             'status' => AccountingPeriod::STATUS_OPEN,
             'reopened_at' => now(),
             'reopened_by' => auth()->id(),
-            'notes' => $request->input('notes', $accountingPeriod->notes),
+            'notes' => $this->withReason($request, $accountingPeriod, 'إعادة فتح'),
         ]);
 
         return response()->json([
@@ -183,7 +240,32 @@ class AccountingPeriodController extends Controller
             'notes' => $period->notes,
             // How much is being frozen, so closing is not a blind decision.
             'entry_count' => $this->entryCount($period),
+            // What would make closing refuse, known before anyone presses it.
+            'unbalanced_entries' => $period->status === AccountingPeriod::STATUS_OPEN
+                ? $this->unbalancedCount($period)
+                : 0,
         ];
+    }
+
+    /**
+     * The period's notes with the reason for this close or reopen added.
+     *
+     * The reason is appended rather than replacing the notes: the column only
+     * holds the latest closer and reopener, and the notes are where the earlier
+     * turns of the lock stay readable. A plain `notes` still replaces them, as
+     * before.
+     */
+    private function withReason(Request $request, AccountingPeriod $period, string $action): ?string
+    {
+        $reason = trim((string) $request->input('reason', ''));
+
+        if ($reason === '') {
+            return $request->input('notes', $period->notes);
+        }
+
+        $line = sprintf('[%s — %s — %s] %s', now()->format('Y-m-d H:i'), $action, auth()->user()?->name ?? '—', $reason);
+
+        return mb_substr(trim(($period->notes ? $period->notes."\n" : '').$line), -1000);
     }
 
     /**

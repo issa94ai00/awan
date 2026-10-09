@@ -6,6 +6,9 @@ import router from '@/router';
 export const useInvoicesStore = defineStore('invoices', {
     state: () => ({
         invoices: [],
+        // Counts, billed/collected/owed and aging over the whole search —
+        // InvoiceController::listSummary(). Only sent when asked for.
+        summary: null,
         currentInvoice: null,
         loading: false,
         error: null,
@@ -40,6 +43,7 @@ export const useInvoicesStore = defineStore('invoices', {
                 // Some endpoints return data structure with invoices/pagination
                 if (data.data && data.data.invoices) {
                     this.invoices = data.data.invoices;
+                    if (data.data.summary) this.summary = data.data.summary;
                     const p = data.data.pagination || {};
                     this.pagination = {
                         current_page: p.current_page || 1,

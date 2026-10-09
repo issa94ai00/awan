@@ -5,6 +5,8 @@ export const useAccountingPeriodsStore = defineStore('accountingPeriods', {
     state: () => ({
         periods: [],
         todayIsClosed: false,
+        // The server's date, so "today" means the same day the lock is checked on.
+        today: null,
         loading: false,
         saving: false,
         error: null,
@@ -19,6 +21,7 @@ export const useAccountingPeriodsStore = defineStore('accountingPeriods', {
                 const data = res.data?.data || {};
                 this.periods = data.periods || [];
                 this.todayIsClosed = Boolean(data.today_is_closed);
+                this.today = data.today || null;
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load accounting periods';
                 throw error;

@@ -13,6 +13,22 @@ use Illuminate\Validation\ValidationException;
 class ProductVariantController extends Controller
 {
     /**
+     * A variant's own details: an ordered list of label/value rows. The
+     * value is what matters; a row may leave its label blank.
+     *
+     * @return array<string, string>
+     */
+    private static function specsRules(): array
+    {
+        return [
+            'specs' => 'sometimes|nullable|array|max:30',
+            'specs.*' => 'array',
+            'specs.*.label' => 'nullable|string|max:100',
+            'specs.*.value' => 'nullable|string|max:255',
+        ];
+    }
+
+    /**
      * Create a new variant under a product.
      */
     public function store(Request $request): JsonResponse
@@ -28,7 +44,12 @@ class ProductVariantController extends Controller
                 'price' => 'required|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'stock_quantity' => 'required|integer|min:0',
+                ...self::specsRules(),
             ]);
+
+            if (array_key_exists('specs', $validated)) {
+                $validated['specs'] = ProductVariant::normaliseSpecs($validated['specs']);
+            }
 
             $variant = ProductVariant::create($validated);
 
@@ -53,7 +74,7 @@ class ProductVariantController extends Controller
     }
 
     /**
-     * Quick partial update for a variant's price/size/color/material/stock —
+     * Quick partial update for a variant's price/size/color/material/stock/details —
      * used by the price-offer list's inline row editors and the product form.
      */
     public function update(Request $request, $variant): JsonResponse
@@ -70,7 +91,12 @@ class ProductVariantController extends Controller
                 'price' => 'sometimes|required|numeric|min:0',
                 'cost_price' => 'sometimes|nullable|numeric|min:0',
                 'stock_quantity' => 'sometimes|required|integer|min:0',
+                ...self::specsRules(),
             ]);
+
+            if (array_key_exists('specs', $validated)) {
+                $validated['specs'] = ProductVariant::normaliseSpecs($validated['specs']);
+            }
 
             $variant->update($validated);
 

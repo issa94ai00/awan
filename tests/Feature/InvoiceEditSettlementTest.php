@@ -235,16 +235,15 @@ it('does not reissue against a cancelled invoice', function () {
     // Cancelling gave the goods back and reversed the entries.
     expect(($this->onHand)($this->product, $this->main))->toBe(20);
 
+    // A cancelled invoice is void: the edit is refused outright, so it can
+    // neither take the stock out again for a sale that is not happening nor
+    // post a correction to entries already reversed.
     ($this->edit)($id, [
         ['product_id' => $this->product->id, 'quantity' => 2, 'unit_price' => 250, 'warehouse_id' => $this->main->id],
-    ])->assertOk();
+    ])->assertUnprocessable();
 
-    // Editing it must not take the stock out again for a sale that is not
-    // happening, or post a correction to entries already reversed. The lines
-    // are left uncosted, which is what the report should say about goods no
-    // issue stands behind.
     expect(($this->onHand)($this->product, $this->main))->toBe(20)
-        ->and(InvoiceItem::first()->total_cost)->toBeNull()
+        ->and((int) InvoiceItem::first()->quantity)->toBe(4)
         ->and(JournalEntryHeader::where('posting_key', 'invoice_adjust:'.$id.':1')->exists())->toBeFalse();
 });
 

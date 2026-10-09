@@ -85,7 +85,7 @@ export function useStockShortage() {
         return true;
     };
 
-    return { handleStockShortage };
+    return { handleStockShortage, canRaisePurchaseOrder };
 }
 
 /**

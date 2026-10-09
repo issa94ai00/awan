@@ -1,44 +1,67 @@
 <template>
-    <el-card shadow="hover" class="top-performers-card">
-        <template #header>
-            <span>{{ title }}</span>
-        </template>
-
+    <CollapsibleCard
+        id="top-performers"
+        :title="title"
+        :count="rows.length || null"
+        class="top-performers-card"
+        @active-change="emit('active-change', $event)"
+    >
         <el-table v-loading="loading" :data="rows" style="width: 100%" stripe>
-            <el-table-column :label="$t('rank')" width="80">
+            <el-table-column :label="$t('rank')" width="90" align="center">
                 <template #default="{ $index }">
-                    <el-tag :type="rankType($index)" :effect="rankEffect($index)" size="small">
+                    <span v-if="$index === 0" class="podium-badge podium-1" title="1st Place">
+                        <i class="fas fa-trophy"></i> 1
+                    </span>
+                    <span v-else-if="$index === 1" class="podium-badge podium-2" title="2nd Place">
+                        <i class="fas fa-medal"></i> 2
+                    </span>
+                    <span v-else-if="$index === 2" class="podium-badge podium-3" title="3rd Place">
+                        <i class="fas fa-medal"></i> 3
+                    </span>
+                    <span v-else class="podium-badge podium-other">
                         {{ $index + 1 }}
-                    </el-tag>
+                    </span>
                 </template>
             </el-table-column>
-            <el-table-column prop="employee_name" :label="$t('employee')" />
-            <el-table-column :prop="countKey" :label="countLabel" />
-            <el-table-column :label="$t('total_sales')">
+
+            <el-table-column prop="employee_name" :label="$t('employee')" min-width="150">
                 <template #default="{ row }">
-                    <strong>{{ formatMoney(row.total_sales) }}</strong>
+                    <div class="employee-cell">
+                        <span class="employee-avatar">{{ getInitials(row.employee_name) }}</span>
+                        <strong class="employee-name">{{ row.employee_name || '-' }}</strong>
+                    </div>
                 </template>
             </el-table-column>
-            <el-table-column :label="averageLabel">
-                <template #default="{ row }">{{ formatMoney(row[averageKey]) }}</template>
+
+            <el-table-column :prop="countKey" :label="countLabel" width="110" align="center">
+                <template #default="{ row }">
+                    <span class="count-pill">{{ Number(row[countKey] || 0).toLocaleString() }}</span>
+                </template>
+            </el-table-column>
+
+            <el-table-column :label="$t('total_sales')" min-width="140">
+                <template #default="{ row }">
+                    <strong class="sales-amount">{{ formatMoney(row.total_sales) }}</strong>
+                </template>
+            </el-table-column>
+
+            <el-table-column :label="averageLabel" min-width="140">
+                <template #default="{ row }">
+                    <span class="average-amount">{{ formatMoney(row[averageKey]) }}</span>
+                </template>
             </el-table-column>
 
             <template #empty>
                 <span class="table-empty">{{ $t('no_data_for_current_filters') }}</span>
             </template>
         </el-table>
-    </el-card>
+    </CollapsibleCard>
 </template>
 
 <script setup>
 import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
-/**
- * The ranked employee table both the orders and invoices tabs end on —
- * identical shape, only the count/average field names differ (orders count
- * orders and average order value; invoices count invoices and average
- * invoice value).
- */
 defineProps({
     title: { type: String, required: true },
     loading: { type: Boolean, default: false },
@@ -49,33 +72,112 @@ defineProps({
     averageLabel: { type: String, required: true },
 });
 
-const formatMoney = (value) => formatMoneyWith(value);
+const emit = defineEmits(['active-change']);
 
-/**
- * The podium reads top-down, not as an alert.
- *
- * First place used to be tagged 'danger' — red, the colour this admin uses
- * everywhere else for a loss or a failure — with second in warning amber and
- * third in green. So the best performer on the page was the one flagged in
- * red, and the ranking ran through three unrelated hues in no order the eye
- * could follow. One colour, descending in emphasis, says "ranked" instead.
- */
-const rankType = (index) => (index < 3 ? 'primary' : 'info');
+const formatMoney = (value) => formatMoneyWith(value || 0);
 
-/** Emphasis carries the order the hue no longer has to: solid, light, plain. */
-const rankEffect = (index) => {
-    if (index === 0) return 'dark';
-    return index < 3 ? 'light' : 'plain';
+const getInitials = (name) => {
+    if (!name) return 'EMP';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
 };
 </script>
 
 <style scoped>
 .top-performers-card {
     border-radius: 1rem;
+    border: 1px solid #edf2f7;
+}
+
+.podium-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.podium-1 {
+    background: #fef9c3;
+    color: #a16207;
+    border: 1px solid #fde047;
+    box-shadow: 0 1px 4px rgba(234, 179, 8, 0.2);
+}
+
+.podium-2 {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
+.podium-3 {
+    background: #ffedd5;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.podium-other {
+    background: #f8fafc;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    font-weight: 600;
+}
+
+.employee-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.employee-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 0.72rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.employee-name {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.count-pill {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    background: #f1f5f9;
+    color: #334155;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
+.sales-amount {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.average-amount {
+    color: #475569;
+    font-size: 0.88rem;
 }
 
 .table-empty {
     color: #94a3b8;
     font-size: 0.85rem;
+}
+
+:deep(.el-table) {
+    font-variant-numeric: tabular-nums;
 }
 </style>

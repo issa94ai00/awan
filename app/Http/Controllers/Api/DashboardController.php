@@ -31,6 +31,7 @@ use App\Models\Dashboard as AnalyticsDashboard;
 use App\Models\AnalyticsMetric;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -59,6 +60,15 @@ class DashboardController extends Controller
                     ->whereIn('status', $revenueStatuses)
                     ->sum('total'),
                 'total' => (float) Invoice::whereIn('status', $revenueStatuses)->sum('total'),
+                // The same stretch of last month (1st up to today's moment), so
+                // "this month" is compared like for like mid-month rather than
+                // against a whole finished month.
+                'previous_month_to_date' => (float) Invoice::whereBetween('created_at', [
+                    $monthStart->copy()->subMonthNoOverflow(),
+                    now()->subMonthNoOverflow(),
+                ])
+                    ->whereIn('status', $revenueStatuses)
+                    ->sum('total'),
             ];
 
             // Total sales (all statuses except cancelled)
@@ -81,6 +91,14 @@ class DashboardController extends Controller
                 'pending' => Invoice::where('status', Invoice::STATUS_PENDING)->count(),
                 'cancelled' => Invoice::where('status', Invoice::STATUS_CANCELLED)->count(),
             ];
+
+            // Every stage in one query; the dashboard charts these instead of a
+            // "paid" count, which no invoice status represents.
+            $invoiceStatusBreakdown = Invoice::query()
+                ->select('status', DB::raw('COUNT(*) as aggregate'))
+                ->groupBy('status')
+                ->pluck('aggregate', 'status')
+                ->map(fn ($count) => (int) $count);
 
             $paymentAmounts = [
                 'completed' => (float) Payment::where('status', Payment::STATUS_COMPLETED)->sum('amount'),
@@ -195,6 +213,29 @@ class DashboardController extends Controller
                     ];
                 });
 
+            // Best sellers by base units sold over the last 30 days, from the
+            // invoice lines of every invoice that wasn't cancelled.
+            $bestSellers = DB::table('invoice_items')
+                ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+                ->join('products', 'products.id', '=', 'invoice_items.product_id')
+                ->where('invoices.status', '!=', Invoice::STATUS_CANCELLED)
+                ->where('invoices.created_at', '>=', now()->subDays(30))
+                ->groupBy('invoice_items.product_id', 'products.name_ar', 'products.name_en', 'products.image_main')
+                ->selectRaw('invoice_items.product_id as id, products.name_ar, products.name_en, products.image_main,
+                    SUM(invoice_items.quantity * COALESCE(invoice_items.unit_multiplier, 1)) as units_sold,
+                    SUM(invoice_items.total_price) as revenue')
+                ->orderByDesc('units_sold')
+                ->limit(5)
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => $row->id,
+                    'name_ar' => $row->name_ar,
+                    'name_en' => $row->name_en,
+                    'units_sold' => (float) $row->units_sold,
+                    'revenue' => (float) $row->revenue,
+                    'image' => image_url($row->image_main),
+                ]);
+
             $lowStockProducts = Product::whereColumn('stock_quantity', '<=', 'min_stock')
                 ->where('is_active', 1)
                 ->orderBy('stock_quantity')
@@ -287,6 +328,7 @@ class DashboardController extends Controller
                     'invoices' => array_merge([
                         'revenue' => $invoiceRevenue,
                         'total_sales' => $totalSales,
+                        'status_breakdown' => $invoiceStatusBreakdown,
                     ], $invoiceCounts),
                     'payments' => array_merge(['amounts' => $paymentAmounts], $paymentCounts),
                     'quotes' => $quoteCounts,
@@ -296,6 +338,7 @@ class DashboardController extends Controller
                     'purchase_receipts' => $purchaseReceiptCounts,
                     'recent_invoices' => $recentInvoices,
                     'top_products' => $topProducts,
+                    'best_sellers' => $bestSellers,
                     'low_stock_products' => $lowStockProducts,
                     'wms' => $wmsStats,
                     'rma' => $rmaStats,

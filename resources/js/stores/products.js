@@ -4,6 +4,10 @@ import api from '@/api/index';
 import { useAuthStore } from '@/stores/auth';
 import router from '@/router';
 
+// Numbers each list request, so a slow earlier response can't land after a
+// later one and put stale rows on screen.
+let fetchSeq = 0;
+
 export const useProductsStore = defineStore('products', {
     state: () => ({
         products: [],
@@ -26,7 +30,11 @@ export const useProductsStore = defineStore('products', {
             sort_order: 'desc'
         },
         selectedProducts: [],
-        categories: []
+        categories: [],
+        // Catalogue-wide counts for the admin list's cards (with_summary).
+        summary: null,
+        // The admin list's URL query, so edit/show pages can return to it.
+        adminListQuery: null
     }),
 
     getters: {
@@ -126,6 +134,7 @@ export const useProductsStore = defineStore('products', {
         },
 
         async fetchProducts(params = {}) {
+            const seq = ++fetchSeq;
             this.loading = true;
             this.error = null;
             try {
@@ -136,11 +145,16 @@ export const useProductsStore = defineStore('products', {
                 const queryParams = {
                     page: params.page || this.pagination.current_page,
                     per_page: params.per_page || this.pagination.per_page,
-                    search: params.search || this.filters.search || undefined,
-                    category_id: params.category_id || this.filters.category_id || undefined,
-                    featured: params.featured !== undefined ? params.featured : (this.filters.featured !== null ? this.filters.featured : undefined),
-                    in_stock: params.stock !== undefined ? params.stock : (this.filters.stock !== null ? this.filters.stock : undefined),
+                    // A key the caller passes, even as undefined, is that
+                    // caller's answer: falling back to the remembered filter
+                    // made a cleared search box or category keep filtering.
+                    search: ('search' in params ? params.search : this.filters.search) || undefined,
+                    category_id: ('category_id' in params ? params.category_id : this.filters.category_id) || undefined,
+                    featured: 'featured' in params ? params.featured : (this.filters.featured !== null ? this.filters.featured : undefined),
+                    in_stock: 'stock' in params ? params.stock : (this.filters.stock !== null ? this.filters.stock : undefined),
                     is_active: params.is_active !== undefined ? params.is_active : undefined,
+                    stock_level: params.stock_level || undefined,
+                    with_summary: params.with_summary ? 1 : undefined,
                     sort_by: params.sort_by || this.filters.sort_by,
                     sort_order: params.sort_order || this.filters.sort_order,
                     sort: params.sort || undefined,
@@ -162,6 +176,7 @@ export const useProductsStore = defineStore('products', {
                 }
 
                 const responseData = response.data;
+                if (seq !== fetchSeq) return responseData;
 
                 if (responseData.data) {
                     this.products = responseData.data;
@@ -194,19 +209,23 @@ export const useProductsStore = defineStore('products', {
                     };
                 }
 
-                if (params.search !== undefined) this.filters.search = params.search;
-                if (params.category_id !== undefined) this.filters.category_id = params.category_id;
-                if (params.featured !== undefined) this.filters.featured = params.featured;
-                if (params.stock !== undefined) this.filters.stock = params.stock;
+                if (responseData.summary) this.summary = responseData.summary;
+
+                if ('search' in params) this.filters.search = params.search ?? '';
+                if ('category_id' in params) this.filters.category_id = params.category_id ?? null;
+                if ('featured' in params) this.filters.featured = params.featured ?? null;
+                if ('stock' in params) this.filters.stock = params.stock ?? null;
 
                 this.selectedProducts = [];
                 return responseData;
             } catch (error) {
+                // A newer request owns the screen; this one's failure is moot.
+                if (seq !== fetchSeq) return null;
                 this.error = error.response?.data?.message || error.message || 'Failed to fetch products';
                 console.error('Fetch products error:', error);
                 throw error;
             } finally {
-                this.loading = false;
+                if (seq === fetchSeq) this.loading = false;
             }
         },
 
@@ -297,7 +316,7 @@ export const useProductsStore = defineStore('products', {
             try {
                 const results = await Promise.allSettled(ids.map(id => productsApi.delete(id)));
                 const succeeded = ids.filter((id, i) => results[i].status === 'fulfilled');
-                this.products = this.products.filter(p => succeeded.includes(p.id));
+                this.products = this.products.filter(p => !succeeded.includes(p.id));
                 this.selectedProducts = this.selectedProducts.filter(s => !succeeded.includes(s));
                 return { succeeded, failed: ids.length - succeeded.length };
             } catch (error) {
@@ -408,7 +427,8 @@ export const useProductsStore = defineStore('products', {
                 category_id: params.category_id || undefined,
                 featured: params.featured !== undefined ? params.featured : undefined,
                 in_stock: params.stock !== undefined ? params.stock : undefined,
-                is_active: params.is_active !== undefined ? params.is_active : undefined
+                is_active: params.is_active !== undefined ? params.is_active : undefined,
+                stock_level: params.stock_level || undefined
             });
         },
 

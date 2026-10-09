@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\ProductVariant;
 use App\Models\Expense;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -16,6 +17,7 @@ use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\GoodsIssueService;
+use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -31,9 +33,49 @@ class InvoiceController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Invoice::query()->with(['items.product', 'customer']);
+            // The invoices screen asks for `lean`: it shows who, how much and
+            // what is owed, not the lines, and loading every line with its
+            // product and variant for every row cost more than the rest. Other
+            // callers (the returns picker) still get the lines.
+            $query = $request->boolean('lean')
+                ? Invoice::query()->with(['customer:id,name,phone,email,company', 'salesOrder:id,order_number'])->withCount('items')
+                    ->withSum(['creditNotes as credited_total' => fn ($q) => $q->where('status', '!=', 'cancelled')], 'total')
+                : Invoice::query()->with(['items.product', 'items.variant', 'customer']);
 
-            // Filter by status
+            if ($request->filled('customer_id')) {
+                $query->where('customer_id', $request->customer_id);
+            }
+
+            if ($request->filled('payment_method')) {
+                $query->where('payment_method', $request->payment_method);
+            }
+
+            if ($request->filled('date_from')) {
+                $query->whereDate('created_at', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $query->whereDate('created_at', '<=', $request->date_to);
+            }
+
+            // Raised directly at the counter, or from a sales order.
+            if ($request->input('source') === 'direct') {
+                $query->whereNull('sales_order_id');
+            } elseif ($request->input('source') === 'order') {
+                $query->whereNotNull('sales_order_id');
+            }
+
+            if ($request->filled('search')) {
+                $query->whereSearch([
+                    'invoice_number', 'notes',
+                    'customer.name', 'customer.phone', 'customer.company',
+                    'salesOrder.order_number',
+                ], $request->search);
+            }
+
+            // The cards and tab counts describe the search, before the status
+            // and payment filters narrow it — they are how those are picked.
+            $summary = $request->boolean('with_summary') ? $this->listSummary(clone $query) : null;
+
             if ($request->filled('status')) {
                 // A caller narrowing to "any of these statuses" (e.g. the RMA
                 // picker, which accepts confirmed or delivered invoices) sends
@@ -45,43 +87,46 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Filter by customer_id
-            if ($request->filled('customer_id')) {
-                $query->where('customer_id', $request->customer_id);
+            // Paid state is read from total, credit notes and paid — see
+            // OWED_SQL — rather than the stored due column.
+            $owed = self::OWED_SQL;
+            match ($request->input('payment')) {
+                'unpaid' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->whereRaw("{$owed} > 0.009")->where('paid_amount', '<=', 0.009),
+                'partial' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->whereRaw("{$owed} > 0.009")->where('paid_amount', '>', 0.009),
+                'due' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} > 0.009"),
+                'paid' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} <= 0.009"),
+                'credit' => $query->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$owed} < -0.009"),
+                default => null,
+            };
+
+            // Still owed after this many days.
+            if (in_array((int) $request->input('older_than'), [30, 60, 90], true)) {
+                $query->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->whereRaw("{$owed} > 0.009")
+                    ->where('created_at', '<', now()->startOfDay()->subDays((int) $request->input('older_than')));
             }
 
-            // Filter by payment method
-            if ($request->filled('payment_method')) {
-                $query->where('payment_method', $request->payment_method);
+            $sort = in_array($request->input('sort'), ['created_at', 'total', 'invoice_number'], true)
+                ? $request->input('sort')
+                : 'created_at';
+            if ($request->input('sort') === 'due') {
+                $query->orderByRaw("({$owed}) ".($request->input('direction') === 'asc' ? 'asc' : 'desc'));
+            } else {
+                $query->orderBy($sort, $request->input('direction') === 'asc' ? 'asc' : 'desc');
             }
+            $query->orderByDesc('id');
 
-            // Filter by date range
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
-            }
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
-            }
-
-            // Filter by customer name or phone or invoice number
-            if ($request->filled('search')) {
-                $search = '%' . $request->search . '%';
-                $query->where(function ($q) use ($search) {
-                    $q->where('invoice_number', 'like', $search)
-                        ->orWhereHas('customer', function ($qCustomer) use ($search) {
-                            $qCustomer->where('name', 'like', $search)
-                                ->orWhere('phone', 'like', $search);
-                        });
-                });
-            }
-
-            $invoices = $query->latest()->paginate($request->input('per_page', 15));
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 200);
+            $invoices = $query->paginate($perPage);
 
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفواتير بنجاح',
                 'data' => [
                     'invoices' => InvoiceResource::collection($invoices->items()),
+                    'summary' => $summary,
                     'pagination' => [
                         'current_page' => $invoices->currentPage(),
                         'last_page' => $invoices->lastPage(),
@@ -99,6 +144,73 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * What an invoice still owes, in SQL: its total, less the credit notes
+     * raised against it (a return settles part of the bill without any money
+     * moving), less what was paid. Negative when the customer paid more.
+     */
+    public const OWED_SQL = "(invoices.total - invoices.paid_amount - COALESCE((SELECT SUM(cn.total) FROM credit_notes cn WHERE cn.invoice_id = invoices.id AND cn.status != 'cancelled'), 0))";
+
+    /**
+     * Counts per status, what was billed and collected, what is still owed —
+     * aged by how long it has been owed — and credits held by customers who
+     * paid more than the invoice. Cancelled invoices bill nothing.
+     */
+    private function listSummary($query): array
+    {
+        $base = fn () => (clone $query)->reorder()->setEagerLoads([]);
+
+        $byStatus = $base()->getQuery()
+            ->select('status', DB::raw('COUNT(*) as n'))
+            ->groupBy('status')
+            ->pluck('n', 'status');
+
+        $today = now()->startOfDay();
+        $raw = self::OWED_SQL;
+        $owed = "CASE WHEN {$raw} > 0.009 THEN {$raw} ELSE 0 END";
+        $bucket = fn (?int $from, ?int $to) => "COALESCE(SUM(CASE WHEN {$raw} > 0.009"
+            .($from !== null ? " AND invoices.created_at < '".$today->copy()->subDays($from)->toDateTimeString()."'" : '')
+            .($to !== null ? " AND invoices.created_at >= '".$today->copy()->subDays($to)->toDateTimeString()."'" : '')
+            ." THEN {$raw} ELSE 0 END), 0)";
+
+        // select([]) first: the list query carries its own columns (the line
+        // count), which an aggregate cannot sit beside.
+        $live = $base()->where('status', '!=', Invoice::STATUS_CANCELLED)->getQuery()->select([])
+            ->selectRaw('COUNT(*) as n')
+            ->selectRaw('COALESCE(SUM(invoices.total), 0) as billed')
+            ->selectRaw('COALESCE(SUM(CASE WHEN invoices.paid_amount < invoices.total THEN invoices.paid_amount ELSE invoices.total END), 0) as collected')
+            ->selectRaw("COALESCE(SUM({$owed}), 0) as outstanding")
+            ->selectRaw("SUM(CASE WHEN {$raw} > 0.009 THEN 1 ELSE 0 END) as outstanding_count")
+            ->selectRaw($bucket(null, 30).' as age_0_30')
+            ->selectRaw($bucket(30, 60).' as age_31_60')
+            ->selectRaw($bucket(60, 90).' as age_61_90')
+            ->selectRaw($bucket(90, null).' as age_90_plus')
+            ->first();
+
+        $credit = $base()->where('status', '!=', Invoice::STATUS_CANCELLED)->whereRaw("{$raw} < -0.009")->getQuery()->select([])
+            ->selectRaw("COUNT(*) as n, COALESCE(SUM(-1 * {$raw}), 0) as amount")
+            ->first();
+
+        $statuses = array_keys(Invoice::TRANSITIONS);
+
+        return [
+            'total' => (int) $byStatus->sum(),
+            'by_status' => collect($statuses)->mapWithKeys(fn ($s) => [$s => (int) ($byStatus[$s] ?? 0)])->all(),
+            'billed' => round((float) $live->billed, 2),
+            'collected' => round((float) $live->collected, 2),
+            'outstanding' => round((float) $live->outstanding, 2),
+            'outstanding_count' => (int) $live->outstanding_count,
+            'aging' => [
+                '0_30' => round((float) $live->age_0_30, 2),
+                '31_60' => round((float) $live->age_31_60, 2),
+                '61_90' => round((float) $live->age_61_90, 2),
+                '90_plus' => round((float) $live->age_90_plus, 2),
+            ],
+            'credit' => round((float) $credit->amount, 2),
+            'credit_count' => (int) $credit->n,
+        ];
     }
 
     /**
@@ -161,6 +273,45 @@ class InvoiceController extends Controller
         ];
     }
 
+    /** "floor drain - 4\"" for a variant line, the product's name otherwise. */
+    private function lineName(Product $product, ?ProductVariant $variant): string
+    {
+        $name = $product->name_ar ?? $product->name_en ?? 'منتج غير معروف';
+
+        return $variant ? $variant->displayName($name) : $name;
+    }
+
+    /**
+     * Moves each variant line's own stock count with the goods.
+     *
+     * Warehouse stock is per product and moves through the issue and return
+     * above. A variant's count follows only the lines that stock actually left
+     * for — those with an issue movement under this invoice's key — so a line
+     * whose issue failed, or an invoice raised by a sales order (whose
+     * shipment moved the goods and the count), is left alone.
+     *
+     * @param  int  $direction  -1 as goods leave, +1 as they come back
+     */
+    private function moveVariantCounts(Invoice $invoice, string $keyPrefix, int $direction): void
+    {
+        $lines = $invoice->items()->whereNotNull('product_variant_id')->get();
+
+        if ($lines->isEmpty()) {
+            return;
+        }
+
+        $issued = StockMovement::whereIn(
+            'movement_key',
+            $lines->map(fn ($line) => $keyPrefix.':'.$invoice->id.':item:'.$line->id)->all()
+        )->where('movement_type', StockMovement::TYPE_OUT)->pluck('movement_key')->flip();
+
+        foreach ($lines as $line) {
+            if ($issued->has($keyPrefix.':'.$invoice->id.':item:'.$line->id)) {
+                ProductVariant::adjustStockCount((int) $line->product_variant_id, $direction * (int) $line->quantity);
+            }
+        }
+    }
+
     /**
      * Turns a shortage report into something a screen can point at.
      *
@@ -183,6 +334,43 @@ class InvoiceController extends Controller
         }, $shortages);
     }
 
+    /**
+     * What the discount and the tax come to, from whichever of the two ways the
+     * caller expressed them.
+     *
+     * The invoice screen asks for rates, because that is how a discount is
+     * agreed and how a tax is set — but the ledger posts money, and every
+     * report already reads `invoices.discount` and `invoices.tax` as figures.
+     * So a rate decides the figure here, on the server's own subtotal, and both
+     * are stored: the figure the books need, and the rate it was struck at.
+     *
+     * A rate, when sent, wins over the matching amount outright. The two cannot
+     * be reconciled if they disagree, and the rate is the one the seller chose.
+     *
+     * Tax applies to what is actually being charged for the goods, so it is
+     * taken after the discount, not before it. Discounting 10% and taxing 5%
+     * on 1,000 is 900 + 45, not 900 + 50.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array{0: float, 1: float, 2: float|null, 3: float|null}
+     *         [tax, discount, taxPercent, discountPercent]
+     */
+    private function resolveCharges(array $validated, float $subtotal): array
+    {
+        $taxPercent = isset($validated['tax_percent']) ? (float) $validated['tax_percent'] : null;
+        $discountPercent = isset($validated['discount_percent']) ? (float) $validated['discount_percent'] : null;
+
+        $discount = $discountPercent !== null
+            ? round(max(0, $subtotal) * $discountPercent / 100, 5)
+            : (float) ($validated['discount'] ?? 0);
+
+        $tax = $taxPercent !== null
+            ? round(max(0, $subtotal - $discount) * $taxPercent / 100, 5)
+            : (float) ($validated['tax'] ?? 0);
+
+        return [$tax, $discount, $taxPercent, $discountPercent];
+    }
+
     public function store(Request $request, GoodsIssueService $goods): JsonResponse
     {
         try {
@@ -192,6 +380,9 @@ class InvoiceController extends Controller
                 // Who made the sale. Optional — a counter sale has no rep.
                 'assigned_employee_id' => 'nullable|integer|exists:employees,id',
                 'items.*.product_id' => 'required|integer|exists:products,id',
+                // One size or colour of the product. Stock is counted per
+                // product; the line keeps the variant and is named for it.
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
@@ -202,6 +393,13 @@ class InvoiceController extends Controller
                 'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
+                // The rates the seller typed. When either is sent it decides
+                // the figure above, which is then ignored — see
+                // resolveCharges(). Capped at 100: a discount cannot take off
+                // more than the whole of the goods, and a tax that doubles them
+                // is a typo, not a rate.
+                'tax_percent' => 'nullable|numeric|min:0|max:100',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 // What the customer handed over. Anything short of the total
                 // stays on their account as a receivable; anything over leaves
                 // them in credit.
@@ -213,6 +411,8 @@ class InvoiceController extends Controller
                 'expenses.*.description' => 'required_with:expenses|string|max:255',
                 'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
                 'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+                'expenses.*.notes' => 'nullable|string|max:1000',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -229,6 +429,7 @@ class InvoiceController extends Controller
             // Fetch all products to get their names
             $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
             $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            $variants = ProductVariant::forLines($validated['items']);
 
             // Fetch all product units if any
             $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
@@ -273,10 +474,13 @@ class InvoiceController extends Controller
                     $item['warehouse_id'] ?? ($validated['warehouse_id'] ?? null)
                 );
 
+                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
                 $itemsData[] = [
                     'product_id' => $item['product_id'],
+                    'product_variant_id' => $variant?->id,
                     'warehouse_id' => $lineWarehouseId,
-                    'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
+                    'product_name' => $this->lineName($product, $variant),
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'total_price' => $totalPrice,
@@ -321,8 +525,7 @@ class InvoiceController extends Controller
             }
 
             // Calculate totals
-            $tax = (float) ($validated['tax'] ?? 0);
-            $discount = (float) ($validated['discount'] ?? 0);
+            [$tax, $discount, $taxPercent, $discountPercent] = $this->resolveCharges($validated, $subtotal);
             
             // Calculate expenses total
             $expensesTotal = 0;
@@ -377,6 +580,8 @@ class InvoiceController extends Controller
                 $subtotal,
                 $tax,
                 $discount,
+                $taxPercent,
+                $discountPercent,
                 $additionalCharges,
                 $total,
                 $paidAmount,
@@ -392,6 +597,8 @@ class InvoiceController extends Controller
                 'subtotal' => $subtotal,
                 'tax' => $tax,
                 'discount' => $discount,
+                'tax_percent' => $taxPercent,
+                'discount_percent' => $discountPercent,
                 'additional_charges' => $additionalCharges,
                 'total' => $total,
                 'paid_amount' => $paidAmount,
@@ -421,16 +628,18 @@ class InvoiceController extends Controller
             $createdExpenses = [];
             if (isset($validated['expenses']) && is_array($validated['expenses'])) {
                 foreach ($validated['expenses'] as $expense) {
-                    if (!empty($expense['description']) && $expense['amount'] > 0) {
+                    if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
                         $createdExpenses[] = Expense::create([
-                            'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                            'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                             'invoice_id' => $invoice->id,
+                            'sales_order_id' => $invoice->sales_order_id,
                             'customer_id' => $invoice->customer_id,
                             'description' => $expense['description'],
-                            'amount' => $expense['amount'],
+                            'amount' => (float) $expense['amount'],
                             'category' => $expense['category'] ?? 'other',
                             'expense_date' => now(),
-                            'status' => 'pending',
+                            'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                            'notes' => $expense['notes'] ?? null,
                             'created_by' => auth()->check() ? auth()->id() : null,
                             // The books' own currency: a literal here made the
                             // expense claim a currency nobody had configured.
@@ -479,6 +688,7 @@ class InvoiceController extends Controller
                 );
 
                 $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+                $this->moveVariantCounts($invoice, 'invoice', -1);
             } catch (\Throwable $e) {
                 // Coverage was checked before the invoice was written, so this
                 // is an unexpected failure rather than a routine shortfall. It
@@ -519,7 +729,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنشاء الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->fresh()->load('items.product')),
+                'data' => new InvoiceResource($invoice->fresh()->load('items.product', 'items.variant')),
                 'settlement' => [
                     'total' => round($total, 5),
                     'paid' => $paidAmount,
@@ -568,7 +778,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses', 'customer', 'salesOrder', 'user', 'payments', 'assignedEmployee', 'warehouse')),
             ]);
 
         } catch (\Exception $e) {
@@ -595,6 +805,7 @@ class InvoiceController extends Controller
                 'customer_id' => 'nullable|integer|exists:customers,id',
                 'items' => 'nullable|array|min:1',
                 'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
                 'items.*.quantity' => 'required_with:items|integer|min:1',
                 'items.*.unit_price' => 'required_with:items|numeric|min:0',
                 'items.*.notes' => 'nullable|string|max:500',
@@ -607,6 +818,13 @@ class InvoiceController extends Controller
                 'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
                 'tax' => 'nullable|numeric|min:0',
                 'discount' => 'nullable|numeric|min:0',
+                // The rates the seller typed. When either is sent it decides
+                // the figure above, which is then ignored — see
+                // resolveCharges(). Capped at 100: a discount cannot take off
+                // more than the whole of the goods, and a tax that doubles them
+                // is a typo, not a rate.
+                'tax_percent' => 'nullable|numeric|min:0|max:100',
+                'discount_percent' => 'nullable|numeric|min:0|max:100',
                 'payment_method' => 'nullable|string|in:cash,card,transfer,check',
                 'notes' => 'nullable|string|max:2000',
                 'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
@@ -614,6 +832,8 @@ class InvoiceController extends Controller
                 'expenses.*.description' => 'required_with:expenses|string|max:255',
                 'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
                 'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+                'expenses.*.notes' => 'nullable|string|max:1000',
             ], [
                 'items.required' => 'يجب إضافة منتج واحد على الأقل',
                 'items.min' => 'يجب إضافة منتج واحد على الأقل',
@@ -625,11 +845,42 @@ class InvoiceController extends Controller
                 'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
             ]);
 
+            // A cancelled invoice has had its goods returned and its entries
+            // reversed; rewriting its lines would issue stock and post a sale
+            // for a document that says it is void.
+            if ($invoice->status === Invoice::STATUS_CANCELLED) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'الفاتورة ملغاة ولا يمكن تعديلها. أنشئ فاتورة جديدة بدلاً منها.',
+                ], 422);
+            }
+
+            // The status goes through the same rules as the status endpoint.
+            // Saving the form with "cancelled" used to relabel the invoice and
+            // nothing else: goods off the shelf, sale still in the books.
+            $requestedStatus = $validated['status'] ?? null;
+            if ($requestedStatus !== null && $requestedStatus !== $invoice->status) {
+                if ($refusal = $this->statusRefusal($invoice, $requestedStatus)) {
+                    return response()->json(['success' => false, 'message' => $refusal], 422);
+                }
+
+                if ($requestedStatus === Invoice::STATUS_CANCELLED) {
+                    $this->cancelInvoice($invoice, $goods);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'أُلغيت الفاتورة: أُعيدت الكميات إلى مستودعاتها وعُكست القيود المحاسبية.',
+                        'data' => new InvoiceResource($invoice->refresh()->load('items.product', 'items.variant')),
+                    ]);
+                }
+            }
+
             // Only process items if they are provided
             if (isset($validated['items'])) {
                 // Fetch all products to get their names
                 $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
                 $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+                $variants = ProductVariant::forLines($validated['items']);
 
                 // Fetch all product units if any
                 $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
@@ -666,10 +917,13 @@ class InvoiceController extends Controller
                         }
                     }
 
+                    $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
                     $itemsData[] = [
                         'product_id' => $item['product_id'],
+                        'product_variant_id' => $variant?->id,
                         'warehouse_id' => $item['warehouse_id'] ?? $invoice->warehouse_id,
-                        'product_name' => $product->name_ar ?? $product->name_en ?? 'منتج غير معروف',
+                        'product_name' => $this->lineName($product, $variant),
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'total_price' => $totalPrice,
@@ -683,8 +937,7 @@ class InvoiceController extends Controller
                 }
 
                 // Calculate totals
-                $tax = (float) ($validated['tax'] ?? 0);
-                $discount = (float) ($validated['discount'] ?? 0);
+                [$tax, $discount, $taxPercent, $discountPercent] = $this->resolveCharges($validated, $subtotal);
                 
                 // Calculate expenses total
                 $expensesTotal = 0;
@@ -738,7 +991,8 @@ class InvoiceController extends Controller
                  */
                 DB::transaction(function () use (
                     $invoice, $itemsData, $validated, $goods, $settles, $before,
-                    $subtotal, $tax, $discount, $additionalCharges, $total, $headerWarehouseId, &$shortages
+                    $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total,
+                    $headerWarehouseId, &$shortages
                 ) {
                 // Put back exactly what left, at what it cost when it left, and
                 // dated so it returns to its own place in the queue.
@@ -761,6 +1015,8 @@ class InvoiceController extends Controller
                     'subtotal' => $subtotal,
                     'tax' => $tax,
                     'discount' => $discount,
+                    'tax_percent' => $taxPercent,
+                    'discount_percent' => $discountPercent,
                     'additional_charges' => $additionalCharges,
                     'total' => $total,
                     'due_amount' => max(0, round($total - (float) $invoice->paid_amount, 5)),
@@ -790,24 +1046,39 @@ class InvoiceController extends Controller
                     $this->correctInvoicePosting($invoice, $before);
                 }
 
-                // Delete old expenses and create new ones
+                // Reverse previous ledger entries for old expenses and recreate them
+                $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+                foreach ($invoice->expenses()->get() as $oldExpense) {
+                    try {
+                        $ledger->reverseFor($oldExpense->postingKey());
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
                 $invoice->expenses()->delete();
                 if (isset($validated['expenses']) && is_array($validated['expenses'])) {
                     foreach ($validated['expenses'] as $expense) {
-                        if (!empty($expense['description']) && $expense['amount'] > 0) {
-                            Expense::create([
-                                'expense_number' => 'EXP-' . str_pad(Expense::count() + 1, 6, '0', STR_PAD_LEFT),
+                        if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
+                            $newExpense = Expense::create([
+                                'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
                                 'invoice_id' => $invoice->id,
+                                'sales_order_id' => $invoice->sales_order_id,
                                 'customer_id' => $invoice->customer_id,
                                 'description' => $expense['description'],
-                                'amount' => $expense['amount'],
+                                'amount' => (float) $expense['amount'],
                                 'category' => $expense['category'] ?? 'other',
                                 'expense_date' => now(),
-                                'status' => 'pending',
+                                'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                                'notes' => $expense['notes'] ?? null,
                                 'created_by' => auth()->check() ? auth()->id() : null,
                                 'currency' => base_currency_code(),
                                 'exchange_rate' => 1.0000,
                             ]);
+                            try {
+                                $ledger->postExpense($newExpense);
+                            } catch (\Throwable $e) {
+                                report($e);
+                            }
                         }
                     }
                 }
@@ -825,7 +1096,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم تحديث الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses')),
             ]);
 
         } catch (ValidationException $e) {
@@ -907,6 +1178,9 @@ class InvoiceController extends Controller
     {
         $lines = $invoice->items()->get();
 
+        // The sizes whose goods come back get their counts back with them.
+        $this->moveVariantCounts($invoice, 'invoice', +1);
+
         if ($lines->isEmpty()) {
             return ['cost' => 0.0, 'cost_by_warehouse' => []];
         }
@@ -974,6 +1248,7 @@ class InvoiceController extends Controller
         );
 
         $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+        $this->moveVariantCounts($invoice, 'invoice', -1);
 
         $delta = $issued['cost_by_warehouse'];
 
@@ -1038,7 +1313,12 @@ class InvoiceController extends Controller
     }
 
     /**
-     * Update invoice status (pay or cancel)
+     * Move an invoice along its stages, or cancel it.
+     *
+     * Moves are limited to Invoice::TRANSITIONS. This used to take any status
+     * from any status, so a cancelled sale could be set back to delivered —
+     * with its goods still returned and its entries still reversed — and
+     * "delivered" stamped the invoice as paid whatever had been collected.
      */
     public function updateStatus(Request $request, Invoice $invoice, GoodsIssueService $goods): JsonResponse
     {
@@ -1050,75 +1330,34 @@ class InvoiceController extends Controller
                 'status.in' => 'الحالة غير صالحة',
             ]);
 
-            $oldStatus = $invoice->status;
             $newStatus = $validated['status'];
 
-            /*
-             * Cancelling has to undo what the sale did, not merely relabel it.
-             *
-             * This used to flip the status and clear `paid_at`, and nothing
-             * else: the goods stayed off the shelf and the ledger went on
-             * carrying the revenue, the receivable and the cost. A cancelled
-             * invoice was therefore indistinguishable, in the books and in the
-             * warehouse, from one that had been fulfilled.
-             *
-             * Guarded on the previous status so cancelling twice does not return
-             * the goods twice — and the movement keys differ from the issue's,
-             * or the return would be read as a repeat of it and skipped.
-             */
-            $isCancelling = $newStatus === Invoice::STATUS_CANCELLED
-                && $oldStatus !== Invoice::STATUS_CANCELLED;
-
-            if ($isCancelling) {
-                DB::transaction(function () use ($invoice, $goods) {
-                    $goods->returnAndReverseCost(
-                        lines: $invoice->items()->with('product')->get()->map(fn ($line) => [
-                            'product_id' => (int) $line->product_id,
-                            'quantity' => (int) $line->quantity,
-                            'warehouse_id' => (int) $line->warehouse_id,
-                            'unit_cost' => (float) ($line->product?->cost_price ?? 0),
-                            'movement_key' => 'invoice_cancel:'.$invoice->id.':item:'.$line->id,
-                        ])->all(),
-                        postingKey: 'invoice_cogs:'.$invoice->id,
-                        label: 'إلغاء فاتورة '.$invoice->invoice_number,
-                        reason: 'إلغاء بيع - فاتورة '.$invoice->invoice_number,
-                    );
-
-                    /*
-                     * The sale itself: the receivable and the revenue.
-                     *
-                     * The customer's payment is deliberately *not* reversed. The
-                     * cash genuinely moved, and saying otherwise would make the
-                     * books claim money that is sitting in the till never
-                     * arrived. Reversing only the sale leaves the payment
-                     * standing against a receivable that no longer exists, so
-                     * the customer's account shows a credit — which is exactly
-                     * what they hold: a refund owed to them. Paying it back is a
-                     * separate, deliberate act.
-                     */
-                    $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
-                    $ledger->reverseFor('invoice:'.$invoice->id);
-                });
+            // Asking for the status it already has changes nothing — and a
+            // second cancel must not return the goods a second time.
+            if ($invoice->status === $newStatus) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'تم تحديث حالة الفاتورة بنجاح',
+                    'data' => new InvoiceResource($invoice->load('items.product', 'items.variant')),
+                ]);
             }
 
-            // Update status
-            $invoice->update(['status' => $newStatus]);
+            if ($refusal = $this->statusRefusal($invoice, $newStatus)) {
+                return response()->json(['success' => false, 'message' => $refusal], 422);
+            }
 
-            // Handle special status logic
-            if ($newStatus === Invoice::STATUS_DELIVERED) {
-                $invoice->update(['paid_at' => now()]);
-            } elseif ($newStatus === Invoice::STATUS_CANCELLED) {
-                $invoice->update(['paid_at' => null]);
-            } elseif (in_array($oldStatus, [Invoice::STATUS_DELIVERED]) && !in_array($newStatus, [Invoice::STATUS_DELIVERED])) {
-                $invoice->update(['paid_at' => null]);
+            if ($newStatus === Invoice::STATUS_CANCELLED) {
+                $this->cancelInvoice($invoice, $goods);
+            } else {
+                $invoice->update(['status' => $newStatus]);
             }
 
             return response()->json([
                 'success' => true,
-                'message' => $isCancelling
+                'message' => $newStatus === Invoice::STATUS_CANCELLED
                     ? 'أُلغيت الفاتورة: أُعيدت الكميات إلى مستودعاتها وعُكست القيود المحاسبية.'
                     : 'تم تحديث حالة الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product')),
+                'data' => new InvoiceResource($invoice->refresh()->load('items.product', 'items.variant')),
             ]);
 
         } catch (ValidationException $e) {
@@ -1136,11 +1375,97 @@ class InvoiceController extends Controller
         }
     }
 
+    /** Why this status change cannot happen, or null when it can. */
+    private function statusRefusal(Invoice $invoice, string $newStatus): ?string
+    {
+        // An order's invoice follows the order: its stages, its stock and its
+        // cancellation are the order's to move. Changed here, the order would
+        // go on saying one thing and its invoice another.
+        if ($invoice->sales_order_id) {
+            return 'هذه الفاتورة تابعة لطلب بيع؛ تُدار مراحلها وإلغاؤها من الطلب نفسه.';
+        }
+
+        if ($invoice->status === Invoice::STATUS_CANCELLED) {
+            return 'الفاتورة ملغاة ولا يمكن إعادة تفعيلها. أنشئ فاتورة جديدة بدلاً منها.';
+        }
+
+        if (! $invoice->canMoveTo($newStatus)) {
+            return $invoice->status === Invoice::STATUS_DELIVERED && $newStatus === Invoice::STATUS_CANCELLED
+                ? 'سُلّمت البضاعة؛ أعدها عبر مرتجع مبيعات بدلاً من إلغاء الفاتورة.'
+                : 'لا يمكن نقل الفاتورة من هذه الحالة إلى الحالة المطلوبة.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Cancelling has to undo what the sale did, not merely relabel it: the
+     * goods go back to the shelves they left, the cost, revenue and
+     * receivable are reversed, and the customer's running balance loses the
+     * amount the invoice added to it.
+     *
+     * The customer's payment is deliberately *not* reversed. The cash
+     * genuinely moved; reversing only the sale leaves the payment standing
+     * against a receivable that no longer exists, so the customer's account
+     * shows a credit — which is exactly what they hold: a refund owed to them.
+     * Paying it back is a separate, deliberate act.
+     */
+    private function cancelInvoice(Invoice $invoice, GoodsIssueService $goods): void
+    {
+        DB::transaction(function () use ($invoice, $goods) {
+            // Movement keys differ from the issue's, or the return would be
+            // read as a repeat of it and skipped.
+            $goods->returnAndReverseCost(
+                lines: $invoice->items()->with('product')->get()->map(fn ($line) => [
+                    'product_id' => (int) $line->product_id,
+                    'quantity' => (int) $line->quantity,
+                    'warehouse_id' => (int) $line->warehouse_id,
+                    'unit_cost' => (float) ($line->product?->cost_price ?? 0),
+                    'movement_key' => 'invoice_cancel:'.$invoice->id.':item:'.$line->id,
+                ])->all(),
+                postingKey: 'invoice_cogs:'.$invoice->id,
+                label: 'إلغاء فاتورة '.$invoice->invoice_number,
+                reason: 'إلغاء بيع - فاتورة '.$invoice->invoice_number,
+            );
+
+            $this->moveVariantCounts($invoice, 'invoice', +1);
+
+            app(LedgerPostingService::class)->reverseFor('invoice:'.$invoice->id);
+
+            // settleCustomerAccount() added the total when the invoice was
+            // raised; nothing took it off again, so a cancelled sale stayed on
+            // the customer's balance for good.
+            if (! $invoice->sales_order_id) {
+                Customer::find($invoice->customer_id)?->updateBalance(-1 * (float) $invoice->total);
+            }
+
+            $invoice->update(['status' => Invoice::STATUS_CANCELLED, 'paid_at' => null]);
+        });
+    }
+
     /**
      * Delete an invoice
      */
     public function destroy(Invoice $invoice): JsonResponse
     {
+        // Deleting a live invoice left its goods off the shelf, its revenue and
+        // receivable in the ledger and its amount on the customer's balance,
+        // with no document behind any of them. Cancelling undoes all of that;
+        // only a cancelled invoice with no money against it can then go.
+        if ($invoice->status !== Invoice::STATUS_CANCELLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن حذف فاتورة قائمة. ألغِها أولاً لتُعاد البضاعة وتُعكس القيود.',
+            ], 422);
+        }
+
+        if ($invoice->payments()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'على الفاتورة دفعات مسجّلة؛ تبقى الفاتورة الملغاة سجلاً لها.',
+            ], 422);
+        }
+
         try {
             $invoice->delete();
 
@@ -1261,5 +1586,25 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * The invoice's lines as a purchase order, for the purchase screen to open
+     * prefilled — "buy in what this invoice sold". Nothing is written.
+     */
+    public function purchaseDraft(Invoice $invoice, SalesOrderWorkflowService $workflow): JsonResponse
+    {
+        if ($invoice->status === Invoice::STATUS_CANCELLED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'الفاتورة ملغاة — لا حاجة لشراء بنودها.',
+                'data' => null,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $workflow->invoicePurchaseDraft($invoice),
+        ]);
     }
 }

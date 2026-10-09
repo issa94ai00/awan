@@ -127,27 +127,152 @@ body {
     padding: 10px 18px !important;
 }
 
-.el-button--primary {
+/*
+ * Button text colors. Every pairing below reaches WCAG AA (4.5:1):
+ * white on the solid fills, and the "ink" colors on white and on the pale
+ * plain-button fills. The theme's amber accent and cyan secondary are too
+ * light to carry white text or to be read as text on white.
+ *
+ * Selectors start with .el-button.el-button-- so they outrank Element Plus,
+ * whose stylesheet loads after this one.
+ */
+:root {
+    --btn-ink-success: #047857;
+    --btn-ink-success-strong: #065f46;
+    --btn-ink-warning: #b45309;
+    --btn-ink-warning-strong: #92400e;
+    --btn-ink-danger: #b91c1c;
+    --btn-ink-danger-strong: #991b1b;
+    --btn-ink-info: #4b5563;
+    --btn-ink-info-strong: #374151;
+    --btn-on-warning: #451a03;
+}
+
+/* Gradients only on solid buttons: plain/text/link buttons color their text
+   with the same hue, so a filled background made them unreadable. */
+.el-button.el-button--primary:not(.is-plain):not(.is-text):not(.is-link) {
     background: linear-gradient(135deg, var(--el-color-primary) 0%, color-mix(in srgb, var(--mobile-primary) 80%, white) 100%) !important;
     border: none !important;
+    color: #ffffff !important;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--mobile-primary) 20%, transparent);
 }
 
-.el-button--primary:hover {
+.el-button.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover {
     box-shadow: 0 6px 16px color-mix(in srgb, var(--mobile-primary) 35%, transparent) !important;
     transform: translateY(-2px);
     opacity: 0.95;
 }
 
-.el-button--success {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+.el-button.el-button--success:not(.is-plain):not(.is-text):not(.is-link) {
+    background: linear-gradient(135deg, var(--btn-ink-success) 0%, var(--btn-ink-success-strong) 100%) !important;
     border: none !important;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(4, 120, 87, 0.2);
 }
 
-.el-button--success:hover {
-    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35) !important;
+.el-button.el-button--success:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled):hover {
+    box-shadow: 0 6px 16px rgba(4, 120, 87, 0.35) !important;
     transform: translateY(-2px);
+}
+
+/* Amber stays amber, with dark text: white on amber is only ~2:1 */
+.el-button.el-button--warning {
+    --el-button-text-color: var(--btn-on-warning);
+    --el-button-hover-text-color: var(--btn-on-warning);
+    --el-button-active-text-color: var(--btn-on-warning);
+    --el-button-disabled-text-color: color-mix(in srgb, var(--btn-on-warning) 55%, transparent);
+}
+
+.el-button.el-button--danger {
+    --el-button-bg-color: #dc2626;
+    --el-button-border-color: #dc2626;
+    --el-button-hover-bg-color: var(--btn-ink-danger);
+    --el-button-hover-border-color: var(--btn-ink-danger);
+    --el-button-active-bg-color: var(--btn-ink-danger-strong);
+    --el-button-active-border-color: var(--btn-ink-danger-strong);
+}
+
+/* Plain / text / link buttons: readable ink that darkens on hover (Element
+   Plus lightens link text on hover by default, which lowers contrast). */
+.el-button.el-button--primary.is-plain,
+.el-button.el-button--primary.is-text,
+.el-button.el-button--primary.is-link {
+    --el-button-border-color: color-mix(in srgb, var(--el-color-primary) 35%, white);
+    --el-button-hover-link-text-color: var(--mobile-primary-dark, var(--el-color-primary));
+}
+
+.el-button.el-button--success.is-plain,
+.el-button.el-button--success.is-text,
+.el-button.el-button--success.is-link {
+    --el-button-text-color: var(--btn-ink-success);
+    --el-button-bg-color: #ecfdf5;
+    --el-button-border-color: #6ee7b7;
+    --el-button-hover-text-color: #ffffff;
+    --el-button-hover-bg-color: var(--btn-ink-success);
+    --el-button-hover-border-color: var(--btn-ink-success);
+    --el-button-hover-link-text-color: var(--btn-ink-success-strong);
+    --el-button-active-color: var(--btn-ink-success-strong);
+}
+
+.el-button.el-button--warning.is-plain,
+.el-button.el-button--warning.is-text,
+.el-button.el-button--warning.is-link {
+    --el-button-text-color: var(--btn-ink-warning);
+    --el-button-hover-text-color: #ffffff;
+    --el-button-active-text-color: #ffffff;
+    --el-button-hover-bg-color: var(--btn-ink-warning);
+    --el-button-hover-border-color: var(--btn-ink-warning);
+    --el-button-hover-link-text-color: var(--btn-ink-warning-strong);
+    --el-button-active-color: var(--btn-ink-warning-strong);
+}
+
+.el-button.el-button--danger.is-plain,
+.el-button.el-button--danger.is-text,
+.el-button.el-button--danger.is-link {
+    --el-button-text-color: var(--btn-ink-danger);
+    --el-button-hover-bg-color: #dc2626;
+    --el-button-hover-border-color: #dc2626;
+    --el-button-hover-link-text-color: var(--btn-ink-danger-strong);
+    --el-button-active-color: var(--btn-ink-danger-strong);
+}
+
+.el-button.el-button--info.is-plain,
+.el-button.el-button--info.is-text,
+.el-button.el-button--info.is-link {
+    --el-button-text-color: var(--btn-ink-info);
+    --el-button-hover-link-text-color: var(--btn-ink-info-strong);
+    --el-button-active-color: var(--btn-ink-info-strong);
+}
+
+/* Dark public pages: text/link buttons sit on a dark background, so use light inks */
+[data-theme="dark"] .el-button.el-button--primary.is-text,
+[data-theme="dark"] .el-button.el-button--primary.is-link {
+    --el-button-text-color: #93c5fd;
+    --el-button-hover-link-text-color: #bfdbfe;
+}
+
+[data-theme="dark"] .el-button.el-button--success.is-text,
+[data-theme="dark"] .el-button.el-button--success.is-link {
+    --el-button-text-color: #6ee7b7;
+    --el-button-hover-link-text-color: #a7f3d0;
+}
+
+[data-theme="dark"] .el-button.el-button--warning.is-text,
+[data-theme="dark"] .el-button.el-button--warning.is-link {
+    --el-button-text-color: #fcd34d;
+    --el-button-hover-link-text-color: #fde68a;
+}
+
+[data-theme="dark"] .el-button.el-button--danger.is-text,
+[data-theme="dark"] .el-button.el-button--danger.is-link {
+    --el-button-text-color: #fca5a5;
+    --el-button-hover-link-text-color: #fecaca;
+}
+
+[data-theme="dark"] .el-button.el-button--info.is-text,
+[data-theme="dark"] .el-button.el-button--info.is-link {
+    --el-button-text-color: #cbd5e1;
+    --el-button-hover-link-text-color: #e2e8f0;
 }
 
 /* Form Inputs customization */
@@ -647,4 +772,20 @@ body {
     background-color: rgba(224, 231, 255, 0.3) !important;
     border-color: var(--mobile-accent, var(--accent-gold, #c9a959)) !important;
     box-shadow: 0 0 12px color-mix(in srgb, var(--mobile-accent) 30%, transparent);
+}
+
+/* Global Print Settings: Remove browser headers, footers, URLs, and date/title text */
+@media print {
+    @page {
+        margin: 0;
+    }
+
+    a[href]:after {
+        content: none !important;
+    }
+
+    .brand-domain-badge,
+    .domain-badge {
+        display: none !important;
+    }
 }

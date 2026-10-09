@@ -927,13 +927,16 @@ class LedgerPostingService
      */
     public function postGoodsReceipt($receipt): ?JournalEntryHeader
     {
-        $total = $this->money(
+        $goodsTotal = $this->money(
             collect($receipt->items ?? [])->sum(fn ($item) => (float) $item->quantity * (float) $item->unit_price)
         );
 
-        if ($total <= 0) {
+        if ($goodsTotal <= 0) {
             return null;
         }
+
+        $discount = $this->money($receipt->discount ?? 0);
+        $total = max(0, round($goodsTotal - $discount, 5));
 
         // Tax paid to the supplier is not part of what the goods cost: it is a
         // claim against the tax authority. Booking it into inventory — which is

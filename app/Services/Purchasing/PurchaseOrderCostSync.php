@@ -44,30 +44,32 @@ class PurchaseOrderCostSync
 
     public function sync(PurchaseOrder $order): void
     {
-        $received = $this->receivedByProduct($order);
+        $order->loadMissing('items');
+
+        $received = $this->receivedByLine($order);
 
         if ($received === []) {
             return;
         }
 
-        $order->loadMissing('items');
-
-        // Ordered quantity per product, so a product spread over two lines of
+        // Ordered quantity per line key, so a product spread over two lines of
         // one order can be given its share of a delivery that names only the
         // product. Receipts do not point back at the line they fill.
-        $orderedByProduct = [];
+        $orderedByKey = [];
         foreach ($order->items as $item) {
-            $orderedByProduct[$item->product_id] = ($orderedByProduct[$item->product_id] ?? 0) + (int) $item->quantity;
+            $key = self::lineKey($item->product_id, $item->product_variant_id);
+            $orderedByKey[$key] = ($orderedByKey[$key] ?? 0) + (int) $item->quantity;
         }
 
         foreach ($order->items as $item) {
-            $delivery = $received[$item->product_id] ?? null;
+            $key = self::lineKey($item->product_id, $item->product_variant_id);
+            $delivery = $received[$key] ?? null;
 
             if ($delivery === null) {
                 continue;
             }
 
-            $ordered = $orderedByProduct[$item->product_id] ?? 0;
+            $ordered = $orderedByKey[$key] ?? 0;
             $share = $ordered > 0 ? (int) $item->quantity / $ordered : 1;
 
             $quantity = round($delivery['quantity'] * $share, 5);
@@ -82,16 +84,31 @@ class PurchaseOrderCostSync
     }
 
     /**
-     * Everything delivered against this order, by product.
+     * Which order line a product or variant settles against: "12:40" for
+     * variant 40 of product 12, "12" for the product itself.
+     */
+    public static function lineKey($productId, $variantId = null): string
+    {
+        return $variantId ? $productId.':'.$variantId : (string) $productId;
+    }
+
+    /**
+     * Everything delivered against this order, by the order line it fills.
+     *
+     * A receipt line for a variant fills the order's line for that variant;
+     * one the order only asked for as the product (or a receipt that names no
+     * variant) fills the product's line, as it always has.
      *
      * The price is the one the stock layers hold rather than the one on the
      * receipt line: a landed-cost allocation raises the layers and leaves the
      * receipt saying what the supplier charged, so the layer is the only place
-     * that knows what the goods are actually worth on the shelf.
+     * that knows what the goods are actually worth on the shelf. Layers are
+     * per product, so where one receipt brings in two variants at different
+     * prices each keeps its own price, raised by the product's landed uplift.
      *
-     * @return array<int,array{quantity: float, cost: float}>
+     * @return array<string,array{quantity: float, cost: float}>
      */
-    private function receivedByProduct(PurchaseOrder $order): array
+    private function receivedByLine(PurchaseOrder $order): array
     {
         $receipts = PurchaseReceipt::with('items')
             ->where('purchase_order_id', $order->id)
@@ -101,11 +118,26 @@ class PurchaseOrderCostSync
             return [];
         }
 
+        $orderKeys = [];
+        foreach ($order->items as $item) {
+            $orderKeys[self::lineKey($item->product_id, $item->product_variant_id)] = true;
+        }
+
         $landed = $this->landedUnitCosts($receipts->pluck('receipt_number')->filter()->all());
 
         $received = [];
 
         foreach ($receipts as $receipt) {
+            // What the supplier charged on average per product on this
+            // receipt, against which the layers' landed cost is an uplift.
+            $charged = [];
+            foreach ($receipt->items as $line) {
+                if ($line->product_id && (float) $line->quantity > 0) {
+                    $charged[$line->product_id]['quantity'] = ($charged[$line->product_id]['quantity'] ?? 0) + (float) $line->quantity;
+                    $charged[$line->product_id]['cost'] = ($charged[$line->product_id]['cost'] ?? 0) + (float) $line->quantity * (float) $line->unit_price;
+                }
+            }
+
             foreach ($receipt->items as $line) {
                 if (! $line->product_id) {
                     continue;
@@ -120,10 +152,18 @@ class PurchaseOrderCostSync
                 // No layer means the goods were taken in before layering, or by
                 // a path that opened none; the receipt's own price is then the
                 // best statement of what they cost.
-                $unitCost = $landed[$receipt->receipt_number.':'.$line->product_id]
-                    ?? (float) $line->unit_price;
+                $unitCost = (float) $line->unit_price;
+                $landedUnit = $landed[$receipt->receipt_number.':'.$line->product_id] ?? null;
+                if ($landedUnit !== null) {
+                    $average = ($charged[$line->product_id]['cost'] ?? 0) / max(1, $charged[$line->product_id]['quantity'] ?? 1);
+                    $unitCost = $average > 0 ? $unitCost * ($landedUnit / $average) : $landedUnit;
+                }
 
-                $key = (int) $line->product_id;
+                $key = self::lineKey($line->product_id, $line->product_variant_id);
+                if (! isset($orderKeys[$key])) {
+                    $key = self::lineKey($line->product_id);
+                }
+
                 $received[$key] = [
                     'quantity' => ($received[$key]['quantity'] ?? 0) + $quantity,
                     'cost' => ($received[$key]['cost'] ?? 0) + $unitCost * $quantity,

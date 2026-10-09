@@ -25,6 +25,11 @@ class Invoice extends Model
         'subtotal',
         'tax',
         'discount',
+        // The rates those two were written at, when they were written as rates
+        // rather than as figures. Null means the invoice carries amounts only —
+        // see the migration that added them.
+        'tax_percent',
+        'discount_percent',
         'additional_charges',
         'total',
         'paid_amount',
@@ -44,6 +49,8 @@ class Invoice extends Model
         'subtotal' => 'decimal:5',
         'tax' => 'decimal:5',
         'discount' => 'decimal:5',
+        'tax_percent' => 'decimal:2',
+        'discount_percent' => 'decimal:2',
         'additional_charges' => 'decimal:5',
         'total' => 'decimal:5',
         'paid_amount' => 'decimal:5',
@@ -62,10 +69,67 @@ class Invoice extends Model
     const STATUS_DELIVERED = 'delivered';
     const STATUS_CANCELLED = 'cancelled';
 
+    /**
+     * Forward moves only, plus cancelling any time before delivery. Goods that
+     * reached the customer come back through a return, not a cancellation.
+     * Cancelled is final: coming back from it would need the goods issued and
+     * the sale posted again, which no status change does — a new invoice does.
+     */
+    const TRANSITIONS = [
+        self::STATUS_PENDING => [self::STATUS_CONFIRMED, self::STATUS_CANCELLED],
+        self::STATUS_CONFIRMED => [self::STATUS_PROCESSING, self::STATUS_CANCELLED],
+        self::STATUS_PROCESSING => [self::STATUS_SHIPPED, self::STATUS_CANCELLED],
+        self::STATUS_SHIPPED => [self::STATUS_DELIVERED, self::STATUS_CANCELLED],
+        self::STATUS_DELIVERED => [],
+        self::STATUS_CANCELLED => [],
+    ];
+
     const PAYMENT_CASH = 'cash';
     const PAYMENT_CARD = 'card';
     const PAYMENT_TRANSFER = 'transfer';
     const PAYMENT_CHECK = 'check';
+
+    public function canMoveTo(string $status): bool
+    {
+        return in_array($status, self::TRANSITIONS[$this->status] ?? [], true);
+    }
+
+    /**
+     * What is still owed: the total, less credit notes raised against it (a
+     * return settles part of the bill without money moving), less what was
+     * paid. Negative when the customer paid more than that. A list can load
+     * the credit notes' sum as `credited_total` to spare a query per row.
+     */
+    public function outstanding(): float
+    {
+        $credited = array_key_exists('credited_total', $this->attributes)
+            ? (float) $this->attributes['credited_total']
+            : (float) $this->creditNotes()->where('status', '!=', 'cancelled')->sum('total');
+
+        return round((float) $this->total - $credited - (float) $this->paid_amount, 5);
+    }
+
+    /**
+     * Sets what has been paid, and with it the due column and the paid stamp.
+     *
+     * The due column stays total less paid — reports sum it as that. The stamp
+     * follows outstanding(), net of credit notes: an invoice a return settled
+     * the rest of is paid once the money covers what is left, not only once it
+     * covers the whole total. An earlier stamp is kept rather than moved to
+     * now. `$clearIfOwed` takes it off when money comes back off the invoice;
+     * a new collection leaves an unrelated stamp alone.
+     */
+    public function applyPaid(float $paid, bool $clearIfOwed = true): void
+    {
+        $this->paid_amount = round($paid, 5);
+        $settled = $this->outstanding() <= 0.009;
+
+        $this->update([
+            'paid_amount' => $this->paid_amount,
+            'due_amount' => max(0, round((float) $this->total - (float) $this->paid_amount, 5)),
+            'paid_at' => $settled ? ($this->paid_at ?? now()) : ($clearIfOwed ? null : $this->paid_at),
+        ]);
+    }
 
     public static function getStatusOptions(): array
     {

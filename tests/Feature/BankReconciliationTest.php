@@ -208,3 +208,121 @@ test('reconciliations are refused to a sales account', function () {
         ->getJson('/api/v1/admin/accounting/bank-reconciliations')
         ->assertForbidden();
 });
+
+test('movements cleared last month stay cleared in the next reconciliation', function () {
+    ($this->deposit)(1000, '2026-03-05', 'dep:1');
+
+    $march = ($this->open)(1000, '2026-03-31')->assertCreated()->json('data');
+    ($this->clear)($march['id'], $march['movements'][0]['id'])->assertOk();
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$march['id'].'/complete')->assertOk();
+
+    ($this->deposit)(200, '2026-04-10', 'dep:2');
+
+    // April's statement shows both; only April's deposit is April's to tick.
+    $april = ($this->open)(1200, '2026-04-30')->assertCreated()->json('data');
+    $old = collect($april['movements'])->firstWhere('amount', 1000.0);
+
+    expect($old['is_cleared'])->toBeTrue();
+    expect($old['cleared_in'])->toBe($march['reference']);
+    expect((float) $april['summary']['outstanding_total'])->toBe(200.0);
+    expect($april['summary']['cleared_earlier_count'])->toBe(1);
+
+    // And last month's tick is not this sheet's to take back.
+    ($this->clear)($april['id'], $old['id'])->assertStatus(422);
+});
+
+test('several movements can be ticked at once, and repeating it changes nothing', function () {
+    ($this->deposit)(300, '2026-03-02', 'dep:1');
+    ($this->withdraw)(100, '2026-03-09', 'chq:1');
+
+    $data = ($this->open)(200)->assertCreated()->json('data');
+    $ids = collect($data['movements'])->pluck('id')->all();
+
+    $set = fn (bool $cleared) => $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$data['id'].'/lines', ['line_ids' => $ids, 'cleared' => $cleared]);
+
+    $set(true)->assertOk();
+    $summary = $set(true)->assertOk()->json('data.summary');
+
+    expect($summary['outstanding_count'])->toBe(0);
+    expect($summary['is_reconciled'])->toBeTrue();
+
+    expect($set(false)->assertOk()->json('data.summary.outstanding_count'))->toBe(2);
+});
+
+test('a movement after the statement date cannot be ticked in bulk', function () {
+    ($this->deposit)(300, '2026-03-02', 'dep:1');
+    ($this->deposit)(50, '2026-04-02', 'dep:2');
+
+    $data = ($this->open)(300, '2026-03-31')->assertCreated()->json('data');
+    $april = App\Models\JournalEntryLine::where('account_id', $this->bank->id)->where('debit', 50)->value('id');
+
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$data['id'].'/lines', ['line_ids' => [$april], 'cleared' => true])
+        ->assertStatus(422);
+});
+
+test('a mistyped statement balance can be corrected without losing the ticks', function () {
+    ($this->deposit)(500, '2026-03-02', 'dep:1');
+
+    $data = ($this->open)(5000)->assertCreated()->json('data');
+    ($this->clear)($data['id'], $data['movements'][0]['id'])->assertOk();
+
+    $summary = $this->actingAs($this->admin)
+        ->putJson('/api/v1/admin/accounting/bank-reconciliations/'.$data['id'], ['statement_balance' => 500])
+        ->assertOk()->json('data.summary');
+
+    expect($summary['is_reconciled'])->toBeTrue();
+});
+
+test('moving the statement date earlier drops ticks on movements it no longer covers', function () {
+    ($this->deposit)(500, '2026-03-02', 'dep:1');
+    ($this->deposit)(70, '2026-03-25', 'dep:2');
+
+    $data = ($this->open)(570)->assertCreated()->json('data');
+    foreach ($data['movements'] as $movement) {
+        ($this->clear)($data['id'], $movement['id'])->assertOk();
+    }
+
+    $this->actingAs($this->admin)
+        ->putJson('/api/v1/admin/accounting/bank-reconciliations/'.$data['id'], ['statement_date' => '2026-03-15', 'statement_balance' => 500])
+        ->assertOk();
+
+    expect(BankReconciliation::find($data['id'])->clearedLines()->count())->toBe(1);
+});
+
+test('a completed reconciliation cannot be reopened beside an open one', function () {
+    ($this->deposit)(100, '2026-03-01', 'dep:1');
+
+    $march = ($this->open)(100, '2026-03-31')->assertCreated()->json('data');
+    ($this->clear)($march['id'], $march['movements'][0]['id'])->assertOk();
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$march['id'].'/complete')->assertOk();
+
+    ($this->open)(100, '2026-04-30')->assertCreated();
+
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$march['id'].'/reopen')
+        ->assertStatus(422);
+});
+
+test('the list says which accounts have a sheet open and when each was last reconciled', function () {
+    ($this->deposit)(100, '2026-03-01', 'dep:1');
+
+    $march = ($this->open)(100, '2026-03-31')->assertCreated()->json('data');
+    ($this->clear)($march['id'], $march['movements'][0]['id'])->assertOk();
+    $this->actingAs($this->admin)
+        ->postJson('/api/v1/admin/accounting/bank-reconciliations/'.$march['id'].'/complete')->assertOk();
+    $april = ($this->open)(100, '2026-04-30')->assertCreated()->json('data');
+
+    $data = $this->actingAs($this->admin)
+        ->getJson('/api/v1/admin/accounting/bank-reconciliations?status=open')
+        ->assertOk()->json('data');
+
+    expect($data['reconciliations'])->toHaveCount(1);
+
+    $account = collect($data['accounts'])->firstWhere('id', $this->bank->id);
+    expect($account['open_reconciliation']['id'])->toBe($april['id']);
+    expect($account['last_reconciled_date'])->toBe('2026-03-31');
+});

@@ -67,6 +67,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useTicketsStore } from '@/stores/tickets';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { matchesSearch } from '@/utils/search';
 
 const router = useRouter();
 const ticketsStore = useTicketsStore();
@@ -86,11 +87,10 @@ const tickets = computed(() => ticketsStore.tickets.map((ticket) => ({
         low: window.t('low')}[ticket.priority] || ticket.priority || window.t('undefined')})));
 
 const filteredTickets = computed(() => {
-    const query = searchQuery.value.trim().toLowerCase();
+    const query = searchQuery.value.trim();
     if (!query) return tickets.value;
     return tickets.value.filter((ticket) => {
-        return [ticket.subject, ticket.customerName, ticket.statusLabel, ticket.priorityLabel]
-            .some((field) => String(field || '').toLowerCase().includes(query));
+        return matchesSearch([ticket.subject, ticket.customerName, ticket.statusLabel, ticket.priorityLabel], query);
     });
 });
 

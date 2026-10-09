@@ -34,8 +34,11 @@
                 </th>
             </tr>
         </thead>
-        <tbody>
-            <template v-for="(group, gIdx) in groups" :key="group.key">
+        <template v-for="(group, gIdx) in groups" :key="group.key">
+            <tbody
+                class="group-tbody"
+                :class="{ 'has-section': !!group.sectionLabel }"
+            >
                 <!-- Classification heading. It belongs to the group that opens
                      the section so the PDF's page-break walk, which counts rows
                      group by group, keeps its place. -->
@@ -51,6 +54,10 @@
                     :style="[{ background: gIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }, rowStyle(group)]"
                     :id="!printMode && iIdx === 0 ? `item-${group.product.id}` : undefined"
                 >
+                    <td v-if="visibleColumns.code" class="cell-code">
+                        <span v-if="item.sku" class="code-value">{{ item.sku }}</span>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
                     <td v-if="visibleColumns.image && iIdx === 0" :rowspan="group.items.length" class="cell-image">
                         <div class="cell-image-inner">
                             <div class="cell-image-frame">
@@ -219,6 +226,27 @@
                             </button>
                         </div>
                     </td>
+                    <!-- The supplier's illustrated explanation of the product —
+                         the second picture a price list such as Ingco's carries
+                         beside the photo. Stored as the gallery's first image. -->
+                    <td
+                        v-if="visibleColumns.illustration && iIdx === 0"
+                        :rowspan="group.items.length"
+                        class="cell-image cell-illustration"
+                    >
+                        <div v-if="illustrationOf(group.product)" class="cell-illustration-frame">
+                            <EntityImage
+                                :src="illustrationOf(group.product)"
+                                type="product"
+                                :size="160"
+                                shape="square"
+                                fit="contain"
+                                :lazy="!printMode"
+                                :preview-src-list="printMode ? [] : getPreviewList(group.product)"
+                            />
+                        </div>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
                     <td
                         v-if="visibleColumns.details"
                         class="cell-detail"
@@ -228,7 +256,16 @@
                             <div v-if="item.size" class="detail-size">{{ item.size }}</div>
                             <div v-if="item.color" class="detail-color">{{ item.color }}</div>
                             <div v-if="item.unit" class="detail-unit">{{ item.unit }}</div>
-                            <div v-if="!item.size && !item.color && !item.unit" class="detail-na">&mdash;</div>
+                            <!-- With the specifications column showing, the specs are
+                                 read there; this cell keeps them only while it is
+                                 the one place they could appear. -->
+                            <ul v-if="!visibleColumns.specs && hasSpecs(item)" class="detail-specs">
+                                <li v-for="(spec, sIdx) in item.specs" :key="sIdx">
+                                    <span v-if="spec.label" class="detail-spec-label">{{ spec.label }}:</span>
+                                    <span class="detail-spec-value">{{ spec.value }}</span>
+                                </li>
+                            </ul>
+                            <div v-if="!item.size && !item.color && !item.unit && (visibleColumns.specs || !hasSpecs(item))" class="detail-na">&mdash;</div>
                         </div>
                         <!-- Both row actions live in one strip. They used to be
                              two absolutely-positioned buttons claiming the same
@@ -265,6 +302,35 @@
                                 </button>
                             </el-tooltip>
                         </div>
+                    </td>
+                    <!-- The storefront's specifications table for this row: the
+                         product's "Label: value" description lines, with the
+                         variant's own details laid over them. -->
+                    <td
+                        v-if="visibleColumns.specs"
+                        class="cell-specs"
+                        :class="{ 'has-spec-table': specRows(item).length, editable: !printMode }"
+                        @dblclick="!printMode && $emit('edit-specs', group, item)"
+                    >
+                        <table v-if="specRows(item).length" class="spec-table">
+                            <tbody>
+                                <tr v-for="(spec, sIdx) in specRows(item)" :key="sIdx">
+                                    <th v-if="spec.label" scope="row">{{ spec.label }}</th>
+                                    <td :colspan="spec.label ? 1 : 2">{{ spec.value }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-else class="detail-na">&mdash;</div>
+                        <el-tooltip v-if="!printMode" :content="$t('edit_specifications')" placement="top" effect="dark">
+                            <button
+                                type="button"
+                                class="cell-edit-btn cell-specs-btn"
+                                :aria-label="$t('edit_specifications')"
+                                @click="$emit('edit-specs', group, item)"
+                            >
+                                <el-icon><component :is="specRows(item).length ? EditPen : Plus" /></el-icon>
+                            </button>
+                        </el-tooltip>
                     </td>
                     <td
                         v-if="visibleColumns.price"
@@ -305,6 +371,55 @@
                         </span>
                     </td>
                     <td
+                        v-if="visibleColumns.offer && iIdx === 0"
+                        :rowspan="group.items.length"
+                        class="cell-offer"
+                        :class="{ editing: !printMode && editingId === offerRowId(group) }"
+                        @dblclick="!printMode && hasVariants(group) && $emit('start-edit', offerItem(group))"
+                    >
+                        <input
+                            v-if="!printMode && editingId === offerRowId(group)"
+                            v-model="localEditValue"
+                            type="text"
+                            inputmode="decimal"
+                            class="price-edit-input"
+                            autocomplete="off"
+                            @keydown.enter.prevent="$emit('commit-edit', localEditValue)"
+                            @keydown.escape.prevent="$emit('cancel-edit')"
+                            @blur="$emit('commit-edit', localEditValue)"
+                        />
+                        <template v-else>
+                            <span v-if="hasOfferPrice(group)" class="price-value">
+                                {{ formatPrice(offerItem(group).displayPrice) }}
+                            </span>
+                            <span v-else class="detail-na">&mdash;</span>
+                            <span
+                                v-if="!printMode && hasOfferPrice(group) && offerItem(group).originalPrice !== offerItem(group).displayPrice"
+                                class="price-original"
+                            >
+                                {{ formatPrice(offerItem(group).originalPrice) }}
+                            </span>
+                        </template>
+                        <el-tooltip v-if="!printMode && hasVariants(group)" :content="$t('click_to_edit_price')" placement="top" effect="dark">
+                            <button type="button" class="cell-edit-btn" @click="$emit('start-edit', offerItem(group))">
+                                <el-icon><EditPen /></el-icon>
+                            </button>
+                        </el-tooltip>
+                        <span v-if="!printMode && itemStatus[offerRowId(group)]" class="save-status corner" :class="itemStatus[offerRowId(group)]">
+                            <el-icon v-if="itemStatus[offerRowId(group)] === 'saving'" class="is-loading"><Loading /></el-icon>
+                            <el-icon v-else-if="itemStatus[offerRowId(group)] === 'saved'"><Check /></el-icon>
+                            <el-icon v-else-if="itemStatus[offerRowId(group)] === 'pending'"><Clock /></el-icon>
+                            <el-icon v-else><WarningFilled /></el-icon>
+                        </span>
+                    </td>
+                    <td v-if="visibleColumns.pack && iIdx === 0" :rowspan="group.items.length" class="cell-pack">
+                        <template v-if="packQuantity(group.product)">
+                            <span class="pack-value">{{ packQuantity(group.product) }}</span>
+                            <span class="pack-unit">{{ $t('units_per_carton_short') }}</span>
+                        </template>
+                        <span v-else class="detail-na">&mdash;</span>
+                    </td>
+                    <td
                         v-if="visibleColumns.inventory"
                         class="cell-stock"
                         :class="{ editing: !printMode && editingStockId === item.id }"
@@ -335,8 +450,10 @@
                         </span>
                     </td>
                 </tr>
-            </template>
-            <tr v-if="!loading && groups.length === 0">
+            </tbody>
+        </template>
+        <tbody v-if="!loading && groups.length === 0" class="empty-tbody">
+            <tr>
                 <td :colspan="visibleColumnCount" class="empty-cell">
                     <el-empty :description="$t('there_are_no_products')" />
                 </td>
@@ -348,6 +465,7 @@
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { productImages, toImagePath } from '@/utils/productImages';
+import { mergeSpecs } from '@/utils/productSpecs';
 import { EditPen, Loading, Check, Clock, WarningFilled, UploadFilled, Delete, Plus } from '@element-plus/icons-vue';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -366,7 +484,7 @@ const props = defineProps({
     printMode: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
-        default: () => ({ image: true, product: true, details: true, price: true, inventory: true }),
+        default: () => ({ code: true, image: true, product: true, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true }),
     },
     // Per-column width shares that override the defaults below. Shares, not
     // percentages: they are re-normalised over the visible columns, so one
@@ -390,6 +508,7 @@ const emit = defineEmits([
     'update-image', 'clear-image',
     'add-variant',
     'edit-item',
+    'edit-specs',
     // Removal is split by what is being removed, because the two are not the
     // same act: a variant is one line of a product, an item is the product.
     'remove-variant',
@@ -405,6 +524,10 @@ const emit = defineEmits([
  * same test openEditItemDialog makes to decide which record an edit belongs to.
  */
 const isVariantRow = (item) => String(item?.id ?? '').startsWith('v-');
+
+const hasSpecs = (item) => Array.isArray(item?.specs) && item.specs.length > 0;
+
+const specRows = (item) => mergeSpecs(Array.isArray(item?.baseSpecs) ? item.baseSpecs : [], item?.specs);
 
 /** Display name of the classification a product is filed under, if it came through. */
 const categoryLabel = (product) => {
@@ -427,8 +550,19 @@ const visibleColumnCount = computed(() => Object.values(props.visibleColumns).fi
  * not percentages — they are re-normalised over whatever subset is visible, so
  * hiding a column widens the others instead of leaving the table short.
  */
-const COLUMN_SHARES = { image: 50, product: 35, details: 35, price: 15, inventory: 15 };
-const COLUMN_LABELS = { image: 'image', product: 'product', details: 'details', price: 'the_price', inventory: 'inventory' };
+const COLUMN_SHARES = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
+const COLUMN_LABELS = {
+    code: 'item_code',
+    image: 'image',
+    product: 'product',
+    illustration: 'illustrative_image',
+    details: 'details',
+    specs: 'specifications',
+    price: 'the_price',
+    offer: 'offer_price',
+    pack: 'pack_quantity',
+    inventory: 'inventory',
+};
 
 /** The showing columns, in table order — drives the colgroup and the header. */
 const activeColumns = computed(() => Object.keys(COLUMN_SHARES).filter((key) => props.visibleColumns[key]));
@@ -448,7 +582,7 @@ const colWidth = (key) => ({
  * Millimetres of real paper per CSS pixel of the PDF capture, taken from the
  * pair the two output paths were tuned to: a fifth of A4 is 59.4mm printed and
  * 295px captured. One setting therefore feeds both paths, in the units each of
- * them measures in (see the note on `.offer-table.is-print`).
+ * them measures in (see the note on `.offer-table.has-fixed-rows`).
  */
 const MM_PER_ROW_PX = 59.4 / 295;
 
@@ -470,7 +604,8 @@ const tableVars = computed(() => (props.rowHeight > 0
  * native print that variable is millimetres of paper.
  */
 const rowStyle = (group) => {
-    if (!hasFixedRows.value || props.visibleColumns.image || props.visibleColumns.product) return null;
+    const { image, product, illustration, offer, pack } = props.visibleColumns;
+    if (!hasFixedRows.value || image || product || illustration || offer || pack) return null;
     return { height: `calc(var(--offer-image-cell-height) / ${Math.max(group.items.length, 1)})` };
 };
 
@@ -579,6 +714,24 @@ const setImageBusy = (group, val) => {
 
 // The item id the parent's per-row status badges are keyed by.
 const imageRowId = (group) => `p-${group.product.id}`;
+const offerRowId = (group) => `p-${group.product.id}`;
+
+const offerItem = (group) => group.offerItem || {
+    id: `p-${group.product.id}`,
+    productId: group.product.id,
+    price: parseFloat(group.product.price) || 0,
+    originalPrice: parseFloat(group.product.price) || 0,
+    displayPrice: parseFloat(group.product.price) || 0,
+};
+
+const hasVariants = (group) => (group.items?.length > 1) || isVariantRow(group.items?.[0]);
+
+const hasOfferPrice = (group) => {
+    if (!hasVariants(group)) return false;
+    const item = offerItem(group);
+    const p = Number(item?.displayPrice);
+    return Number.isFinite(p) && p > 0;
+};
 
 const imageSlug = (group) => group.product?.slug || group.product?.name_ar || 'product';
 
@@ -617,6 +770,17 @@ const removeItemImage = (group) => {
 
 const getPreviewList = (product) => productImages(product);
 
+/** The illustration picture: the first gallery image that is not the main photo. */
+const illustrationOf = (product) => {
+    const gallery = Array.isArray(product?.image_gallery) ? product.image_gallery : [];
+    return gallery.find((img) => img && img !== product.image_main) || null;
+};
+
+const packQuantity = (product) => {
+    const n = Number(product?.pack_quantity);
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 const formatPrice = (price) => {
     if (price === null || price === undefined) return '—';
     return Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -633,27 +797,19 @@ const formatPrice = (price) => {
        than a starting point auto-layout re-negotiates against the longest
        product name in the page. */
     table-layout: fixed;
+    /* Gutter down the sides of the caption under the picture. The picture
+       itself has none: it is flush with the cell it fills. */
     --offer-image-pad: 10px;
-    /* The picture now tracks its column instead of the other way round: it
-       spans the image cell edge to edge. On screen it is held to this cap, or
-       a wide monitor would turn the editing table into a wall of posters; the
-       printed and exported list drops the cap below so the picture really does
-       take its half of the page. */
-    --offer-image-max: 340px;
-    /* The tallest a picture may grow. On screen it matches the width cap, so a
-       portrait photo takes the same square of the page a landscape one does
-       across; a set row height replaces this with what the cell actually has
-       (see `.has-fixed-rows`). */
+    /* How tall the picture band stands. The picture always spans its column;
+       this is what stops a wide monitor from turning the editing table into a
+       wall of posters. A set row height replaces it with what the cell
+       actually has under the caption (see `.has-fixed-rows`), which is how the
+       printed and exported list gets its share of the page. */
     --offer-image-cap: 340px;
     /* What the box stands at while the picture is still on its way — never
        more than the cell has to give, so it reserves a place without pushing
        a short row open. */
     --offer-image-min: min(120px, var(--offer-image-cap));
-}
-/* The printed / exported list lets the picture off its on-screen cap so it
-   really does take its share of the page. */
-.offer-table.is-print {
-    --offer-image-max: none;
 }
 /*
  * A row of a set height: a share of the *page* rather than of the table. The
@@ -674,9 +830,10 @@ const formatPrice = (price) => {
  */
 .offer-table.has-fixed-rows {
     --offer-image-cell-height: var(--offer-row-h, 295px);
-    /* What the caption under the picture takes out of that height: the cell's
-       padding top and bottom, the gap, and two lines of a 10pt product name. */
-    --offer-image-caption: 66px;
+    /* What the caption under the picture takes out of that height: its own
+       padding top and bottom, and two lines of a 10pt product name. Everything
+       else in the cell is picture. */
+    --offer-image-caption: 52px;
     /* The picture may take everything the cell has under the caption. */
     --offer-image-cap: calc(var(--offer-image-cell-height) - var(--offer-image-caption));
 }
@@ -684,17 +841,13 @@ const formatPrice = (price) => {
    group however the columns are arranged — including with the picture hidden,
    where the product cell is the one holding the group together. */
 .offer-table.has-fixed-rows .cell-image,
-.offer-table.has-fixed-rows .cell-product {
+.offer-table.has-fixed-rows .cell-product,
+.offer-table.has-fixed-rows .cell-offer,
+.offer-table.has-fixed-rows .cell-pack {
     height: var(--offer-image-cell-height);
 }
-/* Nothing more to say about the picture here: it reads `--offer-image-cap`
-   above and grows to the cell on its own (see the screen rule below). What is
-   left is the missing-picture box, which has no proportions of its own to
-   stand on and so takes the cell's. */
-.offer-table.has-fixed-rows .cell-image :deep(.entity-image--empty) {
-    height: var(--offer-image-cap) !important;
-    aspect-ratio: auto;
-}
+/* Nothing more to say about the picture here: the frame below is the cell's
+   height less the caption, and everything inside the frame fills it. */
 .offer-table th,
 .offer-table td {
     border: 1px solid #cbd5e1;
@@ -733,7 +886,9 @@ const formatPrice = (price) => {
     text-align: center;
     border-bottom: 2px solid #1d4ed8;
 }
-.offer-table tbody tr:hover td {
+/* Child combinators, so a specifications table nested in a cell keeps its own
+   look while the row around it is hovered. */
+.offer-table > tbody > tr:hover > td {
     background: #e2e9f2 !important;
 }
 
@@ -783,27 +938,32 @@ const formatPrice = (price) => {
 .cell-image {
     text-align: center;
     vertical-align: middle;
-    padding: var(--offer-image-pad);
+    /* No padding: the picture is the cell. What used to be this cell's gutter
+       now belongs to the caption alone, which is the only thing in here that
+       is read rather than looked at. */
+    padding: 0;
 }
 /*
  * EntityImage writes its box as an inline style off the `size` prop, so a box
- * that tracks the column has to win on specificity.
+ * that fills the frame has to win on specificity.
  *
- * The box used to be a square the picture was fitted inside, which left every
- * photo that is not itself square sitting in a band of empty cell. Now the box
- * takes its shape from the photo: the picture spans the column edge to edge,
- * and `max-height` pulls it back — proportionally, the way a replaced element
- * is clamped — when that would make it taller than the cell has room for. So
- * it grows until it meets the cell on one side or the other, and what is left
- * over is cell rather than a plate around the picture. Nothing is stretched or
- * cropped on the way: `contain` (set on the component) stays as the guarantee
- * that the goods are shown whole — a price list is read for them, and cropping
- * cuts the ends off a tap or a length of pipe.
+ * Two things were wanted here and only one of them is about the picture. The
+ * *cell* is filled: the frame above takes the column's full width and all the
+ * height under the caption, so every cell in the column is the same box and
+ * the list reads as one grid rather than a row of stamps floating in white.
+ * The *picture* is whole: `contain` (set on the component) fits it inside that
+ * box, so a photo wider than it is tall — or taller than it is wide — is shown
+ * end to end instead of having its ends cropped off. A price list is read for
+ * the goods, and a tap with its spout cut away is not the tap being sold.
+ *
+ * What is left over inside the box is the row's own background, not a plate
+ * around the picture: the box has no fill and no border of its own.
  */
 .cell-image :deep(.entity-image) {
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     aspect-ratio: auto;
+    border-radius: 0;
 }
 /*
  * A picture that has not arrived yet leaves nothing in the box to give it a
@@ -818,17 +978,19 @@ const formatPrice = (price) => {
 .cell-image :deep(.el-image__inner) {
     display: block;
     width: 100%;
-    height: auto;
-    max-height: var(--offer-image-cap, none);
-    /* Clamping the height narrows the picture; this keeps it in the middle of
-       the column rather than against its leading edge. */
-    margin-inline: auto;
+    height: 100%;
+    /* The picture sits in the middle of the box on whichever axis it does not
+       fill, so what is left over falls evenly on both sides of it rather than
+       stacking up on one. */
+    object-position: center;
 }
-/* The stand-in icon has no picture to take its shape from, so it keeps the
-   square the box used to be. */
+/* The stand-in icon has no picture to take its shape from, so it takes the
+   frame's, like everything else in here. */
 .cell-image :deep(.entity-image--empty) {
-    aspect-ratio: 1 / 1;
-    max-height: var(--offer-image-cap, none);
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border-radius: 0;
 }
 /* The shimmer stands in the reserved box above, which el-image gives it in
    full — it has no shape of its own to fall back on. */
@@ -845,15 +1007,28 @@ const formatPrice = (price) => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
     width: 100%;
-    max-width: var(--offer-image-max);
+    height: 100%;
     margin-inline: auto;
 }
+/*
+ * The box the picture fills: the full width of its column, and as tall as the
+ * cell has room for under the caption. `overflow` is what makes `cover` a crop
+ * rather than a picture spilling over its neighbours.
+ */
 .cell-image-frame {
     position: relative;
     display: block;
     width: 100%;
+    /* The height is the starting point, not the last word: the frame takes
+       whatever the cell has left over once the caption has had its lines, so a
+       one-line product name gives its spare line back to the picture instead
+       of leaving a white strip under it. It never gives height back, so a name
+       that runs long spills the way it always did rather than squeezing the
+       picture out of the cell. */
+    height: var(--offer-image-cap);
+    flex: 1 0 auto;
+    overflow: hidden;
     line-height: 0;
 }
 /* Edit affordance over the picture, matching the pencil in the other cells
@@ -899,7 +1074,10 @@ const formatPrice = (price) => {
     gap: 4px;
     width: 100%;
     max-width: 100%;
-    padding-inline: var(--offer-image-pad);
+    /* The 8px top and bottom are half of what `--offer-image-caption` above
+       budgets for; the other half is two lines of the name. Change one and the
+       picture stops meeting the bottom of its cell. */
+    padding: 8px var(--offer-image-pad);
     box-sizing: border-box;
 }
 .cell-image-name {
@@ -1071,8 +1249,98 @@ const formatPrice = (price) => {
 .detail-color { color: #6366f1; font-size: 8.5pt; }
 .detail-unit { color: #0f766e; font-size: 8.5pt; }
 .detail-na { color: #94a3b8; }
+/* A variant's own details, one "Label: value" per line under its size. */
+.detail-specs {
+    list-style: none;
+    margin: 3px 0 0;
+    padding: 0;
+    font-size: 8pt;
+    line-height: 1.35;
+    color: #475569;
+}
+.detail-spec-label { font-weight: 600; margin-inline-end: 3px; }
 
-.cell-price {
+/* The specifications column: the same "Label: value" lines, given the room of
+   a column of their own, so they read at body size and start-aligned. */
+.cell-specs {
+    color: #334155;
+    font-size: 9pt;
+    padding: 5px 8px;
+    text-align: start;
+    vertical-align: middle;
+}
+/* The storefront's two-column specs table, merged into the price list's own
+   grid: the cell gives up its padding, the table fills it edge to edge, and
+   its lines are the main table's lines — so each label and value reads as a
+   cell of the price list, not as a box sitting inside one. */
+.offer-table td.cell-specs.has-spec-table {
+    padding: 0;
+    /* Lets the nested table's `height: 100%` resolve against the row, so its
+       lines run to the bottom of the cell however tall the product group is. */
+    height: 1px;
+    vertical-align: top;
+}
+.spec-table {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    border: none;
+    font-size: 8.5pt;
+    line-height: 1.35;
+}
+.offer-table .spec-table th,
+.offer-table .spec-table td {
+    padding: 3px 8px;
+    border: none;
+    border-bottom: 1px solid #cbd5e1;
+    text-align: start;
+    vertical-align: middle;
+}
+.offer-table .spec-table tr:last-child th,
+.offer-table .spec-table tr:last-child td {
+    border-bottom: none;
+}
+/* The label/value divider, drawn like any other column line of the grid. */
+.offer-table .spec-table th {
+    border-inline-end: 1px solid #cbd5e1;
+}
+.spec-table th {
+    width: 42%;
+    font-weight: 600;
+    color: #475569;
+    background: rgba(241, 245, 249, 0.75);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+/* Transparent, so the value takes the row's zebra stripe like its neighbours. */
+.spec-table td {
+    font-weight: 600;
+    color: #1e293b;
+    background: transparent;
+    unicode-bidi: plaintext;
+}
+.cell-specs .detail-na { text-align: center; }
+.cell-specs.editable {
+    position: relative;
+    cursor: pointer;
+}
+/* Hidden until the cell is pointed at: at rest it would sit on the first
+   value of a table that fills the cell edge to edge. It stands on a solid
+   chip so it stays legible over the text beneath it. */
+.cell-specs-btn {
+    opacity: 0;
+    z-index: 2;
+    background: #fff;
+    box-shadow: 0 0 0 1px #cbd5e1;
+}
+.cell-specs:hover .cell-specs-btn,
+.cell-specs-btn:focus-visible {
+    opacity: 1;
+}
+.detail-spec-value { unicode-bidi: plaintext; }
+
+.cell-price,
+.cell-offer {
     text-align: center;
     font-weight: 700;
     color: #b00e0e;
@@ -1103,6 +1371,7 @@ const formatPrice = (price) => {
 }
 .cell-detail:hover .cell-edit-btn,
 .cell-price:hover .cell-edit-btn,
+.cell-offer:hover .cell-edit-btn,
 .cell-stock:hover .cell-edit-btn {
     opacity: 1;
 }
@@ -1181,7 +1450,8 @@ const formatPrice = (price) => {
     background: #fef2f2;
     color: #dc2626;
 }
-.cell-price.editing {
+.cell-price.editing,
+.cell-offer.editing {
     padding: 0;
     overflow: visible;
 }
@@ -1209,6 +1479,51 @@ const formatPrice = (price) => {
     outline: none;
     background: #fff;
     padding: 2px 4px;
+}
+
+/* The supplier's item code: what a buyer quotes back when ordering. */
+.cell-code {
+    text-align: center;
+    vertical-align: middle;
+    padding: 5px 6px;
+}
+.code-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9pt;
+    font-weight: 700;
+    color: #1e293b;
+    direction: ltr;
+    unicode-bidi: isolate;
+    word-break: break-all;
+}
+
+/* The illustration has no caption under it, so its frame is the whole cell. */
+.cell-illustration-frame {
+    position: relative;
+    width: 100%;
+    height: var(--offer-image-cell-height, auto);
+    min-height: 120px;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.cell-pack {
+    text-align: center;
+    vertical-align: middle;
+    padding: 5px 6px;
+}
+.pack-value {
+    display: block;
+    font-size: 12pt;
+    font-weight: 800;
+    color: #1e3a8a;
+    line-height: 1.2;
+}
+.pack-unit {
+    display: block;
+    font-size: 7.5pt;
+    color: #64748b;
+    white-space: nowrap;
 }
 
 .cell-stock {
@@ -1384,39 +1699,88 @@ const formatPrice = (price) => {
         /* The column shares are percentages of the table, so they already scale
            to the actual printable width — A4 (210mm) or US Letter (216mm),
            whichever the print dialog picks. Nothing to re-state here. */
-        --offer-image-max: none;
     }
     /* Real millimetres on a real sheet: a fifth of A4's 297mm by default, or
        the custom height converted to paper by the component. */
     .offer-table.is-print {
         --offer-image-cell-height: var(--offer-row-h-print, 59.4mm);
-        --offer-image-caption: 17mm;
+        /* The same budget as on screen, read on paper: 8px of padding top and
+           bottom (4.2mm together) and two lines of a 10pt name (9.2mm). */
+        --offer-image-caption: 14mm;
     }
     .col-resizer {
-        display: none;
+        display: none !important;
+    }
+    .offer-table thead {
+        display: table-header-group !important;
     }
     .offer-table thead th {
         position: static;
-        background: #bcdcfb;
-        color: #000;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: #f1f5f9 !important;
+        color: #0f172a !important;
+        font-weight: 800 !important;
+        font-size: 8.5pt !important;
+        padding: 6px 8px !important;
+        border: 1px solid #94a3b8 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table td {
+        border: 1px solid #cbd5e1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table tr:nth-child(even) td {
+        background-color: #f8fafc !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .offer-table tbody tr.section-row th {
+        background: #e2e8f0 !important;
+        color: #0f172a !important;
+        font-size: 9.5pt !important;
+        font-weight: 800 !important;
+        padding: 6px 10px !important;
+        border: 1px solid #94a3b8 !important;
+        border-top: 2px solid #1e3a8a !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .cell-detail {
+        padding-inline-end: 8px !important;
     }
     /* The box itself is sized by the screen rule above, which reads the same
        variable this medium has just overridden. */
     .cell-image :deep(.entity-image) {
         cursor: default;
     }
+    .offer-table tbody.group-tbody {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
     .offer-table tr {
-        break-inside: avoid;
-        page-break-inside: avoid;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
     }
     /* Never leave a classification heading alone at the foot of a page. The
        PDF path already keeps it with its first group; this is for a native
        Ctrl+P, where the browser chooses the breaks. */
     .offer-table tbody tr.section-row {
-        break-after: avoid;
-        page-break-after: avoid;
+        break-inside: avoid !important;
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    .cell-edit-btn,
+    .cell-name-edit,
+    .add-item-variant-btn,
+    .remove-item-btn,
+    .add-item-variant-icon,
+    .cell-row-actions,
+    .cell-image-edit,
+    .cell-specs-btn,
+    .image-save-status,
+    .save-status {
+        display: none !important;
     }
 }
 

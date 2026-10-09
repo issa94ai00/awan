@@ -34,4 +34,12 @@ export const inventoryApi = {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
     },
+
+    getCostingMethod() {
+        return api.get('/admin/inventory/costing-method');
+    },
+
+    updateCostingMethod(data) {
+        return api.post('/admin/inventory/costing-method', data);
+    },
 };

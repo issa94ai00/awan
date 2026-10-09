@@ -1,5 +1,7 @@
 <!-- resources/js/Components/Common/ResponsiveGrid.vue -->
 <script setup>
+import { computed } from 'vue';
+
 const props = defineProps({
     cols: {
         type: [Number, Object],

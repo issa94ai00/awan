@@ -1,8 +1,8 @@
 import api from './index';
 
 export const accountingReportsApi = {
-    trialBalance() {
-        return api.get('/admin/accounting/trial-balance');
+    trialBalance(params = {}) {
+        return api.get('/admin/accounting/trial-balance', { params });
     },
 
     incomeStatement(params = {}) {
@@ -74,6 +74,21 @@ export const fixedAssetsApi = {
 
     create(data) {
         return api.post('/admin/accounting/fixed-assets', data);
+    },
+
+    // Only the descriptive fields: the figures are what the entries were made of.
+    update(id, data) {
+        return api.put(`/admin/accounting/fixed-assets/${id}`, data);
+    },
+
+    // What a depreciation run through a month would post, and the run itself.
+    // Missed months are caught up, each dated to its own month.
+    depreciationPreview(params = {}) {
+        return api.get('/admin/accounting/fixed-assets/depreciation', { params });
+    },
+
+    depreciate(data = {}) {
+        return api.post('/admin/accounting/fixed-assets/depreciation', data);
     },
 
     // Retiring an asset, rather than deleting it: its cost is on the balance

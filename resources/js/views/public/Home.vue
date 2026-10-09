@@ -3,18 +3,46 @@
         <!-- Hero Section -->
         <section class="hero" id="home" :style="heroBgStyle">
             <div class="hero-content">
-                <h1>{{ heroHeading }}</h1>
+                <!-- The brand, and what it sells: the h1 used to be the shop's
+                     name alone, which tells a search engine nothing. -->
+                <h1>
+                    <span class="hero-brand">{{ heroHeading }}</span>
+                    <span class="hero-kicker">{{ t('home_h1_sub') }}</span>
+                </h1>
                 <p>{{ heroTagline }}</p>
+
+                <!-- A real GET form to /products, so it works before the app
+                     has loaded too; the app takes it over once it has. -->
+                <form class="hero-search" role="search" action="/products" method="get" @submit.prevent="submitSearch">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input
+                        v-model="heroQuery"
+                        name="q"
+                        type="search"
+                        :placeholder="t('prod_search_placeholder')"
+                        :aria-label="t('search')"
+                        enterkeyhint="search"
+                        autocomplete="off"
+                    >
+                    <button type="submit">{{ t('search') }}</button>
+                </form>
+
                 <div class="hero-buttons">
-                    <router-link to="/categories" class="btn-hero-primary">
+                    <router-link to="/products" class="btn-hero-primary">
                         <i class="fas fa-th-large" aria-hidden="true"></i>
-                        {{ t('browse_products') || 'تصفح المنتجات' }}
+                        {{ t('browse_products') }}
                     </router-link>
                     <router-link to="/contact" class="btn-hero-secondary">
                         <i class="fas fa-headset" aria-hidden="true"></i>
-                        {{ t('contact_us_btn') || 'تواصل معنا' }}
+                        {{ t('contact_us_btn') }}
                     </router-link>
                 </div>
+
+                <ul v-if="stats.products" class="hero-stats">
+                    <li><strong>{{ formatCount(stats.products) }}</strong> {{ t('home_stat_products') }}</li>
+                    <li><strong>{{ formatCount(stats.sections) }}</strong> {{ t('home_stat_sections') }}</li>
+                    <li v-if="workingHours"><i class="far fa-clock" aria-hidden="true"></i> {{ workingHours }}</li>
+                </ul>
             </div>
         </section>
 
@@ -104,114 +132,130 @@
             </div>
         </section>
 
-        <!-- Categories Section -->
+        <!-- Sections: the top-level ones with products, each with a photo of
+             its products (none has an image of its own). -->
         <section class="categories fade-up" id="categories">
             <div class="container">
                 <div class="section-header">
-                    <h2>{{ t('main_categories') || 'فئات المنتجات الرئيسية' }}</h2>
-                    <p>{{ t('categories_subtitle') || 'تصفح الفئات الأكثر طلباً مع وصف سريع لكل فئة.' }}</p>
+                    <h2>{{ t('main_categories') }}</h2>
+                    <p>{{ t('categories_subtitle') }}</p>
                 </div>
 
-                <div v-if="loading" style="text-align: center; padding: 2rem;">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--mobile-primary);"></i>
-                </div>
-
-                <div v-else class="categories-grid">
-                    <router-link v-for="category in categories"
-                         :key="category.id"
-                         :to="`/category/${category.slug}`"
-                         class="category-card">
-                        <div v-if="category.image" class="category-image">
-                            <img :src="getImageUrl(category.image)" :alt="$p(category, 'name')" loading="lazy" decoding="async" width="400" height="300">
-                        </div>
-                        <div v-else class="category-icon">
-                            <i class="fas" :class="category.icon || 'fa-cube'" aria-hidden="true"></i>
-                        </div>
-                        <h3>{{ $p(category, 'name') }}</h3>
-                        <p>{{ truncateText($p(category, 'description') || t('high_quality_materials'), 50) }}</p>
-                        <span class="category-count">{{ category.product_count || 0 }} {{ t('products_count') || 'منتج' }}</span>
-                    </router-link>
-
-                    <div v-if="!categories.length" style="grid-column: 1/-1; text-align:center; padding: 2rem; color:#666;">
-                        {{ t('no_categories') || 'لا توجد فئات متاحة حالياً' }}
+                <div v-if="loading" class="home-sections-grid" aria-busy="true">
+                    <div v-for="n in 8" :key="n" class="home-section-card is-skeleton">
+                        <span class="hs-media"></span>
+                        <span class="hs-line"></span>
                     </div>
+                </div>
+
+                <div v-else-if="categories.length" class="home-sections-grid">
+                    <router-link
+                        v-for="category in categories"
+                        :key="category.id"
+                        :to="`/category/${category.slug}`"
+                        class="home-section-card"
+                    >
+                        <span class="hs-media" :class="{ 'is-drawing': isDrawing(category) }">
+                            <img
+                                v-if="category.image || category.thumbnail"
+                                :src="getImageUrl(category.image || category.thumbnail)"
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                                width="240"
+                                height="150"
+                            >
+                            <i v-else class="fas" :class="category.icon || 'fa-cube'" aria-hidden="true"></i>
+                        </span>
+                        <span class="hs-body">
+                            <h3>{{ $p(category, 'name') }}</h3>
+                            <span class="hs-count">{{ t('catl_products_n', { count: formatCount(category.product_count) }) }}</span>
+                        </span>
+                    </router-link>
+                </div>
+
+                <div v-if="!loading && categories.length" class="section-more">
+                    <router-link to="/categories" class="btn-more">
+                        {{ t('home_all_sections', { count: formatCount(stats.sections || categories.length) }) }}
+                        <i :class="isRtl ? 'fas fa-arrow-left' : 'fas fa-arrow-right'" aria-hidden="true"></i>
+                    </router-link>
                 </div>
             </div>
         </section>
 
-        <!-- Featured Products Section -->
-        <section class="featured-products fade-up" id="featured-products">
+        <!-- Products: the featured ones, or — with none featured — a daily
+             pick of what is in stock. The row used to say "no featured
+             products" and fall back to a banner. -->
+        <section v-if="loading || featuredProducts.length" class="featured-products fade-up" id="featured-products">
             <div class="container">
                 <div class="section-header">
-                    <h2>{{ t('featured_products') || 'منتجات مميزة' }}</h2>
-                    <p>{{ t('featured_subtitle') || 'أحدث وأفضل المنتجات المتوفرة في المتجر' }}</p>
+                    <h2>{{ productsSource === 'featured' ? t('featured_products') : t('home_picks_title') }}</h2>
+                    <p>{{ productsSource === 'featured' ? t('featured_subtitle') : t('home_picks_subtitle') }}</p>
                 </div>
 
-                <div v-if="loading" style="text-align: center; padding: 2rem;">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--mobile-primary);"></i>
-                </div>
+                <div class="products-slider-wrapper">
+                    <button
+                        v-if="!loading"
+                        type="button"
+                        class="slider-btn prev-btn"
+                        :aria-label="t('previous')"
+                        :disabled="featAtStart"
+                        @click="scrollFeatSlider('prev')"
+                    >
+                        <i :class="isRtl ? 'fas fa-chevron-right' : 'fas fa-chevron-left'" aria-hidden="true"></i>
+                    </button>
+                    <button
+                        v-if="!loading"
+                        type="button"
+                        class="slider-btn next-btn"
+                        :aria-label="t('next')"
+                        :disabled="featAtEnd"
+                        @click="scrollFeatSlider('next')"
+                    >
+                        <i :class="isRtl ? 'fas fa-chevron-left' : 'fas fa-chevron-right'" aria-hidden="true"></i>
+                    </button>
 
-                <div v-else>
-                    <div v-if="featuredProducts.length" class="products-slider-wrapper">
-                        <button class="slider-btn prev-btn" aria-label="المنتج السابق" @click="scrollFeatSlider('prev')" :style="{ opacity: featPrevBtnOpacity, pointerEvents: featPrevBtnOpacity === '0.5' ? 'none' : 'auto' }">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                        <button class="slider-btn next-btn" aria-label="المنتج التالي" @click="scrollFeatSlider('next')" :style="{ opacity: featNextBtnOpacity, pointerEvents: featNextBtnOpacity === '0.5' ? 'none' : 'auto' }">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-
-                        <div class="products-slider" ref="featProductsSlider" @scroll="updateFeatSliderButtons">
-                            <div v-for="product in featuredProducts" :key="product.id" class="product-card-container">
-                                <div class="product-card">
-                                    <div class="product-image">
-                                        <img :src="getImageUrl(product.image_main)" :alt="$p(product, 'name')" loading="lazy" decoding="async" width="285" height="285">
-                                        <router-link :to="'/product/' + product.slug" class="product-overlay" :aria-label="$p(product, 'name')">
-                                            <span class="view-btn"><i class="fas fa-eye" aria-hidden="true"></i></span>
-                                        </router-link>
-                                    </div>
-                                    <div class="product-info">
-                                        <div class="product-name-container">
-                                            <h3 class="product-title">
-                                                <router-link :to="'/product/' + product.slug" class="product-title-link">{{ $p(product, 'name') }}</router-link>
-                                            </h3>
-                                        </div>
-                                        <div class="product-category">{{ $p(product.category, 'name') || t('building_materials') }}</div>
-                                        <div v-if="settings.show_product_price === '1' && product.show_price && parseFloat(product.price) > 0" class="product-price">
-                                            ${{ parseFloat(product.price).toFixed(2) }}
-                                        </div>
-                                        <button class="btn-add-to-cart" @click="handleAddToCart(product)">
-                                            <i class="fas fa-cart-plus"></i>
-                                            {{ t('add_to_cart') || 'أضف للسلة' }}
-                                        </button>
-                                    </div>
-                                </div>
+                    <div ref="featProductsSlider" class="products-slider" @scroll.passive="updateFeatSliderButtons">
+                        <template v-if="loading">
+                            <div v-for="n in 4" :key="n" class="product-card-container">
+                                <ProductListingCard skeleton />
                             </div>
+                        </template>
+                        <div v-for="product in featuredProducts" v-else :key="product.listing_key || product.id" class="product-card-container">
+                            <ProductListingCard
+                                :product="product"
+                                @added="showToast(t('catp_added', { name: $event }))"
+                                @add-failed="showToast(t('catp_add_failed'), true)"
+                            />
                         </div>
                     </div>
+                </div>
 
-                    <div v-else style="text-align:center; padding: 2rem; color:#666;">
-                        {{ t('no_featured') || 'لا توجد منتجات مميزة حالياً' }}
-                    </div>
+                <div v-if="!loading" class="section-more">
+                    <router-link :to="productsSource === 'featured' ? '/featured-products' : '/products'" class="btn-more">
+                        {{ t('home_view_all_products') }}
+                        <i :class="isRtl ? 'fas fa-arrow-left' : 'fas fa-arrow-right'" aria-hidden="true"></i>
+                    </router-link>
                 </div>
             </div>
         </section>
 
-        <!-- CTA fallback Section -->
-        <section v-if="!featuredProducts.length && !loading" class="cta-section" style="background: var(--bg-light); padding: 80px 0; text-align: center;">
+        <!-- Help: a trade customer often knows the job, not the part. -->
+        <section class="home-help fade-up">
             <div class="container">
-                <div class="cta-content">
-                    <h2 style="font-size: 2.5rem; font-weight: 700; margin-bottom: 1rem; color: var(--primary-dark);">
-                        {{ t('discover_world') || 'اكتشف عالمنا المتميز' }}
-                    </h2>
-                    <p style="font-size: 1.2rem; margin-bottom: 2rem; color: #666;">
-                        {{ t('discover_desc') || 'نقدم أفضل مستلزمات البناء بجودة عالمية وأسعار تنافسية' }}
-                    </p>
-                    <div class="cta-actions">
-                        <router-link to="/categories" class="btn btn-primary btn-lg" style="background: var(--mobile-primary); color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 0 10px;">
-                            <i class="fas fa-th-large"></i> {{ t('explore_categories') || 'استكشف الفئات' }}
-                        </router-link>
-                        <router-link to="/contact" class="btn btn-outline-primary btn-lg" style="border: 2px solid var(--mobile-primary); color: var(--mobile-primary); padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 0 10px;">
-                            <i class="fas fa-phone"></i> {{ t('contact_us_btn') || 'تواصل معنا' }}
+                <div class="help-card">
+                    <div class="help-text">
+                        <h2>{{ t('home_help_title') }}</h2>
+                        <p>{{ t('home_help_text') }}</p>
+                    </div>
+                    <div class="help-actions">
+                        <a v-if="whatsappLink" :href="whatsappLink" class="btn-help-whatsapp" target="_blank" rel="noopener">
+                            <i class="fab fa-whatsapp" aria-hidden="true"></i>
+                            {{ t('home_whatsapp') }}
+                        </a>
+                        <router-link to="/contact" class="btn-help-contact">
+                            <i class="fas fa-headset" aria-hidden="true"></i>
+                            {{ t('contact_us_btn') }}
                         </router-link>
                     </div>
                 </div>
@@ -219,32 +263,48 @@
         </section>
 
         <!-- Notification Toast -->
-        <div v-if="toast.show" class="cart-notification success show" style="top: 100px;">
-            <i class="fas fa-check-circle"></i>
+        <div v-if="toast.show" class="cart-notification show" :class="toast.error ? 'error' : 'success'" role="status" style="top: 100px;">
+            <i :class="toast.error ? 'fas fa-circle-exclamation' : 'fas fa-check-circle'"></i>
             <span>{{ toast.message }}</span>
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive, onUnmounted } from 'vue';
+import { ref, onMounted, computed, reactive, onUnmounted, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
-import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+import ProductListingCard from '@/components/public/ProductListingCard.vue';
 
 // Stores
 const settingsStore = useSettingsStore();
-const cartStore = useCartStore();
+const router = useRouter();
 const { t, locale } = useI18n();
 
 // State
 const categories = ref([]);
 const featuredProducts = ref([]);
+/** 'featured', or 'picks' when nothing is featured (see Api\HomeController). */
+const productsSource = ref('featured');
+const stats = ref({});
 const specialOffers = ref([]);
 const loading = ref(true);
+const heroQuery = ref('');
+
+const isRtl = computed(() => locale.value === 'ar');
+const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+
+/** The generic drawings carry their own slate tile; framed as icons, not photos. */
+const isDrawing = (category) => !category.image && /\/images_items\/generic\//.test(category.thumbnail || '');
+
+const submitSearch = () => {
+    const q = heroQuery.value.trim();
+    router.push({ path: '/products', query: q ? { q } : {} });
+};
 
 // Secondary Navbar
 const openDropdowns = ref({});
@@ -254,16 +314,20 @@ const prevBtnOpacity = ref('0.5');
 const nextBtnOpacity = ref('1');
 const offersSlider = ref(null);
 
-// Featured Products Slider Refs
-const featPrevBtnOpacity = ref('0.5');
-const featNextBtnOpacity = ref('1');
+// Featured Products Slider
+const featAtStart = ref(true);
+const featAtEnd = ref(false);
 const featProductsSlider = ref(null);
 
 // Toast Notification
-const toast = reactive({ show: false, message: '' });
+const toast = reactive({ show: false, message: '', error: false });
 
-// Settings getter
-const settings = computed(() => settingsStore.data);
+// Settings: the store once its request lands, the values the page shell
+// ships in window.systemData until then (and for keys the API leaves out).
+const settings = computed(() => ({
+    ...(window.systemData?.settings || {}),
+    ...(settingsStore.data || {}),
+}));
 
 // Hero copy. Falls back to the company's own line of business — the previous
 // fallbacks were leftovers from a phone-spare-parts template.
@@ -313,12 +377,16 @@ const heroBgStyle = computed(() => {
     return {};
 });
 
-// Helpers
+const workingHours = computed(() => (locale.value === 'en'
+    ? (settings.value.working_hours_en || '')
+    : (settings.value.working_hours || '')));
 
-const truncateText = (text, len) => {
-    if (!text) return '';
-    return text.length > len ? text.substring(0, len) + '...' : text;
-};
+const whatsappLink = computed(() => {
+    const digits = String(settings.value.contact_whatsapp || '').replace(/\D/g, '').replace(/^00/, '');
+    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(t('home_whatsapp_text'))}` : '';
+});
+
+// Helpers
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -326,23 +394,11 @@ const formatDate = (dateStr) => {
     return date.toLocaleDateString('ar-SY', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-// Add to cart click
-const handleAddToCart = async (product) => {
-    const name = (locale.value === 'en' ? product.name_en : product.name_ar) || product.name_ar || product.name_en || '';
-    try {
-        await cartStore.addToCart(product.id, 1);
-        showToast(locale.value === 'en' ? `"${name}" was added to the cart` : `تم إضافة "${name}" إلى السلة`);
-    } catch (e) {
-        showToast(locale.value === 'en' ? 'Something went wrong while adding the product' : 'حدث خطأ أثناء إضافة المنتج');
-    }
-};
-
-const showToast = (msg) => {
-    toast.message = msg;
-    toast.show = true;
-    setTimeout(() => {
-        toast.show = false;
-    }, 3000);
+let toastTimer = null;
+const showToast = (message, error = false) => {
+    Object.assign(toast, { message, error, show: true });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.show = false; }, 3000);
 };
 
 // Secondary Navbar Helpers
@@ -385,7 +441,7 @@ const syncItemListJsonLd = () => {
     const payload = {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
-        name: t('featured_products') || 'منتجات مميزة',
+        name: productsSource.value === 'featured' ? t('featured_products') : t('home_picks_title'),
         itemListElement: featuredProducts.value.map((product, index) => ({
             '@type': 'ListItem',
             position: index + 1,
@@ -424,27 +480,26 @@ const updateSliderButtons = () => {
     nextBtnOpacity.value = scrollPos >= maxScroll - 5 ? '0.5' : '1';
 };
 
-// Featured Products Slider Scrolling
+// Featured Products Slider Scrolling. "Next" runs toward the end of the
+// reading direction: scrollLeft goes negative in a right-to-left page.
 const scrollFeatSlider = (dir) => {
-    if (!featProductsSlider.value) return;
-    const card = featProductsSlider.value.querySelector('.product-card-container');
+    const slider = featProductsSlider.value;
+    const card = slider?.querySelector('.product-card-container');
     if (!card) return;
 
-    const scrollAmount = card.offsetWidth + 24;
-    featProductsSlider.value.scrollBy({
-        left: dir === 'prev' ? scrollAmount : -scrollAmount,
-        behavior: 'smooth'
-    });
+    const step = card.offsetWidth + 20;
+    const forward = dir === 'next' ? 1 : -1;
+    slider.scrollBy({ left: forward * (isRtl.value ? -step : step), behavior: 'smooth' });
 };
 
 const updateFeatSliderButtons = () => {
-    if (!featProductsSlider.value) return;
     const slider = featProductsSlider.value;
+    if (!slider) return;
     const maxScroll = slider.scrollWidth - slider.clientWidth;
-    const scrollLeftVal = Math.abs(slider.scrollLeft);
+    const position = Math.abs(slider.scrollLeft);
 
-    featPrevBtnOpacity.value = scrollLeftVal <= 5 ? '0.5' : '1';
-    featNextBtnOpacity.value = scrollLeftVal >= maxScroll - 5 ? '0.5' : '1';
+    featAtStart.value = position <= 5;
+    featAtEnd.value = position >= maxScroll - 5;
 };
 
 onMounted(async () => {
@@ -456,8 +511,11 @@ onMounted(async () => {
         ]);
 
         if (homeRes.data?.success) {
-            categories.value = homeRes.data.data.categories || [];
-            featuredProducts.value = homeRes.data.data.featured_products || [];
+            const data = homeRes.data.data;
+            categories.value = data.categories || [];
+            featuredProducts.value = data.featured_products || [];
+            productsSource.value = data.products_source || 'featured';
+            stats.value = data.stats || {};
         }
 
         if (offersRes.data?.success) {
@@ -469,6 +527,7 @@ onMounted(async () => {
         loading.value = false;
         // Check slider state after layout settles
         setTimeout(updateSliderButtons, 300);
+        nextTick(updateFeatSliderButtons);
         triggerFadeUp();
         syncItemListJsonLd();
     }
@@ -476,6 +535,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
     document.getElementById(JSON_LD_ID)?.remove();
+    clearTimeout(toastTimer);
 });
 </script>
 
@@ -892,12 +952,19 @@ onUnmounted(() => {
     border-color: var(--mobile-primary);
 }
 
+/* Logical sides: Previous sits at the start of the reading direction. */
 .prev-btn {
-    right: -20px;
+    inset-inline-start: -20px;
 }
 
 .next-btn {
-    left: -20px;
+    inset-inline-end: -20px;
+}
+
+.slider-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
 }
 
 @media (max-width: 768px) {
@@ -1190,6 +1257,424 @@ a.category-card:focus-visible,
     }
     .products-slider-wrapper {
         padding: 0;
+    }
+}
+/* ===== HERO additions: keyword line, search, stats ===== */
+.hero h1 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.hero-kicker {
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--mobile-primary);
+}
+
+.hero-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 560px;
+    margin: 2rem auto 0;
+    padding: 6px;
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.hero-search:focus-within {
+    border-color: var(--mobile-primary);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--mobile-primary) 18%, transparent);
+}
+
+.hero-search > i {
+    position: absolute;
+    inset-inline-start: 20px;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.hero-search input {
+    flex: 1;
+    min-width: 0;
+    height: 48px;
+    padding-inline: 42px 10px;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 1rem;
+    color: #0f172a;
+    outline: none;
+}
+
+.hero-search button {
+    flex: none;
+    height: 48px;
+    padding: 0 24px;
+    border: none;
+    border-radius: 12px;
+    background: var(--mobile-primary);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.hero-search button:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+[data-theme="dark"] .hero-search {
+    background: #0f172a;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .hero-search input {
+    color: #f1f5f9;
+}
+
+.hero-search + .hero-buttons {
+    margin-top: 1.25rem;
+}
+
+.hero-stats {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 22px;
+    margin: 1.75rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.92rem;
+    color: #64748b;
+}
+
+.hero-stats li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hero-stats strong {
+    color: #0f172a;
+    font-size: 1.05rem;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme="dark"] .hero-stats {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .hero-stats strong {
+    color: #f1f5f9;
+}
+
+/* ===== Sections grid ===== */
+.home-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+    gap: 18px;
+    margin-top: 32px;
+}
+
+.home-section-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.home-section-card:hover {
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+    box-shadow: 0 16px 34px color-mix(in srgb, var(--mobile-primary) 10%, transparent);
+}
+
+.home-section-card:focus-visible {
+    outline: 3px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+[data-theme="dark"] .home-section-card {
+    background: rgba(30, 41, 59, 0.55);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Product photos are cut-outs on white: fitted, not cropped. */
+.hs-media {
+    height: 150px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.05);
+    color: var(--mobile-primary);
+    font-size: 2.6rem;
+}
+
+.hs-media img {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    object-fit: contain;
+    transition: transform 0.35s ease;
+}
+
+.hs-media.is-drawing {
+    background: #f1f5f9;
+}
+
+.hs-media.is-drawing img {
+    padding: 0;
+}
+
+.home-section-card:hover .hs-media img {
+    transform: scale(1.06);
+}
+
+[data-theme="dark"] .hs-media {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: transparent;
+}
+
+.hs-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 4px 4px;
+}
+
+.hs-body h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.45;
+    color: #1e293b;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .hs-body h3 {
+    color: #f1f5f9;
+}
+
+.home-section-card:hover h3 {
+    color: var(--mobile-primary);
+}
+
+.hs-count {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--mobile-primary);
+}
+
+.home-section-card.is-skeleton {
+    pointer-events: none;
+}
+
+.home-section-card.is-skeleton .hs-media,
+.home-section-card.is-skeleton .hs-line {
+    border: none;
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.14) 25%, rgba(148, 163, 184, 0.26) 37%, rgba(148, 163, 184, 0.14) 63%);
+    background-size: 400% 100%;
+    animation: home-shimmer 1.4s ease infinite;
+}
+
+.hs-line {
+    display: block;
+    height: 16px;
+    width: 70%;
+    margin: 0 4px 8px;
+    border-radius: 8px;
+}
+
+@keyframes home-shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+
+/* ===== "View all" under a section ===== */
+.section-more {
+    display: flex;
+    justify-content: center;
+    margin-top: 28px;
+}
+
+.btn-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 22px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--mobile-primary) 35%, transparent);
+    color: var(--mobile-primary);
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-more:hover {
+    background: var(--mobile-primary);
+    color: #fff;
+}
+
+.btn-more:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+/* ===== Help band ===== */
+.home-help {
+    padding: 56px 0 24px;
+}
+
+.help-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px 32px;
+    padding: 32px 36px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--mobile-primary) 10%, #fff), #fff);
+    border: 1px solid color-mix(in srgb, var(--mobile-primary) 18%, transparent);
+}
+
+[data-theme="dark"] .help-card {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--mobile-primary) 22%, #0f172a), #0f172a);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.help-text {
+    flex: 1 1 320px;
+}
+
+.help-text h2 {
+    margin: 0 0 6px;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.help-text p {
+    margin: 0;
+    color: #475569;
+    line-height: 1.7;
+}
+
+[data-theme="dark"] .help-text h2 {
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .help-text p {
+    color: #94a3b8;
+}
+
+.help-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.btn-help-whatsapp,
+.btn-help-contact {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 12px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.btn-help-whatsapp {
+    background: #16a34a;
+    color: #fff;
+}
+
+.btn-help-whatsapp:hover {
+    background: #15803d;
+}
+
+.btn-help-contact {
+    background: #fff;
+    color: var(--mobile-primary);
+    border: 1px solid color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+}
+
+[data-theme="dark"] .btn-help-contact {
+    background: transparent;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.btn-help-whatsapp:focus-visible,
+.btn-help-contact:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+    .home-sections-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .hs-media {
+        height: 120px;
+    }
+
+    .hs-body h3 {
+        font-size: 0.92rem;
+    }
+
+    .hero-search button {
+        padding: 0 16px;
+    }
+
+    .help-card {
+        padding: 24px 20px;
+    }
+
+    .help-actions,
+    .help-actions > * {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-section-card,
+    .hs-media img,
+    .home-section-card.is-skeleton .hs-media,
+    .home-section-card.is-skeleton .hs-line {
+        transition: none;
+        animation: none;
+    }
+
+    .home-section-card:hover,
+    .home-section-card:hover .hs-media img {
+        transform: none;
     }
 }
 </style>

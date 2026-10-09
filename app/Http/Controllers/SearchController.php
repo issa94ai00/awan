@@ -21,18 +21,10 @@ class SearchController extends Controller
             ]);
         }
 
-        $searchTerm = '%' . $query . '%';
-
         // Search products
         $products = Product::query()
             ->where('is_active', 1)
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('description_ar', 'like', $searchTerm)
-                  ->orWhere('brand', 'like', $searchTerm)
-                  ->orWhere('model', 'like', $searchTerm);
-            })
+            ->whereSearch(['name_ar', 'name_en', 'description_ar', 'brand', 'model'], $query)
             ->with('category:id,name_ar,slug')
             ->limit(5)
             ->get()
@@ -56,11 +48,7 @@ class SearchController extends Controller
         // Search categories
         $categories = Category::query()
             ->where('is_active', 1)
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('name_ar', 'like', $searchTerm)
-                  ->orWhere('name_en', 'like', $searchTerm)
-                  ->orWhere('description', 'like', $searchTerm);
-            })
+            ->whereSearch(['name_ar', 'name_en', 'description'], $query)
             ->limit(3)
             ->get()
             ->map(function ($category) {
@@ -99,12 +87,10 @@ class SearchController extends Controller
             return response()->json(['suggestions' => []]);
         }
 
-        $searchTerm = '%' . $query . '%';
-
         // Get product name suggestions
         $productSuggestions = Product::query()
             ->where('is_active', 1)
-            ->where('name_ar', 'like', $searchTerm)
+            ->whereSearch(['name_ar'], $query)
             ->limit(5)
             ->pluck('name_ar')
             ->toArray();
@@ -112,7 +98,7 @@ class SearchController extends Controller
         // Get category name suggestions
         $categorySuggestions = Category::query()
             ->where('is_active', 1)
-            ->where('name_ar', 'like', $searchTerm)
+            ->whereSearch(['name_ar'], $query)
             ->limit(3)
             ->pluck('name_ar')
             ->toArray();

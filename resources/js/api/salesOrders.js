@@ -13,6 +13,11 @@ export const salesOrdersApi = {
         return api.post('/sales-orders', data);
     },
 
+    // Where each line of an order not yet saved should come from.
+    suggestRouting(data) {
+        return api.post('/sales-orders/suggest-routing', data);
+    },
+
     update(id, data) {
         return api.put(`/sales-orders/${id}`, data);
     },
@@ -67,6 +72,11 @@ export const salesOrdersApi = {
      */
     shortages(id) {
         return api.get(`/sales-orders/${id}/shortages`);
+    },
+
+    // The order's lines as a purchase order, for the purchase screen to prefill.
+    purchaseDraft(id) {
+        return api.get(`/sales-orders/${id}/purchase-draft`);
     },
 
     /** Moves the order to an execution stage, with all its side effects. */

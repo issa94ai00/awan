@@ -36,7 +36,7 @@ class SettingsController extends Controller
     {
         $availableCurrencies = $this->currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
-        $availableTimezones = ['Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
+        $availableTimezones = ['Asia/Damascus', 'Asia/Beirut', 'Asia/Baghdad', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
         $validated = $request->validate([
             'settings.site_name' => 'nullable|string|max:255',
@@ -55,6 +55,8 @@ class SettingsController extends Controller
             'settings.contact_email' => 'nullable|email|max:255',
             'settings.address' => 'nullable|string|max:1000',
             'settings.address_en' => 'nullable|string|max:1000',
+            // [{name_ar, name_en, address_ar, address_en, phone, map_url, is_main}]
+            'settings.contact_branches' => 'nullable|json|max:20000',
             'settings.working_hours' => 'nullable|string|max:255',
             'settings.facebook' => 'nullable|url|max:255',
             'settings.instagram' => 'nullable|url|max:255',
@@ -151,11 +153,34 @@ class SettingsController extends Controller
             'settings.theme_page_header_bg_color' => 'nullable|string|max:200',
             'settings.theme_page_header_text_color' => 'nullable|string|max:50',
             'settings.secondary_navbar_items' => 'nullable|string',
+            'settings.inventory_cost_method' => ['nullable', 'string', 'in:FIFO,WEIGHTED_AVERAGE,LIFO,FEFO'],
+            'settings.print_header_style' => ['nullable', 'string', 'in:official,banner,compact'],
+            'settings.print_theme' => ['nullable', 'string', 'in:navy,emerald,charcoal,indigo'],
+            'settings.print_density' => ['nullable', 'string', 'in:standard,compact'],
+            'settings.print_show_cover' => 'sometimes|boolean',
+            'settings.print_show_qr' => 'sometimes|boolean',
+            'settings.print_show_logo' => 'sometimes|boolean',
+            'settings.print_show_contacts' => 'sometimes|boolean',
+            'settings.print_show_images' => 'sometimes|boolean',
+            'settings.print_show_sku' => 'sometimes|boolean',
+            'settings.print_show_customer_info' => 'sometimes|boolean',
+            'settings.print_show_payment_details' => 'sometimes|boolean',
+            'settings.print_show_notes' => 'sometimes|boolean',
+            'settings.print_show_signatures' => 'sometimes|boolean',
+            'settings.print_show_footer' => 'sometimes|boolean',
+            'settings.print_authorized_person' => 'nullable|string|max:255',
+            'settings.print_authorized_title' => 'nullable|string|max:255',
+            'settings.print_terms' => 'nullable|string|max:2000',
+            'settings.print_watermark' => ['nullable', 'string', 'in:draft,approved,paid,official,'],
         ]);
 
         $data = $request->input('settings', []);
 
-        $booleanFields = ['show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications'];
+        $booleanFields = [
+            'show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications',
+            'print_show_cover', 'print_show_qr', 'print_show_logo', 'print_show_contacts', 'print_show_images', 'print_show_sku',
+            'print_show_customer_info', 'print_show_payment_details', 'print_show_notes', 'print_show_signatures', 'print_show_footer'
+        ];
         foreach ($booleanFields as $field) {
             if (! isset($data[$field])) {
                 $data[$field] = '0';
@@ -184,7 +209,7 @@ class SettingsController extends Controller
         // setting row was simply pointed somewhere else. Each replaced path is
         // swept once the new one is saved, and only if nothing else still
         // names it (site_logo and logo are aliases for the same picture).
-        foreach (['logo', 'og_image', 'favicon', 'hero_bg'] as $imageKey) {
+        foreach (['logo', 'og_image', 'favicon', 'hero_bg', 'stamp_image', 'signature_image', 'header_banner', 'cover_image'] as $imageKey) {
             if (! $request->hasFile($imageKey)) {
                 continue;
             }

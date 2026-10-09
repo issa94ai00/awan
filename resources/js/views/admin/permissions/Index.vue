@@ -111,6 +111,7 @@
 
 <script setup>
 import { useI18n } from 'vue-i18n';
+import { matchesSearch } from '@/utils/search';
 import { computed, ref } from 'vue';
 
 const { t } = useI18n();
@@ -170,14 +171,11 @@ const moduleOptions = computed(() => Object.keys(moduleMap));
 
 const filteredPermissions = computed(() => {
     return permissions.value.filter((permission) => {
-        const matchesSearch = !search.value ||
-            permission.name.toLowerCase().includes(search.value.toLowerCase()) ||
-            permission.description.toLowerCase().includes(search.value.toLowerCase()) ||
-            permission.module.toLowerCase().includes(search.value.toLowerCase());
+        const matchesQuery = matchesSearch([permission.name, permission.description, permission.module], search.value);
 
         const matchesModule = !moduleFilter.value || permission.module === moduleFilter.value;
 
-        return matchesSearch && matchesModule;
+        return matchesQuery && matchesModule;
     });
 });
 
