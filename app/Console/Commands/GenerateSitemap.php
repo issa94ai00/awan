@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Builder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\URL as UrlGenerator;
 use Spatie\Sitemap\Sitemap;
@@ -44,6 +43,13 @@ class GenerateSitemap extends Command
     private const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', '0.0.0.0'];
 
     /**
+     * URLs per product sitemap file. Google caps a sitemap at 50,000 URLs and
+     * 50MB; staying far under both keeps every chunk fetchable in one request
+     * and small enough to diff when something looks wrong.
+     */
+    private const PRODUCTS_PER_FILE = 5000;
+
+    /**
      * Execute the console command.
      */
     public function handle()
@@ -74,11 +80,22 @@ class GenerateSitemap extends Command
         // inactive categories/products, so listing them here would create dead entries.
         $children = [
             'pages' => $this->buildPagesSitemap(),
-            'categories' => $this->buildModelSitemap(Category::where('is_active', 1)),
-            'products' => $this->buildModelSitemap(Product::where('is_active', 1)),
+            'categories' => $this->buildCategoriesSitemap(),
         ];
 
+        // Products spill over several files once the catalog outgrows one: each
+        // file stays small enough for a crawler to fetch in a single request,
+        // and Search Console can attribute indexing problems to one chunk
+        // rather than to a monolith. The first chunk keeps the historical name
+        // so existing Search Console entries carry over.
+        $productSitemaps = $this->buildProductSitemaps();
+
+        foreach ($productSitemaps as $index => $sitemap) {
+            $children[$index === 0 ? 'products' : 'products-'.($index + 1)] = $sitemap;
+        }
+
         $publicDir = public_path();
+        $this->removeStaleProductChunks($publicDir);
         $index = SitemapIndex::create();
 
         foreach ($children as $name => $sitemap) {
@@ -105,26 +122,100 @@ class GenerateSitemap extends Command
         $this->writeAtomically("{$publicDir}/sitemap.xml", $index->render());
 
         $this->info(sprintf(
-            'Sitemap generated successfully! (%d pages, %d categories, %d products)',
+            'Sitemap generated successfully! (%d pages, %d categories, %d products in %d file(s))',
             count($children['pages']->getTags()),
             count($children['categories']->getTags()),
-            count($children['products']->getTags())
+            collect($productSitemaps)->sum(fn ($sitemap) => count($sitemap->getTags())),
+            count($productSitemaps)
         ));
 
         return self::SUCCESS;
     }
 
     /**
-     * One entry per model, in id order so consecutive runs write identical
-     * files when nothing changed. Streamed in chunks rather than loaded at once.
+     * Taxonomy order, not id order: every parent category, immediately followed
+     * by its own children, each group in `sort_order`. That mirrors how the
+     * storefront nests the menu, so a reviewer scanning the file (or Search
+     * Console's URL inspection list) sees each section as a contiguous block
+     * instead of categories scattered by insertion date.
      */
-    private function buildModelSitemap(Builder $query): Sitemap
+    private function buildCategoriesSitemap(): Sitemap
     {
+        $categories = Category::where('is_active', 1)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $byParent = $categories->groupBy('parent_id');
+
+        $ordered = $byParent->get(null, collect())
+            ->flatMap(fn ($parent) => collect([$parent])->concat($byParent->get($parent->id, collect())));
+
+        // A child whose parent was deactivated would fall out of the walk
+        // above; appending it keeps the sitemap equal to the active set.
+        $ordered = $ordered->concat(
+            $categories->reject(fn ($category) => $ordered->contains('id', $category->id))
+        );
+
         $sitemap = Sitemap::create();
 
-        $query->lazyById(500)->each(fn ($model) => $sitemap->add($model));
+        $ordered->each(fn ($category) => $sitemap->add($category));
 
         return $sitemap;
+    }
+
+    /**
+     * Products grouped by category — category `sort_order`, then the product's
+     * own `sort_order` — so each chunk of the split covers a run of related
+     * items instead of an arbitrary id range. Streamed in chunks rather than
+     * loaded at once; the sort is stable, so consecutive runs with no data
+     * change write identical files.
+     *
+     * @return array<int, Sitemap>
+     */
+    private function buildProductSitemaps(): array
+    {
+        $sitemaps = [];
+        $sitemap = Sitemap::create();
+        $count = 0;
+
+        Product::query()
+            ->where('products.is_active', 1)
+            ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+            ->select('products.*')
+            // Products with no (loaded) category sort last rather than first;
+            // COALESCE keeps MySQL off filesort for the null branch.
+            ->orderByRaw('COALESCE(categories.sort_order, 2147483647)')
+            ->orderByRaw('COALESCE(categories.id, 2147483647)')
+            ->orderBy('products.sort_order')
+            ->orderBy('products.id')
+            ->lazy(500)
+            ->each(function ($product) use (&$sitemap, &$count, &$sitemaps) {
+                $sitemap->add($product);
+
+                if (++$count % self::PRODUCTS_PER_FILE === 0) {
+                    $sitemaps[] = $sitemap;
+                    $sitemap = Sitemap::create();
+                }
+            });
+
+        if ($count % self::PRODUCTS_PER_FILE !== 0) {
+            $sitemaps[] = $sitemap;
+        }
+
+        return $sitemaps;
+    }
+
+    /**
+     * A previous run may have written more product chunks than this one needs
+     * (a bulk deactivation, for example). Left on disk they still answer to a
+     * direct fetch, advertising products the index no longer claims.
+     */
+    private function removeStaleProductChunks(string $publicDir): void
+    {
+        foreach (glob("{$publicDir}/sitemap-products-*.xml") ?: [] as $stale) {
+            unlink($stale);
+        }
     }
 
     private function newestModification(Sitemap $sitemap): ?Carbon
