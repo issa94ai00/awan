@@ -112,7 +112,9 @@ class PublicPageController extends Controller
         $seo_image = $siteImage;
 
         $seo_json_ld = $this->generateOrgJsonLd($siteName, $siteDescription, $seo_image);
-        $seo_links = $this->categoryLinks();
+        // The sections and the newest products: the home page is where a
+        // crawler starts, so it should reach the catalogue in one step.
+        $seo_links = [...$this->categoryLinks(), ...$this->productLinks(Product::query()->latest(), 100)];
 
         return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_json_ld', 'seo_links'));
     }
