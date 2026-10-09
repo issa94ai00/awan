@@ -171,26 +171,38 @@
 
                             <p v-if="$p(section, 'description')" class="section-desc">{{ $p(section, 'description') }}</p>
 
-                            <div v-if="section.children.length" class="section-children">
-                                <span class="children-label">{{ t('catl_subsections_n', { count: formatCount(section.children.length) }) }}</span>
-                                <router-link
-                                    v-for="child in shownChildren(section)"
-                                    :key="child.id"
-                                    :to="`/category/${child.slug}`"
-                                    class="sub-chip"
-                                    :class="{ 'is-match': finderTerm && matches(child) }"
-                                >
-                                    {{ $p(child, 'name') }}
-                                    <span class="sub-count">{{ formatCount(child.product_count) }}</span>
-                                </router-link>
+                            <!-- Subcategories start folded: the button names how many
+                                 and the first few, and opens the chips. They stay
+                                 in the page while folded (inert), so crawlers
+                                 still find every subcategory. A search opens them. -->
+                            <div v-if="section.children.length" class="section-children" :class="{ open: isOpen(section) }">
                                 <button
-                                    v-if="section.children.length > shownChildren(section).length"
                                     type="button"
-                                    class="sub-chip sub-chip--more"
-                                    @click="expanded[section.id] = true"
+                                    class="children-toggle"
+                                    :aria-expanded="isOpen(section)"
+                                    :aria-controls="`subs-${section.id}`"
+                                    @click="toggleChildren(section)"
                                 >
-                                    {{ t('catl_more', { count: section.children.length - shownChildren(section).length }) }}
+                                    <span class="children-toggle-text">
+                                        <span class="children-label">{{ t('catl_subsections_n', { count: formatCount(section.children.length) }) }}</span>
+                                        <span v-if="!isOpen(section)" class="children-preview">{{ previewNames(section) }}</span>
+                                    </span>
+                                    <i class="fas fa-chevron-down children-chevron" aria-hidden="true"></i>
                                 </button>
+                                <div :id="`subs-${section.id}`" class="children-panel" :inert="!isOpen(section)">
+                                    <div class="children-list">
+                                        <router-link
+                                            v-for="child in section.children"
+                                            :key="child.id"
+                                            :to="`/category/${child.slug}`"
+                                            class="sub-chip"
+                                            :class="{ 'is-match': finderTerm && matches(child) }"
+                                        >
+                                            {{ $p(child, 'name') }}
+                                            <span class="sub-count">{{ formatCount(child.product_count) }}</span>
+                                        </router-link>
+                                    </div>
+                                </div>
                             </div>
                         </article>
                     </div>
@@ -248,7 +260,6 @@ const catalogError = ref(false);
 const finder = ref('');
 const expanded = reactive({});
 
-const CHILDREN_SHOWN = 6;
 
 /** The generic drawings carry their own slate tile; the card frames them as an icon, not a photo. */
 const isDrawing = (section) => !section.image && /\/images_items\/generic\//.test(section.thumbnail || '');
@@ -296,9 +307,14 @@ const visibleSections = computed(() => {
 
 const totalProducts = computed(() => visibleSections.value.reduce((sum, section) => sum + Number(section.product_count || 0), 0));
 
-const shownChildren = (section) => (expanded[section.id] || finderTerm.value
-    ? section.children
-    : section.children.slice(0, CHILDREN_SHOWN));
+/** Folded until opened; a search shows the subcategories it matched. */
+const isOpen = (section) => Boolean(finderTerm.value || expanded[section.id]);
+const toggleChildren = (section) => { expanded[section.id] = !isOpen(section); };
+
+const previewNames = (section) => section.children
+    .slice(0, 3)
+    .map((child) => (locale.value === 'en' ? (child.name_en || child.name_ar) : child.name_ar))
+    .join(locale.value === 'en' ? ', ' : '، ') + (section.children.length > 3 ? '…' : '');
 
 const searchProducts = () => {
     if (finderTerm.value.length < 2) return;
@@ -525,7 +541,9 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
     .section-card,
     .section-media img,
-    .section-go {
+    .section-go,
+    .children-chevron,
+    .children-panel {
         transition: none;
     }
 
@@ -565,12 +583,6 @@ onBeforeUnmount(() => {
 .sub-chip.is-match {
     border-color: var(--mobile-primary);
     background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
-}
-
-.sub-chip--more {
-    background: transparent;
-    border-style: dashed;
-    color: #64748b;
 }
 
 .sub-count {
@@ -855,16 +867,12 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 
-/* ── Subcategories: pinned to the card's foot so a row lines up ── */
+/* ── Subcategories: pinned to the card's foot so a row lines up, and
+   above the stretched card link so they are their own targets ── */
 .section-children {
     position: relative;
     z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
     margin-top: auto;
-    padding: 12px 4px 2px;
     border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 
@@ -872,12 +880,106 @@ onBeforeUnmount(() => {
     border-color: rgba(255, 255, 255, 0.08);
 }
 
+.children-toggle {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.children-toggle:hover {
+    background: color-mix(in srgb, var(--mobile-primary) 7%, transparent);
+}
+
+.children-toggle:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 1px;
+}
+
+.children-toggle-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .children-label {
-    flex-basis: 100%;
-    margin-bottom: 2px;
-    font-size: 0.75rem;
-    font-weight: 700;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #475569;
+}
+
+[data-theme="dark"] .children-label {
+    color: #cbd5e1;
+}
+
+.children-preview {
+    font-size: 0.78rem;
     color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.children-chevron {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.05);
+    color: #64748b;
+    font-size: 0.75rem;
+    transition: transform 0.25s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+[data-theme="dark"] .children-chevron {
+    background: rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+}
+
+.section-children.open .children-chevron {
+    transform: rotate(180deg);
+    background: var(--mobile-primary);
+    color: #fff;
+}
+
+/* Height animates through a 0fr → 1fr grid row: no measuring in script. */
+.children-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s ease;
+}
+
+.section-children.open .children-panel {
+    grid-template-rows: 1fr;
+}
+
+.children-list {
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-inline: 4px;
+}
+
+.section-children.open .children-list {
+    padding-block: 8px 2px;
 }
 
 /* ── Loading and empty states ── */
