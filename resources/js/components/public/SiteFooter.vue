@@ -63,7 +63,7 @@
                                 </strong>
                                 <address v-if="branch.address">{{ branch.address }}</address>
                                 <span v-if="branch.phone || branch.map_url" class="branch-links">
-                                    <a v-if="branch.phone" :href="`tel:+${internationalDigits(branch.phone)}`" dir="ltr">{{ formatPhone(branch.phone) }}</a>
+                                    <a v-if="branch.phone" :href="`tel:+${phoneDigits(branch.phone)}`" dir="ltr">{{ formatPhone(branch.phone) }}</a>
                                     <a v-if="branch.map_url" :href="branch.map_url" target="_blank" rel="noopener">
                                         {{ t('ft_directions') }} <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
                                     </a>
@@ -114,6 +114,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getImageUrl } from '@/utils/imageUrl';
+import { phoneDigits, formatPhone, whatsappHref, contactBranches, addressLines as readAddressLines } from '@/utils/contactInfo';
 
 const props = defineProps({
     settings: { type: Object, required: true },
@@ -134,61 +135,15 @@ const themeVars = computed(() => ({
 }));
 
 // The address setting holds the head office and the branch on separate lines.
-const addressLines = computed(() => {
-    const raw = (isEn.value && props.settings.address_en)
-        || props.settings.contact_address
-        || props.settings.address
-        || '';
-    return String(raw)
-        .split(/\r?\n/)
-        .map((line) => line.replace(/\s*-\s*$/, '').trim())
-        .filter(Boolean);
-});
+const addressLines = computed(() => readAddressLines(props.settings, isEn.value));
 
-// "00963962889577" → dialled as +963…, shown grouped.
-const internationalDigits = (value) => String(value || '').replace(/\D/g, '').replace(/^00/, '');
-const formatPhone = (value) => {
-    const digits = internationalDigits(value);
-    const match = digits.match(/^(963)(\d{3})(\d{3})(\d{3})$/);
-    return match ? `+${match[1]} ${match[2]} ${match[3]} ${match[4]}` : `+${digits}`;
-};
-const telNumber = computed(() => `+${internationalDigits(props.settings.contact_phone)}`);
+const telNumber = computed(() => `+${phoneDigits(props.settings.contact_phone)}`);
 const displayPhone = computed(() => formatPhone(props.settings.contact_phone));
 
-/**
- * Branches from Settings › Contact (`contact_branches`, a JSON list), head
- * office first, in the viewer's language with Arabic standing in for missing
- * English. Empty when none are saved: the old address text shows instead.
- */
-const branches = computed(() => {
-    let list = props.settings.contact_branches;
-    if (typeof list === 'string') {
-        try {
-            list = list ? JSON.parse(list) : [];
-        } catch {
-            list = [];
-        }
-    }
-    if (!Array.isArray(list)) return [];
+/** Branches from Settings › Contact; empty until saved (the address text shows instead). */
+const branches = computed(() => contactBranches(props.settings, isEn.value));
 
-    return list
-        .map((branch) => ({
-            name: (isEn.value ? branch.name_en : '') || branch.name_ar || branch.name_en || '',
-            address: (isEn.value ? branch.address_en : '') || branch.address_ar || branch.address_en || '',
-            phone: internationalDigits(branch.phone) ? branch.phone : '',
-            map_url: /^https?:\/\//i.test(branch.map_url || '') ? branch.map_url : '',
-            is_main: Boolean(branch.is_main),
-        }))
-        .filter((branch) => branch.name || branch.address)
-        .sort((a, b) => Number(b.is_main) - Number(a.is_main));
-});
-
-// wa.me takes the number without "00" or "+"; the old link kept the 00 and
-// WhatsApp refused it.
-const whatsappUrl = computed(() => {
-    const digits = internationalDigits(props.settings.contact_whatsapp);
-    return digits ? `https://wa.me/${digits}` : '';
-});
+const whatsappUrl = computed(() => whatsappHref(props.settings.contact_whatsapp));
 
 const workingHours = computed(() => (isEn.value
     ? (props.settings.working_hours_en || props.settings.working_hours)

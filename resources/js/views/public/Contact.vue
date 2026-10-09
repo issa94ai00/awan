@@ -3,141 +3,222 @@
         <!-- Page Header -->
         <section class="page-header">
             <div class="container">
-                <h1>{{ t('nav_contact') || 'إتصل بنا' }}</h1>
-                <div class="breadcrumb">
-                    <router-link to="/">{{ t('nav_home') || 'الرئيسية' }}</router-link>
+                <h1>{{ t('nav_contact') }}</h1>
+                <nav class="breadcrumb" :aria-label="t('nav_contact')">
+                    <router-link to="/">{{ t('nav_home') }}</router-link>
                     <span class="sep">›</span>
-                    <span>{{ t('nav_contact') || 'إتصل بنا' }}</span>
-                </div>
+                    <span aria-current="page">{{ t('nav_contact') }}</span>
+                </nav>
             </div>
         </section>
 
-        <!-- Contact Section -->
         <section class="contact-section fade-up" id="contact">
             <div class="container">
                 <div class="section-header">
-                    <h2>{{ t('here_to_help') || 'نحن هنا لمساعدتك' }}</h2>
-                    <p>{{ t('contact_desc') || 'تواصل معنا للاستفسارات، الطلبات، أو أي معلومات تحتاجها' }}</p>
+                    <h2>{{ t('here_to_help') }}</h2>
+                    <p>{{ t('contact_desc') }}</p>
+                </div>
+
+                <!-- The fastest ways first: most visitors want to call or
+                     message, and these used to sit under the form. -->
+                <div class="quick-actions">
+                    <a v-if="phoneHref" :href="phoneHref" class="quick-card">
+                        <span class="quick-icon is-phone"><i class="fas fa-phone" aria-hidden="true"></i></span>
+                        <span class="quick-text">
+                            <strong>{{ t('call_now') }}</strong>
+                            <span dir="ltr">{{ phoneLabel }}</span>
+                        </span>
+                    </a>
+                    <a v-if="whatsappUrl" :href="whatsappUrl" class="quick-card" target="_blank" rel="noopener">
+                        <span class="quick-icon is-whatsapp"><i class="fab fa-whatsapp" aria-hidden="true"></i></span>
+                        <span class="quick-text">
+                            <strong>{{ t('whatsapp_name') }}</strong>
+                            <span>{{ t('cp_whatsapp_hint') }}</span>
+                        </span>
+                    </a>
+                    <a v-if="settings.contact_email" :href="`mailto:${settings.contact_email}`" class="quick-card">
+                        <span class="quick-icon is-email"><i class="fas fa-envelope" aria-hidden="true"></i></span>
+                        <span class="quick-text">
+                            <strong>{{ t('email_label') }}</strong>
+                            <span dir="ltr">{{ settings.contact_email }}</span>
+                        </span>
+                    </a>
                 </div>
 
                 <div class="contact-wrapper">
-                    <div class="contact-info">
-                        <h3>{{ t('contact_info') || 'معلومات التواصل' }}</h3>
-                        
-                        <div class="contact-item">
-                            <i class="fas fa-phone-alt"></i>
-                            <div>
-                                <h4>{{ t('phone_label') || 'الهاتف' }}</h4>
-                                <p dir="ltr">{{ settings.contact_phone || '+963 900 000 000' }}</p>
-                            </div>
+                    <!-- Form -->
+                    <div class="contact-card contact-form-card">
+                        <h3>{{ t('send_us_message') }}</h3>
+                        <p class="card-lead">{{ t('cp_form_lead') }}</p>
+
+                        <div v-if="submitted" class="success-box" role="status">
+                            <i class="fas fa-circle-check" aria-hidden="true"></i>
+                            <strong>{{ t('contact_success_title') }}</strong>
+                            <p>{{ t('contact_success_desc') }}</p>
+                            <button type="button" class="btn-secondary" @click="resetForm">{{ t('cp_send_another') }}</button>
                         </div>
 
-                        <div class="contact-item">
-                            <i class="fas fa-envelope"></i>
-                            <div>
-                                <h4>{{ t('email_label') || 'البريد الإلكتروني' }}</h4>
-                                <p>{{ settings.contact_email || 'info@awan-altakaddom.com' }}</p>
-                            </div>
-                        </div>
+                        <form v-else class="contact-form" novalidate @submit.prevent="submitForm">
+                            <div class="form-row">
+                                <div class="form-group" :class="{ 'has-error': fieldErrors.name }">
+                                    <label for="cp-name">{{ t('full_name') }} <span class="req" aria-hidden="true">*</span></label>
+                                    <input
+                                        id="cp-name"
+                                        v-model.trim="form.name"
+                                        type="text"
+                                        autocomplete="name"
+                                        required
+                                        maxlength="255"
+                                        :placeholder="t('enter_full_name')"
+                                        :aria-invalid="Boolean(fieldErrors.name)"
+                                        :aria-describedby="fieldErrors.name ? 'cp-name-error' : null"
+                                    >
+                                    <p v-if="fieldErrors.name" id="cp-name-error" class="field-error">{{ fieldErrors.name }}</p>
+                                </div>
 
-                        <div class="contact-item">
-                            <i class="fas fa-map-marker-alt"></i>
-                            <div>
-                                <h4>{{ t('location_label') || 'الموقع' }}</h4>
-                                <p>{{ $p(settings, 'address') || (locale === 'en' ? 'Syria - Damascus' : 'سورية - دمشق') }}</p>
-                            </div>
-                        </div>
-
-                        <div class="contact-item">
-                            <i class="fas fa-clock"></i>
-                            <div>
-                                <h4>{{ t('working_hours') || 'ساعات العمل' }}</h4>
-                                <p>{{ $p(settings, 'working_hours') || (locale === 'en' ? 'Sunday - Thursday: 9:00 AM - 6:00 PM' : 'السبت - الخميس: 9:00 ص - 6:00 م') }}</p>
-                            </div>
-                        </div>
-
-                        <div class="social-links">
-                            <h4>{{ t('follow_us') || 'تابعنا على' }}</h4>
-                            <div class="social-icons">
-                                <a :href="settings.contact_facebook || '#'" class="social-icon facebook" target="_blank">
-                                    <i class="fab fa-facebook-f"></i>
-                                </a>
-                                <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000')" class="social-icon whatsapp" target="_blank">
-                                    <i class="fab fa-whatsapp"></i>
-                                </a>
-                                <a :href="settings.contact_instagram || '#'" class="social-icon instagram" target="_blank">
-                                    <i class="fab fa-instagram"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="contact-form-wrapper">
-                        <h3>{{ t('send_us_message') || 'أرسل لنا رسالة' }}</h3>
-                        
-                        <div v-if="submitted" class="success-message-box" style="background: #e6f4ea; color: #137333; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
-                            <i class="fas fa-check-circle" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
-                            <strong>{{ t('contact_success_title') || 'تم إرسال رسالتك بنجاح!' }}</strong>
-                            <p style="margin: 5px 0 0 0; font-size: 0.9rem;">{{ t('contact_success_desc') || 'سنقوم بالرد عليك في أقرب وقت ممكن.' }}</p>
-                        </div>
-                        
-                        <form v-else @submit.prevent="submitForm" class="contact-form">
-                            <div class="form-group">
-                                <label for="name">{{ t('full_name') || 'الاسم الكامل' }} <span style="color:#dc3545;">*</span></label>
-                                <input type="text" id="name" v-model="form.name" required :placeholder="t('enter_full_name') || 'أدخل اسمك الكامل'">
+                                <div class="form-group" :class="{ 'has-error': fieldErrors.phone }">
+                                    <label for="cp-phone">{{ t('phone_label') }} <span class="req" aria-hidden="true">*</span></label>
+                                    <input
+                                        id="cp-phone"
+                                        v-model.trim="form.phone"
+                                        type="tel"
+                                        inputmode="tel"
+                                        autocomplete="tel"
+                                        dir="ltr"
+                                        required
+                                        maxlength="50"
+                                        placeholder="+963 9xx xxx xxx"
+                                        :aria-invalid="Boolean(fieldErrors.phone)"
+                                        :aria-describedby="fieldErrors.phone ? 'cp-phone-error' : null"
+                                    >
+                                    <p v-if="fieldErrors.phone" id="cp-phone-error" class="field-error">{{ fieldErrors.phone }}</p>
+                                </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="email">{{ t('email_label') || 'البريد الإلكتروني' }}</label>
-                                <input type="email" id="email" v-model="form.email" placeholder="example@email.com">
+                            <div class="form-row">
+                                <div class="form-group" :class="{ 'has-error': fieldErrors.email }">
+                                    <label for="cp-email">{{ t('email_label') }} <span class="optional">({{ t('cp_optional') }})</span></label>
+                                    <input
+                                        id="cp-email"
+                                        v-model.trim="form.email"
+                                        type="email"
+                                        autocomplete="email"
+                                        dir="ltr"
+                                        maxlength="255"
+                                        placeholder="example@email.com"
+                                        :aria-invalid="Boolean(fieldErrors.email)"
+                                        :aria-describedby="fieldErrors.email ? 'cp-email-error' : null"
+                                    >
+                                    <p v-if="fieldErrors.email" id="cp-email-error" class="field-error">{{ fieldErrors.email }}</p>
+                                </div>
+
+                                <div class="form-group" :class="{ 'has-error': fieldErrors.subject }">
+                                    <label for="cp-subject">{{ t('subject_label') }} <span class="req" aria-hidden="true">*</span></label>
+                                    <select
+                                        id="cp-subject"
+                                        v-model="form.subject"
+                                        required
+                                        :aria-invalid="Boolean(fieldErrors.subject)"
+                                        :aria-describedby="fieldErrors.subject ? 'cp-subject-error' : null"
+                                    >
+                                        <option value="" disabled>{{ t('choose_subject') }}</option>
+                                        <option v-for="option in subjects" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                    </select>
+                                    <p v-if="fieldErrors.subject" id="cp-subject-error" class="field-error">{{ fieldErrors.subject }}</p>
+                                </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="phone">{{ t('phone_label') || 'رقم الهاتف' }} <span style="color:#dc3545;">*</span></label>
-                                <input type="tel" id="phone" v-model="form.phone" required placeholder="+963 ...">
+                            <div class="form-group" :class="{ 'has-error': fieldErrors.message }">
+                                <label for="cp-message">{{ t('message_label') }} <span class="req" aria-hidden="true">*</span></label>
+                                <textarea
+                                    id="cp-message"
+                                    v-model="form.message"
+                                    rows="5"
+                                    required
+                                    maxlength="3000"
+                                    :placeholder="t('write_message_here')"
+                                    :aria-invalid="Boolean(fieldErrors.message)"
+                                    :aria-describedby="fieldErrors.message ? 'cp-message-error' : 'cp-message-count'"
+                                ></textarea>
+                                <div class="field-foot">
+                                    <p v-if="fieldErrors.message" id="cp-message-error" class="field-error">{{ fieldErrors.message }}</p>
+                                    <span id="cp-message-count" class="char-count">{{ form.message.length }} / 3000</span>
+                                </div>
                             </div>
 
-                            <div class="form-group">
-                                <label for="subject">{{ t('subject_label') || 'الموضوع' }} <span style="color:#dc3545;">*</span></label>
-                                <select id="subject" v-model="form.subject" required>
-                                    <option value="">{{ t('choose_subject') || 'اختر الموضوع' }}</option>
-                                    <option value="inquiry">{{ t('subject_general') || 'استفسار عام' }}</option>
-                                    <option value="order">{{ t('subject_order') || 'طلب منتجات' }}</option>
-                                    <option value="support">{{ t('subject_support') || 'دعم فني' }}</option>
-                                    <option value="partnership">{{ t('subject_partnership') || 'شراكة تجارية' }}</option>
-                                    <option value="other">{{ t('subject_other') || 'أخرى' }}</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="message">{{ t('message_label') || 'الرسالة' }} <span style="color:#dc3545;">*</span></label>
-                                <textarea id="message" v-model="form.message" rows="5" required :placeholder="t('write_message_here') || 'اكتب رسالتك هنا...'"></textarea>
-                            </div>
-
-                            <div v-if="error" class="error-message-box" style="color:#dc3545; margin-bottom: 15px;">
-                                {{ error }}
+                            <div v-if="error" class="error-box" role="alert">
+                                <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+                                <span>{{ error }}</span>
                             </div>
 
                             <button type="submit" class="btn-submit" :disabled="submitting">
-                                <span v-if="submitting"><i class="fas fa-spinner fa-spin"></i> {{ t('sending_message') || 'جاري الإرسال...' }}</span>
-                                <span v-else><i class="fas fa-paper-plane"></i> {{ t('send_message_btn') || 'إرسال الرسالة' }}</span>
+                                <i :class="submitting ? 'fas fa-spinner fa-spin' : 'fas fa-paper-plane'" aria-hidden="true"></i>
+                                {{ submitting ? t('sending_message') : t('send_message_btn') }}
                             </button>
                         </form>
                     </div>
-                </div>
 
-                <div class="quick-contact">
-                    <h3>{{ t('direct_contact') || 'تواصل مباشر' }}</h3>
-                    <div class="quick-buttons">
-                        <a :href="'https://wa.me/' + (settings.contact_whatsapp || '963900000000') + '?text=' + encodeURIComponent(t('whatsapp_default_msg') || 'مرحباً، أنا مهتم بمعرفة المزيد عن منتجاتكم')" class="quick-btn whatsapp" target="_blank">
-                            <i class="fab fa-whatsapp"></i>
-                            <span>{{ t('whatsapp_name') || 'واتساب' }}</span>
-                        </a>
-                        <a :href="'tel:' + (settings.contact_phone || '+963900000000')" class="quick-btn phone">
-                            <i class="fas fa-phone"></i>
-                            <span>{{ t('call_now') || 'اتصل الآن' }}</span>
-                        </a>
-                    </div>
+                    <!-- Where to find us -->
+                    <aside class="contact-side">
+                        <div class="contact-card">
+                            <h3>{{ branches.length > 1 ? t('cp_our_branches') : t('location_label') }}</h3>
+
+                            <ul v-if="branches.length" class="branch-list">
+                                <li v-for="(branch, index) in branches" :key="index" class="branch">
+                                    <span class="branch-pin"><i class="fas fa-location-dot" aria-hidden="true"></i></span>
+                                    <div class="branch-body">
+                                        <strong v-if="branch.name">
+                                            {{ branch.name }}
+                                            <span v-if="branch.is_main && branches.length > 1" class="branch-badge">{{ t('settings_branch_main') }}</span>
+                                        </strong>
+                                        <address v-if="branch.address">{{ branch.address }}</address>
+                                        <div v-if="branch.phone || branch.map_url" class="branch-actions">
+                                            <a v-if="branch.phone" :href="telHref(branch.phone)" class="chip" dir="ltr">
+                                                <i class="fas fa-phone" aria-hidden="true"></i> {{ formatPhone(branch.phone) }}
+                                            </a>
+                                            <a v-if="branch.map_url" :href="branch.map_url" class="chip" target="_blank" rel="noopener">
+                                                <i class="fas fa-diamond-turn-right" aria-hidden="true"></i> {{ t('ft_directions') }}
+                                            </a>
+                                        </div>
+                                    </div>
+                                </li>
+                            </ul>
+                            <ul v-else-if="legacyAddress.length" class="branch-list">
+                                <li class="branch">
+                                    <span class="branch-pin"><i class="fas fa-location-dot" aria-hidden="true"></i></span>
+                                    <address class="branch-body">
+                                        <span v-for="(line, index) in legacyAddress" :key="index">{{ line }}</span>
+                                    </address>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div v-if="workingHours" class="contact-card hours-card">
+                            <span class="branch-pin"><i class="far fa-clock" aria-hidden="true"></i></span>
+                            <div>
+                                <h3>{{ t('working_hours') }}</h3>
+                                <p>{{ workingHours }}</p>
+                            </div>
+                        </div>
+
+                        <div v-if="socials.length" class="contact-card">
+                            <h3>{{ t('follow_us') }}</h3>
+                            <div class="social-icons">
+                                <a
+                                    v-for="social in socials"
+                                    :key="social.key"
+                                    :href="social.url"
+                                    class="social-icon"
+                                    :class="social.key"
+                                    target="_blank"
+                                    rel="noopener"
+                                    :aria-label="social.label"
+                                >
+                                    <i :class="social.icon" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -145,49 +226,115 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue';
+import { reactive, ref, computed, onMounted, nextTick } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+import { formatPhone, telHref, whatsappHref, contactBranches, addressLines } from '@/utils/contactInfo';
 
 const settingsStore = useSettingsStore();
-const settings = computed(() => settingsStore.data);
 const { t, locale } = useI18n();
 
 // SEO <head> for this page is fully covered by PublicLayout's route defaults
 // (localized title/description/OG matching the server), so no page-level code
 // is needed here.
 
-const form = reactive({
-    name: '',
-    email: '',
-    phone: '',
-    subject: '',
-    message: ''
-});
+// The page shell's values first, the API's once they land.
+const settings = computed(() => ({
+    ...(window.systemData?.settings || {}),
+    ...(settingsStore.data || {}),
+}));
+const isEn = computed(() => locale.value === 'en');
 
+const phoneHref = computed(() => telHref(settings.value.contact_phone));
+const phoneLabel = computed(() => formatPhone(settings.value.contact_phone));
+const whatsappUrl = computed(() => whatsappHref(settings.value.contact_whatsapp, t('whatsapp_default_msg')));
+const branches = computed(() => contactBranches(settings.value, isEn.value));
+const legacyAddress = computed(() => addressLines(settings.value, isEn.value));
+const workingHours = computed(() => (isEn.value
+    ? (settings.value.working_hours_en || settings.value.working_hours)
+    : settings.value.working_hours) || '');
+
+// Only networks the shop has; the old page linked "#" for the rest.
+const socials = computed(() => [
+    { key: 'facebook', icon: 'fab fa-facebook-f', label: 'Facebook', url: settings.value.contact_facebook || settings.value.facebook },
+    { key: 'instagram', icon: 'fab fa-instagram', label: 'Instagram', url: settings.value.contact_instagram || settings.value.instagram },
+    { key: 'whatsapp', icon: 'fab fa-whatsapp', label: 'WhatsApp', url: whatsappHref(settings.value.contact_whatsapp) },
+].filter((social) => social.url));
+
+const subjects = computed(() => [
+    { value: 'inquiry', label: t('subject_general') },
+    { value: 'order', label: t('subject_order') },
+    { value: 'support', label: t('subject_support') },
+    { value: 'partnership', label: t('subject_partnership') },
+    { value: 'other', label: t('subject_other') },
+]);
+
+/* ------------------------------------------------------------------ *
+ * Form
+ * ------------------------------------------------------------------ */
+const blank = () => ({ name: '', email: '', phone: '', subject: '', message: '' });
+const form = reactive(blank());
+const fieldErrors = reactive({});
 const submitting = ref(false);
 const submitted = ref(false);
 const error = ref(null);
 
-const submitForm = async () => {
-    submitting.value = true;
+const clearErrors = () => {
+    Object.keys(fieldErrors).forEach((key) => { delete fieldErrors[key]; });
     error.value = null;
+};
+
+/** The same rules the server applies, checked before the round trip. */
+const validate = () => {
+    if (!form.name) fieldErrors.name = t('cp_err_name');
+    if (!form.phone || form.phone.replace(/\D/g, '').length < 7) fieldErrors.phone = t('cp_err_phone');
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) fieldErrors.email = t('cp_err_email');
+    if (!form.subject) fieldErrors.subject = t('cp_err_subject');
+    if (!form.message.trim()) fieldErrors.message = t('cp_err_message');
+    return !Object.keys(fieldErrors).length;
+};
+
+const focusFirstError = () => nextTick(() => {
+    document.querySelector('.contact-form [aria-invalid="true"]')?.focus();
+});
+
+const submitForm = async () => {
+    clearErrors();
+    if (!validate()) {
+        focusFirstError();
+        return;
+    }
+
+    submitting.value = true;
     try {
-        const res = await axios.post('/api/v1/inquiries', form);
+        const res = await axios.post('/api/v1/inquiries', { ...form, message: form.message.trim() });
         if (res.data?.success) {
             submitted.value = true;
         } else {
-            error.value = res.data?.message || t('contact_error_sending') || 'حدث خطأ أثناء إرسال الرسالة';
+            error.value = res.data?.message || t('contact_error_sending');
         }
     } catch (err) {
-        error.value = err.response?.data?.message || t('contact_error_connection') || 'فشل الاتصال بالخادم، يرجى إعادة المحاولة';
+        const serverErrors = err.response?.data?.errors;
+        if (serverErrors) {
+            Object.entries(serverErrors).forEach(([key, messages]) => {
+                fieldErrors[key] = Array.isArray(messages) ? messages[0] : messages;
+            });
+            focusFirstError();
+        } else {
+            error.value = err.response?.data?.message || t('contact_error_connection');
+        }
     } finally {
         submitting.value = false;
     }
 };
 
-// Fetch settings on mount
+const resetForm = () => {
+    Object.assign(form, blank());
+    clearErrors();
+    submitted.value = false;
+};
+
 onMounted(() => {
     settingsStore.fetch().catch((err) => console.warn(err));
 });
@@ -202,382 +349,510 @@ onMounted(() => {
     padding: 3rem 0 5rem;
 }
 
-.contact-wrapper {
+/* ── Quick actions ── */
+.quick-actions {
     display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 40px;
-    align-items: start;
-    margin-top: 30px;
-}
-
-@media (max-width: 992px) {
-    .contact-wrapper {
-        grid-template-columns: 1fr;
-    }
-}
-
-.contact-info {
-    background: rgba(255, 255, 255, 0.7) !important;
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03) !important;
-    border-radius: 24px !important;
-    padding: 30px;
-    color: #1e293b;
-    transition: all 0.4s ease;
-}
-
-[data-theme="dark"] .contact-info {
-    background: rgba(30, 41, 59, 0.45) !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
-    color: #f1f5f9;
-}
-
-.contact-info h3 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    margin-bottom: 25px;
-    color: var(--mobile-primary);
-}
-
-[data-theme="dark"] .contact-info h3 {
-    color: var(--mobile-primary);
-}
-
-.contact-item {
-    display: flex;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
     gap: 16px;
-    align-items: flex-start;
-    padding: 16px 0;
-    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+    margin-top: 2rem;
 }
 
-[data-theme="dark"] .contact-item {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
+.quick-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 18px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.07);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.contact-item:last-of-type {
-    border-bottom: none;
+.quick-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
 }
 
-.contact-item i {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
-    color: var(--mobile-primary);
+.quick-card:focus-visible {
+    outline: 3px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+.quick-icon {
+    flex: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.15rem;
-    flex-shrink: 0;
-    transition: all 0.3s ease;
+    font-size: 1.3rem;
+    color: #fff;
 }
 
-[data-theme="dark"] .contact-item i {
-    background: color-mix(in srgb, var(--mobile-primary) 15%, transparent);
-    color: var(--mobile-primary);
+.quick-icon.is-phone { background: var(--mobile-primary); }
+.quick-icon.is-whatsapp { background: #16a34a; }
+.quick-icon.is-email { background: #0f766e; }
+
+.quick-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
-.contact-item:hover i {
-    transform: scale(1.1) rotate(5deg);
-    background: var(--mobile-primary);
-    color: white;
-}
-
-[data-theme="dark"] .contact-item:hover i {
-    background: var(--mobile-primary);
-    color: #0f172a;
-}
-
-.contact-item h4 {
+.quick-text strong {
     font-size: 1rem;
-    font-weight: 700;
-    margin: 0 0 4px 0;
     color: #0f172a;
 }
 
-[data-theme="dark"] .contact-item h4 {
-    color: #f1f5f9;
-}
-
-.contact-item p {
+.quick-text span {
     font-size: 0.88rem;
     color: #64748b;
-    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-[data-theme="dark"] .contact-item p {
-    color: #94a3b8;
+[dir='rtl'] .quick-text span[dir='ltr'] {
+    text-align: end;
 }
 
-.social-links {
-    margin-top: 25px;
-    padding-top: 25px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+/* ── Two columns ── */
+.contact-wrapper {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    margin-top: 24px;
 }
 
-[data-theme="dark"] .social-links {
-    border-top-color: rgba(255, 255, 255, 0.08);
+.contact-card {
+    padding: 26px;
+    border-radius: 20px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.07);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
 }
 
-.social-links h4 {
-    font-size: 1rem;
-    font-weight: 700;
-    margin: 0 0 15px 0;
+.contact-card h3 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    font-weight: 800;
     color: #0f172a;
 }
 
-[data-theme="dark"] .social-links h4 {
-    color: #f1f5f9;
+.card-lead {
+    margin: 0 0 20px;
+    font-size: 0.9rem;
+    color: #64748b;
 }
 
-.social-icons {
+.contact-side {
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.social-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.1rem;
-    text-decoration: none;
-    transition: all 0.3s ease;
+.contact-side .contact-card {
+    padding: 22px;
 }
 
-.social-icon:hover {
-    transform: translateY(-4px) scale(1.05);
-    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
-}
-
-.social-icon.facebook {
-    background: #1877f2;
-}
-
-.social-icon.whatsapp {
-    background: #25d366;
-}
-
-.social-icon.instagram {
-    background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
-}
-
-.contact-form-wrapper {
-    background: rgba(255, 255, 255, 0.7) !important;
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03) !important;
-    border-radius: 24px !important;
-    padding: 30px;
-}
-
-[data-theme="dark"] .contact-form-wrapper {
-    background: rgba(30, 41, 59, 0.45) !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
-}
-
-.contact-form-wrapper h3 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    margin-bottom: 25px;
-    color: var(--mobile-primary);
-}
-
-[data-theme="dark"] .contact-form-wrapper h3 {
-    color: var(--mobile-primary);
-}
-
+/* ── Form ── */
 .contact-form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
 }
 
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    min-width: 0;
 }
 
 .form-group label {
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 700;
     color: #334155;
 }
 
-[data-theme="dark"] .form-group label {
-    color: #cbd5e1;
+.req {
+    color: #dc2626;
+}
+
+.optional {
+    font-weight: 500;
+    color: #94a3b8;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
     width: 100%;
-    padding: 12px 18px;
-    background: rgba(255, 255, 255, 0.5);
-    border: 2px solid rgba(0, 0, 0, 0.08);
-    border-radius: 14px;
+    min-height: 46px;
+    padding: 10px 14px;
+    border: 1px solid #d7dde5;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
     font-size: 0.95rem;
-    color: #1e293b;
-    font-family: inherit;
-    box-sizing: border-box;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #0f172a;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-[data-theme="dark"] .form-group input,
-[data-theme="dark"] .form-group select,
-[data-theme="dark"] .form-group textarea {
-    background: rgba(15, 23, 42, 0.35);
-    border-color: rgba(255, 255, 255, 0.08);
-    color: #f1f5f9;
+.form-group textarea {
+    resize: vertical;
+    min-height: 130px;
+}
+
+[dir='rtl'] .form-group input[dir='ltr'] {
+    text-align: end;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    background: white;
     border-color: var(--mobile-primary);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mobile-primary) 12%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mobile-primary) 18%, transparent);
 }
 
-[data-theme="dark"] .form-group input:focus,
-[data-theme="dark"] .form-group select:focus,
-[data-theme="dark"] .form-group textarea:focus {
-    background: rgba(15, 23, 42, 0.55);
-    border-color: var(--mobile-primary);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mobile-primary) 18%, transparent);
+.form-group.has-error input,
+.form-group.has-error select,
+.form-group.has-error textarea {
+    border-color: #dc2626;
+}
+
+.field-error {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #dc2626;
+}
+
+.field-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.char-count {
+    margin-inline-start: auto;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+}
+
+.error-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 0.9rem;
 }
 
 .btn-submit {
-    padding: 14px 28px;
-    border-radius: 14px;
-    font-weight: 700;
-    font-size: 1rem;
-    background: linear-gradient(135deg, var(--mobile-primary) 0%, color-mix(in srgb, var(--mobile-primary) 80%, white) 100%);
-    color: white;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--mobile-primary) 20%, transparent);
+    min-height: 50px;
+    border: none;
+    border-radius: 12px;
+    background: var(--mobile-primary);
+    color: #fff;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: filter 0.15s ease;
 }
 
 .btn-submit:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px color-mix(in srgb, var(--mobile-primary) 35%, transparent);
-}
-
-[data-theme="dark"] .btn-submit {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
-}
-
-[data-theme="dark"] .btn-submit:hover:not(:disabled) {
-    background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%) !important;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4) !important;
+    filter: brightness(1.1);
 }
 
 .btn-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    opacity: 0.7;
+    cursor: progress;
 }
 
-.quick-contact {
-    margin-top: 40px;
-    background: rgba(255, 255, 255, 0.5) !important;
-    backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.4) !important;
-    border-radius: 24px !important;
-    padding: 30px;
+.btn-submit:focus-visible,
+.btn-secondary:focus-visible {
+    outline: 3px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+.success-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 32px 20px;
+    border-radius: 16px;
+    background: #ecfdf5;
+    color: #065f46;
     text-align: center;
 }
 
-[data-theme="dark"] .quick-contact {
-    background: rgba(30, 41, 59, 0.3) !important;
-    border-color: rgba(255, 255, 255, 0.05) !important;
+.success-box > i {
+    font-size: 2.4rem;
+    margin-bottom: 4px;
 }
 
-.quick-contact h3 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    margin-bottom: 20px;
-    color: var(--mobile-primary);
+.success-box p {
+    margin: 0 0 12px;
+    font-size: 0.92rem;
 }
 
-[data-theme="dark"] .quick-contact h3 {
-    color: var(--mobile-primary);
-}
-
-.quick-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-
-.quick-btn {
-    padding: 14px 28px;
-    border-radius: 14px;
+.btn-secondary {
+    min-height: 42px;
+    padding: 0 18px;
+    border: 1px solid currentColor;
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     font-weight: 700;
-    font-size: 1rem;
-    text-decoration: none;
+    cursor: pointer;
+}
+
+/* ── Branches ── */
+.branch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.branch {
+    display: flex;
+    gap: 12px;
+}
+
+.branch-pin {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--mobile-primary) 10%, transparent);
+    color: var(--mobile-primary);
+}
+
+.branch-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    font-style: normal;
+}
+
+.branch-body strong {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: #0f172a;
+}
+
+.branch-badge {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.branch-body address,
+.branch-body > span {
+    font-style: normal;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #475569;
+}
+
+.branch-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.chip {
     display: inline-flex;
     align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.chip:hover {
+    border-color: var(--mobile-primary);
+    color: var(--mobile-primary);
+}
+
+.hours-card {
+    display: flex;
+    gap: 12px;
+}
+
+.hours-card h3 {
+    font-size: 1rem;
+}
+
+.hours-card p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+.social-icons {
+    display: flex;
     gap: 10px;
-    transition: all 0.3s ease;
-    color: white;
+    margin-top: 12px;
 }
 
-.quick-btn.whatsapp {
-    background: #25d366;
+.social-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    text-decoration: none;
+    transition: transform 0.2s ease;
 }
 
-.quick-btn.whatsapp:hover {
-    background: #20ba5a;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 15px rgba(37, 211, 102, 0.3);
+.social-icon:hover {
+    transform: translateY(-2px);
 }
 
-[data-theme="dark"] .quick-btn.whatsapp {
-    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3) !important;
+.social-icon.facebook { background: #1877f2; }
+.social-icon.instagram { background: linear-gradient(45deg, #f09433, #dc2743, #bc1888); }
+.social-icon.whatsapp { background: #16a34a; }
+
+.chip:focus-visible,
+.social-icon:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
 }
 
-[data-theme="dark"] .quick-btn.whatsapp:hover {
-    background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%) !important;
-    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4) !important;
+/* ── Dark ── */
+[data-theme="dark"] .quick-card,
+[data-theme="dark"] .contact-card {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
 }
 
-.quick-btn.phone {
-    background: var(--mobile-primary);
+[data-theme="dark"] .quick-text strong,
+[data-theme="dark"] .contact-card h3,
+[data-theme="dark"] .branch-body strong {
+    color: #f1f5f9;
 }
 
-.quick-btn.phone:hover {
-    background: var(--el-color-primary-light-3);
-    transform: translateY(-3px);
-    box-shadow: 0 6px 15px color-mix(in srgb, var(--mobile-primary) 30%, transparent);
+[data-theme="dark"] .quick-text span,
+[data-theme="dark"] .card-lead,
+[data-theme="dark"] .branch-body address,
+[data-theme="dark"] .branch-body > span,
+[data-theme="dark"] .hours-card p {
+    color: #94a3b8;
 }
 
-[data-theme="dark"] .quick-btn.phone {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
+[data-theme="dark"] .form-group label {
+    color: #cbd5e1;
 }
 
-[data-theme="dark"] .quick-btn.phone:hover {
-    background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%) !important;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4) !important;
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .form-group textarea {
+    background: #0f172a;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .chip {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .branch-pin {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .success-box {
+    background: rgba(16, 185, 129, 0.12);
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .error-box {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+}
+
+/* ── Responsive ── */
+@media (max-width: 992px) {
+    .contact-wrapper {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .contact-section {
+        padding: 2rem 0 3rem;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .contact-card {
+        padding: 20px 16px;
+    }
+
+    .quick-card {
+        padding: 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quick-card,
+    .social-icon {
+        transition: none;
+    }
+
+    .quick-card:hover,
+    .social-icon:hover {
+        transform: none;
+    }
 }
 </style>
