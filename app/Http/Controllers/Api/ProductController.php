@@ -117,9 +117,12 @@ class ProductController extends Controller
             $query->where('products.is_featured', 0);
         }
 
-        // Filter by stock availability
+        // Filter by stock availability. The storefront means it the way its
+        // card badge does, which also asks the listed size for stock.
         if ($request->boolean('in_stock')) {
-            $query->where('products.in_stock', 1);
+            $this->isAdminRequest($request)
+                ? $query->where('products.in_stock', 1)
+                : $query->storefrontInStock($expand);
         }
 
         // Admin: by the counted quantity rather than the in_stock flag, which
@@ -280,7 +283,15 @@ class ProductController extends Controller
         $useRawSort = false;
         $rawSortQuery = '';
 
-        if ($request->filled('sort')) {
+        // The storefront listing sorts like a category page does (unpriced
+        // rows last, names in the shopper's language), so /products and
+        // /category/{slug} read the same under the same sort.
+        $storefrontSort = ! $this->isAdminRequest($request)
+            && in_array($request->get('sort'), ['newest', 'price_asc', 'price_desc', 'name'], true);
+
+        if ($storefrontSort) {
+            $query->storefrontSort($request->get('sort'), $expand, $request->get('lang'));
+        } elseif ($request->filled('sort')) {
             $sortVal = $request->get('sort');
             switch ($sortVal) {
                 case 'price_asc':
@@ -334,15 +345,19 @@ class ProductController extends Controller
             }
         }
 
-        if ($useRawSort) {
-            $query->orderByRaw($rawSortQuery);
-        } else {
-            $query->orderBy('products.' . $sortBy, $sortOrder);
+        // storefrontSort() has already ordered the query, ending on a stable
+        // id order of its own.
+        if (! $storefrontSort) {
+            if ($useRawSort) {
+                $query->orderByRaw($rawSortQuery);
+            } else {
+                $query->orderBy('products.' . $sortBy, $sortOrder);
+            }
         }
 
         // Keep a product's variants next to each other and in the order they
         // were entered, so pages don't shuffle them between requests.
-        if ($expand) {
+        if ($expand && ! $storefrontSort) {
             $query->orderBy('products.id')->orderBy('pv.id');
         }
 

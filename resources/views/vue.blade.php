@@ -220,6 +220,15 @@
             <li><a href="{{ route('vision') }}">{{ $locale === 'en' ? 'Our Vision' : 'رؤيتنا' }}</a></li>
             <li><a href="{{ route('contact') }}">{{ $locale === 'en' ? 'Contact Us' : 'اتصل بنا' }}</a></li>
         </ul>
+        {{-- The page's own categories/products, so each URL carries distinct,
+             crawlable content without running the SPA. --}}
+        @if(!empty($seo_links))
+        <ul>
+            @foreach($seo_links as $link)
+            <li><a href="{{ $link['url'] }}">{{ $link['label'] }}</a></li>
+            @endforeach
+        </ul>
+        @endif
     </noscript>
     <script>
         // Pass system data to Vue app

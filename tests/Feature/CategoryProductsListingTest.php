@@ -48,3 +48,12 @@ it('offers the subcategories that have products, and the way back up', function 
     expect($child['parent'])->toMatchArray(['slug' => 'tools'])
         ->and($child['subcategories'])->toBe([]);
 });
+
+// /products uses the general endpoint; it must read the same as a category page.
+$all = fn (string $query = '') => test()->getJson('/api/v1/products?expand_variants=0&category_slug=tools'.$query)->assertOk()->json();
+
+it('sorts the all-products listing the way a category page does', function () use ($all) {
+    expect(array_column($all('&sort=price_asc')['data'], 'sku'))->toBe(['LST-A', 'LST-D', 'LST-B', 'LST-C'])
+        ->and(array_column($all('&sort=name&lang=en')['data'], 'sku'))->toBe(['LST-A', 'LST-B', 'LST-C', 'LST-D'])
+        ->and($all('&in_stock=1')['pagination']['total'])->toBe(3);
+});

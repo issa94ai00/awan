@@ -10,9 +10,12 @@ export const PER_PAGE_OPTIONS = [12, 24, 48];
  *
  * Defaults are left out of the URL to keep it short.
  *
- * @param {{ sorts: string[], defaultSort: string }} options
+ * `params` names further string filters the page owns (e.g. `category`); they
+ * ride along in the URL and are kept across page and sort changes.
+ *
+ * @param {{ sorts: string[], defaultSort: string, params?: string[] }} options
  */
-export function useListingQuery({ sorts, defaultSort }) {
+export function useListingQuery({ sorts, defaultSort, params = [] }) {
     const route = useRoute();
     const router = useRouter();
 
@@ -26,6 +29,7 @@ export function useListingQuery({ sorts, defaultSort }) {
             q: typeof q.q === 'string' ? q.q.trim() : '',
             stock: q.stock === '1',
             per: PER_PAGE_OPTIONS.includes(per) ? per : PER_PAGE_OPTIONS[0],
+            ...Object.fromEntries(params.map((name) => [name, typeof q[name] === 'string' ? q[name].trim() : ''])),
         };
     });
 
@@ -37,6 +41,9 @@ export function useListingQuery({ sorts, defaultSort }) {
         if (next.sort !== defaultSort) out.sort = next.sort;
         if (next.stock) out.stock = '1';
         if (next.per !== PER_PAGE_OPTIONS[0]) out.per = String(next.per);
+        params.forEach((name) => {
+            if (next[name]) out[name] = next[name];
+        });
         return out;
     };
 

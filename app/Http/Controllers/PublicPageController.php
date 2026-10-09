@@ -227,15 +227,70 @@ class PublicPageController extends Controller
         $locale = app()->getLocale();
         [$siteName, $siteDescription, $siteKeywords, $siteImage] = $this->getCommonSeo($locale);
 
-        $seo_title = ($locale === 'en' ? 'All Products' : 'جميع المنتجات').' - '.$siteName;
-        $seo_description = $locale === 'en'
-            ? 'Browse the full catalogue of building materials, sanitary ware, cladding and installation systems.'
-            : 'تصفح الكتالوج الكامل لمواد البناء والأدوات الصحية والكلادينج وأنظمة التثبيت.';
+        $pageName = $locale === 'en' ? 'All Products' : 'جميع المنتجات';
+        // Counted the way the listing counts: each variant is its own entry.
+        $total = Product::query()->withVariantRows()->where('products.is_active', 1)->count();
+        $categoryNames = Category::where('is_active', 1)->whereNull('parent_id')->orderBy('sort_order')->limit(4)->get()
+            ->map(fn (Category $category) => $locale === 'en' ? ($category->name_en ?: $category->name_ar) : $category->name_ar)
+            ->filter()
+            ->implode($locale === 'en' ? ', ' : '، ');
+
+        // A count and the real section names make the snippet specific to this
+        // shop, where the old sentence could have described any catalogue.
+        $seo_title = $pageName.' - '.$siteName;
+        $count = number_format($total);
+        $seo_description = $this->cleanString($locale === 'en'
+            ? "Browse {$count} products from {$siteName}: {$categoryNames} and more building and sanitary supplies in Damascus, Syria."
+            : "تصفح {$count} منتجاً من {$siteName}: {$categoryNames} وغيرها من مواد البناء والأدوات الصحية في دمشق، سوريا.");
         $seo_keywords = $siteKeywords;
         $seo_image = $siteImage;
-        $seo_links = $this->productLinks();
+        $seo_links = [...$this->categoryLinks(), ...$this->productLinks()];
 
-        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links'));
+        $homeLabel = $locale === 'en' ? 'Home' : 'الرئيسية';
+        $seo_json_ld = $this->generateBreadcrumbJsonLd([
+            $homeLabel => url('/'),
+            $pageName => route('products.index'),
+        ]).$this->generateCollectionJsonLd($pageName, $seo_description, $total);
+
+        return view('vue', compact('seo_title', 'seo_description', 'seo_keywords', 'seo_image', 'seo_links', 'seo_json_ld'));
+    }
+
+    /**
+     * CollectionPage + ItemList for a product listing: the newest products as
+     * the list's items, with the full count as its size.
+     */
+    private function generateCollectionJsonLd(string $name, string $description, int $total, int $limit = 24): string
+    {
+        $locale = app()->getLocale();
+        $items = Product::where('is_active', 1)
+            ->orderByDesc('created_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->values()
+            ->map(fn (Product $product, int $index) => [
+                '@type' => 'ListItem',
+                'position' => $index + 1,
+                'url' => route('product.show', $product->slug),
+                'name' => $locale === 'en' ? ($product->name_en ?: $product->name_ar) : $product->name_ar,
+            ])
+            ->all();
+
+        $data = [
+            '@context' => 'https://schema.org',
+            '@type' => 'CollectionPage',
+            'name' => $name,
+            'description' => $description,
+            'url' => route('products.index'),
+            'inLanguage' => $locale === 'en' ? 'en' : 'ar',
+            'mainEntity' => [
+                '@type' => 'ItemList',
+                'numberOfItems' => $total,
+                'itemListElement' => $items,
+            ],
+        ];
+
+        return '<script type="application/ld+json">'.json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).'</script>';
     }
 
     public function specialOffers()
