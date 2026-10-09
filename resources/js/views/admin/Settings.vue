@@ -241,16 +241,72 @@
                             </el-col>
                         </el-row>
 
-                        <template v-if="contactLang === 'ar'">
-                            <el-form-item :label="$t('address')">
-                                <el-input type="textarea" :rows="3" v-model="form.address" placeholder="المملكة العربية السعوديه - الرياض&#13;&#10;الفرع2: سوريا - دمشق" />
-                            </el-form-item>
-                        </template>
-                        <template v-else>
-                            <el-form-item label="Address">
-                                <el-input type="textarea" :rows="3" v-model="form.address_en" placeholder="Kingdom of Saudi Arabia - Riyadh&#13;&#10;Syria - Damascus" />
-                            </el-form-item>
-                        </template>
+                        <!-- Branches: one card per address, in the order the site
+                             lists them. The old single address box held all of
+                             them as lines of one text; on save they are still
+                             written back to it, for whatever reads `address`. -->
+                        <div class="branches-head">
+                            <div>
+                                <h3 class="sub-head">{{ $t('settings_branches') }}</h3>
+                                <p class="branches-hint">{{ $t('settings_branches_hint') }}</p>
+                            </div>
+                            <el-button type="primary" plain :icon="Plus" @click="addBranch">{{ $t('settings_branch_add') }}</el-button>
+                        </div>
+
+                        <div v-if="!branches.length" class="branches-empty">
+                            <el-icon><Location /></el-icon>
+                            <span>{{ $t('settings_branches_empty') }}</span>
+                        </div>
+
+                        <div v-for="(branch, index) in branches" :key="branch.uid" class="branch-card" :class="{ 'is-main': branch.is_main }">
+                            <div class="branch-card-head">
+                                <span class="branch-index">{{ index + 1 }}</span>
+                                <strong class="branch-title">
+                                    {{ (contactLang === 'en' ? branch.name_en : branch.name_ar) || branch.name_ar || $t('settings_branch_untitled') }}
+                                </strong>
+                                <el-tag v-if="branch.is_main" size="small" type="success" effect="light">{{ $t('settings_branch_main') }}</el-tag>
+                                <div class="branch-tools">
+                                    <el-button
+                                        v-if="!branch.is_main"
+                                        size="small"
+                                        text
+                                        @click="setMainBranch(index)"
+                                    >{{ $t('settings_branch_make_main') }}</el-button>
+                                    <el-button size="small" text :icon="ArrowUp" :disabled="index === 0" :aria-label="$t('settings_branch_up')" @click="moveBranch(index, -1)" />
+                                    <el-button size="small" text :icon="ArrowDown" :disabled="index === branches.length - 1" :aria-label="$t('settings_branch_down')" @click="moveBranch(index, 1)" />
+                                    <el-button size="small" text type="danger" :icon="Delete" :aria-label="$t('delete')" @click="removeBranch(index)" />
+                                </div>
+                            </div>
+
+                            <el-row :gutter="16">
+                                <el-col :xs="24" :md="10">
+                                    <el-form-item v-if="contactLang === 'ar'" :label="$t('settings_branch_name')">
+                                        <el-input v-model="branch.name_ar" maxlength="120" placeholder="المركز الرئيسي" />
+                                    </el-form-item>
+                                    <el-form-item v-else label="Branch name">
+                                        <el-input v-model="branch.name_en" maxlength="120" placeholder="Head office" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="14">
+                                    <el-form-item v-if="contactLang === 'ar'" :label="$t('address')">
+                                        <el-input v-model="branch.address_ar" maxlength="300" placeholder="ريف دمشق - منطقة معربا" />
+                                    </el-form-item>
+                                    <el-form-item v-else label="Address">
+                                        <el-input v-model="branch.address_en" maxlength="300" placeholder="Rural Damascus - Maaraba" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="10">
+                                    <el-form-item :label="$t('settings_branch_phone')">
+                                        <el-input v-model.trim="branch.phone" maxlength="40" dir="ltr" placeholder="00963962889577" :prefix-icon="Phone" />
+                                    </el-form-item>
+                                </el-col>
+                                <el-col :xs="24" :md="14">
+                                    <el-form-item :label="$t('settings_branch_map')" :error="urlError(branch.map_url)">
+                                        <el-input v-model.trim="branch.map_url" maxlength="500" dir="ltr" placeholder="https://maps.app.goo.gl/…" :prefix-icon="Location" />
+                                    </el-form-item>
+                                </el-col>
+                            </el-row>
+                        </div>
                     </el-form>
                 </section>
 
@@ -1202,7 +1258,8 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import {
     Setting, Money, Phone, Share, Search, Bell, OfficeBuilding, Aim, Brush,
-    Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor
+    Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor,
+    Plus, Delete, ArrowUp, ArrowDown, Location
 } from '@element-plus/icons-vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
@@ -1313,6 +1370,8 @@ const form = reactive({
     contact_email: '',
     address: '',
     address_en: '',
+    // JSON list of branches; edited through `branches` below.
+    contact_branches: '',
     working_hours: '',
     working_hours_en: '',
     facebook: '',
@@ -1850,6 +1909,7 @@ const loadSettings = (settings) => {
     form.contact_email = settings.contact_email || '';
     form.address = settings.address || settings.contact_address || '';
     form.address_en = settings.address_en || '';
+    branches.value = parseBranches(settings.contact_branches) ?? seedBranches(form.address, form.address_en);
     form.working_hours = settings.working_hours || '';
     form.working_hours_en = settings.working_hours_en || '';
     form.facebook = settings.facebook || settings.contact_facebook || '';
@@ -1967,6 +2027,95 @@ const loadSettings = (settings) => {
 
 /* ---- Unsaved-change tracking ---- */
 
+/* ------------------------------------------------------------------ *
+ * Branches (contact section)
+ * ------------------------------------------------------------------ */
+let branchUid = 0;
+const newBranch = (fields = {}) => ({
+    uid: ++branchUid,
+    name_ar: '', name_en: '', address_ar: '', address_en: '', phone: '', map_url: '', is_main: false,
+    ...fields,
+});
+
+const branches = ref([]);
+
+/** The stored list, or null when there is none yet. */
+const parseBranches = (raw) => {
+    if (!raw) return null;
+    try {
+        const list = JSON.parse(raw);
+        return Array.isArray(list) ? list.map((item) => newBranch(item)) : null;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * First visit after the change: the one address text held every branch as a
+ * line, "Name - address". Each line becomes a branch, the first one main, for
+ * the admin to check and save.
+ */
+const seedBranches = (address, addressEn) => {
+    const lines = (text) => String(text || '').split(/\r?\n/).map((line) => line.replace(/\s*-\s*$/, '').trim()).filter(Boolean);
+    const split = (line) => {
+        const at = line.indexOf(' - ');
+        return at > 0 ? [line.slice(0, at).trim(), line.slice(at + 3).trim()] : ['', line];
+    };
+    const ar = lines(address);
+    const en = lines(addressEn);
+    return Array.from({ length: Math.max(ar.length, en.length) }, (_, index) => {
+        const [nameAr, addressAr] = split(ar[index] || '');
+        const [nameEn, addressEnPart] = split(en[index] || '');
+        return newBranch({ name_ar: nameAr, address_ar: addressAr, name_en: nameEn, address_en: addressEnPart, is_main: index === 0 });
+    });
+};
+
+// Kept in the form as text, so the save, the unsaved-changes bar and the
+// section badge treat it like any other setting. Synchronous, so loading
+// settles before the snapshot is taken.
+watch(branches, (list) => {
+    const clean = list
+        .map(({ uid, ...branch }) => ({
+            ...branch,
+            name_ar: branch.name_ar.trim(),
+            name_en: branch.name_en.trim(),
+            address_ar: branch.address_ar.trim(),
+            address_en: branch.address_en.trim(),
+        }))
+        .filter((branch) => branch.name_ar || branch.address_ar || branch.name_en || branch.address_en);
+    form.contact_branches = clean.length ? JSON.stringify(clean) : '';
+}, { deep: true, flush: 'sync' });
+
+const addBranch = () => {
+    branches.value.push(newBranch({ is_main: !branches.value.length }));
+};
+
+const removeBranch = (index) => {
+    const [removed] = branches.value.splice(index, 1);
+    if (removed?.is_main && branches.value.length) branches.value[0].is_main = true;
+};
+
+const moveBranch = (index, step) => {
+    const target = index + step;
+    if (target < 0 || target >= branches.value.length) return;
+    const list = branches.value;
+    [list[index], list[target]] = [list[target], list[index]];
+};
+
+const setMainBranch = (index) => {
+    branches.value.forEach((branch, i) => { branch.is_main = i === index; });
+};
+
+/** The single-text address the rest of the system still reads, one branch a line. */
+const branchesAsText = (lang) => branches.value
+    .map((branch) => {
+        const name = (lang === 'en' ? branch.name_en : branch.name_ar).trim();
+        const address = (lang === 'en' ? branch.address_en : branch.address_ar).trim();
+        return [name, address].filter(Boolean).join(' - ');
+    })
+    .filter(Boolean)
+    .join('\n');
+
 // What the form looked like when it was last loaded or saved.
 const snapshot = ref({});
 const takeSnapshot = () => {
@@ -2046,6 +2195,10 @@ const clientErrors = () => {
         if (error) errors.push({ field: key, section: 'social', message: `${socialFields.value.find((f) => f.key === key)?.label}: ${error}` });
     });
     if (analyticsError.value) errors.push({ field: 'google_analytics', section: 'seo', message: `Google Analytics: ${analyticsError.value}` });
+    branches.value.forEach((branch, index) => {
+        const error = urlError(branch.map_url);
+        if (error) errors.push({ field: 'contact_branches', section: 'contact', message: `${t('settings_branch_map')} (${index + 1}): ${error}` });
+    });
     return errors;
 };
 
@@ -2187,6 +2340,12 @@ const submitSettings = async () => {
 
     try {
         const formData = new FormData();
+
+        // The legacy address text follows the branches it was replaced by.
+        if (branches.value.length) {
+            form.address = branchesAsText('ar');
+            form.address_en = branchesAsText('en');
+        }
 
         Object.keys(form).forEach((key) => {
             const value = form[key];
@@ -2806,6 +2965,91 @@ onBeforeUnmount(() => {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--st-text);
+}
+
+/* ── Branches ── */
+.branches-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px dashed var(--st-border);
+}
+
+.branches-head .sub-head {
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.branches-hint {
+    margin: 0.3rem 0 0;
+    font-size: 0.82rem;
+    color: var(--st-muted);
+}
+
+.branches-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    padding: 1.1rem 1rem;
+    border: 1px dashed var(--st-border);
+    border-radius: 12px;
+    color: var(--st-muted);
+    font-size: 0.88rem;
+}
+
+.branch-card {
+    margin-top: 1rem;
+    padding: 0.9rem 1rem 0.2rem;
+    border: 1px solid var(--st-border);
+    border-radius: 14px;
+}
+
+.branch-card.is-main {
+    border-color: color-mix(in srgb, var(--st-accent) 45%, var(--st-border));
+    box-shadow: inset 3px 0 0 var(--st-accent);
+}
+
+[dir='rtl'] .branch-card.is-main {
+    box-shadow: inset -3px 0 0 var(--st-accent);
+}
+
+.branch-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.branch-index {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--st-accent) 12%, transparent);
+    color: var(--st-accent);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.branch-title {
+    font-size: 0.92rem;
+    color: var(--st-text);
+}
+
+.branch-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    margin-inline-start: auto;
 }
 
 .settings-section > .el-form > .sub-head:first-child {

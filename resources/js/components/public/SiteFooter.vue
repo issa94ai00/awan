@@ -51,8 +51,29 @@
                 <!-- Contact: every line is something to tap. -->
                 <section class="footer-col footer-contact" :aria-label="t('nav_contact')">
                     <h2 class="footer-heading">{{ t('nav_contact') }}</h2>
+                    <!-- One entry per branch from Settings › Contact, head office
+                         first; each with its own phone and directions when set. -->
+                    <ul v-if="branches.length" class="branch-list">
+                        <li v-for="(branch, index) in branches" :key="index" class="branch-item">
+                            <i class="fas fa-location-dot" aria-hidden="true"></i>
+                            <div class="branch-body">
+                                <strong v-if="branch.name" class="branch-name">
+                                    {{ branch.name }}
+                                    <span v-if="branch.is_main && branches.length > 1" class="branch-badge">{{ t('settings_branch_main') }}</span>
+                                </strong>
+                                <address v-if="branch.address">{{ branch.address }}</address>
+                                <span v-if="branch.phone || branch.map_url" class="branch-links">
+                                    <a v-if="branch.phone" :href="`tel:+${internationalDigits(branch.phone)}`" dir="ltr">{{ formatPhone(branch.phone) }}</a>
+                                    <a v-if="branch.map_url" :href="branch.map_url" target="_blank" rel="noopener">
+                                        {{ t('ft_directions') }} <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                                    </a>
+                                </span>
+                            </div>
+                        </li>
+                    </ul>
+
                     <ul class="contact-list">
-                        <li v-if="addressLines.length">
+                        <li v-if="!branches.length && addressLines.length">
                             <i class="fas fa-location-dot" aria-hidden="true"></i>
                             <address>
                                 <span v-for="(line, index) in addressLines" :key="index">{{ line }}</span>
@@ -126,11 +147,40 @@ const addressLines = computed(() => {
 
 // "00963962889577" → dialled as +963…, shown grouped.
 const internationalDigits = (value) => String(value || '').replace(/\D/g, '').replace(/^00/, '');
-const telNumber = computed(() => `+${internationalDigits(props.settings.contact_phone)}`);
-const displayPhone = computed(() => {
-    const digits = internationalDigits(props.settings.contact_phone);
+const formatPhone = (value) => {
+    const digits = internationalDigits(value);
     const match = digits.match(/^(963)(\d{3})(\d{3})(\d{3})$/);
     return match ? `+${match[1]} ${match[2]} ${match[3]} ${match[4]}` : `+${digits}`;
+};
+const telNumber = computed(() => `+${internationalDigits(props.settings.contact_phone)}`);
+const displayPhone = computed(() => formatPhone(props.settings.contact_phone));
+
+/**
+ * Branches from Settings › Contact (`contact_branches`, a JSON list), head
+ * office first, in the viewer's language with Arabic standing in for missing
+ * English. Empty when none are saved: the old address text shows instead.
+ */
+const branches = computed(() => {
+    let list = props.settings.contact_branches;
+    if (typeof list === 'string') {
+        try {
+            list = list ? JSON.parse(list) : [];
+        } catch {
+            list = [];
+        }
+    }
+    if (!Array.isArray(list)) return [];
+
+    return list
+        .map((branch) => ({
+            name: (isEn.value ? branch.name_en : '') || branch.name_ar || branch.name_en || '',
+            address: (isEn.value ? branch.address_en : '') || branch.address_ar || branch.address_en || '',
+            phone: internationalDigits(branch.phone) ? branch.phone : '',
+            map_url: /^https?:\/\//i.test(branch.map_url || '') ? branch.map_url : '',
+            is_main: Boolean(branch.is_main),
+        }))
+        .filter((branch) => branch.name || branch.address)
+        .sort((a, b) => Number(b.is_main) - Number(a.is_main));
 });
 
 // wa.me takes the number without "00" or "+"; the old link kept the 00 and
@@ -318,6 +368,89 @@ const backToTop = () => {
     flex-direction: column;
     gap: 2px;
     font-style: normal;
+}
+
+/* ── Branches ── */
+.branch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 0 0 16px;
+    padding: 0 0 16px;
+    list-style: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--footer-text) 12%, transparent);
+}
+
+.branch-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+.branch-item > i {
+    flex: none;
+    width: 18px;
+    margin-top: 4px;
+    text-align: center;
+    color: var(--footer-text);
+    opacity: 0.85;
+}
+
+.branch-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.branch-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--footer-text);
+    font-weight: 700;
+}
+
+.branch-badge {
+    padding: 0 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--footer-text) 14%, transparent);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.branch-body address {
+    font-style: normal;
+    color: color-mix(in srgb, var(--footer-text) 75%, transparent);
+}
+
+.branch-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-top: 2px;
+}
+
+.branch-links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: color-mix(in srgb, var(--footer-text) 75%, transparent);
+    font-size: 0.85rem;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--footer-text) 30%, transparent);
+    text-underline-offset: 3px;
+}
+
+.branch-links a:hover {
+    color: var(--footer-text);
+}
+
+.branch-links i {
+    font-size: 0.7rem;
 }
 
 /* ── Bottom bar ── */

@@ -55,6 +55,8 @@ class SettingsController extends Controller
             'settings.contact_email' => 'nullable|email|max:255',
             'settings.address' => 'nullable|string|max:1000',
             'settings.address_en' => 'nullable|string|max:1000',
+            // [{name_ar, name_en, address_ar, address_en, phone, map_url, is_main}]
+            'settings.contact_branches' => 'nullable|json|max:20000',
             'settings.working_hours' => 'nullable|string|max:255',
             'settings.facebook' => 'nullable|url|max:255',
             'settings.instagram' => 'nullable|url|max:255',

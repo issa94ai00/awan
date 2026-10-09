@@ -253,6 +253,7 @@
                 contact_email: {!! json_encode(get_setting('contact_email') ?? 'awaanaltakadom@gmail.com') !!},
                 contact_address: {!! json_encode(get_setting('contact_address') ?? "المملكة العربية السعوديه - الرياض\r\nالفرع2: سوريا - دمشق") !!},
                 address: {!! json_encode(get_setting('address') ?? "المملكة العربية السعوديه - الرياض\r\nالفرع2: سوريا - دمشق") !!},
+                contact_branches: {!! json_encode(get_setting('contact_branches') ?? '') !!},
                 address_en: {!! json_encode(get_setting('address_en') ?? "Kingdom of Saudi Arabia - Riyadh\r\nSyria - Damascus") !!},
                 working_hours: {!! json_encode(get_setting('working_hours') ?? 'السبت الى الخميس 08:00-22:00') !!},
                 facebook: {!! json_encode(get_setting('facebook') ?? 'https://www.facebook.com/share/18AcYpks2o/') !!},
