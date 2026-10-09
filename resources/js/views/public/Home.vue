@@ -16,6 +16,7 @@
                 <form class="hero-search" role="search" action="/products" method="get" @submit.prevent="submitSearch">
                     <i class="fas fa-search" aria-hidden="true"></i>
                     <input
+                        ref="heroSearchInput"
                         v-model="heroQuery"
                         name="q"
                         type="search"
@@ -24,8 +25,24 @@
                         enterkeyhint="search"
                         autocomplete="off"
                     >
-                    <button type="submit">{{ t('search') }}</button>
+                    <kbd v-if="!heroQuery" class="hero-search-hint" aria-hidden="true">/</kbd>
+                    <button type="submit" :aria-label="t('search')">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                        <span>{{ t('search') }}</span>
+                    </button>
                 </form>
+
+                <!-- One tap into the busiest sections, for visitors who know the
+                     shelf but not a product name. -->
+                <nav v-if="heroSections.length" class="hero-quick" :aria-label="t('home_hero_quick')">
+                    <span class="hero-quick-label">{{ t('home_hero_quick') }}</span>
+                    <router-link
+                        v-for="section in heroSections"
+                        :key="section.id"
+                        :to="`/category/${section.slug}`"
+                        class="hero-chip"
+                    >{{ $p(section, 'name') }}</router-link>
+                </nav>
 
                 <div class="hero-buttons">
                     <router-link to="/products" class="btn-hero-primary">
@@ -38,9 +55,14 @@
                     </router-link>
                 </div>
 
-                <ul v-if="stats.products" class="hero-stats">
-                    <li><strong>{{ formatCount(stats.products) }}</strong> {{ t('home_stat_products') }}</li>
-                    <li><strong>{{ formatCount(stats.sections) }}</strong> {{ t('home_stat_sections') }}</li>
+                <!-- Placeholder rows hold the height while /home loads, so the
+                     buttons above don't jump when the numbers arrive. -->
+                <ul v-if="loading" class="hero-stats is-loading" aria-hidden="true">
+                    <li v-for="n in 2" :key="n"><span class="hero-stat-skeleton"></span></li>
+                </ul>
+                <ul v-else-if="stats.products" class="hero-stats">
+                    <li><i class="fas fa-box-open" aria-hidden="true"></i><strong>{{ formatCount(stats.products) }}</strong> {{ t('home_stat_products') }}</li>
+                    <li><i class="fas fa-layer-group" aria-hidden="true"></i><strong>{{ formatCount(stats.sections) }}</strong> {{ t('home_stat_sections') }}</li>
                     <li v-if="workingHours"><i class="far fa-clock" aria-hidden="true"></i> {{ workingHours }}</li>
                 </ul>
             </div>
@@ -301,6 +323,21 @@ const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? '
 /** The generic drawings carry their own slate tile; framed as icons, not photos. */
 const isDrawing = (category) => !category.image && /\/images_items\/generic\//.test(category.thumbnail || '');
 
+const heroSearchInput = ref(null);
+
+/** The first few sections in storefront order, as one-tap shortcuts. */
+const heroSections = computed(() => categories.value.filter((c) => c.slug).slice(0, 5));
+
+// "/" jumps to the search box, as on most catalogue sites — unless the
+// visitor is already typing somewhere.
+const focusSearchOnSlash = (event) => {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+    const el = event.target;
+    if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName)) return;
+    event.preventDefault();
+    heroSearchInput.value?.focus();
+};
+
 const submitSearch = () => {
     const q = heroQuery.value.trim();
     router.push({ path: '/products', query: q ? { q } : {} });
@@ -503,6 +540,7 @@ const updateFeatSliderButtons = () => {
 };
 
 onMounted(async () => {
+    window.addEventListener('keydown', focusSearchOnSlash);
     loading.value = true;
     try {
         const [homeRes, offersRes] = await Promise.all([
@@ -534,6 +572,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('keydown', focusSearchOnSlash);
     document.getElementById(JSON_LD_ID)?.remove();
     clearTimeout(toastTimer);
 });
@@ -547,25 +586,39 @@ onUnmounted(() => {
 /* ===== HERO — modern minimal ===== */
 .hero {
     position: relative;
-    min-height: 460px;
+    min-height: 520px;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
     margin-top: 0;
     padding: 96px 24px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.82) 55%, rgba(255, 255, 255, 0.95) 100%), var(--hero-bg, linear-gradient(160deg, #f8fafc, #eef2f7)) center/cover no-repeat;
+    isolation: isolate;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.93) 0%, rgba(255, 255, 255, 0.74) 50%, rgba(255, 255, 255, 0.96) 100%), var(--hero-bg, linear-gradient(160deg, #f8fafc, #eef2f7)) center/cover no-repeat;
     color: #0f172a;
     box-sizing: border-box;
 }
 
 [data-theme="dark"] .hero {
-    background: linear-gradient(180deg, rgba(9, 15, 26, 0.94) 0%, rgba(9, 15, 26, 0.8) 55%, rgba(9, 15, 26, 0.94) 100%), var(--hero-bg, linear-gradient(160deg, #0f172a, #111827)) center/cover no-repeat !important;
+    background: linear-gradient(180deg, rgba(9, 15, 26, 0.92) 0%, rgba(9, 15, 26, 0.72) 50%, rgba(9, 15, 26, 0.96) 100%), var(--hero-bg, linear-gradient(160deg, #0f172a, #111827)) center/cover no-repeat !important;
     color: #f8fafc;
 }
 
+/* A soft brand-coloured glow behind the copy — depth without a photo. */
+.hero::before {
+    content: '';
+    position: absolute;
+    inset: -20% 10% auto;
+    height: 70%;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--mobile-primary) 16%, transparent), transparent);
+    z-index: -1;
+    pointer-events: none;
+}
+
 .hero-content {
-    max-width: 720px;
+    width: 100%;
+    max-width: 760px;
     position: relative;
     z-index: 2;
 }
@@ -1376,6 +1429,154 @@ a.category-card:focus-visible,
     color: #f1f5f9;
 }
 
+.hero-stats li > i {
+    color: var(--mobile-primary);
+    font-size: 0.9rem;
+}
+
+.hero-stats.is-loading li {
+    min-height: 1.5rem;
+}
+
+.hero-stat-skeleton {
+    display: block;
+    width: 96px;
+    height: 0.9rem;
+    border-radius: 6px;
+    background: rgba(148, 163, 184, 0.25);
+    animation: hero-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hero-pulse {
+    50% { opacity: 0.45; }
+}
+
+/* Search: "/" shortcut hint, icon-only button on narrow screens. */
+.hero-search-hint {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid rgba(15, 23, 42, 0.14);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    font: 600 0.78rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+[data-theme="dark"] .hero-search-hint {
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.hero-search button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.hero-search button i {
+    display: none;
+}
+
+.hero-search button:hover {
+    filter: brightness(1.08);
+}
+
+.hero-search button:active {
+    transform: scale(0.97);
+}
+
+.hero-search input::placeholder {
+    color: #94a3b8;
+}
+
+/* Quick section chips under the search. */
+.hero-quick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    max-width: 620px;
+    margin: 1rem auto 0;
+}
+
+.hero-quick-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-inline-end: 2px;
+}
+
+.hero-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #334155;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(6px);
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.hero-chip:hover {
+    color: var(--mobile-primary);
+    border-color: var(--mobile-primary);
+    transform: translateY(-1px);
+}
+
+.hero-chip:focus-visible {
+    outline: 2px solid var(--mobile-primary);
+    outline-offset: 2px;
+}
+
+[data-theme="dark"] .hero-quick-label {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .hero-chip {
+    color: #e2e8f0;
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .hero-chip:hover {
+    color: var(--mobile-primary-light, var(--mobile-primary));
+    border-color: var(--mobile-primary-light, var(--mobile-primary));
+}
+
+.hero-quick + .hero-buttons {
+    margin-top: 1.75rem;
+}
+
+/* The stats read as one quiet strip rather than loose text. */
+.hero-stats {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-sizing: border-box;
+}
+
+[data-theme="dark"] .hero-stats {
+    background: rgba(15, 23, 42, 0.5);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
 /* ===== Sections grid ===== */
 .home-sections-grid {
     display: grid;
@@ -1649,7 +1850,53 @@ a.category-card:focus-visible,
     }
 
     .hero-search button {
-        padding: 0 16px;
+        width: 48px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .hero-search button i {
+        display: inline;
+    }
+
+    .hero-search button span,
+    .hero-search-hint,
+    .hero-quick-label {
+        display: none;
+    }
+
+    /* One swipeable row of chips instead of a wrapped block. */
+    .hero-quick {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin-inline: -18px;
+        padding-inline: 18px;
+    }
+
+    .hero-quick::-webkit-scrollbar {
+        display: none;
+    }
+
+    .hero-chip {
+        flex: none;
+    }
+
+    .hero-buttons {
+        gap: 10px;
+    }
+
+    .btn-hero-primary,
+    .btn-hero-secondary {
+        flex: 1 1 0;
+        justify-content: center;
+        padding: 13px 16px;
+        font-size: 0.95rem;
+    }
+
+    .hero-stats {
+        border-radius: 16px;
     }
 
     .help-card {
@@ -1664,6 +1911,9 @@ a.category-card:focus-visible,
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .hero-stat-skeleton,
+    .hero-chip,
+    .hero-search button,
     .home-section-card,
     .hs-media img,
     .home-section-card.is-skeleton .hs-media,
