@@ -104,29 +104,62 @@
                         :error="fieldError('customer_id')"
                         :class="{ 'is-flagged': isFlagged('customer_id') }"
                     >
-                        <el-select
-                            ref="customerSelect"
-                            v-model="form.customer_id"
-                            filterable
-                            remote
-                            clearable
-                            :remote-method="searchCustomers"
-                            :loading="customersLoading"
-                            :placeholder="$t('qt_find_customer')"
-                            style="width: 100%"
-                            @focus="!customerOptions.length && searchCustomers('')"
-                            @change="onCustomerChange"
-                        >
-                            <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
-                                <div class="option-row">
-                                    <span class="option-name">{{ c.name }}</span>
-                                    <span class="option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
-                                </div>
-                            </el-option>
-                        </el-select>
+                        <div class="customer-pick-row">
+                            <el-select
+                                ref="customerSelect"
+                                v-model="form.customer_id"
+                                filterable
+                                remote
+                                clearable
+                                :remote-method="searchCustomers"
+                                :loading="customersLoading"
+                                :placeholder="$t('qt_find_customer')"
+                                class="customer-select"
+                                @focus="!customerOptions.length && searchCustomers('')"
+                                @change="onCustomerChange"
+                            >
+                                <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
+                                    <div class="option-row">
+                                        <span class="option-name">{{ c.name }}</span>
+                                        <span class="option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
+                                    </div>
+                                </el-option>
+
+                                <!-- Nothing matched: offer to create the typed client in place -->
+                                <template #empty>
+                                    <div class="customer-empty">
+                                        <template v-if="customersLoading">
+                                            <i class="fas fa-spinner fa-spin"></i>&nbsp;{{ $t('loading') }}
+                                        </template>
+                                        <template v-else>
+                                            <p class="customer-empty-text">
+                                                {{ customerQuery ? $t('qt_no_customer_match', { query: customerQuery }) : $t('qt_no_customers_yet') }}
+                                            </p>
+                                            <button type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
+                                                <i class="fas fa-user-plus"></i>
+                                                <span>{{ customerQuery ? $t('qt_add_as_customer', { query: customerQuery }) : $t('qt_new_customer') }}</span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </template>
+                            </el-select>
+
+                            <el-tooltip :content="$t('qt_new_customer')" placement="top" :show-after="400">
+                                <button
+                                    type="button"
+                                    class="customer-add-btn"
+                                    :class="{ 'is-on': quickCustomer.open }"
+                                    :aria-expanded="quickCustomer.open"
+                                    @click="toggleQuickCustomer"
+                                >
+                                    <i class="fas" :class="quickCustomer.open ? 'fa-times' : 'fa-user-plus'"></i>
+                                    <span class="customer-add-label">{{ quickCustomer.open ? $t('cancel') : $t('qt_new_customer') }}</span>
+                                </button>
+                            </el-tooltip>
+                        </div>
 
                         <!-- Customer Info Strip -->
-                        <div v-if="selectedCustomer" class="customer-info-strip">
+                        <div v-if="selectedCustomer && !quickCustomer.open" class="customer-info-strip">
                             <span v-if="selectedCustomer.phone" class="cust-info-item">
                                 <i class="fas fa-phone"></i>&nbsp;<span dir="ltr">{{ selectedCustomer.phone }}</span>
                             </span>
@@ -139,7 +172,19 @@
                             <span v-if="creditCheck && creditCheck.over" class="cust-info-item danger">
                                 <i class="fas fa-triangle-exclamation"></i>&nbsp;{{ $t('credit_limit_exceeded') }} ({{ formatCurrency(creditCheck.limit) }})
                             </span>
+                            <span v-if="selectedCustomer.id === justAddedCustomerId" class="cust-info-item fresh">
+                                <i class="fas fa-check-circle"></i>&nbsp;{{ $t('qt_customer_just_added') }}
+                            </span>
                         </div>
+
+                        <transition name="qc-slide">
+                            <CustomerQuickAdd
+                                v-if="quickCustomer.open"
+                                :seed="quickCustomer.seed"
+                                @select="onQuickCustomerSelect"
+                                @close="closeQuickCustomer"
+                            />
+                        </transition>
                     </el-form-item>
 
                     <!-- Expected Delivery Date with Quick Day Chips -->
@@ -976,6 +1021,7 @@ import { useStockShortage } from '@/Composables/useStockShortage';
 import { formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
 import { optionKey, variantLabelOf } from '@/utils/productPick';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
+import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1091,6 +1137,7 @@ const stockColorClass = (stock) => {
 /* ── Customer Management ─────────────────────────────────────────── */
 
 const searchCustomers = (query) => {
+    customerQuery.value = String(query || '').trim();
     clearTimeout(customerTimer);
     customerTimer = setTimeout(async () => {
         customersLoading.value = true;
@@ -1114,6 +1161,44 @@ const onCustomerChange = (customerId) => {
     if (customer?.address && !form.shipping_address) {
         form.shipping_address = customer.address;
     }
+};
+
+/** Put a customer in the options (if missing) and select it. */
+const selectCustomer = (customer) => {
+    if (!customer?.id) return;
+    if (!customerOptions.value.some((c) => c.id === customer.id)) {
+        customerOptions.value = [customer, ...customerOptions.value];
+    }
+    form.customer_id = customer.id;
+    onCustomerChange(customer.id);
+};
+
+// ── Quick-add customer ─────────────────────────────────────────────────
+// The panel itself lives in CustomerQuickAdd.vue (shared with the quote
+// form); this form only decides when it is open and what seeds it.
+const customerQuery = ref('');
+const justAddedCustomerId = ref(null);
+const quickCustomer = reactive({ open: false, seed: '' });
+
+const openQuickCustomer = (seed = '') => {
+    customerSelect.value?.blur();
+    quickCustomer.seed = String(seed || '').trim();
+    quickCustomer.open = true;
+};
+
+const closeQuickCustomer = () => {
+    quickCustomer.open = false;
+};
+
+const toggleQuickCustomer = () => {
+    if (quickCustomer.open) closeQuickCustomer();
+    else openQuickCustomer(customerQuery.value);
+};
+
+const onQuickCustomerSelect = (customer, { created } = {}) => {
+    justAddedCustomerId.value = created ? customer?.id || null : null;
+    selectCustomer(customer);
+    closeQuickCustomer();
 };
 
 const creditCheck = computed(() => {
@@ -1976,6 +2061,8 @@ const clearOrder = async () => {
     Object.assign(form, blank());
     selectedCustomer.value = null;
     customerOptions.value = [];
+    justAddedCustomerId.value = null;
+    closeQuickCustomer();
     clearDraft();
     ElMessage.success(t('form_cleared'));
 };
@@ -2396,6 +2483,101 @@ onUnmounted(() => {
 .cust-info-item.danger {
     color: #dc2626;
     font-weight: 700;
+}
+
+.cust-info-item.fresh {
+    color: #15803d;
+    font-weight: 600;
+}
+
+/* Customer picker row: select + "new client" button */
+.customer-pick-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.customer-select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.customer-add-btn {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.85rem;
+    border-radius: 6px;
+    border: 1px dashed #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.customer-add-btn:hover {
+    border-style: solid;
+    background: #dbeafe;
+}
+.customer-add-btn:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+}
+.customer-add-btn.is-on {
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+}
+
+/* Empty dropdown: offer to create what was typed */
+.customer-empty {
+    padding: 0.85rem 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+.customer-empty-text {
+    margin: 0 0 0.6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.customer-empty-add {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 100%;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    transition: background 0.15s ease;
+}
+.customer-empty-add span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.customer-empty-add:hover {
+    background: #1d4ed8;
+}
+
+.qc-slide-enter-active,
+.qc-slide-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.qc-slide-enter-from,
+.qc-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
 }
 
 /* Lines Section Header */
@@ -3619,6 +3801,15 @@ onUnmounted(() => {
 @media (max-width: 860px) {
     .order-form-container {
         padding: 1rem;
+    }
+
+    .customer-add-label {
+        display: none;
+    }
+
+    .customer-add-btn {
+        padding: 0 0.75rem;
+        font-size: 0.95rem;
     }
 
     .head-grid, .head-subgrid, .bottom-grid {
