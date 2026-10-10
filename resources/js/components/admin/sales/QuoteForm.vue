@@ -59,29 +59,63 @@
             <!-- ── Head Grid: Customer & Validity ── -->
             <div class="head-grid">
                 <!-- Customer Selection -->
-                <el-form-item :label="$t('client')" required :error="errors.customer_id">
-                    <el-select
-                        v-model="form.customer_id"
-                        filterable
-                        remote
-                        clearable
-                        :remote-method="searchCustomers"
-                        :loading="customersLoading"
-                        :placeholder="$t('qt_find_customer')"
-                        style="width: 100%"
-                        @focus="!customerOptions.length && searchCustomers('')"
-                        @change="onCustomerChange"
-                    >
-                        <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
-                            <div class="option-row">
-                                <span class="option-name">{{ c.name }}</span>
-                                <span class="option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
-                            </div>
-                        </el-option>
-                    </el-select>
+                <el-form-item :label="$t('client')" required :error="errors.customer_id" class="customer-field">
+                    <div class="customer-pick-row">
+                        <el-select
+                            ref="customerSelectRef"
+                            v-model="form.customer_id"
+                            filterable
+                            remote
+                            clearable
+                            :remote-method="searchCustomers"
+                            :loading="customersLoading"
+                            :placeholder="$t('qt_find_customer')"
+                            class="customer-select"
+                            @focus="!customerOptions.length && searchCustomers('')"
+                            @change="onCustomerChange"
+                        >
+                            <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
+                                <div class="option-row">
+                                    <span class="option-name">{{ c.name }}</span>
+                                    <span class="option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
+                                </div>
+                            </el-option>
+
+                            <!-- Nothing matched: offer to create the typed client in place -->
+                            <template #empty>
+                                <div class="customer-empty">
+                                    <template v-if="customersLoading">
+                                        <i class="fas fa-spinner fa-spin"></i>&nbsp;{{ $t('loading') }}
+                                    </template>
+                                    <template v-else>
+                                        <p class="customer-empty-text">
+                                            {{ customerQuery ? $t('qt_no_customer_match', { query: customerQuery }) : $t('qt_no_customers_yet') }}
+                                        </p>
+                                        <button type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
+                                            <i class="fas fa-user-plus"></i>
+                                            <span>{{ customerQuery ? $t('qt_add_as_customer', { query: customerQuery }) : $t('qt_new_customer') }}</span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+                        </el-select>
+
+                        <el-tooltip :content="$t('qt_new_customer')" placement="top" :show-after="400">
+                            <button
+                                type="button"
+                                class="customer-add-btn"
+                                :class="{ 'is-on': quickCustomer.open }"
+                                :aria-expanded="quickCustomer.open"
+                                @click="toggleQuickCustomer"
+                            >
+                                <i class="fas" :class="quickCustomer.open ? 'fa-times' : 'fa-user-plus'"></i>
+                                <span class="customer-add-label">{{ quickCustomer.open ? $t('cancel') : $t('qt_new_customer') }}</span>
+                            </button>
+                        </el-tooltip>
+                    </div>
 
                     <!-- Customer Info Strip -->
-                    <div v-if="selectedCustomer" class="customer-info-strip">
+                    <div v-if="selectedCustomer && !quickCustomer.open" class="customer-info-strip">
                         <span v-if="selectedCustomer.phone" class="cust-info-item">
                             <i class="fas fa-phone"></i>&nbsp;<span dir="ltr">{{ selectedCustomer.phone }}</span>
                         </span>
@@ -91,7 +125,92 @@
                         <span v-if="Number(selectedCustomer.balance) > 0" class="cust-info-item warn">
                             <i class="fas fa-wallet"></i>&nbsp;{{ $t('client_balance') || $t('balance') }}: {{ formatCurrency(selectedCustomer.balance) }}
                         </span>
+                        <span v-if="selectedCustomer.id === justAddedCustomerId" class="cust-info-item fresh">
+                            <i class="fas fa-check-circle"></i>&nbsp;{{ $t('qt_customer_just_added') }}
+                        </span>
                     </div>
+
+                    <!-- Quick-add client panel: name is enough, phone and company optional -->
+                    <transition name="qc-slide">
+                        <div
+                            v-if="quickCustomer.open"
+                            class="quick-customer"
+                            @keydown.enter="onQuickCustomerEnter"
+                            @keydown.esc.stop.prevent="closeQuickCustomer"
+                        >
+                            <div class="quick-customer-head">
+                                <span class="quick-customer-title">
+                                    <i class="fas fa-user-plus"></i>&nbsp;{{ $t('qt_quick_customer_title') }}
+                                </span>
+                                <span class="quick-customer-hint">{{ $t('qt_quick_customer_hint') }}</span>
+                            </div>
+
+                            <div class="quick-customer-grid">
+                                <div class="qc-field qc-field--name">
+                                    <label class="qc-label">{{ $t('name') }} <span class="qc-req">*</span></label>
+                                    <el-input
+                                        ref="quickNameRef"
+                                        v-model="quickCustomer.form.name"
+                                        :placeholder="$t('customer_name')"
+                                        maxlength="255"
+                                        :class="{ 'is-error': quickCustomer.errors.name }"
+                                        @input="clearQuickError('name')"
+                                    />
+                                    <small v-if="quickCustomer.errors.name" class="qc-error">{{ quickCustomer.errors.name }}</small>
+                                </div>
+                                <div class="qc-field">
+                                    <label class="qc-label">{{ $t('phone') }} <span class="qc-opt">{{ $t('optional') }}</span></label>
+                                    <el-input
+                                        v-model="quickCustomer.form.phone"
+                                        dir="ltr"
+                                        inputmode="tel"
+                                        placeholder="09xxxxxxxx"
+                                        maxlength="20"
+                                        :class="{ 'is-error': quickCustomer.errors.phone }"
+                                        @input="onQuickPhoneInput"
+                                    >
+                                        <template #suffix>
+                                            <i v-if="quickCustomer.checkingPhone" class="fas fa-spinner fa-spin qc-suffix"></i>
+                                            <i v-else-if="quickCustomer.duplicate" class="fas fa-exclamation-circle qc-suffix warn"></i>
+                                            <i v-else-if="quickCustomer.phoneChecked" class="fas fa-check-circle qc-suffix ok"></i>
+                                        </template>
+                                    </el-input>
+                                    <small v-if="quickCustomer.errors.phone" class="qc-error">{{ quickCustomer.errors.phone }}</small>
+                                </div>
+                                <div class="qc-field">
+                                    <label class="qc-label">{{ $t('company') }} <span class="qc-opt">{{ $t('optional') }}</span></label>
+                                    <el-input v-model="quickCustomer.form.company" :placeholder="$t('company_name')" maxlength="255" />
+                                </div>
+                            </div>
+
+                            <!-- The API upserts by phone, so a known number must pick the existing client instead of renaming them -->
+                            <div v-if="quickCustomer.duplicate" class="qc-duplicate">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span class="qc-duplicate-text">
+                                    {{ $t('qt_customer_exists_phone', { name: quickCustomer.duplicate.name }) }}
+                                </span>
+                                <button type="button" class="qc-link" @click="useExistingCustomer(quickCustomer.duplicate)">
+                                    <i class="fas fa-user-check"></i>&nbsp;{{ $t('qt_use_existing_customer') }}
+                                </button>
+                            </div>
+
+                            <div class="quick-customer-foot">
+                                <span class="qc-kbd-hint"><kbd>Enter</kbd> {{ $t('qt_add_and_select') }} &bull; <kbd>Esc</kbd> {{ $t('cancel') }}</span>
+                                <div class="qc-actions">
+                                    <el-button size="small" @click="closeQuickCustomer">{{ $t('cancel') }}</el-button>
+                                    <el-button
+                                        size="small"
+                                        type="primary"
+                                        :loading="quickCustomer.saving"
+                                        :disabled="!!quickCustomer.duplicate || !quickCustomer.form.name.trim()"
+                                        @click="saveQuickCustomer"
+                                    >
+                                        <i v-if="!quickCustomer.saving" class="fas fa-check"></i>&nbsp;{{ $t('qt_add_and_select') }}
+                                    </el-button>
+                                </div>
+                            </div>
+                        </div>
+                    </transition>
                 </el-form-item>
 
                 <!-- Valid Until with Quick Chips & Remaining Badge -->
@@ -815,6 +934,7 @@ const selectedCustomer = ref(null);
 let customerTimer = null;
 
 const searchCustomers = (query) => {
+    customerQuery.value = String(query || '').trim();
     clearTimeout(customerTimer);
     customerTimer = setTimeout(async () => {
         customersLoading.value = true;
@@ -835,6 +955,144 @@ const onCustomerChange = (customerId) => {
     delete errors.customer_id;
     const c = customerOptions.value.find((cust) => cust.id === customerId);
     selectedCustomer.value = c || null;
+};
+
+/** Put a customer in the options (if missing) and select it. */
+const selectCustomer = (customer) => {
+    if (!customer?.id) return;
+    if (!customerOptions.value.some((c) => c.id === customer.id)) {
+        customerOptions.value = [customer, ...customerOptions.value];
+    }
+    form.customer_id = customer.id;
+    onCustomerChange(customer.id);
+};
+
+// ── Quick-add customer ─────────────────────────────────────────────────
+// A walk-in asking for a price should not send the seller to the CRM first.
+// Name alone is enough; phone and company are optional and the profile can be
+// completed later from the Customers page.
+const customerSelectRef = ref(null);
+const quickNameRef = ref(null);
+const customerQuery = ref('');
+const justAddedCustomerId = ref(null);
+const blankQuickCustomer = () => ({ name: '', phone: '', company: '' });
+const quickCustomer = reactive({
+    open: false,
+    saving: false,
+    checkingPhone: false,
+    phoneChecked: false,
+    duplicate: null,
+    errors: {},
+    form: blankQuickCustomer(),
+});
+let quickPhoneTimer = null;
+
+const clearQuickError = (key) => delete quickCustomer.errors[key];
+const normalizePhone = (p) => String(p || '').replace(/\D/g, '');
+const looksLikePhone = (text) => /^[\d\s+\-()]{6,}$/.test(text || '');
+
+const openQuickCustomer = (seed = '') => {
+    customerSelectRef.value?.blur();
+    clearTimeout(quickPhoneTimer);
+    quickCustomer.form = blankQuickCustomer();
+    quickCustomer.errors = {};
+    quickCustomer.duplicate = null;
+    quickCustomer.phoneChecked = false;
+    const text = String(seed || '').trim();
+    if (looksLikePhone(text)) {
+        quickCustomer.form.phone = text;
+        checkDuplicatePhone();
+    } else {
+        quickCustomer.form.name = text;
+    }
+    quickCustomer.open = true;
+    nextTick(() => quickNameRef.value?.focus());
+};
+
+const closeQuickCustomer = () => {
+    clearTimeout(quickPhoneTimer);
+    quickCustomer.open = false;
+};
+
+const toggleQuickCustomer = () => {
+    if (quickCustomer.open) closeQuickCustomer();
+    else openQuickCustomer(customerQuery.value);
+};
+
+// The POS endpoint upserts by phone: posting a known number would silently
+// rename that customer. Look the number up as it is typed and steer the
+// seller to the existing record instead.
+const checkDuplicatePhone = async () => {
+    const phone = quickCustomer.form.phone.trim();
+    if (normalizePhone(phone).length < 6) return;
+    quickCustomer.checkingPhone = true;
+    try {
+        const res = await posApi.customers({ search: phone, per_page: 10 });
+        const found = res.data?.data?.customers || [];
+        const match = found.find((c) => normalizePhone(c.phone) === normalizePhone(phone));
+        if (quickCustomer.form.phone.trim() === phone) {
+            quickCustomer.duplicate = match || null;
+            quickCustomer.phoneChecked = true;
+        }
+    } catch {
+        // Lookup is a courtesy; saving still goes through validation.
+    } finally {
+        quickCustomer.checkingPhone = false;
+    }
+};
+
+const onQuickPhoneInput = () => {
+    delete quickCustomer.errors.phone;
+    quickCustomer.duplicate = null;
+    quickCustomer.phoneChecked = false;
+    clearTimeout(quickPhoneTimer);
+    if (normalizePhone(quickCustomer.form.phone).length < 6) return;
+    quickPhoneTimer = setTimeout(checkDuplicatePhone, 350);
+};
+
+/** Enter inside one of the three inputs saves; on a button it keeps its own meaning. */
+const onQuickCustomerEnter = (event) => {
+    if (event.target?.tagName !== 'INPUT') return;
+    event.preventDefault();
+    saveQuickCustomer();
+};
+
+const useExistingCustomer = (customer) => {
+    selectCustomer(customer);
+    closeQuickCustomer();
+};
+
+const saveQuickCustomer = async () => {
+    if (quickCustomer.saving || quickCustomer.duplicate) return;
+    quickCustomer.errors = {};
+    const name = quickCustomer.form.name.trim();
+    if (!name) {
+        quickCustomer.errors.name = t('qt_customer_name_required');
+        quickNameRef.value?.focus();
+        return;
+    }
+    quickCustomer.saving = true;
+    try {
+        const res = await posApi.customerStore({
+            name,
+            phone: quickCustomer.form.phone.trim() || null,
+            company: quickCustomer.form.company.trim() || null,
+            status: 'active',
+        });
+        const customer = res.data?.data || res.data;
+        justAddedCustomerId.value = customer?.id || null;
+        selectCustomer(customer);
+        closeQuickCustomer();
+        ElMessage.success(t('qt_customer_added', { name: customer?.name || name }));
+    } catch (error) {
+        const fieldErrors = error.response?.data?.errors || {};
+        Object.entries(fieldErrors).forEach(([key, messages]) => {
+            quickCustomer.errors[key] = Array.isArray(messages) ? messages[0] : String(messages);
+        });
+        if (!Object.keys(fieldErrors).length) ElMessage.error(apiErrorMessage(error, t('qt_customer_add_failed')));
+    } finally {
+        quickCustomer.saving = false;
+    }
 };
 
 // ── Categories & Products Catalog ─────────────────────────────────────
@@ -1175,6 +1433,8 @@ const appendTerm = (text) => {
 
 // ── Open, Reset, Close, Save ──────────────────────────────────────────
 const reset = () => {
+    closeQuickCustomer();
+    justAddedCustomerId.value = null;
     Object.keys(errors).forEach((k) => delete errors[k]);
     saving.value = null;
     discountMode.value = 'amount';
@@ -1323,6 +1583,7 @@ onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown);
     document.removeEventListener('click', handleClickOutsideQuickSearch);
     clearTimeout(customerTimer);
+    clearTimeout(quickPhoneTimer);
     clearTimeout(quickSearchDebounceTimer);
 });
 </script>
@@ -1502,6 +1763,238 @@ onUnmounted(() => {
 .cust-info-item.warn {
     color: #d97706;
     font-weight: 600;
+}
+
+.cust-info-item.fresh {
+    color: #15803d;
+    font-weight: 600;
+}
+
+/* Customer picker row: select + "new client" button */
+.customer-pick-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.customer-select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.customer-add-btn {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.85rem;
+    border-radius: 6px;
+    border: 1px dashed #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.customer-add-btn:hover {
+    border-style: solid;
+    background: #dbeafe;
+}
+.customer-add-btn:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+}
+.customer-add-btn.is-on {
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+}
+
+/* Empty dropdown: offer to create what was typed */
+.customer-empty {
+    padding: 0.85rem 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+.customer-empty-text {
+    margin: 0 0 0.6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.customer-empty-add {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 100%;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.8rem;
+    transition: background 0.15s ease;
+}
+.customer-empty-add span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.customer-empty-add:hover {
+    background: #1d4ed8;
+}
+
+/* Quick-add client panel */
+.quick-customer {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06);
+}
+
+.quick-customer-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+}
+
+.quick-customer-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.quick-customer-hint {
+    font-size: 0.74rem;
+    color: #64748b;
+}
+
+.quick-customer-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.6rem;
+}
+
+.qc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.qc-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1.2;
+}
+
+.qc-req {
+    color: #dc2626;
+}
+
+.qc-opt {
+    font-weight: 400;
+    color: #94a3b8;
+    font-size: 0.7rem;
+}
+
+.qc-error {
+    font-size: 0.72rem;
+    color: #dc2626;
+}
+
+.qc-field :deep(.is-error .el-input__wrapper) {
+    box-shadow: 0 0 0 1px #f87171 inset;
+}
+
+.qc-suffix {
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+.qc-suffix.ok { color: #16a34a; }
+.qc-suffix.warn { color: #d97706; }
+
+.qc-duplicate {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 6px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.78rem;
+}
+
+.qc-duplicate-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.qc-link {
+    all: unset;
+    cursor: pointer;
+    font-weight: 700;
+    color: #1d4ed8;
+    white-space: nowrap;
+}
+.qc-link:hover {
+    text-decoration: underline;
+}
+
+.quick-customer-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.7rem;
+}
+
+.qc-kbd-hint {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+.qc-kbd-hint kbd {
+    font-family: inherit;
+    font-size: 0.68rem;
+    padding: 0 0.3rem;
+    border: 1px solid #e2e8f0;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: #fff;
+    color: #475569;
+}
+
+.qc-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-inline-start: auto;
+}
+
+.qc-slide-enter-active,
+.qc-slide-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.qc-slide-enter-from,
+.qc-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
 }
 
 /* Validity & Quick Days */
@@ -2583,6 +3076,31 @@ onUnmounted(() => {
 @media (max-width: 820px) {
     .head-grid, .bottom-grid {
         grid-template-columns: 1fr;
+    }
+
+    .customer-add-label {
+        display: none;
+    }
+
+    .customer-add-btn {
+        padding: 0 0.75rem;
+        font-size: 0.95rem;
+    }
+
+    .quick-customer-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .qc-kbd-hint {
+        display: none;
+    }
+
+    .qc-actions {
+        width: 100%;
+    }
+
+    .qc-actions .el-button {
+        flex: 1;
     }
 
     .line--head {
