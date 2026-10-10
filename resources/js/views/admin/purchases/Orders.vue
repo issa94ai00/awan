@@ -131,20 +131,104 @@
                             </small>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="supplier.name" :label="$t('supplier')" min-width="200">
+                    <el-table-column prop="supplier.name" :label="$t('supplier')" min-width="170">
                         <template #default="{ row }">
                             <div class="supplier-cell">
                                 <i class="fas fa-user-tie text-muted"></i>
                                 <div>
                                     <span>{{ row.supplier?.name || '-' }}</span>
-                                    <!-- What was ordered, at a glance, so telling two
-                                         orders to the same supplier apart does not
-                                         mean opening both. -->
-                                    <small v-if="row.items?.length" class="cell-sub" :title="itemsPreview(row)">
-                                        {{ $t('po_items_count', row.items.length) }} · {{ itemsPreview(row) }}
-                                    </small>
                                 </div>
                             </div>
+                        </template>
+                    </el-table-column>
+                    <!-- What was ordered, grouped by product with each size or
+                         colour of it set apart, so two orders to one supplier —
+                         or three sizes of one floor drain — tell apart without
+                         opening either. The supplier cell used to carry this as
+                         a run of names in which a variant's size was buried in
+                         the name; the full list, with codes and what has been
+                         received, is a hover away. -->
+                    <el-table-column :label="$t('po_items_col')" min-width="270" class-name="items-col">
+                        <template #default="{ row }">
+                            <el-popover
+                                v-if="row.items?.length"
+                                placement="bottom-start"
+                                :width="400"
+                                trigger="hover"
+                                :show-after="200"
+                                popper-class="po-items-popper"
+                            >
+                                <template #reference>
+                                    <div class="items-preview" @click="openDetailDrawer(row.id)">
+                                        <span
+                                            v-for="group in groupedLines(row).slice(0, PREVIEW_GROUPS)"
+                                            :key="group.key"
+                                            class="line-pill"
+                                            :class="{ 'has-variants': group.variants.length }"
+                                        >
+                                            <span class="line-pill-name">{{ group.name }}</span>
+                                            <template v-if="group.variants.length">
+                                                <span
+                                                    v-for="line in group.variants.slice(0, PREVIEW_VARIANTS)"
+                                                    :key="line.id"
+                                                    class="line-pill-variant"
+                                                >
+                                                    <span class="line-pill-variant-label">{{ lineVariantLabel(line) }}</span>
+                                                    <span class="line-pill-qty">×{{ line.quantity }}</span>
+                                                </span>
+                                                <span v-if="group.variants.length > PREVIEW_VARIANTS" class="line-pill-variant line-pill-more">
+                                                    +{{ group.variants.length - PREVIEW_VARIANTS }}
+                                                </span>
+                                            </template>
+                                            <span v-else class="line-pill-qty">×{{ group.quantity }}</span>
+                                        </span>
+                                        <span v-if="groupedLines(row).length > PREVIEW_GROUPS" class="line-pill line-pill-rest">
+                                            +{{ groupedLines(row).length - PREVIEW_GROUPS }}
+                                        </span>
+                                    </div>
+                                </template>
+
+                                <div class="po-items-pop">
+                                    <div class="po-items-pop-head">
+                                        <strong>{{ $t('po_items_count', row.items.length) }}</strong>
+                                        <span class="po-items-pop-meta">
+                                            {{ $t('po_products_count', groupedLines(row).length) }}
+                                            <template v-if="variantLineCount(row)">
+                                                · <i class="fas fa-tag"></i> {{ $t('po_variant_lines', variantLineCount(row)) }}
+                                            </template>
+                                        </span>
+                                    </div>
+                                    <ul class="po-items-pop-list">
+                                        <li v-for="group in groupedLines(row)" :key="group.key" class="po-items-pop-group">
+                                            <div class="po-items-pop-product">
+                                                <span class="po-items-pop-name">{{ group.name }}</span>
+                                                <strong v-if="!group.variants.length" class="po-items-pop-qty">×{{ group.quantity }}</strong>
+                                                <small v-else class="po-items-pop-sum">{{ $t('po_variant_lines', group.variants.length) }} · ×{{ group.quantity }}</small>
+                                            </div>
+                                            <small v-if="!group.variants.length && lineSku(group.lines[0])" class="po-items-pop-sku">{{ $t('po_sku_label', { sku: lineSku(group.lines[0]) }) }}</small>
+                                            <div v-if="group.variants.length" class="po-items-pop-variants">
+                                                <div v-for="line in group.lines" :key="line.id" class="po-items-pop-line">
+                                                    <VariantChip v-if="line.product_variant_id" :label="lineVariantLabel(line)" />
+                                                    <span v-else class="po-items-pop-plain">{{ $t('po_base_product') }}</span>
+                                                    <small v-if="lineSku(line)" class="po-items-pop-sku">{{ lineSku(line) }}</small>
+                                                    <span class="po-items-pop-line-qty">
+                                                        <strong>×{{ line.quantity }}</strong>
+                                                        <small
+                                                            v-if="rowShowsReceived(row) && num(line.received_quantity) < num(line.quantity)"
+                                                            class="qty-short"
+                                                        >{{ $t('po_receipt_short', { count: num(line.quantity) - num(line.received_quantity) }) }}</small>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <small
+                                                v-else-if="rowShowsReceived(row) && num(group.lines[0].received_quantity) < num(group.lines[0].quantity)"
+                                                class="po-items-pop-short qty-short"
+                                            >{{ $t('po_receipt_short', { count: num(group.lines[0].quantity) - num(group.lines[0].received_quantity) }) }}</small>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </el-popover>
+                            <span v-else class="text-muted">-</span>
                         </template>
                     </el-table-column>
                     <el-table-column prop="total" :label="$t('total')" width="160">
@@ -1886,13 +1970,56 @@ const lineFields = (item) => ({
     product_variant_id: item.product_variant_id || null,
 });
 
-// Names of what was ordered, for the list row.
-const itemsPreview = (order) => (order.items || [])
-    // A variant line's stored name says which size; the product's does not.
-    .map((item) => (item.product_variant_id ? item.product_name : item.product?.name_ar || item.product_name))
-    .filter(Boolean)
-    .slice(0, 3)
-    .join('، ') + ((order.items?.length || 0) > 3 ? '…' : '');
+// The list row's items cell: how many products, and how many sizes of
+// each, fit before the rest folds into a "+N" that the popover unfolds.
+const PREVIEW_GROUPS = 2;
+const PREVIEW_VARIANTS = 3;
+
+// The product a line is for, by its catalogue name; the stored name is the
+// fallback once the product is gone.
+const lineBaseName = (item) => item.product?.name_ar || item.product_name || item.description || '';
+
+// Which size or colour a variant line is for. When the variant itself has
+// been deleted, the line's stored name — "floor drain - 4\"" — still carries
+// its label after the product's name.
+const lineVariantLabel = (item) => {
+    const fromVariant = variantLabelOf(item.variant);
+    if (fromVariant) return fromVariant;
+    const base = (item.product?.name_ar || '').trim();
+    const stored = (item.product_name || '').trim();
+    if (base && stored.startsWith(base) && stored.length > base.length) {
+        return stored.slice(base.length).replace(/^\s*[-–—]\s*/, '').trim();
+    }
+    return '';
+};
+
+const lineSku = (item) => item.variant?.sku || item.product?.sku || '';
+
+// Lines grouped by product, in order of first appearance: an order for three
+// sizes of one floor drain reads as that drain with its sizes, not as three
+// unrelated names.
+const groupedLines = (order) => {
+    const groups = new Map();
+    (order.items || []).forEach((item) => {
+        const key = item.product_id || `line-${item.id}`;
+        if (!groups.has(key)) {
+            groups.set(key, { key, name: lineBaseName(item), lines: [], variants: [], quantity: 0 });
+        }
+        const group = groups.get(key);
+        group.lines.push(item);
+        if (item.product_variant_id) group.variants.push(item);
+        group.quantity += num(item.quantity);
+    });
+    return [...groups.values()];
+};
+
+const variantLineCount = (order) => (order.items || []).filter((item) => item.product_variant_id).length;
+
+// Whether a row's lines have anything received to compare against: the
+// index carries a receipts count rather than the receipts themselves.
+const rowShowsReceived = (order) => (order.receipts_count || 0) > 0
+    || (order.receipts?.length || 0) > 0
+    || normalizeStatus(order.status) === 'completed';
 
 // Only an order still waiting on its goods can be late.
 const dueState = (order) => {
@@ -3600,6 +3727,96 @@ onMounted(async () => {
     min-width: 0;
 }
 
+/* The items cell: one pill per product, its sizes set inside it. */
+.items-preview {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    max-height: 52px;
+    overflow: hidden;
+}
+
+.line-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--el-border-color-lighter, #e5e7eb);
+    background: var(--el-fill-color-light, #f5f7fa);
+    font-size: 0.78rem;
+    line-height: 1.25rem;
+    color: var(--text-dark);
+    white-space: nowrap;
+}
+
+.line-pill.has-variants {
+    border-color: var(--el-color-primary-light-7);
+    background: var(--el-color-primary-light-9);
+}
+
+.line-pill-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.line-pill-qty {
+    color: var(--text-muted);
+    font-weight: 600;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+/* A size inside its product's pill: own small tag so "2" ×4  4" ×8" scan
+   as two sizes rather than one run of figures. */
+.line-pill-variant {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--el-color-primary-light-7);
+    color: var(--el-color-primary);
+    font-size: 0.72rem;
+    line-height: 1.1rem;
+}
+
+.line-pill-variant .line-pill-qty {
+    color: var(--el-color-primary);
+    opacity: 0.8;
+}
+
+.line-pill-variant-label {
+    font-weight: 700;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.line-pill-more,
+.line-pill-rest {
+    color: var(--text-muted);
+    font-weight: 700;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.line-pill-rest {
+    background: transparent;
+    border-style: dashed;
+}
+
+.custom-table :deep(.items-col .cell) {
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+}
+
 .due-late {
     color: var(--el-color-danger, #dc2626);
     font-weight: 700;
@@ -4992,5 +5209,135 @@ onMounted(async () => {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
+}
+</style>
+
+<style>
+/* The items popover is teleported to <body>, so it is styled unscoped. */
+.po-items-popper.el-popover.el-popper {
+    padding: 0;
+    overflow: hidden;
+}
+
+.po-items-popper .po-items-pop-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--el-fill-color-light, #f5f7fa);
+    border-bottom: 1px solid var(--el-border-color-lighter, #e5e7eb);
+    font-size: 0.82rem;
+}
+
+.po-items-popper .po-items-pop-meta {
+    color: var(--el-text-color-secondary);
+    font-size: 0.75rem;
+}
+
+.po-items-popper .po-items-pop-meta i {
+    font-size: 0.65rem;
+    color: var(--el-color-primary);
+}
+
+.po-items-popper .po-items-pop-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.po-items-popper .po-items-pop-group {
+    padding: 0.5rem 0.9rem;
+}
+
+.po-items-popper .po-items-pop-group + .po-items-pop-group {
+    border-top: 1px solid var(--el-border-color-lighter, #e5e7eb);
+}
+
+.po-items-popper .po-items-pop-product {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.po-items-popper .po-items-pop-name {
+    font-weight: 700;
+    color: var(--el-text-color-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.po-items-popper .po-items-pop-qty,
+.po-items-popper .po-items-pop-line-qty strong {
+    direction: ltr;
+    unicode-bidi: isolate;
+    white-space: nowrap;
+}
+
+.po-items-popper .po-items-pop-sum {
+    color: var(--el-text-color-secondary);
+    white-space: nowrap;
+    font-size: 0.72rem;
+}
+
+.po-items-popper .po-items-pop-sku {
+    display: block;
+    color: var(--el-text-color-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    direction: ltr;
+    text-align: start;
+    unicode-bidi: isolate;
+}
+
+/* Each size of the product on its own line, indented under it. */
+.po-items-popper .po-items-pop-variants {
+    margin-top: 0.35rem;
+    padding-inline-start: 0.6rem;
+    border-inline-start: 2px solid var(--el-color-primary-light-7);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.po-items-popper .po-items-pop-line {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.po-items-popper .po-items-pop-line .po-items-pop-sku {
+    display: inline;
+}
+
+.po-items-popper .po-items-pop-plain {
+    font-size: 0.75rem;
+    color: var(--el-text-color-secondary);
+}
+
+.po-items-popper .po-items-pop-line-qty {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+}
+
+.po-items-popper .po-items-pop-short {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+}
+
+.po-items-popper .qty-short {
+    color: var(--el-color-danger, #dc2626);
+    font-weight: 600;
+    font-size: 0.7rem;
 }
 </style>
