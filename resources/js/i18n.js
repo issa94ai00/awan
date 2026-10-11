@@ -337,6 +337,7 @@ const messages = {
         so_qty_now: '{name}: quantity is now {count}',
         so_added: '{name} added',
         so_added_n: '{name} added ×{count}',
+        item_removed: 'Item removed',
         decrease: 'Decrease',
         increase: 'Increase',
         // Admin products list (views/admin/products/Index.vue).
@@ -6524,6 +6525,7 @@ const messages = {
         so_qty_now: '{name}: الكمية الآن {count}',
         so_added: 'تمت إضافة {name}',
         so_added_n: 'تمت إضافة {name} ×{count}',
+        item_removed: 'تم حذف البند',
         decrease: 'تقليل',
         increase: 'زيادة',
         // قائمة المنتجات في لوحة الإدارة (views/admin/products/Index.vue).
