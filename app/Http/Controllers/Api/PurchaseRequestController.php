@@ -401,7 +401,7 @@ class PurchaseRequestController extends Controller
                     'user_id' => auth()->id(),
                 ]);
 
-                $salesOrder->load(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
+                $salesOrder->load(['customer', 'items.product', 'items.variant', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
 
                 return response()->json([
                     'success' => true,
@@ -424,7 +424,7 @@ class PurchaseRequestController extends Controller
     {
         $query = SalesOrder::whereHas('customer', function ($q) {
             $q->where('source', 'purchase_request');
-        })->with(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
+        })->with(['customer', 'items.product', 'items.variant', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -494,7 +494,7 @@ class PurchaseRequestController extends Controller
 
     public function adminShow(SalesOrder $salesOrder): JsonResponse
     {
-        $salesOrder->load(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
+        $salesOrder->load(['customer', 'items.product', 'items.variant', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
 
         return response()->json([
             'success' => true,
@@ -641,7 +641,7 @@ class PurchaseRequestController extends Controller
                     'total' => $subtotal,
                 ]);
 
-                $salesOrder->load(['customer', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
+                $salesOrder->load(['customer', 'items.product', 'items.variant', 'items.allocations.warehouse', 'invoices', 'assignedEmployee']);
 
                 return response()->json([
                     'success' => true,
@@ -773,11 +773,35 @@ class PurchaseRequestController extends Controller
             ? $item->allocations
             : $item->allocations()->get();
 
+        $product = $item->relationLoaded('product') ? $item->product : null;
+        $variant = $item->relationLoaded('variant') ? $item->variant : null;
+
         return [
             'id' => $item->id,
             'product_id' => $item->product_id,
             'variant_id' => $item->product_variant_id,
+            // The stored name carries the size; the product and size are also
+            // given apart so the screens can show the size as its own badge
+            // and offer the product's other sizes.
             'product_name' => $item->description,
+            'variant_label' => $variant?->label ?? '',
+            'sku' => $variant?->sku ?: $product?->sku,
+            'product' => $product ? [
+                'id' => $product->id,
+                'name_ar' => $product->name_ar,
+                'name_en' => $product->name_en,
+                'sku' => $product->sku,
+                'image_main' => $product->image_main,
+                'stock_quantity' => $product->stock_quantity,
+                'price' => $product->price,
+            ] : null,
+            'variant' => $variant ? [
+                'id' => $variant->id,
+                'label' => $variant->label,
+                'sku' => $variant->sku,
+                'stock_quantity' => $variant->stock_quantity,
+                'price' => $variant->price,
+            ] : null,
             'quantity' => $item->quantity,
             'unit_price' => (float) $item->unit_price,
             'total' => (float) $item->total,

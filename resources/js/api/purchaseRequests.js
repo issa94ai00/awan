@@ -11,5 +11,11 @@ export const purchaseRequestsApi = {
 
     updateStatus(id, status) {
         return api.put(`/purchase-requests/${id}/status`, { status });
+    },
+
+    // The lines of a pending request: product, size and quantity each. The
+    // server prices them and plans the warehouses again.
+    updateItems(id, items) {
+        return api.put(`/purchase-requests/${id}/items`, { items });
     }
 };

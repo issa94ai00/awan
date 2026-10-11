@@ -47,6 +47,20 @@ export const usePurchaseRequestsStore = defineStore('purchaseRequests', {
             }
         },
 
+        async updateItems(id, items) {
+            this.error = null;
+            try {
+                const res = await purchaseRequestsApi.updateItems(id, items);
+                this.selectedOrder = res.data.data;
+                const index = this.orders.findIndex((o) => o.id === id);
+                if (index !== -1) this.orders[index] = this.selectedOrder;
+                return this.selectedOrder;
+            } catch (err) {
+                this.error = err.response?.data?.message || err.message || 'Failed to update items';
+                throw err;
+            }
+        },
+
         async updateOrderStatus(id, status) {
             this.error = null;
             try {
