@@ -528,6 +528,28 @@
                                 </el-button>
                             </div>
 
+                            <!-- The other sizes of the picked product, one click away:
+                                 a supplier that sent the 3" instead of the 4" is
+                                 recorded without searching for the product again.
+                                 Sizes the request asked for are marked. -->
+                            <div v-if="!isEditMode && siblingVariants(item).length > 1" class="line-variant-switch">
+                                <span class="switch-label"><i class="fas fa-tag"></i> {{ $t('po_switch_size') }}</span>
+                                <div class="switch-chips">
+                                    <button
+                                        v-for="v in siblingVariants(item)"
+                                        :key="optionKey(v)"
+                                        type="button"
+                                        class="switch-chip"
+                                        :class="{ 'is-active': optionKey(v) === item.pick, 'is-ordered': orderedPicks.has(optionKey(v)) }"
+                                        :title="[v.sku, $t('po_cost_label', { price: money(v.cost_price || v.price) })].filter(Boolean).join(' · ')"
+                                        @click="switchLineVariant(idx, v)"
+                                    >
+                                        <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                        <small v-if="orderedPicks.has(optionKey(v))" class="chip-ordered">{{ $t('rc_ordered_short') }}</small>
+                                    </button>
+                                </div>
+                            </div>
+
                             <!-- Against the request: how much was asked for, how much
                                  earlier deliveries brought, and whether this one is
                                  short or over. -->
@@ -585,7 +607,10 @@
                             plain
                             @click="restoreOrderLine(line)"
                         >
-                            <i class="fas fa-plus"></i> {{ line.product_variant_id ? line.product_name : (line.product?.name_ar || line.product_name) }} ({{ line.remaining_quantity }})
+                            <i class="fas fa-plus"></i>
+                            <span>{{ line.product?.name_ar || line.product_name }}</span>
+                            <VariantChip v-if="line.product_variant_id" :label="variantLabelOf(line.variant) || line.variant_label || ''" />
+                            <span class="missing-qty" dir="ltr">×{{ line.remaining_quantity }}</span>
                         </el-button>
                     </div>
                 </div>
@@ -810,6 +835,7 @@ import { paymentMethodLabel } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
 import { supplierPaymentsApi } from '@/api/supplierPayments';
 import { useStockShortage } from '@/Composables/useStockShortage';
+import { useVariantSiblings } from '@/composables/useVariantSiblings';
 
 const { t } = useI18n();
 
@@ -1183,10 +1209,48 @@ const productSearchLoading = ref(false);
 let productSearchTimer = null;
 
 const rememberProducts = (items = []) => {
-    productOptions.value = withOptions(
-        productOptions.value,
-        items.filter((item) => item.product_id).map(optionFromLine),
-    );
+    const rows = items.filter((item) => item.product_id).map(optionFromLine);
+    productOptions.value = withOptions(productOptions.value, rows);
+    rows.forEach((row) => row.variant_id && ensureVariantsLoaded(row.id));
+};
+
+// The sibling sizes of each picked product, for the switcher under a line.
+const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
+const siblingVariants = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
+
+// The sizes the linked request asked for, so the switcher can mark them.
+const orderedPicks = computed(() => new Set(orderLines.value.filter((line) => line.product_id).map(linePick)));
+
+// What a line's prices default to for its current pick: the request's agreed
+// figures when the request has it, else the catalogue's.
+const defaultPricesFor = (item) => {
+    const line = orderLineFor(item);
+    if (line) return { cost: num(line.unit_price), sale: line.sale_price != null ? num(line.sale_price) : '' };
+    const prod = productOptions.value.find((p) => optionKey(p) === item.pick)
+        || defaultOptions.value.find((p) => optionKey(p) === item.pick);
+    return prod ? { cost: prod.cost_price || prod.price, sale: prod.price } : { cost: '', sale: '' };
+};
+
+// Switching a line to another size keeps its quantity and a price the
+// operator typed; a price still at the old size's default follows the new
+// size, from the request when it asked for that size, else the catalogue.
+const switchLineVariant = (idx, row) => {
+    const item = form.items[idx];
+    const key = optionKey(row);
+    if (!item || item.pick === key) return;
+
+    const before = defaultPricesFor(item);
+    const costUntouched = item.unit_price === '' || num(item.unit_price) === num(before.cost);
+    const saleUntouched = item.sale_price === '' || num(item.sale_price) === num(before.sale);
+
+    productOptions.value = withOptions(productOptions.value, [row]);
+    item.pick = key;
+    item.product_id = row.id;
+    item.product_variant_id = row.variant_id || null;
+
+    const after = defaultPricesFor(item);
+    if (costUntouched) item.unit_price = after.cost;
+    if (saleUntouched) item.sale_price = after.sale;
 };
 
 // What the line picker offers before anything is typed: the first page of the
@@ -1206,6 +1270,7 @@ const searchProducts = (query) => {
             // One row per size, and a size's own code finds it.
             const res = await productsApi.getAll({ search: query, per_page: 100, expand_variants: 1 });
             productOptions.value = res.data.data || [];
+            rememberVariantRows(productOptions.value);
         } catch (e) {
             // Keep whatever was showing on a transient failure.
         } finally {
@@ -1368,6 +1433,7 @@ const updateItemPrice = (pick, idx) => {
         || defaultOptions.value.find(p => optionKey(p) === pick);
     form.items[idx].product_id = prod?.id || '';
     form.items[idx].product_variant_id = prod?.variant_id || null;
+    if (prod?.variant_id) ensureVariantsLoaded(prod.id);
 
     // A product on the request is priced as agreed there, not at its
     // catalogue cost.
@@ -1647,6 +1713,7 @@ onMounted(async () => {
     productsApi.getAll({ per_page: 100, expand_variants: 1 })
         .then((res) => {
             defaultOptions.value = res.data.data || [];
+            rememberVariantRows(defaultOptions.value);
             productOptions.value = defaultOptions.value;
             rememberProducts(orderLines.value);
         })
@@ -2252,6 +2319,90 @@ onMounted(async () => {
     margin-inline-start: 0;
 }
 
+.missing-lines .el-button > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.missing-qty {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+/* Sibling sizes under a line */
+.line-variant-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.6rem;
+    padding-inline-start: 2.4rem;
+}
+
+.switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.switch-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.switch-chip {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.5;
+    transition: all 0.15s ease;
+}
+
+.switch-chip:hover {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.switch-chip.is-ordered {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.switch-chip.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+    cursor: default;
+}
+
+.switch-chip .chip-label {
+    unicode-bidi: isolate;
+}
+
+.switch-chip .chip-ordered {
+    font-size: 0.66rem;
+    font-weight: 600;
+    color: #b45309;
+    padding-inline-start: 0.35rem;
+    border-inline-start: 1px solid #fde68a;
+}
+
 .financial-row.order-diff {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -2315,6 +2466,10 @@ onMounted(async () => {
     .price-field {
         max-width: none;
         min-width: 45%;
+    }
+
+    .line-variant-switch {
+        padding-inline-start: 0;
     }
 
     .shortcut-hint {
