@@ -162,6 +162,7 @@
 
             <el-table
                 v-else
+                ref="invoicesTable"
                 v-loading="store.loading"
                 :data="store.invoices"
                 row-key="id"
@@ -171,6 +172,7 @@
                 :default-sort="{ prop: sort.prop, order: sort.order }"
                 @sort-change="onSortChange"
                 @row-click="(row, column) => column?.property !== 'actions' && openInvoice(row)"
+                @expand-change="onExpandChange"
             >
                 <template #empty>
                     <el-empty v-if="!store.loading && (activeFilterCount || filters.status)" :description="$t('there_are_no_invoices_matching')" :image-size="90">
@@ -181,6 +183,66 @@
                     </el-empty>
                     <span v-else />
                 </template>
+
+                <!-- The invoice's lines, with what each variant line actually sold. -->
+                <el-table-column type="expand" width="44">
+                    <template #default="{ row }">
+                        <div class="lines-panel">
+                            <div v-if="lineState(row.id).loading" class="lines-status">
+                                <i class="fas fa-spinner fa-spin"></i> {{ $t('inv_lines_loading') }}
+                            </div>
+                            <div v-else-if="lineState(row.id).error" class="lines-status is-error">
+                                <span>{{ $t('inv_lines_failed') }}</span>
+                                <el-button size="small" text type="primary" @click="loadLines(row.id, true)">{{ $t('cat_admin_retry') }}</el-button>
+                            </div>
+                            <template v-else-if="lineState(row.id).items">
+                                <div v-if="!lineState(row.id).items.length" class="lines-status">{{ $t('inv_lines_empty') }}</div>
+                                <table v-else class="lines-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-idx">#</th>
+                                            <th>{{ $t('inv_line_product') }}</th>
+                                            <th class="col-num">{{ $t('inv_line_qty') }}</th>
+                                            <th class="col-num">{{ $t('inv_line_price') }}</th>
+                                            <th v-if="lineState(row.id).items.some((it) => toNum(it.discount) > 0)" class="col-num">{{ $t('inv_line_discount') }}</th>
+                                            <th class="col-num">{{ $t('inv_line_total') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(item, idx) in lineState(row.id).items" :key="item.id || idx">
+                                            <td class="col-idx">{{ idx + 1 }}</td>
+                                            <td>
+                                                <div class="line-product">
+                                                    <EntityImage
+                                                        :src="item.product?.image_main"
+                                                        type="product"
+                                                        :size="40"
+                                                        shape="square"
+                                                    />
+                                                    <div class="line-product-text">
+                                                        <span class="line-name">{{ lineBaseName(item) }}</span>
+                                                        <span v-if="!item.variant && (item.product?.sku)" class="cell-secondary mono-sm" dir="ltr">{{ item.product.sku }}</span>
+                                                        <VariantDetails v-if="item.variant" :variant="item.variant" show-codes />
+                                                        <span v-else-if="item.product_variant_id" class="cell-secondary">{{ $t('inv_variant_removed') }}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="col-num">
+                                                <strong>{{ item.quantity }}</strong>
+                                                <span v-if="item.unit_name" class="cell-secondary"> {{ item.unit_name }}</span>
+                                            </td>
+                                            <td class="col-num amount-sm">{{ formatCurrency(item.unit_price) }}</td>
+                                            <td v-if="lineState(row.id).items.some((it) => toNum(it.discount) > 0)" class="col-num amount-sm discount">
+                                                {{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}
+                                            </td>
+                                            <td class="col-num amount-sm"><strong>{{ formatCurrency(lineTotal(item)) }}</strong></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </template>
+                        </div>
+                    </template>
+                </el-table-column>
 
                 <el-table-column prop="invoice_number" :label="$t('invoice_number')" min-width="170" sortable="custom">
                     <template #default="{ row }">
@@ -212,7 +274,17 @@
                     <template #default="{ row }">
                         <div class="cell-stack align-end">
                             <strong class="amount">{{ formatCurrency(row.total) }}</strong>
-                            <span class="cell-secondary">{{ $t('inv_items_n', { count: row.items_count ?? 0 }) }}</span>
+                            <button
+                                v-if="row.items_count"
+                                type="button"
+                                class="link-button lines-toggle"
+                                :title="$t('inv_show_lines')"
+                                @click.stop="toggleLines(row)"
+                            >
+                                {{ $t('inv_items_n', { count: row.items_count }) }}
+                                <i class="fas fa-chevron-down lines-chevron" :class="{ open: lineState(row.id).open }"></i>
+                            </button>
+                            <span v-else class="cell-secondary">{{ $t('inv_items_n', { count: 0 }) }}</span>
                         </div>
                     </template>
                 </el-table-column>
@@ -614,7 +686,8 @@
                                             <div class="inv-item-name">{{ item.product_name || item.product?.name_ar || item.product?.name || item.notes || '-' }}</div>
                                             <div v-if="item.product?.name_en" class="inv-item-name-en">{{ item.product.name_en }}</div>
                                             <div v-if="item.product_variant_id && item.variant" class="inv-item-variant">
-                                                <VariantChip :label="variantLabelOf(item.variant) || item.notes" />
+                                                <VariantDetails v-if="hasVariantDetails(item.variant)" :variant="item.variant" print />
+                                                <VariantChip v-else :label="variantLabelOf(item.variant) || item.notes" />
                                             </div>
                                             <div v-else-if="item.notes && item.notes !== item.product_name" class="inv-item-desc">
                                                 {{ item.notes }}
@@ -622,6 +695,9 @@
                                         </td>
                                         <td v-if="printSettings.showSku" class="inv-sku-cell">
                                             <code>{{ item.variant?.sku || item.product?.sku || '—' }}</code>
+                                            <div v-if="item.variant?.barcode" class="inv-barcode" dir="ltr">
+                                                <i class="fas fa-barcode"></i> {{ item.variant.barcode }}
+                                            </div>
                                         </td>
                                         <td style="text-align: center;" class="inv-qty-cell">
                                             <span class="inv-qty-num">{{ item.quantity }}</span>
@@ -803,6 +879,7 @@ import PrintSettingsToolbar from '@/components/admin/PrintSettingsToolbar.vue';
 import { usePrintSettings } from '@/composables/usePrintSettings';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import { invoicesApi } from '@/api/invoices';
 import { variantLabelOf } from '@/utils/productPick';
 import QRCode from 'qrcode';
@@ -1073,6 +1150,47 @@ const removeInvoice = async (invoice) => {
         ElMessage.error(apiErrorMessage(error, t('failed_to_delete_invoice')));
     }
 };
+
+// ── Expandable lines ─────────────────────────────────────────────────────
+// The list ships counts only, so each invoice's lines (with their variants)
+// are fetched the first time its row is opened and kept for the session.
+const invoicesTable = ref(null);
+const lineStates = reactive({});
+const lineState = (id) => lineStates[id] || { loading: false, error: false, items: null, open: false };
+
+const loadLines = async (id, force = false) => {
+    const state = lineStates[id] || (lineStates[id] = { loading: false, error: false, items: null, open: false });
+    if (state.loading || (state.items && !force)) return;
+    state.loading = true;
+    state.error = false;
+    try {
+        const res = await invoicesApi.getById(id);
+        const invoice = res.data?.data || res.data;
+        state.items = invoice?.items || [];
+    } catch (error) {
+        console.error('Failed to load invoice lines:', error);
+        state.error = true;
+    } finally {
+        state.loading = false;
+    }
+};
+
+const onExpandChange = (row, expandedRows) => {
+    const open = Array.isArray(expandedRows) ? expandedRows.some((r) => r.id === row.id) : !!expandedRows;
+    const state = lineStates[row.id] || (lineStates[row.id] = { loading: false, error: false, items: null, open });
+    state.open = open;
+    if (open) loadLines(row.id);
+};
+
+const toggleLines = (row) => invoicesTable.value?.toggleRowExpansion(row);
+
+/** The product's name without the " - 4\" / white" the line name carries. */
+const lineBaseName = (item) => {
+    if (item.variant && item.product?.name_ar) return item.product.name_ar;
+    return item.product_name || item.product?.name_ar || item.product?.name || '—';
+};
+
+const hasVariantDetails = (variant) => !!(variant && (variant.size || variant.color || variant.material || variant.specs?.length));
 
 const runCommand = (invoice, command) => {
     if (command === 'print') return openPrintDialog(invoice);
@@ -1691,6 +1809,26 @@ onBeforeUnmount(() => {
 .link-button { all: unset; cursor: pointer; color: #2563eb; font-weight: 600; }
 .link-button:hover { text-decoration: underline; }
 .link-button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+
+/* ── Expanded invoice lines ── */
+.lines-toggle { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; font-weight: 600; }
+.lines-chevron { font-size: 0.6rem; transition: transform 0.2s ease; }
+.lines-chevron.open { transform: rotate(180deg); }
+.lines-panel { padding: 0.5rem 1rem 0.85rem; background: #f8fafc; overflow-x: auto; }
+.lines-status { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 0.25rem; color: #64748b; font-size: 0.85rem; }
+.lines-status.is-error { color: #b91c1c; }
+.lines-table { width: 100%; min-width: 620px; border-collapse: separate; border-spacing: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; font-size: 0.85rem; }
+.lines-table th { background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.75rem; text-align: start; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; }
+.lines-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.lines-table tbody tr:last-child td { border-bottom: none; }
+.lines-table .col-idx { width: 32px; text-align: center; color: #94a3b8; font-weight: 700; }
+.lines-table .col-num { text-align: end; white-space: nowrap; }
+.line-product { display: flex; align-items: flex-start; gap: 0.65rem; }
+.line-product-text { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.line-name { font-weight: 700; color: #0f172a; unicode-bidi: plaintext; }
+.mono-sm { font-family: ui-monospace, monospace; font-size: 0.75rem; }
+.amount-sm { font-variant-numeric: tabular-nums; }
+.amount-sm.discount { color: #dc2626; }
 
 .pay-cell { display: grid; gap: 0.3rem; min-width: 0; }
 .pay-line { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
@@ -2563,7 +2701,15 @@ onBeforeUnmount(() => {
 .inv-item-variant {
     font-size: 9.5px;
     color: #0369a1;
+    margin-top: 3px;
+}
+
+.inv-barcode {
     margin-top: 2px;
+    font-size: 8.5px;
+    color: #64748b;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
 }
 
 .inv-item-desc {

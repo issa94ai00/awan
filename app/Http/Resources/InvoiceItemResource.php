@@ -52,10 +52,13 @@ class InvoiceItemResource extends JsonResource
                 return $this->variant ? [
                     'id' => $this->variant->id,
                     'sku' => $this->variant->sku,
+                    'barcode' => $this->variant->barcode,
                     'size' => $this->variant->size,
                     'color' => $this->variant->color,
                     'material' => $this->variant->material,
                     'label' => $this->variant->label,
+                    // Extra [{label, value}] rows from the price list.
+                    'specs' => $this->variant->specs ?? [],
                 ] : null;
             }),
 
