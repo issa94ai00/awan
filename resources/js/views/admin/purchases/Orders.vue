@@ -1640,6 +1640,7 @@ import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import AddQtyControl from '@/components/admin/purchases/AddQtyControl.vue';
+import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { resolveImageUrl } from '@/utils/productImages';
@@ -1802,68 +1803,9 @@ const onQuickSearchEnter = () => {
     if (!first.hasVariants || first.rows.length === 1) addProductToOrder(first.rows[0], 1);
 };
 
-// Every size seen of each product, by product id, so a line can offer its
-// sibling sizes. Search results feed it as they arrive, but a search by one
-// size's code returns only that size, so a picked product's full set is
-// fetched once and replaces whatever partial list was there.
-const variantsByProduct = reactive({});
-const variantsLoaded = new Set();
-
-const rememberVariantRows = (rows = [], { complete = false } = {}) => {
-    const byProduct = new Map();
-    rows.forEach((row) => {
-        if (!row?.id || !row.variant_id) return;
-        if (!byProduct.has(row.id)) byProduct.set(row.id, []);
-        byProduct.get(row.id).push(row);
-    });
-    byProduct.forEach((fresh, productId) => {
-        const merged = new Map((complete ? [] : variantsByProduct[productId] || []).map((r) => [r.variant_id, r]));
-        fresh.forEach((r) => merged.set(r.variant_id, r));
-        variantsByProduct[productId] = [...merged.values()].sort((a, b) => a.variant_id - b.variant_id);
-    });
-};
-
-// A product's `variants` relation as search rows, shaped like the rows
-// `expand_variants=1` returns so the rest of the form cannot tell them apart.
-const variantRowsOf = (product) => (product.variants || []).map((v) => {
-    const label = v.label || variantLabelOf(v);
-    const suffix = label ? ` - ${label}` : '';
-    return {
-        ...product,
-        variants: undefined,
-        variant_id: v.id,
-        listing_key: pickKey(product.id, v.id),
-        variant_label: label,
-        product_name_ar: product.name_ar,
-        product_name_en: product.name_en,
-        name_ar: `${product.name_ar || ''}${suffix}`,
-        name_en: product.name_en ? `${product.name_en}${suffix}` : product.name_en,
-        sku: v.sku || product.sku,
-        barcode: v.barcode || product.barcode,
-        size: v.size,
-        color: v.color,
-        material: v.material,
-        price: Number(v.price) > 0 ? v.price : product.price,
-        cost_price: Number(v.cost_price) > 0 ? v.cost_price : product.cost_price,
-        stock_quantity: v.stock_quantity,
-        product_stock_quantity: product.stock_quantity,
-    };
-});
-
-const ensureVariantsLoaded = async (productId) => {
-    if (!productId || variantsLoaded.has(productId)) return;
-    variantsLoaded.add(productId);
-    try {
-        const res = await productsApi.getById(productId);
-        const product = res.data?.data;
-        if (product) rememberVariantRows(variantRowsOf(product), { complete: true });
-    } catch {
-        // Try again next time the product is picked.
-        variantsLoaded.delete(productId);
-    }
-};
-
-const siblingVariants = (item) => (item.product_id && item.product_variant_id ? variantsByProduct[item.product_id] || [] : []);
+// The sibling sizes of each picked product, for the switcher under a line.
+const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
+const siblingVariants = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
 
 const switchLineVariant = (idx, variantRow) => {
     const line = form.items[idx];

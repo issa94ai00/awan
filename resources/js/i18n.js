@@ -336,6 +336,9 @@ const messages = {
         so_kept_on_this_device: 'Kept on this device at {time}',
         so_qty_now: '{name}: quantity is now {count}',
         so_added: '{name} added',
+        so_added_n: '{name} added ×{count}',
+        decrease: 'Decrease',
+        increase: 'Increase',
         // Admin products list (views/admin/products/Index.vue).
         prod_admin_subtitle: 'Everything in the catalogue: prices, stock and what shows on the storefront.',
         prod_admin_excel: 'Excel',
@@ -6520,6 +6523,9 @@ const messages = {
         so_kept_on_this_device: 'محفوظ على هذا الجهاز الساعة {time}',
         so_qty_now: '{name}: الكمية الآن {count}',
         so_added: 'تمت إضافة {name}',
+        so_added_n: 'تمت إضافة {name} ×{count}',
+        decrease: 'تقليل',
+        increase: 'زيادة',
         // قائمة المنتجات في لوحة الإدارة (views/admin/products/Index.vue).
         prod_admin_subtitle: 'كل منتجات الكتالوج: الأسعار والمخزون وما يظهر في المتجر.',
         prod_admin_excel: 'Excel',
