@@ -12,6 +12,18 @@
                 <el-button class="no-print" :disabled="!report" @click="copyStatementSummary">
                     <i class="far fa-copy mr-1"></i> {{ $t('ps_copy_statement') }}
                 </el-button>
+                <!-- The summary straight into a WhatsApp chat with the party,
+                     when a phone is on file: no copy, switch app, paste. -->
+                <el-button
+                    v-if="whatsappShareUrl"
+                    tag="a"
+                    :href="whatsappShareUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="no-print btn-whatsapp"
+                >
+                    <i class="fab fa-whatsapp mr-1"></i> {{ $t('ps_whatsapp_send') }}
+                </el-button>
                 <el-button class="no-print" :disabled="!report" @click="exportCsv">
                     <i class="fas fa-file-csv mr-1"></i> {{ $t('tb_export_csv') }}
                 </el-button>
@@ -92,68 +104,137 @@
             <div v-if="loading && !report" class="ps-card"><el-skeleton :rows="8" animated /></div>
 
             <template v-else-if="report">
-                <!-- ── Print-only formal header ───────────────────────────────────── -->
-                <div class="print-head print-only">
-                    <div class="print-company-bar">
-                        <div class="print-company-info">
-                            <h1 class="print-title">{{ $t('party_statement') }}</h1>
-                            <p class="print-subtitle">{{ report.party.name }} ({{ typeLabel }})</p>
+                <!-- ── Print sheet ──────────────────────────────────────────────
+                     What the printer gets, in place of the screen: the company
+                     letterhead the other documents print under, who the
+                     statement is for and the period, the position in figures
+                     and in a sentence, then every movement in date order on a
+                     plain table whose header repeats on each page. -->
+                <div class="print-sheet print-only">
+                    <PrintDocumentHeader
+                        :header-style="printSettings.headerStyle"
+                        :show-logo="printSettings.showLogo"
+                        :show-contacts="printSettings.showContacts"
+                        :show-meta="false"
+                        :title="$t('party_statement')"
+                        subtitle="ACCOUNT STATEMENT"
+                        :document-number="statementRef"
+                        :banner-src="headerBannerUrl"
+                    />
+
+                    <div class="print-info-grid">
+                        <div class="print-info-box">
+                            <h3><i :class="type === 'customer' ? 'fas fa-user' : 'fas fa-truck'"></i> {{ typeLabel }}</h3>
+                            <div class="print-info-row"><span>{{ $t('name') }}</span><strong>{{ report.party.name }}</strong></div>
+                            <div v-if="report.party.code" class="print-info-row"><span>{{ $t('ps_code') }}</span><strong dir="ltr">{{ report.party.code }}</strong></div>
+                            <div v-if="report.party.company" class="print-info-row"><span>{{ $t('ps_company') }}</span><strong>{{ report.party.company }}</strong></div>
+                            <div v-if="report.party.phone" class="print-info-row"><span>{{ $t('ps_phone') }}</span><strong dir="ltr">{{ report.party.phone }}</strong></div>
+                            <div v-if="report.party.address" class="print-info-row"><span>{{ $t('ps_address') }}</span><strong>{{ report.party.address }}</strong></div>
                         </div>
-                        <div class="print-meta">
-                            <div><strong>{{ $t('sr_period') }}:</strong> {{ report.period.from }} → {{ report.period.to }}</div>
-                            <div><strong>{{ $t('currency') }}:</strong> {{ baseCode }}</div>
-                            <div><strong>{{ $t('date') }}:</strong> {{ printTimestamp }}</div>
+                        <div class="print-info-box">
+                            <h3><i class="far fa-calendar"></i> {{ $t('sr_period') }}</h3>
+                            <div class="print-info-row"><span>{{ $t('jr_date_from') }}</span><strong dir="ltr">{{ report.period.from }}</strong></div>
+                            <div class="print-info-row"><span>{{ $t('jr_date_to') }}</span><strong dir="ltr">{{ report.period.to }}</strong></div>
+                            <div class="print-info-row"><span>{{ $t('currency') }}</span><strong>{{ baseCode }}</strong></div>
+                            <div class="print-info-row"><span>{{ $t('ps_movements') }}</span><strong>{{ printRows.length }}</strong></div>
+                            <div class="print-info-row"><span>{{ $t('ps_print_printed_at') }}</span><strong dir="ltr">{{ printTimestamp }}</strong></div>
                         </div>
                     </div>
 
-                    <div class="print-party-grid">
-                        <div class="print-grid-item">
-                            <span class="print-label">{{ $t('party_type') }}:</span>
-                            <span class="print-value">{{ typeLabel }}</span>
-                        </div>
-                        <div class="print-grid-item">
-                            <span class="print-label">{{ $t('name') }}:</span>
-                            <span class="print-value"><strong>{{ report.party.name }}</strong></span>
-                        </div>
-                        <div v-if="report.party.phone" class="print-grid-item">
-                            <span class="print-label">{{ $t('ps_phone') }}:</span>
-                            <span class="print-value" dir="ltr">{{ report.party.phone }}</span>
-                        </div>
-                        <div v-if="report.party.address" class="print-grid-item">
-                            <span class="print-label">{{ $t('ps_address') }}:</span>
-                            <span class="print-value">{{ report.party.address }}</span>
-                        </div>
-                        <div v-if="report.party.company" class="print-grid-item">
-                            <span class="print-label">{{ $t('ps_company') }}:</span>
-                            <span class="print-value">{{ report.party.company }}</span>
-                        </div>
-                    </div>
-
-                    <div class="print-summary-box">
+                    <div class="print-summary">
                         <div class="print-summary-cell">
                             <span>{{ $t('opening_balance') }}</span>
-                            <strong>{{ money(Math.abs(report.opening_balance)) }}</strong>
+                            <strong>{{ plain(Math.abs(report.opening_balance)) }}</strong>
                             <small>{{ sideLabel(report.opening_balance) }}</small>
                         </div>
-                        <div class="print-summary-cell">
+                        <div class="print-summary-cell is-debit">
                             <span>{{ $t('jr_col_debit') }}</span>
-                            <strong>{{ money(report.totals.debits) }}</strong>
+                            <strong>{{ plain(report.totals.debits) }}</strong>
+                            <small>{{ type === 'customer' ? $t('ps_hint_customer_debit') : $t('ps_hint_supplier_debit') }}</small>
                         </div>
-                        <div class="print-summary-cell">
+                        <div class="print-summary-cell is-credit">
                             <span>{{ $t('jr_col_credit') }}</span>
-                            <strong>{{ money(report.totals.credits) }}</strong>
+                            <strong>{{ plain(report.totals.credits) }}</strong>
+                            <small>{{ type === 'customer' ? $t('ps_hint_customer_credit') : $t('ps_hint_supplier_credit') }}</small>
                         </div>
-                        <div class="print-summary-cell">
-                            <span>{{ $t('ps_net_period_change') }}</span>
-                            <strong>{{ money(Math.abs(netPeriodChange)) }}</strong>
-                            <small>{{ netPeriodNarrative }}</small>
-                        </div>
-                        <div class="print-summary-cell highlight">
+                        <div class="print-summary-cell is-closing">
                             <span>{{ $t('closing_balance') }}</span>
-                            <strong>{{ money(Math.abs(report.closing_balance)) }}</strong>
+                            <strong>{{ plain(Math.abs(report.closing_balance)) }}</strong>
                             <small>{{ sideLabel(report.closing_balance) }}</small>
                         </div>
                     </div>
+                    <p class="print-stance" :class="stanceClass"><i class="fas fa-circle-info"></i> {{ balanceNarrative }}</p>
+
+                    <table class="print-table">
+                        <thead>
+                            <tr>
+                                <th class="c-idx">#</th>
+                                <th class="c-date">{{ $t('jr_col_date') }}</th>
+                                <th class="c-doc">{{ $t('ps_document') }}</th>
+                                <th class="c-notes">{{ $t('ps_notes') }}</th>
+                                <th class="c-amt">{{ $t('jr_col_debit') }}</th>
+                                <th class="c-amt">{{ $t('jr_col_credit') }}</th>
+                                <th class="c-bal">{{ $t('running_balance') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="is-edge">
+                                <td class="c-idx"></td>
+                                <td class="c-date" dir="ltr">{{ report.period.from }}</td>
+                                <td colspan="2">{{ $t('opening_balance') }}</td>
+                                <td class="c-amt"></td>
+                                <td class="c-amt"></td>
+                                <td class="c-bal">{{ plain(Math.abs(report.opening_balance)) }} <small>{{ sideLabel(report.opening_balance) }}</small></td>
+                            </tr>
+                            <tr v-for="(row, i) in printRows" :key="row.id ?? i">
+                                <td class="c-idx">{{ i + 1 }}</td>
+                                <td class="c-date" dir="ltr">{{ row.date }}<small v-if="row.time">{{ row.time }}</small></td>
+                                <td class="c-doc">
+                                    <span class="print-doc-kind">{{ docLabel(row) }}</span>
+                                    <span class="print-doc-no" dir="ltr">{{ row.number }}</span>
+                                    <small v-if="row.payment_method && paymentMethodInfo(row.payment_method)"> · {{ paymentMethodInfo(row.payment_method).label }}</small>
+                                    <small v-if="row.due_date"> · {{ $t('ps_due_date') }}: <span dir="ltr">{{ row.due_date }}</span></small>
+                                </td>
+                                <td class="c-notes">{{ [row.reference, row.notes].filter(Boolean).join(' — ') }}</td>
+                                <td class="c-amt">{{ row.debit > 0 ? plain(row.debit) : '' }}</td>
+                                <td class="c-amt">{{ row.credit > 0 ? plain(row.credit) : '' }}</td>
+                                <td class="c-bal">{{ plain(Math.abs(row.balance)) }} <small>{{ sideLabel(row.balance) }}</small></td>
+                            </tr>
+                            <tr v-if="!printRows.length">
+                                <td colspan="7" class="c-empty">{{ report.movements.length ? $t('no_matching_records') : $t('no_movements_in_this_period') }}</td>
+                            </tr>
+                            <tr class="is-total">
+                                <td class="c-idx"></td>
+                                <td class="c-date" dir="ltr">{{ report.period.to }}</td>
+                                <td colspan="2">{{ $t('closing_balance') }} · {{ $t('ps_print_totals') }}</td>
+                                <td class="c-amt">{{ plain(report.totals.debits) }}</td>
+                                <td class="c-amt">{{ plain(report.totals.credits) }}</td>
+                                <td class="c-bal">{{ plain(Math.abs(report.closing_balance)) }} <small>{{ sideLabel(report.closing_balance) }}</small></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p v-if="printIsFiltered" class="print-note"><i class="fas fa-filter"></i> {{ $t('ps_print_filtered_note') }}</p>
+
+                    <div v-if="printSettings.showSignatures" class="print-signatures">
+                        <div class="sig-box">
+                            <p class="sig-title">{{ $t('ps_print_prepared_by') }}</p>
+                            <div class="sig-line"></div>
+                        </div>
+                        <div class="sig-box">
+                            <p class="sig-title">{{ $t('ps_print_approved_by') }}</p>
+                            <div class="sig-line"></div>
+                        </div>
+                        <div class="sig-box">
+                            <p class="sig-title">{{ $t('ps_print_party_signature') }}</p>
+                            <div class="sig-line"></div>
+                        </div>
+                    </div>
+
+                    <footer class="print-footer">
+                        <span>{{ $t('ps_print_footer_note', { currency: baseCode }) }}</span>
+                        <span dir="ltr">{{ statementRef }}</span>
+                    </footer>
                 </div>
 
                 <!-- ── Interactive Position / Hero Card ────────────────────────── -->
@@ -262,7 +343,7 @@
                 </el-alert>
 
                 <!-- ── Movements Section ────────────────────────────────────────── -->
-                <section class="ps-card">
+                <section class="ps-card no-print">
                     <header class="ps-card-head">
                         <div class="head-title-wrap">
                             <h2><i class="fas fa-receipt"></i> {{ $t('ps_movements') }}</h2>
@@ -445,32 +526,19 @@
                     </p>
                 </section>
 
-                <!-- ── Print Signatures Footer ─────────────────────────────────── -->
-                <div class="print-signatures print-only">
-                    <div class="sig-box">
-                        <p class="sig-title">{{ $t('ps_print_prepared_by') }}</p>
-                        <div class="sig-line"></div>
-                    </div>
-                    <div class="sig-box">
-                        <p class="sig-title">{{ $t('ps_print_approved_by') }}</p>
-                        <div class="sig-line"></div>
-                    </div>
-                    <div class="sig-box">
-                        <p class="sig-title">{{ $t('ps_print_party_signature') }}</p>
-                        <div class="sig-line"></div>
-                    </div>
-                </div>
             </template>
         </template>
     </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
+import { usePrintSettings } from '@/composables/usePrintSettings';
 import { accountingReportsApi } from '@/api/accountingReports';
 import { customersApi } from '@/api/customers';
 import { suppliersApi } from '@/api/suppliers';
@@ -671,6 +739,9 @@ const whatsappUrl = computed(() => {
     return `https://wa.me/${digits}`;
 });
 
+// The same chat, opened with the statement's summary already typed.
+const whatsappShareUrl = computed(() => (whatsappUrl.value && report.value ? `${whatsappUrl.value}?text=${encodeURIComponent(statementSummaryText())}` : null));
+
 /* ------------------------------------------------------------------ *
  * Document Helpers & Navigation
  * ------------------------------------------------------------------ */
@@ -832,11 +903,11 @@ const rowClass = ({ row }) => (row.edge ? 'is-edge' : '');
  * Actions: Copy, Export and Print
  * ------------------------------------------------------------------ */
 
-const copyStatementSummary = async () => {
+const statementSummaryText = () => {
     const r = report.value;
-    if (!r) return;
+    if (!r) return '';
     const p = r.party;
-    const lines = [
+    return [
         `📄 ${t('party_statement')}: ${p.name}`,
         p.phone ? `📞 ${t('ps_phone')}: ${p.phone}` : null,
         p.address ? `📍 ${t('ps_address')}: ${p.address}` : null,
@@ -851,6 +922,11 @@ const copyStatementSummary = async () => {
         `📌 ${balanceNarrative.value}`,
         `📊 ${t('movements_count', { count: filteredMovements.value.length })}`,
     ].filter(Boolean).join('\n');
+};
+
+const copyStatementSummary = async () => {
+    const lines = statementSummaryText();
+    if (!lines) return;
 
     try {
         await navigator.clipboard.writeText(lines);
@@ -900,9 +976,59 @@ const exportCsv = () => {
     URL.revokeObjectURL(url);
 };
 
-const printReport = () => window.print();
+/* ------------------------------------------------------------------ *
+ * Print
+ * ------------------------------------------------------------------ */
+
+const { printSettings } = usePrintSettings('statement');
+
+const headerBannerUrl = computed(() => {
+    const b = printSettings.headerBanner || '/Header.jpeg';
+    return b.startsWith('/') || b.startsWith('http') ? b : `/storage/${b}`;
+});
+
+// A reference to quote back: the party and the day the statement runs to.
+const statementRef = computed(() => {
+    const r = report.value;
+    if (!r) return '';
+    return `ST-${type.value === 'customer' ? 'C' : 'S'}${r.party.id}-${String(r.period.to || '').replace(/-/g, '')}`;
+});
+
+// A statement reads from the opening balance down to the closing one, so
+// the print is in date order whichever way the screen is sorted; the
+// screen's filters still apply, and the sheet says so when they do.
+const printRows = computed(() => filteredMovements.value);
+const printIsFiltered = computed(() => Boolean(docFilter.value || filterQuery.value.trim()));
+
+// The admin layout prints with no page margin, which suits documents that
+// draw their own sheet. A statement runs over many pages, so margins are
+// set for the duration of the print only — from the button or Ctrl+P —
+// and taken away again, leaving the other screens as they were.
+const PAGE_STYLE_ID = 'party-statement-page';
+const addPageMargins = () => {
+    if (document.getElementById(PAGE_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = PAGE_STYLE_ID;
+    style.textContent = '@page { size: A4; margin: 12mm 10mm 14mm; }';
+    document.head.appendChild(style);
+};
+const removePageMargins = () => document.getElementById(PAGE_STYLE_ID)?.remove();
+
+const printReport = () => {
+    addPageMargins();
+    window.print();
+};
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeprint', addPageMargins);
+    window.removeEventListener('afterprint', removePageMargins);
+    removePageMargins();
+});
 
 onMounted(async () => {
+    window.addEventListener('beforeprint', addPageMargins);
+    window.addEventListener('afterprint', removePageMargins);
+
     const q = route.query;
     if (['customer', 'supplier'].includes(q.type)) type.value = q.type;
     const valid = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
@@ -948,6 +1074,9 @@ onMounted(async () => {
 
 .currency-tag { align-self: center; color: var(--ov-muted); border-color: var(--ov-border); font-weight: 600; }
 .print-only { display: none; }
+
+.btn-whatsapp { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.btn-whatsapp:hover { color: #166534; border-color: #22c55e; background: #dcfce7; }
 
 .ps-card {
     background: var(--ov-surface);
@@ -1500,136 +1629,160 @@ strong.amt { font-weight: 800; }
     .no-print { display: none !important; }
     .print-only { display: block; }
 
+    /* The screen steps aside: only the sheet prints. */
+    .party-statement > :not(.print-sheet) { display: none !important; }
+
     .accounting-page {
         font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-        color: #000;
+        color: #0f172a;
         background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 
-    .ps-card, .tile, .position {
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        background: transparent !important;
+    .print-sheet { font-size: 11px; line-height: 1.45; }
+
+    /* Who, and when */
+    .print-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 10px 0;
     }
 
-    .print-head {
-        margin-bottom: 1.2rem;
-        padding-bottom: 0.8rem;
-        border-bottom: 2px solid #000;
+    .print-info-box {
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 7px 10px;
+        break-inside: avoid;
     }
 
-    .print-company-bar {
+    .print-info-box h3 {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0 0 5px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 11px;
+        font-weight: 800;
+        color: #1e3a8a;
+    }
+
+    .print-info-row {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 0.8rem;
+        gap: 8px;
+        padding: 1.5px 0;
     }
 
-    .print-title {
-        margin: 0;
-        font-size: 1.4rem;
-        font-weight: 900;
-        color: #000;
-    }
+    .print-info-row span { color: #64748b; font-weight: 600; white-space: nowrap; }
+    .print-info-row strong { color: #0f172a; font-weight: 700; text-align: end; }
 
-    .print-subtitle {
-        margin: 0.2rem 0 0;
-        font-size: 1rem;
-        font-weight: 700;
-        color: #333;
-    }
-
-    .print-meta {
-        font-size: 0.8rem;
-        line-height: 1.5;
-        text-align: end;
-    }
-
-    .print-party-grid {
+    /* The position in figures, then in a sentence */
+    .print-summary {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.5rem;
-        padding: 0.6rem;
-        background: #f8fafc;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        margin-bottom: 0.8rem;
-        font-size: 0.82rem;
-    }
-
-    .print-grid-item {
-        display: flex;
-        gap: 0.3rem;
-    }
-
-    .print-label { font-weight: 700; color: #555; }
-    .print-value { color: #000; }
-
-    .print-summary-box {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 0.4rem;
-        margin-bottom: 0.8rem;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        margin: 0 0 6px;
     }
 
     .print-summary-cell {
-        display: flex;
-        flex-direction: column;
-        padding: 0.4rem;
-        border: 1px solid #ccc;
-        border-radius: 4px;
+        border: 1px solid #cbd5e1;
+        border-top: 3px solid #94a3b8;
+        border-radius: 6px;
+        padding: 5px 8px;
         text-align: center;
-        font-size: 0.76rem;
+        break-inside: avoid;
     }
 
-    .print-summary-cell.highlight {
-        background: #f1f5f9;
+    .print-summary-cell span { display: block; font-size: 10px; font-weight: 700; color: #64748b; }
+    .print-summary-cell strong { display: block; font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+    .print-summary-cell small { font-size: 9.5px; font-weight: 700; color: #475569; }
+    .print-summary-cell.is-debit { border-top-color: var(--c-debit); }
+    .print-summary-cell.is-credit { border-top-color: var(--c-credit); }
+    .print-summary-cell.is-closing { border-top-color: #1e3a8a; background: #f1f5f9; }
+
+    .print-stance {
+        margin: 0 0 8px;
+        padding: 5px 9px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #f8fafc;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .print-stance.is-owed-to-us { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+    .print-stance.is-we-owe { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+
+    /* The movements: a plain table whose header repeats on every page and
+       whose rows never split across one */
+    .print-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10.5px;
+    }
+
+    .print-table thead { display: table-header-group; }
+    .print-table tr { break-inside: avoid; page-break-inside: avoid; }
+
+    .print-table th,
+    .print-table td {
+        border: 1px solid #cbd5e1;
+        padding: 4px 6px;
+        vertical-align: top;
+        text-align: start;
+    }
+
+    .print-table th {
+        background: #1e3a8a;
+        color: #fff;
+        font-size: 10px;
         font-weight: 700;
     }
 
-    .print-summary-cell strong {
-        font-size: 0.95rem;
-        margin: 0.15rem 0;
-    }
+    .print-table tbody tr:nth-child(even) td { background: #f8fafc; }
+    .print-table .c-idx { width: 24px; text-align: center; color: #64748b; }
+    .print-table .c-date { width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .print-table .c-date small { display: block; font-size: 9px; color: #64748b; }
+    .print-table .c-amt,
+    .print-table .c-bal { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+    .print-table .c-amt { width: 78px; }
+    .print-table .c-bal { width: 100px; font-weight: 700; }
+    .print-table .c-bal small { margin-inline-start: 3px; font-size: 9px; font-weight: 700; color: #475569; }
+    .print-table .c-notes { color: #334155; }
+    .print-table .c-doc small { color: #64748b; }
+    .print-doc-kind { font-weight: 800; color: #1e3a8a; }
+    .print-doc-no { margin-inline-start: 4px; font-size: 10px; color: #0f172a; }
+    .print-table tr.is-edge td { background: #eef2ff !important; font-weight: 800; }
+    .print-table tr.is-total td { background: #e2e8f0 !important; font-weight: 800; border-top: 2px solid #1e3a8a; }
+    .print-table .c-empty { padding: 12px; text-align: center; color: #64748b; }
 
-    .ps-table {
-        border: 1px solid #ccc !important;
-    }
-
-    .ps-table :deep(th.el-table__cell),
-    .ps-table :deep(td.el-table__cell) {
-        border-color: #ddd !important;
-        padding: 4px 6px !important;
-        color: #000 !important;
-    }
-
-    .code-badge {
-        border: 1px solid #999;
-        background: transparent !important;
-    }
+    .print-note { margin: 6px 0 0; font-size: 9.5px; color: #92400e; }
 
     .print-signatures {
         display: flex;
         justify-content: space-between;
-        margin-top: 2.5rem;
-        padding-top: 1rem;
+        gap: 16px;
+        margin-top: 26px;
+        break-inside: avoid;
     }
 
-    .sig-box {
-        width: 28%;
-        text-align: center;
-    }
+    .sig-box { flex: 1; text-align: center; }
+    .sig-title { margin: 0 0 30px; font-size: 10.5px; font-weight: 700; color: #334155; }
+    .sig-line { border-bottom: 1px solid #475569; }
 
-    .sig-title {
-        margin: 0 0 2.5rem;
-        font-size: 0.85rem;
-        font-weight: 700;
-    }
-
-    .sig-line {
-        border-bottom: 1px dashed #666;
+    .print-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+        padding-top: 6px;
+        border-top: 1px solid #cbd5e1;
+        font-size: 9px;
+        color: #64748b;
     }
 }
 </style>
