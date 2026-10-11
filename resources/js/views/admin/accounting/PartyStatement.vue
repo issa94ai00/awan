@@ -1000,16 +1000,16 @@ const statementRef = computed(() => {
 const printRows = computed(() => filteredMovements.value);
 const printIsFiltered = computed(() => Boolean(docFilter.value || filterQuery.value.trim()));
 
-// The admin layout prints with no page margin, which suits documents that
-// draw their own sheet. A statement runs over many pages, so margins are
-// set for the duration of the print only — from the button or Ctrl+P —
-// and taken away again, leaving the other screens as they were.
+// The page keeps no margin: the browser prints its URL, title and date in
+// the margin, and a statement goes to the customer. The sheet pads itself
+// on every page instead (see .print-sheet). Set for the duration of the
+// print only — from the button or Ctrl+P — and taken away again.
 const PAGE_STYLE_ID = 'party-statement-page';
 const addPageMargins = () => {
     if (document.getElementById(PAGE_STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = PAGE_STYLE_ID;
-    style.textContent = '@page { size: A4; margin: 12mm 10mm 14mm; }';
+    style.textContent = '@page { size: A4; margin: 0; }';
     document.head.appendChild(style);
 };
 const removePageMargins = () => document.getElementById(PAGE_STYLE_ID)?.remove();
@@ -1640,7 +1640,14 @@ strong.amt { font-weight: 800; }
         print-color-adjust: exact;
     }
 
-    .print-sheet { font-size: 11px; line-height: 1.45; }
+    /* The margin the page no longer has, repeated on each page it runs to. */
+    .print-sheet {
+        font-size: 11px;
+        line-height: 1.45;
+        padding: 12mm 10mm 14mm;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+    }
 
     /* Who, and when */
     .print-info-grid {
