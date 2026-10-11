@@ -701,6 +701,17 @@
                         </el-button>
                     </div>
 
+                    <!-- Lines a sale filled in without saying which size: the
+                         order cannot be saved until each has one. -->
+                    <el-alert
+                        v-if="linesNeedingSize.length"
+                        type="warning"
+                        show-icon
+                        :closable="false"
+                        class="needs-size-alert"
+                        :title="$t('po_lines_need_size', linesNeedingSize.length)"
+                    />
+
                     <!-- Fast Suggested Product Search & Multi-Add Bar (Stays Open!) -->
                     <div ref="quickSearchContainerRef" class="po-suggested-search-panel" @mousedown.stop>
                         <div class="search-bar-header">
@@ -956,7 +967,7 @@
                             v-for="(item, idx) in form.items"
                             :key="item.key"
                             class="item-grid-row"
-                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick) }"
+                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick), 'item-needs-size': needsSize(item) }"
                         >
                             <div class="item-row-top">
                                 <span class="item-index">{{ idx + 1 }}</span>
@@ -1036,9 +1047,18 @@
                             <!-- The other sizes of the picked product, one click away:
                                  changing the size does not mean searching for the
                                  product again. A price the operator typed is kept;
-                                 one still at the old size's default follows the new size. -->
-                            <div v-if="siblingVariants(item).length > 1" class="line-variant-switch">
-                                <span class="switch-label"><i class="fas fa-tag"></i> {{ $t('po_switch_size') }}</span>
+                                 one still at the old size's default follows the new size.
+                                 A line filled from a sale that never said which size
+                                 went shows the same chips with none chosen, and what
+                                 the sale called it, until the buyer picks one. -->
+                            <div v-if="needsSize(item) || siblingVariants(item).length > 1" class="line-variant-switch" :class="{ 'is-required': needsSize(item) }">
+                                <span class="switch-label">
+                                    <i class="fas" :class="needsSize(item) ? 'fa-exclamation-circle' : 'fa-tag'"></i>
+                                    {{ $t(needsSize(item) ? 'po_size_required' : 'po_switch_size') }}
+                                </span>
+                                <small v-if="needsSize(item) && item.sold_as" class="switch-sold-as">
+                                    {{ $t('po_sold_as') }} <span dir="ltr">{{ item.sold_as }}</span>
+                                </small>
                                 <div class="switch-chips">
                                     <button
                                         v-for="v in siblingVariants(item)"
@@ -1805,7 +1825,12 @@ const onQuickSearchEnter = () => {
 
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
-const siblingVariants = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
+const siblingVariants = (item) => (item.product_id ? siblingsOf(item.product_id) : []);
+
+// A line for a product that comes in sizes, with no size chosen: what a
+// sale sold before sizes were tracked leaves behind. Saving waits on it.
+const needsSize = (item) => Boolean(item.product_id) && !item.product_variant_id && siblingVariants(item).length > 0;
+const linesNeedingSize = computed(() => form.items.filter(needsSize));
 
 const switchLineVariant = (idx, variantRow) => {
     const line = form.items[idx];
@@ -1815,13 +1840,17 @@ const switchLineVariant = (idx, variantRow) => {
     const previous = siblingVariants(line).find((r) => optionKey(r) === line.pick);
     const defaultCost = (r) => num(r.cost_price || r.price);
     const defaultSale = (r) => num(r.price);
-    const costUntouched = line.unit_price === '' || !previous || num(line.unit_price) === defaultCost(previous);
-    const saleUntouched = line.sale_price === '' || !previous || num(line.sale_price) === defaultSale(previous);
+    // Prices on a line that had no size yet came from the sale, so choosing
+    // its size fills only what is still empty.
+    const hadSize = Boolean(line.product_variant_id);
+    const costUntouched = line.unit_price === '' || (hadSize && (!previous || num(line.unit_price) === defaultCost(previous)));
+    const saleUntouched = line.sale_price === '' || (hadSize && (!previous || num(line.sale_price) === defaultSale(previous)));
 
     rememberProducts([variantRow]);
     line.pick = key;
     line.product_id = variantRow.id;
     line.product_variant_id = variantRow.variant_id;
+    line.sold_as = '';
     if (costUntouched) line.unit_price = variantRow.cost_price || variantRow.price;
     if (saleUntouched) line.sale_price = variantRow.price;
 };
@@ -2465,7 +2494,9 @@ const rememberProducts = (items = []) => {
         .filter((item) => item && (item.product_id || item.id))
         .map((item) => (item.product_id ? optionFromLine(item) : item));
     productOptions.value = withOptions(productOptions.value, rows);
-    rows.forEach((row) => row.variant_id && ensureVariantsLoaded(row.id));
+    // A product's sizes are fetched for a line that names one, and for a
+    // line that should but does not, so the chips can offer them.
+    rows.forEach((row) => (row.variant_id || row.has_variants) && ensureVariantsLoaded(row.id));
 };
 
 /* Focus follows the work: the supplier first on a new request, and each new
@@ -2727,7 +2758,7 @@ const orderPayload = () => {
         tax: num(form.tax),
         notes: form.notes || null,
         ...saleLinkPayload(),
-        items: form.items.map(({ key, pick, ...item }) => ({
+        items: form.items.map(({ key, pick, sold_as, ...item }) => ({
             ...item,
             sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
         })),
@@ -2742,6 +2773,11 @@ const saveOrder = async ({ approve = false } = {}) => {
         }
         if (form.items.some(item => !item.product_id || !item.quantity || item.unit_price === '' || item.unit_price == null)) {
             ElMessage.warning(t('please_fill_all_item_fields'));
+            return;
+        }
+        if (linesNeedingSize.value.length) {
+            ElMessage.warning(t('po_lines_need_size_block'));
+            document.querySelector('.item-grid-row.item-needs-size')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return;
         }
         if (duplicatePicks.value.size) {
@@ -3128,7 +3164,10 @@ const prefillFromSalesOrder = async (salesOrderId) => {
 
         markFormClean();
         formDrawerVisible.value = true;
-        ElMessage.success(t('po_from_sales_order_ready', { number: draft.link.number }));
+        // Lines the sale never sized are said up front, not found on save.
+        const unsized = draft.lines.filter((line) => line.needs_variant).length;
+        if (unsized) ElMessage.warning(t('po_from_sales_order_ready_sizes', { number: draft.link.number, count: unsized }, unsized));
+        else ElMessage.success(t('po_from_sales_order_ready', { number: draft.link.number }));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('po_from_sales_order_failed'));
     }
@@ -3231,6 +3270,7 @@ const applySaleDraft = ({ lines, note, notes, expected }) => {
         quantity: line.quantity,
         unit_price: num(line.unit_price),
         sale_price: line.sale_price != null ? num(line.sale_price) : '',
+        sold_as: line.needs_variant ? (line.sold_as || '') : '',
     }));
     rememberProducts(lines);
 
@@ -4041,6 +4081,17 @@ onMounted(async () => {
 .item-grid-row.item-duplicate {
     border-color: var(--el-color-warning, #e6a23c);
     background: #fffbeb;
+}
+
+/* A line still waiting for its size */
+.item-grid-row.item-needs-size {
+    border-color: #f59e0b;
+    border-inline-start-width: 4px;
+    background: #fffbeb;
+}
+
+.needs-size-alert {
+    margin-bottom: 0.75rem;
 }
 
 .product-option {
@@ -4859,6 +4910,30 @@ onMounted(async () => {
 .switch-chip:hover {
     border-color: #93c5fd;
     color: #1d4ed8;
+}
+
+.line-variant-switch.is-required .switch-label {
+    color: #b45309;
+}
+
+.line-variant-switch.is-required .switch-chip {
+    border-color: #f59e0b;
+    background: #fffdf5;
+}
+
+.line-variant-switch.is-required .switch-chip:hover {
+    border-color: #d97706;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.switch-sold-as {
+    font-size: 0.74rem;
+    color: #92400e;
+    background: #fef3c7;
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    white-space: nowrap;
 }
 
 .switch-chip.is-active {

@@ -181,6 +181,43 @@ test('a purchase draft carries every line of the order, costed at the last price
         ->and((float) $tap['unit_price'])->toBe(8.0);
 });
 
+test('a purchase draft reads the size back from a line sold before sizes were tracked', function () {
+    $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
+        'customer_id' => $this->customer->id,
+        'items' => [array_merge(($this->line)($this->tap, 1), ['unit_price' => 20])],
+    ])->assertCreated()->json('data.id');
+
+    // Lines as older orders stored them: the product alone, the size only in
+    // the name — once repeated, once with the glyphs written differently —
+    // and one naming no size the product has.
+    $sold = fn (string $name, int $qty) => \App\Models\SalesOrderItem::create([
+        'sales_order_id' => $id, 'product_id' => $this->drain->id, 'product_variant_id' => null,
+        'description' => $name, 'quantity' => $qty, 'unit_price' => 2.5, 'total' => 2.5 * $qty,
+    ]);
+    $sold('جريدة تصريف - 5" - 5"', 3);
+    $sold('جريدة تصريف - 4 ″', 2);
+    $sold('جريدة تصريف - 6"', 1);
+
+    $items = $this->getJson("/api/v1/sales-orders/{$id}/purchase-draft")->assertOk()->json('data.items');
+
+    expect($items)->toHaveCount(4);
+    [$tap, $five, $four, $six] = $items;
+    expect($tap['needs_variant'])->toBeFalse()
+        ->and($tap['product']['has_variants'])->toBeFalse()
+        ->and($five['product_variant_id'])->toBe($this->five->id)
+        ->and($five['product_name'])->toBe('جريدة تصريف - 5"')
+        ->and($five['quantity'])->toBe(3)
+        ->and($five['needs_variant'])->toBeFalse()
+        ->and($four['product_variant_id'])->toBe($this->four->id)
+        ->and($four['quantity'])->toBe(2)
+        // A size the product does not have is left for the buyer to choose,
+        // told what the sale called it.
+        ->and($six['product_variant_id'])->toBeNull()
+        ->and($six['needs_variant'])->toBeTrue()
+        ->and($six['sold_as'])->toBe('6"')
+        ->and($six['product']['has_variants'])->toBeTrue();
+});
+
 test('a shortage carries the size sold, its prices and who it is for', function () {
     // 20 of the 5" drain against 16 in stock: 4 short.
     $id = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/sales-orders', [
