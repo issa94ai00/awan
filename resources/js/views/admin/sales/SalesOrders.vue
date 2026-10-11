@@ -1183,6 +1183,8 @@
                 v-model="printSettings"
                 :zoom-level="zoomLevel"
                 :is-exporting-pdf="isExportingPdf"
+                :is-printing="isPrinting"
+                show-font-picker
                 @apply-preset="applyPreset"
                 @save-default="saveAsDefault"
                 @reset-default="resetToDefaults"
@@ -1205,6 +1207,9 @@
                         v-if="printOrderData"
                         id="sales-order-printable-doc"
                         class="so-printable-sheet"
+                        lang="ar"
+                        dir="rtl"
+                        :style="printSheetStyle"
                         :class="[
                             `theme-${printSettings.theme}`,
                             { 'density-compact': printSettings.density === 'compact' },
@@ -1651,7 +1656,7 @@
                     >
                         <i class="fas fa-file-pdf"></i> {{ $t('download_pdf') || 'تحميل PDF' }}
                     </el-button>
-                    <el-button type="primary" :icon="Printer" size="large" class="btn-print-prominent" @click="triggerPrintOrder">
+                    <el-button type="primary" :icon="Printer" size="large" class="btn-print-prominent" :loading="isPrinting" @click="triggerPrintOrder">
                         <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة الأمر الآن' }}
                     </el-button>
                 </div>
@@ -1691,6 +1696,8 @@ import { useStockShortage } from '@/Composables/useStockShortage';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
+import { A4_HEIGHT_MM, A4_WIDTH_MM, addSheetPages, sheetCaptureOptions } from '@/utils/printPdf';
 
 const { t } = useI18n();
 import {
@@ -2606,6 +2613,7 @@ const printOrderDialogVisible = ref(false);
 const printOrderLoading = ref(false);
 const isFullScreenPreview = ref(false);
 const isExportingPdf = ref(false);
+const isPrinting = ref(false);
 const qrCodeDataUrl = ref('');
 
 const {
@@ -2618,10 +2626,15 @@ const {
     applyPreset: baseApplyPreset,
     saveAsDefault,
     resetToDefaults,
-    getWatermarkLabel,
+    watermarkText,
 } = usePrintSettings('sales_order', { showPrices: true });
 
-const watermarkText = computed(() => getWatermarkLabel(printSettings.watermark));
+// The sheet's typeface; every element inside inherits it through --so-font.
+const printSheetStyle = computed(() => ({ '--so-font': printFontStack(printSettings.fontFamily) }));
+
+watch(() => [printOrderDialogVisible.value, printSettings.fontFamily], ([visible, font]) => {
+    if (visible) ensurePrintFont(font);
+});
 
 const coverImageUrl = computed(() => {
     const c = printSettings.coverImage || '/cover.jpeg';
@@ -2718,57 +2731,31 @@ watch(printOrderData, (newOrder) => {
 
 const exportOrderPdf = async () => {
     const docEl = document.getElementById('sales-order-printable-doc');
-    if (!docEl) return;
+    if (!docEl || isExportingPdf.value) return;
     isExportingPdf.value = true;
+    const prevZoom = zoomLevel.value;
     try {
-        const prevZoom = zoomLevel.value;
         zoomLevel.value = 100;
         await nextTick();
+        // html2canvas draws with whatever font is loaded at capture time.
+        await waitForPrintFont(printSettings.fontFamily);
 
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-        const pageWidth = 210;
-        const pageHeight = 297;
-
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        const captureOptions = sheetCaptureOptions('#sales-order-printable-doc .so-document-body');
         const coverEl = docEl.querySelector('.so-print-cover');
         const bodyEl = docEl.querySelector('.so-document-body') || docEl;
 
-        // 1. If cover page is enabled, capture and render as full-bleed page 1
         if (printSettings.showCover && coverEl) {
-            const coverCanvas = await html2canvas(coverEl, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff',
-                logging: false,
-            });
-            const coverData = coverCanvas.toDataURL('image/jpeg', 0.95);
-            pdf.addImage(coverData, 'JPEG', 0, 0, pageWidth, pageHeight);
+            const coverCanvas = await html2canvas(coverEl, captureOptions);
+            pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
             pdf.addPage();
         }
 
-        // 2. Capture document body
-        const bodyCanvas = await html2canvas(bodyEl, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false,
+        await addSheetPages(pdf, html2canvas, bodyEl, {
+            captureOptions,
+            breakSelector: '.so-print-table thead, .so-print-table tr, .so-doc-ribbon, .so-print-meta-grid, '
+                + '.so-print-summary-row, .so-print-signatures, .so-print-footer, .print-document-header',
         });
-
-        zoomLevel.value = prevZoom;
-
-        const bodyData = bodyCanvas.toDataURL('image/jpeg', 0.95);
-        const imgHeight = (bodyCanvas.height * pageWidth) / bodyCanvas.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-            position = heightLeft - imgHeight;
-            pdf.addPage();
-            pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
-            heightLeft -= pageHeight;
-        }
 
         const fileName = `${t('sales_order') || 'Sales_Order'}_${printOrderData.value?.order_number || 'doc'}.pdf`;
         pdf.save(fileName);
@@ -2777,7 +2764,17 @@ const exportOrderPdf = async () => {
         console.error('PDF export error:', err);
         ElMessage.error(t('failed_to_export_pdf') || 'فشل تصدير ملف PDF');
     } finally {
+        zoomLevel.value = prevZoom;
         isExportingPdf.value = false;
+    }
+};
+
+// Ctrl/Cmd+P in the preview prints the order sheet, not the admin page.
+const onPrintShortcut = (event) => {
+    if (!printOrderDialogVisible.value || !printOrderData.value) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        triggerPrintOrder();
     }
 };
 
@@ -2785,8 +2782,10 @@ watch(printOrderDialogVisible, (visible) => {
     if (typeof document !== 'undefined') {
         if (visible) {
             document.body.classList.add('so-print-dialog-open');
+            window.addEventListener('keydown', onPrintShortcut);
         } else {
             document.body.classList.remove('so-print-dialog-open');
+            window.removeEventListener('keydown', onPrintShortcut);
         }
     }
 });
@@ -2841,7 +2840,15 @@ const openPrintDialog = async (orderOrRow) => {
     }
 };
 
+const printDocumentTitle = () => {
+    const number = printOrderData.value?.order_number;
+    if (!number) return '';
+    const label = printSettings.showPrices ? (t('sales_order') || 'أمر بيع') : (t('dispatch_note_title') || 'مذكرة صرف');
+    return `${label} ${number}`;
+};
+
 const triggerPrintOrder = async () => {
+    if (isPrinting.value) return;
     const docEl = document.getElementById('sales-order-printable-doc');
     if (!docEl) {
         const origTitle = document.title;
@@ -2851,7 +2858,9 @@ const triggerPrintOrder = async () => {
         return;
     }
 
+    isPrinting.value = true;
     try {
+        const fontKey = printSettings.fontFamily;
         // Collect all style definitions currently in the page (Tailwind, Element Plus, Fonts, Custom CSS)
         const headStyles = [];
         document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
@@ -2861,8 +2870,6 @@ const triggerPrintOrder = async () => {
         // Dedicated print stylesheet for A4 portrait with zero margin (removes URL/date/headers)
         const extraPrintStyles = `
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
-
                 @page {
                     size: A4 portrait;
                     margin: 0 !important;
@@ -2888,8 +2895,10 @@ const triggerPrintOrder = async () => {
                     padding: 0 !important;
                     background: #ffffff !important;
                     color: #0f172a !important;
-                    font-family: 'Cairo', 'Almarai', Tahoma, -apple-system, sans-serif !important;
+                    font-family: ${printFontStack(fontKey)} !important;
                     direction: rtl !important;
+                    text-rendering: optimizeLegibility;
+                    -webkit-font-smoothing: antialiased;
                     width: 100% !important;
                     height: auto !important;
                     overflow: visible !important;
@@ -3014,8 +3023,9 @@ const triggerPrintOrder = async () => {
 <head>
     <meta charset="utf-8">
     <base href="${window.location.origin}/">
-    <title></title>
+    <title>${escapeHtml(printDocumentTitle())}</title>
     ${headStyles.join('\n')}
+    <link rel="stylesheet" href="${printFontCssUrl(fontKey)}" data-print-font="${fontKey}">
     ${extraPrintStyles}
 </head>
 <body class="so-print-body-isolated">
@@ -3044,7 +3054,8 @@ const triggerPrintOrder = async () => {
             setTimeout(resolve, 1500); // Failsafe timeout
         });
 
-        await new Promise((r) => setTimeout(r, 200));
+        // Printing before the webfont arrives prints Tahoma or blank Arabic text.
+        await waitForPrintFont(fontKey, iframeDoc);
 
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -3059,6 +3070,8 @@ const triggerPrintOrder = async () => {
         await nextTick();
         window.print();
         document.title = origTitle;
+    } finally {
+        isPrinting.value = false;
     }
 };
 
@@ -3072,6 +3085,7 @@ watch(() => route.query, (query) => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
+    window.removeEventListener('keydown', onPrintShortcut);
     clearTimeout(searchTimer);
     if (typeof document !== 'undefined') {
         document.body.classList.remove('so-print-dialog-open');
@@ -4579,7 +4593,31 @@ onMounted(async () => {
     max-width: 860px;
     margin: 0 auto;
     direction: rtl;
-    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
+    font-family: var(--so-font, 'Cairo', 'Noto Sans Arabic', Tahoma, sans-serif);
+    /* Arabic needs room above and below for dots and diacritics. */
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    font-kerning: normal;
+}
+
+/* The shared header sets its own family; the chosen print font wins here. */
+.so-printable-sheet :deep(.print-document-header) {
+    font-family: inherit;
+}
+
+/* Mixed Arabic/Latin text (model codes, English notes) keeps its own order. */
+.so-printable-sheet .so-item-name,
+.so-printable-sheet .so-item-desc,
+.so-printable-sheet .so-notes-text,
+.so-printable-sheet .so-cm-item span {
+    unicode-bidi: plaintext;
+}
+
+/* Numbers line up in columns whatever the typeface. */
+.so-printable-sheet .so-print-table td,
+.so-printable-sheet .so-totals-table td {
+    font-variant-numeric: tabular-nums;
 }
 
 /* Screen cover preview */
@@ -4656,7 +4694,8 @@ onMounted(async () => {
     transform: rotate(-28deg);
     font-size: 54px;
     font-weight: 900;
-    letter-spacing: 0.12em;
+    letter-spacing: 0;
+    line-height: 1.4;
     padding: 12px 30px;
     border-radius: 12px;
     text-align: center;
@@ -4970,8 +5009,9 @@ onMounted(async () => {
     padding: 6px 8px;
     text-align: right;
     font-weight: 800;
-    font-size: 10px;
-    letter-spacing: 0.02em;
+    font-size: 10.5px;
+    letter-spacing: 0;
+    line-height: 1.4;
 }
 
 .so-print-table tbody td {
@@ -4998,7 +5038,7 @@ onMounted(async () => {
 .so-item-name {
     font-weight: 700;
     color: #0f172a;
-    line-height: 1.3;
+    line-height: 1.45;
 }
 
 .so-item-name-en {
@@ -5172,7 +5212,7 @@ onMounted(async () => {
     margin: 0;
     color: #0f172a;
     white-space: pre-wrap;
-    line-height: 1.4;
+    line-height: 1.7;
 }
 
 .so-shipping-details {
@@ -5196,7 +5236,7 @@ onMounted(async () => {
 .so-print-legal-notice {
     font-size: 9.5px;
     color: #64748b;
-    line-height: 1.35;
+    line-height: 1.6;
     padding: 4px 6px;
     background: #fafafa;
     border-radius: 4px;
@@ -5658,7 +5698,6 @@ onMounted(async () => {
 
     .so-doc-ribbon,
     .so-print-meta-grid,
-    .so-print-table,
     .so-print-table tr,
     .so-print-summary-row,
     .so-print-signatures,

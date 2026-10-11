@@ -809,6 +809,7 @@ import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
+import { A4_HEIGHT_MM, A4_WIDTH_MM, addSheetPages, sheetCaptureOptions } from '@/utils/printPdf';
 import {
     ORDER_STATUSES,
     apiErrorMessage,
@@ -1474,33 +1475,6 @@ const triggerPrintInvoice = async () => {
     }
 };
 
-// Page slices for the PDF, in CSS px of the sheet. Each cut lands on the
-// bottom edge of a table row or block, so no row is split across two pages.
-const pdfPageSlices = (bodyEl, firstCapacity, nextCapacity) => {
-    const top = bodyEl.getBoundingClientRect().top;
-    const total = bodyEl.offsetHeight;
-    const cuts = Array.from(bodyEl.querySelectorAll(
-        '.inv-print-table thead, .inv-print-table tr, .inv-doc-ribbon, .inv-print-meta-grid, '
-        + '.inv-print-summary-row, .inv-print-signatures, .inv-print-footer, .print-document-header',
-    ))
-        .map((el) => el.getBoundingClientRect().bottom - top)
-        .sort((a, b) => a - b);
-
-    const slices = [];
-    let start = 0;
-    while (total - start > (slices.length ? nextCapacity : firstCapacity)) {
-        const capacity = slices.length ? nextCapacity : firstCapacity;
-        const limit = start + capacity;
-        // Only accept a cut that still fills most of the page.
-        const fit = cuts.filter((c) => c > start + capacity * 0.5 && c <= limit);
-        const end = fit.length ? fit[fit.length - 1] : limit;
-        slices.push([start, end]);
-        start = end;
-    }
-    slices.push([start, total]);
-    return slices;
-};
-
 const exportInvoicePdf = async () => {
     const docEl = document.getElementById('invoice-printable-doc');
     if (!docEl || isExportingPdf.value) return;
@@ -1513,52 +1487,20 @@ const exportInvoicePdf = async () => {
         await waitForPrintFont(printSettings.fontFamily);
 
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-        const pageWidth = 210;
-        const pageHeight = 297;
-        const captureOptions = {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false,
-            // The on-screen paper frame does not belong in the file.
-            onclone: (clonedDoc) => {
-                const body = clonedDoc.querySelector('#invoice-printable-doc .inv-document-body');
-                if (body) {
-                    body.style.borderColor = 'transparent';
-                    body.style.borderRadius = '0';
-                    body.style.boxShadow = 'none';
-                }
-            },
-        };
-
+        const captureOptions = sheetCaptureOptions('#invoice-printable-doc .inv-document-body');
         const coverEl = docEl.querySelector('.inv-print-cover');
         const bodyEl = docEl.querySelector('.inv-document-body') || docEl;
 
         if (printSettings.showCover && coverEl) {
             const coverCanvas = await html2canvas(coverEl, captureOptions);
-            pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidth, pageHeight);
+            pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
             pdf.addPage();
         }
 
-        const pagePx = (bodyEl.offsetWidth * pageHeight) / pageWidth;
-        const marginPx = 18;
-        const slices = pdfPageSlices(bodyEl, pagePx - marginPx, pagePx - marginPx * 2);
-        const bodyCanvas = await html2canvas(bodyEl, captureOptions);
-        const ratio = bodyCanvas.width / bodyEl.offsetWidth;
-        const mmPerPx = pageWidth / bodyEl.offsetWidth;
-
-        slices.forEach(([start, end], index) => {
-            const sliceCanvas = document.createElement('canvas');
-            sliceCanvas.width = bodyCanvas.width;
-            sliceCanvas.height = Math.max(1, Math.round((end - start) * ratio));
-            const ctx = sliceCanvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-            ctx.drawImage(bodyCanvas, 0, -Math.round(start * ratio));
-
-            if (index > 0) pdf.addPage();
-            const offsetMm = index > 0 ? marginPx * mmPerPx : 0;
-            pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, offsetMm, pageWidth, (end - start) * mmPerPx);
+        await addSheetPages(pdf, html2canvas, bodyEl, {
+            captureOptions,
+            breakSelector: '.inv-print-table thead, .inv-print-table tr, .inv-doc-ribbon, .inv-print-meta-grid, '
+                + '.inv-print-summary-row, .inv-print-signatures, .inv-print-footer, .print-document-header',
         });
 
         const fileName = `${t('invoice') || 'Invoice'}_${printInvoiceData.value?.invoice_number || 'doc'}.pdf`;
