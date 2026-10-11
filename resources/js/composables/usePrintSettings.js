@@ -2,6 +2,7 @@ import { reactive, ref, computed, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
+import { DEFAULT_PRINT_FONT } from '@/utils/printFonts';
 
 export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
     const { t } = useI18n();
@@ -18,6 +19,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             headerStyle: sys.print_header_style || 'official', // 'official' | 'banner' | 'compact'
             theme: sys.print_theme || 'navy', // 'navy' | 'emerald' | 'charcoal' | 'indigo'
             density: sys.print_density || 'standard', // 'standard' | 'compact'
+            fontFamily: sys.print_font_family || DEFAULT_PRINT_FONT, // a PRINT_FONTS key
             watermark: sys.print_watermark || '', // '' | 'draft' | 'approved' | 'paid' | 'official'
             showCover: sys.print_show_cover === '1' || sys.print_show_cover === true || false,
             showQrCode: sys.print_show_qr !== '0' && sys.print_show_qr !== false,

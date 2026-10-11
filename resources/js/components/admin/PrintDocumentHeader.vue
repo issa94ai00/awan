@@ -487,9 +487,10 @@ const hasMetadata = computed(() => {
     margin: 0;
     font-size: 17px;
     font-weight: 800;
-    line-height: 1.25;
+    line-height: 1.35;
     color: #1e3a8a;
-    letter-spacing: -0.02em;
+    /* Any letter-spacing pulls joined Arabic letters apart. */
+    letter-spacing: 0;
     white-space: nowrap;
 }
 
@@ -548,8 +549,8 @@ const hasMetadata = computed(() => {
 .doc-badge-title {
     font-size: 13.5px;
     font-weight: 800;
-    line-height: 1.2;
-    letter-spacing: 0.02em;
+    line-height: 1.35;
+    letter-spacing: 0;
     color: #ffffff;
 }
 

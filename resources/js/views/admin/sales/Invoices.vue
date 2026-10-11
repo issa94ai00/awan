@@ -415,6 +415,8 @@
                 v-model="printSettings"
                 :zoom-level="zoomLevel"
                 :is-exporting-pdf="isExportingPdf"
+                :is-printing="isPrinting"
+                show-font-picker
                 @apply-preset="applyPreset"
                 @save-default="saveAsDefault"
                 @reset-default="resetToDefaults"
@@ -437,6 +439,9 @@
                         v-if="printInvoiceData"
                         id="invoice-printable-doc"
                         class="inv-printable-sheet"
+                        lang="ar"
+                        dir="rtl"
+                        :style="printSheetStyle"
                         :class="[
                             `theme-${printSettings.theme}`,
                             { 'density-compact': printSettings.density === 'compact' },
@@ -803,6 +808,7 @@ import { variantLabelOf } from '@/utils/productPick';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
 import {
     ORDER_STATUSES,
     apiErrorMessage,
@@ -1083,6 +1089,7 @@ const printInvoiceLoading = ref(false);
 const printInvoiceData = ref(null);
 const isFullScreenPreview = ref(false);
 const isExportingPdf = ref(false);
+const isPrinting = ref(false);
 const qrCodeDataUrl = ref('');
 
 const {
@@ -1095,10 +1102,15 @@ const {
     applyPreset,
     saveAsDefault,
     resetToDefaults,
-    getWatermarkLabel,
+    watermarkText,
 } = usePrintSettings('invoice');
 
-const watermarkText = computed(() => getWatermarkLabel(printSettings.watermark));
+// The sheet's typeface; every element inside inherits it through --inv-font.
+const printSheetStyle = computed(() => ({ '--inv-font': printFontStack(printSettings.fontFamily) }));
+
+watch(() => [printInvoiceDialogVisible.value, printSettings.fontFamily], ([visible, font]) => {
+    if (visible) ensurePrintFont(font);
+});
 
 const coverImageUrl = computed(() => {
     const c = printSettings.coverImage || '/cover.jpeg';
@@ -1242,7 +1254,13 @@ const openPrintDialog = async (invoiceOrRow) => {
     }
 };
 
+const printDocumentTitle = () => {
+    const number = printInvoiceData.value?.invoice_number;
+    return number ? `${t('invoice') || 'فاتورة'} ${number}` : '';
+};
+
 const triggerPrintInvoice = async () => {
+    if (isPrinting.value) return;
     const docEl = document.getElementById('invoice-printable-doc');
     if (!docEl) {
         const origTitle = document.title;
@@ -1252,7 +1270,9 @@ const triggerPrintInvoice = async () => {
         return;
     }
 
+    isPrinting.value = true;
     try {
+        const fontKey = printSettings.fontFamily;
         const headStyles = [];
         document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
             headStyles.push(node.outerHTML);
@@ -1260,7 +1280,6 @@ const triggerPrintInvoice = async () => {
 
         const extraPrintStyles = `
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
 
                 @page {
                     size: A4 portrait;
@@ -1281,8 +1300,10 @@ const triggerPrintInvoice = async () => {
                     padding: 0 !important;
                     background: #ffffff !important;
                     color: #0f172a !important;
-                    font-family: 'Cairo', 'Almarai', Tahoma, -apple-system, sans-serif !important;
+                    font-family: ${printFontStack(fontKey)} !important;
                     direction: rtl !important;
+                    text-rendering: optimizeLegibility;
+                    -webkit-font-smoothing: antialiased;
                     width: 100% !important;
                     height: auto !important;
                     overflow: visible !important;
@@ -1402,8 +1423,9 @@ const triggerPrintInvoice = async () => {
 <head>
     <meta charset="utf-8">
     <base href="${window.location.origin}/">
-    <title></title>
+    <title>${printDocumentTitle().replace(/</g, '&lt;')}</title>
     ${headStyles.join('\n')}
+    <link rel="stylesheet" href="${printFontCssUrl(fontKey)}" data-print-font="${fontKey}">
     ${extraPrintStyles}
 </head>
 <body class="inv-print-body-isolated">
@@ -1431,7 +1453,8 @@ const triggerPrintInvoice = async () => {
             setTimeout(resolve, 1500);
         });
 
-        await new Promise((r) => setTimeout(r, 200));
+        // Printing before the webfont arrives prints Tahoma or blank Arabic text.
+        await waitForPrintFont(fontKey, iframeDoc);
 
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -1446,60 +1469,97 @@ const triggerPrintInvoice = async () => {
         await nextTick();
         window.print();
         document.title = origTitle;
+    } finally {
+        isPrinting.value = false;
     }
+};
+
+// Page slices for the PDF, in CSS px of the sheet. Each cut lands on the
+// bottom edge of a table row or block, so no row is split across two pages.
+const pdfPageSlices = (bodyEl, firstCapacity, nextCapacity) => {
+    const top = bodyEl.getBoundingClientRect().top;
+    const total = bodyEl.offsetHeight;
+    const cuts = Array.from(bodyEl.querySelectorAll(
+        '.inv-print-table thead, .inv-print-table tr, .inv-doc-ribbon, .inv-print-meta-grid, '
+        + '.inv-print-summary-row, .inv-print-signatures, .inv-print-footer, .print-document-header',
+    ))
+        .map((el) => el.getBoundingClientRect().bottom - top)
+        .sort((a, b) => a - b);
+
+    const slices = [];
+    let start = 0;
+    while (total - start > (slices.length ? nextCapacity : firstCapacity)) {
+        const capacity = slices.length ? nextCapacity : firstCapacity;
+        const limit = start + capacity;
+        // Only accept a cut that still fills most of the page.
+        const fit = cuts.filter((c) => c > start + capacity * 0.5 && c <= limit);
+        const end = fit.length ? fit[fit.length - 1] : limit;
+        slices.push([start, end]);
+        start = end;
+    }
+    slices.push([start, total]);
+    return slices;
 };
 
 const exportInvoicePdf = async () => {
     const docEl = document.getElementById('invoice-printable-doc');
-    if (!docEl) return;
+    if (!docEl || isExportingPdf.value) return;
     isExportingPdf.value = true;
+    const prevZoom = zoomLevel.value;
     try {
-        const prevZoom = zoomLevel.value;
         zoomLevel.value = 100;
         await nextTick();
+        // html2canvas draws with whatever font is loaded at capture time.
+        await waitForPrintFont(printSettings.fontFamily);
 
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
         const pageWidth = 210;
         const pageHeight = 297;
+        const captureOptions = {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: false,
+            // The on-screen paper frame does not belong in the file.
+            onclone: (clonedDoc) => {
+                const body = clonedDoc.querySelector('#invoice-printable-doc .inv-document-body');
+                if (body) {
+                    body.style.borderColor = 'transparent';
+                    body.style.borderRadius = '0';
+                    body.style.boxShadow = 'none';
+                }
+            },
+        };
 
         const coverEl = docEl.querySelector('.inv-print-cover');
         const bodyEl = docEl.querySelector('.inv-document-body') || docEl;
 
         if (printSettings.showCover && coverEl) {
-            const coverCanvas = await html2canvas(coverEl, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff',
-                logging: false,
-            });
-            const coverData = coverCanvas.toDataURL('image/jpeg', 0.95);
-            pdf.addImage(coverData, 'JPEG', 0, 0, pageWidth, pageHeight);
+            const coverCanvas = await html2canvas(coverEl, captureOptions);
+            pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidth, pageHeight);
             pdf.addPage();
         }
 
-        const bodyCanvas = await html2canvas(bodyEl, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false,
+        const pagePx = (bodyEl.offsetWidth * pageHeight) / pageWidth;
+        const marginPx = 18;
+        const slices = pdfPageSlices(bodyEl, pagePx - marginPx, pagePx - marginPx * 2);
+        const bodyCanvas = await html2canvas(bodyEl, captureOptions);
+        const ratio = bodyCanvas.width / bodyEl.offsetWidth;
+        const mmPerPx = pageWidth / bodyEl.offsetWidth;
+
+        slices.forEach(([start, end], index) => {
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = bodyCanvas.width;
+            sliceCanvas.height = Math.max(1, Math.round((end - start) * ratio));
+            const ctx = sliceCanvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            ctx.drawImage(bodyCanvas, 0, -Math.round(start * ratio));
+
+            if (index > 0) pdf.addPage();
+            const offsetMm = index > 0 ? marginPx * mmPerPx : 0;
+            pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, offsetMm, pageWidth, (end - start) * mmPerPx);
         });
-
-        zoomLevel.value = prevZoom;
-
-        const bodyData = bodyCanvas.toDataURL('image/jpeg', 0.95);
-        const imgHeight = (bodyCanvas.height * pageWidth) / bodyCanvas.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-
-        pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-            position = heightLeft - imgHeight;
-            pdf.addPage();
-            pdf.addImage(bodyData, 'JPEG', 0, position, pageWidth, imgHeight);
-            heightLeft -= pageHeight;
-        }
 
         const fileName = `${t('invoice') || 'Invoice'}_${printInvoiceData.value?.invoice_number || 'doc'}.pdf`;
         pdf.save(fileName);
@@ -1508,7 +1568,17 @@ const exportInvoicePdf = async () => {
         console.error('PDF export error:', err);
         ElMessage.error(t('failed_to_export_pdf') || 'فشل تصدير ملف PDF');
     } finally {
+        zoomLevel.value = prevZoom;
         isExportingPdf.value = false;
+    }
+};
+
+// Ctrl/Cmd+P in the preview prints the invoice sheet, not the admin page.
+const onPrintShortcut = (event) => {
+    if (!printInvoiceDialogVisible.value || !printInvoiceData.value) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        triggerPrintInvoice();
     }
 };
 
@@ -1516,8 +1586,10 @@ watch(printInvoiceDialogVisible, (visible) => {
     if (typeof document !== 'undefined') {
         if (visible) {
             document.body.classList.add('inv-print-dialog-open');
+            window.addEventListener('keydown', onPrintShortcut);
         } else {
             document.body.classList.remove('inv-print-dialog-open');
+            window.removeEventListener('keydown', onPrintShortcut);
         }
     }
 });
@@ -1567,6 +1639,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
+    window.removeEventListener('keydown', onPrintShortcut);
     clearTimeout(searchTimer);
     if (typeof document !== 'undefined') {
         document.body.classList.remove('inv-print-dialog-open');
@@ -2085,7 +2158,31 @@ onBeforeUnmount(() => {
     max-width: 860px;
     margin: 0 auto;
     direction: rtl;
-    font-family: 'Cairo', 'Almarai', Tahoma, sans-serif;
+    font-family: var(--inv-font, 'Cairo', 'Noto Sans Arabic', Tahoma, sans-serif);
+    /* Arabic needs room above and below for dots and diacritics. */
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    font-kerning: normal;
+}
+
+/* The shared header sets its own family; the chosen print font wins here. */
+.inv-printable-sheet :deep(.print-document-header) {
+    font-family: inherit;
+}
+
+/* Mixed Arabic/Latin text (model codes, English notes) keeps its own order. */
+.inv-printable-sheet .inv-item-name,
+.inv-printable-sheet .inv-item-desc,
+.inv-printable-sheet .inv-notes-text,
+.inv-printable-sheet .inv-cm-item span {
+    unicode-bidi: plaintext;
+}
+
+/* Numbers line up in columns whatever the typeface. */
+.inv-printable-sheet .inv-print-table td,
+.inv-printable-sheet .inv-totals-table td {
+    font-variant-numeric: tabular-nums;
 }
 
 /* Screen cover preview */
@@ -2162,7 +2259,8 @@ onBeforeUnmount(() => {
     transform: rotate(-28deg);
     font-size: 54px;
     font-weight: 900;
-    letter-spacing: 0.12em;
+    letter-spacing: 0;
+    line-height: 1.4;
     padding: 12px 30px;
     border-radius: 12px;
     text-align: center;
@@ -2481,8 +2579,9 @@ onBeforeUnmount(() => {
     padding: 6px 8px;
     text-align: right;
     font-weight: 800;
-    font-size: 10px;
-    letter-spacing: 0.02em;
+    font-size: 10.5px;
+    letter-spacing: 0;
+    line-height: 1.4;
 }
 
 .inv-print-table tbody td {
@@ -2509,7 +2608,7 @@ onBeforeUnmount(() => {
 .inv-item-name {
     font-weight: 700;
     color: #0f172a;
-    line-height: 1.3;
+    line-height: 1.45;
 }
 
 .inv-item-name-en {
@@ -2652,7 +2751,7 @@ onBeforeUnmount(() => {
     margin: 0;
     color: #0f172a;
     white-space: pre-wrap;
-    line-height: 1.4;
+    line-height: 1.7;
 }
 
 .inv-expenses-list {
@@ -2671,7 +2770,7 @@ onBeforeUnmount(() => {
 .inv-print-legal-notice {
     font-size: 9.5px;
     color: #64748b;
-    line-height: 1.35;
+    line-height: 1.6;
     padding: 4px 6px;
     background: #fafafa;
     border-radius: 4px;
@@ -3068,7 +3167,6 @@ onBeforeUnmount(() => {
 
     .inv-doc-ribbon,
     .inv-print-meta-grid,
-    .inv-print-table,
     .inv-print-table tr,
     .inv-print-summary-row,
     .inv-print-signatures,

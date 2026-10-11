@@ -42,6 +42,7 @@
                     size="small"
                     type="primary"
                     class="btn-print-action"
+                    :loading="isPrinting"
                     @click="$emit('print-now')"
                 >
                     <i class="fas fa-print"></i> {{ $t('print_now') || 'طباعة' }}
@@ -116,6 +117,34 @@
                             <i class="fas fa-compress"></i> {{ $t('density_compact') || 'مدمج' }}
                         </el-radio-button>
                     </el-radio-group>
+                </div>
+
+                <!-- Group C2: Arabic Typeface -->
+                <div v-if="showFontPicker" class="tb-group tb-group-font">
+                    <span class="tb-group-title">
+                        <i class="fas fa-font"></i>
+                        {{ $t('print_font') || 'الخط' }}:
+                    </span>
+                    <el-select
+                        v-model="modelValue.fontFamily"
+                        size="small"
+                        class="font-picker-select"
+                        popper-class="print-font-picker-popper"
+                        :style="{ fontFamily: printFontStack(modelValue.fontFamily) }"
+                        @visible-change="onFontPickerOpen"
+                    >
+                        <el-option
+                            v-for="font in PRINT_FONTS"
+                            :key="font.key"
+                            :value="font.key"
+                            :label="font.label"
+                        >
+                            <span class="font-option" :style="{ fontFamily: printFontStack(font.key) }">
+                                <span class="font-option-sample">فاتورة مبيعات ١٢٣</span>
+                                <span class="font-option-meta">{{ font.label }} · {{ font.hint }}</span>
+                            </span>
+                        </el-option>
+                    </el-select>
                 </div>
 
                 <!-- Group D: Advanced Customization Popover -->
@@ -269,6 +298,7 @@
                         type="primary"
                         size="default"
                         class="btn-print-prominent"
+                        :loading="isPrinting"
                         @click="$emit('print-now')"
                     >
                         <i class="fas fa-print"></i>
@@ -283,6 +313,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { PRINT_FONTS, ensurePrintFont, printFontStack } from '@/utils/printFonts';
 
 const props = defineProps({
     modelValue: {
@@ -294,6 +325,15 @@ const props = defineProps({
         default: 100,
     },
     isExportingPdf: {
+        type: Boolean,
+        default: false,
+    },
+    isPrinting: {
+        type: Boolean,
+        default: false,
+    },
+    // Only documents that apply printSettings.fontFamily should show the picker.
+    showFontPicker: {
         type: Boolean,
         default: false,
     },
@@ -320,6 +360,11 @@ const themes = [
     { key: 'indigo', label: 'نيلي معتمد', color: '#4338ca' },
 ];
 
+// Load every face on first open so each option previews in its own font.
+const onFontPickerOpen = (open) => {
+    if (open) PRINT_FONTS.forEach((font) => ensurePrintFont(font.key));
+};
+
 const onPresetChange = (val) => {
     emit('apply-preset', val);
 };
@@ -338,7 +383,37 @@ const activeTogglesCount = computed(() => {
 });
 </script>
 
+<style>
+/* The dropdown is teleported, so its option styles cannot be scoped. */
+.print-font-picker-popper .el-select-dropdown__item {
+    height: auto;
+    line-height: 1.4;
+    padding-block: 6px;
+}
+</style>
+
 <style scoped>
+.font-picker-select {
+    width: 150px;
+}
+
+.font-option {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.font-option-sample {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.font-option-meta {
+    font-size: 11px;
+    color: #64748b;
+}
+
 .print-settings-toolbar {
     background: #ffffff;
     border-bottom: 1px solid #e2e8f0;
