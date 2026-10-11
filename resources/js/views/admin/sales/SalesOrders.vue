@@ -163,6 +163,7 @@
 
             <el-table
                 v-else
+                ref="ordersTable"
                 v-loading="store.loading"
                 :data="store.orders"
                 row-key="id"
@@ -172,6 +173,7 @@
                 :default-sort="{ prop: sort.prop, order: sort.order }"
                 @sort-change="onSortChange"
                 @row-click="(row, column) => column?.property !== 'actions' && openDetailDrawer(row.id)"
+                @expand-change="onExpandChange"
             >
                 <template #empty>
                     <el-empty v-if="!store.loading && (activeFilterCount || filters.stage !== 'all')" :description="$t('there_are_no_requests_matching')" :image-size="90">
@@ -182,6 +184,13 @@
                     </el-empty>
                     <span v-else />
                 </template>
+
+                <!-- The order's lines, with what each variant line is for. -->
+                <el-table-column type="expand" width="44">
+                    <template #default="{ row }">
+                        <DocumentLinesPanel :cache-key="`sales-order:${row.id}`" :loader="() => loadOrderLines(row.id)" />
+                    </template>
+                </el-table-column>
 
                 <el-table-column prop="order_number" :label="$t('order_number')" min-width="140" sortable="custom">
                     <template #default="{ row }">
@@ -213,7 +222,17 @@
                     <template #default="{ row }">
                         <div class="so-stack so-end">
                             <strong class="so-amount">{{ formatCurrency(row.total) }}</strong>
-                            <span class="so-sub">{{ $t('so_items_n', { count: row.items_count ?? 0 }) }}</span>
+                            <button
+                                v-if="row.items_count"
+                                type="button"
+                                class="lines-toggle"
+                                :title="$t('inv_show_lines')"
+                                @click.stop="toggleLines(row)"
+                            >
+                                {{ $t('so_items_n', { count: row.items_count }) }}
+                                <i class="fas fa-chevron-down lines-chevron" :class="{ open: expandedIds.has(row.id) }"></i>
+                            </button>
+                            <span v-else class="so-sub">{{ $t('so_items_n', { count: 0 }) }}</span>
                         </div>
                     </template>
                 </el-table-column>
@@ -413,9 +432,10 @@
                                 <template #default="{ row }">
                                     <strong>{{ row.product?.name_ar || row.product?.name_en || row.product?.name || row.description || '—' }}</strong>
                                     <div v-if="row.product_variant_id" class="row-variant">
-                                        <VariantChip :label="variantLabelOf(row.variant) || row.description" />
+                                        <VariantDetails v-if="row.variant" :variant="row.variant" show-codes />
+                                        <VariantChip v-else :label="row.description" />
                                     </div>
-                                    <p class="row-sub">{{ row.variant?.sku || row.product?.sku || '—' }}</p>
+                                    <p v-else class="row-sub">{{ row.product?.sku || '—' }}</p>
                                 </template>
                             </el-table-column>
                             <el-table-column :label="$t('quantity')" width="80" align="center">
@@ -1392,7 +1412,8 @@
                                         <div class="so-item-name">{{ item.product?.name_ar || item.product?.name || item.description || '-' }}</div>
                                         <div v-if="item.product?.name_en" class="so-item-name-en">{{ item.product.name_en }}</div>
                                         <div v-if="item.product_variant_id" class="so-item-variant">
-                                            <VariantChip :label="variantLabelOf(item.variant) || item.description" />
+                                            <VariantDetails v-if="hasVariantDetails(item.variant)" :variant="item.variant" print />
+                                            <VariantChip v-else :label="variantLabelOf(item.variant) || item.description" />
                                         </div>
                                         <div v-else-if="item.description && item.description !== item.product?.name_ar" class="so-item-desc">
                                             {{ item.description }}
@@ -1400,6 +1421,9 @@
                                     </td>
                                     <td v-if="printSettings.showSku" class="so-sku-cell">
                                         <code>{{ item.variant?.sku || item.product?.sku || '—' }}</code>
+                                        <div v-if="item.variant?.barcode" class="so-barcode" dir="ltr">
+                                            <i class="fas fa-barcode"></i> {{ item.variant.barcode }}
+                                        </div>
                                     </td>
                                     <td style="text-align: center;" class="so-qty-cell">
                                         <span class="so-qty-num">{{ item.quantity }}</span>
@@ -1686,6 +1710,8 @@ import { Plus, Refresh, RefreshLeft, Search, Printer } from '@element-plus/icons
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
+import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
 import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import PrintSettingsToolbar from '@/components/admin/PrintSettingsToolbar.vue';
 import { usePrintSettings } from '@/composables/usePrintSettings';
@@ -2466,6 +2492,39 @@ const toNum = (v) => {
 };
 
 const lineTotal = (row) => toNum(row.unit_price) * toNum(row.quantity) - toNum(row.discount) + toNum(row.tax);
+
+const hasVariantDetails = (variant) => !!(variant && (variant.size || variant.color || variant.material || variant.specs?.length));
+
+// ── Expandable lines ─────────────────────────────────────────────────────
+// The list ships counts only, so an opened row fetches its order's lines.
+const ordersTable = ref(null);
+const expandedIds = reactive(new Set());
+
+const onExpandChange = (row, expandedRows) => {
+    const open = Array.isArray(expandedRows) ? expandedRows.some((r) => r.id === row.id) : !!expandedRows;
+    if (open) expandedIds.add(row.id);
+    else expandedIds.delete(row.id);
+};
+
+const toggleLines = (row) => ordersTable.value?.toggleRowExpansion(row);
+
+const loadOrderLines = async (id) => {
+    const res = await salesOrdersApi.getById(id);
+    const order = res.data?.data || res.data;
+    return (order?.items || []).map((item) => ({
+        id: item.id,
+        image: item.product?.image_main,
+        name: item.product?.name_ar || item.product?.name_en || item.description,
+        sku: item.product?.sku,
+        variant: item.variant,
+        variantId: item.product_variant_id,
+        quantity: item.quantity,
+        unit: item.product_unit?.name || item.unit_name,
+        unitPrice: item.unit_price,
+        discount: item.discount,
+        total: lineTotal(item),
+    }));
+};
 
 const invoiceDueAmount = computed(() =>
     invoice.value ? Math.max(0, toNum(invoice.value.total) - toNum(invoice.value.paid_amount)) : 0
@@ -3270,6 +3329,12 @@ onMounted(async () => {
 .row-variant {
     margin: 0.2rem 0 0.1rem;
 }
+
+.lines-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; font-weight: 600; color: #2563eb; }
+.lines-toggle:hover { text-decoration: underline; }
+.lines-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+.lines-chevron { font-size: 0.6rem; transition: transform 0.2s ease; }
+.lines-chevron.open { transform: rotate(180deg); }
 
 .sales-page {
     padding: 0;
@@ -5051,7 +5116,15 @@ onMounted(async () => {
 .so-item-variant {
     font-size: 9.5px;
     color: #0369a1;
+    margin-top: 3px;
+}
+
+.so-barcode {
     margin-top: 2px;
+    font-size: 8.5px;
+    color: #64748b;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
 }
 
 .so-item-desc {
