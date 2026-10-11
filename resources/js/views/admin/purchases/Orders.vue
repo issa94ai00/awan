@@ -1066,6 +1066,27 @@
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </div>
+                            <!-- Which size the line is for, spelled out. -->
+                            <VariantDetails
+                                v-if="rowVariantInfo(item)"
+                                :variant="rowVariantInfo(item)"
+                                show-codes
+                                class="line-variant-details"
+                            />
+                            <!-- What the sale this request buys in for asked for on
+                                 this line, kept in view after the size is changed. -->
+                            <div
+                                v-if="item.from_sale"
+                                class="line-sale-ref"
+                                :class="{ 'is-changed': saleSizeChanged(item) }"
+                            >
+                                <i class="fas" :class="saleSizeChanged(item) ? 'fa-right-left' : 'fa-link'"></i>
+                                <span>{{ $t('po_line_from_sale', { number: form.sale_link?.number || '' }) }}</span>
+                                <span v-if="item.from_sale.label" class="sale-ref-size" dir="ltr">{{ item.from_sale.label }}</span>
+                                <span class="sale-ref-qty" dir="ltr">×{{ item.from_sale.quantity }}</span>
+                                <strong v-if="saleSizeChanged(item)">· {{ $t('po_size_changed') }}</strong>
+                                <strong v-else-if="num(item.quantity) !== num(item.from_sale.quantity)">· {{ $t('po_qty_changed') }}</strong>
+                            </div>
                             <!-- The other sizes of the picked product, one click away:
                                  changing the size does not mean searching for the
                                  product again. A price the operator typed is kept;
@@ -1087,12 +1108,21 @@
                                         :key="optionKey(v)"
                                         type="button"
                                         class="switch-chip"
-                                        :class="{ 'is-active': optionKey(v) === item.pick, 'is-out': stockOf(v) === 0 }"
-                                        :title="[v.sku, $t('po_cost_label', { price: money(v.cost_price || v.price) })].filter(Boolean).join(' · ')"
+                                        :class="{
+                                            'is-active': optionKey(v) === item.pick,
+                                            'is-out': stockOf(v) === 0,
+                                            'is-taken': optionKey(v) !== item.pick && lineNumberOf(v, idx),
+                                        }"
+                                        :title="[
+                                            lineNumberOf(v, idx) && optionKey(v) !== item.pick ? $t('po_size_on_line', { n: lineNumberOf(v, idx) }) : '',
+                                            v.sku,
+                                            $t('po_cost_label', { price: money(v.cost_price || v.price) }),
+                                        ].filter(Boolean).join(' · ')"
                                         @click="switchLineVariant(idx, v)"
                                     >
                                         <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
-                                        <small v-if="stockOf(v) != null" class="chip-stock">{{ stockOf(v) }}</small>
+                                        <small v-if="optionKey(v) !== item.pick && lineNumberOf(v, idx)" class="chip-taken">#{{ lineNumberOf(v, idx) }}</small>
+                                        <small v-else-if="stockOf(v) != null" class="chip-stock">{{ stockOf(v) }}</small>
                                     </button>
                                 </div>
                             </div>
@@ -1686,9 +1716,10 @@ import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import { resolveImageUrl } from '@/utils/productImages';
 import { invoicesApi } from '@/api/invoices';
-import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
+import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 
 const { t } = useI18n();
 
@@ -1855,10 +1886,39 @@ const siblingVariants = (item) => (item.product_id ? siblingsOf(item.product_id)
 const needsSize = (item) => Boolean(item.product_id) && !item.product_variant_id && siblingVariants(item).length > 0;
 const linesNeedingSize = computed(() => form.items.filter(needsSize));
 
+// A line's variant details: the product's full size list carries the specs;
+// until it arrives, the variant the line came with, or its picked row.
+const rowVariantInfo = (item) => {
+    if (!item.product_variant_id) return null;
+    const option = productOptions.value.find((p) => optionKey(p) === item.pick);
+    const fallback = item.variant || (option ? variantFieldsOf(option) : null);
+    return lineVariantInfo({ ...item, variant: fallback }, siblingVariants(item));
+};
+
+// The 1-based number of another line already holding this size, or 0.
+const lineNumberOf = (variantRow, exceptIdx) => {
+    const key = optionKey(variantRow);
+    const index = form.items.findIndex((line, i) => i !== exceptIdx && line.pick === key);
+    return index + 1;
+};
+
+// A line filled from a sale whose size no longer matches what was sold.
+const saleSizeChanged = (item) => Boolean(item.from_sale?.variant_id)
+    && (item.product_variant_id || null) !== item.from_sale.variant_id;
+
 const switchLineVariant = (idx, variantRow) => {
     const line = form.items[idx];
     const key = optionKey(variantRow);
     if (!line || line.pick === key) return;
+
+    // That size is already a line: one line per size, so the two join.
+    const other = form.items.find((l, i) => i !== idx && l.pick === key);
+    if (other) {
+        other.quantity = num(other.quantity) + num(line.quantity);
+        form.items.splice(idx, 1);
+        ElMessage.info(t('po_merged_into_line', { n: form.items.indexOf(other) + 1 }));
+        return;
+    }
 
     const previous = siblingVariants(line).find((r) => optionKey(r) === line.pick);
     const defaultCost = (r) => num(r.cost_price || r.price);
@@ -1873,6 +1933,7 @@ const switchLineVariant = (idx, variantRow) => {
     line.pick = key;
     line.product_id = variantRow.id;
     line.product_variant_id = variantRow.variant_id;
+    line.variant = variantFieldsOf(variantRow);
     line.sold_as = '';
     if (costUntouched) line.unit_price = variantRow.cost_price || variantRow.price;
     if (saleUntouched) line.sale_price = variantRow.price;
@@ -2812,7 +2873,8 @@ const orderPayload = () => {
         tax: num(form.tax),
         notes: form.notes || null,
         ...saleLinkPayload(),
-        items: form.items.map(({ key, pick, sold_as, ...item }) => ({
+        // sold_as, variant and from_sale are display-only.
+        items: form.items.map(({ key, pick, sold_as, variant, from_sale, ...item }) => ({
             ...item,
             sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
         })),
@@ -3325,6 +3387,12 @@ const applySaleDraft = ({ lines, note, notes, expected }) => {
         unit_price: num(line.unit_price),
         sale_price: line.sale_price != null ? num(line.sale_price) : '',
         sold_as: line.needs_variant ? (line.sold_as || '') : '',
+        variant: line.variant ? variantFieldsOf(line.variant) : null,
+        from_sale: {
+            variant_id: line.product_variant_id || null,
+            label: line.variant ? variantLabelOf(line.variant) : (line.sold_as || ''),
+            quantity: num(line.quantity),
+        },
     }));
     rememberProducts(lines);
 
@@ -5022,6 +5090,67 @@ onMounted(async () => {
 
 .switch-chip.is-out .chip-stock {
     color: #dc2626;
+}
+
+/* A size another line already holds: picking it joins the two lines. */
+.switch-chip.is-taken {
+    border-style: dashed;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.switch-chip .chip-taken {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #64748b;
+    padding-inline-start: 0.35rem;
+    border-inline-start: 1px solid #e2e8f0;
+}
+
+.line-variant-details {
+    margin: 0.45rem 0 0.1rem;
+    padding-inline-start: 2.1rem;
+}
+
+/* The sale's own line, kept beside the request's. */
+.line-sale-ref {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    width: fit-content;
+    margin: 0.4rem 0 0;
+    margin-inline-start: 2.1rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: #475569;
+    background: #f1f5f9;
+}
+
+.line-sale-ref i {
+    font-size: 0.7rem;
+    color: #64748b;
+}
+
+.line-sale-ref .sale-ref-size {
+    font-weight: 700;
+    color: #0f172a;
+    unicode-bidi: isolate;
+}
+
+.line-sale-ref .sale-ref-qty {
+    font-variant-numeric: tabular-nums;
+}
+
+.line-sale-ref.is-changed {
+    color: #92400e;
+    background: #fef3c7;
+}
+
+.line-sale-ref.is-changed i,
+.line-sale-ref.is-changed .sale-ref-size {
+    color: #92400e;
 }
 
 /* Dropdown Footer */
