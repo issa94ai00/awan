@@ -66,13 +66,27 @@ class EmployeeController extends Controller
             'email' => ['required', 'email', 'unique:employees,email', 'unique:users,email'],
             'phone' => 'required|string|max:50',
             'position' => 'required|string|max:255',
+            'job_title' => 'nullable|string|max:255',
             'department' => 'required|string|max:255',
             'hire_date' => 'required|date',
             'salary' => 'nullable|numeric|min:0',
+            'bonus' => 'nullable|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:100',
+            'monthly_sales_target' => 'nullable|numeric|min:0',
+            'employment_type' => 'nullable|string|max:100',
+            'contract_type' => 'nullable|string|max:100',
+            'national_id' => 'nullable|string|max:100',
+            'nationality' => 'nullable|string|max:100',
+            'contract_start' => 'nullable|date',
+            'contract_end' => 'nullable|date',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:50',
+            'bank_name' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|string|max:100',
             'status' => 'required|in:نشط,غير نشط',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
-            'avatar' => 'nullable|url',
+            'avatar' => 'nullable|string|max:1000',
             'password' => 'nullable|string|min:8'
         ]);
 
@@ -92,15 +106,15 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee)
     {
-        $employee->load('warehouse:id,name,code');
+        $employee->load([
+            'warehouse:id,name,code',
+            'attendance' => fn ($q) => $q->latest('date')->limit(10),
+            'leaveRequests' => fn ($q) => $q->latest()->limit(10),
+        ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Employee retrieved successfully',
-            // Whether this person can sign in at all. The edit form shows an
-            // empty password box either way, so without this an admin could not
-            // tell a staff member who has a login from one who has never had
-            // one — and "why can't they open the app?" had no answer on screen.
             'data' => $employee->toArray() + ['has_login' => $employee->user_id !== null],
         ]);
     }
@@ -118,13 +132,27 @@ class EmployeeController extends Controller
             ],
             'phone' => 'required|string|max:50',
             'position' => 'required|string|max:255',
+            'job_title' => 'nullable|string|max:255',
             'department' => 'required|string|max:255',
             'hire_date' => 'required|date',
             'salary' => 'nullable|numeric|min:0',
+            'bonus' => 'nullable|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:100',
+            'monthly_sales_target' => 'nullable|numeric|min:0',
+            'employment_type' => 'nullable|string|max:100',
+            'contract_type' => 'nullable|string|max:100',
+            'national_id' => 'nullable|string|max:100',
+            'nationality' => 'nullable|string|max:100',
+            'contract_start' => 'nullable|date',
+            'contract_end' => 'nullable|date',
+            'emergency_contact_name' => 'nullable|string|max:255',
+            'emergency_contact_phone' => 'nullable|string|max:50',
+            'bank_name' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|string|max:100',
             'status' => 'required|in:نشط,غير نشط',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
-            'avatar' => 'nullable|url',
+            'avatar' => 'nullable|string|max:1000',
             'password' => 'nullable|string|min:8'
         ]);
 

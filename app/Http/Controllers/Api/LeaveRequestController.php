@@ -59,7 +59,12 @@ class LeaveRequestController extends Controller
             'notes' => 'nullable|string|max:1000'
         ]);
 
+        if ($validated['status'] === 'approved' && empty($validated['approved_by'])) {
+            $validated['approved_by'] = auth()->id();
+        }
+
         $leaveRequest = LeaveRequest::create($validated);
+        $leaveRequest->load('employee');
 
         return response()->json([
             'success' => true,
@@ -82,17 +87,22 @@ class LeaveRequestController extends Controller
     public function update(Request $request, LeaveRequest $leaveRequest)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|exists:employees,id',
-            'leave_type' => 'required|string|max:255',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'status' => 'required|in:pending,approved,rejected',
+            'employee_id' => 'sometimes|required|exists:employees,id',
+            'leave_type' => 'sometimes|required|string|max:255',
+            'start_date' => 'sometimes|required|date',
+            'end_date' => 'sometimes|required|date|after_or_equal:start_date',
+            'status' => 'sometimes|required|in:pending,approved,rejected',
             'reason' => 'nullable|string|max:1000',
             'approved_by' => 'nullable|exists:users,id',
             'notes' => 'nullable|string|max:1000'
         ]);
 
+        if (isset($validated['status']) && $validated['status'] === 'approved' && empty($validated['approved_by'])) {
+            $validated['approved_by'] = auth()->id();
+        }
+
         $leaveRequest->update($validated);
+        $leaveRequest->load('employee');
 
         return response()->json([
             'success' => true,

@@ -45,15 +45,52 @@ export const usePayrollsStore = defineStore('payrolls', {
             }
         },
 
-        /**
-         * Moves a payroll along its lifecycle.
-         *
-         * The two status changes are accounting events on the server:
-         * `processed` recognises the wage as a cost of the period worked, and
-         * `paid` settles the liability that raised. The row is refetched
-         * afterwards rather than patched locally, so what the screen shows is
-         * what was actually posted.
-         */
+        async createPayroll(payload) {
+            this.loading = true;
+            this.error = null;
+            try {
+                const res = await payrollsApi.create(payload);
+                const created = res.data?.data || res.data;
+                await this.fetchPayrolls();
+                return created;
+            } catch (err) {
+                this.error = err.response?.data?.message || err.message || 'Failed to create payroll';
+                throw err;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async deletePayroll(id) {
+            this.loading = true;
+            this.error = null;
+            try {
+                await payrollsApi.delete(id);
+                this.payrolls = this.payrolls.filter(p => p.id !== id);
+                if (this.pagination.total > 0) this.pagination.total--;
+            } catch (err) {
+                this.error = err.response?.data?.message || err.message || 'Failed to delete payroll';
+                throw err;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async autoGenerate(payload) {
+            this.loading = true;
+            this.error = null;
+            try {
+                const res = await payrollsApi.autoGenerate(payload);
+                await this.fetchPayrolls();
+                return res.data;
+            } catch (err) {
+                this.error = err.response?.data?.message || err.message || 'Failed to auto-generate payrolls';
+                throw err;
+            } finally {
+                this.loading = false;
+            }
+        },
+
         async updatePayroll(id, payload) {
             this.error = null;
             try {

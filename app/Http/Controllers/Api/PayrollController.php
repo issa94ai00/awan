@@ -57,7 +57,19 @@ class PayrollController extends Controller
             $query->where('employee_id', $request->employee_id);
         }
 
-        $payrolls = $query->latest()->paginate(20);
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('payroll_number', 'like', "%{$search}%")
+                  ->orWhereHas('employee', function ($eq) use ($search) {
+                      $eq->where('first_name', 'like', "%{$search}%")
+                         ->orWhere('last_name', 'like', "%{$search}%")
+                         ->orWhere('department', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $payrolls = $query->latest()->paginate(25);
 
         return response()->json([
             'success' => true,
@@ -315,16 +327,20 @@ class PayrollController extends Controller
             'payment_date' => 'nullable|date|after_or_equal:pay_period_end',
         ]);
 
-        $employees = Employee::all();
+        $employees = Employee::where('status', 'نشط')->get();
         $createdCount = 0;
+        $skippedCount = 0;
 
         foreach ($employees as $employee) {
-            $attendances = Attendance::where('employee_id', $employee->id)
-                ->whereBetween('date', [$validated['pay_period_start'], $validated['pay_period_end']])
-                ->get();
+            $existing = Payroll::where('employee_id', $employee->id)
+                ->where('pay_period_start', $validated['pay_period_start'])
+                ->where('pay_period_end', $validated['pay_period_end'])
+                ->first();
 
-            $overtimeHours = $attendances->sum('overtime_hours');
-            $overtimeRate = $employee->hourly_rate ?? 0;
+            if ($existing) {
+                $skippedCount++;
+                continue;
+            }
 
             $payroll = Payroll::create([
                 'payroll_number' => $this->nextPayrollNumber(),
@@ -333,9 +349,9 @@ class PayrollController extends Controller
                 'pay_period_end' => $validated['pay_period_end'],
                 'payment_date' => $validated['payment_date'],
                 'basic_salary' => $employee->salary ?? 0,
-                'overtime_hours' => $overtimeHours,
-                'overtime_rate' => $overtimeRate,
-                'bonuses' => 0,
+                'overtime_hours' => 0,
+                'overtime_rate' => 0,
+                'bonuses' => $employee->bonus ?? 0,
                 'deductions' => 0,
                 'status' => Payroll::STATUS_PENDING,
                 'created_by' => auth()->id(),
@@ -346,10 +362,18 @@ class PayrollController extends Controller
             $createdCount++;
         }
 
+        $message = "تم إنشاء {$createdCount} مسيرة رواتب بنجاح";
+        if ($skippedCount > 0) {
+            $message .= " (تم تخطي {$skippedCount} موظف مسجلين مسبقاً لهذه الفترة)";
+        }
+
         return response()->json([
             'success' => true,
-            'message' => "تم إنشاء {$createdCount} مسيرة رواتب بنجاح",
-            'data' => ['created_count' => $createdCount]
+            'message' => $message,
+            'data' => [
+                'created_count' => $createdCount,
+                'skipped_count' => $skippedCount
+            ]
         ], 201);
     }
 }

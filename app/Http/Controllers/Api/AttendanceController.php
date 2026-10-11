@@ -55,13 +55,14 @@ class AttendanceController extends Controller
         $validated = $request->validate([
             'employee_id' => 'required|exists:employees,id',
             'date' => 'required|date',
-            'clock_in' => 'nullable|date_format:Y-m-d H:i:s',
-            'clock_out' => 'nullable|date_format:Y-m-d H:i:s',
+            'clock_in' => 'nullable|date',
+            'clock_out' => 'nullable|date',
             'status' => 'required|in:present,late,absent,remote',
             'notes' => 'nullable|string|max:1000'
         ]);
 
         $attendance = Attendance::create($validated);
+        $attendance->load('employee');
 
         return response()->json([
             'success' => true,
@@ -84,15 +85,16 @@ class AttendanceController extends Controller
     public function update(Request $request, Attendance $attendance)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|exists:employees,id',
-            'date' => 'required|date',
-            'clock_in' => 'nullable|date_format:Y-m-d H:i:s',
-            'clock_out' => 'nullable|date_format:Y-m-d H:i:s',
-            'status' => 'required|in:present,late,absent,remote',
+            'employee_id' => 'sometimes|required|exists:employees,id',
+            'date' => 'sometimes|required|date',
+            'clock_in' => 'nullable|date',
+            'clock_out' => 'nullable|date',
+            'status' => 'sometimes|required|in:present,late,absent,remote',
             'notes' => 'nullable|string|max:1000'
         ]);
 
         $attendance->update($validated);
+        $attendance->load('employee');
 
         return response()->json([
             'success' => true,

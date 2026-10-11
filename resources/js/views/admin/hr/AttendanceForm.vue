@@ -1,18 +1,28 @@
 <template>
     <div class="hr-page hr-attendance-form">
-        <div class="page-header">
-            <div class="page-title">
-                <h1>{{ formTitle }}</h1>
-                <p>{{ $t('record_employee_attendance_and_edit') }}</p>
-            </div>
-        </div>
+        <AdminPageHeader
+            :title="formTitle"
+            :subtitle="$t('record_employee_attendance_and_edit')"
+        >
+            <template #actions>
+                <el-button @click="cancel">{{ $t('cancel') }}</el-button>
+                <el-button type="primary" @click="submitForm" :loading="attendanceStore.loading">
+                    {{ submitLabel }}
+                </el-button>
+            </template>
+        </AdminPageHeader>
 
         <el-card shadow="hover" class="form-card">
             <el-form :model="form" :rules="rules" ref="attendanceForm" label-position="top" status-icon>
                 <el-row :gutter="20">
                     <el-col :xs="24" :sm="12">
                         <el-form-item :label="$t('employee')" prop="employee_id" :error="serverErrors.employee_id && serverErrors.employee_id[0]">
-                            <el-select v-model="form.employee_id" :placeholder="$t('select_employee')">
+                            <el-select
+                                v-model="form.employee_id"
+                                :placeholder="$t('select_employee')"
+                                filterable
+                                style="width: 100%"
+                            >
                                 <el-option
                                     v-for="employee in employees"
                                     :key="employee.id"
@@ -66,7 +76,7 @@
                 <el-row :gutter="20">
                     <el-col :xs="24" :sm="12">
                         <el-form-item :label="$t('status')" prop="status" :error="serverErrors.status && serverErrors.status[0]">
-                            <el-select v-model="form.status" :placeholder="$t('choose_the_status')">
+                            <el-select v-model="form.status" :placeholder="$t('choose_the_status')" style="width: 100%">
                                 <el-option :label="$t('present')" value="present" />
                                 <el-option :label="$t('late')" value="late" />
                                 <el-option :label="$t('absent')" value="absent" />
@@ -82,8 +92,10 @@
                 </el-row>
 
                 <div class="form-actions">
-                    <el-button type="primary" @click="submitForm" :loading="attendanceStore.loading">{{ submitLabel }}</el-button>
-                    <el-button type="text" @click="cancel">{{ $t('cancel') }}</el-button>
+                    <el-button type="primary" @click="submitForm" :loading="attendanceStore.loading">
+                        {{ submitLabel }}
+                    </el-button>
+                    <el-button @click="cancel">{{ $t('cancel') }}</el-button>
                 </div>
             </el-form>
         </el-card>
@@ -93,10 +105,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { useAttendanceStore } from '@/stores/attendance';
 import { useEmployeesStore } from '@/stores/employees';
 
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const attendanceStore = useAttendanceStore();
@@ -105,7 +120,7 @@ const attendanceForm = ref(null);
 
 const form = ref({
     employee_id: null,
-    date: '',
+    date: new Date().toISOString().slice(0, 10),
     clock_in: '',
     clock_out: '',
     status: 'present',
@@ -113,14 +128,14 @@ const form = ref({
 });
 
 const rules = {
-    employee_id: [{ required: true, message: window.t('employee_required'), trigger: 'change' }],
-    date: [{ required: true, message: window.t('date_required'), trigger: 'change' }],
-    status: [{ required: true, message: window.t('status_is_required'), trigger: 'change' }]
+    employee_id: [{ required: true, message: t('employee_required') || 'الموظف مطلوب', trigger: 'change' }],
+    date: [{ required: true, message: t('date_required') || 'التاريخ مطلوب', trigger: 'change' }],
+    status: [{ required: true, message: t('status_is_required') || 'الحالة مطلوبة', trigger: 'change' }]
 };
 
 const isEdit = computed(() => !!route.params.id);
-const formTitle = computed(() => (isEdit.value ? window.t('edit_attendance_record') : window.t('new_attendance_record')));
-const submitLabel = computed(() => (isEdit.value ? window.t('update') : window.t('save')));
+const formTitle = computed(() => (isEdit.value ? t('edit_attendance_record') || 'تعديل سجل الحضور' : t('new_attendance_record') || 'تسجيل حضور جديد'));
+const submitLabel = computed(() => (isEdit.value ? t('update') || 'تحديث' : t('save') || 'حفظ'));
 const employees = computed(() => employeesStore.employees || []);
 const serverErrors = computed(() => attendanceStore.validationErrors || {});
 
@@ -132,14 +147,14 @@ const loadRecord = async () => {
     if (!isEdit.value) return;
     const record = await attendanceStore.fetchAttendanceRecord(route.params.id).catch(() => null);
     if (!record) {
-        ElMessage.error(window.t('no_attendance_record_found'));
+        ElMessage.error(t('no_attendance_record_found') || 'لم يتم العثور على سجل الحضور');
         router.push({ name: 'admin.hr.attendance' });
         return;
     }
 
     form.value = {
         employee_id: record.employee_id,
-        date: record.date || '',
+        date: record.date ? String(record.date).slice(0, 10) : '',
         clock_in: record.clock_in || '',
         clock_out: record.clock_out || '',
         status: record.status || 'present',
@@ -154,14 +169,14 @@ const submitForm = () => {
         try {
             if (isEdit.value) {
                 await attendanceStore.updateAttendance(route.params.id, form.value);
-                ElMessage.success(window.t('the_attendance_record_has_been'));
+                ElMessage.success(t('attendance_recorded') || 'تم تحديث السجل بنجاح');
             } else {
                 await attendanceStore.createAttendance(form.value);
-                ElMessage.success(window.t('the_attendance_record_has_been'));
+                ElMessage.success(t('attendance_recorded') || 'تم إنشاء السجل بنجاح');
             }
             router.push({ name: 'admin.hr.attendance' });
         } catch (err) {
-            ElMessage.error(err.response?.data?.message || err.message || window.t('an_error_occurred_while_saving'));
+            ElMessage.error(err.response?.data?.message || err.message || t('an_error_occurred_while_saving_data') || 'حدث خطأ أثناء حفظ البيانات');
         }
     });
 };
@@ -181,28 +196,16 @@ onMounted(async () => {
     padding: 0;
 }
 
-.page-header {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.page-title h1 {
-    margin: 0;
-    font-size: 1.8rem;
-    font-weight: 700;
-}
-
 .form-card {
     border-radius: 1rem;
+    border: 1px solid #eef2f6;
 }
 
 .form-actions {
     display: flex;
     gap: 1rem;
-    margin-top: 1rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #f1f5f9;
 }
 </style>

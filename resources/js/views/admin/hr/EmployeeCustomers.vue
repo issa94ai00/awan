@@ -140,7 +140,7 @@
 <script setup>
 import { formatMoney } from '@/utils/currency';
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ArrowLeft, Plus, Search, Link } from '@element-plus/icons-vue';
 import api from '@/api';
@@ -148,6 +148,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 
 const router = useRouter();
+const route = useRoute();
 const selectedEmployeeId = ref(null);
 const employees = ref([]);
 const employeeCustomers = ref([]);
@@ -307,8 +308,12 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('ar-SA');
 };
 
-onMounted(() => {
-    loadEmployees();
+onMounted(async () => {
+    await loadEmployees();
+    if (route.query.employee_id) {
+        selectedEmployeeId.value = Number(route.query.employee_id);
+        loadEmployeeCustomers();
+    }
 });
 </script>
 
