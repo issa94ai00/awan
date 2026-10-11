@@ -95,6 +95,7 @@ export function variantRowsOf(product) {
             size: variant.size,
             color: variant.color,
             material: variant.material,
+            specs: variant.specs || [],
             price: hasOwnPrice ? variant.price : product.price,
             sale_price: hasOwnPrice ? null : product.sale_price,
             has_sale: hasOwnPrice ? false : product.has_sale,

@@ -201,8 +201,18 @@
                                     </div>
                                     <div class="line-identity-text">
                                         <span class="line-name">{{ item.name }}</span>
-                                        <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
-                                        <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                        <!-- A variant line spells out its size, colour, material,
+                                             specs and its own codes; a plain line shows its SKU. -->
+                                        <VariantDetails
+                                            v-if="lineVariantInfo(item)"
+                                            :variant="lineVariantInfo(item)"
+                                            show-codes
+                                            class="line-variant-details"
+                                        />
+                                        <template v-else>
+                                            <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
+                                            <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                        </template>
                                         <!-- The other sizes of this product, one click away:
                                              changing the size keeps the quantity, the sources
                                              and a price that was typed. -->
@@ -735,6 +745,7 @@ import {
 } from '@/utils/stockSources';
 import { getImageUrl } from '@/utils/imageUrl';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
@@ -1345,6 +1356,21 @@ const inInvoiceQty = (product) => {
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
 const lineSiblings = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
+
+const VARIANT_FIELDS = ['sku', 'barcode', 'size', 'color', 'material', 'specs'];
+const variantFieldsOf = (source) => Object.fromEntries(VARIANT_FIELDS.map((key) => [key, source?.[key]]));
+
+// What the line's variant is, for its details: the product's full size list
+// (loaded for the size switcher, and the only source with specs for a line
+// just picked from search) wins over what the line itself carries.
+const lineVariantInfo = (item) => {
+    if (!item.product_variant_id) return null;
+    const sibling = lineSiblings(item).find((v) => v.variant_id === item.product_variant_id);
+    const info = sibling ? variantFieldsOf(sibling) : item.variant;
+    if (!info) return null;
+    const hasDetails = info.size || info.color || info.material || info.specs?.length;
+    return hasDetails ? info : null;
+};
 const preloadLineSiblings = () => items.value.forEach((item) => item.product_variant_id && ensureVariantsLoaded(item.product_id));
 
 // Switching a line to another size keeps its sources and quantities — the
@@ -1372,6 +1398,7 @@ const switchLineVariant = (index, row) => {
     line.pick = pick;
     line.product_variant_id = row.variant_id || null;
     line.variant_label = row.variant_label || '';
+    line.variant = variantFieldsOf(row);
     line.sku = row.sku || '';
     line.stock = row.stock_quantity || 0;
     line.base_price = parseFloat(row.price) || 0;
@@ -1409,6 +1436,7 @@ const addProduct = (product) => {
             product_id: product.id,
             product_variant_id: product.variant_id || null,
             variant_label: product.variant_label || '',
+            variant: product.variant_id ? variantFieldsOf(product) : null,
             name: baseName(product) || product.name_en,
             sku: product.sku || '',
             image: product.image_main || null,
@@ -1768,6 +1796,7 @@ const loadInvoice = async () => {
                 product_id: item.product_id,
                 product_variant_id: item.product_variant_id || null,
                 variant_label: item.variant?.label || variantLabelOf(item.variant),
+                variant: item.variant ? variantFieldsOf(item.variant) : null,
                 // The product's own name beside its size badge; the stored
                 // line name already carries the size.
                 name: (item.product_variant_id && item.product?.name_ar) || item.product_name || item.product?.name_ar,
@@ -2203,6 +2232,7 @@ onUnmounted(() => {
 .line-name { font-weight: 700; }
 /* The size under the product's name, sized to its text in the column. */
 .line-variant { align-self: flex-start; margin: 0.15rem 0; }
+.line-variant-details { margin: 0.2rem 0 0.1rem; }
 .line-sku {
     font-size: 0.74rem;
     color: var(--ink-mute);
