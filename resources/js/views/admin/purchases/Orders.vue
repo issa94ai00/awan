@@ -631,6 +631,7 @@
                                     @input="onQuickSearchInput"
                                     @clear="onQuickSearchClear"
                                     @keydown.esc="quickSearchOpen = false"
+                                    @keydown.enter.prevent="onQuickSearchEnter"
                                 >
                                     <template #prefix>
                                         <i v-if="!quickSearchLoading" class="fas fa-search search-icon"></i>
@@ -698,99 +699,151 @@
                                     </div>
 
                                     <div v-else class="suggested-products-grid">
-                                        <div
-                                            v-for="p in quickSearchResults"
-                                            :key="optionKey(p)"
-                                            class="suggested-item-card"
-                                            :class="{ 'item-in-order': getOrderItemCount(p) > 0 }"
-                                        >
-                                            <!-- Product Thumbnail with fallback and preview -->
-                                            <div class="item-card-image">
-                                                <EntityImage
-                                                    :src="productImageSrc(p)"
-                                                    type="product"
-                                                    :size="52"
-                                                    shape="square"
-                                                    class="card-img"
-                                                />
-                                                <span v-if="getOrderItemCount(p) > 0" class="in-order-tag" :title="$t('po_in_order')">
-                                                    {{ getOrderItemCount(p) }}
-                                                </span>
-                                            </div>
-
-                                            <!-- Product Information -->
-                                            <div class="item-card-body">
-                                                <div class="item-card-header">
-                                                    <span class="item-name" :title="baseName(p)">
-                                                        {{ baseName(p) }}
-                                                    </span>
-                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                        <template v-for="g in quickSearchGroups" :key="g.key">
+                                            <!-- A product with sizes is one card with a row per size,
+                                                 so eight sizes of one drain read as one product with
+                                                 eight sizes, not as eight unrelated products. -->
+                                            <div
+                                                v-if="g.hasVariants"
+                                                class="suggested-item-card is-group"
+                                                :class="{ 'item-in-order': groupOrderCount(g) > 0 }"
+                                            >
+                                                <div class="group-head">
+                                                    <div class="item-card-image">
+                                                        <EntityImage
+                                                            :src="productImageSrc(g.product)"
+                                                            type="product"
+                                                            :size="52"
+                                                            shape="square"
+                                                            class="card-img"
+                                                        />
+                                                        <span v-if="groupOrderCount(g) > 0" class="in-order-tag" :title="$t('po_in_order')">
+                                                            {{ groupOrderCount(g) }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="item-card-body">
+                                                        <div class="item-card-header">
+                                                            <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
+                                                            <span class="variants-count-chip">
+                                                                <i class="fas fa-layer-group"></i> {{ $t('po_variants_count', g.rows.length) }}
+                                                            </span>
+                                                        </div>
+                                                        <div class="item-card-tags">
+                                                            <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                                {{ g.product.category?.name_ar || g.product.category_name }}
+                                                            </span>
+                                                            <span class="pick-size-hint">
+                                                                <i class="fas fa-hand-pointer"></i> {{ $t('po_pick_size') }}
+                                                            </span>
+                                                        </div>
+                                                    </div>
                                                 </div>
 
-                                                <div class="item-card-tags">
-                                                    <span v-if="p.sku" class="sku-chip">
-                                                        <i class="fas fa-barcode"></i> {{ p.sku }}
-                                                    </span>
-                                                    <span v-if="p.category?.name_ar || p.category_name" class="cat-chip">
-                                                        {{ p.category?.name_ar || p.category_name }}
-                                                    </span>
-                                                </div>
-
-                                                <div class="item-card-financials">
-                                                    <div class="cost-stat">
-                                                        <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
-                                                        <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
-                                                    </div>
-                                                    <div v-if="p.price && p.price !== p.cost_price" class="sale-stat">
-                                                        <span class="stat-lbl">{{ $t('sale_price') }}:</span>
-                                                        <span class="stat-val text-muted">{{ money(p.price) }}</span>
-                                                    </div>
+                                                <div class="variant-grid">
                                                     <div
-                                                        v-if="p.stock_quantity != null || p.stock != null"
-                                                        class="stock-stat"
-                                                        :class="(p.stock_quantity || p.stock || 0) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                        v-for="p in g.rows"
+                                                        :key="optionKey(p)"
+                                                        class="variant-tile"
+                                                        :class="{ 'is-in-order': getOrderItemCount(p) > 0, 'is-out': stockOf(p) === 0 }"
                                                     >
-                                                        <span class="stat-lbl">{{ $t('available') }}:</span>
-                                                        <span class="stat-val">{{ p.stock_quantity ?? p.stock ?? 0 }}</span>
+                                                        <div class="variant-tile-info">
+                                                            <div class="variant-tile-title">
+                                                                <span class="variant-tile-label" dir="ltr">{{ p.variant_label || baseName(p) }}</span>
+                                                                <span v-if="p.sku" class="sku-chip"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                            </div>
+                                                            <div class="item-card-financials">
+                                                                <div class="cost-stat">
+                                                                    <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                                    <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
+                                                                </div>
+                                                                <div
+                                                                    v-if="stockOf(p) != null"
+                                                                    class="stock-stat"
+                                                                    :class="stockOf(p) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                                >
+                                                                    <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                                    <span class="stat-val">{{ stockOf(p) }}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="item-card-action">
+                                                            <AddQtyControl
+                                                                size="sm"
+                                                                :count="getOrderItemCount(p)"
+                                                                :label="$t('add')"
+                                                                @add="(delta) => addProductToOrder(p, delta)"
+                                                                @set="(n) => setOrderItemCount(p, n)"
+                                                                @commit="(n) => commitOrderItemCount(p, n)"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <!-- Action Button / Quantity Controls (Stays Open!) -->
-                                            <div class="item-card-action">
-                                                <template v-if="getOrderItemCount(p) === 0">
-                                                    <button
-                                                        type="button"
-                                                        class="btn-add-product"
-                                                        @click.stop.prevent="addProductToOrder(p, 1)"
-                                                    >
-                                                        <i class="fas fa-cart-plus"></i>
-                                                        <span>{{ $t('po_add_to_order') }}</span>
-                                                    </button>
-                                                </template>
-                                                <template v-else>
-                                                    <div class="item-stepper" @click.stop>
-                                                        <button
-                                                            type="button"
-                                                            class="stepper-btn stepper-minus"
-                                                            @click.stop.prevent="addProductToOrder(p, -1)"
-                                                            :title="$t('decrease')"
-                                                        >
-                                                            <i class="fas fa-minus"></i>
-                                                        </button>
-                                                        <span class="stepper-val">{{ getOrderItemCount(p) }}</span>
-                                                        <button
-                                                            type="button"
-                                                            class="stepper-btn stepper-plus"
-                                                            @click.stop.prevent="addProductToOrder(p, 1)"
-                                                            :title="$t('increase')"
-                                                        >
-                                                            <i class="fas fa-plus"></i>
-                                                        </button>
+                                            <!-- A product without sizes: one card, one action. -->
+                                            <div
+                                                v-else
+                                                class="suggested-item-card"
+                                                :class="{ 'item-in-order': getOrderItemCount(g.product) > 0 }"
+                                            >
+                                                <div class="item-card-image">
+                                                    <EntityImage
+                                                        :src="productImageSrc(g.product)"
+                                                        type="product"
+                                                        :size="52"
+                                                        shape="square"
+                                                        class="card-img"
+                                                    />
+                                                    <span v-if="getOrderItemCount(g.product) > 0" class="in-order-tag" :title="$t('po_in_order')">
+                                                        {{ getOrderItemCount(g.product) }}
+                                                    </span>
+                                                </div>
+
+                                                <div class="item-card-body">
+                                                    <div class="item-card-header">
+                                                        <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
                                                     </div>
-                                                </template>
+
+                                                    <div class="item-card-tags">
+                                                        <span v-if="g.product.sku" class="sku-chip">
+                                                            <i class="fas fa-barcode"></i> {{ g.product.sku }}
+                                                        </span>
+                                                        <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                            {{ g.product.category?.name_ar || g.product.category_name }}
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="item-card-financials">
+                                                        <div class="cost-stat">
+                                                            <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                            <strong class="stat-val text-primary">{{ money(g.product.cost_price || g.product.price) }}</strong>
+                                                        </div>
+                                                        <div v-if="g.product.price && g.product.price !== g.product.cost_price" class="sale-stat">
+                                                            <span class="stat-lbl">{{ $t('sale_price') }}:</span>
+                                                            <span class="stat-val text-muted">{{ money(g.product.price) }}</span>
+                                                        </div>
+                                                        <div
+                                                            v-if="stockOf(g.product) != null"
+                                                            class="stock-stat"
+                                                            :class="stockOf(g.product) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                        >
+                                                            <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                            <span class="stat-val">{{ stockOf(g.product) }}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="item-card-action">
+                                                    <AddQtyControl
+                                                        :count="getOrderItemCount(g.product)"
+                                                        :label="$t('po_add_to_order')"
+                                                        @add="(delta) => addProductToOrder(g.product, delta)"
+                                                        @set="(n) => setOrderItemCount(g.product, n)"
+                                                        @commit="(n) => commitOrderItemCount(g.product, n)"
+                                                    />
+                                                </div>
                                             </div>
-                                        </div>
+                                        </template>
                                     </div>
                                 </div>
 
@@ -895,6 +948,27 @@
                                 <el-button type="danger" circle plain @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
+                            </div>
+                            <!-- The other sizes of the picked product, one click away:
+                                 changing the size does not mean searching for the
+                                 product again. A price the operator typed is kept;
+                                 one still at the old size's default follows the new size. -->
+                            <div v-if="siblingVariants(item).length > 1" class="line-variant-switch">
+                                <span class="switch-label"><i class="fas fa-tag"></i> {{ $t('po_switch_size') }}</span>
+                                <div class="switch-chips">
+                                    <button
+                                        v-for="v in siblingVariants(item)"
+                                        :key="optionKey(v)"
+                                        type="button"
+                                        class="switch-chip"
+                                        :class="{ 'is-active': optionKey(v) === item.pick, 'is-out': stockOf(v) === 0 }"
+                                        :title="[v.sku, $t('po_cost_label', { price: money(v.cost_price || v.price) })].filter(Boolean).join(' · ')"
+                                        @click="switchLineVariant(idx, v)"
+                                    >
+                                        <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                        <small v-if="stockOf(v) != null" class="chip-stock">{{ stockOf(v) }}</small>
+                                    </button>
+                                </div>
                             </div>
                             <!-- Cost is what the supplier is paid; sale price is what
                                  the order plans to retail the line at. Selecting a
@@ -1481,6 +1555,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import AddQtyControl from '@/components/admin/purchases/AddQtyControl.vue';
 import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { resolveImageUrl } from '@/utils/productImages';
@@ -1538,6 +1613,7 @@ const loadDefaultOptions = async () => {
     try {
         const res = await productsApi.getAll({ per_page: 100, expand_variants: 1 });
         defaultOptions.value = res.data.data || [];
+        rememberVariantRows(defaultOptions.value);
         productOptions.value = defaultOptions.value;
         if (!quickSearchResults.value.length) {
             quickSearchResults.value = defaultOptions.value;
@@ -1578,7 +1654,7 @@ const onQuickSearchInput = (val) => {
         try {
             const res = await productsApi.getAll({ search: query, per_page: 50, expand_variants: 1 });
             quickSearchResults.value = res.data.data || [];
-            rememberProducts(quickSearchResults.value);
+            rememberVariantRows(quickSearchResults.value);
         } catch {
             // Keep current suggestions on error
         } finally {
@@ -1596,6 +1672,132 @@ const getOrderItemCount = (prod) => {
     const key = optionKey(prod);
     const existing = form.items.find((item) => item.pick === key);
     return existing ? num(existing.quantity) : 0;
+};
+
+// The counted stock of a row, whichever field the endpoint put it in; null
+// when nothing is counted for it.
+const stockOf = (prod) => prod?.stock_quantity ?? prod?.stock ?? null;
+
+// Search rows regrouped by product: a product with sizes comes back as one
+// row per size, and the panel shows those as one card with a row per size.
+const quickSearchGroups = computed(() => {
+    const groups = new Map();
+    quickSearchResults.value.forEach((row) => {
+        if (!groups.has(row.id)) groups.set(row.id, { key: String(row.id), product: row, rows: [] });
+        groups.get(row.id).rows.push(row);
+    });
+    return [...groups.values()].map((g) => ({ ...g, hasVariants: g.rows.some((r) => r.variant_id) }));
+});
+
+const groupOrderCount = (group) => group.rows.reduce((sum, row) => sum + getOrderItemCount(row), 0);
+
+// A quantity typed into a result card's stepper. While typing only a usable
+// number lands on the line; leaving the field at 0 or empty removes the line.
+const setOrderItemCount = (prod, qty) => {
+    const key = optionKey(prod);
+    const line = form.items.find((item) => item.pick === key);
+    if (line && qty >= 1) line.quantity = qty;
+};
+
+const commitOrderItemCount = (prod, qty) => {
+    const key = optionKey(prod);
+    const line = form.items.find((item) => item.pick === key);
+    if (!line) return;
+    if (qty < 1) {
+        addProductToOrder(prod, -num(line.quantity));
+        return;
+    }
+    line.quantity = qty;
+};
+
+// Enter adds what the search unambiguously points at: a lone product, or a
+// lone size. With several sizes showing it is the operator's call which one.
+const onQuickSearchEnter = () => {
+    const first = quickSearchGroups.value[0];
+    if (!first || quickSearchLoading.value) return;
+    if (!first.hasVariants || first.rows.length === 1) addProductToOrder(first.rows[0], 1);
+};
+
+// Every size seen of each product, by product id, so a line can offer its
+// sibling sizes. Search results feed it as they arrive, but a search by one
+// size's code returns only that size, so a picked product's full set is
+// fetched once and replaces whatever partial list was there.
+const variantsByProduct = reactive({});
+const variantsLoaded = new Set();
+
+const rememberVariantRows = (rows = [], { complete = false } = {}) => {
+    const byProduct = new Map();
+    rows.forEach((row) => {
+        if (!row?.id || !row.variant_id) return;
+        if (!byProduct.has(row.id)) byProduct.set(row.id, []);
+        byProduct.get(row.id).push(row);
+    });
+    byProduct.forEach((fresh, productId) => {
+        const merged = new Map((complete ? [] : variantsByProduct[productId] || []).map((r) => [r.variant_id, r]));
+        fresh.forEach((r) => merged.set(r.variant_id, r));
+        variantsByProduct[productId] = [...merged.values()].sort((a, b) => a.variant_id - b.variant_id);
+    });
+};
+
+// A product's `variants` relation as search rows, shaped like the rows
+// `expand_variants=1` returns so the rest of the form cannot tell them apart.
+const variantRowsOf = (product) => (product.variants || []).map((v) => {
+    const label = v.label || variantLabelOf(v);
+    const suffix = label ? ` - ${label}` : '';
+    return {
+        ...product,
+        variants: undefined,
+        variant_id: v.id,
+        listing_key: pickKey(product.id, v.id),
+        variant_label: label,
+        product_name_ar: product.name_ar,
+        product_name_en: product.name_en,
+        name_ar: `${product.name_ar || ''}${suffix}`,
+        name_en: product.name_en ? `${product.name_en}${suffix}` : product.name_en,
+        sku: v.sku || product.sku,
+        barcode: v.barcode || product.barcode,
+        size: v.size,
+        color: v.color,
+        material: v.material,
+        price: Number(v.price) > 0 ? v.price : product.price,
+        cost_price: Number(v.cost_price) > 0 ? v.cost_price : product.cost_price,
+        stock_quantity: v.stock_quantity,
+        product_stock_quantity: product.stock_quantity,
+    };
+});
+
+const ensureVariantsLoaded = async (productId) => {
+    if (!productId || variantsLoaded.has(productId)) return;
+    variantsLoaded.add(productId);
+    try {
+        const res = await productsApi.getById(productId);
+        const product = res.data?.data;
+        if (product) rememberVariantRows(variantRowsOf(product), { complete: true });
+    } catch {
+        // Try again next time the product is picked.
+        variantsLoaded.delete(productId);
+    }
+};
+
+const siblingVariants = (item) => (item.product_id && item.product_variant_id ? variantsByProduct[item.product_id] || [] : []);
+
+const switchLineVariant = (idx, variantRow) => {
+    const line = form.items[idx];
+    const key = optionKey(variantRow);
+    if (!line || line.pick === key) return;
+
+    const previous = siblingVariants(line).find((r) => optionKey(r) === line.pick);
+    const defaultCost = (r) => num(r.cost_price || r.price);
+    const defaultSale = (r) => num(r.price);
+    const costUntouched = line.unit_price === '' || !previous || num(line.unit_price) === defaultCost(previous);
+    const saleUntouched = line.sale_price === '' || !previous || num(line.sale_price) === defaultSale(previous);
+
+    rememberProducts([variantRow]);
+    line.pick = key;
+    line.product_id = variantRow.id;
+    line.product_variant_id = variantRow.variant_id;
+    if (costUntouched) line.unit_price = variantRow.cost_price || variantRow.price;
+    if (saleUntouched) line.sale_price = variantRow.price;
 };
 
 const addProductToOrder = (prod, delta = 1) => {
@@ -2185,13 +2387,16 @@ const duplicateFromDrawer = () => {
     if (id) duplicateOrder(id);
 };
 
-// Lines that already name a product (edit, duplicate) need it among the
-// options, or the remote select shows the bare id.
+// Lines that already name a product (edit, duplicate) and rows picked from
+// the search panel need to be among the options, or the remote select shows
+// the bare key. A saved line arrives as `product_id` + relations; a search
+// row is already in option shape.
 const rememberProducts = (items = []) => {
-    productOptions.value = withOptions(
-        productOptions.value,
-        items.filter((item) => item.product_id).map(optionFromLine),
-    );
+    const rows = items
+        .filter((item) => item && (item.product_id || item.id))
+        .map((item) => (item.product_id ? optionFromLine(item) : item));
+    productOptions.value = withOptions(productOptions.value, rows);
+    rows.forEach((row) => row.variant_id && ensureVariantsLoaded(row.id));
 };
 
 /* Focus follows the work: the supplier first on a new request, and each new
@@ -2292,6 +2497,7 @@ const updateItemPrice = (pick, idx) => {
         || defaultOptions.value.find(p => optionKey(p) === pick);
     form.items[idx].product_id = prod?.id || '';
     form.items[idx].product_variant_id = prod?.variant_id || null;
+    if (prod?.variant_id) ensureVariantsLoaded(prod.id);
     if (prod) {
         // A purchase order's price is what the supplier is paid, so it
         // starts from the product's cost — not its retail price, which is
@@ -2315,6 +2521,7 @@ const searchProducts = (query) => {
             // One row per size, and a size's own code finds it.
             const res = await productsApi.getAll({ search: query, per_page: 100, expand_variants: 1 });
             productOptions.value = res.data.data || [];
+            rememberVariantRows(productOptions.value);
         } catch (e) {
             // Keep whatever was showing rather than blanking the list on a
             // transient failure.
@@ -3794,6 +4001,27 @@ onMounted(async () => {
     .financial-row {
         width: 100%;
     }
+
+    /* The add button no longer fits beside the thumbnail and name on a
+       phone, so it drops to its own full-width row. */
+    .suggested-item-card:not(.is-group) {
+        flex-wrap: wrap;
+    }
+
+    .suggested-item-card:not(.is-group) .item-card-action {
+        flex: 1 1 100%;
+        display: flex;
+        justify-content: flex-end;
+        margin-inline-start: 0;
+    }
+
+    .variant-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .line-variant-switch {
+        padding-inline-start: 0;
+    }
 }
 
 /* Form Grid row */
@@ -4333,63 +4561,173 @@ onMounted(async () => {
     margin-inline-start: auto;
 }
 
-.btn-add-product {
+/* One product, several sizes */
+.suggested-item-card.is-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+}
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.variants-count-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #6d28d9;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+}
+
+.pick-size-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #64748b;
+    font-size: 0.72rem;
+}
+
+.variant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.45rem;
+}
+
+.variant-tile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    background: #f8fafc;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.variant-tile:hover {
+    border-color: #93c5fd;
+    background: #ffffff;
+}
+
+.variant-tile.is-in-order {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.variant-tile.is-out {
+    background: #fff7ed;
+}
+
+.variant-tile-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.variant-tile-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.variant-tile-label {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #1e3a8a;
+    unicode-bidi: isolate;
+}
+
+.variant-tile .item-card-financials {
+    gap: 0.6rem;
+    font-size: 0.74rem;
+}
+
+/* Sibling sizes under a line */
+.line-variant-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.6rem;
+    padding-inline-start: 2.4rem;
+}
+
+.switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.switch-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.switch-chip {
     all: unset;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    background: #2563eb;
-    color: #ffffff;
-    padding: 0.45rem 0.85rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
-}
-
-.btn-add-product:hover {
-    background: #1d4ed8;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3);
-}
-
-/* Stepper inside card */
-.item-stepper {
-    display: inline-flex;
-    align-items: center;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
     background: #ffffff;
-    border: 1px solid #16a34a;
-    border-radius: 6px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(22, 163, 74, 0.15);
-}
-
-.item-stepper .stepper-btn {
-    all: unset;
-    cursor: pointer;
-    padding: 0.35rem 0.65rem;
-    font-size: 0.75rem;
-    color: #16a34a;
+    color: #334155;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.5;
     transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
-.item-stepper .stepper-btn:hover {
-    background: #dcfce7;
+.switch-chip:hover {
+    border-color: #93c5fd;
+    color: #1d4ed8;
 }
 
-.item-stepper .stepper-val {
-    min-width: 28px;
-    text-align: center;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: #15803d;
-    padding: 0 0.3rem;
+.switch-chip.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+    cursor: default;
+}
+
+.switch-chip.is-out {
+    color: #9a3412;
+    border-style: dashed;
+}
+
+.switch-chip .chip-label {
+    unicode-bidi: isolate;
+}
+
+.switch-chip .chip-stock {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #16a34a;
+    padding-inline-start: 0.35rem;
+    border-inline-start: 1px solid #e2e8f0;
+}
+
+.switch-chip.is-out .chip-stock {
+    color: #dc2626;
 }
 
 /* Dropdown Footer */
