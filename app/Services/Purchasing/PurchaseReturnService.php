@@ -5,6 +5,7 @@ namespace App\Services\Purchasing;
 use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use App\Services\Accounting\LedgerPostingService;
+use App\Models\ProductVariant;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -30,7 +31,10 @@ class PurchaseReturnService
     }
 
     /**
-     * @param  array<int,array{product_id:int,quantity:int,unit_price?:float}>  $items
+     * A line may name which size of the product went back (`product_variant_id`);
+     * stock is counted per product, and the size's own count follows the goods.
+     *
+     * @param  array<int,array{product_id:int,product_variant_id?:int|null,quantity:int,unit_price?:float}>  $items
      * @param  array{supplier_id?:int,purchase_receipt_id?:int,warehouse_id?:int,return_date?:string,reason?:string,tax_amount?:float,credit_amount?:float,notes?:string}  $attributes
      */
     public function record(array $items, array $attributes = []): PurchaseReturn
@@ -72,15 +76,17 @@ class PurchaseReturnService
 
             foreach ($items as $line) {
                 $quantity = (int) $line['quantity'];
+                $variantId = (int) ($line['product_variant_id'] ?? 0) ?: null;
 
                 // Refuses to take out more than is there: a return of stock the
                 // warehouse does not hold is a counting error, not a return.
+                // Two sizes of one product are two movements.
                 $movement = $this->inventory->issue(
                     (int) $line['product_id'],
                     $quantity,
                     $warehouseId,
                     [
-                        'key' => 'purchase_return:'.$return->id.':item:'.$line['product_id'],
+                        'key' => 'purchase_return:'.$return->id.':item:'.$line['product_id'].($variantId ? '-'.$variantId : ''),
                         'source' => 'purchase_return',
                         'reference' => $return->return_number,
                         'reason' => 'إرجاع إلى المورّد',
@@ -98,10 +104,15 @@ class PurchaseReturnService
 
                 $return->items()->create([
                     'product_id' => $line['product_id'],
+                    'product_variant_id' => $variantId,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'unit_cost' => $unitCost,
                 ]);
+
+                // The size's own count follows the goods out, as receiving
+                // brought it in.
+                ProductVariant::adjustStockCount($variantId, -$quantity);
 
                 $cost += $lineCost;
                 $credit += $unitPrice * $quantity;
@@ -129,13 +140,14 @@ class PurchaseReturnService
     }
 
     /**
-     * One line per product. Each line's stock movement is keyed by the return
-     * and the product, so a second line for the same product got the first
-     * line's movement back: its units never left the shelf, yet it was
-     * credited and costed all the same.
+     * One line per product, or per size of it. Each line's stock movement is
+     * keyed by the return and the product (and size), so a second line for
+     * the same one got the first line's movement back: its units never left
+     * the shelf, yet it was credited and costed all the same. Two sizes of one
+     * product are two lines, as they should be.
      *
-     * @param  array<int,array{product_id:int,quantity:int,unit_price?:float|null}>  $items
-     * @return array<int,array{product_id:int,quantity:int,unit_price?:float}>
+     * @param  array<int,array{product_id:int,product_variant_id?:int|null,quantity:int,unit_price?:float|null}>  $items
+     * @return array<int,array{product_id:int,product_variant_id:int|null,quantity:int,unit_price?:float}>
      */
     private function mergeRepeatedProducts(array $items): array
     {
@@ -143,15 +155,17 @@ class PurchaseReturnService
 
         foreach ($items as $line) {
             $productId = (int) $line['product_id'];
+            $variantId = (int) ($line['product_variant_id'] ?? 0) ?: null;
+            $key = $productId.'-'.($variantId ?? 0);
             $price = isset($line['unit_price']) && $line['unit_price'] !== '' ? round((float) $line['unit_price'], 5) : null;
 
-            if (! isset($merged[$productId])) {
-                $merged[$productId] = ['product_id' => $productId, 'quantity' => 0, 'unit_price' => $price];
-            } elseif ($merged[$productId]['unit_price'] !== $price) {
+            if (! isset($merged[$key])) {
+                $merged[$key] = ['product_id' => $productId, 'product_variant_id' => $variantId, 'quantity' => 0, 'unit_price' => $price];
+            } elseif ($merged[$key]['unit_price'] !== $price) {
                 throw new RuntimeException('الصنف نفسه مكرر بسعرَي خصم مختلفين؛ اجمعه في سطر واحد.');
             }
 
-            $merged[$productId]['quantity'] += (int) $line['quantity'];
+            $merged[$key]['quantity'] += (int) $line['quantity'];
         }
 
         return array_values(array_map(

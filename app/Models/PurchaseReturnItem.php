@@ -13,6 +13,8 @@ class PurchaseReturnItem extends Model
     protected $fillable = [
         'purchase_return_id',
         'product_id',
+        // Which size of the product went back, when the product has sizes.
+        'product_variant_id',
         'quantity',
         // What the supplier credits per unit, and what the unit cost us. They
         // are different questions, and the gap between them is a real result.
@@ -33,5 +35,10 @@ class PurchaseReturnItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 }
