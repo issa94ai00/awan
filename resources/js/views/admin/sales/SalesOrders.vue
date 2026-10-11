@@ -2513,6 +2513,7 @@ const loadOrderLines = async (id) => {
     const order = res.data?.data || res.data;
     return (order?.items || []).map((item) => ({
         id: item.id,
+        productId: item.product_id,
         image: item.product?.image_main,
         name: item.product?.name_ar || item.product?.name_en || item.description,
         sku: item.product?.sku,

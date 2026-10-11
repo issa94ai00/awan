@@ -113,13 +113,24 @@
             <div v-else>
                 <el-table
                     v-if="store.orders.length"
+                    ref="ordersTable"
                     :data="store.orders"
+                    row-key="id"
                     style="width: 100%"
                     stripe
                     highlight-current-row
                     class="custom-table"
                     :row-class-name="rowClassName"
+                    @expand-change="onExpandChange"
                 >
+                    <!-- Every line of the order in full: each size under its
+                         product with its size, colour, material, specs and
+                         codes, and what has been received so far. -->
+                    <el-table-column type="expand" width="44">
+                        <template #default="{ row }">
+                            <DocumentLinesPanel :lines="orderLines(row)" />
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="order_number" :label="$t('order_number')" width="150">
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
@@ -229,6 +240,17 @@
                                 </div>
                             </el-popover>
                             <span v-else class="text-muted">-</span>
+                            <button
+                                v-if="row.items?.length"
+                                type="button"
+                                class="lines-toggle"
+                                :title="$t('po_show_lines')"
+                                @click.stop="toggleLines(row)"
+                            >
+                                {{ $t('po_items_count', row.items.length) }}
+                                <template v-if="variantLineCount(row)">· {{ $t('po_variant_lines', variantLineCount(row)) }}</template>
+                                <i class="fas fa-chevron-down lines-chevron" :class="{ open: expandedIds.has(row.id) }"></i>
+                            </button>
                         </template>
                     </el-table-column>
                     <el-table-column prop="total" :label="$t('total')" width="160">
@@ -1663,6 +1685,7 @@ import AddQtyControl from '@/components/admin/purchases/AddQtyControl.vue';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import PurchaseSaleLink from '@/components/admin/purchases/PurchaseSaleLink.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
+import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
 import { resolveImageUrl } from '@/utils/productImages';
 import { invoicesApi } from '@/api/invoices';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
@@ -2187,6 +2210,37 @@ const groupedLines = (order) => {
 };
 
 const variantLineCount = (order) => (order.items || []).filter((item) => item.product_variant_id).length;
+
+// ── Expandable lines ─────────────────────────────────────────────────────
+// The index already carries each order's lines with their variants, so an
+// opened row shows them straight away.
+const ordersTable = ref(null);
+const expandedIds = reactive(new Set());
+
+const onExpandChange = (row, expandedRows) => {
+    const open = Array.isArray(expandedRows) ? expandedRows.some((r) => r.id === row.id) : !!expandedRows;
+    if (open) expandedIds.add(row.id);
+    else expandedIds.delete(row.id);
+};
+
+const toggleLines = (row) => ordersTable.value?.toggleRowExpansion(row);
+
+const orderLines = (order) => {
+    const showReceived = rowShowsReceived(order);
+    return (order.items || []).map((item) => ({
+        id: item.id,
+        productId: item.product_id,
+        image: item.product?.image_main || item.product?.image,
+        name: lineBaseName(item),
+        sku: item.product?.sku,
+        variant: item.variant,
+        variantId: item.product_variant_id,
+        quantity: num(item.quantity),
+        unitPrice: item.unit_price,
+        total: num(item.total_price) || num(item.unit_price) * num(item.quantity),
+        received: showReceived ? num(item.received_quantity) : null,
+    }));
+};
 
 // Whether a row's lines have anything received to compare against: the
 // index carries a receipts count rather than the receipts themselves.
@@ -3917,6 +3971,12 @@ onMounted(async () => {
 }
 
 /* The items cell: one pill per product, its sizes set inside it. */
+.lines-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.35rem; font-size: 0.75rem; font-weight: 600; color: #2563eb; }
+.lines-toggle:hover { text-decoration: underline; }
+.lines-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+.lines-chevron { font-size: 0.6rem; transition: transform 0.2s ease; }
+.lines-chevron.open { transform: rotate(180deg); }
+
 .items-preview {
     display: flex;
     flex-wrap: wrap;

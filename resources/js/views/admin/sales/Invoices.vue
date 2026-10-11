@@ -1117,6 +1117,7 @@ const loadInvoiceLines = async (id) => {
     const invoice = res.data?.data || res.data;
     return (invoice?.items || []).map((item) => ({
         id: item.id,
+        productId: item.product_id,
         image: item.product?.image_main,
         name: lineBaseName(item),
         sku: item.product?.sku,
