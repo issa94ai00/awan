@@ -96,8 +96,11 @@
                         <select name="items[0][product_id]" class="form-control" required>
                             <option value="">اختر الصنف</option>
                             @foreach($products as $product)
-                            <option value="{{ $product->id }}">{{ $product->name_ar }} (SKU: {{ $product->sku }})</option>
+                            <option value="{{ $product->id }}" data-variants='@json($product->variants->map(function($v){ return ['id'=>$v->id,'label'=>\App\Models\ProductVariant::labelFor($v->size,$v->color,$v->material)]; }))'>{{ $product->name_ar }} (SKU: {{ $product->sku }})</option>
                             @endforeach
+                        </select>
+                        <select name="items[0][product_variant_id]" class="form-control variant-select" style="margin-top:0.5rem;" disabled>
+                            <option value="">اختر الفئة</option>
                         </select>
                         <input type="number" name="items[0][quantity]" class="form-control" placeholder="الكمية" required min="1">
                         <div style="position: relative; display: flex; align-items: center;">

@@ -110,8 +110,11 @@
                         <select name="items[0][product_id]" class="form-control" required>
                             <option value="">اختر الصنف</option>
                             @foreach($products as $product)
-                            <option value="{{ $product->id }}">{{ $product->name_ar }} - ${{ $product->price }}</option>
+                            <option value="{{ $product->id }}" data-variants='@json($product->variants->map(function($v){ return ["id"=>$v->id,"label"=>\App\Models\ProductVariant::labelFor($v->size,$v->color,$v->material)]; }))'>{{ $product->name_ar }} - ${{ $product->price }}</option>
                             @endforeach
+                        </select>
+                        <select name="items[0][product_variant_id]" class="form-control variant-select" required disabled>
+                            <option value="">اختر المتغير</option>
                         </select>
                         <input type="number" name="items[0][quantity]" class="form-control" placeholder="الكمية" required min="1">
                         <div style="position: relative; display: flex; align-items: center;">
@@ -133,6 +136,7 @@
 
 @push('scripts')
 <script>
+    // Handle adding new item rows with product and variant selects
     document.querySelector('.add-item').addEventListener('click', function() {
         const container = document.getElementById('items-container');
         const index = container.children.length;
@@ -141,8 +145,11 @@
                 <select name="items[${index}][product_id]" class="form-control" required>
                     <option value="">اختر الصنف</option>
                     @foreach($products as $product)
-                    <option value="{{ $product->id }}">{{ $product->name_ar }} - $${{ $product->price }}</option>
+                    <option value="{{ $product->id }}" data-variants='@json($product->variants->map(function($v){ return ["id"=>$v->id,"label"=>\App\Models\ProductVariant::labelFor($v->size,$v->color,$v->material)]; }))'>{{ $product->name_ar }} - $${{ $product->price }}</option>
                     @endforeach
+                </select>
+                <select name="items[${index}][product_variant_id]" class="form-control variant-select" required disabled>
+                    <option value="">اختر المتغير</option>
                 </select>
                 <input type="number" name="items[${index}][quantity]" class="form-control" placeholder="الكمية" required min="1">
                 <div style="position: relative; display: flex; align-items: center;">
@@ -155,6 +162,28 @@
         container.insertAdjacentHTML('beforeend', html);
     });
 
+    // Populate variant select when a product is chosen (both static and dynamic rows)
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.matches('select[name$="[product_id]"]')) {
+            const row = e.target.closest('.item-row');
+            const variantSelect = row.querySelector('.variant-select');
+            const data = e.target.selectedOptions[0].getAttribute('data-variants');
+            if (data) {
+                const variants = JSON.parse(data);
+                let options = '<option value="">اختر المتغير</option>';
+                variants.forEach(v => {
+                    options += `<option value="${v.id}">${v.label}</option>`;
+                });
+                variantSelect.innerHTML = options;
+                variantSelect.disabled = false;
+            } else {
+                variantSelect.innerHTML = '<option value="">اختر المتغير</option>';
+                variantSelect.disabled = true;
+            }
+        }
+    });
+
+    // Remove item rows
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('remove-item') || e.target.closest('.remove-item')) {
             const btn = e.target.classList.contains('remove-item') ? e.target : e.target.closest('.remove-item');
