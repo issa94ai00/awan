@@ -58,17 +58,37 @@
                 <el-skeleton :rows="6" animated />
             </div>
             <div v-else>
-                <el-table 
-                    v-if="filteredReceipts.length" 
-                    :data="filteredReceipts" 
-                    style="width: 100%" 
-                    stripe 
+                <el-table
+                    v-if="filteredReceipts.length"
+                    ref="receiptsTable"
+                    :data="filteredReceipts"
+                    row-key="id"
+                    style="width: 100%"
+                    stripe
                     highlight-current-row
                     class="custom-table"
+                    @expand-change="onExpandChange"
                 >
-                    <el-table-column prop="receipt_number" :label="$t('receipt_number')" width="140">
+                    <!-- What arrived on the receipt: each size under its product
+                         with its size, colour, material, specs and codes. -->
+                    <el-table-column type="expand" width="44">
+                        <template #default="{ row }">
+                            <DocumentLinesPanel :lines="receiptLines(row)" />
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="receipt_number" :label="$t('receipt_number')" width="160">
                         <template #default="{ row }">
                             <span class="receipt-link-txt" @click="openDetailDrawer(row.id)">{{ row.receipt_number }}</span>
+                            <button
+                                v-if="row.items?.length"
+                                type="button"
+                                class="lines-toggle"
+                                :title="$t('rc_show_lines')"
+                                @click.stop="toggleLines(row)"
+                            >
+                                {{ $t('po_items_count', row.items.length) }}
+                                <i class="fas fa-chevron-down lines-chevron" :class="{ open: expandedIds.has(row.id) }"></i>
+                            </button>
                         </template>
                     </el-table-column>
                     <el-table-column prop="supplier.name" :label="$t('supplier')">
@@ -187,7 +207,8 @@
                                     <template #default="{ row }">
                                         <span>{{ row.product?.name_ar || row.description || '-' }}</span>
                                         <div v-if="row.product_variant_id" class="cell-variant">
-                                            <VariantChip :label="variantLabelOf(row.variant) || row.description" :sku="row.variant?.sku" show-sku />
+                                            <VariantDetails v-if="lineVariantInfo(row)" :variant="row.variant" show-codes />
+                                            <VariantChip v-else :label="variantLabelOf(row.variant) || row.description" :sku="row.variant?.sku" show-sku />
                                         </div>
                                     </template>
                                 </el-table-column>
@@ -528,6 +549,15 @@
                                 </el-button>
                             </div>
 
+                            <!-- Which size arrived, spelled out: size, colour, material,
+                                 specs and the variant's own codes. -->
+                            <VariantDetails
+                                v-if="rowVariantInfo(item)"
+                                :variant="rowVariantInfo(item)"
+                                show-codes
+                                class="line-variant-details"
+                            />
+
                             <!-- The other sizes of the picked product, one click away:
                                  a supplier that sent the 3" instead of the 4" is
                                  recorded without searching for the product again.
@@ -830,7 +860,9 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
-import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions } from '@/utils/productPick';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
+import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
+import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { paymentMethodLabel } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
 import { supplierPaymentsApi } from '@/api/supplierPayments';
@@ -1100,6 +1132,7 @@ const rowFromOrderLine = (line, quantity) => blankRow({
     pick: linePick(line),
     product_id: line.product_id,
     product_variant_id: line.product_variant_id || null,
+    variant: line.variant ? variantFieldsOf(line.variant) : null,
     quantity: Math.max(1, quantity),
     unit_price: num(line.unit_price),
     sale_price: line.sale_price != null ? num(line.sale_price) : '',
@@ -1218,6 +1251,42 @@ const rememberProducts = (items = []) => {
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
 const siblingVariants = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
 
+// A line's variant details: the product's full size list (loaded for every
+// picked or ordered variant) carries the specs; until it arrives, the
+// variant the line came with, or the picked search row, stands in.
+const rowVariantInfo = (item) => {
+    if (!item.product_variant_id) return null;
+    const option = productOptions.value.find((p) => optionKey(p) === item.pick);
+    const fallback = item.variant || (option ? variantFieldsOf(option) : null);
+    return lineVariantInfo({ ...item, variant: fallback }, siblingVariants(item));
+};
+
+// ── Expandable list rows ─────────────────────────────────────────────────
+// The index carries each receipt's lines with their variants.
+const receiptsTable = ref(null);
+const expandedIds = reactive(new Set());
+
+const onExpandChange = (row, expandedRows) => {
+    const open = Array.isArray(expandedRows) ? expandedRows.some((r) => r.id === row.id) : !!expandedRows;
+    if (open) expandedIds.add(row.id);
+    else expandedIds.delete(row.id);
+};
+
+const toggleLines = (row) => receiptsTable.value?.toggleRowExpansion(row);
+
+const receiptLines = (receipt) => (receipt.items || []).map((item) => ({
+    id: item.id,
+    productId: item.product_id,
+    image: item.product?.image_main || item.product?.image,
+    name: item.product?.name_ar || item.description,
+    sku: item.product?.sku,
+    variant: item.variant,
+    variantId: item.product_variant_id,
+    quantity: num(item.quantity),
+    unitPrice: item.unit_price,
+    total: num(item.total) || num(item.unit_price) * num(item.quantity),
+}));
+
 // The sizes the linked request asked for, so the switcher can mark them.
 const orderedPicks = computed(() => new Set(orderLines.value.filter((line) => line.product_id).map(linePick)));
 
@@ -1247,6 +1316,7 @@ const switchLineVariant = (idx, row) => {
     item.pick = key;
     item.product_id = row.id;
     item.product_variant_id = row.variant_id || null;
+    item.variant = variantFieldsOf(row);
 
     const after = defaultPricesFor(item);
     if (costUntouched) item.unit_price = after.cost;
@@ -1380,6 +1450,7 @@ const openEditDrawer = async (id) => {
             pick: pickKey(item.product_id, item.product_variant_id),
             product_id: item.product_id,
             product_variant_id: item.product_variant_id || null,
+            variant: item.variant ? variantFieldsOf(item.variant) : null,
             quantity: item.quantity,
             unit_price: item.unit_price,
             sale_price: item.sale_price
@@ -1433,6 +1504,7 @@ const updateItemPrice = (pick, idx) => {
         || defaultOptions.value.find(p => optionKey(p) === pick);
     form.items[idx].product_id = prod?.id || '';
     form.items[idx].product_variant_id = prod?.variant_id || null;
+    form.items[idx].variant = prod?.variant_id ? variantFieldsOf(prod) : null;
     if (prod?.variant_id) ensureVariantsLoaded(prod.id);
 
     // A product on the request is priced as agreed there, not at its
@@ -1606,7 +1678,8 @@ const saveReceipt = async () => {
                 payment_method: paid > 0 ? form.payment_method : null,
                 payment_reference: paid > 0 ? (form.payment_reference || null) : null,
                 purchase_order_id: form.purchase_order_id || null,
-                items: form.items.map(({ key, pick, ...item }) => ({
+                // `variant` is display-only: the API takes product_variant_id.
+                items: form.items.map(({ key, pick, variant, ...item }) => ({
                     ...item,
                     sale_price: item.sale_price === '' || item.sale_price == null ? null : item.sale_price,
                 })),
@@ -2277,6 +2350,13 @@ onMounted(async () => {
 }
 
 /* The size under the product's name in the detail table. */
+.lines-toggle { all: unset; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; margin-top: 0.25rem; font-size: 0.75rem; font-weight: 600; color: #2563eb; }
+.lines-toggle:hover { text-decoration: underline; }
+.lines-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+.lines-chevron { font-size: 0.6rem; transition: transform 0.2s ease; }
+.lines-chevron.open { transform: rotate(180deg); }
+.line-variant-details { margin: 0.4rem 0 0.1rem; padding-inline-start: 2rem; }
+
 .cell-variant {
     margin-top: 0.2rem;
 }
