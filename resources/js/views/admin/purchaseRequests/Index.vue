@@ -71,10 +71,24 @@
                     </el-table-column>
                     <el-table-column :label="$t('products')" min-width="200">
                         <template #default="{ row }">
-                            <div v-if="row.items && row.items.length">
-                                <div v-for="item in row.items" :key="item.id" class="item-line">
-                                    <span>{{ item.product_name }} × {{ item.quantity }}</span>
-                                </div>
+                            <!-- Grouped by product with each size set apart, so three
+                                 sizes of one drain read as that drain with its sizes. -->
+                            <div v-if="row.items && row.items.length" class="items-preview" @click="viewDetails(row)">
+                                <span
+                                    v-for="group in groupedLines(row)"
+                                    :key="group.key"
+                                    class="line-pill"
+                                    :class="{ 'has-variants': group.variants.length }"
+                                >
+                                    <span class="line-pill-name" :title="group.name">{{ group.name }}</span>
+                                    <template v-if="group.variants.length">
+                                        <span v-for="line in group.variants" :key="line.id" class="line-pill-variant">
+                                            <span class="line-pill-variant-label">{{ line.variant_label || line.product_name }}</span>
+                                            <span class="line-pill-qty">×{{ line.quantity }}</span>
+                                        </span>
+                                    </template>
+                                    <span v-else class="line-pill-qty">×{{ group.quantity }}</span>
+                                </span>
                             </div>
                             <span v-else>-</span>
                         </template>
@@ -203,6 +217,23 @@ const loadOrders = () => {
     store.fetchOrders(params).catch(() => {});
 };
 
+// Lines grouped by product, in order of first appearance; a size line goes
+// under its product rather than standing as a product of its own.
+const groupedLines = (order) => {
+    const groups = new Map();
+    (order.items || []).forEach((item) => {
+        const key = item.product_id || `line-${item.id}`;
+        if (!groups.has(key)) {
+            groups.set(key, { key, name: item.product?.name_ar || item.product_name, lines: [], variants: [], quantity: 0 });
+        }
+        const group = groups.get(key);
+        group.lines.push(item);
+        if (item.variant_id) group.variants.push(item);
+        group.quantity += Number(item.quantity) || 0;
+    });
+    return [...groups.values()];
+};
+
 const viewDetails = (row) => {
     router.push({ name: 'admin.purchase-requests.show', params: { id: row.id } });
 };
@@ -308,9 +339,73 @@ onMounted(() => {
     align-items: center;
 }
 
-.item-line {
-    padding: 2px 0;
-    font-size: 0.875rem;
+.items-preview {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+}
+
+.line-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--el-border-color-lighter, #e5e7eb);
+    background: var(--el-fill-color-light, #f5f7fa);
+    font-size: 0.78rem;
+    line-height: 1.25rem;
+    color: #1f2d3d;
+    white-space: nowrap;
+}
+
+.line-pill.has-variants {
+    border-color: var(--el-color-primary-light-7);
+    background: var(--el-color-primary-light-9);
+}
+
+.line-pill-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+
+.line-pill-qty {
+    color: #6b7c98;
+    font-weight: 600;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+/* A size inside its product's pill: its own small tag so two sizes scan as
+   two sizes rather than one run of figures. */
+.line-pill-variant {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--el-color-primary-light-7);
+    color: var(--el-color-primary);
+    font-size: 0.72rem;
+    line-height: 1.1rem;
+}
+
+.line-pill-variant .line-pill-qty {
+    color: var(--el-color-primary);
+    opacity: 0.8;
+}
+
+.line-pill-variant-label {
+    font-weight: 700;
+    direction: ltr;
+    unicode-bidi: isolate;
 }
 
 .loading-state,
