@@ -67,3 +67,40 @@ export function withOptions(options, extra) {
     const missing = extra.filter((option) => option && !known.has(optionKey(option)));
     return missing.length ? [...missing, ...options] : options;
 }
+
+/**
+ * A product's `variants` relation (as the product endpoint returns it) as
+ * search rows, shaped like the rows `expand_variants=1` returns so a picker
+ * cannot tell them apart. A variant with no price of its own sells at the
+ * product's price, sale included; one with its own price has no sale.
+ */
+export function variantRowsOf(product) {
+    if (!product?.id) return [];
+    return (product.variants || []).map((variant) => {
+        const label = variant.label || variantLabelOf(variant);
+        const suffix = label ? ` - ${label}` : '';
+        const hasOwnPrice = Number(variant.price) > 0;
+        return {
+            ...product,
+            variants: undefined,
+            variant_id: variant.id,
+            listing_key: pickKey(product.id, variant.id),
+            variant_label: label,
+            product_name_ar: product.name_ar,
+            product_name_en: product.name_en,
+            name_ar: `${product.name_ar || ''}${suffix}`,
+            name_en: product.name_en ? `${product.name_en}${suffix}` : product.name_en,
+            sku: variant.sku || product.sku,
+            barcode: variant.barcode || product.barcode,
+            size: variant.size,
+            color: variant.color,
+            material: variant.material,
+            price: hasOwnPrice ? variant.price : product.price,
+            sale_price: hasOwnPrice ? null : product.sale_price,
+            has_sale: hasOwnPrice ? false : product.has_sale,
+            cost_price: Number(variant.cost_price) > 0 ? variant.cost_price : product.cost_price,
+            stock_quantity: variant.stock_quantity,
+            product_stock_quantity: product.stock_quantity,
+        };
+    });
+}
