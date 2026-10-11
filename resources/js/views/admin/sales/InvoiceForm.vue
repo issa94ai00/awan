@@ -82,41 +82,85 @@
                                 </div>
 
                                 <ul v-else-if="searchResults.length" class="results-list">
-                                    <li
-                                        v-for="(product, index) in searchResults"
-                                        :key="optionKey(product)"
-                                        class="result"
-                                        :class="{ active: highlightedIndex === index }"
-                                        @click="addProduct(product)"
-                                        @mouseenter="highlightedIndex = index"
-                                    >
-                                        <div class="result-thumb">
-                                            <img v-if="product.image_main" :src="getImageUrl(product.image_main)" alt="" />
-                                            <el-icon v-else><Box /></el-icon>
-                                        </div>
+                                    <template v-for="g in searchGroups" :key="g.key">
+                                        <!-- A product with sizes is one entry with a row per
+                                             size, so eight sizes of one drain read as one
+                                             product, not as eight unrelated results. Arrow
+                                             keys still walk every size in order. -->
+                                        <li v-if="g.hasVariants" class="result-group">
+                                            <div class="result-group-head">
+                                                <div class="result-thumb">
+                                                    <img v-if="g.product.image_main" :src="getImageUrl(g.product.image_main)" alt="" />
+                                                    <el-icon v-else><Box /></el-icon>
+                                                </div>
+                                                <div class="result-body">
+                                                    <span class="result-name">{{ baseName(g.product) || g.product.name_en }}</span>
+                                                    <span class="result-group-meta">
+                                                        {{ t('po_variants_count', g.rows.length) }} · {{ t('po_pick_size') }}
+                                                    </span>
+                                                </div>
+                                                <!-- The warehouses hold the product, not the size:
+                                                     this is what any of its lines can draw on. -->
+                                                <span v-if="g.product.product_stock_quantity != null" class="result-stock-total">
+                                                    {{ t('so_product_stock_total', { count: formatNumber(g.product.product_stock_quantity) }) }}
+                                                </span>
+                                            </div>
+                                            <ul class="result-sizes">
+                                                <li
+                                                    v-for="r in g.rows"
+                                                    :key="optionKey(r.product)"
+                                                    class="result result-size"
+                                                    :class="{ active: highlightedIndex === r.index, 'in-invoice': inInvoiceQty(r.product) > 0 }"
+                                                    @click="addProduct(r.product)"
+                                                    @mouseenter="highlightedIndex = r.index"
+                                                >
+                                                    <div class="result-body">
+                                                        <span class="result-size-label" dir="ltr">{{ r.product.variant_label || baseName(r.product) }}</span>
+                                                        <span v-if="r.product.sku" class="result-sku">{{ r.product.sku }}</span>
+                                                    </div>
+                                                    <span v-if="inInvoiceQty(r.product) > 0" class="in-invoice-tag" :title="t('quantity')" dir="ltr">
+                                                        ×{{ formatNumber(inInvoiceQty(r.product)) }}
+                                                    </span>
+                                                    <div class="result-side">
+                                                        <span class="result-price">{{ money(r.product.price) }}</span>
+                                                        <span class="result-stock" :class="stockTone(r.product.stock_quantity)">
+                                                            {{ t('available') }} {{ formatNumber(r.product.stock_quantity || 0) }}
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </li>
 
-                                        <div class="result-body">
-                                            <!-- Each size is its own result: the product's
-                                                 name with the size beside it. -->
-                                            <span class="result-name">
-                                                {{ baseName(product) || product.name_en }}
-                                                <VariantChip v-if="product.variant_id" :label="product.variant_label" />
-                                            </span>
-                                            <span v-if="product.sku" class="result-sku">{{ product.sku }}</span>
-                                        </div>
+                                        <!-- A product without sizes: one row -->
+                                        <li
+                                            v-else
+                                            class="result"
+                                            :class="{ active: highlightedIndex === g.rows[0].index, 'in-invoice': inInvoiceQty(g.product) > 0 }"
+                                            @click="addProduct(g.product)"
+                                            @mouseenter="highlightedIndex = g.rows[0].index"
+                                        >
+                                            <div class="result-thumb">
+                                                <img v-if="g.product.image_main" :src="getImageUrl(g.product.image_main)" alt="" />
+                                                <el-icon v-else><Box /></el-icon>
+                                            </div>
 
-                                        <div class="result-side">
-                                            <span class="result-price">{{ money(product.price) }}</span>
-                                            <span class="result-stock" :class="stockTone(product.stock_quantity)">
-                                                {{ t('available') }} {{ formatNumber(product.stock_quantity || 0) }}
+                                            <div class="result-body">
+                                                <span class="result-name">{{ baseName(g.product) || g.product.name_en }}</span>
+                                                <span v-if="g.product.sku" class="result-sku">{{ g.product.sku }}</span>
+                                            </div>
+
+                                            <span v-if="inInvoiceQty(g.product) > 0" class="in-invoice-tag" :title="t('quantity')" dir="ltr">
+                                                ×{{ formatNumber(inInvoiceQty(g.product)) }}
                                             </span>
-                                            <!-- The warehouses hold the product, not the size:
-                                                 this is what a line can actually draw on. -->
-                                            <span v-if="product.variant_id && product.product_stock_quantity != null" class="result-stock-total">
-                                                {{ t('so_product_stock_total', { count: formatNumber(product.product_stock_quantity) }) }}
-                                            </span>
-                                        </div>
-                                    </li>
+
+                                            <div class="result-side">
+                                                <span class="result-price">{{ money(g.product.price) }}</span>
+                                                <span class="result-stock" :class="stockTone(g.product.stock_quantity)">
+                                                    {{ t('available') }} {{ formatNumber(g.product.stock_quantity || 0) }}
+                                                </span>
+                                            </div>
+                                        </li>
+                                    </template>
                                 </ul>
 
                                 <div v-else class="results-state muted">
@@ -159,6 +203,24 @@
                                         <span class="line-name">{{ item.name }}</span>
                                         <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
                                         <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
+                                        <!-- The other sizes of this product, one click away:
+                                             changing the size keeps the quantity, the sources
+                                             and a price that was typed. -->
+                                        <div v-if="lineSiblings(item).length > 1" class="line-sizes">
+                                            <span class="line-sizes-label">{{ t('po_switch_size') }}</span>
+                                            <button
+                                                v-for="v in lineSiblings(item)"
+                                                :key="optionKey(v)"
+                                                type="button"
+                                                class="size-chip"
+                                                :class="{ active: optionKey(v) === item.pick, out: Number(v.stock_quantity) <= 0 }"
+                                                :title="[v.sku, money(v.price)].filter(Boolean).join(' · ')"
+                                                @click="switchLineVariant(index, v)"
+                                            >
+                                                <span dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                                <small>{{ formatNumber(v.stock_quantity || 0) }}</small>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -675,6 +737,7 @@ import { getImageUrl } from '@/utils/imageUrl';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
+import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Search, ShoppingCart, User, Wallet, Notebook,
@@ -1234,6 +1297,7 @@ const onSearchInput = (query) => {
             const res = await posApi.productLookup({ q: query, expand_variants: 1 });
             const data = res.data?.data || res.data || [];
             searchResults.value = Array.isArray(data) ? data : [];
+            rememberVariantRows(searchResults.value);
         } catch (error) {
             searchResults.value = [];
         } finally {
@@ -1251,10 +1315,67 @@ const navigateResult = (direction) => {
         : (highlightedIndex.value <= 0 ? max : highlightedIndex.value - 1);
 };
 
+// Enter adds the highlighted result, or the only one when nothing is
+// highlighted and the search left no choice to make.
 const selectHighlighted = () => {
     if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
         addProduct(searchResults.value[highlightedIndex.value]);
+    } else if (searchResults.value.length === 1) {
+        addProduct(searchResults.value[0]);
     }
+};
+
+// Results regrouped by product, each row keeping its place in the flat list
+// so the arrow keys and the highlight still go by one index.
+const searchGroups = computed(() => {
+    const groups = new Map();
+    searchResults.value.forEach((product, index) => {
+        if (!groups.has(product.id)) groups.set(product.id, { key: String(product.id), product, rows: [] });
+        groups.get(product.id).rows.push({ product, index });
+    });
+    return [...groups.values()].map((g) => ({ ...g, hasVariants: g.rows.some((r) => r.product.variant_id) }));
+});
+
+// How many of a result are on the invoice already, across its sources.
+const inInvoiceQty = (product) => {
+    const line = items.value.find((l) => l.pick === optionKey(product));
+    return line ? lineQuantity(line) : 0;
+};
+
+// The sibling sizes of each picked product, for the switcher under a line.
+const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
+const lineSiblings = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
+const preloadLineSiblings = () => items.value.forEach((item) => item.product_variant_id && ensureVariantsLoaded(item.product_id));
+
+// Switching a line to another size keeps its sources and quantities — the
+// warehouses hold the product, not the size — and a price that was typed;
+// a price still at the old size's list price follows the new one. If that
+// size is already a line, this line's allocations join it.
+const switchLineVariant = (index, row) => {
+    const line = items.value[index];
+    const pick = optionKey(row);
+    if (!line || line.pick === pick) return;
+
+    const other = items.value.find((l) => l.pick === pick);
+    if (other) {
+        line.allocations.forEach((alloc) => {
+            const same = alloc.warehouse_id != null && other.allocations.find((a) => a.warehouse_id === alloc.warehouse_id);
+            if (same) same.quantity += alloc.quantity;
+            else other.allocations.push({ ...alloc });
+        });
+        items.value.splice(index, 1);
+        return;
+    }
+
+    const multiplier = Number(line.selectedUnit?.price_multiplier) || 1;
+    const priceUntouched = round2(line.price) === round2(line.base_price * multiplier);
+    line.pick = pick;
+    line.product_variant_id = row.variant_id || null;
+    line.variant_label = row.variant_label || '';
+    line.sku = row.sku || '';
+    line.stock = row.stock_quantity || 0;
+    line.base_price = parseFloat(row.price) || 0;
+    if (priceUntouched) line.price = round2(line.base_price * multiplier);
 };
 
 /* ------------------------------------------------------------------ *
@@ -1266,6 +1387,7 @@ const addProduct = (product) => {
     // same product is a line of its own.
     const pick = optionKey(product);
     const existing = items.value.findIndex((line) => line.pick === pick);
+    if (product.variant_id) ensureVariantsLoaded(product.id);
 
     if (existing !== -1) {
         // Bumps the first source rather than opening a new allocation — most
@@ -1677,6 +1799,7 @@ const loadInvoice = async () => {
     }
 
     items.value = [...grouped.values()];
+    preloadLineSiblings();
 
     // The live figures for each line, so a shortage introduced since the
     // invoice was raised is visible immediately rather than on submit.
@@ -1943,6 +2066,58 @@ onUnmounted(() => {
 .result-stock.low { color: var(--warn); }
 .result-stock.out { color: var(--bad); }
 
+/* Already on the invoice: the row says so, and by how much. */
+.result.in-invoice { box-shadow: inset 3px 0 0 var(--ok); }
+.in-invoice-tag {
+    flex: none;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    background: var(--ok-soft);
+    color: var(--ok);
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* One product, several sizes */
+.result-group {
+    padding: 0.45rem 0.7rem 0.55rem;
+    border-radius: 9px;
+}
+
+.result-group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding-bottom: 0.45rem;
+}
+
+.result-group-meta { font-size: 0.74rem; color: var(--ink-mute); }
+
+.result-sizes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.3rem;
+}
+
+.result-size {
+    padding: 0.4rem 0.6rem;
+    gap: 0.5rem;
+    border: 1px solid var(--line);
+    background: var(--ground);
+}
+
+.result-size.active { background: var(--surface); border-color: var(--gold); }
+
+.result-size-label {
+    font-weight: 700;
+    color: var(--ink);
+    unicode-bidi: isolate;
+}
+
 .drop-enter-active, .drop-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
 .drop-enter-from, .drop-leave-to { opacity: 0; transform: translateY(-6px); }
 
@@ -2033,6 +2208,55 @@ onUnmounted(() => {
     color: var(--ink-mute);
     font-family: 'Cascadia Mono', Consolas, monospace;
 }
+
+/* Sibling sizes under a line */
+.line-sizes {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+
+.line-sizes-label { font-size: 0.72rem; color: var(--ink-mute); margin-inline-end: 0.15rem; }
+
+.size-chip {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.08rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-soft);
+    font-size: 0.74rem;
+    font-weight: 600;
+    line-height: 1.5;
+    transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.size-chip:hover { border-color: var(--gold); color: var(--ink); }
+
+.size-chip.active {
+    border-color: var(--gold);
+    background: #fdf6e3;
+    color: var(--ink);
+    cursor: default;
+}
+
+.size-chip.out { color: var(--bad); border-style: dashed; }
+
+.size-chip small {
+    font-size: 0.66rem;
+    color: var(--ok);
+    padding-inline-start: 0.3rem;
+    border-inline-start: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+}
+
+.size-chip.out small { color: var(--bad); }
 
 .line-total { display: flex; align-items: center; gap: 0.5rem; flex: none; }
 .line-total-value { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
@@ -2549,6 +2773,7 @@ onUnmounted(() => {
 
 @media (max-width: 720px) {
     .line-fields { grid-template-columns: 1fr 1fr; }
+    .result-sizes { grid-template-columns: 1fr; }
 
     .header-actions .el-button--large { display: none; }
 
