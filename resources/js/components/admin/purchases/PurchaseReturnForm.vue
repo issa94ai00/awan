@@ -133,25 +133,55 @@
 
                     <div v-for="(line, index) in form.items" :key="line.key" class="line">
                         <div class="line-product">
+                            <!-- One option per size: a return says which size went
+                                 back, as the receipt line it reverses did. -->
                             <el-select
-                                v-model="line.product_id"
+                                v-model="line.pick"
                                 filterable
                                 remote
+                                reserve-keyword
                                 :remote-method="searchProducts"
                                 :loading="productSearchLoading"
                                 :placeholder="$t('pret_search_product')"
                                 style="width: 100%"
-                                @change="(id) => onProductChange(line, id)"
+                                @change="(key) => onProductChange(line, key)"
                             >
                                 <el-option
                                     v-for="product in productOptions(line)"
-                                    :key="product.id"
+                                    :key="optionKey(product)"
                                     :label="productLabel(product)"
-                                    :value="product.id"
-                                    :disabled="isTaken(product.id, line)"
-                                />
+                                    :value="optionKey(product)"
+                                    :disabled="isTaken(optionKey(product), line)"
+                                >
+                                    <div class="product-option">
+                                        <span class="product-option-name">
+                                            {{ baseName(product) }}
+                                            <VariantChip v-if="product.variant_id" :label="product.variant_label" />
+                                        </span>
+                                        <small v-if="product.sku" dir="ltr">{{ product.sku }}</small>
+                                    </div>
+                                </el-option>
                             </el-select>
+                            <!-- The other sizes of the picked product, one click away;
+                                 sizes on the chosen delivery are marked. -->
+                            <div v-if="siblingVariants(line).length > 1" class="line-sizes">
+                                <span class="sizes-label"><i class="fas fa-tag"></i> {{ $t('po_switch_size') }}</span>
+                                <button
+                                    v-for="v in siblingVariants(line)"
+                                    :key="optionKey(v)"
+                                    type="button"
+                                    class="size-chip"
+                                    :class="{ 'is-active': optionKey(v) === line.pick, 'is-received': receiptGroups.has(optionKey(v)) }"
+                                    :disabled="isTaken(optionKey(v), line)"
+                                    :title="v.sku || ''"
+                                    @click="switchLineVariant(line, v)"
+                                >
+                                    <span dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                    <small v-if="receiptGroups.has(optionKey(v))">{{ $t('pret_on_receipt') }}</small>
+                                </button>
+                            </div>
                             <div v-if="line.product_id" class="line-meta">
+                                <VariantChip v-if="line.product_variant_id" :label="line.variant_label" />
                                 <span v-if="line.received !== null">
                                     {{ $t('pret_received_n', { count: line.received }) }}
                                     <template v-if="line.alreadyReturned">
@@ -281,6 +311,9 @@ import { productsApi } from '@/api/products';
 import { inventoryApi } from '@/api/inventory';
 import { apiErrorMessage, formatCurrency, localIsoDate } from '@/utils/sales';
 import { baseCurrencyCode, currencyDecimals, numberLocale } from '@/utils/currency';
+import { optionKey, pickKey, baseName, variantLabelOf, optionFromLine } from '@/utils/productPick';
+import { useVariantSiblings } from '@/composables/useVariantSiblings';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
@@ -300,7 +333,13 @@ let lineSeq = 0;
 
 const newLine = (patch = {}) => ({
     key: ++lineSeq,
+    // What the select binds to: the product, or one size of it.
+    pick: null,
     product_id: null,
+    product_variant_id: null,
+    variant_label: '',
+    // The search row the line was picked from, so it stays among the options.
+    option: null,
     product: null,
     quantity: 1,
     unit_price: null,
@@ -325,7 +364,7 @@ const form = reactive({
 
 const saving = ref(false);
 let snapshot = '';
-const serialize = () => JSON.stringify({ ...form, items: form.items.map(({ product_id, quantity, unit_price }) => ({ product_id, quantity, unit_price })) });
+const serialize = () => JSON.stringify({ ...form, items: form.items.map(({ product_id, product_variant_id, quantity, unit_price }) => ({ product_id, product_variant_id, quantity, unit_price })) });
 
 const drawerSize = computed(() => (window.innerWidth < 768 ? '100%' : window.innerWidth < 1280 ? '75%' : '62%'));
 
@@ -416,40 +455,69 @@ const onReceiptChange = async (receiptId) => {
     try {
         const res = await purchaseReturnsApi.getAll({ purchase_receipt_id: receiptId, per_page: 100 });
         (res.data?.data?.returns || []).forEach((ret) => (ret.items || []).forEach((item) => {
-            returned[item.product_id] = (returned[item.product_id] || 0) + Number(item.quantity);
+            const key = pickKey(item.product_id, item.product_variant_id);
+            returned[key] = (returned[key] || 0) + Number(item.quantity);
         }));
     } catch { /* the caps are a guide; the server still checks the shelf */ }
+    returnedByPick.value = returned;
 
-    // One line per product, as the server books it.
-    const byProduct = new Map();
+    // One line per product, or per size of it, as the server books it.
+    const groups = new Map();
     (selectedReceipt.value.items || []).forEach((item) => {
-        const existing = byProduct.get(item.product_id);
+        const key = pickKey(item.product_id, item.product_variant_id);
+        const existing = groups.get(key);
         if (existing) {
             existing.received += Number(item.quantity);
         } else {
-            byProduct.set(item.product_id, {
+            groups.set(key, {
+                option: optionFromLine(item),
                 product: item.product,
+                variant: item.variant || null,
                 received: Number(item.quantity),
                 price: Number(item.unit_price),
             });
         }
     });
+    receiptGroups.value = groups;
+    rememberVariantRows([...groups.values()].map((g) => g.option));
 
-    form.items = [...byProduct.entries()].map(([productId, info]) => {
-        const alreadyReturned = returned[productId] || 0;
-        return newLine({
-            product_id: productId,
+    form.items = [...groups.entries()].map(([key, info]) => {
+        const line = newLine({
+            pick: key,
+            product_id: info.option.id,
+            product_variant_id: info.option.variant_id || null,
+            variant_label: info.option.variant_label || '',
+            option: info.option,
             product: info.product,
             quantity: 0,
-            unit_price: info.price,
-            cost: info.product?.cost_price != null ? Number(info.product.cost_price) : null,
-            received: info.received,
-            alreadyReturned,
-            returnable: Math.max(0, info.received - alreadyReturned),
+            cost: info.option.cost_price != null ? Number(info.option.cost_price) : null,
         });
+        applyReceiptInfo(line);
+        if (line.product_variant_id) ensureVariantsLoaded(line.product_id);
+        return line;
     });
     if (!form.items.length) form.items = [newLine()];
     refreshAvailability();
+};
+
+// The chosen delivery's lines by product-and-size, and what earlier returns
+// already took back against each, so a line knows what it can still return.
+const receiptGroups = ref(new Map());
+const returnedByPick = ref({});
+
+const applyReceiptInfo = (line) => {
+    const info = line.pick ? receiptGroups.value.get(line.pick) : null;
+    if (!info) {
+        line.received = null;
+        line.alreadyReturned = 0;
+        line.returnable = null;
+        return;
+    }
+    const alreadyReturned = returnedByPick.value[line.pick] || 0;
+    line.unit_price = info.price;
+    line.received = info.received;
+    line.alreadyReturned = alreadyReturned;
+    line.returnable = Math.max(0, info.received - alreadyReturned);
 };
 
 /** The receipt's tax, pro rata to the share of its goods going back. */
@@ -472,8 +540,10 @@ const searchProducts = (query) => {
     searchTimer = setTimeout(async () => {
         productSearchLoading.value = true;
         try {
-            const res = await productsApi.getAll({ search: query || undefined, per_page: 20 });
+            // One row per size, and a size's own code finds it.
+            const res = await productsApi.getAll({ search: query || undefined, per_page: 30, expand_variants: 1 });
             productResults.value = res.data?.data || [];
+            rememberVariantRows(productResults.value);
         } catch {
             productResults.value = [];
         } finally {
@@ -482,10 +552,10 @@ const searchProducts = (query) => {
     }, 250);
 };
 
-// A line's own product stays in its options even when the search moves on.
+// A line's own row stays in its options even when the search moves on.
 const productOptions = (line) => {
     const list = productResults.value.slice();
-    if (line.product && !list.some((p) => p.id === line.product.id)) list.unshift(line.product);
+    if (line.option && !list.some((p) => optionKey(p) === optionKey(line.option))) list.unshift(line.option);
     return list;
 };
 
@@ -494,16 +564,43 @@ const productLabel = (product) => {
     return product.sku ? `${name} (${product.sku})` : name;
 };
 
-// The server books one line per product, so a second line for the same one
-// is steered to the first instead.
-const isTaken = (productId, line) => form.items.some((l) => l !== line && l.product_id === productId);
+// The server books one line per product-and-size, so a second line for the
+// same one is steered to the first instead.
+const isTaken = (key, line) => form.items.some((l) => l !== line && l.pick === key);
 
-const onProductChange = (line, productId) => {
-    line.product = productResults.value.find((p) => p.id === productId) || line.product;
-    line.cost = line.product?.cost_price != null ? Number(line.product.cost_price) : null;
-    line.received = null;
-    line.returnable = null;
-    line.alreadyReturned = 0;
+const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
+const siblingVariants = (line) => (line.product_id && line.product_variant_id ? siblingsOf(line.product_id) : []);
+
+const applyRow = (line, row) => {
+    line.pick = optionKey(row);
+    line.option = row;
+    line.product = row;
+    line.product_id = row.id;
+    line.product_variant_id = row.variant_id || null;
+    line.variant_label = row.variant_label || '';
+    line.cost = row.cost_price != null ? Number(row.cost_price) : null;
+    if (row.variant_id) ensureVariantsLoaded(row.id);
+};
+
+const onProductChange = (line, key) => {
+    const row = productResults.value.find((p) => optionKey(p) === key) || (line.option && optionKey(line.option) === key ? line.option : null);
+    if (!row) return;
+    applyRow(line, row);
+    // A line for something on the chosen delivery is capped by it; one for
+    // anything else is a free return.
+    applyReceiptInfo(line);
+    loadAvailability(line);
+};
+
+// Switching a line to another size keeps its quantity and a credit that was
+// typed; the delivery's figures for that size apply when it is on it.
+const switchLineVariant = (line, row) => {
+    const key = optionKey(row);
+    if (line.pick === key || isTaken(key, line)) return;
+    const creditUntouched = line.unit_price === null || line.unit_price === (receiptGroups.value.get(line.pick)?.price ?? null);
+    applyRow(line, row);
+    if (creditUntouched) line.unit_price = null;
+    applyReceiptInfo(line);
     loadAvailability(line);
 };
 
@@ -590,6 +687,7 @@ const submit = async () => {
             notes: form.notes || null,
             items: activeLines.value.map((line) => ({
                 product_id: line.product_id,
+                product_variant_id: line.product_variant_id || null,
                 quantity: Number(line.quantity),
                 // Left out when blank, so the server falls back to what the
                 // units actually cost — the honest default.
@@ -690,7 +788,39 @@ const submit = async () => {
 .line-qty, .line-price { width: 100%; }
 .line-product { min-width: 0; }
 
-.line-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+.line-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+
+.product-option { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.product-option-name { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.product-option small { color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Sibling sizes under a line */
+.line-sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.35rem; }
+.sizes-label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 600; color: #64748b; }
+
+.size-chip {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    font-size: 0.74rem;
+    font-weight: 600;
+    line-height: 1.5;
+    transition: all 0.15s ease;
+}
+
+.size-chip:hover:not(:disabled) { border-color: #93c5fd; color: #1d4ed8; }
+.size-chip.is-received { border-color: #fcd34d; background: #fffbeb; }
+.size-chip.is-active { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; cursor: default; }
+.size-chip:disabled { cursor: default; opacity: 0.45; }
+.size-chip span { unicode-bidi: isolate; }
+.size-chip small { font-size: 0.66rem; color: #b45309; padding-inline-start: 0.3rem; border-inline-start: 1px solid #fde68a; }
 .line-meta .is-warn { color: #d97706; font-weight: 600; }
 .line-warning { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #d97706; margin-top: 0.2rem; }
 

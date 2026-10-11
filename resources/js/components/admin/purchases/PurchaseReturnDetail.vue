@@ -52,8 +52,11 @@
             <el-table :data="ret.items || []" size="small" class="items-table">
                 <el-table-column :label="$t('product')" min-width="200">
                     <template #default="{ row }">
-                        <div class="item-name">{{ row.product?.name_ar || row.product?.name_en || `#${row.product_id}` }}</div>
-                        <div v-if="row.product?.sku" class="item-sku" dir="ltr">{{ row.product.sku }}</div>
+                        <div class="item-name">
+                            {{ row.product?.name_ar || row.product?.name_en || `#${row.product_id}` }}
+                            <VariantChip v-if="row.product_variant_id" :label="variantLabelOf(row.variant)" />
+                        </div>
+                        <div v-if="row.variant?.sku || row.product?.sku" class="item-sku" dir="ltr">{{ row.variant?.sku || row.product.sku }}</div>
                     </template>
                 </el-table-column>
                 <el-table-column :label="$t('quantity')" width="80" align="center" prop="quantity" />
@@ -120,6 +123,8 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import { variantLabelOf } from '@/utils/productPick';
 import { useI18n } from 'vue-i18n';
 import { InfoFilled } from '@element-plus/icons-vue';
 import { purchaseReturnsApi } from '@/api/purchaseReturns';

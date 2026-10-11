@@ -59,7 +59,7 @@ class PurchaseReturnController extends Controller
         $summary = $request->boolean('with_summary') ? $this->summary(clone $query) : null;
 
         $returns = $query
-            ->with(['supplier', 'warehouse', 'items.product', 'purchaseReceipt:id,receipt_number', 'creator:id,name'])
+            ->with(['supplier', 'warehouse', 'items.product', 'items.variant', 'purchaseReceipt:id,receipt_number', 'creator:id,name'])
             ->latest('return_date')->latest('id')
             ->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
 
@@ -125,6 +125,9 @@ class PurchaseReturnController extends Controller
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
+            // Which size went back, when the product has sizes; the receipt
+            // line it reverses names one too.
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'nullable|numeric|min:0',
         ], [
@@ -154,7 +157,7 @@ class PurchaseReturnController extends Controller
 
     public function show(PurchaseReturn $purchaseReturn): JsonResponse
     {
-        $purchaseReturn->load(['supplier', 'warehouse', 'items.product', 'purchaseReceipt', 'creator:id,name']);
+        $purchaseReturn->load(['supplier', 'warehouse', 'items.product', 'items.variant', 'purchaseReceipt', 'creator:id,name']);
 
         return response()->json([
             'success' => true,

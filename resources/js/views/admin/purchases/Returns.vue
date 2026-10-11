@@ -214,6 +214,7 @@ import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { suppliersApi } from '@/api/suppliers';
 import { useInventoryStore } from '@/stores/inventory';
 import { apiErrorMessage, formatCurrency, formatDate } from '@/utils/sales';
+import { variantLabelOf } from '@/utils/productPick';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -364,7 +365,12 @@ const statCards = computed(() => {
 });
 
 // ── Rows ─────────────────────────────────────────────────────────────────
-const itemName = (item) => item.product?.name_ar || item.product?.name_en || `#${item.product_id}`;
+// The product's name with its size, when the line is for one size of it.
+const itemName = (item) => {
+    const name = item.product?.name_ar || item.product?.name_en || `#${item.product_id}`;
+    const size = variantLabelOf(item.variant);
+    return size ? `${name} - ${size}` : name;
+};
 const unitsOf = (row) => (row.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 const itemsHeadline = (row) => {
     const items = row.items || [];
