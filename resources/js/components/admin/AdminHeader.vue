@@ -811,14 +811,11 @@ onUnmounted(() => {
     animation: badge-pulse 2s infinite ease-in-out;
 }
 
+/* Element Plus places a fixed badge with `right` and translateX(100%) in
+   both directions, so one set of keyframes serves RTL too. */
 @keyframes badge-pulse {
     0%, 100% { transform: translateY(-50%) translateX(100%) scale(1); }
     50% { transform: translateY(-50%) translateX(100%) scale(1.15); box-shadow: 0 0 12px rgba(239, 68, 68, 0.7); }
-}
-
-[dir="rtl"] @keyframes badge-pulse {
-    0%, 100% { transform: translateY(-50%) translateX(-100%) scale(1); }
-    50% { transform: translateY(-50%) translateX(-100%) scale(1.15); box-shadow: 0 0 12px rgba(239, 68, 68, 0.7); }
 }
 
 .notifications-center {
