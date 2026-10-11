@@ -822,7 +822,7 @@ class SalesOrderWorkflowService
      */
     public function purchaseDraft(SalesOrder $order): array
     {
-        $order->loadMissing('customer', 'items.product', 'items.variant');
+        $order->loadMissing('customer', 'items.product.variants', 'items.variant');
 
         $items = $this->purchaseDraftLines($order->items, fn (SalesOrderItem $item) => $item->description);
 
@@ -847,7 +847,7 @@ class SalesOrderWorkflowService
      */
     public function invoicePurchaseDraft(Invoice $invoice): array
     {
-        $invoice->loadMissing('customer', 'salesOrder', 'items.product', 'items.variant');
+        $invoice->loadMissing('customer', 'salesOrder', 'items.product.variants', 'items.variant');
 
         return [
             'invoice' => [
@@ -868,6 +868,13 @@ class SalesOrderWorkflowService
      * last price paid for it as the cost. One line per product and size, the
      * way the purchase screen holds them.
      *
+     * A line sold before sizes were tracked names no variant, though its
+     * stored name may still say which size went — "reducer - 8\" × 6\"". That
+     * size is read back from the name when it names exactly one of the
+     * product's sizes; otherwise the line is flagged for the buyer to choose
+     * one, and lines with different names stay apart rather than merging
+     * two sizes into one quantity.
+     *
      * @param  iterable<\Illuminate\Database\Eloquent\Model>  $lines
      * @param  callable(\Illuminate\Database\Eloquent\Model): ?string  $storedName
      * @return list<array<string,mixed>>
@@ -882,8 +889,11 @@ class SalesOrderWorkflowService
                 continue;
             }
 
-            $variant = $item->variant;
-            $key = $product->id.':'.($variant?->id ?? 0);
+            $name = $storedName($item) ?: $product->name_ar;
+            $variant = $item->variant ?: $this->variantNamedBy($product, $name);
+            $hasSizes = $product->variants->isNotEmpty();
+            $needsVariant = $hasSizes && ! $variant;
+            $key = $product->id.':'.($variant?->id ?? 0).($needsVariant ? ':'.$name : '');
 
             // An invoice may sell one size on two lines; the purchase screen
             // refuses a product twice, so they become one line.
@@ -896,17 +906,76 @@ class SalesOrderWorkflowService
             $out[$key] = [
                 'product_id' => (int) $item->product_id,
                 'product_variant_id' => $variant?->id,
-                'product_name' => $storedName($item) ?: $product->name_ar,
+                'product_name' => $variant ? $variant->displayName($product->name_ar) : $name,
                 'quantity' => (int) $item->quantity,
                 'unit_price' => $this->lastPurchasePriceFor($product, $variant),
                 'sale_price' => round((float) $item->unit_price, 5),
+                // The product has sizes but the line does not say which: the
+                // buyer picks one, helped by what the sale called it.
+                'needs_variant' => $needsVariant,
+                'sold_as' => $needsVariant ? $this->sizeSuffixOf($product, $name) : null,
                 // Enough for the purchase screen's picker to label the line.
-                'product' => $product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
+                'product' => $product->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']) + ['has_variants' => $hasSizes],
                 'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
             ];
         }
 
         return array_values($out);
+    }
+
+    /**
+     * The one size of the product that a stored line name points at, or
+     * null: a name naming no size, a size the product no longer has, or two
+     * sizes at once leaves the choice to the buyer.
+     */
+    private function variantNamedBy(Product $product, ?string $name): ?ProductVariant
+    {
+        $suffix = $this->sizeSuffixOf($product, $name);
+        if ($suffix === null || $product->variants->isEmpty()) {
+            return null;
+        }
+
+        // "8\" × 6\" - 8\" × 6\"": older lines repeated the label, so each
+        // dash-separated part is tried on its own.
+        $parts = collect(preg_split('/\s+[-–—]\s+/u', $suffix))
+            ->map(fn ($part) => $this->sizeKey($part))
+            ->filter()
+            ->unique();
+
+        $matches = $product->variants->filter(function (ProductVariant $variant) use ($parts) {
+            $keys = collect([$variant->label, $variant->size, $variant->sku])
+                ->map(fn ($value) => $this->sizeKey($value))
+                ->filter();
+
+            return $parts->intersect($keys)->isNotEmpty();
+        });
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /** What follows the product's name in a stored line name — the size it was sold as — or null. */
+    private function sizeSuffixOf(Product $product, ?string $name): ?string
+    {
+        $name = trim((string) $name);
+        foreach (array_filter([$product->name_ar, $product->name_en]) as $base) {
+            $base = trim((string) $base);
+            if ($base !== '' && mb_stripos($name, $base) === 0 && mb_strlen($name) > mb_strlen($base)) {
+                $rest = trim(preg_replace('/^\s*[-–—]\s*/u', '', mb_substr($name, mb_strlen($base))));
+
+                return $rest !== '' ? $rest : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** A size label as compared: case, spacing and the ×/x and quote glyphs set aside. */
+    private function sizeKey(?string $value): string
+    {
+        $value = mb_strtolower(trim((string) $value));
+        $value = str_replace(['×', 'x', '″', '”', '“', '"', '\''], ['x', 'x', '"', '"', '"', '"', '"'], $value);
+
+        return preg_replace('/\s+/u', '', $value) ?? '';
     }
 
     /** The last price paid for this size, else its own cost, else the product's. */
