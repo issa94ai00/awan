@@ -49,15 +49,14 @@ class ProductController extends Controller
     /**
      * Whether this request lists each variant as its own product.
      *
-     * The storefront does (a shopper picks "4 inch", not "floor drain"). Admin
-     * screens keep one row per product, since they edit the product and its
-     * variants together — except a line picker on an order or receipt, which
-     * asks for them with `expand_variants=1`. A public caller can still ask
-     * for grouped rows with `expand_variants=0`.
+     * Only when asked, with `expand_variants=1` — a line picker on an order or
+     * receipt does, to pick one size. The storefront lists a product once
+     * however many sizes it has, and the shopper picks the size on the
+     * product's page; admin screens edit a product and its variants together.
      */
     private function expandsVariants(Request $request): bool
     {
-        return $request->boolean('expand_variants', ! $this->isAdminRequest($request));
+        return $request->boolean('expand_variants', false);
     }
 
     private function isAdminRequest(Request $request): bool
@@ -82,7 +81,9 @@ class ProductController extends Controller
             $query->withVariantRows();
         }
 
-        if ($request->boolean('with_variants')) {
+        // A storefront card for a product with sizes shows their price range
+        // and how many there are.
+        if ($request->boolean('with_variants') || (! $expand && ! $this->isAdminRequest($request))) {
             $query->with('variants');
         }
 
@@ -138,8 +139,13 @@ class ProductController extends Controller
         }
 
         // Price range (accept both min_price/price_min and max_price/price_max).
-        // A variant row is filtered by the price it is listed at.
-        $priceColumn = $expand ? DB::raw('('.Product::variantRowPriceSql().')') : 'products.price';
+        // A variant row is filtered by the price it is listed at, a storefront
+        // product by the lowest price it is sold at.
+        $priceColumn = match (true) {
+            $expand => DB::raw('('.Product::variantRowPriceSql().')'),
+            ! $this->isAdminRequest($request) => DB::raw('('.Product::lowestPriceSql().')'),
+            default => 'products.price',
+        };
         $minPrice = $request->get('min_price') ?? $request->get('price_min');
         if ($minPrice !== null && $minPrice !== '') {
             $query->where($priceColumn, '>=', (float) $minPrice);
@@ -161,9 +167,15 @@ class ProductController extends Controller
 
             if ($expand) {
                 array_push($columns, 'pv.sku', 'pv.barcode', 'pv.size', 'pv.color');
+            } elseif (! $this->isAdminRequest($request)) {
+                // A shopper searching by one size's code finds its product.
+                array_push($columns, 'variants.sku', 'variants.barcode', 'variants.size', 'variants.color');
             }
 
             $query->whereSearch($columns, $request->search);
+        } elseif (! $expand && ! $this->isAdminRequest($request)) {
+            // Browsing lists products sharing a name in a category once.
+            $query->storefrontGrouped($request->boolean('in_stock'));
         }
 
         return $query;
@@ -363,6 +375,10 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
+        if (! $expand && ! $this->isAdminRequest($request)) {
+            Product::attachStorefrontSiblings($products->items());
+        }
+
         $response = [
             'success' => true,
             'message' => 'Products retrieved successfully',
@@ -410,6 +426,12 @@ class ProductController extends Controller
         // offers them as the sizes/colours to pick from.
         $product->load('variants');
 
+        // The public page offers products sharing this one's name in its
+        // category as its sizes.
+        if (! $isAdmin) {
+            Product::attachStorefrontSiblings([$product]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Product retrieved successfully',
@@ -434,7 +456,7 @@ class ProductController extends Controller
             ->where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
             ->where('is_active', 1)
-            ->with('category')
+            ->with(['category', 'variants'])
             ->inRandomOrder()
             ->limit(4)
             ->get();

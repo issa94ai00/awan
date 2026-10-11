@@ -78,12 +78,14 @@ class CategoryController extends Controller
         $perPage = (int) $request->get('per_page', 12);
         $perPage = $perPage > 0 ? min($perPage, 100) : 12;
 
-        // The storefront lists each variant as its own product (see
-        // ProductController::expandsVariants); `expand_variants=0` groups them.
-        $expand = $request->boolean('expand_variants', true);
+        // A product is listed once, with its sizes for the card's price range
+        // (see ProductController::expandsVariants); `expand_variants=1` lists
+        // each size as its own row.
+        $expand = $request->boolean('expand_variants', false);
 
         $productsQuery = Product::query()
             ->when($expand, fn ($q) => $q->withVariantRows())
+            ->when(! $expand, fn ($q) => $q->with('variants'))
             ->whereIn('products.category_id', $category->descendantIds())
             ->where('products.is_active', 1)
             ->with('category');
@@ -97,13 +99,20 @@ class CategoryController extends Controller
         // Allow optional simple search within the category
         if ($request->filled('search')) {
             $columns = ['products.name_ar', 'products.name_en', 'products.brand', 'products.model'];
-            if ($expand) {
-                $columns = [...$columns, 'pv.sku', 'pv.size', 'pv.color'];
-            }
+            $columns = $expand
+                ? [...$columns, 'pv.sku', 'pv.size', 'pv.color']
+                : [...$columns, 'variants.sku', 'variants.size', 'variants.color'];
             $productsQuery->whereSearch($columns, $request->search);
+        } elseif (! $expand) {
+            // Browsing lists products sharing a name in a category once.
+            $productsQuery->storefrontGrouped($request->boolean('in_stock'));
         }
 
         $products = $productsQuery->paginate($perPage);
+
+        if (! $expand) {
+            Product::attachStorefrontSiblings($products->items());
+        }
 
         // The subcategories worth offering as a shortcut — the ones with
         // something in them — and the parent, for the way back up.

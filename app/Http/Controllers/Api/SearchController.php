@@ -38,21 +38,25 @@ class SearchController extends Controller
 
         $prefix = $query . '%';
 
-        // Listed the way category pages list them — a row per size or colour,
-        // each at its own price — so a search result and a category card for
-        // the same thing look and link alike. Paginated: it used to stop at
-        // the first twenty matches and call that the result count.
+        // Listed the way category pages list them — a product once, with its
+        // sizes for the card's price range (`expand_variants=1`: a row per
+        // size) — so a search result and a category card for the same thing
+        // look and link alike. Paginated: it used to stop at the first twenty
+        // matches and call that the result count.
+        $expand = $request->boolean('expand_variants', false);
+
         $productsQuery = Product::query()
-            ->withVariantRows()
+            ->when($expand, fn ($q) => $q->withVariantRows())
+            ->when(! $expand, fn ($q) => $q->with('variants'))
             ->where('products.is_active', 1)
             ->whereSearch([
                 'products.name_ar', 'products.name_en', 'products.description_ar',
-                'products.brand', 'products.model', 'products.sku', 'pv.sku',
+                'products.brand', 'products.model', 'products.sku', $expand ? 'pv.sku' : 'variants.sku',
             ], $query)
             ->with('category:id,name_ar,name_en,slug');
 
         if ($request->boolean('in_stock')) {
-            $productsQuery->storefrontInStock(true);
+            $productsQuery->storefrontInStock($expand);
         }
 
         // Unless another order is asked for, names that start with the query
@@ -63,7 +67,7 @@ class SearchController extends Controller
                 [$prefix, $prefix]
             );
         }
-        $productsQuery->storefrontSort($request->input('sort'), true, $request->input('lang'));
+        $productsQuery->storefrontSort($request->input('sort'), $expand, $request->input('lang'));
 
         $products = $productsQuery->paginate($perPage);
 

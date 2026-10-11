@@ -179,6 +179,10 @@ class ProductResource extends JsonResource
                     'stock_quantity' => $variant->stock_quantity,
                 ]);
             }),
+            // Products sharing this one's name in its category, itself
+            // included: the storefront offers them as its sizes.
+            'siblings' => $this->when($this->resource->getAttribute('storefront_siblings') !== null,
+                fn () => $this->resource->getAttribute('storefront_siblings')),
 
             // Timestamps
             'created_at' => $this->created_at,

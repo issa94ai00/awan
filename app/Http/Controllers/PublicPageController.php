@@ -230,8 +230,8 @@ class PublicPageController extends Controller
         [$siteName, $siteDescription, $siteKeywords, $siteImage] = $this->getCommonSeo($locale);
 
         $pageName = $locale === 'en' ? 'All Products' : 'جميع المنتجات';
-        // Counted the way the listing counts: each variant is its own entry.
-        $total = Product::query()->withVariantRows()->where('products.is_active', 1)->count();
+        // Counted the way the listing counts: a product once, whatever its sizes.
+        $total = Product::query()->where('products.is_active', 1)->count();
         $categoryNames = Category::where('is_active', 1)->whereNull('parent_id')->orderBy('sort_order')->limit(4)->get()
             ->map(fn (Category $category) => $locale === 'en' ? ($category->name_en ?: $category->name_ar) : $category->name_ar)
             ->filter()

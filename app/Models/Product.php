@@ -173,6 +173,119 @@ class Product extends Model implements Sitemapable
     }
 
     /**
+     * The storefront lists products that share a name inside one category
+     * once — a catalogue imported as one product per size ("مفتاح اموليت"
+     * at 8", 10" and 12", each with its own code and photo) reads as one
+     * item with sizes. The listed one is the group's first by id; its card
+     * and page offer the others (see attachStorefrontSiblings()).
+     *
+     * Only for browsing: a search keeps every product, so a shopper looking
+     * up one size's code finds that size.
+     */
+    public function scopeStorefrontGrouped(\Illuminate\Database\Eloquent\Builder $query, bool $inStockOnly = false): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereNotExists(fn ($twin) => $twin->selectRaw('1')
+            ->from('products as twin')
+            ->whereColumn('twin.name_ar', 'products.name_ar')
+            ->whereColumn('twin.category_id', 'products.category_id')
+            ->whereColumn('twin.id', '<', 'products.id')
+            ->where('twin.is_active', 1)
+            ->when($inStockOnly, fn ($q) => $q->where('twin.in_stock', 1)));
+    }
+
+    /**
+     * Give each product its storefront siblings — the active products sharing
+     * its name and category, itself included — as `storefront_siblings`, in
+     * one query for the whole page. A product alone in its group gets none.
+     *
+     * @param  iterable<self>  $products
+     */
+    public static function attachStorefrontSiblings(iterable $products): void
+    {
+        $products = collect($products)->filter(fn ($p) => $p instanceof self && $p->category_id !== null);
+        if ($products->isEmpty()) {
+            return;
+        }
+
+        $groups = self::query()
+            ->where('is_active', 1)
+            ->whereIn('category_id', $products->pluck('category_id')->unique()->values())
+            ->whereIn('name_ar', $products->pluck('name_ar')->unique()->values())
+            ->orderBy('id')
+            ->get(['id', 'slug', 'name_ar', 'category_id', 'sku', 'model', 'size', 'description_ar',
+                'price', 'show_price', 'in_stock', 'stock_quantity', 'image_main'])
+            ->groupBy(fn (self $p) => $p->category_id.'|'.$p->name_ar);
+
+        foreach ($products as $product) {
+            $group = $groups->get($product->category_id.'|'.$product->name_ar);
+            if ($group && $group->count() > 1) {
+                $product->setAttribute('storefront_siblings', self::labelSiblings($group));
+            }
+        }
+    }
+
+    /**
+     * What tells siblings apart on a button, read from their descriptions,
+     * which an import writes freely ("100 غرام", "العرض: 12 مم", "القياس:
+     * 10\" (250 مم)"): the lines no other sibling has, else the lines not
+     * every sibling has, the name itself left out. A key all labels start
+     * with ("العرض:") is dropped. Siblings whose descriptions say nothing
+     * apart fall back to size, model or code.
+     *
+     * @param  \Illuminate\Support\Collection<int, self>  $group
+     * @return array<int, array<string, mixed>>
+     */
+    private static function labelSiblings(\Illuminate\Support\Collection $group): array
+    {
+        $linesOf = $group->mapWithKeys(function (self $p) {
+            $lines = preg_split('/\R/u', trim(strip_tags((string) $p->description_ar))) ?: [];
+            $lines = collect($lines)
+                ->map(fn ($line) => trim(str_starts_with(trim($line), $p->name_ar) ? mb_substr(trim($line), mb_strlen($p->name_ar)) : $line))
+                ->filter(fn ($line) => $line !== '')
+                ->unique()
+                ->values();
+
+            return [$p->id => $lines];
+        });
+        $seenIn = $linesOf->flatten()->countBy();
+        $size = $group->count();
+
+        // One line where that is enough to tell them apart, two where not.
+        $labelsOf = fn (int $take) => $group->mapWithKeys(function (self $p) use ($linesOf, $seenIn, $size, $take) {
+            $lines = $linesOf[$p->id];
+            $own = $lines->filter(fn ($line) => $seenIn[$line] === 1);
+            $parts = ($own->isNotEmpty() ? $own : $lines->filter(fn ($line) => $seenIn[$line] < $size))->take($take);
+            $label = $parts->implode(' · ');
+            $label = $label !== '' ? $label : (trim((string) $p->size) ?: (trim((string) $p->model) ?: (string) $p->sku));
+
+            return [$p->id => mb_strimwidth($label, 0, 48, '…')];
+        });
+        $short = $labelsOf(1);
+        $long = $labelsOf(2);
+        $shortCounts = $short->countBy();
+        $labels = $short->map(fn ($label, $id) => $shortCounts[$label] > 1 ? $long[$id] : $label);
+
+        if (preg_match('/^([^:：·]{1,20}[:：])/u', (string) $labels->first(), $m)
+            && $labels->every(fn ($label) => str_starts_with($label, $m[1]))) {
+            $labels = $labels->map(fn ($label) => trim(mb_substr($label, mb_strlen($m[1]))));
+        }
+
+        $counts = $labels->countBy();
+
+        return $group->map(fn (self $p) => [
+            'id' => $p->id,
+            'slug' => $p->slug,
+            'label' => $counts[$labels[$p->id]] > 1 ? $labels[$p->id].' · '.($p->model ?: $p->sku) : $labels[$p->id],
+            'sku' => $p->sku,
+            'price' => $p->price,
+            'show_price' => (bool) $p->show_price,
+            'in_stock' => (bool) $p->in_stock,
+            'stock_quantity' => $p->stock_quantity,
+            'image_main' => image_url($p->image_main),
+        ])->values()->all();
+    }
+
+    /**
      * One row per variant instead of one row per product, so the storefront
      * can list each size/colour as its own item. A product with no variants
      * still comes back once, with a null `variant_id`.
@@ -207,7 +320,7 @@ class Product extends Model implements Sitemapable
      */
     public function scopeStorefrontSort(\Illuminate\Database\Eloquent\Builder $query, ?string $sort, bool $variantRows, ?string $lang = null): \Illuminate\Database\Eloquent\Builder
     {
-        $priceSql = $variantRows ? self::variantRowPriceSql() : 'products.price';
+        $priceSql = $variantRows ? self::variantRowPriceSql() : self::lowestPriceSql();
         $unpricedLast = "CASE WHEN COALESCE({$priceSql}, 0) <= 0 THEN 1 ELSE 0 END";
 
         match ($sort) {
@@ -222,12 +335,28 @@ class Product extends Model implements Sitemapable
 
     /**
      * In stock the way the storefront card's badge says it: the product is,
-     * and the size listed has stock (or keeps none of its own).
+     * and the size listed has stock (or keeps none of its own). A product
+     * listed once for all its sizes is in stock while any one of them is.
      */
     public function scopeStorefrontInStock(\Illuminate\Database\Eloquent\Builder $query, bool $variantRows): \Illuminate\Database\Eloquent\Builder
     {
+        $available = fn ($w) => $w->whereNull('stock_quantity')->orWhere('stock_quantity', '>', 0);
+
         return $query->where('products.in_stock', 1)
-            ->when($variantRows, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)));
+            ->when($variantRows, fn ($q) => $q->where(fn ($w) => $w->whereNull('pv.stock_quantity')->orWhere('pv.stock_quantity', '>', 0)))
+            ->when(! $variantRows, fn ($q) => $q->where(fn ($w) => $w->whereDoesntHave('variants')->orWhereHas('variants', $available)));
+    }
+
+    /**
+     * The lowest price a shopper can pay for a product listed once for all its
+     * sizes — what its card's "from" price shows. A size without a price of
+     * its own sells at the product's price; a product without sizes, at its
+     * own.
+     */
+    public static function lowestPriceSql(): string
+    {
+        return 'CAST(COALESCE((SELECT MIN(CASE WHEN v.price > 0 THEN v.price ELSE products.price END)'
+            .' FROM product_variants v WHERE v.product_id = products.id), products.price) AS DECIMAL(20, 5))';
     }
 
     /**

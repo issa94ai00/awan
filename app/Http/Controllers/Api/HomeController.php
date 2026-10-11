@@ -40,7 +40,7 @@ class HomeController extends Controller
         $products = Product::where('is_featured', 1)
             ->where('is_active', 1)
             ->where('in_stock', 1)
-            ->with('category')
+            ->with(['category', 'variants'])
             ->orderByDesc('created_at')
             ->limit(12)
             ->get();
@@ -60,7 +60,7 @@ class HomeController extends Controller
                 ->shuffle((int) now()->format('Ymd'))
                 ->take(12);
 
-            $products = Product::whereIn('id', $ids)->with('category')->get()
+            $products = Product::whereIn('id', $ids)->with(['category', 'variants'])->get()
                 ->sortBy(fn (Product $product) => $ids->search($product->id))
                 ->values();
         }
@@ -73,8 +73,8 @@ class HomeController extends Controller
                 'featured_products' => ProductResource::collection($products),
                 'products_source' => $source,
                 'stats' => [
-                    // Counted the way the listings count: each variant is an entry.
-                    'products' => Product::query()->withVariantRows()->where('products.is_active', 1)->count(),
+                    // Counted the way the listings count: a product once, whatever its sizes.
+                    'products' => Product::query()->where('products.is_active', 1)->count(),
                     'sections' => $sections->count(),
                 ],
             ],
@@ -89,7 +89,7 @@ class HomeController extends Controller
         $type = $request->get('type', 'featured');
         $query = \App\Models\Product::where('is_active', 1)
             ->where('in_stock', 1)
-            ->with('category');
+            ->with(['category', 'variants']);
 
         switch ($type) {
             case 'new':

@@ -12,7 +12,7 @@
     <div v-else class="product-card">
         <div class="product-image">
             <div class="badges-container">
-                <span v-if="!product.in_stock" class="badge badge-out">{{ t('out_of_stock') }}</span>
+                <span v-if="!inStock" class="badge badge-out">{{ t('out_of_stock') }}</span>
                 <span v-else class="badge badge-in">{{ t('in_stock') }}</span>
             </div>
             <img :src="getImageUrl(product.image_main)" :alt="$p(product, 'name')" loading="lazy" decoding="async">
@@ -33,11 +33,24 @@
                     <span v-if="product.model">{{ product.model }}</span>
                 </div>
                 <div v-if="showPrice" class="product-price">
-                    <span>{{ formatPrice(product.price) }}</span>
+                    <template v-if="priceRange.min !== priceRange.max">
+                        <span class="price-from">{{ t('from') }}</span>
+                        <span>{{ formatPrice(priceRange.min) }}</span>
+                    </template>
+                    <span v-else>{{ formatPrice(priceRange.min) }}</span>
+                </div>
+                <div v-if="options.length > 1" class="product-options-count">
+                    <i class="fas fa-layer-group"></i>
+                    <span>{{ t('card_options_count', { n: options.length }) }}</span>
                 </div>
             </div>
             <div class="product-actions-row">
-                <button type="button" class="btn-add-to-cart" :disabled="adding" @click="addToCart">
+                <!-- A product sold in several sizes is chosen on its page. -->
+                <router-link v-if="options.length > 1" :to="link" class="btn-add-to-cart">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>{{ t('pd_choose_option') }}</span>
+                </router-link>
+                <button v-else type="button" class="btn-add-to-cart" :disabled="adding" @click="addToCart">
                     <i :class="adding ? 'fas fa-spinner fa-spin' : 'fas fa-cart-plus'"></i>
                     <span>{{ t('add_to_cart') }}</span>
                 </button>
@@ -76,10 +89,36 @@ const link = computed(() => ({
     query: props.product.variant_id ? { variant: props.product.variant_id } : {},
 }));
 
+// A product is listed once for all its sizes: the card shows the lowest
+// price it sells at ("from" when the sizes differ), and is in stock while
+// any size is. A row that already stands for one size has no variants.
+// Sizes are its variants, or else the products sharing its name in its
+// category (a catalogue imported as one product per size).
+const variants = computed(() => (props.product.variant_id ? [] : props.product.variants || []));
+const siblings = computed(() => (variants.value.length ? [] : props.product.siblings || []));
+const options = computed(() => (variants.value.length ? variants.value : siblings.value));
+
+const priceOf = (v) => (parseFloat(v.price) > 0 ? parseFloat(v.price) : parseFloat(props.product.price) || 0);
+const priceRange = computed(() => {
+    const prices = variants.value.length
+        ? variants.value.map(priceOf).filter(p => p > 0)
+        : siblings.value.length
+            ? siblings.value.filter(s => s.show_price).map(s => parseFloat(s.price) || 0).filter(p => p > 0)
+            : [parseFloat(props.product.price) || 0];
+    if (!prices.length) return { min: 0, max: 0 };
+    return { min: Math.min(...prices), max: Math.max(...prices) };
+});
+
+const inStock = computed(() => {
+    if (siblings.value.length) return siblings.value.some(s => s.in_stock);
+    return !!props.product.in_stock && (!variants.value.length
+        || variants.value.some(v => v.stock_quantity === null || parseInt(v.stock_quantity) > 0));
+});
+
 const settings = computed(() => settingsStore.data || {});
 const showPrice = computed(() => settings.value.show_product_price === '1'
     && props.product.show_price
-    && parseFloat(props.product.price) > 0);
+    && priceRange.value.min > 0);
 
 // Dollars, as everywhere else in the shop, with thousands grouped.
 const formatPrice = (value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -97,7 +136,8 @@ const adding = ref(false);
 const addToCart = async () => {
     adding.value = true;
     try {
-        await cartStore.addToCart(props.product.id, 1, props.product.variant_id);
+        // A product with a single size adds that size.
+        await cartStore.addToCart(props.product.id, 1, props.product.variant_id || variants.value[0]?.id || null);
         emit('added', displayName.value);
     } catch (e) {
         emit('add-failed');
@@ -324,6 +364,27 @@ const addToCart = async () => {
     color: var(--mobile-primary);
 }
 
+.price-from {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-inline-end: 4px;
+}
+
+.product-options-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+[data-theme="dark"] .price-from,
+[data-theme="dark"] .product-options-count {
+    color: #94a3b8;
+}
+
 .product-actions-row {
     display: flex;
     gap: 10px;
@@ -354,6 +415,10 @@ const addToCart = async () => {
     background: var(--el-color-primary-light-3);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--mobile-primary) 20%, transparent);
+}
+
+a.btn-add-to-cart {
+    text-decoration: none;
 }
 
 .btn-whatsapp {

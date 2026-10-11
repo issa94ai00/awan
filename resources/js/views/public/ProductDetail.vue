@@ -115,6 +115,27 @@
                             </div>
                         </div>
 
+                        <!-- The same product in its other sizes, each a product of its
+                             own (one per size, as the catalogue was imported). -->
+                        <div v-else-if="siblings.length > 1" class="product-variants">
+                            <h3>
+                                {{ t('pd_choose_option') }}
+                                <span v-if="currentSibling" class="variant-current">{{ currentSibling.label }}</span>
+                            </h3>
+                            <div class="variant-options" role="radiogroup" :aria-label="t('pd_choose_option')">
+                                <router-link v-for="s in siblings"
+                                             :key="s.id"
+                                             :to="`/product/${s.slug}`"
+                                             role="radio"
+                                             :aria-checked="s.id === product.id"
+                                             class="variant-chip"
+                                             :class="{ active: s.id === product.id, unavailable: !s.in_stock }">
+                                    <span class="variant-chip-label">{{ s.label }}</span>
+                                    <span v-if="showPrices && s.show_price && parseFloat(s.price) > 0" class="variant-chip-price">${{ parseFloat(s.price).toFixed(2) }}</span>
+                                </router-link>
+                            </div>
+                        </div>
+
                         <div class="product-description">
                             <h3>{{ specs.length ? (t('specifications') || 'المواصفات') : (t('description') || 'الوصف') }}</h3>
                             <p v-if="specs.length && !descriptionSpecs.length && $p(product, 'description')">{{ $p(product, 'description') }}</p>
@@ -278,7 +299,12 @@
                                 </div>
                                 <!-- Row 3: Action Buttons -->
                                 <div class="product-actions-row">
-                                    <button class="btn-add-to-cart" @click="handleAddToCart(related)">
+                                    <!-- A product sold in several sizes is chosen on its page. -->
+                                    <router-link v-if="(related.variants || []).length > 1 || (related.siblings || []).length > 1" :to="'/product/' + related.slug" class="btn-add-to-cart">
+                                        <i class="fas fa-sliders-h"></i>
+                                        <span>{{ t('pd_choose_option') }}</span>
+                                    </router-link>
+                                    <button v-else class="btn-add-to-cart" @click="handleAddToCart(related, related.variants?.[0]?.id || null)">
                                         <i class="fas fa-cart-plus"></i>
                                         <span>{{ t('add_to_cart') || 'أضف للسلة' }}</span>
                                     </button>
@@ -503,6 +529,9 @@ const allImages = computed(() => {
 const selectedVariantId = ref(null);
 const variants = computed(() => product.value?.variants || []);
 const selectedVariant = computed(() => variants.value.find(v => v.id === selectedVariantId.value) || null);
+// Products sharing this one's name in its category, itself included.
+const siblings = computed(() => product.value?.siblings || []);
+const currentSibling = computed(() => siblings.value.find(s => s.id === product.value?.id) || null);
 const showPrices = computed(() => settings.value.show_product_price === '1' && !!product.value?.show_price);
 
 // Mirrors ProductResource::asVariantRow, so the page shows what the
@@ -1397,6 +1426,12 @@ watch(() => route.query.variant, (id) => {
 
 [data-theme="dark"] .product-description .description-en {
     color: #94a3b8;
+}
+
+/* A related product with sizes links to its page from the cart button. */
+a.btn-add-to-cart,
+a.variant-chip {
+    text-decoration: none;
 }
 
 /* Variant picker */
