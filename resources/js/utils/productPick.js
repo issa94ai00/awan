@@ -29,6 +29,27 @@ export function variantLabelOf(variant) {
         .join(' / ');
 }
 
+const VARIANT_FIELDS = ['sku', 'barcode', 'size', 'color', 'material', 'specs'];
+
+/** The fields VariantDetails shows, from a variant or a variant search row. */
+export function variantFieldsOf(source) {
+    return Object.fromEntries(VARIANT_FIELDS.map((key) => [key, source?.[key]]));
+}
+
+/**
+ * What an order line's variant is, for its details: the product's full size
+ * list (`siblings`, loaded for the size switcher, and the only source with
+ * specs for a line just picked from search) wins over the line's own
+ * `variant`. Null when the line has no variant or nothing to show.
+ */
+export function lineVariantInfo(line, siblings = []) {
+    if (!line?.product_variant_id) return null;
+    const sibling = siblings.find((v) => v.variant_id === line.product_variant_id);
+    const info = sibling ? variantFieldsOf(sibling) : line.variant;
+    if (!info) return null;
+    return info.size || info.color || info.material || info.specs?.length ? info : null;
+}
+
 /** The product's own name on a search row, without the variant appended. */
 export function baseName(option) {
     return option.product_name_ar || option.name_ar || option.name || '';

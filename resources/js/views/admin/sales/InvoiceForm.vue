@@ -204,8 +204,8 @@
                                         <!-- A variant line spells out its size, colour, material,
                                              specs and its own codes; a plain line shows its SKU. -->
                                         <VariantDetails
-                                            v-if="lineVariantInfo(item)"
-                                            :variant="lineVariantInfo(item)"
+                                            v-if="variantInfo(item)"
+                                            :variant="variantInfo(item)"
                                             show-codes
                                             class="line-variant-details"
                                         />
@@ -747,7 +747,7 @@ import { getImageUrl } from '@/utils/imageUrl';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
-import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
+import { pickKey, optionKey, baseName, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -1356,21 +1356,7 @@ const inInvoiceQty = (product) => {
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
 const lineSiblings = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
-
-const VARIANT_FIELDS = ['sku', 'barcode', 'size', 'color', 'material', 'specs'];
-const variantFieldsOf = (source) => Object.fromEntries(VARIANT_FIELDS.map((key) => [key, source?.[key]]));
-
-// What the line's variant is, for its details: the product's full size list
-// (loaded for the size switcher, and the only source with specs for a line
-// just picked from search) wins over what the line itself carries.
-const lineVariantInfo = (item) => {
-    if (!item.product_variant_id) return null;
-    const sibling = lineSiblings(item).find((v) => v.variant_id === item.product_variant_id);
-    const info = sibling ? variantFieldsOf(sibling) : item.variant;
-    if (!info) return null;
-    const hasDetails = info.size || info.color || info.material || info.specs?.length;
-    return hasDetails ? info : null;
-};
+const variantInfo = (item) => lineVariantInfo(item, lineSiblings(item));
 const preloadLineSiblings = () => items.value.forEach((item) => item.product_variant_id && ensureVariantsLoaded(item.product_id));
 
 // Switching a line to another size keeps its sources and quantities — the

@@ -656,8 +656,11 @@
                                 <div class="line-info">
                                     <strong :title="line.name">{{ line.name }}</strong>
                                     <div class="line-meta">
-                                        <span v-if="line.sku" class="option-meta" dir="ltr">{{ line.sku }}</span>
-                                        <span v-if="line.variant_label" class="variant-tag">{{ line.variant_label }}</span>
+                                        <!-- A variant line's codes sit in its details below. -->
+                                        <template v-if="!variantInfo(line)">
+                                            <span v-if="line.sku" class="option-meta" dir="ltr">{{ line.sku }}</span>
+                                            <span v-if="line.variant_label" class="variant-tag">{{ line.variant_label }}</span>
+                                        </template>
                                         <span v-if="line.stock !== undefined" :class="['stock-pill', overStock(line) ? 'is-over' : '']">
                                             {{ overStock(line) ? $t('so_stock_shortage') : `${$t('available')}: ${line.stock}` }}
                                         </span>
@@ -671,6 +674,12 @@
                                             <i class="fas fa-cart-flatbed"></i> {{ $t('so_add_to_purchase_list') || 'طلب شراء' }}
                                         </button>
                                     </div>
+                                    <VariantDetails
+                                        v-if="variantInfo(line)"
+                                        :variant="variantInfo(line)"
+                                        show-codes
+                                        class="line-variant-details"
+                                    />
                                     <!-- The other sizes of this product, one click away: changing
                                          the size keeps the quantity and a price the seller typed. -->
                                     <div v-if="lineSiblings(line).length > 1" class="line-variant-switch">
@@ -1089,6 +1098,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import OrderCardActions from '@/components/admin/sales/OrderCardActions.vue';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import { categoriesApi } from '@/api/categories';
@@ -1101,7 +1111,7 @@ import { resolveImageUrl } from '@/utils/productImages';
 import api from '@/api/index';
 import { useStockShortage } from '@/Composables/useStockShortage';
 import { formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
-import { optionKey, variantLabelOf } from '@/utils/productPick';
+import { optionKey, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
 
@@ -1420,6 +1430,7 @@ const groupName = (row) => (locale.value === 'en' && (row.product_name_en || row
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
 const lineSiblings = (line) => (line.product_id && line.product_variant_id ? siblingsOf(line.product_id) : []);
+const variantInfo = (line) => lineVariantInfo(line, lineSiblings(line));
 const preloadLineSiblings = () => form.items.forEach((line) => line.product_variant_id && ensureVariantsLoaded(line.product_id));
 
 // Switching a line to another size keeps its quantity, unit and any price the
@@ -1444,6 +1455,7 @@ const switchLineVariant = (line, row) => {
     line.name = productName(row);
     line.sku = row.sku || '';
     line.variant_label = row.variant_label || '';
+    line.variant = variantFieldsOf(row);
     line.image = productImageSrc(row) || line.image;
     line.stock = row.stock_quantity != null ? Number(row.stock_quantity) : undefined;
     line.base_price = listPrice(row);
@@ -1615,6 +1627,7 @@ const addProduct = (product, qtyDelta = 1) => {
             name: productName(product),
             sku: product.sku || '',
             variant_label: product.variant_label || '',
+            variant: product.variant_id ? variantFieldsOf(product) : null,
             image: productImageSrc(product),
             quantity: Math.max(1, qtyDelta),
             unit,
@@ -2117,6 +2130,7 @@ const loadOrder = async () => {
                 name: item.product?.name_ar || item.product?.name_en || item.description || t('unknown_product'),
                 sku: item.variant?.sku || item.product?.sku || '',
                 variant_label: variantLabelOf(item.variant) || '',
+                variant: item.variant ? variantFieldsOf(item.variant) : null,
                 image: productImageSrc(item.product),
                 quantity: toNum(item.quantity) || 1,
                 unit,
@@ -3716,6 +3730,10 @@ onUnmounted(() => {
 .line-shortage-btn:hover {
     background: #fee2e2;
     border-color: #ef4444;
+}
+
+.line-variant-details {
+    margin-top: 0.3rem;
 }
 
 .variant-tag {
