@@ -379,6 +379,7 @@
         </el-drawer>
 
         <QuoteForm v-model="formVisible" :quote="editing" @saved="onSaved" />
+        <QuotePrintDialog v-model="printVisible" :source="printSource" />
     </div>
 </template>
 
@@ -391,8 +392,8 @@ import { Edit, Plus, Refresh, RefreshLeft, Search } from '@element-plus/icons-vu
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import QuoteForm from '@/components/admin/sales/QuoteForm.vue';
+import QuotePrintDialog from '@/components/admin/sales/QuotePrintDialog.vue';
 import { useQuotesStore } from '@/stores/quotes';
-import { useSettingsStore } from '@/stores/settings';
 import {
     QUOTE_STATUSES,
     apiErrorMessage,
@@ -404,11 +405,10 @@ import {
     statusLabel,
 } from '@/utils/sales';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const store = useQuotesStore();
-const settings = useSettingsStore();
 
 // 'open' is draft + sent together: what is still in play.
 const STATUS_FILTERS = ['', 'open', ...QUOTE_STATUSES];
@@ -787,103 +787,11 @@ const onSaved = (quote) => {
 };
 
 // ── Print ────────────────────────────────────────────────────────────────
-const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-const printQuote = async (quote) => {
-    const win = window.open('', '_blank');
-    if (!win) {
-        ElMessage.warning(t('qt_popup_blocked'));
-        return;
-    }
-    win.document.write(`<p style="font-family:sans-serif;padding:2rem">${escapeHtml(t('loading'))}</p>`);
-
-    let full = quote;
-    try {
-        full = quote.items ? quote : await store.fetchQuote(quote.id);
-        if (!Object.keys(settings.data || {}).length) await settings.fetch();
-    } catch {
-        // Print what we have.
-    }
-
-    const s = settings.data || {};
-    const rtl = locale.value !== 'en';
-    const company = (rtl ? s.site_name : s.site_name_en || s.site_name) || '';
-    const rows = (full.items || []).map((item, i) => `
-        <tr>
-            <td>${i + 1}</td>
-            <td>${escapeHtml(item.description || item.product?.name_ar || '—')}</td>
-            <td class="n">${escapeHtml(item.quantity)}</td>
-            <td class="n">${escapeHtml(formatCurrency(item.unit_price))}</td>
-            <td class="n">${Number(item.discount) ? escapeHtml(formatCurrency(item.discount)) : '—'}</td>
-            <td class="n">${escapeHtml(formatCurrency(item.total))}</td>
-        </tr>`).join('');
-    const totalRow = (label, amount) => `<tr><td>${escapeHtml(label)}</td><td class="n">${escapeHtml(amount)}</td></tr>`;
-
-    win.document.open();
-    win.document.write(`<!doctype html><html dir="${rtl ? 'rtl' : 'ltr'}" lang="${rtl ? 'ar' : 'en'}"><head><meta charset="utf-8">
-        <title></title>
-        <style>
-            @page { size: A4 portrait; margin: 0 !important; }
-            body { font-family: 'Cairo', Tahoma, sans-serif; color: #0f172a; margin: 0; padding: 12mm; font-size: 13px; }
-            a { text-decoration: none !important; color: inherit !important; }
-            a[href]:after { content: none !important; }
-            .official-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; margin-bottom: 0.5rem; }
-            .header-brand { display: flex; align-items: center; gap: 0.85rem; }
-            .header-logo { width: 62px; height: 62px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; padding: 2px; }
-            .header-doc-badge { text-align: ${rtl ? 'left' : 'right'}; }
-            .doc-num { font-weight: 800; font-family: monospace; color: #1e3a8a; font-size: 1.1rem; }
-            .accent-bar { height: 3px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 30%, #06b6d4 70%, #f59e0b 100%); border-radius: 2px; margin-bottom: 1.25rem; }
-            h1 { margin: 0; font-size: 1.35rem; color: #1e3a8a; } h2 { margin: 0; font-size: 1.1rem; }
-            .muted { color: #64748b; } .n { text-align: ${rtl ? 'left' : 'right'}; font-variant-numeric: tabular-nums; }
-            .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.75rem 1rem; }
-            .meta b { display: block; font-size: 0.8rem; color: #64748b; font-weight: 600; margin-bottom: 2px; }
-            table { width: 100%; border-collapse: collapse; }
-            .lines th, .lines td { border-bottom: 1px solid #e2e8f0; padding: 0.5rem 0.5rem; text-align: ${rtl ? 'right' : 'left'}; }
-            .lines th { background: #f1f5f9; font-size: 0.8rem; font-weight: 700; color: #1e3a8a; }
-            .totals { width: 280px; margin-${rtl ? 'right' : 'left'}: auto; margin-top: 1rem; }
-            .totals td { padding: 0.3rem 0.4rem; } .totals tr:last-child td { font-weight: 800; font-size: 1.05rem; border-top: 2px solid #0f172a; }
-            .notes { margin-top: 1.5rem; white-space: pre-line; } .notes h3 { font-size: 0.9rem; margin: 0 0 0.25rem; }
-            @media print {
-                @page { size: A4 portrait; margin: 0 !important; }
-                body { margin: 0 !important; padding: 12mm !important; }
-                a[href]:after { content: none !important; }
-            }
-        </style></head><body>
-        <header class="official-header">
-            <div class="header-brand">
-                <img src="/assets/images/logo.png" alt="Awaan Al-Takadom" class="header-logo" onerror="this.style.display='none'">
-                <div>
-                    <h2>${escapeHtml(company)}</h2>
-                    <div class="muted">${escapeHtml(s.contact_address || s.address || 'دمشق - سوريا / الرياض - السعودية')}</div>
-                </div>
-            </div>
-            <div class="header-doc-badge">
-                <h1>${escapeHtml(t('qt_print_heading'))}</h1>
-                <div class="doc-num" dir="ltr">${escapeHtml(full.quote_number)}</div>
-                <div class="muted" dir="ltr">📞 ${escapeHtml(s.contact_phone || s.phone || '00963962889577')}</div>
-            </div>
-        </header>
-        <div class="accent-bar"></div>
-        <div class="meta">
-            <div><b>${escapeHtml(t('client'))}</b>${escapeHtml(customerName(full))}<div class="muted" dir="ltr">${escapeHtml(full.customer?.phone || '')}</div></div>
-            <div><b>${escapeHtml(t('qt_issue_date'))}</b>${escapeHtml(formatDate(full.created_at))}</div>
-            <div><b>${escapeHtml(t('valid_until'))}</b>${escapeHtml(full.valid_until ? formatDate(full.valid_until) : t('qt_no_expiry'))}</div>
-        </div>
-        <table class="lines"><thead><tr>
-            <th>#</th><th>${escapeHtml(t('product'))}</th><th class="n">${escapeHtml(t('quantity'))}</th>
-            <th class="n">${escapeHtml(t('unit_price'))}</th><th class="n">${escapeHtml(t('discount'))}</th><th class="n">${escapeHtml(t('total'))}</th>
-        </tr></thead><tbody>${rows}</tbody></table>
-        <table class="totals">
-            ${totalRow(t('subtotal'), formatCurrency(full.subtotal))}
-            ${Number(full.discount) ? totalRow(t('qt_extra_discount'), `−${formatCurrency(full.discount)}`) : ''}
-            ${Number(full.tax) ? totalRow(t('qt_extra_tax'), formatCurrency(full.tax)) : ''}
-            ${totalRow(t('total'), formatCurrency(full.total))}
-        </table>
-        ${full.terms ? `<div class="notes"><h3>${escapeHtml(t('qt_terms'))}</h3>${escapeHtml(full.terms)}</div>` : ''}
-        ${full.notes ? `<div class="notes"><h3>${escapeHtml(t('notes'))}</h3>${escapeHtml(full.notes)}</div>` : ''}
-        <script>window.onload = () => { window.focus(); window.print(); };<\/script>
-        </body></html>`);
-    win.document.close();
+const printVisible = ref(false);
+const printSource = ref(null);
+const printQuote = (quote) => {
+    printSource.value = quote;
+    printVisible.value = true;
 };
 
 // ── Layout and lifecycle ─────────────────────────────────────────────────

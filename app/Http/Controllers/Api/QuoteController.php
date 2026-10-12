@@ -490,7 +490,13 @@ class QuoteController extends Controller
 
     private function loadFull(Quote $quote): array
     {
-        $quote->refresh()->load([...self::RELATIONS, 'items.product:id,name_ar,name_en,sku,unit,price']);
+        // The printed quote shows the customer's full contact card and product images.
+        $quote->refresh()->load([
+            'customer:id,name,phone,company,email,address,tax_number',
+            'creator:id,name',
+            'salesOrder:id,quote_id,order_number,status',
+            'items.product:id,name_ar,name_en,sku,unit,price,image_main',
+        ]);
         $quote->loadCount('items');
 
         return $this->present($quote);
