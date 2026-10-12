@@ -164,7 +164,7 @@
 
             <div class="pqa-note">
                 <i class="fas fa-circle-info"></i>
-                <span>{{ $t('pqa_stock_note') }}</span>
+                <span>{{ stockNote || $t('pqa_stock_note') }}</span>
             </div>
         </div>
 
@@ -197,6 +197,8 @@ const props = defineProps({
     categories: { type: Array, default: () => [] },
     /** The category the search was filtered to, if any. */
     defaultCategoryId: { type: [Number, String], default: null },
+    /** What the new product's empty stock means on this form, when the general note does not fit. */
+    stockNote: { type: String, default: '' },
 });
 const emit = defineEmits(['update:modelValue', 'created', 'use-existing']);
 

@@ -48,6 +48,7 @@
                 <!-- Search is the first thing on the page because it is the
                      first thing anybody does. -->
                 <div class="search-card">
+                    <div class="search-row">
                     <div class="search-wrapper">
                         <el-input
                             ref="searchInputRef"
@@ -163,11 +164,29 @@
                                     </template>
                                 </ul>
 
-                                <div v-else class="results-state muted">
-                                    {{ t('no_products_found') }}
+                                <div v-else class="results-state muted is-empty">
+                                    <span>{{ t('no_products_found') }}</span>
+                                    <button type="button" class="empty-new-product" @click.stop="openQuickProduct(searchQuery)">
+                                        <i class="fas fa-plus"></i>
+                                        <span>{{ t('pqa_add_named', { name: searchQuery.trim() }) }}</span>
+                                    </button>
+                                    <small class="empty-new-hint">{{ t('pqa_empty_hint') }}</small>
                                 </div>
                             </div>
                         </Transition>
+                    </div>
+
+                    <!-- Not in the catalogue yet: create it without leaving the invoice -->
+                    <button
+                        type="button"
+                        class="btn-new-product"
+                        :title="`${t('pqa_title')} (F4)`"
+                        @click="openQuickProduct()"
+                    >
+                        <i class="fas fa-plus"></i>
+                        <span class="btn-text">{{ t('pqa_button') }}</span>
+                        <kbd class="kbd-hint">F4</kbd>
+                    </button>
                     </div>
 
                     <p class="search-hint">{{ t('invoice_search_hint') }}</p>
@@ -600,6 +619,8 @@
                 <p class="shortcuts">
                     <kbd>Ctrl+B</kbd> {{ t('search_product') }}
                     <span class="dot">·</span>
+                    <kbd>F4</kbd> {{ t('pqa_title') }}
+                    <span class="dot">·</span>
                     <kbd>Ctrl+Enter</kbd> {{ t('save') }}
                 </p>
             </aside>
@@ -721,6 +742,14 @@
                 </el-button>
             </template>
         </el-dialog>
+        <ProductQuickAdd
+            v-model="quickProductVisible"
+            :seed="quickProductSeed"
+            :categories="categoryOptions"
+            :stock-note="t('pqa_stock_note_invoice')"
+            @created="addQuickProduct"
+            @use-existing="addQuickProduct"
+        />
     </div>
 </template>
 
@@ -747,6 +776,8 @@ import { getImageUrl } from '@/utils/imageUrl';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
+import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
+import { categoriesApi } from '@/api/categories';
 import { pickKey, optionKey, baseName, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -756,7 +787,7 @@ import {
     Box, WarningFilled,
 } from '@element-plus/icons-vue';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const invoicesStore = useInvoicesStore();
@@ -1333,6 +1364,9 @@ const selectHighlighted = () => {
         addProduct(searchResults.value[highlightedIndex.value]);
     } else if (searchResults.value.length === 1) {
         addProduct(searchResults.value[0]);
+    } else if (!searchResults.value.length && !searchLoading.value && searchQuery.value.trim().length >= 2) {
+        // Nothing matched what was typed: offer to create it.
+        openQuickProduct(searchQuery.value);
     }
 };
 
@@ -1546,6 +1580,9 @@ const removeExpense = (index) => form.expenses.splice(index, 1);
  * ------------------------------------------------------------------ */
 
 const handleKeyboardShortcuts = (e) => {
+    // The new-product dialog owns the keyboard while it is open.
+    if (quickProductVisible.value) return;
+
     // While the client form is open it owns the keyboard: Ctrl+Enter there
     // means save the client, not issue the invoice behind it.
     if (clientDialogVisible.value) {
@@ -1559,6 +1596,11 @@ const handleKeyboardShortcuts = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         searchInputRef.value?.focus();
+    }
+
+    if (e.key === 'F4' && !e.altKey) {
+        e.preventDefault();
+        openQuickProduct(searchQuery.value);
     }
 
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -1715,6 +1757,53 @@ const goBack = async () => {
     }
 
     router.push('/admin/sales/invoices');
+};
+
+/* ------------------------------------------------------------------ *
+ * Quick "new product"
+ *
+ * What the seller searched for seeds the dialog, so a failed search turns
+ * straight into the product it was looking for. The product starts with no
+ * stock, so its line shows short until stock is received for it.
+ * ------------------------------------------------------------------ */
+
+const quickProductVisible = ref(false);
+const quickProductSeed = ref('');
+const categories = ref([]);
+
+const categoryOptions = computed(() => {
+    const name = (c) => (locale.value === 'en' && c.name_en ? c.name_en : (c.name_ar || c.name || ''));
+    const roots = categories.value.filter((c) => !c.parent_id);
+    return roots.flatMap((root) => [
+        { id: root.id, parent_id: null, label: name(root) },
+        ...categories.value.filter((c) => c.parent_id === root.id).map((c) => ({ id: c.id, parent_id: c.parent_id, label: name(c) })),
+    ]);
+});
+
+const fetchCategories = async () => {
+    try {
+        const res = await categoriesApi.getAll({ per_page: 500 });
+        categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+    } catch {
+        categories.value = [];
+    }
+};
+
+const openQuickProduct = (seed = '') => {
+    quickProductSeed.value = String(seed || '').trim();
+    quickProductVisible.value = true;
+    showResults.value = false;
+    if (!categories.value.length) fetchCategories();
+};
+
+// addProduct adds one; the dialog says how many this invoice wants.
+const addQuickProduct = (product, quantity = 1) => {
+    const pick = optionKey(product);
+    const before = items.value.find((line) => line.pick === pick);
+    const had = before ? before.allocations[0].quantity : 0;
+    addProduct(product);
+    const line = items.value.find((l) => l.pick === pick);
+    if (line) line.allocations[0].quantity = had + Math.max(1, quantity);
 };
 
 const handleClickOutside = (e) => {
@@ -1964,8 +2053,80 @@ onUnmounted(() => {
 
 /* Anchors the dropdown; it used to be positioned by hand against the viewport
    and re-measured on scroll. */
+.search-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.6rem;
+}
+
 .search-wrapper {
     position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    padding: 0 0.95rem;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #047857;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.btn-new-product:hover {
+    background: #059669;
+    border-color: #059669;
+    color: #ffffff;
+}
+
+.results-state.is-empty {
+    flex-direction: column;
+}
+
+.empty-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border: none;
+    border-radius: 8px;
+    background: #059669;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+    max-width: 100%;
+}
+
+.empty-new-product span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.empty-new-product:hover {
+    background: #047857;
+}
+
+.empty-new-hint {
+    font-size: 0.75rem;
+}
+
+@media (max-width: 640px) {
+    .btn-new-product .btn-text,
+    .btn-new-product .kbd-hint { display: none; }
 }
 
 .kbd-hint,
