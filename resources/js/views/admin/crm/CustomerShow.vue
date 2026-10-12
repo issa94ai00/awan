@@ -18,6 +18,9 @@
           <el-icon><Back /></el-icon> {{ $t('back') }}
         </el-button>
         <el-button :icon="Refresh" :loading="loading" @click="loadOverview" />
+        <el-button type="primary" plain @click="goPartyStatement">
+          <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+        </el-button>
         <el-button type="success" plain @click="paymentDialogVisible = true">
           <i class="fas fa-money-bill-wave"></i> {{ $t('record_payment') }}
         </el-button>
@@ -122,9 +125,14 @@
 
           <el-descriptions :column="1" class="descriptions-premium">
             <el-descriptions-item :label="$t('outstanding_balance')">
-              <span class="balance-value" :class="{ 'has-debt': metrics.balance > 0, 'has-credit': metrics.balance < 0 }">
-                {{ money(metrics.balance) }}
-              </span>
+              <div class="balance-cell-interactive">
+                <span class="balance-value" :class="{ 'has-debt': metrics.balance > 0, 'has-credit': metrics.balance < 0 }">
+                  {{ money(metrics.balance) }}
+                </span>
+                <el-button type="primary" link size="small" class="ml-2" @click="goPartyStatement">
+                  <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+                </el-button>
+              </div>
               <small v-if="metrics.balance < 0" class="inline-hint">{{ $t('credit_in_customers_favour') }}</small>
             </el-descriptions-item>
             <el-descriptions-item :label="$t('total_invoiced')">{{ money(metrics.invoiced_total) }}</el-descriptions-item>
@@ -517,6 +525,16 @@ const editCustomer = () => {
   router.push({ name: 'admin.crm.customers.edit', params: { id: customer.value.id } });
 };
 
+const goPartyStatement = () => {
+  router.push({
+    path: '/admin/accounting/party-statement',
+    query: {
+      type: 'customer',
+      party_id: String(customer.value.id || route.params.id),
+    },
+  });
+};
+
 const getInitials = (name) => {
   if (!name) return 'C';
   const parts = name.trim().split(/\s+/);
@@ -791,6 +809,13 @@ onMounted(loadOverview);
 .credit-meter-foot {
   margin-top: 8px;
   font-size: 0.76rem;
+}
+
+.balance-cell-interactive {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .balance-value {

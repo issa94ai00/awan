@@ -318,6 +318,109 @@
             </aside>
         </div>
 
+        <!-- ── Accounting Cycle & Opening Balances Guide ──────────────────── -->
+        <section class="cycle-section">
+            <header class="cycle-head">
+                <div class="cycle-title-wrap">
+                    <h2>
+                        <i class="fas fa-arrows-spin text-primary mr-1"></i>
+                        {{ $t('accounting_cycle_title') }}
+                    </h2>
+                    <p class="cycle-subtitle">{{ $t('accounting_cycle_subtitle') }}</p>
+                </div>
+                <div class="cycle-actions">
+                    <router-link to="/admin/accounting/journal?template=opening" class="cycle-btn-opening">
+                        <i class="fas fa-balance-scale mr-1"></i> {{ $t('opening_balance_entry') }}
+                    </router-link>
+                    <router-link to="/admin/accounting/party-statement" class="cycle-btn-statement">
+                        <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+                    </router-link>
+                </div>
+            </header>
+
+            <div class="cycle-steps">
+                <div class="cycle-step step-1">
+                    <div class="step-badge">1</div>
+                    <div class="step-content">
+                        <h4><i class="fas fa-scale-balanced mr-1"></i> {{ $t('acc_step_opening') }}</h4>
+                        <p>{{ $t('acc_step_opening_desc') }}</p>
+                        <div class="step-links">
+                            <router-link to="/admin/accounting/ledger" class="step-chip">
+                                <i class="fas fa-list-ol"></i> {{ $t('chart_of_accounts') }}
+                            </router-link>
+                            <router-link to="/admin/accounting/journal?template=opening" class="step-chip is-accent">
+                                <i class="fas fa-plus"></i> {{ $t('opening_balance_entry') }}
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cycle-step step-2">
+                    <div class="step-badge">2</div>
+                    <div class="step-content">
+                        <h4><i class="fas fa-users mr-1"></i> {{ $t('acc_step_operations') }}</h4>
+                        <p>{{ $t('acc_step_operations_desc') }}</p>
+                        <div class="step-links">
+                            <router-link to="/admin/crm/customers" class="step-chip">
+                                <i class="fas fa-user-tie"></i> {{ $t('customers') }}
+                            </router-link>
+                            <router-link to="/admin/purchases/suppliers" class="step-chip">
+                                <i class="fas fa-truck-field"></i> {{ $t('suppliers') }}
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cycle-step step-3">
+                    <div class="step-badge">3</div>
+                    <div class="step-content">
+                        <h4><i class="fas fa-book mr-1"></i> {{ $t('acc_step_journal') }}</h4>
+                        <p>{{ $t('acc_step_journal_desc') }}</p>
+                        <div class="step-links">
+                            <router-link to="/admin/accounting/journal" class="step-chip">
+                                <i class="fas fa-book"></i> {{ $t('general_journal') }}
+                            </router-link>
+                            <router-link to="/admin/accounting/journal?new=1" class="step-chip">
+                                <i class="fas fa-plus"></i> {{ $t('record_manual_entry') }}
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cycle-step step-4">
+                    <div class="step-badge">4</div>
+                    <div class="step-content">
+                        <h4><i class="fas fa-file-invoice-dollar mr-1"></i> {{ $t('acc_step_statements') }}</h4>
+                        <p>{{ $t('acc_step_statements_desc') }}</p>
+                        <div class="step-links">
+                            <router-link to="/admin/accounting/party-statement" class="step-chip is-accent">
+                                <i class="fas fa-file-invoice"></i> {{ $t('party_statement') }}
+                            </router-link>
+                            <router-link to="/admin/accounting/trial-balance" class="step-chip">
+                                <i class="fas fa-scale-unbalanced"></i> {{ $t('trial_balance') }}
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cycle-step step-5">
+                    <div class="step-badge">5</div>
+                    <div class="step-content">
+                        <h4><i class="fas fa-chart-pie mr-1"></i> {{ $t('acc_step_closing') }}</h4>
+                        <p>{{ $t('acc_step_closing_desc') }}</p>
+                        <div class="step-links">
+                            <router-link to="/admin/accounting/balance-sheet" class="step-chip">
+                                <i class="fas fa-scale-balanced"></i> {{ $t('balance_sheet') }}
+                            </router-link>
+                            <router-link to="/admin/accounting/periods" class="step-chip">
+                                <i class="fas fa-lock"></i> {{ $t('accounting_periods') }}
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- ── Every accounting screen, grouped by the job it does ─────────── -->
         <section class="hub">
             <h2 class="hub-title">{{ $t('acc_ov_books_and_reports') }}</h2>
@@ -1244,6 +1347,191 @@ a.kpi-card:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; 
 
 @media (hover: none) {
     .hub-go { opacity: 0.6; }
+}
+
+/* ── Accounting Cycle Section ─────────────────────────────────────────── */
+.cycle-section {
+    margin-top: 1.75rem;
+    padding: 1.25rem 1.4rem;
+    background: #ffffff;
+    border: 1px solid var(--ov-border);
+    border-radius: var(--ov-radius);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.cycle-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--ov-border);
+}
+
+.cycle-title-wrap h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--ov-text);
+    display: flex;
+    align-items: center;
+}
+
+.cycle-subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--ov-muted);
+}
+
+.cycle-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.cycle-btn-opening,
+.cycle-btn-statement {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.cycle-btn-opening {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+.cycle-btn-opening:hover {
+    background: #d1fae5;
+}
+
+.cycle-btn-statement {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+.cycle-btn-statement:hover {
+    background: #dbeafe;
+}
+
+.cycle-steps {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.75rem;
+    align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+    .cycle-steps {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+}
+
+.cycle-step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 0.85rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.cycle-step:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+    border-color: #cbd5e1;
+}
+
+.cycle-step.step-1 { border-top: 3px solid #10b981; }
+.cycle-step.step-2 { border-top: 3px solid #3b82f6; }
+.cycle-step.step-3 { border-top: 3px solid #6366f1; }
+.cycle-step.step-4 { border-top: 3px solid #f59e0b; }
+.cycle-step.step-5 { border-top: 3px solid #8b5cf6; }
+
+.step-badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #1e293b;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    display: grid;
+    place-items: center;
+    margin-bottom: 0.6rem;
+}
+
+.step-1 .step-badge { background: #10b981; }
+.step-2 .step-badge { background: #3b82f6; }
+.step-3 .step-badge { background: #6366f1; }
+.step-4 .step-badge { background: #f59e0b; }
+.step-5 .step-badge { background: #8b5cf6; }
+
+.step-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.step-content h4 {
+    margin: 0 0 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--ov-text);
+}
+
+.step-content p {
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    color: var(--ov-muted);
+    line-height: 1.45;
+    flex: 1;
+}
+
+.step-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: auto;
+}
+
+.step-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #334155;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.12s ease;
+}
+
+.step-chip:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+
+.step-chip.is-accent {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+.step-chip.is-accent:hover {
+    background: #dbeafe;
 }
 
 /* ── Direction ────────────────────────────────────────────────────────────

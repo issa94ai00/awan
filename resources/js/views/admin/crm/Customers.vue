@@ -152,9 +152,14 @@
           </el-table-column>
 
           <!-- Balance / Debt -->
-          <el-table-column prop="balance" :label="$t('outstanding_balance')" width="130">
+          <el-table-column prop="balance" :label="$t('outstanding_balance')" width="140">
             <template #default="{ row }">
-              <span class="balance-value" :class="{ 'has-debt': row.balance > 0 }">
+              <span
+                class="balance-value"
+                :class="{ 'has-debt': row.balance > 0, 'clickable-balance': true }"
+                :title="$t('party_statement')"
+                @click="openPartyStatement(row)"
+              >
                 {{ formatCurrency(row.balance) }}
               </span>
             </template>
@@ -178,12 +183,17 @@
           </el-table-column>
 
           <!-- Actions -->
-          <el-table-column :label="$t('procedures')" width="160" align="center" fixed="right">
+          <el-table-column :label="$t('procedures')" width="190" align="center" fixed="right">
             <template #default="{ row }">
               <div class="actions-wrapper">
                 <el-tooltip :content="$t('customer_profile')" placement="top" :enterable="false">
                   <el-button class="action-btn view" size="small" circle @click="viewCustomer(row)">
                     <el-icon><View /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip :content="$t('party_statement')" placement="top" :enterable="false">
+                  <el-button class="action-btn statement" size="small" circle @click="openPartyStatement(row)">
+                    <i class="fas fa-file-invoice"></i>
                   </el-button>
                 </el-tooltip>
                 <el-tooltip :content="$t('edit_data')" placement="top" :enterable="false">
@@ -286,6 +296,17 @@ const createCustomer = () => {
 const viewCustomer = (customer) => {
   if (!customer?.id) return;
   router.push({ name: 'admin.crm.customers.show', params: { id: customer.id } });
+};
+
+const openPartyStatement = (customer) => {
+  if (!customer?.id) return;
+  router.push({
+    path: '/admin/accounting/party-statement',
+    query: {
+      type: 'customer',
+      party_id: String(customer.id),
+    },
+  });
 };
 
 const editCustomer = (customer) => {
@@ -647,7 +668,19 @@ onMounted(() => {
   transform: scale(1.1);
 }
 
+.clickable-balance {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  transition: all 0.15s ease;
+}
+
+.clickable-balance:hover {
+  text-decoration: underline solid;
+  opacity: 0.85;
+}
+
 .action-btn.view:hover { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+.action-btn.statement:hover { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
 .action-btn.edit:hover { background: #fffbeb; color: #d97706; border-color: #fde68a; }
 .action-btn.delete:hover { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
 

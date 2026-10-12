@@ -79,9 +79,21 @@
                             <span>{{ row.company || '-' }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="email" :label="$t('email')" width="220" />
-                    <el-table-column prop="phone" :label="$t('phone')" width="160" />
-                    <el-table-column :label="$t('status')" width="140" align="center">
+                    <el-table-column prop="email" :label="$t('email')" width="200" />
+                    <el-table-column prop="phone" :label="$t('phone')" width="150" />
+                    <el-table-column prop="balance" :label="$t('outstanding_balance')" width="140">
+                        <template #default="{ row }">
+                            <span
+                                class="supplier-bal-val"
+                                :class="{ 'has-balance': Number(row.balance) !== 0 }"
+                                :title="$t('party_statement')"
+                                @click="openSupplierStatement(row.id)"
+                            >
+                                ${{ parseFloat(row.balance || 0).toFixed(2) }}
+                            </span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('status')" width="130" align="center">
                         <template #default="{ row }">
                             <el-tag :type="statusTagType(row.status)" effect="light" class="status-tag">
                                 <i class="fas status-dot-icon" :class="statusIconClass(row.status)"></i>
@@ -91,11 +103,14 @@
                     </el-table-column>
 
                     <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="220" align="center">
+                    <el-table-column :label="$t('actions')" width="230" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button size="small" type="success" plain @click="openSupplierStatement(row.id)" :title="$t('party_statement')">
+                                    <i class="fas fa-file-invoice"></i>
                                 </el-button>
                                 <el-button size="small" type="warning" plain @click="openEditDrawer(row.id)" :title="$t('edit')">
                                     <i class="fas fa-edit"></i>
@@ -201,9 +216,14 @@
                                 <span class="card-title-txt"><i class="fas fa-wallet text-muted mr-1"></i> {{ $t('financial_account_and_credit') }}</span>
                             </template>
                             <div class="info-list">
-                                <div class="info-item">
-                                    <span class="lbl">{{ $t('current_balance_label') }}</span>
-                                    <strong style="color: var(--danger-dark);">${{ parseFloat(selectedSupplier.balance || 0).toFixed(2) }}</strong>
+                                <div class="info-item" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <span class="lbl">{{ $t('current_balance_label') }}</span>
+                                        <strong style="color: var(--danger-dark); font-size: 1.1rem; display: block;">${{ parseFloat(selectedSupplier.balance || 0).toFixed(2) }}</strong>
+                                    </div>
+                                    <el-button size="small" type="primary" plain @click="openSupplierStatement(selectedSupplier.id)">
+                                        <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+                                    </el-button>
                                 </div>
                                 <div class="info-item">
                                     <span class="lbl">{{ $t('available_credit_label') }}</span>
@@ -324,6 +344,17 @@
                     <el-col :span="12">
                         <el-form-item :label="$t('opening_balance_usd')">
                             <el-input v-model="form.balance" type="number" placeholder="0.00" :disabled="isEditMode" />
+                            <div class="field-aux-hint" style="margin-top: 6px; font-size: 0.78rem;">
+                                <small v-if="!isEditMode" class="text-muted" style="color: var(--text-muted); line-height: 1.3; display: block;">
+                                    {{ $t('lg_opening_balance_note') }}
+                                </small>
+                                <small v-else class="text-muted" style="color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;">
+                                    <span>{{ $t('outstanding_balance') }}: <strong>${{ parseFloat(form.balance || 0).toFixed(2) }}</strong></span>
+                                    <el-button type="primary" link size="small" @click="openSupplierStatement(editingSupplierId)">
+                                        <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+                                    </el-button>
+                                </small>
+                            </div>
                         </el-form-item>
                     </el-col>
                 </el-row>
@@ -344,6 +375,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { suppliersApi } from '@/api/suppliers';
@@ -354,6 +386,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 
 const { t } = useI18n();
+const router = useRouter();
 
 const store = useSuppliersStore();
 const purchaseOrdersStore = usePurchaseOrdersStore();
@@ -538,6 +571,17 @@ const deleteSupplier = async (id) => {
             ElMessage.error(t('failed_to_delete_supplier'));
         }
     }
+};
+
+const openSupplierStatement = (id) => {
+    if (!id) return;
+    router.push({
+        path: '/admin/accounting/party-statement',
+        query: {
+            type: 'supplier',
+            party_id: String(id),
+        },
+    });
 };
 
 onMounted(() => {
@@ -770,5 +814,25 @@ onMounted(() => {
     text-align: center;
     color: var(--text-light);
     font-size: 0.85rem;
+}
+
+.supplier-bal-val {
+    font-weight: 700;
+    font-family: monospace;
+    cursor: pointer;
+    color: var(--text-dark);
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.supplier-bal-val:hover {
+    text-decoration: underline;
+    opacity: 0.85;
+}
+
+.supplier-bal-val.has-balance {
+    color: var(--danger-dark);
+    background: #fef2f2;
 }
 </style>

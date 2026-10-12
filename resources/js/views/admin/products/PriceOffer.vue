@@ -625,7 +625,7 @@
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="8">
-                        <el-form-item :label="$t('cost_price')">
+                        <el-form-item :label="$t('wholesale_price')">
                             <el-input-number v-model="addVariantForm.cost_price" :min="0" :precision="5" :step="0.01" style="width:100%" controls-position="right" />
                         </el-form-item>
                     </el-col>
@@ -731,7 +731,7 @@
                         </el-form-item>
                     </el-col>
                     <el-col :xs="24" :sm="8">
-                        <el-form-item :label="$t('cost_price')" :error="editItemServerErrors.cost_price">
+                        <el-form-item :label="$t('wholesale_price')" :error="editItemServerErrors.cost_price">
                             <el-input-number v-model="editItemForm.cost_price" :min="0" :precision="5" :step="0.01" style="width:100%" controls-position="right" />
                         </el-form-item>
                     </el-col>
@@ -2282,7 +2282,7 @@ const columnOptions = [
     { key: 'details', label: 'details' },
     { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
-    { key: 'cost', label: 'cost_price' },
+    { key: 'cost', label: 'wholesale_price' },
     { key: 'offer', label: 'offer_price' },
     { key: 'pack', label: 'pack_quantity' },
     { key: 'inventory', label: 'inventory' },

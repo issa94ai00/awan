@@ -12,7 +12,10 @@
                 <el-button :loading="store.loading" @click="load">
                     <i class="fas fa-sync-alt mr-1"></i> {{ $t('refresh') }}
                 </el-button>
-                <el-button type="primary" @click="openCreateDrawer">
+                <el-button type="success" plain @click="openCreateDrawer('opening')">
+                    <i class="fas fa-balance-scale mr-1"></i> {{ $t('opening_balance_entry') }}
+                </el-button>
+                <el-button type="primary" @click="openCreateDrawer('standard')">
                     <i class="fas fa-plus mr-1"></i> {{ $t('record_manual_entry') }}
                 </el-button>
             </template>
@@ -238,6 +241,38 @@
             class="entry-drawer"
         >
             <el-form :model="form" label-position="top" class="entry-form" @submit.prevent>
+                <div class="template-selector-bar">
+                    <span class="template-label">{{ $t('acc_quick_actions') }}:</span>
+                    <el-button
+                        size="small"
+                        :type="activeTemplate === 'opening' ? 'success' : 'default'"
+                        :plain="activeTemplate !== 'opening'"
+                        round
+                        @click="applyTemplate('opening')"
+                    >
+                        <i class="fas fa-balance-scale mr-1"></i> {{ $t('opening_balance_entry') }}
+                    </el-button>
+                    <el-button
+                        size="small"
+                        :type="activeTemplate === 'standard' ? 'primary' : 'default'"
+                        :plain="activeTemplate !== 'standard'"
+                        round
+                        @click="applyTemplate('standard')"
+                    >
+                        <i class="fas fa-file-pen mr-1"></i> {{ $t('record_manual_entry') }}
+                    </el-button>
+                </div>
+
+                <el-alert
+                    v-if="activeTemplate === 'opening'"
+                    type="info"
+                    show-icon
+                    :closable="false"
+                    class="opening-alert"
+                    :title="$t('opening_balance_entry')"
+                    :description="$t('opening_balance_guide_tip')"
+                />
+
                 <div class="form-top">
                     <el-form-item :label="$t('entry_date')" required class="fi-date">
                         <el-date-picker
@@ -578,8 +613,34 @@ const submitBlocker = computed(() => {
     return null;
 });
 
-const openCreateDrawer = () => {
+const activeTemplate = ref('standard');
+
+const applyTemplate = (template) => {
+    activeTemplate.value = template;
+    if (template === 'opening') {
+        form.description = t('opening_balance_template_desc');
+        const arAcc = accounts.value.find(a => a.posting_role === 'accounts_receivable' || String(a.code) === '1003');
+        const apAcc = accounts.value.find(a => a.posting_role === 'accounts_payable' || String(a.code) === '2002');
+        const eqAcc = accounts.value.find(a => a.posting_role === 'capital' || a.posting_role === 'retained_earnings' || String(a.code) === '3001');
+
+        form.lines = [
+            { key: ++lineSeq, ledger_account_id: arAcc ? arAcc.id : '', debit: null, credit: null },
+            { key: ++lineSeq, ledger_account_id: apAcc ? apAcc.id : '', debit: null, credit: null },
+            { key: ++lineSeq, ledger_account_id: eqAcc ? eqAcc.id : '', debit: null, credit: null },
+        ];
+    } else {
+        resetForm();
+        activeTemplate.value = 'standard';
+    }
+};
+
+const openCreateDrawer = (template = 'standard') => {
     resetForm();
+    if (template === 'opening') {
+        applyTemplate('opening');
+    } else {
+        activeTemplate.value = 'standard';
+    }
     drawerVisible.value = true;
 };
 
@@ -630,22 +691,21 @@ const confirmReverse = (row) => {
     }).catch(() => {});
 };
 
-onMounted(() => {
+onMounted(async () => {
     readUrl();
 
-    // `?new=1` is how the accounting overview's "new entry" button lands here
-    // with the form already open. Dropped from the URL once used, so a reload
-    // or the back button does not open it a second time.
-    if (route.query.new) {
-        openCreateDrawer();
-        const { new: _new, ...query } = route.query;
+    // Fetch all accounts so template and account picker have full list
+    await ledgerStore.fetchAccounts({ per_page: 1000 }).catch(() => {});
+
+    // `?new=1` or `?template=opening` opens drawer immediately
+    if (route.query.new || route.query.template) {
+        const tpl = route.query.template === 'opening' ? 'opening' : 'standard';
+        openCreateDrawer(tpl);
+        const { new: _new, template: _template, ...query } = route.query;
         router.replace({ query });
     }
 
     load();
-    // The list endpoint pages at 20 by default, newest first; a hundred left
-    // older accounts out of both pickers.
-    ledgerStore.fetchAccounts({ per_page: 1000 }).catch(() => {});
 });
 </script>
 
@@ -916,6 +976,39 @@ onMounted(() => {
 
 .entry-drawer :deep(.el-drawer__footer) { border-top: 1px solid var(--ov-border); padding-top: 0.9rem; }
 .entry-form :deep(.el-form-item__label) { color: var(--ov-body); font-weight: 700; }
+
+.template-selector-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.65rem 0.9rem;
+    margin-bottom: 0.85rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+.template-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--ov-muted);
+}
+.opening-alert {
+    margin-bottom: 1rem;
+    border-radius: 10px;
+    border: 1px solid #bfdbfe;
+    background-color: #eff6ff;
+}
+.opening-alert :deep(.el-alert__title) {
+    font-weight: 800;
+    color: #1e40af;
+}
+.opening-alert :deep(.el-alert__description) {
+    color: #1e3a8a;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin-top: 0.25rem;
+}
 
 .form-top { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0 1rem; }
 

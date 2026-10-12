@@ -99,6 +99,28 @@
                     </el-select>
                   </el-form-item>
                 </el-col>
+                <el-col :xs="24" :sm="12">
+                  <el-form-item :label="$t('opening_balance')" prop="balance">
+                    <el-input-number
+                      v-model="form.balance"
+                      :disabled="isEdit"
+                      class="premium-number-input"
+                      :placeholder="'0.00'"
+                      style="width: 100%"
+                    />
+                    <div class="field-aux-hint">
+                      <small v-if="!isEdit" class="text-muted">
+                        {{ $t('lg_opening_balance_note') }}
+                      </small>
+                      <small v-else class="text-muted">
+                        {{ $t('outstanding_balance') }}: <strong>{{ form.balance }}</strong>
+                        <el-button type="primary" link size="small" class="ml-1" @click="goStatement">
+                          <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
+                        </el-button>
+                      </small>
+                    </div>
+                  </el-form-item>
+                </el-col>
               </el-row>
 
               <el-form-item :label="$t('notes')" prop="notes" :error="serverErrors.notes && serverErrors.notes[0]">
@@ -185,7 +207,8 @@ const form = ref({
   postal_code: '',
   // A new customer is billed in the currency the books are kept in.
   currency: baseCurrencyCode(),
-  source: ''
+  source: '',
+  balance: 0
 });
 
 const currencyOptions = computed(() => buildCurrencyOptions());
@@ -200,6 +223,17 @@ const isEdit = computed(() => !!route.params.id);
 const formTitle = computed(() => (isEdit.value ? t('edit_customer_data') : t('add_new_customer')));
 const submitLabel = computed(() => (isEdit.value ? t('update_data') : t('save_customer')));
 const serverErrors = computed(() => customersStore.validationErrors || {});
+
+const goStatement = () => {
+  if (!route.params.id) return;
+  router.push({
+    path: '/admin/accounting/party-statement',
+    query: {
+      type: 'customer',
+      party_id: String(route.params.id),
+    },
+  });
+};
 
 const loadCustomer = async () => {
   if (!isEdit.value) return;
@@ -218,6 +252,7 @@ const loadCustomer = async () => {
     status: customer.status || 'active',
     notes: customer.notes || '',
     credit_limit: parseFloat(customer.credit_limit) || 0,
+    balance: parseFloat(customer.balance) || 0,
     tax_number: customer.tax_number || '',
     city: customer.city || '',
     state: customer.state || '',
@@ -374,5 +409,13 @@ onMounted(async () => {
   font-weight: 600;
   border-color: #cbd5e1;
   color: #475569;
+}
+
+.field-aux-hint {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
 }
 </style>

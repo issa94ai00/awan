@@ -562,7 +562,7 @@ const COLUMN_LABELS = {
     details: 'details',
     specs: 'specifications',
     price: 'the_price',
-    cost: 'cost_price',
+    cost: 'wholesale_price',
     offer: 'offer_price',
     pack: 'pack_quantity',
     inventory: 'inventory',
