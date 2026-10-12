@@ -1,59 +1,56 @@
 <template>
+    <!-- Quote Print Preview Dialog (A4 Simulation & Isolated Iframe Print), laid out like the invoice's -->
     <el-dialog
         :model-value="modelValue"
         :width="fullscreen ? '100%' : '1040px'"
         :fullscreen="fullscreen"
         :top="fullscreen ? '0' : '2vh'"
-        class="qp-dialog"
+        class="qp-print-dialog"
         destroy-on-close
         append-to-body
         @update:model-value="emit('update:modelValue', $event)"
     >
         <template #header>
-            <div class="qp-head qp-screen-only">
-                <div class="qp-head-main">
-                    <span class="qp-head-icon"><i class="fas fa-print"></i></span>
-                    <div>
-                        <div class="qp-head-title">
-                            {{ $t('qt_print_preview') }}
-                            <strong v-if="quote" dir="ltr">{{ quote.quote_number }}</strong>
+            <div class="qp-dialog-header qp-screen-only">
+                <div class="qp-dh-left">
+                    <div class="qp-dh-icon"><i class="fas fa-print"></i></div>
+                    <div class="qp-dh-info">
+                        <div class="qp-dh-main-line">
+                            <span class="qp-dh-title-text">{{ $t('qt_print_preview') }}</span>
+                            <strong v-if="quote" class="qp-dh-num" dir="ltr">{{ quote.quote_number }}</strong>
                         </div>
-                        <div v-if="quote" class="qp-head-sub">
+                        <div v-if="quote" class="qp-dh-subline">
                             <span><i class="fas fa-calendar-day"></i> {{ formatDate(quote.created_at) }}</span>
-                            <span><i class="fas fa-user"></i> {{ customerName(quote) }}</span>
+                            <span class="qp-dh-customer-crumb"><i class="fas fa-user"></i> {{ customerName(quote) }}</span>
                         </div>
                     </div>
                 </div>
-                <div v-if="quote" class="qp-head-badges">
-                    <span class="qp-pill" :class="`s-${quote.status}`">
+
+                <div v-if="quote" class="qp-dh-badges">
+                    <span class="qp-status-pill" :class="`pill-${quote.status}`">
                         <i class="fas" :class="statusIcon(quote.status)"></i> {{ statusLabel(quote.status) }}
                     </span>
-                    <span v-if="validity" class="qp-pill" :class="`v-${validity.tone}`">
+                    <span v-if="validity" class="qp-validity-pill" :class="`v-${validity.tone}`">
                         <i class="fas fa-hourglass-half"></i> {{ validity.label }}
                     </span>
-                    <span class="qp-pill">
+                    <span class="qp-dh-count">
                         <i class="fas fa-box-open"></i> {{ $t('qt_print_lines', { count: lineCount, qty: totalQuantity }) }}
                     </span>
-                    <span class="qp-pill">
+                    <span class="qp-dh-pages-est">
                         <i class="fas fa-file-lines"></i> {{ $t('qt_print_pages', { count: estimatedPages }, estimatedPages) }}
                     </span>
                 </div>
-                <el-button size="small" plain :type="fullscreen ? 'primary' : 'default'" @click="fullscreen = !fullscreen">
-                    <i class="fas" :class="fullscreen ? 'fa-compress' : 'fa-expand'"></i>&nbsp;
-                    {{ fullscreen ? $t('exit_fullscreen') : $t('fullscreen') }}
-                </el-button>
+
+                <div class="qp-dh-actions">
+                    <el-button size="small" class="qp-fs-toggle-btn" :type="fullscreen ? 'primary' : 'default'" plain @click="fullscreen = !fullscreen">
+                        <i class="fas" :class="fullscreen ? 'fa-compress' : 'fa-expand'"></i>
+                        <span>{{ fullscreen ? $t('exit_fullscreen') : $t('fullscreen') }}</span>
+                    </el-button>
+                </div>
             </div>
         </template>
 
-        <el-alert
-            v-if="quote && validity?.tone === 'lapsed'"
-            class="qp-screen-only qp-warning"
-            type="warning"
-            :closable="false"
-            show-icon
-            :title="$t('qt_print_lapsed_warning')"
-        />
-
+        <!-- Print Settings Toolbar (Screen Only) -->
         <PrintSettingsToolbar
             v-model="printSettings"
             :zoom-level="zoomLevel"
@@ -70,23 +67,34 @@
             @print-now="print"
         />
 
-        <div class="qp-stage" :class="{ 'is-fullscreen': fullscreen }" v-loading="loading" :element-loading-text="$t('loading')">
-            <div class="qp-viewport" :style="zoomContainerStyle">
+        <div v-if="quote && validity?.tone === 'lapsed'" class="qp-lapsed-banner qp-screen-only">
+            <i class="fas fa-triangle-exclamation"></i>
+            <span>{{ $t('qt_print_lapsed_warning') }}</span>
+        </div>
+
+        <!-- Paper simulation stage with Zoom Container -->
+        <div class="qp-paper-stage" :class="{ 'is-fullscreen': fullscreen }" v-loading="loading" :element-loading-text="$t('loading')">
+            <div class="qp-paper-viewport" :style="zoomContainerStyle">
                 <div
                     v-if="quote"
                     :id="SHEET_ID"
-                    class="qp-sheet"
-                    :dir="dir"
+                    class="qp-printable-sheet"
                     :lang="lang"
+                    :dir="dir"
                     :style="sheetStyle"
-                    :class="[`theme-${printSettings.theme}`, { 'density-compact': printSettings.density === 'compact' }]"
+                    :class="[
+                        `theme-${printSettings.theme}`,
+                        { 'density-compact': printSettings.density === 'compact' },
+                        { 'has-cover': printSettings.showCover },
+                    ]"
                 >
-                    <div v-if="printSettings.showCover" class="qp-cover">
+                    <!-- Optional Full-page Cover -->
+                    <div v-if="printSettings.showCover" class="qp-print-cover">
                         <img :src="assetUrl(printSettings.coverImage, '/cover.jpeg')" alt="" />
                     </div>
 
-                    <div class="qp-body">
-                        <div v-if="watermarkLabel" class="qp-watermark" :class="`wm-${watermarkKey}`">
+                    <div class="qp-document-body">
+                        <div v-if="watermarkLabel" class="qp-sheet-watermark" :class="`wm-${watermarkKey}`">
                             <span>{{ watermarkLabel }}</span>
                         </div>
 
@@ -95,181 +103,267 @@
                             :show-logo="printSettings.showLogo"
                             :show-contacts="printSettings.showContacts"
                             :show-meta="false"
-                            :title="$t('qt_print_heading')"
-                            subtitle="PRICE QUOTATION"
+                            :title="$t('qt_print_official_title')"
+                            subtitle="OFFICIAL PRICE QUOTATION"
                             :document-number="quote.quote_number"
                             :banner-src="assetUrl(printSettings.headerBanner, '/Header.jpeg')"
                         />
 
-                        <!-- The three facts a customer looks for first. -->
-                        <div class="qp-keyfacts">
-                            <div class="qp-fact">
-                                <span class="qp-fact-label">{{ $t('qt_print_number') }}</span>
-                                <strong class="qp-mono" dir="ltr">{{ quote.quote_number }}</strong>
+                        <!-- Document Ribbon: type, status, validity, dates & QR -->
+                        <div class="qp-doc-ribbon">
+                            <div class="qp-ribbon-left">
+                                <span class="qp-ribbon-doc-type">
+                                    <i class="fas fa-file-signature"></i> {{ $t('qt_print_official_title') }}
+                                </span>
+                                <span class="qp-ribbon-status" :class="`status-${quote.status}`">
+                                    <i class="fas" :class="statusIcon(quote.status)"></i> {{ statusLabel(quote.status) }}
+                                </span>
+                                <span v-if="validity" class="qp-ribbon-validity" :class="`v-${validity.tone}`">
+                                    <i class="fas fa-hourglass-half"></i> {{ validity.label }}
+                                </span>
+                                <span v-if="quote.sales_order" class="qp-ribbon-order">
+                                    <i class="fas fa-cart-shopping"></i>
+                                    {{ $t('qt_sales_order') }}: <strong dir="ltr">{{ quote.sales_order.order_number }}</strong>
+                                </span>
                             </div>
-                            <div class="qp-fact">
-                                <span class="qp-fact-label">{{ $t('qt_issue_date') }}</span>
-                                <strong>{{ formatDate(quote.created_at) }}</strong>
-                            </div>
-                            <div class="qp-fact" :class="{ 'is-lapsed': validity?.tone === 'lapsed' }">
-                                <span class="qp-fact-label">{{ $t('valid_until') }}</span>
-                                <strong>{{ quote.valid_until ? formatDate(quote.valid_until) : $t('qt_no_expiry') }}</strong>
-                                <small v-if="validity?.days > 0">{{ $t('qt_print_days_left', { count: validity.days }, validity.days) }}</small>
-                            </div>
-                            <div class="qp-fact qp-fact-total">
-                                <span class="qp-fact-label">{{ $t('qt_print_amount') }}</span>
-                                <strong dir="ltr">{{ formatCurrency(quote.total) }}</strong>
-                            </div>
-                            <div v-if="printSettings.showQrCode && qrDataUrl" class="qp-qr">
-                                <img :src="qrDataUrl" alt="QR" />
+                            <div class="qp-ribbon-right">
+                                <div class="qp-ribbon-item">
+                                    <span class="lbl"><i class="fas fa-calendar-day"></i> {{ $t('qt_print_issue_date') }}:</span>
+                                    <strong class="val">{{ formatDate(quote.created_at) }}</strong>
+                                </div>
+                                <div class="qp-ribbon-item">
+                                    <span class="lbl"><i class="fas fa-clock"></i> {{ $t('valid_until') }}:</span>
+                                    <strong class="val">{{ quote.valid_until ? formatDate(quote.valid_until) : $t('qt_no_expiry') }}</strong>
+                                </div>
+                                <div v-if="printSettings.showQrCode && qrDataUrl" class="qp-ribbon-qr">
+                                    <img :src="qrDataUrl" alt="QR" class="qp-ribbon-qr-img" />
+                                    <span class="qp-ribbon-qr-label">{{ $t('qr_verification_label') }}</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div v-if="printSettings.showCustomerInfo" class="qp-parties">
-                            <section class="qp-card">
-                                <h4><i class="fas fa-user-tie"></i> {{ $t('qt_print_prepared_for') }}</h4>
-                                <strong class="qp-party-name">{{ customerName(quote) }}</strong>
-                                <div v-if="quote.customer?.company" class="qp-muted">{{ quote.customer.company }}</div>
-                                <div v-if="quote.customer?.phone" class="qp-line"><i class="fas fa-phone"></i><span dir="ltr">{{ quote.customer.phone }}</span></div>
-                                <div v-if="quote.customer?.email" class="qp-line"><i class="fas fa-envelope"></i><span dir="ltr">{{ quote.customer.email }}</span></div>
-                                <div v-if="quote.customer?.address" class="qp-line"><i class="fas fa-location-dot"></i><span>{{ quote.customer.address }}</span></div>
-                                <div v-if="quote.customer?.tax_number" class="qp-line"><i class="fas fa-certificate"></i><span>{{ $t('qt_print_tax_number') }}: {{ quote.customer.tax_number }}</span></div>
-                            </section>
-                            <section class="qp-card">
-                                <h4><i class="fas fa-building"></i> {{ $t('qt_print_prepared_by') }}</h4>
-                                <strong class="qp-party-name">{{ companyName }}</strong>
-                                <div v-if="quote.creator?.name" class="qp-line"><i class="fas fa-user"></i><span>{{ quote.creator.name }}</span></div>
-                                <div v-if="companyPhone" class="qp-line"><i class="fas fa-phone"></i><span dir="ltr">{{ companyPhone }}</span></div>
-                                <div v-if="companyEmail" class="qp-line"><i class="fas fa-envelope"></i><span dir="ltr">{{ companyEmail }}</span></div>
-                            </section>
+                        <!-- Customer & Quote Metadata Grid -->
+                        <div v-if="printSettings.showCustomerInfo" class="qp-print-meta-grid">
+                            <div class="qp-meta-card">
+                                <div class="qp-meta-card-header">
+                                    <div class="qp-card-header-icon"><i class="fas fa-user-tie"></i></div>
+                                    <span class="qp-meta-card-title">{{ $t('qt_print_customer_card') }}</span>
+                                </div>
+                                <div class="qp-meta-card-body">
+                                    <div class="qp-customer-primary">
+                                        <strong class="qp-customer-name">{{ customerName(quote) }}</strong>
+                                        <span v-if="quote.customer?.company" class="qp-customer-company">({{ quote.customer.company }})</span>
+                                    </div>
+                                    <div class="qp-customer-meta-list">
+                                        <div v-if="quote.customer?.phone" class="qp-cm-item">
+                                            <i class="fas fa-phone-alt"></i><span dir="ltr">{{ quote.customer.phone }}</span>
+                                        </div>
+                                        <div v-if="quote.customer?.email" class="qp-cm-item">
+                                            <i class="fas fa-envelope"></i><span dir="ltr">{{ quote.customer.email }}</span>
+                                        </div>
+                                        <div v-if="quote.customer?.address" class="qp-cm-item">
+                                            <i class="fas fa-location-dot"></i><span>{{ quote.customer.address }}</span>
+                                        </div>
+                                        <div v-if="quote.customer?.tax_number" class="qp-cm-item qp-cm-tax">
+                                            <i class="fas fa-certificate"></i>
+                                            <span>{{ $t('qt_print_tax_number') }}: <strong>{{ quote.customer.tax_number }}</strong></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="qp-meta-card">
+                                <div class="qp-meta-card-header">
+                                    <div class="qp-card-header-icon"><i class="fas fa-file-invoice"></i></div>
+                                    <span class="qp-meta-card-title">{{ $t('qt_print_details_card') }}</span>
+                                </div>
+                                <div class="qp-meta-card-body">
+                                    <div class="qp-details-meta-grid">
+                                        <div class="qp-dm-item">
+                                            <span class="qp-dm-label">{{ $t('qt_print_number') }}:</span>
+                                            <strong class="qp-dm-val qp-mono" dir="ltr">{{ quote.quote_number }}</strong>
+                                        </div>
+                                        <div class="qp-dm-item">
+                                            <span class="qp-dm-label">{{ $t('status') }}:</span>
+                                            <span class="qp-dm-val qp-state-pill" :class="`p-${quote.status}`">{{ statusLabel(quote.status) }}</span>
+                                        </div>
+                                        <div class="qp-dm-item">
+                                            <span class="qp-dm-label">{{ $t('qt_print_validity') }}:</span>
+                                            <span class="qp-dm-val" :class="{ 'is-lapsed': validity?.tone === 'lapsed' }">
+                                                {{ validity ? validity.label : $t('qt_no_expiry') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="quote.creator?.name" class="qp-dm-item">
+                                            <span class="qp-dm-label">{{ $t('qt_print_sales_officer') }}:</span>
+                                            <span class="qp-dm-val">{{ quote.creator.name }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <table class="qp-table">
+                        <!-- Line Items Table -->
+                        <table class="qp-print-table">
                             <thead>
                                 <tr>
-                                    <th class="c-idx">#</th>
-                                    <th v-if="printSettings.showImages" class="c-img">{{ $t('qt_print_image') }}</th>
+                                    <th class="c-center" style="width: 34px;">#</th>
+                                    <th v-if="printSettings.showImages" class="c-center" style="width: 48px;">{{ $t('qt_print_image') }}</th>
                                     <th>{{ $t('product') }}</th>
-                                    <th v-if="printSettings.showSku" class="c-sku">SKU</th>
-                                    <th class="c-qty">{{ $t('quantity') }}</th>
-                                    <th class="c-num">{{ $t('unit_price') }}</th>
-                                    <th v-if="hasLineDiscount" class="c-num">{{ $t('discount') }}</th>
-                                    <th v-if="hasLineTax" class="c-num">{{ $t('tax') }}</th>
-                                    <th class="c-num">{{ $t('total') }}</th>
+                                    <th v-if="printSettings.showSku" style="width: 105px;">SKU</th>
+                                    <th class="c-center" style="width: 80px;">{{ $t('quantity') }}</th>
+                                    <th class="c-end" style="width: 110px;">{{ $t('unit_price') }}</th>
+                                    <th v-if="hasLineDiscount" class="c-end" style="width: 85px;">{{ $t('discount') }}</th>
+                                    <th v-if="hasLineTax" class="c-end" style="width: 85px;">{{ $t('tax') }}</th>
+                                    <th class="c-end" style="width: 125px;">{{ $t('total') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(item, i) in items" :key="item.id || i">
-                                    <td class="c-idx">{{ i + 1 }}</td>
-                                    <td v-if="printSettings.showImages" class="c-img">
+                                <tr v-for="(item, idx) in items" :key="item.id || idx">
+                                    <td class="c-center qp-row-idx">{{ idx + 1 }}</td>
+                                    <td v-if="printSettings.showImages" class="c-center qp-print-img-cell">
                                         <EntityImage
                                             :src="resolveImageUrl(item.product?.image_main) || ''"
                                             type="product"
-                                            :size="printSettings.density === 'compact' ? 30 : 40"
+                                            :size="printSettings.density === 'compact' ? 30 : 38"
+                                            shape="square"
                                             :lazy="false"
                                         />
                                     </td>
                                     <td>
                                         <div class="qp-item-name">{{ itemName(item) }}</div>
-                                        <div v-if="item.product?.name_en && lang === 'ar'" class="qp-item-sub" dir="ltr">{{ item.product.name_en }}</div>
-                                        <div v-if="item.description && item.product && item.description !== itemName(item)" class="qp-item-sub">{{ item.description }}</div>
+                                        <div v-if="item.product?.name_en && lang === 'ar'" class="qp-item-name-en">{{ item.product.name_en }}</div>
+                                        <div v-if="item.description && item.product && item.description !== itemName(item)" class="qp-item-desc">{{ item.description }}</div>
                                     </td>
-                                    <td v-if="printSettings.showSku" class="c-sku"><code>{{ item.product?.sku || '—' }}</code></td>
-                                    <td class="c-qty">
-                                        <strong>{{ item.quantity }}</strong>
-                                        <small v-if="item.product?.unit">{{ item.product.unit }}</small>
+                                    <td v-if="printSettings.showSku" class="qp-sku-cell"><code>{{ item.product?.sku || '—' }}</code></td>
+                                    <td class="c-center qp-qty-cell">
+                                        <span class="qp-qty-num">{{ item.quantity }}</span>
+                                        <span v-if="item.product?.unit" class="qp-unit-label">{{ item.product.unit }}</span>
                                     </td>
-                                    <td class="c-num" dir="ltr">{{ formatCurrency(item.unit_price) }}</td>
-                                    <td v-if="hasLineDiscount" class="c-num qp-neg" dir="ltr">{{ toNum(item.discount) ? `−${formatCurrency(item.discount)}` : '—' }}</td>
-                                    <td v-if="hasLineTax" class="c-num" dir="ltr">{{ toNum(item.tax) ? formatCurrency(item.tax) : '—' }}</td>
-                                    <td class="c-num" dir="ltr"><strong>{{ formatCurrency(item.total) }}</strong></td>
-                                </tr>
-                                <tr v-if="!items.length">
-                                    <td :colspan="columnCount" class="qp-empty">—</td>
+                                    <td class="c-end qp-price-cell" dir="ltr">{{ formatCurrency(item.unit_price) }}</td>
+                                    <td v-if="hasLineDiscount" class="c-end qp-discount-cell" dir="ltr">{{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}</td>
+                                    <td v-if="hasLineTax" class="c-end qp-tax-cell" dir="ltr">{{ toNum(item.tax) ? formatCurrency(item.tax) : '—' }}</td>
+                                    <td class="c-end qp-total-cell" dir="ltr"><strong>{{ formatCurrency(item.total) }}</strong></td>
                                 </tr>
                             </tbody>
+                            <tfoot>
+                                <tr class="qp-table-summary-row">
+                                    <td :colspan="(printSettings.showImages ? 1 : 0) + (printSettings.showSku ? 1 : 0) + 3" class="qp-sum-label">
+                                        <i class="fas fa-layer-group"></i>
+                                        <span>{{ $t('qt_print_lines_total') }}:</span>
+                                        <strong class="qp-sum-count">{{ lineCount }}</strong>
+                                        ·
+                                        <span>{{ $t('qt_print_total_qty') }}:</span>
+                                        <strong class="qp-sum-count">{{ totalQuantity }}</strong>
+                                    </td>
+                                    <td :colspan="(hasLineDiscount ? 1 : 0) + (hasLineTax ? 1 : 0) + 2" class="qp-sum-total" dir="ltr">
+                                        <span class="qp-sum-subtext">{{ $t('subtotal') }}:</span>
+                                        <strong>{{ formatCurrency(quote.subtotal) }}</strong>
+                                    </td>
+                                </tr>
+                            </tfoot>
                         </table>
 
-                        <div class="qp-closing">
-                            <div class="qp-summary">
-                                <div class="qp-text-col">
-                                    <div v-if="printSettings.showNotes && quote.terms" class="qp-note">
-                                        <h4><i class="fas fa-file-signature"></i> {{ $t('qt_terms') }}</h4>
-                                        <p>{{ quote.terms }}</p>
+                        <!-- Closing Section: Terms, Totals, Signatures & Footer -->
+                        <div class="qp-print-closing-section">
+                            <div class="qp-print-summary-row">
+                                <div class="qp-print-notes-col">
+                                    <div v-if="printSettings.showNotes && quote.terms" class="qp-print-notes-box">
+                                        <div class="qp-notes-header">
+                                            <i class="fas fa-file-contract"></i>
+                                            <strong>{{ $t('qt_terms') }}:</strong>
+                                        </div>
+                                        <p class="qp-notes-text">{{ quote.terms }}</p>
                                     </div>
-                                    <div v-if="printSettings.showNotes && quote.notes" class="qp-note">
-                                        <h4><i class="fas fa-clipboard-list"></i> {{ $t('notes') }}</h4>
-                                        <p>{{ quote.notes }}</p>
+                                    <div v-if="printSettings.showNotes && quote.notes" class="qp-print-notes-box">
+                                        <div class="qp-notes-header">
+                                            <i class="fas fa-clipboard-list"></i>
+                                            <strong>{{ $t('notes') }}:</strong>
+                                        </div>
+                                        <p class="qp-notes-text">{{ quote.notes }}</p>
                                     </div>
-                                    <div class="qp-validity-note">
+                                    <div class="qp-print-legal-notice">
                                         <i class="fas fa-circle-info"></i>
                                         <span>{{ validityNotice }}</span>
                                     </div>
                                 </div>
 
-                                <div class="qp-totals">
-                                    <div class="qp-trow">
-                                        <span>{{ $t('subtotal') }}</span>
-                                        <span dir="ltr">{{ formatCurrency(quote.subtotal) }}</span>
-                                    </div>
-                                    <div v-if="toNum(quote.discount)" class="qp-trow">
-                                        <span>{{ $t('qt_extra_discount') }}</span>
-                                        <span class="qp-neg" dir="ltr">−{{ formatCurrency(quote.discount) }}</span>
-                                    </div>
-                                    <div v-if="toNum(quote.tax)" class="qp-trow">
-                                        <span>{{ $t('qt_extra_tax') }}</span>
-                                        <span dir="ltr">+{{ formatCurrency(quote.tax) }}</span>
-                                    </div>
-                                    <div class="qp-trow qp-grand">
-                                        <span>{{ $t('qt_print_grand_total') }}</span>
-                                        <span dir="ltr">{{ formatCurrency(quote.total) }}</span>
+                                <div class="qp-print-totals-col">
+                                    <div class="qp-totals-card">
+                                        <div class="qp-totals-header">
+                                            <i class="fas fa-coins"></i>
+                                            <strong>{{ $t('qt_print_financial_summary') }}</strong>
+                                        </div>
+                                        <table class="qp-totals-table">
+                                            <tr>
+                                                <td>{{ $t('subtotal') }}:</td>
+                                                <td class="val" dir="ltr">{{ formatCurrency(quote.subtotal) }}</td>
+                                            </tr>
+                                            <tr v-if="toNum(quote.discount) > 0">
+                                                <td>{{ $t('qt_extra_discount') }}:</td>
+                                                <td class="val discount-val" dir="ltr">− {{ formatCurrency(quote.discount) }}</td>
+                                            </tr>
+                                            <tr v-if="toNum(quote.tax) > 0">
+                                                <td>{{ $t('qt_extra_tax') }}:</td>
+                                                <td class="val" dir="ltr">{{ formatCurrency(quote.tax) }}</td>
+                                            </tr>
+                                            <tr class="grand-total-row">
+                                                <td>{{ $t('qt_print_grand_total') }}:</td>
+                                                <td class="val grand-val" dir="ltr">{{ formatCurrency(quote.total) }}</td>
+                                            </tr>
+                                            <tr v-if="quote.valid_until" class="valid-row" :class="{ 'is-lapsed': validity?.tone === 'lapsed' }">
+                                                <td>{{ $t('valid_until') }}:</td>
+                                                <td class="val">{{ formatDate(quote.valid_until) }}</td>
+                                            </tr>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
 
-                            <div v-if="printSettings.showSignatures" class="qp-signatures">
-                                <div class="qp-sig">
-                                    <span class="qp-sig-title">{{ $t('qt_print_sig_company') }}</span>
-                                    <span v-if="printSettings.authorizedPerson || quote.creator?.name" class="qp-sig-name">
-                                        {{ printSettings.authorizedPerson || quote.creator?.name }}
-                                        <small v-if="printSettings.authorizedPerson && printSettings.authorizedTitle">{{ printSettings.authorizedTitle }}</small>
-                                    </span>
-                                    <div class="qp-sig-space">
-                                        <img v-if="signatureUrl" :src="signatureUrl" alt="" class="qp-sig-img" />
-                                        <img v-if="stampUrl" :src="stampUrl" alt="" class="qp-stamp-img" />
-                                    </div>
-                                    <span class="qp-sig-line">{{ $t('qt_print_sig_hint') }}</span>
+                            <!-- Signatures -->
+                            <div v-if="printSettings.showSignatures" class="qp-print-signatures">
+                                <div class="sig-card">
+                                    <span class="sig-title"><i class="fas fa-pen-nib"></i> {{ $t('qt_print_sig_prepared') }}</span>
+                                    <div v-if="quote.creator?.name" class="sig-name">{{ quote.creator.name }}</div>
+                                    <div class="sig-line"></div>
+                                    <span class="sig-sub">{{ $t('qt_print_sig_hint') }}</span>
                                 </div>
-                                <div class="qp-sig">
-                                    <span class="qp-sig-title">{{ $t('qt_print_sig_customer') }}</span>
-                                    <span class="qp-sig-name">{{ customerName(quote) }}</span>
-                                    <div class="qp-sig-space"></div>
-                                    <span class="qp-sig-line">{{ $t('qt_print_sig_hint') }}</span>
+                                <div class="sig-card">
+                                    <span class="sig-title"><i class="fas fa-user-check"></i> {{ $t('qt_print_sig_customer') }}</span>
+                                    <div class="sig-name">{{ customerName(quote) }}</div>
+                                    <div class="sig-line"></div>
+                                    <span class="sig-sub">{{ $t('qt_print_sig_hint') }}</span>
+                                </div>
+                                <div class="sig-card">
+                                    <span class="sig-title"><i class="fas fa-stamp"></i> {{ $t('qt_print_sig_company') }}</span>
+                                    <div v-if="printSettings.authorizedPerson" class="sig-name">
+                                        {{ printSettings.authorizedPerson }}
+                                        <small v-if="printSettings.authorizedTitle" class="sig-name-title">{{ printSettings.authorizedTitle }}</small>
+                                    </div>
+                                    <div class="sig-seal-box" :class="{ 'has-stamp': !!stampUrl }">
+                                        <img v-if="stampUrl" :src="stampUrl" alt="" class="sig-stamp-img" />
+                                        <span v-else>{{ $t('qt_print_seal') }}</span>
+                                    </div>
+                                    <img v-if="signatureUrl" :src="signatureUrl" alt="" class="sig-digital-img" />
                                 </div>
                             </div>
 
-                            <footer v-if="printSettings.showFooter" class="qp-footer">
-                                <span>{{ $t('qt_print_footer') }}</span>
-                                <span dir="ltr">{{ quote.quote_number }} · {{ printedAt }}</span>
-                            </footer>
+                            <!-- Running Footer -->
+                            <div v-if="printSettings.showFooter" class="qp-print-footer">
+                                <div class="qp-footer-brand">
+                                    <strong>{{ companyName }}</strong>
+                                    <template v-if="companyAddress"> — {{ companyAddress }}</template>
+                                </div>
+                                <div class="qp-footer-meta">
+                                    <span>{{ printedAt }}</span>
+                                    <span>·</span>
+                                    <span>A4 Price Quotation · {{ quote.quote_number }}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <template #footer>
-            <div class="qp-actions qp-screen-only">
-                <span class="qp-shortcut"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
-                <el-button @click="emit('update:modelValue', false)">{{ $t('cancel') }}</el-button>
-                <el-button type="warning" plain :loading="isExportingPdf" :disabled="!quote || loading" @click="exportPdf">
-                    <i class="fas fa-file-pdf"></i>&nbsp;{{ $t('download_pdf') }}
-                </el-button>
-                <el-button type="primary" :loading="isPrinting" :disabled="!quote || loading" @click="print">
-                    <i class="fas fa-print"></i>&nbsp;{{ $t('print_now') }}
-                </el-button>
-            </div>
-        </template>
     </el-dialog>
 </template>
 
@@ -285,21 +379,23 @@ import PrintSettingsToolbar from '@/components/admin/PrintSettingsToolbar.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { usePrintSettings } from '@/composables/usePrintSettings';
 import { useQuotesStore } from '@/stores/quotes';
-import { resolveImageUrl } from '@/utils/productImages';
 import { useSettingsStore } from '@/stores/settings';
+import { resolveImageUrl } from '@/utils/productImages';
 import { customerName, formatCurrency, formatDate, statusIcon, statusLabel } from '@/utils/sales';
 import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
 import { A4_HEIGHT_MM, A4_WIDTH_MM, addSheetPages, sheetCaptureOptions } from '@/utils/printPdf';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
-    /** A list row or a loaded quote; the full quote is fetched when lines are missing. */
+    /** A list row or a loaded quote; the full quote is always fetched for the sheet. */
     source: { type: Object, default: null },
 });
 const emit = defineEmits(['update:modelValue']);
 
 const SHEET_ID = 'quote-printable-doc';
-const IFRAME_ID = 'qp-print-iframe';
+const IFRAME_ID = 'qp-print-hidden-iframe';
+const BREAK_SELECTOR = '.qp-print-table thead, .qp-print-table tr, .qp-doc-ribbon, .qp-print-meta-grid, '
+    + '.qp-print-summary-row, .qp-print-signatures, .qp-print-footer, .print-document-header';
 
 const { t, locale } = useI18n();
 const store = useQuotesStore();
@@ -329,6 +425,7 @@ const toNum = (value) => Number(value) || 0;
 
 const lang = computed(() => (locale.value === 'en' ? 'en' : 'ar'));
 const dir = computed(() => (lang.value === 'en' ? 'ltr' : 'rtl'));
+// The sheet's typeface; every element inside inherits it through --qp-font.
 const sheetStyle = computed(() => ({ '--qp-font': printFontStack(printSettings.fontFamily) }));
 
 const assetUrl = (path, fallback = '') => {
@@ -339,27 +436,21 @@ const assetUrl = (path, fallback = '') => {
 const stampUrl = computed(() => assetUrl(printSettings.stampImage));
 const signatureUrl = computed(() => assetUrl(printSettings.signatureImage));
 
-const s = computed(() => settings.data || {});
-const companyName = computed(() => (lang.value === 'ar' ? s.value.site_name : s.value.site_name_en || s.value.site_name) || '');
-const companyPhone = computed(() => s.value.contact_phone || s.value.phone || '');
-const companyEmail = computed(() => s.value.contact_email || s.value.email || '');
+const site = computed(() => settings.data || {});
+const companyName = computed(() => (lang.value === 'ar' ? site.value.site_name : site.value.site_name_en || site.value.site_name) || '');
+const companyAddress = computed(() => site.value.contact_address || site.value.address || '');
 
 const items = computed(() => quote.value?.items || []);
 const lineCount = computed(() => items.value.length);
 const totalQuantity = computed(() => items.value.reduce((sum, item) => sum + toNum(item.quantity), 0));
 const hasLineDiscount = computed(() => items.value.some((item) => toNum(item.discount)));
 const hasLineTax = computed(() => items.value.some((item) => toNum(item.tax)));
-const columnCount = computed(() => 5
-    + (printSettings.showImages ? 1 : 0)
-    + (printSettings.showSku ? 1 : 0)
-    + (hasLineDiscount.value ? 1 : 0)
-    + (hasLineTax.value ? 1 : 0));
 
 const itemName = (item) => (lang.value === 'en' && item.product?.name_en) || item.product?.name_ar || item.description || '—';
 
 const estimatedPages = computed(() => {
-    const perPage = printSettings.density === 'compact' ? 16 : 10;
-    const pages = Math.max(1, Math.ceil(lineCount.value / perPage));
+    const limit = printSettings.density === 'compact' ? 14 : 9;
+    const pages = lineCount.value <= limit ? 1 : Math.ceil(lineCount.value / limit);
     return printSettings.showCover ? pages + 1 : pages;
 });
 
@@ -379,13 +470,16 @@ const validity = computed(() => {
     return { days, tone: days <= 3 ? 'soon' : 'ok', label: t('qt_print_days_left', { count: days }, days) };
 });
 
-const validityNotice = computed(() => (quote.value?.valid_until
+const validityNotice = computed(() => printSettings.customNotes || (quote.value?.valid_until
     ? t('qt_print_valid_notice', { date: formatDate(quote.value.valid_until) })
     : t('qt_print_open_notice')));
 
 // A draft goes out marked as one unless the toolbar picked a watermark.
 const watermarkKey = computed(() => printSettings.watermark || (quote.value?.status === 'draft' ? 'draft' : ''));
-const watermarkLabel = computed(() => (printSettings.watermark ? watermarkText.value : watermarkKey.value === 'draft' ? 'مسودة — DRAFT' : ''));
+const watermarkLabel = computed(() => {
+    if (printSettings.watermark) return watermarkText.value;
+    return watermarkKey.value === 'draft' ? 'مسودة — DRAFT' : '';
+});
 
 const printedAt = computed(() => {
     const d = new Date();
@@ -414,7 +508,7 @@ const load = async (source) => {
         ]);
         if (full) quote.value = full;
     } catch {
-        // Keep what the list row gave us; better a partial preview than none.
+        // Keep what the list row gave us; a partial preview beats none.
         if (!source.items) ElMessage.warning(t('qt_load_failed'));
     } finally {
         loading.value = false;
@@ -433,20 +527,36 @@ watch(() => [props.modelValue, printSettings.fontFamily], ([open, font]) => {
 const documentTitle = () => `${t('qt_print_heading')} ${quote.value?.quote_number || ''}`.trim();
 
 // ── Print through an isolated iframe so only the sheet reaches the printer ──
-const PRINT_CSS = `
-    @page { size: A4 portrait; margin: 0; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-    #${SHEET_ID} { width: 100% !important; margin: 0 !important; box-shadow: none !important; border: 0 !important; }
-    #${SHEET_ID} .qp-body { padding: 10mm 12mm !important; min-height: 0 !important; }
-    #${SHEET_ID} .qp-cover { height: 297mm !important; break-after: page; page-break-after: always; }
-    .qp-table thead { display: table-header-group; }
-    .qp-table tr, .qp-keyfacts, .qp-parties, .qp-summary, .qp-signatures, .qp-footer { break-inside: avoid; page-break-inside: avoid; }
+const printCss = () => `
+    @page { size: A4 portrait; margin: 0 !important; }
+    @page :left { margin: 0 !important; }
+    @page :right { margin: 0 !important; }
+    @page :first { margin: 0 !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
+    html, body {
+        margin: 0 !important; padding: 0 !important; background: #fff !important; color: #0f172a !important;
+        font-family: ${printFontStack(printSettings.fontFamily)} !important; direction: ${dir.value} !important;
+        width: 100% !important; height: auto !important; overflow: visible !important;
+        text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
+    }
+    a { text-decoration: none !important; color: inherit !important; }
+    a[href]:after, abbr[title]:after { content: none !important; }
+    .brand-domain-badge, .domain-badge { display: none !important; }
+    #${SHEET_ID} { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; background: #fff !important; display: block !important; }
+    .qp-print-cover { display: block !important; width: 100% !important; height: 297mm !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: hidden !important; break-after: page !important; page-break-after: always !important; }
+    .qp-print-cover img { width: 100% !important; height: 297mm !important; object-fit: cover !important; }
+    .qp-document-body { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 10mm 12mm !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; background: #fff !important; }
+    .qp-print-table thead { display: table-header-group !important; }
+    .qp-print-table tfoot { display: table-row-group !important; }
+    .qp-print-table tr, .qp-doc-ribbon, .qp-print-meta-grid, .qp-print-summary-row, .qp-print-signatures, .qp-print-footer, .qp-print-closing-section {
+        break-inside: avoid !important; page-break-inside: avoid !important;
+    }
+    .qp-screen-only { display: none !important; }
 `;
 
 const waitForImages = (doc) => new Promise((resolve) => {
     const pending = Array.from(doc.images || []).filter((img) => !img.complete);
-    if (!pending.length) return setTimeout(resolve, 150);
+    if (!pending.length) return setTimeout(resolve, 200);
     let left = pending.length;
     const done = () => { if (--left <= 0) resolve(); };
     pending.forEach((img) => { img.onload = done; img.onerror = done; });
@@ -463,20 +573,20 @@ const print = async () => {
         document.getElementById(IFRAME_ID)?.remove();
         const iframe = document.createElement('iframe');
         iframe.id = IFRAME_ID;
-        Object.assign(iframe.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-1' });
+        Object.assign(iframe.style, { position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-9999' });
         document.body.appendChild(iframe);
 
         const doc = iframe.contentWindow.document;
-        const title = documentTitle().replace(/[<>&]/g, '');
+        const title = documentTitle().replace(/[<>&"]/g, '');
         doc.open();
         doc.write(`<!DOCTYPE html><html dir="${dir.value}" lang="${lang.value}"><head><meta charset="utf-8">
             <base href="${window.location.origin}/"><title>${title}</title>${styles}
-            <link rel="stylesheet" href="${printFontCssUrl(fontKey)}"><style>${PRINT_CSS}</style>
+            <link rel="stylesheet" href="${printFontCssUrl(fontKey)}" data-print-font="${fontKey}"><style>${printCss()}</style>
             </head><body>${sheet.outerHTML}</body></html>`);
         doc.close();
 
         await waitForImages(doc);
-        // Printing before the webfont arrives prints a fallback face.
+        // Printing before the webfont arrives prints a fallback face or blank Arabic.
         await waitForPrintFont(fontKey, doc);
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -497,21 +607,20 @@ const exportPdf = async () => {
     try {
         zoomLevel.value = 100;
         await nextTick();
+        // html2canvas draws with whatever font is loaded at capture time.
         await waitForPrintFont(printSettings.fontFamily);
 
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-        const captureOptions = sheetCaptureOptions(`#${SHEET_ID} .qp-body`);
-        const cover = sheet.querySelector('.qp-cover');
+        const captureOptions = sheetCaptureOptions(`#${SHEET_ID} .qp-document-body`);
+        const cover = sheet.querySelector('.qp-print-cover');
         if (printSettings.showCover && cover) {
             const canvas = await html2canvas(cover, captureOptions);
             pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
             pdf.addPage();
         }
-        await addSheetPages(pdf, html2canvas, sheet.querySelector('.qp-body'), {
-            captureOptions,
-            breakSelector: '.qp-table thead, .qp-table tr, .qp-keyfacts, .qp-parties, .qp-summary, .qp-signatures, .qp-footer, .print-document-header',
-        });
+        await addSheetPages(pdf, html2canvas, sheet.querySelector('.qp-document-body'), { captureOptions, breakSelector: BREAK_SELECTOR });
         pdf.save(`${documentTitle().replace(/\s+/g, '_')}.pdf`);
+        ElMessage.success(t('pdf_downloaded_successfully') || 'PDF ready');
     } catch (e) {
         console.error('Quote PDF export failed:', e);
         ElMessage.error(t('failed_to_export_pdf') || 'PDF export failed');
@@ -535,116 +644,265 @@ watch(() => props.modelValue, (open) => {
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>
 
-<style>
-/* Not scoped: the sheet's markup is copied into the print iframe and the PDF
-   capture, and these rules must travel with it unchanged. */
-.qp-dialog .el-dialog__body { padding-top: 0; }
-.qp-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-inline-end: 28px; }
-.qp-head-main { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 0; }
-.qp-head-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #eff6ff; color: #1d4ed8; flex-shrink: 0; }
-.qp-head-title { font-weight: 700; font-size: 15px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.qp-head-title strong { font-family: 'JetBrains Mono', monospace; color: #1e3a8a; }
-.qp-head-sub { display: flex; gap: 14px; font-size: 12px; color: #64748b; margin-top: 2px; flex-wrap: wrap; }
-.qp-head-sub i { margin-inline-end: 4px; }
-.qp-head-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-.qp-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: #f1f5f9; color: #334155; white-space: nowrap; }
-.qp-pill.s-draft { background: #f1f5f9; color: #475569; }
-.qp-pill.s-sent { background: #e0f2fe; color: #0369a1; }
-.qp-pill.s-accepted { background: #dcfce7; color: #15803d; }
-.qp-pill.s-rejected, .qp-pill.v-lapsed { background: #fee2e2; color: #b91c1c; }
-.qp-pill.s-expired { background: #fef3c7; color: #b45309; }
-.qp-pill.v-soon { background: #fef3c7; color: #b45309; }
-.qp-pill.v-ok { background: #ecfdf5; color: #047857; }
-.qp-warning { margin-bottom: 10px; }
+<style scoped>
+/* Mirrors the invoice print preview (views/admin/sales/Invoices.vue) so the
+   two documents look like one family. Scoped attributes travel with the
+   sheet's markup into the print iframe, where these rules are copied too. */
 
-.qp-stage { background: #e2e8f0; border-radius: 10px; padding: 24px 12px; max-height: 68vh; overflow: auto; min-height: 240px; }
-.qp-stage.is-fullscreen { max-height: calc(100vh - 230px); }
-.qp-viewport { width: max-content; margin: 0 auto; }
+/* ── Dialog chrome ── */
+.qp-print-dialog :global(.el-dialog__header) { margin-right: 0; padding: 14px 20px; border-bottom: 1px solid #e2e8f0; background: #ffffff; }
+.qp-print-dialog :global(.el-dialog__body) { padding: 0; background: #f1f5f9; }
 
-.qp-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-.qp-shortcut { margin-inline-end: auto; font-size: 12px; color: #94a3b8; }
-.qp-shortcut kbd { border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-family: inherit; background: #fff; }
-
-/* ── The A4 sheet ─────────────────────────────────────────────────────── */
-.qp-sheet {
-    --qp-accent: #1e3a8a; --qp-accent-soft: #eff6ff; --qp-ink: #0f172a; --qp-muted: #64748b; --qp-line: #e2e8f0;
-    width: 210mm; background: #fff; color: var(--qp-ink); font-family: var(--qp-font, 'Cairo', Tahoma, sans-serif);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18); font-size: 12px; line-height: 1.55;
+.qp-dialog-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.qp-dh-left { display: flex; align-items: center; gap: 12px; }
+.qp-dh-icon {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, #1e40af, #3b82f6); color: #ffffff;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+    box-shadow: 0 2px 6px rgba(30, 64, 175, 0.25);
 }
-.qp-sheet.theme-emerald { --qp-accent: #047857; --qp-accent-soft: #ecfdf5; }
-.qp-sheet.theme-charcoal { --qp-accent: #334155; --qp-accent-soft: #f1f5f9; }
-.qp-sheet.theme-indigo { --qp-accent: #4338ca; --qp-accent-soft: #eef2ff; }
-.qp-cover img { width: 100%; height: 297mm; object-fit: cover; display: block; }
-.qp-body { position: relative; padding: 12mm 13mm; min-height: 297mm; box-sizing: border-box; overflow: hidden; }
-.density-compact .qp-body { padding: 8mm 10mm; font-size: 11px; }
-.qp-mono { font-family: 'JetBrains Mono', monospace; }
-.qp-muted { color: var(--qp-muted); }
-.qp-neg { color: #b91c1c; }
+.qp-dh-info { display: flex; flex-direction: column; gap: 2px; }
+.qp-dh-main-line { display: flex; align-items: center; gap: 8px; }
+.qp-dh-title-text { font-size: 14.5px; font-weight: 800; color: #0f172a; }
+.qp-dh-num {
+    background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 1px 8px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 800;
+}
+.qp-dh-subline { display: flex; align-items: center; gap: 10px; font-size: 11px; color: #64748b; }
+.qp-dh-customer-crumb { color: #334155; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.qp-dh-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qp-status-pill, .qp-validity-pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 700;
+}
+.qp-status-pill.pill-draft { background: #f1f5f9; color: #475569; }
+.qp-status-pill.pill-sent { background: #e0f2fe; color: #0369a1; }
+.qp-status-pill.pill-accepted { background: #dcfce7; color: #15803d; }
+.qp-status-pill.pill-rejected { background: #fee2e2; color: #b91c1c; }
+.qp-status-pill.pill-expired { background: #fef3c7; color: #b45309; }
+.qp-validity-pill.v-ok { background: #dcfce7; color: #15803d; }
+.qp-validity-pill.v-soon { background: #fef3c7; color: #b45309; }
+.qp-validity-pill.v-lapsed { background: #fee2e2; color: #b91c1c; }
+.qp-dh-count {
+    font-size: 11.5px; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; padding: 2px 8px; border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.qp-dh-pages-est {
+    font-size: 11px; color: #0284c7; background: #f0f9ff; border: 1px solid #bae6fd; padding: 2px 8px; border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 5px; font-weight: 600;
+}
+.qp-dh-actions { display: flex; align-items: center; gap: 8px; }
+.qp-fs-toggle-btn { font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
 
-.qp-watermark { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 0; }
-.qp-watermark span { transform: rotate(-30deg); font-size: 64px; font-weight: 900; color: rgba(100, 116, 139, 0.1); white-space: nowrap; border: 6px solid rgba(100, 116, 139, 0.1); padding: 8px 28px; border-radius: 16px; }
-.qp-watermark.wm-draft span { color: rgba(220, 38, 38, 0.09); border-color: rgba(220, 38, 38, 0.09); }
-.qp-body > * { position: relative; z-index: 1; }
+.qp-lapsed-banner {
+    display: flex; align-items: center; gap: 8px; padding: 8px 18px; font-size: 12px; font-weight: 600;
+    background: #fef2f2; color: #b91c1c; border-bottom: 1px solid #fecaca;
+}
 
-.qp-keyfacts { display: flex; align-items: stretch; gap: 8px; margin: 14px 0; }
-.qp-fact { flex: 1; border: 1px solid var(--qp-line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; background: #fff; }
-.qp-fact-label { font-size: 10px; color: var(--qp-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
-.qp-fact strong { font-size: 13px; }
-.qp-fact small { font-size: 10px; color: #047857; }
-.qp-fact.is-lapsed strong, .qp-fact.is-lapsed small { color: #b91c1c; }
-.qp-fact-total { background: var(--qp-accent); border-color: var(--qp-accent); color: #fff; }
-.qp-fact-total .qp-fact-label { color: rgba(255, 255, 255, 0.8); }
-.qp-fact-total strong { font-size: 15px; font-weight: 800; }
-.qp-qr { display: flex; align-items: center; }
-.qp-qr img { width: 60px; height: 60px; border: 1px solid var(--qp-line); border-radius: 6px; padding: 2px; }
+/* ── Paper Simulation Stage (Screen Only) ── */
+.qp-paper-stage { padding: 24px; background: #e2e8f0; display: flex; justify-content: center; overflow: auto; min-height: 480px; box-sizing: border-box; }
+.qp-paper-stage.is-fullscreen { min-height: calc(100vh - 165px); background: #cbd5e1; }
+.qp-paper-viewport { display: flex; flex-direction: column; align-items: center; width: 100%; transform-origin: top center; }
 
-.qp-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.qp-card { border: 1px solid var(--qp-line); border-radius: 8px; padding: 10px 12px; }
-.qp-card h4, .qp-note h4 { margin: 0 0 6px; font-size: 11px; color: var(--qp-accent); font-weight: 700; display: flex; gap: 6px; align-items: center; }
-.qp-party-name { display: block; font-size: 14px; margin-bottom: 2px; }
-.qp-line { display: flex; gap: 6px; align-items: baseline; color: #334155; font-size: 11px; }
-.qp-line i { color: var(--qp-muted); width: 12px; text-align: center; font-size: 10px; }
+/* ── Printable Sheet ── */
+.qp-printable-sheet {
+    --qp-primary: #1e3a8a;
+    --qp-header-bg: #1e293b;
+    --qp-accent-subtle: #eff6ff;
+    --qp-border-color: #cbd5e1;
+    --qp-highlight-bg: #f8fafc;
 
-.qp-table { width: 100%; border-collapse: collapse; }
-.qp-table th { background: var(--qp-accent); color: #fff; font-weight: 700; font-size: 11px; padding: 7px 8px; text-align: start; }
-.qp-table th:first-child { border-start-start-radius: 6px; }
-.qp-table th:last-child { border-start-end-radius: 6px; }
-.qp-table td { padding: 7px 8px; border-bottom: 1px solid var(--qp-line); vertical-align: middle; }
-.qp-table tbody tr:nth-child(even) td { background: #f8fafc; }
-.density-compact .qp-table td { padding: 4px 6px; }
-.qp-table .c-idx { width: 28px; text-align: center; color: var(--qp-muted); }
-.qp-table .c-img { width: 50px; text-align: center; }
-.qp-table .c-sku { width: 92px; }
-.qp-table .c-sku code { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
-.qp-table .c-qty { width: 64px; text-align: center; }
-.qp-table .c-qty small { display: block; font-size: 10px; color: var(--qp-muted); }
-.qp-table .c-num { width: 96px; text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.qp-item-name { font-weight: 600; }
-.qp-item-sub { font-size: 10.5px; color: var(--qp-muted); }
-.qp-empty { text-align: center; color: var(--qp-muted); }
+    position: relative;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+    font-family: var(--qp-font, 'Cairo', 'Noto Sans Arabic', Tahoma, sans-serif);
+    /* Arabic needs room above and below for dots and diacritics. */
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    font-kerning: normal;
+}
+.qp-printable-sheet :deep(.print-document-header) { font-family: inherit; }
+.qp-printable-sheet .qp-item-name,
+.qp-printable-sheet .qp-item-desc,
+.qp-printable-sheet .qp-notes-text,
+.qp-printable-sheet .qp-cm-item span { unicode-bidi: plaintext; }
+.qp-printable-sheet .qp-print-table td,
+.qp-printable-sheet .qp-totals-table td { font-variant-numeric: tabular-nums; }
 
-.qp-summary { display: grid; grid-template-columns: 1fr 260px; gap: 16px; margin-top: 14px; align-items: start; }
-.qp-note { border-inline-start: 3px solid var(--qp-accent); background: var(--qp-accent-soft); padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; }
-.qp-note p { margin: 0; white-space: pre-line; }
-.qp-validity-note { display: flex; gap: 6px; font-size: 11px; color: var(--qp-muted); }
-.qp-totals { border: 1px solid var(--qp-line); border-radius: 8px; overflow: hidden; }
-.qp-trow { display: flex; justify-content: space-between; gap: 10px; padding: 6px 12px; font-variant-numeric: tabular-nums; }
-.qp-trow + .qp-trow { border-top: 1px solid var(--qp-line); }
-.qp-grand { background: var(--qp-accent); color: #fff; font-weight: 800; font-size: 14px; padding: 9px 12px; }
+.qp-printable-sheet.theme-emerald { --qp-primary: #047857; --qp-header-bg: #064e3b; --qp-accent-subtle: #ecfdf5; --qp-border-color: #a7f3d0; --qp-highlight-bg: #f0fdf4; }
+.qp-printable-sheet.theme-charcoal { --qp-primary: #18181b; --qp-header-bg: #09090b; --qp-accent-subtle: #f4f4f5; --qp-border-color: #d4d4d8; --qp-highlight-bg: #fafafa; }
+.qp-printable-sheet.theme-indigo { --qp-primary: #4338ca; --qp-header-bg: #312e81; --qp-accent-subtle: #eef2ff; --qp-border-color: #c7d2fe; --qp-highlight-bg: #f5f3ff; }
 
-.qp-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 22px; }
-.qp-sig { display: flex; flex-direction: column; gap: 2px; }
-.qp-sig-title { font-size: 11px; font-weight: 700; color: var(--qp-accent); }
-.qp-sig-name { font-size: 12px; }
-.qp-sig-name small { display: block; font-size: 10px; color: var(--qp-muted); }
-.qp-sig-space { position: relative; height: 64px; }
-.qp-sig-img { position: absolute; inset-inline-start: 0; bottom: 4px; max-height: 50px; max-width: 140px; object-fit: contain; }
-.qp-stamp-img { position: absolute; inset-inline-start: 90px; bottom: 0; max-height: 64px; max-width: 90px; object-fit: contain; opacity: 0.9; }
-.qp-sig-line { border-top: 1px dashed #94a3b8; padding-top: 3px; font-size: 10px; color: var(--qp-muted); }
+.qp-print-cover {
+    width: 100%; max-width: 860px; aspect-ratio: 1 / 1.4142; border-radius: 8px; overflow: hidden; margin-bottom: 24px;
+    box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.05); background: #0f172a;
+}
+.qp-print-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.qp-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--qp-line); font-size: 10px; color: var(--qp-muted); }
+.qp-document-body {
+    position: relative; width: 100%; background: #ffffff; color: #0f172a; padding: 18px 24px; box-sizing: border-box;
+    border: 1px solid var(--qp-border-color); border-radius: 8px;
+    box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+/* Watermark */
+.qp-sheet-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; user-select: none; z-index: 1; overflow: hidden; }
+.qp-sheet-watermark span { transform: rotate(-28deg); font-size: 54px; font-weight: 900; line-height: 1.4; padding: 12px 30px; border-radius: 12px; text-align: center; white-space: nowrap; }
+.qp-sheet-watermark.wm-draft span { color: rgba(220, 38, 38, 0.08); border: 4px dashed rgba(220, 38, 38, 0.14); }
+.qp-sheet-watermark.wm-approved span { color: rgba(22, 163, 74, 0.08); border: 4px solid rgba(22, 163, 74, 0.14); }
+.qp-sheet-watermark.wm-paid span { color: rgba(13, 148, 136, 0.08); border: 4px solid rgba(13, 148, 136, 0.14); }
+.qp-sheet-watermark.wm-official span { color: rgba(30, 58, 138, 0.08); border: 4px solid rgba(30, 58, 138, 0.14); }
+
+/* Ribbon */
+.qp-doc-ribbon {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 7px 12px;
+    background: var(--qp-highlight-bg); border: 1px solid var(--qp-border-color); border-radius: 6px; margin-bottom: 12px;
+}
+.qp-ribbon-left, .qp-ribbon-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qp-ribbon-right { gap: 12px; }
+.qp-ribbon-doc-type { font-size: 11px; font-weight: 800; color: var(--qp-primary); display: inline-flex; align-items: center; gap: 5px; }
+.qp-ribbon-status, .qp-ribbon-validity { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.qp-ribbon-status.status-draft { background: #f1f5f9; color: #475569; }
+.qp-ribbon-status.status-sent { background: #e0f2fe; color: #0369a1; }
+.qp-ribbon-status.status-accepted { background: #dcfce7; color: #15803d; }
+.qp-ribbon-status.status-rejected { background: #fee2e2; color: #b91c1c; }
+.qp-ribbon-status.status-expired { background: #fef3c7; color: #b45309; }
+.qp-ribbon-validity.v-ok { background: #dcfce7; color: #15803d; }
+.qp-ribbon-validity.v-soon { background: #fef3c7; color: #b45309; }
+.qp-ribbon-validity.v-lapsed { background: #fee2e2; color: #b91c1c; }
+.qp-ribbon-order { font-size: 10.5px; color: #475569; background: #eff6ff; padding: 1px 6px; border-radius: 4px; border: 1px solid #bfdbfe; }
+.qp-ribbon-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.qp-ribbon-item .lbl { color: #64748b; font-weight: 600; }
+.qp-ribbon-item .val { color: #0f172a; font-weight: 700; }
+.qp-ribbon-qr { display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
+.qp-ribbon-qr-img { width: 28px; height: 28px; display: block; image-rendering: pixelated; }
+.qp-ribbon-qr-label { font-size: 8px; font-weight: 700; color: #475569; }
+
+/* Meta cards */
+.qp-print-meta-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; margin-bottom: 12px; }
+.qp-meta-card { border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; overflow: hidden; }
+.qp-meta-card-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--qp-highlight-bg); border-bottom: 1px solid #e2e8f0; }
+.qp-card-header-icon {
+    width: 20px; height: 20px; border-radius: 4px; background: var(--qp-accent-subtle); color: var(--qp-primary);
+    display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;
+}
+.qp-meta-card-title { font-size: 11.5px; font-weight: 800; color: var(--qp-primary); }
+.qp-meta-card-body { padding: 8px 12px; font-size: 11px; }
+.qp-customer-primary { margin-bottom: 6px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.qp-customer-name { font-size: 13.5px; color: #0f172a; font-weight: 800; }
+.qp-customer-company { font-size: 11.5px; color: #475569; font-weight: 600; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+.qp-customer-meta-list { display: flex; flex-direction: column; gap: 4px; color: #334155; }
+.qp-cm-item { display: flex; align-items: center; gap: 6px; line-height: 1.35; }
+.qp-cm-item i { color: #64748b; width: 13px; text-align: center; font-size: 9.5px; flex-shrink: 0; }
+.qp-cm-tax, .qp-cm-tax i { color: var(--qp-primary); font-weight: 600; }
+.qp-details-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.qp-dm-item { display: flex; flex-direction: column; gap: 2px; }
+.qp-dm-label { font-size: 9.5px; color: #64748b; font-weight: 600; }
+.qp-dm-val { font-size: 11px; font-weight: 700; color: #0f172a; }
+.qp-dm-val.is-lapsed { color: #b91c1c; }
+.qp-mono { font-family: 'JetBrains Mono', monospace; color: var(--qp-primary); font-weight: 800; }
+.qp-state-pill { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700; width: fit-content; }
+.qp-state-pill.p-draft { background: #f1f5f9; color: #475569; }
+.qp-state-pill.p-sent { background: #e0f2fe; color: #0369a1; }
+.qp-state-pill.p-accepted { background: #dcfce7; color: #15803d; }
+.qp-state-pill.p-rejected { background: #fee2e2; color: #b91c1c; }
+.qp-state-pill.p-expired { background: #fef3c7; color: #b45309; }
+
+/* Items table */
+.qp-print-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 12px; }
+.qp-print-table thead th {
+    background: var(--qp-header-bg); color: #ffffff; border: 1px solid var(--qp-header-bg);
+    padding: 6px 8px; text-align: start; font-weight: 800; font-size: 10.5px; line-height: 1.4;
+}
+.qp-print-table tbody td { border: 1px solid #e2e8f0; padding: 5px 8px; text-align: start; vertical-align: middle; }
+.qp-print-table tbody tr:nth-child(even) { background: #fbfcfd; }
+.qp-print-table .c-center { text-align: center; }
+.qp-print-table .c-end { text-align: end; }
+.qp-row-idx { color: #64748b; font-weight: 700; font-size: 10px; }
+.qp-print-img-cell { padding: 2px !important; }
+.qp-item-name { font-weight: 700; color: #0f172a; line-height: 1.45; }
+.qp-item-name-en { font-size: 9px; color: #64748b; direction: ltr; text-align: start; }
+.qp-item-desc { font-size: 9px; color: #64748b; margin-top: 2px; }
+.qp-sku-cell code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font-size: 9.5px; color: #475569; font-family: 'JetBrains Mono', monospace; }
+.qp-qty-cell { font-weight: 800; }
+.qp-qty-num { font-size: 12px; color: #0f172a; }
+.qp-unit-label { font-size: 9px; font-weight: normal; color: #64748b; margin-inline-start: 2px; }
+.qp-price-cell { color: #334155; font-weight: 600; }
+.qp-discount-cell { color: #dc2626; font-weight: 600; }
+.qp-tax-cell { color: #64748b; }
+.qp-total-cell { color: var(--qp-primary); font-weight: 800; }
+.qp-table-summary-row td { background: #f8fafc; border-top: 2px solid #cbd5e1; padding: 6px 10px; font-size: 11px; }
+.qp-sum-label { color: #334155; }
+.qp-sum-label i { color: var(--qp-primary); }
+.qp-sum-count { color: var(--qp-primary); font-weight: 800; margin-inline: 2px; }
+.qp-sum-total { text-align: end !important; font-size: 12px; color: var(--qp-primary); }
+.qp-sum-subtext { font-size: 10px; color: #64748b; margin-inline-end: 4px; }
+
+/* Summary & notes */
+.qp-print-summary-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.qp-print-notes-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.qp-print-notes-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px 10px; font-size: 10.5px; }
+.qp-notes-header { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; color: #475569; font-size: 10.5px; }
+.qp-notes-header i { color: var(--qp-primary); font-size: 10px; }
+.qp-notes-text { margin: 0; color: #0f172a; white-space: pre-wrap; line-height: 1.7; }
+.qp-print-legal-notice {
+    font-size: 9.5px; color: #64748b; line-height: 1.6; padding: 4px 6px; background: #fafafa; border-radius: 4px;
+    display: flex; align-items: baseline; gap: 5px;
+}
+.qp-print-legal-notice i { color: #94a3b8; font-size: 9px; }
+.qp-print-totals-col { width: 320px; flex-shrink: 0; }
+.qp-totals-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+.qp-totals-header {
+    font-size: 11.5px; font-weight: 800; color: var(--qp-primary); display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;
+}
+.qp-totals-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.qp-totals-table td { padding: 4px; color: #334155; }
+.qp-totals-table td.val { text-align: end; font-weight: 700; }
+.qp-totals-table td.discount-val { color: #dc2626; }
+.qp-totals-table .grand-total-row td { font-weight: 900; font-size: 14px; color: var(--qp-primary); border-top: 2px solid var(--qp-primary); padding-top: 6px; }
+.qp-totals-table .grand-val { font-size: 14.5px; }
+.qp-totals-table .valid-row td { color: #15803d; font-weight: 700; font-size: 11px; }
+.qp-totals-table .valid-row.is-lapsed td { color: #dc2626; }
+
+/* Signatures */
+.qp-print-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
+.sig-card { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.sig-title { font-size: 10.5px; font-weight: 700; color: #334155; margin-bottom: 20px; display: inline-flex; align-items: center; gap: 4px; }
+.sig-title i { color: var(--qp-primary); font-size: 9.5px; }
+.sig-name { font-size: 9.5px; color: var(--qp-primary); font-weight: 700; margin-bottom: 3px; }
+.sig-name-title { display: block; font-size: 9px; color: #64748b; }
+.sig-line { width: 80%; border-bottom: 1px solid #94a3b8; margin-bottom: 4px; }
+.sig-sub { font-size: 8.5px; color: #94a3b8; }
+.sig-seal-box {
+    width: 60px; height: 60px; border: 2px dashed #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; color: #94a3b8; text-align: center; overflow: hidden;
+}
+.sig-seal-box.has-stamp { border: none; background: transparent; }
+.sig-stamp-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sig-digital-img { max-width: 85px; max-height: 35px; object-fit: contain; margin-top: 4px; }
+
+/* Footer */
+.qp-print-footer {
+    margin-top: 14px; padding-top: 6px; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; font-size: 9px; color: #94a3b8; line-height: 1.3;
+}
+.qp-footer-meta { display: flex; align-items: center; gap: 12px; direction: ltr; }
+
+/* Compact density */
+.qp-printable-sheet.density-compact .qp-document-body { padding: 10px 14px; }
+.qp-printable-sheet.density-compact .qp-doc-ribbon { padding: 4px 8px; margin-bottom: 8px; }
+.qp-printable-sheet.density-compact .qp-print-meta-grid { gap: 8px; margin-bottom: 8px; }
+.qp-printable-sheet.density-compact .qp-meta-card-body { padding: 5px 8px; }
+.qp-printable-sheet.density-compact .qp-print-table tbody td { padding: 3px 6px; }
+.qp-printable-sheet.density-compact .qp-print-table thead th { padding: 4px 6px; }
+.qp-printable-sheet.density-compact .qp-item-name { font-size: 10px; }
+.qp-printable-sheet.density-compact .qp-print-summary-row { margin-bottom: 10px; }
+.qp-printable-sheet.density-compact .qp-print-signatures { margin-top: 10px; padding-top: 6px; }
+.qp-printable-sheet.density-compact .sig-title { margin-bottom: 12px; }
 
 @media (max-width: 767px) {
-    .qp-stage { padding: 12px 6px; }
+    .qp-paper-stage { padding: 12px 6px; }
 }
 </style>
