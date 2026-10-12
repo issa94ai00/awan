@@ -84,32 +84,46 @@
                 <small v-if="errors.category_id" class="pqa-error">{{ errors.category_id }}</small>
             </div>
 
-            <!-- Prices -->
+            <!-- Prices: on a purchase the cost is the figure in hand, so it comes first -->
             <div class="pqa-grid">
-                <div class="pqa-field">
-                    <label class="pqa-label">{{ $t('pqa_sale_price') }} <span class="pqa-req">*</span></label>
-                    <el-input
-                        ref="priceRef"
-                        v-model="form.price"
-                        size="large"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        dir="ltr"
-                        inputmode="decimal"
-                        :class="{ 'is-error': errors.price }"
-                        @input="clearError('price')"
-                    >
-                        <template #append>{{ currency }}</template>
-                    </el-input>
-                    <small v-if="errors.price" class="pqa-error">{{ errors.price }}</small>
-                </div>
-                <div class="pqa-field">
-                    <label class="pqa-label">{{ $t('pqa_cost_price') }} <span class="pqa-opt">{{ $t('optional') }}</span></label>
-                    <el-input v-model="form.cost_price" size="large" type="number" min="0" step="0.01" dir="ltr" inputmode="decimal">
-                        <template #append>{{ currency }}</template>
-                    </el-input>
-                </div>
+                <template v-for="field in priceOrder" :key="field">
+                    <div v-if="field === 'sale'" class="pqa-field">
+                        <label class="pqa-label">{{ $t('pqa_sale_price') }} <span class="pqa-req">*</span></label>
+                        <el-input
+                            :ref="(el) => (priceRef = el)"
+                            v-model="form.price"
+                            size="large"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            dir="ltr"
+                            inputmode="decimal"
+                            :class="{ 'is-error': errors.price }"
+                            @input="clearError('price')"
+                        >
+                            <template #append>{{ currency }}</template>
+                        </el-input>
+                        <small v-if="errors.price" class="pqa-error">{{ errors.price }}</small>
+                    </div>
+                    <div v-else class="pqa-field">
+                        <label class="pqa-label">
+                            {{ purchase ? $t('pqa_cost_price_purchase') : $t('pqa_cost_price') }}
+                            <span v-if="!purchase" class="pqa-opt">{{ $t('optional') }}</span>
+                        </label>
+                        <el-input
+                            :ref="(el) => (costRef = el)"
+                            v-model="form.cost_price"
+                            size="large"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            dir="ltr"
+                            inputmode="decimal"
+                        >
+                            <template #append>{{ currency }}</template>
+                        </el-input>
+                    </div>
+                </template>
             </div>
             <div v-if="margin" class="pqa-margin" :class="margin.tone">
                 <i class="fas" :class="margin.tone === 'is-loss' ? 'fa-triangle-exclamation' : 'fa-chart-line'"></i>
@@ -199,6 +213,10 @@ const props = defineProps({
     defaultCategoryId: { type: [Number, String], default: null },
     /** What the new product's empty stock means on this form, when the general note does not fit. */
     stockNote: { type: String, default: '' },
+    /** Opened from a purchase: the cost is what the line is priced at. */
+    purchase: { type: Boolean, default: false },
+    /** A figure already typed on the line, taken as the cost. */
+    seedCost: { type: [Number, String], default: '' },
 });
 const emit = defineEmits(['update:modelValue', 'created', 'use-existing']);
 
@@ -211,6 +229,8 @@ const LAST_CATEGORY_KEY = 'pqa_last_category';
 const currency = baseCurrencyCode();
 const nameRef = ref(null);
 const priceRef = ref(null);
+const costRef = ref(null);
+const priceOrder = computed(() => (props.purchase ? ['cost', 'sale'] : ['sale', 'cost']));
 const saving = ref(false);
 const showMore = ref(false);
 const similar = ref([]);
@@ -251,12 +271,16 @@ const reset = () => {
 
     const known = (id) => id && props.categories.some((c) => c.id === id);
     form.category_id = [props.defaultCategoryId, readLastCategory()].find(known) || null;
+    if (Number(props.seedCost) > 0) form.cost_price = String(props.seedCost);
     if (form.name_ar) findSimilar();
 };
 
 watch(() => props.modelValue, (open) => { if (open) reset(); }, { immediate: true });
 
-const onOpened = () => nextTick(() => (form.name_ar && form.category_id ? priceRef.value : nameRef.value)?.focus());
+const onOpened = () => nextTick(() => {
+    const firstPrice = props.purchase ? costRef.value : priceRef.value;
+    (form.name_ar && form.category_id ? firstPrice : nameRef.value)?.focus();
+});
 
 const margin = computed(() => {
     const price = Number(form.price);

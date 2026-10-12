@@ -650,7 +650,12 @@
         >
             <!-- Ctrl+Enter saves from anywhere in the form, with the drawer's
                  main action (save and approve, for a new request). -->
-            <div v-loading="loadingForm" @keydown.ctrl.enter.prevent="savePrimary" @keydown.meta.enter.prevent="savePrimary">
+            <div
+                v-loading="loadingForm"
+                @keydown.ctrl.enter.prevent="savePrimary"
+                @keydown.meta.enter.prevent="savePrimary"
+                @keydown.f4.exact.prevent="!formLocked && openQuickAddProduct(null, quickSearchQuery)"
+            >
             <el-form :model="form" label-position="top">
                 <!-- A received or cancelled order keeps its lines as they were
                      booked; the API only takes its dates and notes now, so the
@@ -768,6 +773,18 @@
                                 <span>{{ quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products') }}</span>
                                 <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
                             </button>
+
+                            <!-- Not in the catalogue yet: create it without leaving the order -->
+                            <button
+                                type="button"
+                                class="btn-new-product"
+                                :title="`${$t('pqa_title')} (F4)`"
+                                @click.stop.prevent="openQuickAddProduct(null, quickSearchQuery)"
+                            >
+                                <i class="fas fa-plus"></i>
+                                <span class="btn-text">{{ $t('pqa_button') }}</span>
+                                <kbd class="key-hint">F4</kbd>
+                            </button>
                         </div>
 
                         <!-- Suggested Search Results Dropdown Panel (Stays open while adding!) -->
@@ -810,9 +827,12 @@
                                     <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
                                         <i class="fas fa-search-minus empty-icon"></i>
                                         <p>{{ $t('po_no_products_found') }}</p>
-                                        <el-button size="small" type="primary" plain @click="openQuickAddProduct(form.items.length - 1)">
-                                            <i class="fas fa-plus"></i> {{ $t('add_new_product') }}
-                                        </el-button>
+                                        <button type="button" class="empty-new-product" @click.stop="openQuickAddProduct(null, quickSearchQuery)">
+                                            <i class="fas fa-plus"></i>
+                                            <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
+                                            <span v-else>{{ $t('pqa_title') }}</span>
+                                        </button>
+                                        <small class="empty-new-hint">{{ $t('pqa_empty_hint') }}</small>
                                     </div>
 
                                     <div v-else class="suggested-products-grid">
@@ -1340,67 +1360,19 @@
             </template>
         </el-drawer>
 
-        <!-- Quick Add Product Dialog: creates a missing item and drops it
-             straight into the order line that needed it, so a product that
-             does not exist yet no longer means abandoning the order to go
-             create it in the catalog first. -->
-        <el-dialog
+        <!-- New product: creates a missing item and drops it straight into the
+             order, so a product that does not exist yet no longer means
+             abandoning the order to go create it in the catalog first. -->
+        <ProductQuickAdd
             v-model="quickAddDialogVisible"
-            :title="$t('quick_add_product')"
-            width="480px"
-            append-to-body
-            destroy-on-close
-        >
-            <p class="quick-add-hint">{{ $t('quick_add_product_hint') }}</p>
-            <el-form :model="quickAddForm" label-position="top">
-                <el-form-item :label="$t('product_name_ar')" required>
-                    <el-input v-model="quickAddForm.name_ar" />
-                </el-form-item>
-                <el-form-item :label="$t('product_name_en')" required>
-                    <el-input v-model="quickAddForm.name_en" />
-                </el-form-item>
-                <el-form-item :label="$t('category')" required>
-                    <el-select v-model="quickAddForm.category_id" filterable style="width: 100%">
-                        <el-option
-                            v-for="c in productsStore.categories"
-                            :key="c.id"
-                            :label="c.name_ar || c.name"
-                            :value="c.id"
-                        />
-                    </el-select>
-                </el-form-item>
-                <el-row :gutter="16">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('purchase_cost')">
-                            <el-input v-model="quickAddForm.cost_price" type="number" min="0" step="0.01" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('sale_price')" required>
-                            <el-input v-model="quickAddForm.price" type="number" min="0" step="0.01" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-                <el-row :gutter="16">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('sku_optional')">
-                            <el-input v-model="quickAddForm.sku" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('unit_optional')">
-                            <el-input v-model="quickAddForm.unit" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-            </el-form>
-            <template #footer>
-                <el-button @click="quickAddDialogVisible = false">{{ $t('cancel') }}</el-button>
-                <el-button type="primary" :loading="quickAddSubmitting" @click="submitQuickAddProduct">
-                    {{ $t('save') }}
-                </el-button>
-            </template>
-        </el-dialog>
+            purchase
+            :seed="quickAddSeed"
+            :seed-cost="quickAddSeedCost"
+            :categories="categoryOptions"
+            :stock-note="$t('pqa_stock_note_purchase')"
+            @created="onQuickProductPicked"
+            @use-existing="onQuickProductPicked"
+        />
 
         <!-- Quick Add Supplier Dialog: creates a missing supplier and selects
              it right away, so a first-time supplier no longer means
@@ -1698,7 +1670,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
-import { useProductsStore } from '@/stores/products';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
 import { baseCurrencyCode, formatMoney } from '@/utils/currency';
@@ -1719,9 +1690,11 @@ import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue'
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import { resolveImageUrl } from '@/utils/productImages';
 import { invoicesApi } from '@/api/invoices';
+import { categoriesApi } from '@/api/categories';
+import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const productImageSrc = (p) => {
     if (!p) return '';
@@ -1733,7 +1706,6 @@ const router = useRouter();
 const route = useRoute();
 const store = usePurchaseOrdersStore();
 const suppliersStore = useSuppliersStore();
-const productsStore = useProductsStore();
 
 const searchQuery = ref('');
 
@@ -1872,8 +1844,14 @@ const commitOrderItemCount = (prod, qty) => {
 // Enter adds what the search unambiguously points at: a lone product, or a
 // lone size. With several sizes showing it is the operator's call which one.
 const onQuickSearchEnter = () => {
+    if (quickSearchLoading.value) return;
     const first = quickSearchGroups.value[0];
-    if (!first || quickSearchLoading.value) return;
+    // Nothing matched what was typed: offer to create it.
+    if (!first && quickSearchQuery.value.trim()) {
+        openQuickAddProduct(null, quickSearchQuery.value);
+        return;
+    }
+    if (!first) return;
     if (!first.hasVariants || first.rows.length === 1) addProductToOrder(first.rows[0], 1);
 };
 
@@ -1990,18 +1968,21 @@ const handleClickOutsideQuickSearch = (e) => {
 };
 
 // Quick-add-product state: lets a missing item be created without leaving
-// the order form, then drops straight into the row that needed it.
+// the order form. Opened from a line, it fills that line; opened from the
+// search, it adds to the order like any search result.
 const quickAddDialogVisible = ref(false);
-const quickAddSubmitting = ref(false);
 const quickAddTargetIndex = ref(null);
-const quickAddForm = reactive({
-    name_ar: '',
-    name_en: '',
-    category_id: '',
-    cost_price: '',
-    price: '',
-    sku: '',
-    unit: ''
+const quickAddSeed = ref('');
+const quickAddSeedCost = ref('');
+const categories = ref([]);
+
+const categoryOptions = computed(() => {
+    const name = (c) => (locale.value === 'en' && c.name_en ? c.name_en : (c.name_ar || c.name || ''));
+    const roots = categories.value.filter((c) => !c.parent_id);
+    return roots.flatMap((root) => [
+        { id: root.id, parent_id: null, label: name(root) },
+        ...categories.value.filter((c) => c.parent_id === root.id).map((c) => ({ id: c.id, parent_id: c.parent_id, label: name(c) })),
+    ]);
 });
 
 // Quick-add-supplier state: lets a missing supplier be created without
@@ -2746,79 +2727,43 @@ const searchProducts = (query) => {
     }, 300);
 };
 
-// Quick-add-product: opens pre-filled with whatever price the operator had
-// already typed on this line, since that number is the purchase cost anyway.
-const openQuickAddProduct = (idx) => {
+// Quick-add-product: opened from a line, it takes whatever price the
+// operator had already typed there, since that number is the purchase cost.
+const openQuickAddProduct = (idx = null, seed = '') => {
     quickAddTargetIndex.value = idx;
-    quickAddForm.name_ar = '';
-    quickAddForm.name_en = '';
-    quickAddForm.category_id = '';
-    quickAddForm.cost_price = form.items[idx]?.unit_price || '';
-    quickAddForm.price = '';
-    quickAddForm.sku = '';
-    quickAddForm.unit = '';
-    if (!productsStore.categories.length) {
-        productsStore.fetchCategories().catch(() => {});
+    quickAddSeed.value = String(seed || '').trim();
+    quickAddSeedCost.value = idx !== null ? (form.items[idx]?.unit_price || '') : '';
+    if (!categories.value.length) {
+        categoriesApi.getAll({ per_page: 500 })
+            .then((res) => { categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []); })
+            .catch(() => {});
     }
     quickAddDialogVisible.value = true;
 };
 
-const slugify = (text) => text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
+// A product the dialog created, or an existing one it pointed to instead.
+const onQuickProductPicked = (prod, quantity = 1) => {
+    const qty = Math.max(1, Number(quantity) || 1);
+    const key = optionKey(prod);
+    const idx = quickAddTargetIndex.value;
+    rememberProducts([prod]);
 
-const submitQuickAddProduct = async () => {
-    if (!quickAddForm.name_ar || !quickAddForm.name_en || !quickAddForm.category_id || !quickAddForm.price) {
-        ElMessage.warning(t('please_fill_required_product_fields'));
-        return;
+    if (idx !== null && form.items[idx]) {
+        const line = form.items[idx];
+        line.pick = key;
+        line.product_id = prod.id;
+        line.product_variant_id = prod.variant_id || null;
+        line.unit_price = Number(prod.cost_price) > 0 ? Number(prod.cost_price) : (line.unit_price || Number(prod.price || 0));
+        line.sale_price = prod.price != null ? Number(prod.price) : line.sale_price;
+        line.quantity = qty;
+    } else {
+        const had = num(form.items.find((item) => item.pick === key)?.quantity);
+        addProductToOrder(prod, 1);
+        const line = form.items.find((item) => item.pick === key);
+        if (line) line.quantity = had + qty;
     }
-
-    quickAddSubmitting.value = true;
-    try {
-        // The catalog requires a unique slug, but this dialog never shows one —
-        // a timestamp suffix keeps two products with the same name from
-        // colliding without asking the operator to think about it.
-        const baseSlug = slugify(quickAddForm.name_en) || 'product';
-        const product = await productsStore.createProduct({
-            name_ar: quickAddForm.name_ar,
-            name_en: quickAddForm.name_en,
-            slug: `${baseSlug}-${Date.now().toString(36)}`,
-            category_id: quickAddForm.category_id,
-            price: quickAddForm.price,
-            cost_price: quickAddForm.cost_price || null,
-            sku: quickAddForm.sku || null,
-            unit: quickAddForm.unit || null,
-            currency: baseCurrencyCode(),
-            stock_quantity: 0
-        });
-
-        // Drop it into both pools: the search results the row renders from,
-        // and the store's list other rows fall back to.
-        productOptions.value = [product, ...productOptions.value];
-
-        const idx = quickAddTargetIndex.value;
-        if (idx !== null && form.items[idx]) {
-            form.items[idx].pick = pickKey(product.id);
-            form.items[idx].product_id = product.id;
-            form.items[idx].product_variant_id = null;
-            if (!form.items[idx].unit_price) {
-                form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
-            }
-            if (!form.items[idx].sale_price) {
-                form.items[idx].sale_price = quickAddForm.price || product.price;
-            }
-        }
-
-        ElMessage.success(t('product_created_and_selected'));
-        quickAddDialogVisible.value = false;
-    } catch (e) {
-        ElMessage.error(e.response?.data?.message || t('failed_to_create_product'));
-    } finally {
-        quickAddSubmitting.value = false;
-    }
+    quickSearchQuery.value = '';
+    quickSearchOpen.value = false;
 };
 
 const openQuickAddSupplier = () => {
@@ -4654,6 +4599,76 @@ onMounted(async () => {
 .btn-toggle-suggestions.is-active .count-badge {
     background: rgba(255, 255, 255, 0.25);
     color: #ffffff;
+}
+
+.btn-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #047857;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.btn-new-product:hover {
+    background: #059669;
+    border-color: #059669;
+    color: #ffffff;
+}
+
+.btn-new-product .key-hint {
+    font-family: inherit;
+    font-size: 0.68rem;
+    padding: 0 0.35rem;
+    border: 1px solid #a7f3d0;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    color: inherit;
+}
+
+.empty-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border: none;
+    border-radius: 8px;
+    background: #059669;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+    max-width: 100%;
+}
+
+.empty-new-product span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.empty-new-product:hover {
+    background: #047857;
+}
+
+.empty-new-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+@media (max-width: 860px) {
+    .search-bar-header { flex-wrap: wrap; }
+    .btn-new-product .key-hint { display: none; }
 }
 
 /* Floating / Expandable Dropdown */
