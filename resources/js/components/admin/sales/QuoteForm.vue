@@ -265,6 +265,18 @@
                             <span class="btn-text">{{ quickSearchOpen ? $t('qt_close_search') : $t('qt_suggested_products') }}</span>
                             <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
                         </button>
+
+                        <!-- Not in the catalogue yet: create it without leaving the quote -->
+                        <button
+                            type="button"
+                            class="btn-new-product"
+                            :title="`${$t('pqa_title')} (F4)`"
+                            @click.stop.prevent="openQuickProduct()"
+                        >
+                            <i class="fas fa-plus"></i>
+                            <span class="btn-text">{{ $t('pqa_button') }}</span>
+                            <kbd class="key-hint">F4</kbd>
+                        </button>
                     </div>
 
                     <!-- Quick Category Chips Bar -->
@@ -334,6 +346,12 @@
                                 <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
                                     <i class="fas fa-box-open empty-icon"></i>
                                     <p class="empty-title">{{ $t('qt_no_products_found') }}</p>
+                                    <button type="button" class="empty-new-product" @click.stop="openQuickProduct(quickSearchQuery)">
+                                        <i class="fas fa-plus"></i>
+                                        <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
+                                        <span v-else>{{ $t('pqa_title') }}</span>
+                                    </button>
+                                    <small class="empty-new-hint">{{ $t('pqa_empty_hint') }}</small>
                                 </div>
 
                                 <div v-else class="suggested-products-grid">
@@ -505,6 +523,9 @@
                                         {{ $t('qt_items_in_quote_summary', { count: form.items.length }) }} &bull;
                                         <strong>{{ formatCurrency(subtotal) }}</strong>
                                     </span>
+                                    <button type="button" class="footer-new-product" @click.stop="openQuickProduct(quickSearchQuery)">
+                                        <kbd>F4</kbd> {{ $t('pqa_not_listed') }}
+                                    </button>
                                 </div>
                                 <button
                                     type="button"
@@ -876,6 +897,14 @@
                 </div>
             </div>
         </template>
+        <ProductQuickAdd
+            v-model="quickProductVisible"
+            :seed="quickProductSeed"
+            :categories="categoryOptions"
+            :default-category-id="selectedCategoryId"
+            @created="onQuickProductCreated"
+            @use-existing="(row, qty) => addProduct(row, qty)"
+        />
     </el-dialog>
 </template>
 
@@ -895,6 +924,7 @@ import VariantChip from '@/components/admin/products/VariantChip.vue';
 import OrderCardActions from '@/components/admin/sales/OrderCardActions.vue';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
+import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
@@ -1115,8 +1145,14 @@ const onQuickSearchClear = () => {
 // Enter adds what the search unambiguously points at: a lone product, or a
 // lone size. With several sizes showing it is the seller's call which one.
 const onQuickSearchEnter = () => {
+    if (quickSearchLoading.value) return;
     const first = quickSearchGroups.value[0];
-    if (!first || quickSearchLoading.value) return;
+    // Nothing matched what was typed: offer to create it.
+    if (!first && quickSearchQuery.value.trim()) {
+        openQuickProduct(quickSearchQuery.value);
+        return;
+    }
+    if (!first) return;
     if (!first.hasVariants || first.rows.length === 1) {
         addProduct(first.rows[0], pendingQtyOf(first.rows[0]));
     }
@@ -1593,13 +1629,36 @@ const submit = async (andSend) => {
     }
 };
 
+// ── Quick "new product" ──
+// What the seller searched for seeds the dialog, so a failed search turns
+// straight into the product it was looking for.
+const quickProductVisible = ref(false);
+const quickProductSeed = ref('');
+
+const openQuickProduct = (seed = '') => {
+    quickProductSeed.value = String(seed || '').trim();
+    quickProductVisible.value = true;
+    if (!categories.value.length) fetchCategories();
+};
+
+const onQuickProductCreated = (product, quantity = 1) => {
+    addProduct({ ...product, listing_key: optionKey(product) }, quantity);
+    quickSearchQuery.value = '';
+    quickSearchOpen.value = false;
+};
+
 // Keyboard shortcuts
 const onKeydown = (event) => {
-    if (!props.modelValue) return;
+    // The new-product dialog owns the keyboard while it is open.
+    if (!props.modelValue || quickProductVisible.value) return;
     if (event.key === 'F2') {
         event.preventDefault();
         quickSearchInputRef.value?.focus();
         quickSearchOpen.value = true;
+    }
+    if (event.key === 'F4' && !event.altKey) {
+        event.preventDefault();
+        openQuickProduct(quickSearchQuery.value);
     }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
@@ -2143,6 +2202,95 @@ onUnmounted(() => {
     font-weight: 700;
 }
 
+.btn-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #047857;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.btn-new-product:hover {
+    background: #059669;
+    border-color: #059669;
+    color: #ffffff;
+}
+
+.btn-new-product .key-hint {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.empty-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    padding: 0.55rem 1.1rem;
+    border: none;
+    border-radius: 8px;
+    background: #059669;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+    max-width: 100%;
+}
+
+.empty-new-product span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.empty-new-product:hover {
+    background: #047857;
+}
+
+.empty-new-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.footer-new-product {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #047857;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.footer-new-product:hover {
+    text-decoration: underline;
+}
+
+.footer-new-product kbd {
+    font-size: 0.7rem;
+    font-family: monospace;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 0 4px;
+    color: #475569;
+}
+
+@media (max-width: 860px) {
+    .quote-search-header-row { flex-wrap: wrap; }
+    .btn-new-product .key-hint { display: none; }
+}
+
 .btn-toggle-catalog.is-active .count-badge {
     background: rgba(255, 255, 255, 0.25);
     color: #ffffff;
@@ -2641,6 +2789,10 @@ onUnmounted(() => {
 
 .footer-summary {
     color: #475569;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
 }
 
 .footer-summary strong {
