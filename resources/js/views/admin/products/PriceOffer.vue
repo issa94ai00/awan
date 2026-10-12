@@ -2273,7 +2273,7 @@ let importMsgTimeout = null;
 // Which columns appear on the printed/exported price list — persisted per
 // browser so the choice sticks across visits.
 const COLUMNS_STORAGE_KEY = 'price_offer_visible_columns';
-const defaultColumns = { code: true, image: true, product: false, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true };
+const defaultColumns = { code: true, image: true, product: false, illustration: true, details: true, specs: true, price: true, cost: true, offer: true, pack: true, inventory: true };
 const columnOptions = [
     { key: 'code', label: 'item_code' },
     { key: 'image', label: 'image' },
@@ -2282,6 +2282,7 @@ const columnOptions = [
     { key: 'details', label: 'details' },
     { key: 'specs', label: 'specifications' },
     { key: 'price', label: 'the_price' },
+    { key: 'cost', label: 'cost_price' },
     { key: 'offer', label: 'offer_price' },
     { key: 'pack', label: 'pack_quantity' },
     { key: 'inventory', label: 'inventory' },
@@ -2317,7 +2318,7 @@ function toggleColumn(key, val) {
 // height of one product group, in the CSS pixels the PDF capture measures in;
 // null means "leave it to the default fifth of a page".
 const SIZES_STORAGE_KEY = 'price_offer_column_sizes';
-const defaultColumnWidths = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
+const defaultColumnWidths = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, cost: 15, offer: 15, pack: 12, inventory: 15 };
 const DEFAULT_ROW_HEIGHT = 295;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 520;
@@ -2987,8 +2988,19 @@ const effectivePrintColumns = computed(() => {
     if (printSettings.value.showOfferPrice === false) {
         cols.offer = false;
     }
+    // The cost is what the stock cost us — an on-screen reference only, never
+    // something to hand a customer on the printed offer.
+    cols.cost = false;
     return cols;
 });
+
+// A supplier list such as Ingco's carries two prices: the selling price
+// (السعر → price) and the dollar cost (السعر$ → cost_price). A variant without
+// its own cost falls back to the product's.
+const costOf = (value) => {
+    const n = parseFloat(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 // Groups rows by product name (not just product id), so products stored as
 // separate rows sharing a name (e.g. color variants) print as one entry.
@@ -3027,6 +3039,7 @@ function buildGroups(list) {
                 productId,
                 sku: v.sku || p.sku || '',
                 price: parseFloat(v.price) || 0,
+                cost: costOf(v.cost_price) ?? costOf(p.cost_price),
                 stock_quantity: v.stock_quantity ?? 0,
             }))
             : [makeItem(`p-${p.id}`, {
@@ -3037,6 +3050,7 @@ function buildGroups(list) {
                 productId,
                 sku: p.sku || '',
                 price: parseFloat(p.price) || 0,
+                cost: costOf(p.cost_price),
                 stock_quantity: p.stock_quantity ?? 0,
             })];
         // Two variants with the same size/color/unit print as the same row to

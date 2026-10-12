@@ -370,6 +370,9 @@
                             <el-icon v-else><WarningFilled /></el-icon>
                         </span>
                     </td>
+                    <td v-if="visibleColumns.cost" class="cell-cost">
+                        <span class="cost-value">{{ formatPrice(item.cost) }}</span>
+                    </td>
                     <td
                         v-if="visibleColumns.offer && iIdx === 0"
                         :rowspan="group.items.length"
@@ -484,7 +487,7 @@ const props = defineProps({
     printMode: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
-        default: () => ({ code: true, image: true, product: true, illustration: true, details: true, specs: true, price: true, offer: true, pack: true, inventory: true }),
+        default: () => ({ code: true, image: true, product: true, illustration: true, details: true, specs: true, price: true, cost: true, offer: true, pack: true, inventory: true }),
     },
     // Per-column width shares that override the defaults below. Shares, not
     // percentages: they are re-normalised over the visible columns, so one
@@ -550,7 +553,7 @@ const visibleColumnCount = computed(() => Object.values(props.visibleColumns).fi
  * not percentages — they are re-normalised over whatever subset is visible, so
  * hiding a column widens the others instead of leaving the table short.
  */
-const COLUMN_SHARES = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, offer: 15, pack: 12, inventory: 15 };
+const COLUMN_SHARES = { code: 15, image: 50, product: 35, illustration: 35, details: 25, specs: 35, price: 15, cost: 15, offer: 15, pack: 12, inventory: 15 };
 const COLUMN_LABELS = {
     code: 'item_code',
     image: 'image',
@@ -559,6 +562,7 @@ const COLUMN_LABELS = {
     details: 'details',
     specs: 'specifications',
     price: 'the_price',
+    cost: 'cost_price',
     offer: 'offer_price',
     pack: 'pack_quantity',
     inventory: 'inventory',
@@ -1505,6 +1509,14 @@ const formatPrice = (price) => {
     min-height: 120px;
     overflow: hidden;
     line-height: 0;
+}
+
+.cell-cost {
+    text-align: center;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    padding: 5px 8px;
 }
 
 .cell-pack {
