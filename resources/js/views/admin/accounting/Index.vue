@@ -345,8 +345,8 @@
                         <h4><i class="fas fa-scale-balanced mr-1"></i> {{ $t('acc_step_opening') }}</h4>
                         <p>{{ $t('acc_step_opening_desc') }}</p>
                         <div class="step-links">
-                            <router-link to="/admin/accounting/ledger" class="step-chip">
-                                <i class="fas fa-list-ol"></i> {{ $t('chart_of_accounts') }}
+                            <router-link to="/admin/accounting/chart-of-accounts" class="step-chip">
+                                <i class="fas fa-sitemap"></i> {{ $t('chart_of_accounts') }}
                             </router-link>
                             <router-link to="/admin/accounting/journal?template=opening" class="step-chip is-accent">
                                 <i class="fas fa-plus"></i> {{ $t('opening_balance_entry') }}
@@ -746,7 +746,8 @@ const hubGroups = computed(() => [
         tone: 'tone-blue',
         links: [
             { path: '/admin/accounting/journal', icon: 'fas fa-book', label: 'general_journal', hint: 'acc_ov_hint_journal' },
-            { path: '/admin/accounting/ledger', icon: 'fas fa-list-ol', label: 'chart_of_accounts', hint: 'acc_ov_hint_ledger' },
+            { path: '/admin/accounting/chart-of-accounts', icon: 'fas fa-sitemap', label: 'chart_of_accounts', hint: 'acc_ov_hint_chart' },
+            { path: '/admin/accounting/ledger', icon: 'fas fa-list-ol', label: 'ledger', hint: 'acc_ov_hint_ledger' },
             { path: '/admin/accounting/periods', icon: 'fas fa-lock', label: 'accounting_periods', hint: 'acc_ov_hint_periods' },
         ],
     },

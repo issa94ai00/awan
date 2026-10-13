@@ -371,6 +371,7 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed, reactive } from 'vue';
+import { useRoute } from 'vue-router';
 import { useLedgerAccountsStore } from '@/stores/ledgerAccounts';
 import { ledgerAccountsApi } from '@/api/ledgerAccounts';
 import { accountingReportsApi } from '@/api/accountingReports';
@@ -729,7 +730,14 @@ const onRangePicked = () => {
     fetchStatement();
 };
 
-onMounted(load);
+// The chart of accounts links here with ?account=<id> to open that statement.
+const route = useRoute();
+
+onMounted(async () => {
+    await load();
+    const wanted = accounts.value.find((a) => String(a.id) === String(route.query.account || ''));
+    if (wanted) openStatementDrawer(wanted);
+});
 </script>
 
 <style scoped>

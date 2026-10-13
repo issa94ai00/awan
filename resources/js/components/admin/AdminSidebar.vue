@@ -302,6 +302,7 @@ const menu = [
                 children: [
                     { labelKey: 'overview', path: '/admin/accounting' },
                     { labelKey: 'journal', path: '/admin/accounting/journal' },
+                    { labelKey: 'chart_of_accounts', path: '/admin/accounting/chart-of-accounts' },
                     { labelKey: 'ledger', path: '/admin/accounting/ledger' },
                     { labelKey: 'trial_balance', path: '/admin/accounting/trial-balance' },
                     { labelKey: 'income_statement', path: '/admin/accounting/income-statement' },

@@ -11,7 +11,9 @@ class LedgerAccountController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = LedgerAccount::query();
+        // Whether anything has been posted to an account decides what the chart
+        // screen may offer for it: a type change or a delete would be refused.
+        $query = LedgerAccount::query()->withExists('journalEntryLines as has_entries');
 
         if ($request->filled('type')) {
             $query->where('type', $request->type);

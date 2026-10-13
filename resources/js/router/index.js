@@ -130,6 +130,11 @@ const routes = [
                 component: () => import('@/views/admin/accounting/Journal.vue')
             },
             {
+                path: 'accounting/chart-of-accounts',
+                name: 'admin.accounting.chart-of-accounts',
+                component: () => import('@/views/admin/accounting/ChartOfAccounts.vue')
+            },
+            {
                 path: 'accounting/ledger',
                 name: 'admin.accounting.ledger',
                 component: () => import('@/views/admin/accounting/Ledger.vue')
