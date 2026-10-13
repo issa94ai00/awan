@@ -2791,7 +2791,7 @@ const defaultPrintSettings = {
     showSpecs: true,
     showDetails: true,
     showOfferPrice: true,
-    showCostPrice: true,
+    showCostPrice: false,
     title: '',
     customerName: '',
     date: new Date().toISOString().slice(0, 10),
