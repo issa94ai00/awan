@@ -1052,6 +1052,13 @@
                                     </div>
                                     <el-switch v-model="printSettings.showOfferPrice" @change="savePrintSettings" />
                                 </div>
+                                <div class="column-toggle-card">
+                                    <div class="column-toggle-info">
+                                        <strong>{{ $t('include_wholesale_price_in_print') || 'تضمين سعر الجملة' }}</strong>
+                                        <small>{{ $t('wholesale_price') }}</small>
+                                    </div>
+                                    <el-switch v-model="printSettings.showCostPrice" @change="savePrintSettings" />
+                                </div>
                                 <div class="column-toggle-card is-warn">
                                     <div class="column-toggle-info">
                                         <strong>{{ $t('hide_stock_for_clients') }}</strong>
@@ -2784,6 +2791,7 @@ const defaultPrintSettings = {
     showSpecs: true,
     showDetails: true,
     showOfferPrice: true,
+    showCostPrice: true,
     title: '',
     customerName: '',
     date: new Date().toISOString().slice(0, 10),
@@ -2988,9 +2996,9 @@ const effectivePrintColumns = computed(() => {
     if (printSettings.value.showOfferPrice === false) {
         cols.offer = false;
     }
-    // The cost is what the stock cost us — an on-screen reference only, never
-    // something to hand a customer on the printed offer.
-    cols.cost = false;
+    if (printSettings.value.showCostPrice === false) {
+        cols.cost = false;
+    }
     return cols;
 });
 
