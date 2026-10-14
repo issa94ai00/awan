@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { featureForPath } from '@/config/features';
 import { triggerFadeUp } from '@/utils/fadeUp';
 
 const routes = [
@@ -491,6 +492,12 @@ const routes = [
                 name: 'admin.permissions.index',
                 component: () => import('@/views/admin/permissions/Index.vue')
             },
+            // Features Management (إدارة الميزات)
+            {
+                path: 'features',
+                name: 'admin.features.index',
+                component: () => import('@/views/admin/features/Index.vue')
+            },
             // WMS (Warehouse Management System)
             {
                 path: 'wms',
@@ -755,30 +762,12 @@ const router = createRouter({
     routes
 });
 
-const adminRolePolicy = (role, path) => {
-    const normalizedRole = String(role || '').toLowerCase();
-
-    if (!normalizedRole || normalizedRole === 'admin') {
-        return true;
-    }
-
-    const restrictedSalesPaths = ['/admin/sales', '/admin/sales/', '/admin/sales/invoices', '/admin/sales/customers', '/admin/sales/quotes', '/admin/sales/sales-orders', '/admin/sales/payments', '/admin/purchase-requests', '/admin/purchases', '/admin/purchases/', '/admin/invoices', '/admin/quotes'];
-    const restrictedAccountantPaths = ['/admin/accounting', '/admin/accounting/', '/admin/reports', '/admin/reports/', '/admin/analytics', '/admin/analytics/'];
-    const restrictedMarketerPaths = ['/admin/accounting', '/admin/accounting/', '/admin/purchases', '/admin/purchases/', '/admin/wms', '/admin/wms/', '/admin/stock'];
-
-    if (normalizedRole === 'sells') {
-        return !restrictedSalesPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
-    }
-
-    if (normalizedRole === 'accountant') {
-        return !restrictedAccountantPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
-    }
-
-    if (normalizedRole === 'marketer') {
-        return !restrictedMarketerPaths.some(prefix => path === prefix || path.startsWith(prefix + '/'));
-    }
-
-    return true;
+// Whether the signed-in account may open an admin page. The feature that
+// guards the page is looked up from the path; a path that belongs to no module
+// (the dashboard, the profile screens) is always allowed.
+const canAccessAdminPath = (auth, path) => {
+    if (auth.isSuperAdmin) return true;
+    return auth.canAccessFeature(featureForPath(path));
 };
 
 // Navigation guard for authentication
@@ -799,12 +788,14 @@ router.beforeEach((to, from) => {
             if (!auth.isAuthenticated) {
                 return { path: '/login', query: { redirect: to.fullPath } };
             }
+            if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to.path)) {
+                return { path: '/admin/dashboard' };
+            }
             return true;
         }).catch(() => ({ path: '/login', query: { redirect: to.fullPath } }));
     }
 
-    const userRole = auth.user?.role?.name || auth.user?.role_name || '';
-    if (to.path.startsWith('/admin/') && !adminRolePolicy(userRole, to.path)) {
+    if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to.path)) {
         return { path: '/admin/dashboard' };
     }
 

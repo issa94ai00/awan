@@ -22,11 +22,16 @@ class UserResource extends JsonResource
             'email_verified_at' => $this->email_verified_at,
             'is_email_verified' => $this->email_verified_at !== null,
             'is_admin' => (bool) $this->is_admin,
+            'is_master' => $this->isMaster(),
+            'is_super_admin' => $this->isSuperAdmin(),
             'role' => $this->role ? [
                 'id' => $this->role->id,
                 'name' => $this->role->name,
                 'display_name' => $this->role->display_name,
             ] : null,
+            // The ERP modules this account may open. Drives the sidebar, the
+            // router guard and the Features Management screen.
+            'features' => \App\Models\Feature::accessibleKeysFor($this->resource),
             'can_manage_orders' => $this->isAdmin() || $this->hasRole('manager') || $this->hasRole('employee'),
 
             // Who this account is as a member of staff.

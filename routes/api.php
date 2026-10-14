@@ -66,6 +66,7 @@ use App\Http\Controllers\Api\CustomerOverviewController;
 use App\Http\Controllers\Api\RmaController;
 use App\Http\Controllers\Api\UnpricedStockController;
 use App\Http\Controllers\Api\WmsController;
+use App\Http\Controllers\Api\FeatureController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
@@ -136,7 +137,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
     // (session) guard, which no token request can satisfy — every WMS call came
     // back 401, and the client's 401 handler reacted by clearing the token and
     // bouncing the user to the login page the moment they opened the module.
-    Route::prefix('wms')->middleware('auth:sanctum')->group(function () {
+    Route::prefix('wms')->middleware(['auth:sanctum', 'feature'])->group(function () {
         // Dashboard (لوحة التحكم)
         Route::get('/dashboard', [WmsController::class, 'dashboard'])->name('api.admin.wms.dashboard');
 
@@ -196,7 +197,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
     // Admin Products API. Same as the WMS group above: the SPA sends a Sanctum
     // bearer token, so a bare `auth` (session guard) rejects every request and
     // the client's 401 handler logs the user out.
-    Route::prefix('admin')->middleware('auth:sanctum')->group(function () {
+    Route::prefix('admin')->middleware(['auth:sanctum', 'feature'])->group(function () {
         Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
     });
     
@@ -248,8 +249,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
     Route::delete('/auth/sessions', [AuthController::class, 'revokeOtherSessions'])->middleware('auth:sanctum')->name('api.auth.sessions.revoke-others');
     Route::delete('/auth/sessions/{id}', [AuthController::class, 'revokeSession'])->whereNumber('id')->middleware('auth:sanctum')->name('api.auth.sessions.revoke');
     
-    // Protected Routes (require authentication)
-    Route::middleware('auth:sanctum')->group(function () {
+    // Protected Routes (require authentication). The `feature` middleware
+    // rejects requests to an ERP module that has been switched off or that the
+    // signed-in user's role has not been granted — see App\Models\Feature.
+    Route::middleware(['auth:sanctum', 'feature'])->group(function () {
 
         // Role-scoped admin areas
         Route::middleware('role:sells')->prefix('sales')->group(function () {
@@ -667,7 +670,18 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/currencies/{currency}/rates', [CurrencyController::class, 'storeRate'])->name('api.admin.currencies.rates.store');
             Route::post('/currencies/{currency}/base', [CurrencyController::class, 'setBase'])->name('api.admin.currencies.base');
         });
-        
+
+        // Features Management (إدارة الميزات) — master / admin only. Decides
+        // which ERP modules are switched on and which roles may reach them.
+        Route::prefix('admin/features')->middleware('role:admin')->group(function () {
+            Route::get('/', [FeatureController::class, 'index'])->name('api.admin.features.index');
+            Route::post('/bulk-toggle', [FeatureController::class, 'bulkToggle'])->name('api.admin.features.bulk-toggle');
+            Route::post('/group-toggle', [FeatureController::class, 'toggleGroup'])->name('api.admin.features.group-toggle');
+            Route::put('/{feature}', [FeatureController::class, 'update'])->name('api.admin.features.update');
+            Route::put('/{feature}/roles', [FeatureController::class, 'updateRoles'])->name('api.admin.features.roles');
+            Route::post('/{feature}/roles/toggle', [FeatureController::class, 'toggleRole'])->name('api.admin.features.roles.toggle');
+        });
+
         // User Inquiries
         Route::get('/user/inquiries', [InquiryController::class, 'index'])->name('api.user.inquiries.index');
         Route::get('/user/inquiries/{inquiry}', [InquiryController::class, 'show'])->name('api.user.inquiries.show');

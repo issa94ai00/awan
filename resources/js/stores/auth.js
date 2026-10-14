@@ -10,6 +10,22 @@ export const useAuthStore = defineStore('auth', () => {
 
     const isAuthenticated = computed(() => !!token.value && !!user.value);
 
+    // The ERP modules this account may open, as decided by the master user on
+    // the Features Management screen. Super admins receive every enabled
+    // feature from the API, so the same list drives the whole UI.
+    const features = computed(() => user.value?.features || []);
+
+    const isSuperAdmin = computed(() => !!user.value?.is_super_admin);
+    const isMaster = computed(() => !!user.value?.is_master);
+
+    // Whether the signed-in role may open a feature. An unknown key (or the
+    // core dashboard) is always allowed so new screens never disappear.
+    function canAccessFeature(key) {
+        if (!key) return true;
+        if (isSuperAdmin.value) return true;
+        return features.value.includes(key);
+    }
+
     async function init() {
         if (!token.value) return;
         try {
@@ -75,7 +91,11 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    return { user, token, loading, error, isAuthenticated, init, fetchUser, login, logout };
+    return {
+        user, token, loading, error, isAuthenticated,
+        features, isSuperAdmin, isMaster, canAccessFeature,
+        init, fetchUser, login, logout,
+    };
 });
 
 export default useAuthStore;

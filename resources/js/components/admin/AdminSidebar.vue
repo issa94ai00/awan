@@ -435,6 +435,7 @@ const menu = [
             {
                 key: 'system', labelKey: 'system', icon: Setting,
                 children: [
+                    { labelKey: 'features', path: '/admin/features' },
                     { labelKey: 'roles', path: '/admin/roles' },
                     { labelKey: 'permissions', path: '/admin/permissions' },
                     { labelKey: 'currencies', path: '/admin/currencies' },
@@ -448,7 +449,7 @@ const menu = [
 const navIndex = menu.flatMap((section) => section.items.flatMap((entry) => (
     entry.children
         ? entry.children.map((child) => ({ ...child, icon: entry.icon, group: entry.key, groupLabelKey: entry.labelKey }))
-        : [{ labelKey: entry.labelKey, path: entry.path, icon: entry.icon }]
+        : [{ key: entry.key, labelKey: entry.labelKey, path: entry.path, icon: entry.icon }]
 )));
 
 const matchesRoute = (path) => route.path === path || route.path.startsWith(path + '/');
@@ -529,39 +530,19 @@ watch(() => props.collapsed, (newVal) => {
     }
 });
 
-const userRole = computed(() => (authStore.user?.role?.name || authStore.user?.role_name || '').toLowerCase());
-const canAccessGroup = (group) => {
-    if (!userRole.value || userRole.value === 'admin') {
-        return true;
-    }
+// A collapsible group is shown when the signed-in role has been granted its
+// feature on the Features Management screen. Super admins (admin / master)
+// receive every enabled feature from the API, so they keep everything. The
+// group keys are exactly the feature keys.
+const canAccessGroup = (group) => authStore.canAccessFeature(group);
 
-    const allowedGroups = {
-        content: ['admin', 'sells', 'marketer'],
-        sales: ['admin', 'sells'],
-        rma: ['admin', 'sells'],
-        purchases: ['admin'],
-        accounting: ['admin', 'accountant'],
-        inventory: ['admin', 'sells'],
-        wms: ['admin'],
-        hr: ['admin'],
-        crm: ['admin', 'marketer'],
-        production: ['admin'],
-        reports: ['admin', 'sells', 'accountant', 'marketer'],
-        bi_analytics: ['admin', 'accountant'],
-        workflows: ['admin'],
-        notifications_management: ['admin'],
-        audit_logs: ['admin'],
-        system: ['admin'],
-    };
-
-    return (allowedGroups[group] || ['admin']).includes(userRole.value);
-};
-
-// Sections whose groups are all hidden for this role drop their label too.
+// Every entry is gated by its feature key — collapsible groups by the group
+// key, plain entries (POS, inquiries, visitors) by their own key. Sections
+// left with no visible entry drop their label too.
 const visibleMenu = computed(() => menu
     .map((section) => ({
         ...section,
-        items: section.items.filter((entry) => !entry.children || canAccessGroup(entry.key)),
+        items: section.items.filter((entry) => canAccessGroup(entry.key)),
     }))
     .filter((section) => section.items.length > 0));
 
@@ -577,7 +558,7 @@ const filteredNavItems = computed(() => {
     }
 
     return navIndex.filter((item) => {
-        if (item.group && !canAccessGroup(item.group)) {
+        if (!canAccessGroup(item.group || item.key)) {
             return false;
         }
         const groupLabel = item.groupLabelKey ? t(item.groupLabelKey) : '';

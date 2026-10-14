@@ -274,7 +274,7 @@ class NotificationService
     public function notifyAdmins($title, $message, $type = 'info', array $data = []): array
     {
         $adminIds = User::whereHas('roles', function ($q) {
-            $q->where('name', 'admin');
+            $q->whereIn('name', ['admin', 'master']);
         })->orWhere('id', 1)->pluck('id')->unique()->all();
 
         return $this->sendToUsers($adminIds, $title, $message, $type, $data);

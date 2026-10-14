@@ -68,7 +68,7 @@ class User extends Authenticatable
 
     public function hasPermission(string $permissionName): bool
     {
-        if ($this->is_admin) {
+        if ($this->is_admin || $this->isMaster()) {
             return true;
         }
 
@@ -77,7 +77,7 @@ class User extends Authenticatable
 
     public function hasRole(string $roleName): bool
     {
-        if ($this->is_admin) {
+        if ($this->is_admin || $this->isMaster()) {
             return true;
         }
 
@@ -86,7 +86,23 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return $this->is_admin || ($this->role && $this->role->name === 'admin');
+        return $this->is_admin
+            || ($this->role && in_array($this->role->name, ['admin', 'master'], true));
+    }
+
+    /**
+     * The master role is a super admin that cannot be restricted by the feature
+     * matrix. `is_admin` accounts and the built-in `admin` role count too.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->is_admin
+            || ($this->role && in_array($this->role->name, ['admin', 'master'], true));
+    }
+
+    public function isMaster(): bool
+    {
+        return $this->role && $this->role->name === 'master';
     }
 
     public function inquiries(): \Illuminate\Database\Eloquent\Relations\HasMany
