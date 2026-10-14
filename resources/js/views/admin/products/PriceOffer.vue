@@ -484,7 +484,7 @@
         <div class="print-sheet-wrap print-only" :class="{ 'pdf-render': pdfRendering }">
             <!-- Optional Full-page Cover -->
             <div v-if="printSettings.showCover" class="print-cover">
-                <img :src="'/cover.jpeg'" alt="Catalog Cover">
+                <img :src="activeCoverUrl" alt="Catalog Cover">
             </div>
 
             <div class="print-document-content">
@@ -923,7 +923,7 @@
                             </div>
 
                             <!-- Cover Page Box -->
-                            <div class="setting-item-box" :class="{ active: printSettings.showCover }">
+                            <div class="setting-item-box cover-setting-box" :class="{ active: printSettings.showCover }">
                                 <div class="setting-item-head">
                                     <div class="setting-info">
                                         <div class="setting-title">{{ $t('include_cover_page') }}</div>
@@ -931,8 +931,43 @@
                                     </div>
                                     <el-switch v-model="printSettings.showCover" @change="savePrintSettings" />
                                 </div>
-                                <div v-if="printSettings.showCover" class="setting-thumb-preview cover-thumb">
-                                    <img :src="'/cover.jpeg'" alt="Cover Preview" />
+                                <div v-if="printSettings.showCover" class="cover-setting-body">
+                                    <div class="setting-thumb-preview cover-thumb">
+                                        <img :src="activeCoverUrl" alt="Cover Preview" />
+                                    </div>
+                                    <div class="cover-actions-panel">
+                                        <input
+                                            ref="coverFileInputRef"
+                                            type="file"
+                                            accept="image/*"
+                                            class="sr-only-input"
+                                            style="display: none"
+                                            @change="onCoverFileChange"
+                                        />
+                                        <el-button
+                                            type="primary"
+                                            size="small"
+                                            :loading="coverUploading"
+                                            @click="triggerCoverFilePick"
+                                        >
+                                            <el-icon><Upload /></el-icon>
+                                            {{ $t('change_cover_image') || 'تغيير صورة الغلاف' }}
+                                        </el-button>
+                                        <el-button
+                                            v-if="hasCustomCover"
+                                            size="small"
+                                            type="danger"
+                                            plain
+                                            :loading="coverUploading"
+                                            @click="resetCoverToDefault"
+                                        >
+                                            <el-icon><RefreshLeft /></el-icon>
+                                            {{ $t('reset_default_cover') || 'استعادة الافتراضي' }}
+                                        </el-button>
+                                    </div>
+                                    <div class="cover-hint-text">
+                                        <small>{{ $t('cover_image_hint') || 'الصورة الموصى بها: قياس A4 رأسي بدقة عالية (PNG أو JPG أو WEBP)' }}</small>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1204,7 +1239,7 @@
                         :class="`orient-${printSettings.orientation || 'portrait'}`"
                     >
                         <div class="preview-sheet-cover">
-                            <img :src="'/cover.jpeg'" alt="Catalog Cover" />
+                            <img :src="activeCoverUrl" alt="Catalog Cover" />
                         </div>
                     </div>
 
@@ -1282,11 +1317,12 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { useSettingsStore } from '@/stores/settings';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { matchesSearch } from '@/utils/search';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
-import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document, View } from '@element-plus/icons-vue';
+import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document, View, Upload } from '@element-plus/icons-vue';
 
 // vuedraggable 4.1.0 points its `module` field at an unminified UMD build, so
 // bundling it statically costs every visit to this screen ~200 kB for a control
@@ -1295,6 +1331,7 @@ const draggable = defineAsyncComponent(() => import('vuedraggable'));
 
 const { t } = useI18n();
 const store = useProductsStore();
+const settingsStore = useSettingsStore();
 
 const searchQuery = ref('');
 // Multi-classification filter — empty means every classification is included.
@@ -2299,7 +2336,11 @@ function loadVisibleColumns() {
     try {
         const raw = localStorage.getItem(COLUMNS_STORAGE_KEY);
         if (!raw) return { ...defaultColumns };
-        return { ...defaultColumns, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw);
+        if (parsed.cost === undefined) {
+            parsed.cost = true;
+        }
+        return { ...defaultColumns, ...parsed };
     } catch {
         return { ...defaultColumns };
     }
@@ -2781,6 +2822,7 @@ const pdfRendering = ref(false);
 const PRINT_SETTINGS_STORAGE_KEY = 'price_offer_print_settings';
 const defaultPrintSettings = {
     showCover: false,
+    coverImage: '',
     showHeader: true,
     showFooter: false,
     showPageNumbers: false,
@@ -2791,7 +2833,7 @@ const defaultPrintSettings = {
     showSpecs: true,
     showDetails: true,
     showOfferPrice: true,
-    showCostPrice: false,
+    showCostPrice: true,
     title: '',
     customerName: '',
     date: new Date().toISOString().slice(0, 10),
@@ -2799,11 +2841,122 @@ const defaultPrintSettings = {
     hideInventoryInPrint: true,
 };
 
+const coverFileInputRef = ref(null);
+const coverUploading = ref(false);
+
+const resolveImageUrl = (path, fallback = '/cover.jpeg') => {
+    const value = path || fallback;
+    if (!value) return fallback;
+    if (value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+    }
+    return `/storage/${value}`;
+};
+
+const activeCoverUrl = computed(() => {
+    if (printSettings.value.coverImage) {
+        return resolveImageUrl(printSettings.value.coverImage);
+    }
+    const sysCover = settingsStore.data?.cover_image;
+    if (sysCover) {
+        return resolveImageUrl(sysCover);
+    }
+    return '/cover.jpeg';
+});
+
+const hasCustomCover = computed(() => {
+    return Boolean(printSettings.value.coverImage) || Boolean(settingsStore.data?.cover_image);
+});
+
+function triggerCoverFilePick() {
+    coverFileInputRef.value?.click();
+}
+
+async function onCoverFileChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        ElMessage.error(t('settings_image_file_only') || 'يرجى اختيار ملف صورة صالح');
+        if (event?.target) event.target.value = '';
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        ElMessage.error(t('image_size_limit', { size: '5MB' }) || 'حجم الصورة يجب ألا يتجاوز 5 ميغابايت');
+        if (event?.target) event.target.value = '';
+        return;
+    }
+
+    coverUploading.value = true;
+    try {
+        const formData = new FormData();
+        formData.append('cover_image', file);
+        const res = await settingsStore.save(formData);
+
+        const newCoverPath = res?.data?.data?.settings?.cover_image || settingsStore.data?.cover_image || '';
+        if (newCoverPath) {
+            printSettings.value.coverImage = newCoverPath;
+            savePrintSettings();
+        }
+        ElMessage.success(t('cover_image_updated') || 'تم تحديث صورة الغلاف بنجاح');
+    } catch (err) {
+        console.error('Failed to upload cover image:', err);
+        ElMessage.error(fieldErrorMessage(err) || t('failed_to_save') || 'فشل تحديث صورة الغلاف');
+    } finally {
+        coverUploading.value = false;
+        if (event?.target) event.target.value = '';
+    }
+}
+
+async function resetCoverToDefault() {
+    try {
+        await ElMessageBox.confirm(
+            t('confirm_reset_cover') || 'هل تريد استعادة صورة الغلاف الافتراضية للنظام؟',
+            t('warning') || 'تنبيه',
+            {
+                confirmButtonText: t('confirm') || 'تأكيد',
+                cancelButtonText: t('cancel') || 'إلغاء',
+                type: 'warning',
+            }
+        );
+    } catch {
+        return;
+    }
+
+    coverUploading.value = true;
+    try {
+        printSettings.value.coverImage = '';
+        savePrintSettings();
+
+        if (settingsStore.data?.cover_image) {
+            const formData = new FormData();
+            formData.append('settings[cover_image]', '');
+            await settingsStore.save(formData);
+        }
+        ElMessage.success(t('cover_image_updated') || 'تم استعادة الغلاف الافتراضي بنجاح');
+    } catch (err) {
+        console.error('Failed to reset cover image:', err);
+        ElMessage.error(fieldErrorMessage(err) || t('failed_to_save') || 'فشل استعادة الغلاف الافتراضي');
+    } finally {
+        coverUploading.value = false;
+    }
+}
+
 function readStoredPrintSettings() {
     try {
         const raw = localStorage.getItem(PRINT_SETTINGS_STORAGE_KEY);
         if (!raw) return { ...defaultPrintSettings };
         const parsed = JSON.parse(raw);
+        if (parsed._v !== 2) {
+            parsed.showCostPrice = true;
+            parsed._v = 2;
+            try {
+                localStorage.setItem(PRINT_SETTINGS_STORAGE_KEY, JSON.stringify({ ...defaultPrintSettings, ...parsed }));
+            } catch {
+                // quota or private mode
+            }
+        }
         return { ...defaultPrintSettings, ...parsed };
     } catch {
         return { ...defaultPrintSettings };
@@ -2919,6 +3072,7 @@ function applyFullCatalogPreset() {
     printSettings.value.showSpecs = true;
     printSettings.value.showDetails = true;
     printSettings.value.showOfferPrice = true;
+    printSettings.value.showCostPrice = true;
     printSettings.value.headerStyle = 'official';
     printSettings.value.showContacts = true;
     printSettings.value.orientation = 'portrait';
@@ -2940,6 +3094,7 @@ function applyInkSaverPreset() {
     printSettings.value.showSpecs = true;
     printSettings.value.showDetails = true;
     printSettings.value.showOfferPrice = true;
+    printSettings.value.showCostPrice = false;
     printSettings.value.headerStyle = 'compact';
     printSettings.value.showContacts = true;
     printSettings.value.orientation = 'portrait';
@@ -2958,6 +3113,7 @@ function applyInternalPreset() {
     printSettings.value.showSpecs = true;
     printSettings.value.showDetails = true;
     printSettings.value.showOfferPrice = true;
+    printSettings.value.showCostPrice = true;
     printSettings.value.headerStyle = 'compact';
     printSettings.value.showContacts = false;
     printSettings.value.orientation = 'portrait';
@@ -2998,6 +3154,8 @@ const effectivePrintColumns = computed(() => {
     }
     if (printSettings.value.showCostPrice === false) {
         cols.cost = false;
+    } else {
+        cols.cost = true;
     }
     return cols;
 });
@@ -3438,7 +3596,7 @@ const downloadPdf = async () => {
             table: tableEl,
             groups: printGroups.value,
             filename: `${safeTitle}-${dateStr}.pdf`,
-            coverSrc: printSettings.value.showCover ? '/cover.jpeg' : null,
+            coverSrc: printSettings.value.showCover ? activeCoverUrl.value : null,
             headerEl: printSettings.value.showHeader ? printHeaderRef.value : null,
             showPageNumbers: printSettings.value.showPageNumbers,
             orientation: printSettings.value.orientation || 'portrait',
@@ -3480,6 +3638,9 @@ const handlePrintKeydown = (e) => {
 onMounted(async () => {
     window.addEventListener('keydown', handlePrintKeydown);
     applyPrintPageStyle();
+    if (Object.keys(settingsStore.data || {}).length === 0) {
+        settingsStore.fetch().catch(() => {});
+    }
     await store.fetchCategories();
     await fetchProducts();
     hydratePrintCatalog();
@@ -4962,10 +5123,32 @@ onUnmounted(() => {
     align-items: center;
     padding: 4px;
 }
+.cover-setting-body {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.cover-thumb {
+    margin-top: 0;
+    max-height: 110px;
+}
 .cover-thumb img {
-    max-height: 85px;
+    max-height: 100px;
     width: auto;
     object-fit: contain;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.cover-actions-panel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.cover-hint-text {
+    color: #64748b;
+    font-size: 11px;
 }
 .header-thumb img {
     max-height: 38px;

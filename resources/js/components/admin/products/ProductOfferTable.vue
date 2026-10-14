@@ -10,7 +10,7 @@
         <thead>
             <tr>
                 <th v-for="(key, idx) in activeColumns" :key="key">
-                    <span class="th-label">{{ $t(COLUMN_LABELS[key]) }}</span>
+                    <span class="th-label">{{ $t(COLUMN_LABELS[key]) || (key === 'cost' ? 'سعر الجملة' : '') }}</span>
                     <!-- The edge between two headers is draggable: pulling it
                          re-shares the table's width between this column and the
                          rest, and a double-click puts this one back to its
@@ -1513,10 +1513,11 @@ const formatPrice = (price) => {
 
 .cell-cost {
     text-align: center;
-    font-weight: 600;
-    color: #475569;
+    font-weight: 700;
+    color: #1e293b;
     white-space: nowrap;
     padding: 5px 8px;
+    vertical-align: middle;
 }
 
 .cell-pack {

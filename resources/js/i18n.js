@@ -930,6 +930,10 @@ const messages = {
         signature_image: 'Authorized Digital Signature',
         header_banner: 'Official Letterhead Banner',
         cover_image: 'Default Document Cover Image',
+        upload_cover_image: 'Upload Cover Image',
+        change_cover_image: 'Change Cover',
+        reset_default_cover: 'Reset to Default',
+        cover_image_updated: 'Cover image updated successfully',
         print_options: 'Print Options',
         include_cover_page: 'Include Cover Page',
         include_cover_page_desc: 'Add a full-page official color cover at the start of the document',
@@ -6600,10 +6604,6 @@ const messages = {
         fm_key_copied: 'Module key copied to clipboard',
     },
     ar: {
-        // وحدات المنتجات (views/admin/products/ProductUnits.vue).
-        pu_subtitle: 'بِع المنتج بالعلبة أو الكرتونة أو الدزينة إلى جانب البيع بالمفرد. لكل وحدة حجمها وسعرها وباركودها.',
-        pu_pick_title: 'أي منتج؟',
-        pu_pick_hint: 'ابحث بالاسم أو رمز المنتج أو الباركود',
         // صندوق الإشعارات (views/admin/notifications/Index.vue).
         nf_title: 'الإشعارات',
         nf_subtitle: 'الرسائل والتنبيهات الموجهة إليك، الأحدث أولاً.',
@@ -6700,6 +6700,10 @@ const messages = {
         'notifications.sound_tested': 'تم تشغيل نغمة التنبيه',
         'notifications.test_desktop_title': 'إشعار تجريبي',
         'notifications.test_desktop_body': 'إشعارات سطح المكتب تعمل.',
+        // وحدات المنتجات (views/admin/products/ProductUnits.vue).
+        pu_subtitle: 'بِع المنتج بالعلبة أو الكرتونة أو الدزينة إلى جانب البيع بالمفرد. لكل وحدة حجمها وسعرها وباركودها.',
+        pu_pick_title: 'أي منتج؟',
+        pu_pick_hint: 'ابحث بالاسم أو رمز المنتج أو الباركود',
         pu_empty_title: 'اختر منتجاً لعرض وحداته',
         pu_empty_example: 'مثال: كرتونة فيها 12 حبة، سعرها 12 × سعر الحبة، ولها باركود خاص بها على نقطة البيع.',
         pu_base_unit: 'يُباع مفرداً بـ',
@@ -7521,6 +7525,10 @@ const messages = {
         signature_image: 'التوقيع الرقمي المعتمد',
         header_banner: 'بانر الترويسة الرسمي المصور',
         cover_image: 'صورة غلاف المستندات الافتراضية',
+        upload_cover_image: 'رفع صورة الغلاف',
+        change_cover_image: 'تغيير صورة الغلاف',
+        reset_default_cover: 'استعادة الغلاف الافتراضي',
+        cover_image_updated: 'تم تحديث صورة الغلاف بنجاح',
         print_options: 'خيارات الطباعة والتصدير',
         include_cover_page: 'تضمين صفحة الغلاف',
         include_cover_page_desc: 'إضافة صفحة غلاف ملونة كاملة بتصميم أوان التقدم في بداية المستند',
