@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\AuditService;
+use App\Support\PagePermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -184,6 +185,7 @@ class PermissionController extends Controller
             'description' => $p->description,
             'is_active' => (bool) $p->is_active,
             'is_system' => (bool) $p->is_system,
+            'page' => PagePermissions::PAGES[$p->name][3] ?? null,
             'role_ids' => $p->roles->pluck('id')->values(),
         ];
     }

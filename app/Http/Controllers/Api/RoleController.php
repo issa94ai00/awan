@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AccessControlService;
 use App\Services\AuditService;
 use App\Services\RoleAssignmentService;
+use App\Support\PagePermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -445,6 +446,7 @@ class RoleController extends Controller
                     'description' => $p->description,
                     'is_active' => (bool) $p->is_active,
                     'is_system' => (bool) $p->is_system,
+                    'page' => PagePermissions::PAGES[$p->name][3] ?? null,
                 ])->values(),
             ])
             ->values()

@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Support\PagePermissions;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -138,6 +139,24 @@ class RoleSeeder extends Seeder
                     'created_at' => now(),
                 ]
             );
+        }
+
+        // One permission per sidebar page; see App\Support\PagePermissions.
+        foreach (PagePermissions::PAGES as $name => [$label, $module, , $path]) {
+            if (DB::table('permissions')->where('name', $name)->exists()) {
+                continue;
+            }
+            DB::table('permissions')->insert([
+                'name' => $name,
+                'display_name' => $label,
+                'module' => $module,
+                'description' => "الصفحة: {$path}",
+                'guard_name' => 'web',
+                'is_active' => true,
+                'is_system' => true,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]);
         }
 
         $all = Permission::pluck('name')->all();

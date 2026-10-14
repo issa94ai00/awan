@@ -289,6 +289,9 @@
                                         <el-tooltip v-if="!canTogglePermission(p) && permissionsEditable" :content="$t('acr_not_yours')" placement="top">
                                             <el-icon class="lock-icon"><Lock /></el-icon>
                                         </el-tooltip>
+                                        <el-tooltip v-if="p.page" :content="$t('acr_page_hint', { path: p.page })" placement="top">
+                                            <el-icon class="page-icon"><Menu /></el-icon>
+                                        </el-tooltip>
                                         <el-tag v-if="!p.is_active" size="small" type="warning" effect="plain">{{ $t('ac_inactive_badge') }}</el-tag>
                                     </label>
                                 </div>
@@ -468,7 +471,7 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Check, Checked, Close, CopyDocument, Delete, Edit, Grid, Key, Lock, MoreFilled,
-    Plus, Refresh, Search, Switch, User, UserFilled, WarningFilled,
+    Menu, Plus, Refresh, Search, Switch, User, UserFilled, WarningFilled,
 } from '@element-plus/icons-vue';
 import accessApi from '@/api/access';
 import AccessActivity from '@/components/admin/access/AccessActivity.vue';
@@ -1397,6 +1400,11 @@ code {
 
 .lock-icon {
     color: #94a3b8;
+}
+
+.page-icon {
+    color: #6366f1;
+    flex: 0 0 auto;
 }
 
 .members {

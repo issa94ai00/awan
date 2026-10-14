@@ -798,6 +798,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { dashboardApi } from '@/api/dashboard';
 import { featureForPath } from '@/config/features';
+import { pagePermissionFor } from '@/config/pagePermissions';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
 import { statusTagType, statusLabel } from '@/utils/sales';
@@ -865,7 +866,11 @@ const todayLabel = computed(() => new Intl.DateTimeFormat(dateLocale.value, {
    to this role) drops its tab, cards and shortcuts from the dashboard ---- */
 
 const can = (key) => authStore.canAccessFeature(key);
-const canRoute = (path) => can(featureForPath(path));
+// A shortcut also needs the page permission of the screen it opens.
+const canRoute = (path) => {
+    const permission = pagePermissionFor(path);
+    return can(featureForPath(path)) && (!permission || authStore.can(permission));
+};
 
 // Tab name => feature key that guards it. The overview tab is always shown.
 const TAB_FEATURES = {

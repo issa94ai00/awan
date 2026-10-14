@@ -81,6 +81,7 @@ export default {
         acr_filter_members: 'Filter members…',
         acr_remove: 'Remove',
         acr_remove_member_confirm: 'Take this role away from {name}? Their other roles stay.',
+        acr_page_hint: 'Shows the sidebar page {path}',
     },
     ar: {
         acr_subtitle: 'اجمع الصلاحيات في أدوار، ثم امنح كل شخص دوراً أو أكثر. تسري التغييرات من الطلب التالي.',
@@ -163,5 +164,6 @@ export default {
         acr_filter_members: 'تصفية الأعضاء…',
         acr_remove: 'سحب',
         acr_remove_member_confirm: 'سحب هذا الدور من {name}؟ تبقى أدواره الأخرى كما هي.',
+        acr_page_hint: 'يُظهر صفحة {path} في القائمة الجانبية',
     },
 };

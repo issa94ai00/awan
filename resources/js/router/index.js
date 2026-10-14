@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { featureForPath } from '@/config/features';
+import { pagePermissionFor } from '@/config/pagePermissions';
 import { triggerFadeUp } from '@/utils/fadeUp';
 
 const routes = [
@@ -775,10 +776,15 @@ const router = createRouter({
 // guards the page is looked up from the path; a path that belongs to no module
 // (the dashboard, the profile screens) is always allowed.
 // Routes marked `masterOnly` (Features Management) are closed to admins too.
-// Routes with `meta.permission` also need that permission (any one of a list).
-const canAccessAdminPath = (auth, to) => auth.canAccessFeature(featureForPath(to.path))
-    && (!to.matched.some(record => record.meta?.masterOnly) || auth.isMaster)
-    && to.matched.every(record => !record.meta?.permission || auth.can(record.meta.permission));
+// Every sidebar page also needs its page permission (config/pagePermissions.js),
+// and routes with `meta.permission` need that too (any one of a list).
+const canAccessAdminPath = (auth, to) => {
+    const pagePermission = pagePermissionFor(to.path);
+    return auth.canAccessFeature(featureForPath(to.path))
+        && (!to.matched.some(record => record.meta?.masterOnly) || auth.isMaster)
+        && (!pagePermission || auth.can(pagePermission))
+        && to.matched.every(record => !record.meta?.permission || auth.can(record.meta.permission));
+};
 
 // Navigation guard for authentication
 router.beforeEach((to, from) => {

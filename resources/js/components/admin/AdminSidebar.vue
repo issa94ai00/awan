@@ -206,6 +206,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { matchesSearch } from '@/utils/search';
+import { pagePermissionFor } from '@/config/pagePermissions';
 import {
     Box, Fold, Expand, Close, Odometer, ShoppingCart, ArrowDown, Setting,
     ShoppingBag, Coin, UserFilled, ChatDotRound, Tools, DataAnalysis, Monitor,
@@ -443,9 +444,9 @@ const menu = [
                 key: 'system', labelKey: 'system', icon: Setting,
                 children: [
                     { labelKey: 'features', path: '/admin/features', masterOnly: true },
-                    { labelKey: 'ac_nav_users', path: '/admin/users', permission: 'users.view' },
-                    { labelKey: 'roles', path: '/admin/roles', permission: 'roles.view' },
-                    { labelKey: 'permissions', path: '/admin/permissions', permission: ['permissions.view', 'roles.view'] },
+                    { labelKey: 'ac_nav_users', path: '/admin/users' },
+                    { labelKey: 'roles', path: '/admin/roles' },
+                    { labelKey: 'permissions', path: '/admin/permissions' },
                     { labelKey: 'currencies', path: '/admin/currencies' },
                 ],
             },
@@ -545,9 +546,13 @@ watch(() => props.collapsed, (newVal) => {
 const canAccessGroup = (group) => authStore.canAccessFeature(group);
 
 // Pages marked `masterOnly` (Features Management) are hidden from everyone
-// but the master role, admins included. Pages with a `permission` need it.
-const canSeeChild = (child) => (!child.masterOnly || authStore.isMaster)
-    && (!child.permission || authStore.can(child.permission));
+// but the master role, admins included. Every other page needs its page
+// permission (config/pagePermissions.js), granted on the Roles screen.
+const canSeeChild = (child) => {
+    if (child.masterOnly && !authStore.isMaster) return false;
+    const permission = pagePermissionFor(child.path);
+    return !permission || authStore.can(permission);
+};
 
 // Every entry is gated by its feature key — collapsible groups by the group
 // key, plain entries (POS, inquiries, visitors) by their own key. Sections
@@ -559,7 +564,9 @@ const visibleMenu = computed(() => menu
             .filter((entry) => canAccessGroup(entry.key))
             .map((entry) => (entry.children
                 ? { ...entry, children: entry.children.filter(canSeeChild) }
-                : entry)),
+                : entry))
+            // A group whose every page is withheld goes too.
+            .filter((entry) => (entry.children ? entry.children.length > 0 : canSeeChild(entry))),
     }))
     .filter((section) => section.items.length > 0));
 
