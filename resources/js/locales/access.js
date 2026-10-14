@@ -42,6 +42,10 @@ export default {
         ac_module_purchases: 'Purchases',
         ac_module_hr: 'Human resources',
         ac_module_marketing: 'Marketing',
+        ac_history_empty: 'No access changes recorded yet.',
+        ac_history_failed: 'Could not load the history.',
+        ac_history_more: 'Load older entries',
+        ac_history_system: 'System',
     },
     ar: {
         ac_nav_users: 'المستخدمون والصلاحيات',
@@ -84,5 +88,9 @@ export default {
         ac_module_purchases: 'المشتريات',
         ac_module_hr: 'الموارد البشرية',
         ac_module_marketing: 'التسويق',
+        ac_history_empty: 'لا توجد تغييرات مسجّلة بعد.',
+        ac_history_failed: 'تعذّر تحميل السجل.',
+        ac_history_more: 'عرض الأقدم',
+        ac_history_system: 'النظام',
     },
 };

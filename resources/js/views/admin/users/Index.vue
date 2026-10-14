@@ -74,8 +74,54 @@
 
         <!-- Users table -->
         <el-card shadow="never" class="table-card">
+            <transition name="bulk">
+                <div v-if="selected.length" class="bulk-bar">
+                    <span class="bulk-count">{{ $t('acu_bulk_selected', { n: selected.length }) }}</span>
+                    <el-select
+                        v-model="bulk.roleIds"
+                        multiple
+                        collapse-tags
+                        collapse-tags-tooltip
+                        filterable
+                        :placeholder="$t('acu_bulk_pick_roles')"
+                        class="bulk-roles"
+                    >
+                        <el-option
+                            v-for="role in roles"
+                            :key="role.id"
+                            :label="role.display_name"
+                            :value="role.id"
+                            :disabled="!!roleLockReason(role)"
+                        >
+                            <span class="option-dot" :style="{ background: role.color || '#94a3b8' }"></span>
+                            {{ role.display_name }}
+                        </el-option>
+                    </el-select>
+                    <el-button type="primary" :icon="Plus" :disabled="!bulk.roleIds.length" :loading="bulk.busy === 'add'" @click="runBulk('add')">
+                        {{ $t('acu_bulk_add') }}
+                    </el-button>
+                    <el-button type="danger" plain :icon="Minus" :disabled="!bulk.roleIds.length" :loading="bulk.busy === 'remove'" @click="runBulk('remove')">
+                        {{ $t('acu_bulk_remove') }}
+                    </el-button>
+                    <el-button text @click="clearSelection">{{ $t('acu_bulk_clear') }}</el-button>
+                </div>
+            </transition>
             <div class="table-scroll">
-                <el-table v-loading="loading" :data="users" style="width: 100%; min-width: 820px" row-key="id">
+                <el-table
+                    ref="tableRef"
+                    v-loading="loading"
+                    :data="users"
+                    style="width: 100%; min-width: 820px"
+                    row-key="id"
+                    @selection-change="(rows) => (selected = rows)"
+                >
+                    <el-table-column
+                        v-if="auth.can('users.assign_roles')"
+                        type="selection"
+                        width="44"
+                        reserve-selection
+                        :selectable="(row) => row.editable"
+                    />
                     <el-table-column :label="$t('acu_col_user')" min-width="260">
                         <template #default="{ row }">
                             <div class="user-cell">
@@ -368,6 +414,11 @@
                         </div>
                         <el-empty v-if="!effectiveModules.length" :description="$t('ac_no_results')" :image-size="70" />
                     </el-tab-pane>
+
+                    <!-- History -->
+                    <el-tab-pane v-if="drawer.user" :label="$t('acu_tab_history')" name="history" lazy>
+                        <AccessActivity :params="{ user_id: drawer.user.id }" :reload-key="historyKey" />
+                    </el-tab-pane>
                 </el-tabs>
             </div>
 
@@ -440,15 +491,16 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
-    CircleCheckFilled, CircleCloseFilled, Connection, EditPen, Key, Lock, MagicStick,
+    CircleCheckFilled, CircleCloseFilled, Connection, EditPen, Key, Lock, MagicStick, Minus,
     Plus, Refresh, Search, Star, StarFilled, User, UserFilled, WarningFilled,
 } from '@element-plus/icons-vue';
 import { accessApi } from '@/api/access';
+import AccessActivity from '@/components/admin/access/AccessActivity.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const { t, te } = useI18n();
@@ -570,6 +622,7 @@ const original = reactive({ roleIds: [], primaryRoleId: null, permissionIds: [] 
 const directSearch = ref('');
 const openModules = ref([]);
 const onlyGranted = ref(false);
+const historyKey = ref(0);
 
 function loadForm(user) {
     original.roleIds = user.roles.map((role) => role.id);
@@ -729,12 +782,59 @@ async function save() {
             auth.refreshUser();
         }
         // Counts on the cards and role list move with the change.
+        historyKey.value += 1;
         fetchCatalogue();
         fetchUsers();
     } catch (error) {
         ElMessage.error(errorMessage(error));
     } finally {
         drawer.saving = false;
+    }
+}
+
+// ---------------------------------------------------------------- bulk
+
+const tableRef = ref(null);
+const selected = ref([]);
+const bulk = reactive({ roleIds: [], busy: null });
+
+function clearSelection() {
+    tableRef.value?.clearSelection();
+    selected.value = [];
+}
+
+async function runBulk(mode) {
+    const names = bulk.roleIds.map((id) => roleById(id)?.display_name).filter(Boolean).join('، ');
+    try {
+        await ElMessageBox.confirm(
+            t(mode === 'add' ? 'acu_bulk_add_confirm' : 'acu_bulk_remove_confirm', { roles: names, n: selected.value.length }),
+            t('ac_confirm'),
+            { type: mode === 'add' ? 'info' : 'warning' },
+        );
+    } catch {
+        return;
+    }
+    bulk.busy = mode;
+    try {
+        const res = await accessApi.bulkUserRoles(selected.value.map((user) => user.id), bulk.roleIds, mode);
+        const { skipped = [] } = res.data?.data || {};
+        ElMessage.success(res.data?.message || t('ac_saved'));
+        if (skipped.length) {
+            ElMessageBox.alert(
+                h('ul', { class: 'skipped-list' }, skipped.map((row) => h('li', [h('strong', `${row.name}: `), row.reason]))),
+                t('acu_bulk_skipped_title', { n: skipped.length }),
+                { type: 'warning' },
+            );
+        }
+        if (selected.value.some((user) => user.is_self)) auth.refreshUser();
+        bulk.roleIds = [];
+        clearSelection();
+        fetchCatalogue();
+        fetchUsers();
+    } catch (error) {
+        ElMessage.error(errorMessage(error));
+    } finally {
+        bulk.busy = null;
     }
 }
 
@@ -947,6 +1047,44 @@ onBeforeUnmount(() => {
 
 /* Toolbar */
 .toolbar-card,
+.bulk-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid #c7d2fe;
+    border-radius: 12px;
+    background: #eef2ff;
+}
+
+.bulk-bar .el-button + .el-button {
+    margin-inline-start: 0;
+}
+
+.bulk-count {
+    font-weight: 700;
+    color: #3730a3;
+    margin-inline-end: 4px;
+}
+
+.bulk-roles {
+    flex: 1 1 220px;
+    max-width: 360px;
+}
+
+.bulk-enter-active,
+.bulk-leave-active {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.bulk-enter-from,
+.bulk-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+}
+
 .table-card {
     border-radius: 18px;
     border: 1px solid #e2e8f0;

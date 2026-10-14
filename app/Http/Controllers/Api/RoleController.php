@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\AccessControlService;
 use App\Services\AuditService;
+use App\Services\RoleAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -27,6 +28,7 @@ class RoleController extends Controller
     public function __construct(
         private AuditService $audit,
         private AccessControlService $access,
+        private RoleAssignmentService $assignments,
     ) {}
 
     /**
@@ -240,6 +242,41 @@ class RoleController extends Controller
         );
 
         return $this->respondWith($role, $validated['granted'] ? 'تم منح الصلاحية' : 'تم سحب الصلاحية');
+    }
+
+    /** Add accounts to the role from its Members tab. */
+    public function addMembers(Request $request, Role $role): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_ids' => 'required|array|min:1|max:200',
+            'user_ids.*' => 'integer|exists:users,id',
+        ]);
+
+        $role->load('permissions:id');
+        $this->access->assertCanAssignRoles($request->user(), collect([$role]));
+
+        $added = 0;
+        foreach (User::whereIn('id', $validated['user_ids'])->get() as $user) {
+            $added += count($this->assignments->addRoles($request->user(), $user, collect([$role])));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $added ? "تمت إضافة {$added} مستخدم إلى الدور" : 'المستخدمون المختارون يحملون الدور مسبقاً',
+            'data' => ['added' => $added],
+        ]);
+    }
+
+    /** Take the role away from one account; their other roles stay. */
+    public function removeMember(Request $request, Role $role, User $user): JsonResponse
+    {
+        $removed = $this->assignments->removeRole($request->user(), $user, $role);
+
+        return response()->json([
+            'success' => true,
+            'message' => $removed ? 'تم سحب الدور من المستخدم' : 'المستخدم لا يحمل هذا الدور',
+            'data' => ['removed' => $removed],
+        ]);
     }
 
     /** Copy a role — its permissions and its feature grants — under a new name. */

@@ -105,6 +105,9 @@
                 <el-button v-if="hasFilters" text type="primary" @click="resetFilters">
                     {{ $t('acp_clear_filters') }}
                 </el-button>
+                <el-tooltip :content="$t('acp_export_hint')" placement="top">
+                    <el-button :icon="Download" :disabled="!filtered.length" @click="exportCsv">{{ $t('acp_export') }}</el-button>
+                </el-tooltip>
             </div>
         </el-card>
 
@@ -379,6 +382,7 @@ import {
     CopyDocument,
     Delete,
     Document,
+    Download,
     Edit,
     Grid,
     Key,
@@ -468,6 +472,30 @@ const cellKey = (roleId, permissionId) => `${roleId}_${permissionId}`;
 const moduleKey = (module, roleId) => `${module}_${roleId}`;
 
 const hasGrant = (role, permission) => permission.role_ids.includes(role.id);
+
+// The matrix as it is filtered on screen, one row per permission and one
+// column per role. The BOM lets Excel read the Arabic names correctly.
+function exportCsv() {
+    const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const header = [t('acp_export_module'), t('acp_permission_column'), t('acp_export_key'), t('acp_export_status'),
+        ...roles.value.map((role) => role.display_name), t('acp_export_direct')];
+    const rows = filtered.value.map((p) => [
+        moduleLabel(p.module),
+        p.display_name,
+        p.name,
+        p.is_active ? t('acp_status_active') : t('acp_status_inactive'),
+        ...roles.value.map((role) => (role.is_super ? '✓*' : hasGrant(role, p) ? '✓' : '')),
+        p.direct_users_count || '',
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = Object.assign(document.createElement('a'), {
+        href: url,
+        download: `permissions-matrix-${new Date().toISOString().slice(0, 10)}.csv`,
+    });
+    link.click();
+    URL.revokeObjectURL(url);
+}
 
 const moduleState = (group, role) => {
     const granted = group.items.filter((p) => hasGrant(role, p)).length;

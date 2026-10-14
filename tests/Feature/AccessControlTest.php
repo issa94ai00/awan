@@ -314,3 +314,89 @@ it('creates a staff account with its roles in one step', function () {
     expect($user->hasRole('sells'))->toBeTrue()
         ->and($user->role_id)->toBe(Role::findByName('sells', 'web')->id);
 });
+
+// ------------------------------------------------- membership shortcuts
+
+it('adds and removes role members, keeping the primary role among those held', function () {
+    $master = accessUser('master');
+    $user = accessUser('employee');
+    $other = accessUser();
+    $sells = Role::findByName('sells', 'web');
+
+    $this->actingAs($master)
+        ->postJson("/api/v1/admin/access/roles/{$sells->id}/members", ['user_ids' => [$user->id, $other->id]])
+        ->assertOk()
+        ->assertJsonPath('data.added', 2);
+
+    expect($user->fresh()->getRoleNames()->sort()->values()->all())->toBe(['employee', 'sells'])
+        ->and($user->fresh()->role_id)->toBe(Role::findByName('employee', 'web')->id)
+        ->and($other->fresh()->role_id)->toBe($sells->id);
+
+    // Taking the primary away promotes a remaining role; the last one leaves none.
+    $employee = Role::findByName('employee', 'web');
+    $this->actingAs($master)->deleteJson("/api/v1/admin/access/roles/{$employee->id}/members/{$user->id}")->assertOk();
+    $this->actingAs($master)->deleteJson("/api/v1/admin/access/roles/{$sells->id}/members/{$other->id}")->assertOk();
+
+    expect($user->fresh()->role_id)->toBe($sells->id)
+        ->and($user->fresh()->getRoleNames()->all())->toBe(['sells'])
+        ->and($other->fresh()->role_id)->toBeNull()
+        ->and($other->fresh()->roles)->toHaveCount(0);
+
+    $entries = $this->actingAs($master)
+        ->getJson("/api/v1/admin/access/activity?role_id={$sells->id}")
+        ->assertOk()
+        ->json('data.entries');
+    expect($entries)->toHaveCount(3);
+});
+
+it('guards the membership shortcuts like the access editor', function () {
+    grantRole('manager', 'users.view', 'users.assign_roles');
+    $manager = accessUser('manager');
+    $target = accessUser('employee');
+    $admin = Role::findByName('admin', 'web');
+
+    $this->actingAs($manager)
+        ->postJson("/api/v1/admin/access/roles/{$admin->id}/members", ['user_ids' => [$target->id]])
+        ->assertForbidden();
+    expect($target->fresh()->hasRole('admin'))->toBeFalse();
+
+    // The last master cannot be removed from the role.
+    $master = accessUser('master');
+    $this->actingAs($master)
+        ->deleteJson('/api/v1/admin/access/roles/'.Role::findByName('master', 'web')->id."/members/{$master->id}")
+        ->assertForbidden();
+
+    $this->actingAs(accessUser('employee'))
+        ->getJson('/api/v1/admin/access/activity')
+        ->assertForbidden();
+});
+
+it('changes roles for several users at once and reports the ones it skips', function () {
+    $admin = accessUser('admin');
+    $plain = accessUser('employee');
+    $masterUser = accessUser('master');
+    $marketer = Role::findByName('marketer', 'web');
+
+    $this->actingAs($admin)
+        ->postJson('/api/v1/admin/access/users/bulk-roles', [
+            'user_ids' => [$plain->id, $masterUser->id],
+            'role_ids' => [$marketer->id],
+            'mode' => 'add',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.changed', 1)
+        ->assertJsonPath('data.skipped.0.id', $masterUser->id);
+
+    expect($plain->fresh()->hasRole('marketer'))->toBeTrue()
+        ->and($masterUser->fresh()->hasRole('marketer'))->toBeFalse();
+
+    $this->actingAs($admin)
+        ->postJson('/api/v1/admin/access/users/bulk-roles', [
+            'user_ids' => [$plain->id],
+            'role_ids' => [$marketer->id],
+            'mode' => 'remove',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.changed', 1);
+    expect($plain->fresh()->hasRole('marketer'))->toBeFalse();
+});

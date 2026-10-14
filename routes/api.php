@@ -74,6 +74,7 @@ use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\AccessActivityController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\Api\FlutterCartController;
 use App\Http\Controllers\Api\StaffCustomerController;
@@ -700,16 +701,22 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/roles/{role}/permissions', [RoleController::class, 'syncPermissions'])->middleware('permission:roles.edit|permissions.assign')->name('api.admin.access.roles.permissions');
             Route::post('/roles/{role}/permissions/toggle', [RoleController::class, 'togglePermissions'])->middleware('permission:roles.edit|permissions.assign')->name('api.admin.access.roles.permissions.toggle');
             Route::post('/roles/{role}/duplicate', [RoleController::class, 'duplicate'])->middleware('permission:roles.create')->name('api.admin.access.roles.duplicate');
+            Route::post('/roles/{role}/members', [RoleController::class, 'addMembers'])->middleware('permission:users.assign_roles')->name('api.admin.access.roles.members.add');
+            Route::delete('/roles/{role}/members/{user}', [RoleController::class, 'removeMember'])->middleware('permission:users.assign_roles')->name('api.admin.access.roles.members.remove');
 
             Route::get('/permissions', [PermissionController::class, 'index'])->middleware('permission:permissions.view|roles.view')->name('api.admin.access.permissions.index');
             Route::post('/permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.store');
             Route::put('/permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.update');
             Route::delete('/permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.destroy');
 
+            Route::post('/users/bulk-roles', [UserAccessController::class, 'bulkRoles'])->middleware('permission:users.assign_roles')->name('api.admin.access.users.bulk-roles');
             Route::get('/users', [UserAccessController::class, 'index'])->middleware('permission:users.view')->name('api.admin.access.users.index');
             Route::post('/users', [UserAccessController::class, 'store'])->middleware('permission:users.create')->name('api.admin.access.users.store');
             Route::get('/users/{user}', [UserAccessController::class, 'show'])->middleware('permission:users.view')->name('api.admin.access.users.show');
             Route::put('/users/{user}/access', [UserAccessController::class, 'update'])->middleware('permission:users.assign_roles')->name('api.admin.access.users.update');
+
+            // Who changed which role, permission or account's access.
+            Route::get('/activity', [AccessActivityController::class, 'index'])->middleware('permission:roles.view|users.view')->name('api.admin.access.activity');
         });
 
         // User Inquiries

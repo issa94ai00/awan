@@ -28,6 +28,12 @@ export const accessApi = {
     duplicateRole(id, data = {}) {
         return api.post(`/admin/access/roles/${id}/duplicate`, data);
     },
+    addRoleMembers(id, userIds) {
+        return api.post(`/admin/access/roles/${id}/members`, { user_ids: userIds });
+    },
+    removeRoleMember(id, userId) {
+        return api.delete(`/admin/access/roles/${id}/members/${userId}`);
+    },
 
     // Permission catalogue
     getPermissions() {
@@ -55,6 +61,14 @@ export const accessApi = {
     },
     updateUserAccess(id, data) {
         return api.put(`/admin/access/users/${id}/access`, data);
+    },
+    bulkUserRoles(userIds, roleIds, mode) {
+        return api.post('/admin/access/users/bulk-roles', { user_ids: userIds, role_ids: roleIds, mode });
+    },
+
+    // History: { role_id } or { user_id }, or neither for everything
+    getActivity(params = {}) {
+        return api.get('/admin/access/activity', { params });
     },
 };
 

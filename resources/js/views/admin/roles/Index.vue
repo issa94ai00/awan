@@ -206,6 +206,26 @@
                             :title="$t('acr_own_permissions_note')"
                             class="mb-12"
                         />
+                        <div v-if="permissionsEditable" class="template-row">
+                            <el-icon><CopyDocument /></el-icon>
+                            <span>{{ $t('acr_start_from') }}</span>
+                            <el-select
+                                :model-value="null"
+                                :placeholder="$t('acr_start_from_placeholder')"
+                                filterable
+                                size="small"
+                                class="template-select"
+                                @change="applyTemplate"
+                            >
+                                <el-option
+                                    v-for="r in templateRoles"
+                                    :key="r.id"
+                                    :label="`${r.display_name} · ${r.permissions_count}`"
+                                    :value="r.id"
+                                />
+                            </el-select>
+                        </div>
+
                         <div class="perm-toolbar">
                             <el-input v-model="permSearch" :placeholder="$t('ac_search_permissions')" clearable :prefix-icon="Search" />
                             <div class="perm-actions" v-if="permissionsEditable">
@@ -219,6 +239,11 @@
                             <span>{{ $t('acr_selected_n', { n: selectedIds.size, total: totalPermissions }) }}</span>
                             <span v-if="diff.added.length" class="added">+{{ diff.added.length }}</span>
                             <span v-if="diff.removed.length" class="removed">−{{ diff.removed.length }}</span>
+                            <span class="spacer"></span>
+                            <el-checkbox v-if="editor.role" v-model="changesOnly" :disabled="!diff.added.length && !diff.removed.length" size="small">
+                                {{ $t('acr_changes_only') }}
+                            </el-checkbox>
+                            <el-checkbox v-model="selectedOnly" size="small">{{ $t('acr_selected_only') }}</el-checkbox>
                         </div>
 
                         <el-collapse v-model="openModules" class="module-list">
@@ -233,7 +258,12 @@
                                         />
                                     </div>
                                     <span class="module-name">{{ moduleLabel(mod.module) }}</span>
-                                    <span class="module-count">{{ countIn(mod) }}/{{ mod.permissions.length }}</span>
+                                    <el-tooltip v-if="missingView(mod)" :content="$t('acr_needs_view_hint', { perm: missingView(mod).display_name })" placement="top">
+                                        <el-tag size="small" type="warning" effect="light" round class="needs-view" @click.stop="togglePermission(missingView(mod).id, true)">
+                                            <el-icon><WarningFilled /></el-icon>{{ $t('acr_needs_view') }}
+                                        </el-tag>
+                                    </el-tooltip>
+                                    <span class="module-count">{{ countIn(fullModule(mod.module)) }}/{{ fullModule(mod.module).permissions.length }}</span>
                                 </template>
                                 <div class="perm-grid">
                                     <label
@@ -275,19 +305,74 @@
                         <el-badge :value="editor.role.users_count" type="info" class="tab-badge" />
                     </template>
                     <div v-loading="editor.loadingMembers" class="members">
-                        <div v-for="m in editor.members" :key="m.id" class="member-row">
+                        <div v-if="canManageMembers" class="member-add">
+                            <el-select
+                                v-model="memberPick.ids"
+                                multiple
+                                filterable
+                                remote
+                                collapse-tags
+                                collapse-tags-tooltip
+                                :remote-method="searchCandidates"
+                                :loading="memberPick.searching"
+                                :placeholder="$t('acr_add_members_placeholder')"
+                                class="member-picker"
+                                @visible-change="(open) => open && !memberPick.options.length && searchCandidates('')"
+                            >
+                                <el-option
+                                    v-for="u in memberPick.options"
+                                    :key="u.id"
+                                    :label="u.name"
+                                    :value="u.id"
+                                    :disabled="!u.editable || memberIds.has(u.id)"
+                                >
+                                    <span class="cand-name">{{ u.name }}</span>
+                                    <small class="cand-mail" dir="ltr">{{ memberIds.has(u.id) ? $t('acr_already_member') : u.email }}</small>
+                                </el-option>
+                            </el-select>
+                            <el-button type="primary" :icon="Plus" :disabled="!memberPick.ids.length" :loading="memberPick.busy" @click="addMembers">
+                                {{ $t('acr_add_members') }}
+                            </el-button>
+                        </div>
+                        <el-input
+                            v-if="editor.members.length > 6"
+                            v-model="memberSearch"
+                            :placeholder="$t('acr_filter_members')"
+                            :prefix-icon="Search"
+                            clearable
+                            size="small"
+                            class="member-filter"
+                        />
+                        <div v-for="m in visibleMembers" :key="m.id" class="member-row">
                             <div class="member-avatar">{{ (m.name || '?').charAt(0) }}</div>
                             <div class="member-text">
                                 <strong>{{ m.name }}</strong>
                                 <small dir="ltr">{{ m.email }}</small>
                             </div>
                             <el-tag v-if="m.is_primary" size="small" effect="plain" round>{{ $t('ac_primary_badge') }}</el-tag>
+                            <el-popconfirm
+                                v-if="canManageMembers"
+                                :title="$t('acr_remove_member_confirm', { name: m.name })"
+                                :confirm-button-text="$t('acr_remove')"
+                                :cancel-button-text="$t('ac_cancel')"
+                                width="260"
+                                @confirm="removeMember(m)"
+                            >
+                                <template #reference>
+                                    <el-button text circle size="small" :icon="Close" :aria-label="$t('acr_remove')" :loading="memberPick.removing === m.id" />
+                                </template>
+                            </el-popconfirm>
                         </div>
                         <el-empty v-if="!editor.loadingMembers && !editor.members.length" :description="$t('acr_no_members')" :image-size="80" />
                         <router-link v-if="auth.can('users.view')" :to="{ path: '/admin/users', query: { role_id: editor.role.id } }" class="members-link">
                             {{ $t('acr_manage_members') }}
                         </router-link>
                     </div>
+                </el-tab-pane>
+
+                <!-- History -->
+                <el-tab-pane v-if="editor.role" :label="$t('acr_tab_history')" name="history" lazy>
+                    <AccessActivity :params="{ role_id: editor.role.id }" :reload-key="historyKey" />
                 </el-tab-pane>
             </el-tabs>
 
@@ -383,9 +468,10 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     Check, Checked, Close, CopyDocument, Delete, Edit, Grid, Key, Lock, MoreFilled,
-    Plus, Refresh, Search, Switch, User, UserFilled,
+    Plus, Refresh, Search, Switch, User, UserFilled, WarningFilled,
 } from '@element-plus/icons-vue';
 import accessApi from '@/api/access';
+import AccessActivity from '@/components/admin/access/AccessActivity.vue';
 import { useAuthStore } from '@/stores/auth';
 import { matchesSearch } from '@/utils/search';
 
@@ -466,6 +552,9 @@ const selectedIds = ref(new Set());
 const originalIds = ref(new Set());
 const permSearch = ref('');
 const openModules = ref([]);
+const changesOnly = ref(false);
+const selectedOnly = ref(false);
+const historyKey = ref(0);
 
 const drawerSize = computed(() => (window.innerWidth < 760 ? '100%' : '680px'));
 
@@ -508,6 +597,10 @@ function openEditor(role = null, tab = 'details') {
     originalIds.value = new Set(source.permission_ids || []);
     selectedIds.value = new Set(source.permission_ids || []);
     permSearch.value = '';
+    changesOnly.value = false;
+    selectedOnly.value = false;
+    memberSearch.value = '';
+    Object.assign(memberPick, { ids: [], options: [], searching: false, busy: false, removing: null });
     openModules.value = modules.value.filter((m) => countIn(m) > 0).map((m) => m.module);
     if (!openModules.value.length && modules.value.length) openModules.value = [modules.value[0].module];
     editor.open = true;
@@ -541,18 +634,73 @@ function resetForm() {
     selectedIds.value = new Set(originalIds.value);
 }
 
+// Every other action in a module is useless without the module's `.view`:
+// the screens behind it will not open. Granting one grants view with it.
+const viewOf = (module) => modules.value.find((m) => m.module === module)
+    ?.permissions.find((p) => p.name === `${module}.view`);
+const moduleOfPermission = computed(() => new Map(modules.value
+    .flatMap((m) => m.permissions.map((p) => [p.id, m.module]))));
+
+function withViewDependencies(set) {
+    const added = [];
+    [...set].forEach((id) => {
+        const view = viewOf(moduleOfPermission.value.get(id));
+        if (view && !set.has(view.id) && canTogglePermission(view)) {
+            set.add(view.id);
+            added.push(view);
+        }
+    });
+    return added;
+}
+
 function togglePermission(id, on) {
     const next = new Set(selectedIds.value);
     on ? next.add(id) : next.delete(id);
+    const autoAdded = on ? withViewDependencies(next) : [];
     selectedIds.value = next;
+    if (autoAdded.length) ElMessage.info(t('acr_view_auto_added', { perm: autoAdded.map((p) => p.display_name).join('، ') }));
 }
+
+// A module with actions selected but its `.view` left out.
+const missingView = (mod) => {
+    const view = viewOf(mod.module);
+    if (!view || selectedIds.value.has(view.id) || !permissionsEditable.value) return null;
+    return countIn(fullModule(mod.module)) ? view : null;
+};
+const fullModule = (module) => modules.value.find((m) => m.module === module) ?? { permissions: [] };
 
 const filteredModules = computed(() => modules.value
     .map((m) => ({
         ...m,
-        permissions: m.permissions.filter((p) => matchesSearch([p.display_name, p.name, p.description, moduleLabel(m.module)], permSearch.value)),
+        permissions: m.permissions.filter((p) => {
+            if (selectedOnly.value && !selectedIds.value.has(p.id)) return false;
+            if (changesOnly.value && selectedIds.value.has(p.id) === originalIds.value.has(p.id)) return false;
+            return matchesSearch([p.display_name, p.name, p.description, moduleLabel(m.module)], permSearch.value);
+        }),
     }))
     .filter((m) => m.permissions.length));
+
+watch([changesOnly, selectedOnly], ([changes, selected]) => {
+    if (changes || selected) openModules.value = filteredModules.value.map((m) => m.module);
+});
+
+// Roles whose permission list can seed this one; super roles have no list.
+const templateRoles = computed(() => roles.value.filter((r) => !r.is_super && r.id !== editor.role?.id && r.permissions_count));
+
+function applyTemplate(roleId) {
+    const source = roles.value.find((r) => r.id === roleId);
+    if (!source) return;
+    const next = new Set(source.permission_ids.filter((id) => {
+        const p = allPermissions.value.find((x) => x.id === id);
+        return p && canTogglePermission(p);
+    }));
+    const skipped = source.permission_ids.length - next.size;
+    selectedIds.value = next;
+    openModules.value = modules.value.filter((m) => countIn(m) > 0).map((m) => m.module);
+    ElMessage.success(skipped
+        ? t('acr_template_applied_partial', { name: source.display_name, n: next.size, skipped })
+        : t('acr_template_applied', { name: source.display_name, n: next.size }));
+}
 
 const countIn = (mod) => mod.permissions.filter((p) => selectedIds.value.has(p.id)).length;
 
@@ -568,6 +716,7 @@ function toggleModule(mod, on) {
         if (!canTogglePermission(p) && on) return;
         on ? next.add(p.id) : next.delete(p.id);
     });
+    if (on) withViewDependencies(next);
     selectedIds.value = next;
 }
 
@@ -578,6 +727,7 @@ function applyPreset(kind) {
         if (kind === 'none') next.delete(p.id);
         else if ((kind === 'all' || p.name.endsWith('.view')) && canTogglePermission({ ...p })) next.add(p.id);
     });
+    if (kind === 'all') withViewDependencies(next);
     selectedIds.value = next;
 }
 
@@ -624,6 +774,68 @@ async function save() {
         ElMessage.error(fieldErrors ? Object.values(fieldErrors).flat()[0] : errorMessage(error));
     } finally {
         saving.value = false;
+    }
+}
+
+// ----------------------------------------------------------------- members
+
+const canManageMembers = computed(() => !!editor.role && auth.can('users.assign_roles') && auth.can('users.view')
+    && (editor.role.name === 'master' ? auth.isMaster : !editor.role.is_super || auth.isSuperAdmin));
+const memberPick = reactive({ ids: [], options: [], searching: false, busy: false, removing: null });
+const memberSearch = ref('');
+const memberIds = computed(() => new Set(editor.members.map((m) => m.id)));
+const visibleMembers = computed(() => editor.members.filter((m) => matchesSearch([m.name, m.email], memberSearch.value)));
+
+let candidateSeq = 0;
+async function searchCandidates(query) {
+    const seq = ++candidateSeq;
+    memberPick.searching = true;
+    try {
+        const { data } = await accessApi.getUsers({ search: query || undefined, per_page: 30 });
+        if (seq !== candidateSeq) return;
+        // Keep the ones already picked so their chips keep their labels.
+        const picked = memberPick.options.filter((u) => memberPick.ids.includes(u.id));
+        const fresh = data.data.users.filter((u) => !memberPick.ids.includes(u.id));
+        memberPick.options = [...picked, ...fresh];
+    } catch {
+        // leave the list as it was
+    } finally {
+        if (seq === candidateSeq) memberPick.searching = false;
+    }
+}
+
+async function afterMembershipChange() {
+    historyKey.value += 1;
+    const id = editor.role.id;
+    await Promise.all([loadMembers(editor.role), fetchRoles()]);
+    const fresh = roles.value.find((r) => r.id === id);
+    if (fresh && editor.role?.id === id) editor.role = fresh;
+}
+
+async function addMembers() {
+    memberPick.busy = true;
+    try {
+        const { data } = await accessApi.addRoleMembers(editor.role.id, memberPick.ids);
+        ElMessage.success(data.message);
+        memberPick.ids = [];
+        await afterMembershipChange();
+    } catch (error) {
+        ElMessage.error(errorMessage(error));
+    } finally {
+        memberPick.busy = false;
+    }
+}
+
+async function removeMember(member) {
+    memberPick.removing = member.id;
+    try {
+        const { data } = await accessApi.removeRoleMember(editor.role.id, member.id);
+        ElMessage.success(data.message);
+        await afterMembershipChange();
+    } catch (error) {
+        ElMessage.error(errorMessage(error));
+    } finally {
+        memberPick.removing = null;
     }
 }
 
@@ -1068,6 +1280,48 @@ code {
 .perm-summary .added { color: #059669; }
 .perm-summary .removed { color: #dc2626; }
 
+.perm-summary {
+    flex-wrap: wrap;
+}
+
+.perm-summary .spacer {
+    flex: 1;
+}
+
+.perm-summary .el-checkbox {
+    margin-inline-end: 0;
+    font-weight: 500;
+}
+
+.template-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border: 1px dashed #c7d2fe;
+    border-radius: 12px;
+    background: #f8faff;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4338ca;
+}
+
+.template-select {
+    flex: 1 1 200px;
+    max-width: 320px;
+}
+
+.needs-view {
+    margin-inline-start: 8px;
+    cursor: pointer;
+}
+
+.needs-view .el-icon {
+    margin-inline-end: 3px;
+    vertical-align: -2px;
+}
+
 .module-list {
     border-top: none;
 }
@@ -1182,6 +1436,30 @@ code {
 .member-text small {
     color: #64748b;
     text-align: start;
+}
+
+.member-add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.member-picker {
+    flex: 1;
+    min-width: 0;
+}
+
+.member-filter {
+    margin-bottom: 2px;
+}
+
+.cand-name {
+    font-weight: 600;
+}
+
+.cand-mail {
+    margin-inline-start: 8px;
+    color: #94a3b8;
 }
 
 .members-link {

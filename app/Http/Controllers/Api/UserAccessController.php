@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\AccessControlService;
 use App\Services\AuditService;
+use App\Services\RoleAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,7 @@ class UserAccessController extends Controller
     public function __construct(
         private AuditService $audit,
         private AccessControlService $access,
+        private RoleAssignmentService $assignments,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -256,6 +258,55 @@ class UserAccessController extends Controller
             'success' => true,
             'message' => 'تم تحديث صلاحيات المستخدم',
             'data' => $this->present($user->fresh(['roles', 'role', 'permissions']), $actor),
+        ]);
+    }
+
+    /**
+     * Add roles to, or take them from, several accounts at once. Accounts the
+     * actor may not change are skipped and reported, not fatal to the rest.
+     */
+    public function bulkRoles(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_ids' => 'required|array|min:1|max:200',
+            'user_ids.*' => 'integer|exists:users,id',
+            'role_ids' => 'required|array|min:1',
+            'role_ids.*' => 'integer|exists:roles,id',
+            'mode' => 'required|in:add,remove',
+        ]);
+
+        $actor = $request->user();
+        $roles = Role::with('permissions:id')->whereIn('id', $validated['role_ids'])->get();
+
+        // Handing these roles out at all is checked once, up front.
+        if ($validated['mode'] === 'add') {
+            $this->access->assertCanAssignRoles($actor, $roles);
+        } else {
+            $roles->each(fn (Role $role) => $this->access->assertCanManageRole($actor, $role));
+        }
+
+        $changed = 0;
+        $skipped = [];
+        foreach (User::with('roles')->whereIn('id', $validated['user_ids'])->get() as $user) {
+            try {
+                if ($validated['mode'] === 'add') {
+                    $did = (bool) $this->assignments->addRoles($actor, $user, $roles);
+                } else {
+                    $did = false;
+                    foreach ($roles as $role) {
+                        $did = $this->assignments->removeRole($actor, $user->fresh(), $role) || $did;
+                    }
+                }
+                $changed += $did ? 1 : 0;
+            } catch (HttpException $e) {
+                $skipped[] = ['id' => $user->id, 'name' => $user->name, 'reason' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "تم تحديث {$changed} حساب".($skipped ? '، وتُخطّي '.count($skipped) : ''),
+            'data' => ['changed' => $changed, 'skipped' => $skipped],
         ]);
     }
 
