@@ -11,12 +11,8 @@ class EnsureCanManageOrders
     /**
      * Restricts order-management endpoints to admin/manager/employee roles.
      *
-     * Deliberately checks the role name directly (User::hasRole) rather than
-     * the generic permission system (Role::hasPermission), which is broken in
-     * production — its pivot table `permission_role` does not exist against
-     * the live schema (Spatie-style `role_has_permissions`/`model_has_roles`
-     * tables exist instead, but spatie/laravel-permission isn't installed and
-     * the User model doesn't use its HasRoles trait).
+     * Checks role names (Spatie roles, any the user holds) rather than a
+     * permission, matching how the rest of the API is gated today.
      */
     public function handle(Request $request, Closure $next): Response
     {

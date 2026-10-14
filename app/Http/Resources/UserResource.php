@@ -29,6 +29,15 @@ class UserResource extends JsonResource
                 'name' => $this->role->name,
                 'display_name' => $this->role->display_name,
             ] : null,
+            // Every role held (the primary one above is among them) and the
+            // effective permission names — what the SPA's can() checks.
+            'roles' => $this->roles->map(fn ($role) => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'display_name' => $role->display_name,
+                'color' => $role->color,
+            ])->values(),
+            'permissions' => $this->effectivePermissionNames(),
             // The ERP modules this account may open. Drives the sidebar, the
             // router guard and the Features Management screen.
             'features' => \App\Models\Feature::accessibleKeysFor($this->resource),

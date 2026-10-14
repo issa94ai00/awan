@@ -28,6 +28,25 @@ export const useAuthStore = defineStore('auth', () => {
         return features.value.includes(key);
     }
 
+    // Effective permission names (spatie/laravel-permission), from every
+    // role held plus direct grants. Super admins may do anything, matching
+    // the server's Gate.
+    const permissions = computed(() => user.value?.permissions || []);
+    const roleNames = computed(() => (user.value?.roles || []).map((role) => role.name));
+
+    // can('roles.edit') or can(['roles.edit', 'permissions.assign']) — any one.
+    function can(permission) {
+        if (!permission) return true;
+        if (isSuperAdmin.value) return true;
+        const wanted = Array.isArray(permission) ? permission : String(permission).split('|');
+        return wanted.some((name) => permissions.value.includes(name));
+    }
+
+    function hasRole(name) {
+        const wanted = Array.isArray(name) ? name : [name];
+        return wanted.some((role) => roleNames.value.includes(role));
+    }
+
     async function init() {
         if (!token.value) return;
         try {
@@ -111,6 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
     return {
         user, token, loading, error, isAuthenticated,
         features, isSuperAdmin, isMaster, canAccessFeature,
+        permissions, roleNames, can, hasRole,
         init, fetchUser, refreshUser, login, logout,
     };
 });

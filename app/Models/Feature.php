@@ -33,7 +33,7 @@ class Feature extends Model
 
     /**
      * The feature keys the given user may open. Super admins get every enabled
-     * feature; everyone else gets the enabled features their role is granted.
+     * feature; everyone else gets the enabled features any of their roles is granted.
      *
      * @return array<int, string>
      */
@@ -49,12 +49,13 @@ class Feature extends Model
             return array_values($enabled);
         }
 
-        if (! $user->role_id) {
+        $roleIds = $user->roleIds();
+        if (! $roleIds) {
             return [];
         }
 
         return static::where('is_enabled', true)
-            ->whereHas('roles', fn ($query) => $query->where('roles.id', $user->role_id))
+            ->whereHas('roles', fn ($query) => $query->whereIn('roles.id', $roleIds))
             ->pluck('key')
             ->all();
     }
@@ -78,7 +79,7 @@ class Feature extends Model
             return true;
         }
 
-        return $feature->roles()->where('roles.id', $user->role_id)->exists();
+        return $feature->roles()->whereIn('roles.id', $user->roleIds())->exists();
     }
 
     /**
@@ -169,6 +170,7 @@ class Feature extends Model
             'admin/features' => 'system',
             'admin/roles' => 'system',
             'admin/permissions' => 'system',
+            'admin/access' => 'system',
             'settings' => 'system',
             // Currency management carries role:accountant on the API, so it
             // belongs to accounting or accountants would lose it.
@@ -211,7 +213,7 @@ class Feature extends Model
             'pos' => ['/admin/pos'],
             'inquiries' => ['/admin/inquiries'],
             'visitors' => ['/admin/visitors'],
-            'system' => ['/admin/roles', '/admin/permissions', '/admin/features', '/admin/settings'],
+            'system' => ['/admin/roles', '/admin/permissions', '/admin/users', '/admin/features', '/admin/settings'],
         ];
 
         return $map[$key] ?? [];

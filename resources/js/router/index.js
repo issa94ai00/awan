@@ -485,12 +485,20 @@ const routes = [
             {
                 path: 'roles',
                 name: 'admin.roles.index',
-                component: () => import('@/views/admin/roles/Index.vue')
+                component: () => import('@/views/admin/roles/Index.vue'),
+                meta: { permission: 'roles.view' }
             },
             {
                 path: 'permissions',
                 name: 'admin.permissions.index',
-                component: () => import('@/views/admin/permissions/Index.vue')
+                component: () => import('@/views/admin/permissions/Index.vue'),
+                meta: { permission: ['permissions.view', 'roles.view'] }
+            },
+            {
+                path: 'users',
+                name: 'admin.users.index',
+                component: () => import('@/views/admin/users/Index.vue'),
+                meta: { permission: 'users.view' }
             },
             // Features Management (إدارة الميزات)
             {
@@ -765,7 +773,9 @@ const router = createRouter({
 // Whether the signed-in account may open an admin page. The feature that
 // guards the page is looked up from the path; a path that belongs to no module
 // (the dashboard, the profile screens) is always allowed.
-const canAccessAdminPath = (auth, path) => auth.canAccessFeature(featureForPath(path));
+// Routes with `meta.permission` also need that permission (any one of a list).
+const canAccessAdminPath = (auth, to) => auth.canAccessFeature(featureForPath(to.path))
+    && to.matched.every(record => !record.meta?.permission || auth.can(record.meta.permission));
 
 // Navigation guard for authentication
 router.beforeEach((to, from) => {
@@ -785,14 +795,14 @@ router.beforeEach((to, from) => {
             if (!auth.isAuthenticated) {
                 return { path: '/login', query: { redirect: to.fullPath } };
             }
-            if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to.path)) {
+            if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to)) {
                 return { path: '/admin/dashboard' };
             }
             return true;
         }).catch(() => ({ path: '/login', query: { redirect: to.fullPath } }));
     }
 
-    if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to.path)) {
+    if (to.path.startsWith('/admin/') && !canAccessAdminPath(auth, to)) {
         return { path: '/admin/dashboard' };
     }
 

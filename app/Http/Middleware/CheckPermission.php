@@ -6,31 +6,44 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * `permission:products.edit` or `permission:roles.view|roles.edit` (any one).
+ *
+ * Resolves through User::hasPermission, so super admins pass and inactive
+ * roles or permissions grant nothing. API requests get JSON 401/403.
+ */
 class CheckPermission
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  Closure(Request): (Response)  $next
-     */
-    public function handle(Request $request, Closure $next, string $permission): Response
+    public function handle(Request $request, Closure $next, string ...$permissions): Response
     {
-        if (!auth()->check()) {
-            return redirect()->route('login')->with('error', 'يجب تسجيل الدخول أولاً');
+        $user = $request->user();
+        $names = collect($permissions)
+            ->flatMap(fn (string $p) => explode('|', $p))
+            ->map(fn (string $p) => trim($p))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (! $user) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['success' => false, 'message' => 'يجب تسجيل الدخول أولاً'], 401);
+            }
+
+            return redirect()->guest(route('login'));
         }
 
-        $user = auth()->user();
-
-        // Admin users have all permissions
-        if ($user->isAdmin()) {
+        if ($user->hasAnyPermissionNamed($names)) {
             return $next($request);
         }
 
-        // Check if user has the required permission
-        if (!$user->hasPermission($permission)) {
-            abort(403, 'ليس لديك صلاحية للوصول إلى هذه الصفحة');
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'ليس لديك صلاحية لتنفيذ هذا الإجراء',
+                'required_permissions' => $names,
+            ], 403);
         }
 
-        return $next($request);
+        abort(403, 'ليس لديك صلاحية للوصول إلى هذه الصفحة');
     }
 }

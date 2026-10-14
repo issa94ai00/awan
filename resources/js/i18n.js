@@ -1,4 +1,8 @@
 import { createI18n } from 'vue-i18n';
+import accessMessages from './locales/access';
+import accessRolesMessages from './locales/access-roles';
+import accessPermissionsMessages from './locales/access-permissions';
+import accessUsersMessages from './locales/access-users';
 
 const messages = {
     en: {
@@ -12992,6 +12996,12 @@ const messages = {
         fm_key_copied: 'تم نسخ رمز الميزة إلى الحافظة',
     }
 };
+
+// The access-control screens keep their strings in ./locales.
+for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages]) {
+    Object.assign(messages.en, bundle.en);
+    Object.assign(messages.ar, bundle.ar);
+}
 
 // An explicit choice already saved (the admin language switcher, or the
 // public one) has to outlive the next page load. Reading systemData.locale

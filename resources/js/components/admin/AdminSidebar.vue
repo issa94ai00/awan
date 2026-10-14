@@ -436,8 +436,9 @@ const menu = [
                 key: 'system', labelKey: 'system', icon: Setting,
                 children: [
                     { labelKey: 'features', path: '/admin/features' },
-                    { labelKey: 'roles', path: '/admin/roles' },
-                    { labelKey: 'permissions', path: '/admin/permissions' },
+                    { labelKey: 'ac_nav_users', path: '/admin/users', permission: 'users.view' },
+                    { labelKey: 'roles', path: '/admin/roles', permission: 'roles.view' },
+                    { labelKey: 'permissions', path: '/admin/permissions', permission: ['permissions.view', 'roles.view'] },
                     { labelKey: 'currencies', path: '/admin/currencies' },
                 ],
             },
@@ -536,13 +537,20 @@ watch(() => props.collapsed, (newVal) => {
 // group keys are exactly the feature keys.
 const canAccessGroup = (group) => authStore.canAccessFeature(group);
 
+// Pages with a `permission` (any one of a list) need it as well.
+const canSeeChild = (child) => !child.permission || authStore.can(child.permission);
+
 // Every entry is gated by its feature key — collapsible groups by the group
 // key, plain entries (POS, inquiries, visitors) by their own key. Sections
 // left with no visible entry drop their label too.
 const visibleMenu = computed(() => menu
     .map((section) => ({
         ...section,
-        items: section.items.filter((entry) => canAccessGroup(entry.key)),
+        items: section.items
+            .filter((entry) => canAccessGroup(entry.key))
+            .map((entry) => (entry.children
+                ? { ...entry, children: entry.children.filter(canSeeChild) }
+                : entry)),
     }))
     .filter((section) => section.items.length > 0));
 
@@ -558,7 +566,7 @@ const filteredNavItems = computed(() => {
     }
 
     return navIndex.filter((item) => {
-        if (!canAccessGroup(item.group || item.key)) {
+        if (!canAccessGroup(item.group || item.key) || !canSeeChild(item)) {
             return false;
         }
         const groupLabel = item.groupLabelKey ? t(item.groupLabelKey) : '';

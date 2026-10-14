@@ -9,7 +9,8 @@ use Symfony\Component\HttpFoundation\Response;
 class RequireRole
 {
     /**
-     * Handle an incoming request.
+     * `role:accountant` or `role:sells,manager` (any one). Super admins pass.
+     * Resolves against every Spatie role the user holds, not just `role_id`.
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {

@@ -67,6 +67,9 @@ use App\Http\Controllers\Api\RmaController;
 use App\Http\Controllers\Api\UnpricedStockController;
 use App\Http\Controllers\Api\WmsController;
 use App\Http\Controllers\Api\FeatureController;
+use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\UserAccessController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
@@ -680,6 +683,33 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/{feature}', [FeatureController::class, 'update'])->name('api.admin.features.update');
             Route::put('/{feature}/roles', [FeatureController::class, 'updateRoles'])->name('api.admin.features.roles');
             Route::post('/{feature}/roles/toggle', [FeatureController::class, 'toggleRole'])->name('api.admin.features.roles.toggle');
+        });
+
+        // Access control (الأدوار والصلاحيات والمستخدمون), on spatie/laravel-permission.
+        //
+        // Each action carries its own permission, so a role can be allowed to
+        // look without being allowed to change. Super admins pass every gate;
+        // AccessControlService stops anyone else granting more than they hold.
+        Route::prefix('admin/access')->group(function () {
+            // The list is also what the users screen picks roles from.
+            Route::get('/roles', [RoleController::class, 'index'])->middleware('permission:roles.view|users.view|users.assign_roles')->name('api.admin.access.roles.index');
+            Route::post('/roles', [RoleController::class, 'store'])->middleware('permission:roles.create')->name('api.admin.access.roles.store');
+            Route::get('/roles/{role}', [RoleController::class, 'show'])->middleware('permission:roles.view')->name('api.admin.access.roles.show');
+            Route::put('/roles/{role}', [RoleController::class, 'update'])->middleware('permission:roles.edit')->name('api.admin.access.roles.update');
+            Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->middleware('permission:roles.delete')->name('api.admin.access.roles.destroy');
+            Route::put('/roles/{role}/permissions', [RoleController::class, 'syncPermissions'])->middleware('permission:roles.edit|permissions.assign')->name('api.admin.access.roles.permissions');
+            Route::post('/roles/{role}/permissions/toggle', [RoleController::class, 'togglePermissions'])->middleware('permission:roles.edit|permissions.assign')->name('api.admin.access.roles.permissions.toggle');
+            Route::post('/roles/{role}/duplicate', [RoleController::class, 'duplicate'])->middleware('permission:roles.create')->name('api.admin.access.roles.duplicate');
+
+            Route::get('/permissions', [PermissionController::class, 'index'])->middleware('permission:permissions.view|roles.view')->name('api.admin.access.permissions.index');
+            Route::post('/permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.store');
+            Route::put('/permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.update');
+            Route::delete('/permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.manage')->name('api.admin.access.permissions.destroy');
+
+            Route::get('/users', [UserAccessController::class, 'index'])->middleware('permission:users.view')->name('api.admin.access.users.index');
+            Route::post('/users', [UserAccessController::class, 'store'])->middleware('permission:users.create')->name('api.admin.access.users.store');
+            Route::get('/users/{user}', [UserAccessController::class, 'show'])->middleware('permission:users.view')->name('api.admin.access.users.show');
+            Route::put('/users/{user}/access', [UserAccessController::class, 'update'])->middleware('permission:users.assign_roles')->name('api.admin.access.users.update');
         });
 
         // User Inquiries

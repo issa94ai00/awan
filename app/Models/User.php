@@ -7,11 +7,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens, HasRoles;
+
+    /**
+     * Roles and permissions all live on the `web` guard; the Sanctum guard
+     * authenticates the same users and must resolve the same grants.
+     */
+    protected string $guard_name = 'web';
 
     /**
      * The attributes that are mass assignable.
@@ -51,43 +58,109 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Keeps `role_id` — the primary role — inside the user's Spatie roles.
+     * Changing it swaps the old primary out and the new one in; other roles
+     * the user holds are left alone.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (User $user) {
+            if (! $user->wasRecentlyCreated && ! $user->wasChanged('role_id')) {
+                return;
+            }
+
+            $old = $user->wasRecentlyCreated ? null : $user->getOriginal('role_id');
+            if ($old && (int) $old !== (int) $user->role_id) {
+                $user->roles()->detach($old);
+            }
+            if ($user->role_id) {
+                $user->roles()->syncWithoutDetaching([$user->role_id]);
+            }
+
+            $user->unsetRelation('roles');
+        });
+    }
+
+    /** The primary role: the one shown on the user's badge. */
     public function role()
     {
         return $this->belongsTo(Role::class);
     }
 
-    public function roles()
-    {
-        return $this->belongsToMany(Role::class, 'role_user');
-    }
-
-    public function permissions()
-    {
-        return $this->role ? $this->role->permissions : collect();
-    }
-
+    /**
+     * Whether the user may do what the permission names. Super admins may do
+     * anything. Otherwise the permission has to be active and come from an
+     * active role the user holds or from a direct grant. An unknown name is a
+     * plain no rather than an exception.
+     */
     public function hasPermission(string $permissionName): bool
     {
-        if ($this->is_admin || $this->isMaster()) {
+        if ($this->isSuperAdmin()) {
             return true;
         }
 
-        return $this->role && $this->role->hasPermission($permissionName);
+        return in_array($permissionName, $this->effectivePermissionNames(), true);
     }
 
-    public function hasRole(string $roleName): bool
+    /** @param  array<int, string>  $permissionNames */
+    public function hasAnyPermissionNamed(array $permissionNames): bool
     {
-        if ($this->is_admin || $this->isMaster()) {
-            return true;
+        foreach ($permissionNames as $name) {
+            if ($this->hasPermission($name)) {
+                return true;
+            }
         }
 
-        return $this->role && $this->role->name === $roleName;
+        return false;
+    }
+
+    /**
+     * Names of every active permission the user holds, through active roles
+     * or directly. Super admins hold the whole active catalogue.
+     *
+     * @return array<int, string>
+     */
+    public function effectivePermissionNames(): array
+    {
+        if ($this->isSuperAdmin()) {
+            return Permission::where('is_active', true)->orderBy('name')->pluck('name')->all();
+        }
+
+        $this->loadMissing(['roles.permissions', 'permissions']);
+
+        return $this->roles
+            ->where('is_active', true)
+            ->flatMap(fn (Role $role) => $role->permissions)
+            ->concat($this->permissions)
+            ->where('is_active', true)
+            ->pluck('name')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Ids of the roles the user holds. Falls back to `role_id` in case the
+     * pivot has not caught up (rows written straight to the table).
+     *
+     * @return array<int, int>
+     */
+    public function roleIds(): array
+    {
+        return $this->roles->pluck('id')
+            ->push($this->role_id)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function isAdmin(): bool
     {
-        return $this->is_admin
-            || ($this->role && in_array($this->role->name, ['admin', 'master'], true));
+        return $this->isSuperAdmin();
     }
 
     /**
@@ -96,13 +169,28 @@ class User extends Authenticatable
      */
     public function isSuperAdmin(): bool
     {
-        return $this->is_admin
-            || ($this->role && in_array($this->role->name, ['admin', 'master'], true));
+        return (bool) $this->is_admin || $this->holdsRoleNamed(Role::SUPER_ROLES);
     }
 
     public function isMaster(): bool
     {
-        return $this->role && $this->role->name === 'master';
+        return $this->holdsRoleNamed(['master']);
+    }
+
+    /** Holds master or admin as a role (as opposed to the `is_admin` flag). */
+    public function holdsSuperRole(): bool
+    {
+        return $this->holdsRoleNamed(Role::SUPER_ROLES);
+    }
+
+    /** @param  array<int, string>  $names */
+    private function holdsRoleNamed(array $names): bool
+    {
+        if ($this->roles->whereIn('name', $names)->isNotEmpty()) {
+            return true;
+        }
+
+        return $this->role_id && $this->role && in_array($this->role->name, $names, true);
     }
 
     public function inquiries(): \Illuminate\Database\Eloquent\Relations\HasMany

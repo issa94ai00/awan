@@ -24,7 +24,7 @@ const FEATURE_PATHS = [
     ['pos', ['/admin/pos']],
     ['inquiries', ['/admin/inquiries']],
     ['visitors', ['/admin/visitors']],
-    ['system', ['/admin/roles', '/admin/permissions', '/admin/currencies', '/admin/features']],
+    ['system', ['/admin/roles', '/admin/permissions', '/admin/users', '/admin/currencies', '/admin/features']],
 ];
 
 /**

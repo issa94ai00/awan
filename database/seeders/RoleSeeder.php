@@ -3,16 +3,35 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use App\Models\Permission;
+use App\Models\Role;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\PermissionRegistrar;
 
 class RoleSeeder extends Seeder
 {
+    private const COLORS = [
+        'master' => '#7c3aed',
+        'admin' => '#dc2626',
+        'manager' => '#2563eb',
+        'employee' => '#0891b2',
+        'sells' => '#16a34a',
+        'accountant' => '#d97706',
+        'marketer' => '#db2777',
+    ];
+
     /**
      * Run the database seeds.
      */
     public function run(): void
     {
         $roles = [
+            [
+                'name' => 'master',
+                'display_name' => 'مدير رئيسي',
+                'description' => 'صلاحيات كاملة وغير قابلة للتقييد على النظام',
+                'is_active' => true,
+            ],
             [
                 'name' => 'admin',
                 'display_name' => 'مدير النظام',
@@ -58,6 +77,9 @@ class RoleSeeder extends Seeder
                     'display_name' => $role['display_name'],
                     'description' => $role['description'],
                     'is_active' => $role['is_active'],
+                    'guard_name' => 'web',
+                    'is_system' => true,
+                    'color' => self::COLORS[$role['name']] ?? null,
                     'updated_at' => now(),
                     'created_at' => now(),
                 ]
@@ -88,6 +110,8 @@ class RoleSeeder extends Seeder
             ['name' => 'roles.delete', 'display_name' => 'حذف دور', 'module' => 'roles'],
             ['name' => 'permissions.view', 'display_name' => 'عرض الصلاحيات', 'module' => 'permissions'],
             ['name' => 'permissions.assign', 'display_name' => 'تعيين صلاحيات', 'module' => 'permissions'],
+            ['name' => 'permissions.manage', 'display_name' => 'إدارة كتالوج الصلاحيات', 'module' => 'permissions'],
+            ['name' => 'users.assign_roles', 'display_name' => 'تعيين أدوار المستخدمين', 'module' => 'users'],
             ['name' => 'reports.view', 'display_name' => 'عرض التقارير', 'module' => 'reports'],
             ['name' => 'sales.view', 'display_name' => 'عرض المبيعات', 'module' => 'sales'],
             ['name' => 'sales.create', 'display_name' => 'إنشاء مبيعات', 'module' => 'sales'],
@@ -107,15 +131,19 @@ class RoleSeeder extends Seeder
                 [
                     'display_name' => $permission['display_name'],
                     'module' => $permission['module'],
+                    'guard_name' => 'web',
                     'is_active' => true,
+                    'is_system' => true,
                     'updated_at' => now(),
                     'created_at' => now(),
                 ]
             );
         }
 
+        $all = Permission::pluck('name')->all();
         $rolePermissions = [
-            'admin' => DB::table('permissions')->pluck('id')->all(),
+            'master' => $all,
+            'admin' => $all,
             'manager' => ['dashboard.view', 'products.view', 'products.create', 'products.edit', 'sales.view', 'sales.create', 'inventory.view', 'inventory.manage', 'reports.view'],
             'employee' => ['dashboard.view', 'sales.view'],
             'sells' => ['dashboard.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view', 'reports.view'],
@@ -123,21 +151,13 @@ class RoleSeeder extends Seeder
             'marketer' => ['dashboard.view', 'products.view', 'marketing.view', 'marketing.campaigns', 'sales.view', 'reports.view'],
         ];
 
+        // Rows were written straight to the tables above, behind Spatie's back.
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
         foreach ($rolePermissions as $roleName => $permissionNames) {
-            $roleId = DB::table('roles')->where('name', $roleName)->value('id');
-
-            if (! $roleId) {
-                continue;
-            }
-
-            $ids = is_array($permissionNames) ? DB::table('permissions')->whereIn('name', $permissionNames)->pluck('id')->all() : $permissionNames;
-
-            foreach ($ids as $permissionId) {
-                DB::table('permission_role')->updateOrInsert(
-                    ['role_id' => $roleId, 'permission_id' => $permissionId],
-                    ['updated_at' => now(), 'created_at' => now()]
-                );
-            }
+            // Additive, like the old seeder: a re-run never strips a grant
+            // someone made from the dashboard.
+            Role::where('name', $roleName)->first()?->givePermissionTo($permissionNames);
         }
     }
 }
