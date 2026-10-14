@@ -675,9 +675,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/currencies/{currency}/base', [CurrencyController::class, 'setBase'])->name('api.admin.currencies.base');
         });
 
-        // Features Management (إدارة الميزات) — master / admin only. Decides
-        // which ERP modules are switched on and which roles may reach them.
-        Route::prefix('admin/features')->middleware('role:admin')->group(function () {
+        // Features Management (إدارة الميزات) — master only. Decides which
+        // ERP modules are switched on and which roles may reach them.
+        Route::prefix('admin/features')->middleware('master')->group(function () {
             Route::get('/', [FeatureController::class, 'index'])->name('api.admin.features.index');
             Route::post('/bulk-toggle', [FeatureController::class, 'bulkToggle'])->name('api.admin.features.bulk-toggle');
             Route::post('/group-toggle', [FeatureController::class, 'toggleGroup'])->name('api.admin.features.group-toggle');

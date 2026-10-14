@@ -10,6 +10,7 @@ use App\Http\Middleware\TrackVisitors;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureCanManageOrders;
 use App\Http\Middleware\EnsureFeatureEnabled;
+use App\Http\Middleware\EnsureMaster;
 use App\Http\Middleware\RequireRole;
 use App\Http\Middleware\SetLocale;
 
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'manage_orders' => EnsureCanManageOrders::class,
             'role' => RequireRole::class,
             'feature' => EnsureFeatureEnabled::class,
+            'master' => EnsureMaster::class,
         ]);
         $middleware->web(append: [
             SetLocale::class,

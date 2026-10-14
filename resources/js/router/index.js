@@ -504,7 +504,8 @@ const routes = [
             {
                 path: 'features',
                 name: 'admin.features.index',
-                component: () => import('@/views/admin/features/Index.vue')
+                component: () => import('@/views/admin/features/Index.vue'),
+                meta: { masterOnly: true }
             },
             // WMS (Warehouse Management System)
             {
@@ -773,8 +774,10 @@ const router = createRouter({
 // Whether the signed-in account may open an admin page. The feature that
 // guards the page is looked up from the path; a path that belongs to no module
 // (the dashboard, the profile screens) is always allowed.
+// Routes marked `masterOnly` (Features Management) are closed to admins too.
 // Routes with `meta.permission` also need that permission (any one of a list).
 const canAccessAdminPath = (auth, to) => auth.canAccessFeature(featureForPath(to.path))
+    && (!to.matched.some(record => record.meta?.masterOnly) || auth.isMaster)
     && to.matched.every(record => !record.meta?.permission || auth.can(record.meta.permission));
 
 // Navigation guard for authentication
