@@ -142,7 +142,7 @@
 
         <!-- Dimension Panels: Employees, Customers, Warehouses -->
         <el-row :gutter="20" class="dimension-panels" :class="{ 'is-refreshing': insights.refreshing }">
-            <el-col v-for="card in dimensionCards" :key="card.key" :xs="24" :md="8">
+            <el-col v-for="card in dimensionCards" :key="card.key" :xs="24" :md="24 / dimensionCards.length">
                 <CollapsibleCard :id="`breakdown-${card.key}`" :title="card.title" :count="card.rows.length || null">
                     <template v-if="card.activeId" #extra>
                         <el-button
@@ -346,6 +346,9 @@ const props = defineProps({
     activeDimensions: { type: Object, default: () => ({}) },
     chartSuggestions: { type: Array, default: () => [] },
     profitability: { type: Object, default: null },
+    // Breakdowns to leave out, e.g. ['employee'] for a sales rep, whose
+    // report only ever holds their own sales.
+    hiddenDimensions: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['select-grouping', 'select-dimension', 'profitability-active']);
@@ -453,7 +456,7 @@ const dimensionCards = computed(() => [
         rows: props.dimensionData?.warehouse_summary || [],
         activeId: props.activeDimensions?.warehouse || null,
     },
-]);
+].filter((card) => !props.hiddenDimensions.includes(card.key)));
 
 const dimensionTotals = computed(() => {
     const totals = {};

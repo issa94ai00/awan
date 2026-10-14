@@ -83,6 +83,38 @@ class Feature extends Model
     }
 
     /**
+     * API paths more than one module reads. The sales and invoice reports
+     * back both the Sales > reports screen and the Reports module, and a
+     * sales rep gets them confined to their own business
+     * (SalesReportController::applyOwnSalesScope).
+     */
+    private const SHARED_PATHS = [
+        'admin/reports/sales' => ['sales', 'reports'],
+        'admin/reports/invoices' => ['sales', 'reports'],
+    ];
+
+    /**
+     * Every feature key that may open an API path — holding any one of them
+     * is enough. Empty for paths that belong to no managed module.
+     *
+     * @return array<int, string>
+     */
+    public static function resolveKeysForPath(string $path): array
+    {
+        $path = trim($path, '/');
+
+        foreach (self::SHARED_PATHS as $prefix => $keys) {
+            if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
+                return $keys;
+            }
+        }
+
+        $key = static::resolveKeyForPath($path);
+
+        return $key === null ? [] : [$key];
+    }
+
+    /**
      * Map a request path (after /api/v1) to the feature that guards it. Returns
      * null for paths that belong to no managed module, which are left open.
      */

@@ -2,9 +2,9 @@
     <div class="reports-page professional-sales">
         <AdminPageHeader
             icon="fas fa-chart-line"
-            badge="CRM"
-            :title="$t('professional_sales_reports')"
-            :subtitle="$t('advanced_sales_filtering_and_analytics')"
+            :badge="isRep ? $t('sr_my_badge') : 'CRM'"
+            :title="isRep ? $t('sr_my_title') : $t('professional_sales_reports')"
+            :subtitle="isRep ? $t('sr_my_subtitle') : $t('advanced_sales_filtering_and_analytics')"
         >
             <template #actions>
                 <el-button :icon="Refresh" :disabled="!activeFilterChips.length" @click="resetFilters">
@@ -18,6 +18,23 @@
                 </el-button>
             </template>
         </AdminPageHeader>
+
+        <!-- A sales rep's report holds their own business only; the server
+             enforces it (SalesReportController::applyOwnSalesScope). This says
+             so up front, so the totals are not mistaken for the company's. -->
+        <div v-if="isRep" class="rep-banner">
+            <div class="rep-avatar">{{ repInitial }}</div>
+            <div class="rep-text">
+                <strong>{{ $t('sr_my_banner_title', { name: auth.user?.name || '' }) }}</strong>
+                <span>{{ $t('sr_my_banner_body') }}</span>
+            </div>
+            <el-tag v-if="auth.user?.role?.display_name" effect="plain" round class="rep-role">
+                <i class="fas fa-id-badge"></i> {{ auth.user.role.display_name }}
+            </el-tag>
+            <el-tag effect="light" type="success" round class="rep-lock">
+                <i class="fas fa-lock"></i> {{ $t('sr_my_private') }}
+            </el-tag>
+        </div>
 
         <!-- Quick Period Presets Bar -->
         <div class="quick-period-bar">
@@ -41,7 +58,7 @@
         </div>
 
         <AdminFilterBar>
-            <div class="filter-field">
+            <div v-if="!isRep" class="filter-field">
                 <label>{{ $t('employee') }}</label>
                 <el-select v-model="filters.employee_id" :placeholder="$t('all_employees')" clearable filterable>
                     <el-option v-for="employee in employees" :key="employee.id" :label="employee.name" :value="employee.id" />
@@ -90,7 +107,7 @@
             </div>
 
             <template #advanced>
-                <div class="filter-field">
+                <div v-if="!isRep" class="filter-field">
                     <label>{{ $t('warehouse') }}</label>
                     <el-select v-model="filters.warehouse_id" :placeholder="$t('all_warehouses')" clearable filterable>
                         <el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id" />
@@ -113,7 +130,7 @@
                             <el-option :label="$t('monthly')" value="month" />
                         </el-option-group>
                         <el-option-group :label="$t('chart_group_breakdown')">
-                            <el-option :label="$t('by_employee')" value="employee" />
+                            <el-option v-if="!isRep" :label="$t('by_employee')" value="employee" />
                             <el-option :label="$t('by_customer')" value="customer" />
                             <el-option :label="$t('by_warehouse')" value="warehouse" />
                             <el-option :label="$t('by_status')" value="status" />
@@ -150,7 +167,7 @@
                     {{ $t('clear_all') }}
                 </el-button>
             </template>
-            <span v-else-if="!awaitingRange" class="active-filters-all">{{ $t('sr_everything') }}</span>
+            <span v-else-if="!awaitingRange" class="active-filters-all">{{ isRep ? $t('sr_my_everything') : $t('sr_everything') }}</span>
             <span v-if="awaitingRange" class="active-filters-hint">{{ $t('sr_pick_range_hint') }}</span>
             <!-- Old figures stay on screen, dimmed, while new ones load; this
                  says so in words rather than leaving the dimming to explain it. -->
@@ -205,6 +222,7 @@
                     dimension-due-key="due_amount"
                     :dimension-due-label="$t('due_amount')"
                     :active-dimensions="activeDimensions"
+                    :hidden-dimensions="isRep ? ['employee'] : []"
                     :chart-suggestions="invoiceChartSuggestions"
                     :profitability="invoiceProductProfitabilityData"
                     @select-grouping="applyGrouping"
@@ -263,7 +281,7 @@
                         <el-table-column :label="$t('customer')">
                             <template #default="{ row }">{{ row.customer ? row.customer.name : '-' }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('employee')">
+                        <el-table-column v-if="!isRep" :label="$t('employee')">
                             <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
                         </el-table-column>
                         <!-- The warehouse breakdown ranks by this and the row was
@@ -391,6 +409,7 @@
                 </CollapsibleCard>
 
                 <TopPerformersTable
+                    v-if="!isRep"
                     :title="$t('top_performing_employees')"
                     :loading="loadingInvoiceTopPerformers"
                     :rows="invoiceTopPerformers"
@@ -435,6 +454,7 @@
                     dimension-count-key="total_orders"
                     :dimension-count-label="$t('count')"
                     :active-dimensions="activeDimensions"
+                    :hidden-dimensions="isRep ? ['employee'] : []"
                     :profitability="productProfitabilityData"
                     @select-dimension="applyDimensionFilter"
                     @profitability-active="ordersProfitSection.setActive"
@@ -471,7 +491,7 @@
                         <el-table-column :label="$t('customer')">
                             <template #default="{ row }">{{ row.customer ? row.customer.name : '-' }}</template>
                         </el-table-column>
-                        <el-table-column :label="$t('employee')">
+                        <el-table-column v-if="!isRep" :label="$t('employee')">
                             <template #default="{ row }">{{ row.assigned_employee ? row.assigned_employee.name : '-' }}</template>
                         </el-table-column>
                         <el-table-column :label="$t('status')" width="115" align="center">
@@ -574,6 +594,7 @@
                 </CollapsibleCard>
 
                 <TopPerformersTable
+                    v-if="!isRep"
                     :title="$t('top_performing_employees')"
                     :loading="loadingTopPerformers"
                     :rows="topPerformers"
@@ -603,10 +624,20 @@ import SalesReportPanel from '@/components/admin/reports/SalesReportPanel.vue';
 import TopPerformersTable from '@/components/admin/reports/TopPerformersTable.vue';
 import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 import { allCollapsed, setAllCollapsed } from '@/utils/collapsedSections';
+import { useAuthStore } from '@/stores/auth';
 
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
+
+/**
+ * A sales rep (User::isSalesScoped) gets "my sales": the server only ever
+ * returns their own invoices and orders, so the employee filter, the
+ * per-employee breakdown and the rankings would only show them themselves.
+ */
+const isRep = computed(() => !!auth.user?.is_sales_scoped);
+const repInitial = computed(() => (auth.user?.name || '?').trim().charAt(0).toUpperCase());
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 
@@ -746,6 +777,13 @@ const filtersFromQuery = (query) => {
         if (isIsoDate(query.to)) next.end_date = query.to;
     }
     if (GROUPINGS.includes(query.group)) next.group_by = query.group;
+    // A shared admin link may name an employee or warehouse; a rep's report
+    // is theirs whatever it says.
+    if (isRep.value) {
+        next.employee_id = null;
+        next.warehouse_id = null;
+        if (next.group_by === 'employee') next.group_by = 'day';
+    }
     return next;
 };
 
@@ -1117,7 +1155,14 @@ const invoiceStatCards = computed(() => [
     { key: 'paid_amount', label: t('paid_amount'), value: invoiceSummary.value.paid_amount || 0, icon: Wallet, format: 'currency', color: 'teal' },
     { key: 'due_amount', label: t('due_amount'), value: invoiceSummary.value.due_amount || 0, icon: Warning, format: 'currency', color: 'danger' },
     { key: 'average_invoice_value', label: t('average_invoice_value'), value: invoiceSummary.value.average_invoice_value || 0, icon: TrendCharts, format: 'currency', color: 'purple' },
+    // What a rep is usually chased on: how much of what they sold has come in.
+    ...(isRep.value ? [{ key: 'collection_rate', label: t('sr_collection_rate'), value: collectionRate.value, icon: PieChart, format: 'percent', color: 'indigo' }] : []),
 ]);
+
+const collectionRate = computed(() => {
+    const invoiced = Number(invoiceSummary.value.total_invoiced || 0);
+    return invoiced > 0 ? Math.round((Number(invoiceSummary.value.paid_amount || 0) / invoiced) * 1000) / 10 : 0;
+});
 
 const invoiceTrendChart = ref({ rows: [], group_by: 'day' });
 const invoicesChartLoading = ref(false);
@@ -1470,7 +1515,7 @@ const exportActiveTab = async () => {
         const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8;' }));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `${isInvoices ? 'invoice' : 'sales'}-report-${toApiDate(new Date())}.csv`);
+        link.setAttribute('download', `${isRep.value ? 'my-' : ''}${isInvoices ? 'invoice' : 'sales'}-report-${toApiDate(new Date())}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1504,9 +1549,12 @@ const getStatusType = (status) => STATUS_TAG_TYPES[status] || 'info';
 const getStatusText = (status) => t(`sales_status_${status}`);
 
 onMounted(() => {
-    loadEmployees();
+    // Reps have neither filter, and the lookups behind them are not theirs to read.
+    if (!isRep.value) {
+        loadEmployees();
+        loadWarehouses();
+    }
     loadCustomers();
-    loadWarehouses();
     // Whichever tab is actually on screen, not always the orders one: the
     // watcher above only fires on a *change*, so loading the wrong tab here
     // would leave the visible one empty until you clicked away and back.
@@ -1518,6 +1566,55 @@ onMounted(() => {
 <style scoped>
 .reports-page {
     padding: 0;
+}
+
+/* A sales rep's own-report banner */
+.rep-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 70%);
+}
+
+.rep-avatar {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.rep-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+.rep-text strong {
+    color: #14532d;
+    font-size: 1rem;
+}
+
+.rep-text span {
+    color: #475569;
+    font-size: 0.85rem;
+}
+
+.rep-role i,
+.rep-lock i {
+    margin-inline-end: 4px;
 }
 
 /* Quick Period Bar */

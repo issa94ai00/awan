@@ -38,6 +38,7 @@ class SalesReportController extends Controller
             ->withSum('invoices as invoiced_total', 'total')
             ->withCount('invoices as invoices_count');
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -206,6 +207,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query();
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -273,6 +275,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query();
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -317,6 +320,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query();
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -454,6 +458,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query()->with(['items.product', 'items.allocations.warehouse', 'fulfillmentWarehouse']);
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -616,6 +621,7 @@ class SalesReportController extends Controller
         }
 
         $this->applyInventoryDateFilters($query, $request);
+        $this->applyOwnWarehouseScope($query, $request);
 
         // Without toBase()->select([]) this kept the base query's
         // `warehouse_inventory.*` beside a GROUP BY, which MySQL's
@@ -727,6 +733,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query();
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
@@ -878,6 +885,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query();
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         foreach (['customer_id' => 'customer_id', 'warehouse_id' => 'warehouse_id', 'employee_id' => 'assigned_employee_id'] as $param => $column) {
             if ($request->filled($param)) {
@@ -982,6 +990,7 @@ class SalesReportController extends Controller
         // instead of the two documents only being joinable in a spreadsheet.
         $query = Invoice::with(['customer', 'assignedEmployee', 'warehouse', 'salesOrder:id,order_number']);
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('assigned_employee_id', $request->employee_id);
@@ -1164,6 +1173,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query();
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('assigned_employee_id', $request->employee_id);
@@ -1285,6 +1295,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query()->with(['items.product', 'items.warehouse', 'warehouse']);
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('assigned_employee_id', $request->employee_id);
@@ -1407,6 +1418,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query()->whereNotNull('assigned_employee_id');
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('assigned_employee_id', $request->employee_id);
@@ -1458,6 +1470,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query()->whereNotNull('assigned_employee_id');
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -1511,6 +1524,7 @@ class SalesReportController extends Controller
 
         $query = SalesOrder::query()->with(['customer', 'assignedEmployee']);
         $this->applyDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         if ($request->filled('employee_id')) {
             $query->where('sales_orders.assigned_employee_id', $request->employee_id);
@@ -1584,6 +1598,7 @@ class SalesReportController extends Controller
 
         $query = WarehouseInventory::query()->with(['product', 'warehouse']);
         $this->applyInventoryDateFilters($query, $request);
+        $this->applyOwnWarehouseScope($query, $request);
 
         if ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
@@ -1635,6 +1650,7 @@ class SalesReportController extends Controller
 
         $query = Invoice::query()->with(['customer', 'warehouse']);
         $this->applyInvoiceDateFilters($query, $request);
+        $this->applyOwnSalesScope($query, $request);
 
         // employee_id was validated and then never applied, so exporting while
         // filtered to one rep silently handed back the whole team's invoices —
@@ -1698,6 +1714,46 @@ class SalesReportController extends Controller
             'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="invoice-report.csv"',
         ]);
+    }
+
+    /**
+     * A sales rep sees their own business only: the orders and invoices
+     * assigned to them or raised by them — the same rule the invoice and order
+     * lists apply. Orders are further held to their warehouse, as on the
+     * orders list. Whatever employee filter they send cannot widen it.
+     * Super admins and managers are unconfined (User::isSalesScoped).
+     */
+    private function applyOwnSalesScope($query, Request $request): void
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSalesScoped()) {
+            return;
+        }
+
+        $table = $query->getModel()->getTable();
+        $employeeId = $user->employee?->id;
+
+        $query->where(function ($q) use ($table, $employeeId, $user) {
+            $q->where("{$table}.created_by", $user->id);
+            if ($employeeId) {
+                $q->orWhere("{$table}.assigned_employee_id", $employeeId);
+            }
+        });
+
+        if ($table === 'sales_orders' && ($warehouseId = $user->scopedWarehouseId())) {
+            $query->where('sales_orders.fulfillment_warehouse_id', $warehouseId);
+        }
+    }
+
+    /** A sales rep's stock reports cover their own warehouse only. */
+    private function applyOwnWarehouseScope($query, Request $request): void
+    {
+        $user = $request->user();
+        if (! $user || ! $user->isSalesScoped()) {
+            return;
+        }
+
+        $query->where('warehouse_inventory.warehouse_id', $user->scopedWarehouseId() ?? -1);
     }
 
     private function applyDateFilters($query, Request $request): void

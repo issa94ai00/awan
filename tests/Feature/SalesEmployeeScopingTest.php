@@ -209,3 +209,40 @@ test('super admin sees all warehouses in inventory summary', function () {
     expect($whIds)->toContain($this->wh1->id)
         ->toContain($this->wh2->id);
 });
+
+// ------------------------------------------------------------ sales reports
+
+test('sales rep reports cover only their own invoices, whatever employee they ask for', function () {
+    $token1 = $this->rep1User->createToken('token')->plainTextToken;
+    $as = fn () => $this->withHeader('Authorization', "Bearer {$token1}");
+
+    $numbers = collect($as()->getJson('/api/v1/admin/reports/invoices')->assertOk()->json('data.invoices'))
+        ->pluck('invoice_number')->all();
+    expect($numbers)->toBe(['INV-TEST-001']);
+
+    // Asking for the other rep's sales does not widen the scope.
+    $asked = $as()->getJson("/api/v1/admin/reports/invoices?employee_id={$this->rep2Employee->id}")->assertOk();
+    expect($asked->json('data.invoices'))->toBe([]);
+
+    $performance = $as()->getJson('/api/v1/admin/reports/invoices/performance')->assertOk();
+    expect((int) $performance->json('data.summary.total_invoices'))->toBe(1)
+        ->and(collect($performance->json('data.employee_summary'))->pluck('employee_id')->all())->toBe([$this->rep1Employee->id]);
+
+    $top = $as()->getJson('/api/v1/admin/reports/invoices/top-performers')->assertOk();
+    expect(collect($top->json('data'))->pluck('employee_id')->all())->toBe([$this->rep1Employee->id]);
+});
+
+test('admin sales reports still cover every rep', function () {
+    $adminToken = $this->adminUser->createToken('token')->plainTextToken;
+
+    $numbers = collect($this->withHeader('Authorization', "Bearer {$adminToken}")
+        ->getJson('/api/v1/admin/reports/invoices')->assertOk()->json('data.invoices'))
+        ->pluck('invoice_number')->sort()->values()->all();
+
+    expect($numbers)->toBe(['INV-TEST-001', 'INV-TEST-002']);
+});
+
+test('the signed-in user payload says whether reports are confined', function () {
+    $this->actingAs($this->rep1User)->getJson('/api/v1/auth/user')->assertOk()->assertJsonPath('data.user.is_sales_scoped', true);
+    $this->actingAs($this->adminUser)->getJson('/api/v1/auth/user')->assertOk()->assertJsonPath('data.user.is_sales_scoped', false);
+});

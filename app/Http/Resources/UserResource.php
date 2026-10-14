@@ -24,6 +24,8 @@ class UserResource extends JsonResource
             'is_admin' => (bool) $this->is_admin,
             'is_master' => $this->isMaster(),
             'is_super_admin' => $this->isSuperAdmin(),
+            // Sales reps see only their own sales (User::isSalesScoped).
+            'is_sales_scoped' => $this->isSalesScoped(),
             'role' => $this->role ? [
                 'id' => $this->role->id,
                 'name' => $this->role->name,
