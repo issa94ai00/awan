@@ -18,11 +18,13 @@ export const useAuthStore = defineStore('auth', () => {
     const isSuperAdmin = computed(() => !!user.value?.is_super_admin);
     const isMaster = computed(() => !!user.value?.is_master);
 
-    // Whether the signed-in role may open a feature. An unknown key (or the
-    // core dashboard) is always allowed so new screens never disappear.
+    // Whether the signed-in role may open a feature. A missing key (a screen
+    // no module guards) is always allowed so new screens never disappear.
+    // Super admins are not short-circuited: the API already hands them every
+    // *enabled* feature, so a module switched off on the Features Management
+    // screen disappears for them too.
     function canAccessFeature(key) {
         if (!key) return true;
-        if (isSuperAdmin.value) return true;
         return features.value.includes(key);
     }
 
@@ -61,6 +63,21 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
+    // Re-reads the signed-in user (role, feature list) in the background.
+    // Unlike fetchUser, a failed request keeps the session as it is, so a
+    // network blip never logs anyone out.
+    async function refreshUser() {
+        if (!token.value) return null;
+        try {
+            const res = await authApi.fetchUser();
+            const fresh = res.data?.data?.user || res.data?.user || null;
+            if (fresh) user.value = fresh;
+        } catch {
+            // Keep the current user; the next full fetch will sort it out.
+        }
+        return user.value;
+    }
+
     async function login(credentials) {
         loading.value = true;
         error.value = null;
@@ -94,7 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
     return {
         user, token, loading, error, isAuthenticated,
         features, isSuperAdmin, isMaster, canAccessFeature,
-        init, fetchUser, login, logout,
+        init, fetchUser, refreshUser, login, logout,
     };
 });
 

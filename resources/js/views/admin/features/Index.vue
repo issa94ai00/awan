@@ -875,6 +875,7 @@ import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { matchesSearch } from '@/utils/search';
 import { featuresApi } from '@/api/features';
+import { useAuthStore } from '@/stores/auth';
 import {
     Refresh, Search, Grid, CircleCheck, CircleClose, Collection, Key,
     Odometer, Box, ShoppingCart, Refresh as RmaIcon, ShoppingBag, Coin,
@@ -884,6 +885,11 @@ import {
 } from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
+const authStore = useAuthStore();
+
+// The sidebar, router guard and dashboard read the signed-in user's feature
+// list, so pull it again after every change to apply it without a reload.
+const refreshMyFeatures = () => authStore.refreshUser();
 
 const ICONS = {
     Odometer, Box, ShoppingCart, Refresh: RmaIcon, ShoppingBag, Coin,
@@ -1067,6 +1073,7 @@ async function toggleFeature(feature, value) {
         await featuresApi.update(feature.id, { is_enabled: value });
         feature.is_enabled = value;
         recalcStats();
+        refreshMyFeatures();
         ElMessage.success(t('fm_update_success'));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('fm_error'));
@@ -1101,6 +1108,7 @@ async function toggleGroup(group, isEnabled) {
             }
         });
         recalcStats();
+        refreshMyFeatures();
         ElMessage.success(t('fm_update_success'));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('fm_error'));
@@ -1138,6 +1146,7 @@ async function bulkToggle(isEnabled) {
         });
         selectedKeys.value = [];
         recalcStats();
+        refreshMyFeatures();
         ElMessage.success(t('fm_update_success'));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('fm_error'));
@@ -1163,6 +1172,7 @@ async function toggleMatrixRole(feature, role, granted) {
         } else {
             feature.role_ids = feature.role_ids.filter((id) => id !== role.id);
         }
+        refreshMyFeatures();
         ElMessage.success(t('fm_roles_success'));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('fm_error'));
@@ -1187,6 +1197,7 @@ async function bulkGrantRoleInMatrix(role, grant) {
             }
         });
         await Promise.all(promises);
+        refreshMyFeatures();
         ElMessage.success(t('fm_roles_success'));
     } catch (err) {
         ElMessage.error(err?.response?.data?.message || t('fm_error'));
@@ -1228,6 +1239,7 @@ async function saveRoles() {
     try {
         await featuresApi.updateRoles(activeFeature.value.id, roleSelection.value);
         activeFeature.value.role_ids = [...roleSelection.value];
+        refreshMyFeatures();
         ElMessage.success(t('fm_roles_success'));
         rolesDialogVisible.value = false;
     } catch (err) {
@@ -1260,6 +1272,7 @@ async function saveEdit() {
             editFeature.value.description_ar = updated.description_ar;
             editFeature.value.description_en = updated.description_en;
         }
+        refreshMyFeatures();
         ElMessage.success(t('fm_update_success'));
         editDialogVisible.value = false;
     } catch (err) {

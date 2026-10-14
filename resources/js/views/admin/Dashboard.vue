@@ -18,7 +18,7 @@
                     </button>
                 </div>
             </div>
-            <div class="dash-hero-actions">
+            <div v-if="can('sales')" class="dash-hero-actions">
                 <el-button type="primary" :icon="DocumentAdd" @click="$router.push('/admin/sales/invoices/create')">
                     {{ $t('dash_new_invoice') }}
                 </el-button>
@@ -59,7 +59,7 @@
                 <DashboardSkeleton v-if="loading" :cards="4" />
                 <template v-else>
                     <!-- Headline figures -->
-                    <div class="kpi-grid">
+                    <div v-if="kpis.length" class="kpi-grid">
                         <router-link
                             v-for="kpi in kpis"
                             :key="kpi.key"
@@ -89,7 +89,7 @@
 
                     <div class="dash-grid">
                         <!-- Revenue trend -->
-                        <section class="dash-card span-8">
+                        <section v-if="can('sales')" class="dash-card span-8">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('revenue_trend_title') }}</h3>
@@ -144,7 +144,7 @@
                         </section>
 
                         <!-- Recent invoices -->
-                        <section class="dash-card span-8">
+                        <section v-if="can('sales')" class="dash-card span-8">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('recent_sales') }}</h3>
@@ -185,7 +185,7 @@
                         </section>
 
                         <!-- Best sellers -->
-                        <section class="dash-card span-4">
+                        <section v-if="can('sales')" class="dash-card span-4">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('dash_best_sellers') }}</h3>
@@ -210,7 +210,7 @@
                         </section>
 
                         <!-- Invoice stages -->
-                        <section class="dash-card span-4">
+                        <section v-if="can('sales')" class="dash-card span-4">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('invoice_status_breakdown') }}</h3>
@@ -227,7 +227,7 @@
                         </section>
 
                         <!-- Low stock -->
-                        <section class="dash-card span-8">
+                        <section v-if="can('inventory')" class="dash-card span-8">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('low_stock_alerts') }}</h3>
@@ -261,7 +261,7 @@
                         </section>
 
                         <!-- Business snapshot -->
-                        <section class="dash-card span-12">
+                        <section v-if="detailStats.length || statusGroups.length" class="dash-card span-12">
                             <header class="dash-card-head">
                                 <div>
                                     <h3>{{ $t('summary_of_reports') }}</h3>
@@ -298,7 +298,7 @@
             </el-tab-pane>
 
             <!-- 2. WAREHOUSE MANAGEMENT SYSTEM (WMS) TAB -->
-            <el-tab-pane name="wms">
+            <el-tab-pane v-if="can('wms')" name="wms">
                 <template #label>
                     <span class="tab-label">
                         <el-icon><Location /></el-icon>
@@ -406,7 +406,7 @@
             </el-tab-pane>
 
             <!-- 3. RETURNS & RMA MANAGEMENT TAB -->
-            <el-tab-pane name="rma">
+            <el-tab-pane v-if="can('rma')" name="rma">
                 <template #label>
                     <span class="tab-label">
                         <el-icon><Refresh /></el-icon>
@@ -514,7 +514,7 @@
             </el-tab-pane>
 
             <!-- 4. WORKFLOWS & AUTOMATION TAB -->
-            <el-tab-pane name="workflows">
+            <el-tab-pane v-if="can('workflows')" name="workflows">
                 <template #label>
                     <span class="tab-label">
                         <el-icon><Cpu /></el-icon>
@@ -611,7 +611,7 @@
             </el-tab-pane>
 
             <!-- 5. SECURITY & AUDIT FEED TAB -->
-            <el-tab-pane name="audit">
+            <el-tab-pane v-if="can('audit_logs')" name="audit">
                 <template #label>
                     <span class="tab-label">
                         <el-icon><View /></el-icon>
@@ -689,7 +689,7 @@
             </el-tab-pane>
 
             <!-- 6. BI & BUSINESS INTELLIGENCE TAB -->
-            <el-tab-pane name="analytics">
+            <el-tab-pane v-if="can('bi_analytics')" name="analytics">
                 <template #label>
                     <span class="tab-label">
                         <el-icon><DataAnalysis /></el-icon>
@@ -797,6 +797,7 @@ import {
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { dashboardApi } from '@/api/dashboard';
+import { featureForPath } from '@/config/features';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
 import { statusTagType, statusLabel } from '@/utils/sales';
@@ -860,8 +861,29 @@ const todayLabel = computed(() => new Intl.DateTimeFormat(dateLocale.value, {
 
 /* ---- Tabs, kept in the URL so a refresh or a shared link reopens the same one ---- */
 
-const TABS = ['overview', 'wms', 'rma', 'workflows', 'audit', 'analytics'];
-const activeTab = ref(TABS.includes(route.query.tab) ? route.query.tab : 'overview');
+/* ---- Features: a module switched off on Features Management (or not granted
+   to this role) drops its tab, cards and shortcuts from the dashboard ---- */
+
+const can = (key) => authStore.canAccessFeature(key);
+const canRoute = (path) => can(featureForPath(path));
+
+// Tab name => feature key that guards it. The overview tab is always shown.
+const TAB_FEATURES = {
+    overview: null,
+    wms: 'wms',
+    rma: 'rma',
+    workflows: 'workflows',
+    audit: 'audit_logs',
+    analytics: 'bi_analytics',
+};
+const TABS = Object.keys(TAB_FEATURES);
+const isTabVisible = (tab) => TABS.includes(tab) && can(TAB_FEATURES[tab]);
+const activeTab = ref(isTabVisible(route.query.tab) ? route.query.tab : 'overview');
+
+// A feature switched off while the page is open closes its tab.
+watch(() => authStore.features, () => {
+    if (!isTabVisible(activeTab.value)) activeTab.value = 'overview';
+});
 
 watch(activeTab, (tab) => {
     const query = { ...route.query };
@@ -1036,7 +1058,7 @@ const kpis = computed(() => [
         tone: lowStockCount.value > 0 ? 'amber' : 'green',
         route: '/admin/stock',
     },
-]);
+].filter((kpi) => canRoute(kpi.route)));
 
 /**
  * Work waiting on someone, largest queue first. Only non-zero queues are
@@ -1051,7 +1073,7 @@ const attentionItems = computed(() => [
     { key: 'production', label: t('dash_pending_production'), count: rawCount(overview.value.production?.pending), icon: Tools, tone: 'blue', route: '/admin/production' },
     { key: 'inquiries', label: t('dash_new_inquiries'), count: rawCount(overview.value.inquiries?.new), icon: ChatLineRound, tone: 'teal', route: '/admin/inquiries' },
     { key: 'workflows', label: t('failed_executions'), count: rawCount(workflowStats.value.executions_failed), icon: Cpu, tone: 'red', route: '/admin/workflows' },
-].filter((item) => item.count > 0).sort((a, b) => b.count - a.count));
+].filter((item) => item.count > 0 && canRoute(item.route)).sort((a, b) => b.count - a.count));
 
 const attentionTotal = computed(() => attentionItems.value.reduce((sum, item) => sum + item.count, 0));
 
@@ -1064,7 +1086,7 @@ const detailStats = computed(() => [
     { title: t('sales_orders'), value: formatNumber(overview.value.sales_orders?.total), icon: ShoppingCart, color: '#67c23a', route: '/admin/sales/sales-orders' },
     { title: t('production_orders'), value: formatNumber(overview.value.production?.total), icon: Tools, color: '#e6a23c', route: '/admin/production' },
     { title: t('salaries'), value: formatNumber(overview.value.payrolls?.total), icon: Coin, color: '#409eff', route: '/admin/hr/payrolls' },
-]);
+].filter((item) => canRoute(item.route)));
 
 const revenueMetrics = computed(() => [
     { label: t('today'), value: formatMoney(revenueBreakdown.value.today) },
@@ -1074,6 +1096,7 @@ const revenueMetrics = computed(() => [
 
 const statusGroups = computed(() => [
     {
+        feature: 'sales',
         title: t('status_of_payments'),
         items: [
             { label: t('complete'), value: overview.value.payments?.completed, description: t('completed_payment_from_customers'), color: '#10b981' },
@@ -1082,6 +1105,7 @@ const statusGroups = computed(() => [
         ],
     },
     {
+        feature: 'production',
         title: t('production_status'),
         items: [
             { label: t('suspended'), value: overview.value.production?.pending, description: t('uninitiated_production_orders'), color: '#f59e0b' },
@@ -1089,7 +1113,7 @@ const statusGroups = computed(() => [
             { label: t('complete'), value: overview.value.production?.completed, description: t('orders_ready_for_delivery'), color: '#10b981' },
         ],
     },
-]);
+].filter((group) => can(group.feature)));
 
 const formatDay = (value) => (value
     ? new Intl.DateTimeFormat(dateLocale.value, { day: 'numeric', month: 'short' }).format(new Date(value))

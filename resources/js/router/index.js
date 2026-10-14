@@ -765,10 +765,7 @@ const router = createRouter({
 // Whether the signed-in account may open an admin page. The feature that
 // guards the page is looked up from the path; a path that belongs to no module
 // (the dashboard, the profile screens) is always allowed.
-const canAccessAdminPath = (auth, path) => {
-    if (auth.isSuperAdmin) return true;
-    return auth.canAccessFeature(featureForPath(path));
-};
+const canAccessAdminPath = (auth, path) => auth.canAccessFeature(featureForPath(path));
 
 // Navigation guard for authentication
 router.beforeEach((to, from) => {
