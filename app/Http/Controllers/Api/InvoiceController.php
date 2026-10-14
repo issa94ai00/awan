@@ -15,6 +15,7 @@ use App\Models\Payment;
 use App\Models\JournalEntryHeader;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Models\User;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\GoodsIssueService;
 use App\Services\Sales\SalesOrderWorkflowService;
@@ -41,6 +42,8 @@ class InvoiceController extends Controller
                 ? Invoice::query()->with(['customer:id,name,phone,email,company', 'salesOrder:id,order_number'])->withCount('items')
                     ->withSum(['creditNotes as credited_total' => fn ($q) => $q->where('status', '!=', 'cancelled')], 'total')
                 : Invoice::query()->with(['items.product', 'items.variant', 'customer']);
+
+            $this->applySalesScope($query, $request->user());
 
             if ($request->filled('customer_id')) {
                 $query->where('customer_id', $request->customer_id);
@@ -775,6 +778,19 @@ class InvoiceController extends Controller
     public function show(Invoice $invoice): JsonResponse
     {
         try {
+            $user = auth()->user();
+            if ($user && method_exists($user, 'isSalesScoped') && $user->isSalesScoped()) {
+                $employee = $user->employee;
+                $isOwner = ((int) $invoice->created_by === (int) $user->id) ||
+                           ($employee && (int) $invoice->assigned_employee_id === (int) $employee->id);
+                if (! $isOwner) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'غير مصرح لك بعرض هذه الفاتورة',
+                    ], 403);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفاتورة بنجاح',
@@ -1489,60 +1505,63 @@ class InvoiceController extends Controller
     public function summary(): JsonResponse
     {
         try {
+            $base = Invoice::query();
+            $this->applySalesScope($base, auth()->user());
+
             // Revenue calculation based on status
-            $revenueToday = Invoice::whereDate('created_at', today())
+            $revenueToday = (clone $base)->whereDate('created_at', today())
                 ->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where('status', '!=', Invoice::STATUS_PENDING)
                 ->sum('total');
             
-            $revenueWeek = Invoice::whereDate('created_at', '>=', now()->startOfWeek())
+            $revenueWeek = (clone $base)->whereDate('created_at', '>=', now()->startOfWeek())
                 ->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where('status', '!=', Invoice::STATUS_PENDING)
                 ->sum('total');
             
-            $revenueMonth = Invoice::whereDate('created_at', '>=', now()->startOfMonth())
+            $revenueMonth = (clone $base)->whereDate('created_at', '>=', now()->startOfMonth())
                 ->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where('status', '!=', Invoice::STATUS_PENDING)
                 ->sum('total');
             
-            $revenueTotal = Invoice::where('status', '!=', Invoice::STATUS_CANCELLED)
+            $revenueTotal = (clone $base)->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where('status', '!=', Invoice::STATUS_PENDING)
                 ->sum('total');
 
             // Total invoices (all statuses)
-            $totalToday = Invoice::whereDate('created_at', today())->sum('total');
-            $totalWeek = Invoice::whereDate('created_at', '>=', now()->startOfWeek())->sum('total');
-            $totalMonth = Invoice::whereDate('created_at', '>=', now()->startOfMonth())->sum('total');
-            $totalAll = Invoice::sum('total');
+            $totalToday = (clone $base)->whereDate('created_at', today())->sum('total');
+            $totalWeek = (clone $base)->whereDate('created_at', '>=', now()->startOfWeek())->sum('total');
+            $totalMonth = (clone $base)->whereDate('created_at', '>=', now()->startOfMonth())->sum('total');
+            $totalAll = (clone $base)->sum('total');
 
             // Count statistics
-            $countToday = Invoice::whereDate('created_at', today())->count();
-            $countWeek = Invoice::whereDate('created_at', '>=', now()->startOfWeek())->count();
-            $countMonth = Invoice::whereDate('created_at', '>=', now()->startOfMonth())->count();
-            $countTotal = Invoice::count();
+            $countToday = (clone $base)->whereDate('created_at', today())->count();
+            $countWeek = (clone $base)->whereDate('created_at', '>=', now()->startOfWeek())->count();
+            $countMonth = (clone $base)->whereDate('created_at', '>=', now()->startOfMonth())->count();
+            $countTotal = (clone $base)->count();
 
             // Status breakdown
-            $pendingToday = Invoice::where('status', Invoice::STATUS_PENDING)
+            $pendingToday = (clone $base)->where('status', Invoice::STATUS_PENDING)
                 ->whereDate('created_at', today())
                 ->sum('total');
             
-            $confirmedToday = Invoice::where('status', Invoice::STATUS_CONFIRMED)
+            $confirmedToday = (clone $base)->where('status', Invoice::STATUS_CONFIRMED)
                 ->whereDate('created_at', today())
                 ->sum('total');
             
-            $processingToday = Invoice::where('status', Invoice::STATUS_PROCESSING)
+            $processingToday = (clone $base)->where('status', Invoice::STATUS_PROCESSING)
                 ->whereDate('created_at', today())
                 ->sum('total');
             
-            $shippedToday = Invoice::where('status', Invoice::STATUS_SHIPPED)
+            $shippedToday = (clone $base)->where('status', Invoice::STATUS_SHIPPED)
                 ->whereDate('created_at', today())
                 ->sum('total');
             
-            $deliveredToday = Invoice::where('status', Invoice::STATUS_DELIVERED)
+            $deliveredToday = (clone $base)->where('status', Invoice::STATUS_DELIVERED)
                 ->whereDate('created_at', today())
                 ->sum('total');
             
-            $cancelledToday = Invoice::where('status', Invoice::STATUS_CANCELLED)
+            $cancelledToday = (clone $base)->where('status', Invoice::STATUS_CANCELLED)
                 ->whereDate('created_at', today())
                 ->sum('total');
 
@@ -1606,5 +1625,27 @@ class InvoiceController extends Controller
             'success' => true,
             'data' => $workflow->invoicePurchaseDraft($invoice),
         ]);
+    }
+
+    /**
+     * Confines an invoice query to the signed-in user's own sales when they are
+     * a sales rep or restricted employee.
+     */
+    private function applySalesScope($query, ?User $user): void
+    {
+        $user = $user ?? auth()->user();
+        if (! $user || ! method_exists($user, 'isSalesScoped') || ! $user->isSalesScoped()) {
+            return;
+        }
+
+        $employee = $user->employee;
+        $query->where(function ($q) use ($user, $employee) {
+            if ($employee) {
+                $q->where('invoices.assigned_employee_id', $employee->id)
+                  ->orWhere('invoices.created_by', $user->id);
+            } else {
+                $q->where('invoices.created_by', $user->id);
+            }
+        });
     }
 }

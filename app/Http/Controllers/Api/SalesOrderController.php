@@ -144,6 +144,23 @@ class SalesOrderController extends Controller
 
     private function applyListScope($query, Request $request): void
     {
+        $user = $request->user();
+        if ($user && method_exists($user, 'isSalesScoped') && $user->isSalesScoped()) {
+            $employee = $user->employee;
+            $query->where(function ($q) use ($user, $employee) {
+                if ($employee) {
+                    $q->where('sales_orders.assigned_employee_id', $employee->id)
+                      ->orWhere('sales_orders.created_by', $user->id);
+                } else {
+                    $q->where('sales_orders.created_by', $user->id);
+                }
+            });
+
+            if ($scopedWh = $user->scopedWarehouseId()) {
+                $query->where('sales_orders.fulfillment_warehouse_id', $scopedWh);
+            }
+        }
+
         if ($request->filled('customer_id')) {
             $query->where('sales_orders.customer_id', $request->customer_id);
         }
@@ -495,6 +512,19 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
+        $user = auth()->user();
+        if ($user && method_exists($user, 'isSalesScoped') && $user->isSalesScoped()) {
+            $employee = $user->employee;
+            $isOwner = ((int) $salesOrder->created_by === (int) $user->id) ||
+                       ($employee && (int) $salesOrder->assigned_employee_id === (int) $employee->id);
+            if (! $isOwner) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'غير مصرح لك بعرض هذا الطلب',
+                ], 403);
+            }
+        }
+
         $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse', 'expenses']);
 
         return response()->json([

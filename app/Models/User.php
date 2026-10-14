@@ -206,4 +206,33 @@ class User extends Authenticatable
     {
         return $this->hasOne(Employee::class);
     }
+
+    /**
+     * Whether this user is restricted to only their own sales and assigned warehouse.
+     * Super admins and managers are unconfined.
+     */
+    public function isSalesScoped(): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return false;
+        }
+
+        if ($this->holdsRoleNamed(['manager'])) {
+            return false;
+        }
+
+        return $this->holdsRoleNamed(['sells', 'employee']) || $this->employee !== null;
+    }
+
+    /**
+     * The warehouse ID this user is confined to, if any.
+     */
+    public function scopedWarehouseId(): ?int
+    {
+        if (! $this->isSalesScoped()) {
+            return null;
+        }
+
+        return $this->employee?->warehouse_id ? (int) $this->employee->warehouse_id : null;
+    }
 }

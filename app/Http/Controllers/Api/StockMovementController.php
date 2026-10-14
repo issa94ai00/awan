@@ -26,7 +26,11 @@ class StockMovementController extends Controller
             $query->where('product_id', $request->product_id);
         }
 
-        if ($request->filled('warehouse_id')) {
+        $user = $request->user();
+        if ($user && method_exists($user, 'isSalesScoped') && $user->isSalesScoped()) {
+            $scopedWh = $user->scopedWarehouseId() ?? -1;
+            $query->where('warehouse_id', $scopedWh);
+        } elseif ($request->filled('warehouse_id')) {
             $query->where('warehouse_id', $request->warehouse_id);
         }
 

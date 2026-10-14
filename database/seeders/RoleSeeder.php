@@ -146,7 +146,7 @@ class RoleSeeder extends Seeder
             'admin' => $all,
             'manager' => ['dashboard.view', 'products.view', 'products.create', 'products.edit', 'sales.view', 'sales.create', 'inventory.view', 'inventory.manage', 'reports.view'],
             'employee' => ['dashboard.view', 'sales.view'],
-            'sells' => ['dashboard.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view', 'reports.view'],
+            'sells' => ['dashboard.view', 'categories.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view'],
             'accountant' => ['dashboard.view', 'sales.view', 'inventory.view', 'purchases.view', 'reports.view', 'settings.view'],
             'marketer' => ['dashboard.view', 'products.view', 'marketing.view', 'marketing.campaigns', 'sales.view', 'reports.view'],
         ];

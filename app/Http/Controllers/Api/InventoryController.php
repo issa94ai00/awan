@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\StockMovement;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use App\Services\ProductExcelService;
@@ -22,16 +23,24 @@ class InventoryController extends Controller
 {
     public function summary(): JsonResponse
     {
+        $scopedWh = $this->scopedWarehouseId();
+
         // One definition of "available", shared with the sell gate and with
         // every other screen — see WarehouseInventory::availableSql(). It used to
         // be spelled out by hand in each of the twelve places below, which is how
         // this screen and the WMS balance screen came to disagree.
         $available = WarehouseInventory::availableSql();
 
+        $totalsQuery = WarehouseInventory::query()
+            ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id');
+
+        if ($scopedWh !== null) {
+            $totalsQuery->where('warehouse_inventory.warehouse_id', $scopedWh);
+        }
+
         // The stored `cost_basis` column is the costing-method enum ("FIFO"), not a
         // number, so the inventory value is priced off the product's cost_price.
-        $totals = WarehouseInventory::query()
-            ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
+        $totals = $totalsQuery
             ->selectRaw('COUNT(DISTINCT warehouse_inventory.product_id) as products_with_stock')
             ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
             ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
@@ -41,10 +50,17 @@ class InventoryController extends Controller
             ->selectRaw("SUM(CASE WHEN ({$available}) <= 0 THEN 1 ELSE 0 END) as out_of_stock_rows")
             ->first();
 
-        $movementsToday = StockMovement::whereDate('created_at', today())->count();
+        $movementsQuery = StockMovement::whereDate('created_at', today());
+        $movementTotalsQuery = StockMovement::query()->whereDate('created_at', today());
 
-        $movementTotals = StockMovement::query()
-            ->whereDate('created_at', today())
+        if ($scopedWh !== null) {
+            $movementsQuery->where('warehouse_id', $scopedWh);
+            $movementTotalsQuery->where('warehouse_id', $scopedWh);
+        }
+
+        $movementsToday = $movementsQuery->count();
+
+        $movementTotals = $movementTotalsQuery
             ->selectRaw("COALESCE(SUM(CASE WHEN movement_type = 'in' THEN quantity ELSE 0 END), 0) as received")
             ->selectRaw("COALESCE(SUM(CASE WHEN movement_type = 'out' THEN quantity ELSE 0 END), 0) as issued")
             ->first();
@@ -53,7 +69,12 @@ class InventoryController extends Controller
         // `total_quantity` while holding the available figure, next to a
         // `total_quantity` in the same response that held the gross one — one
         // key, two meanings, in a single payload.
-        $warehouses = Warehouse::query()
+        $warehousesQuery = Warehouse::query();
+        if ($scopedWh !== null) {
+            $warehousesQuery->where('warehouses.id', $scopedWh);
+        }
+
+        $warehouses = $warehousesQuery
             ->select('warehouses.id', 'warehouses.name', 'warehouses.code', 'warehouses.is_active')
             ->selectRaw("COALESCE(SUM({$available}), 0) as total_available")
             ->selectRaw('COALESCE(SUM(warehouse_inventory.quantity), 0) as total_quantity')
@@ -93,7 +114,10 @@ class InventoryController extends Controller
             ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_inventory.warehouse_id');
 
-        if ($request->filled('warehouse_id')) {
+        $scopedWh = $this->scopedWarehouseId($request->user());
+        if ($scopedWh !== null) {
+            $query->where('warehouse_inventory.warehouse_id', $scopedWh);
+        } elseif ($request->filled('warehouse_id')) {
             $query->where('warehouse_inventory.warehouse_id', $request->warehouse_id);
         }
 
@@ -166,7 +190,10 @@ class InventoryController extends Controller
             ->leftJoin('products', 'products.id', '=', 'warehouse_inventory.product_id')
             ->leftJoin('warehouses', 'warehouses.id', '=', 'warehouse_inventory.warehouse_id');
 
-        if ($request->filled('warehouse_id')) {
+        $scopedWh = $this->scopedWarehouseId($request->user());
+        if ($scopedWh !== null) {
+            $query->where('warehouse_inventory.warehouse_id', $scopedWh);
+        } elseif ($request->filled('warehouse_id')) {
             $query->where('warehouse_inventory.warehouse_id', $request->warehouse_id);
         }
 
@@ -212,5 +239,18 @@ class InventoryController extends Controller
             'message' => 'Warehouse stock imported successfully',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Resolves the warehouse ID the authenticated user is confined to, if any.
+     */
+    private function scopedWarehouseId(?User $user = null): ?int
+    {
+        $user = $user ?? auth()->user();
+        if ($user && method_exists($user, 'isSalesScoped') && $user->isSalesScoped()) {
+            return $user->scopedWarehouseId() ?? -1;
+        }
+
+        return null;
     }
 }
