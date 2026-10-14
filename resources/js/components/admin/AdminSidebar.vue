@@ -1002,12 +1002,13 @@ const userInitials = computed(() => {
     background: rgba(255, 255, 255, 0.055);
     color: var(--sb-text-strong);
 }
+    font-weight: 600;
 
 .nav-link.active {
     color: var(--sb-accent);
     background: var(--sb-accent-soft);
     border-color: var(--sb-accent-border);
-    font-weight: 600;
+    font-weight: 700;
     box-shadow: 0 8px 20px -12px var(--sb-glow);
 }
 
@@ -1152,11 +1153,12 @@ const userInitials = computed(() => {
     color: var(--sb-text-strong);
     background: rgba(255, 255, 255, 0.045);
 }
+    font-weight: 600;
 
 .nav-group-items .nav-link.active {
     color: var(--sb-accent);
     background: transparent;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .nav-group-items .nav-link.active::before {
@@ -1401,6 +1403,7 @@ const userInitials = computed(() => {
     font-size: 0.83rem;
     color: rgba(148, 163, 184, 0.8);
     text-decoration: none;
+    font-weight: 600;
     transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -1414,7 +1417,7 @@ const userInitials = computed(() => {
 .sidebar-flyout .flyout-link.active {
     color: #2dd4bf;
     background: rgba(45, 212, 191, 0.12);
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .sidebar-flyout .flyout-dot {
