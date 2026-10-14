@@ -1,5 +1,5 @@
 <template>
-    <aside class="admin-sidebar" :class="{ collapsed: collapsed, 'mobile-open': mobileOpen }">
+    <aside class="admin-sidebar" :class="{ collapsed: collapsed, 'mobile-open': mobileOpen }" dir="rtl">
         <div class="sidebar-header">
             <div class="brand">
                 <div class="brand-mark">
@@ -131,11 +131,15 @@
                                     >
                                         <el-icon class="nav-ic"><component :is="entry.icon" /></el-icon>
                                         <span v-if="!isCollapsed" class="nav-text">{{ t(entry.labelKey) }}</span>
+                                        <span v-if="!isCollapsed && entry.children" class="nav-group-count">{{ entry.children.length }}</span>
                                         <el-icon v-if="!isCollapsed" class="toggle-icon" :class="{ rotated: isGroupOpen(entry.key) }"><ArrowDown /></el-icon>
                                         <span v-if="isCollapsed && isGroupActiveRoute(entry.key)" class="collapsed-active-dot"></span>
                                     </div>
                                 </template>
-                                <div class="flyout-title">{{ t(entry.labelKey) }}</div>
+                                <div class="flyout-title">
+                                    <span>{{ t(entry.labelKey) }}</span>
+                                    <span class="flyout-count">{{ entry.children.length }}</span>
+                                </div>
                                 <router-link
                                     v-for="child in entry.children"
                                     :key="child.path + child.labelKey"
@@ -171,10 +175,13 @@
 
         <div class="sidebar-footer" :class="{ collapsed: collapsed }">
             <div class="user-card" :title="userName" @click="collapsed ? toggleSidebar() : router.push('/admin/profile')">
-                <div class="user-avatar">{{ userInitials }}</div>
+                <div class="user-avatar-wrap">
+                    <div class="user-avatar">{{ userInitials }}</div>
+                    <span class="user-online-dot"></span>
+                </div>
                 <div v-if="!isCollapsed" class="user-meta">
                     <span class="user-name">{{ userName }}</span>
-                    <span class="user-role">{{ userEmail }}</span>
+                    <span class="user-role">{{ userRoleTitle }}</span>
                 </div>
                 <router-link
                     v-if="!isCollapsed"
@@ -225,8 +232,8 @@ const emit = defineEmits(['update:collapsed', 'update:mobileOpen']);
 
 const isCollapsed = computed(() => props.collapsed && !props.mobileOpen);
 
-// The sidebar sits on the start edge, so flyouts open towards the content.
-const flyoutPlacement = computed(() => (locale.value === 'ar' ? 'left-start' : 'right-start'));
+// The sidebar is always situated on the right side in RTL, so flyouts open to the left towards the page content.
+const flyoutPlacement = 'left-start';
 
 const closeMobile = () => {
     emit('update:mobileOpen', false);
@@ -435,7 +442,7 @@ const menu = [
             {
                 key: 'system', labelKey: 'system', icon: Setting,
                 children: [
-                    { labelKey: 'features', path: '/admin/features' },
+                    { labelKey: 'features', path: '/admin/features', masterOnly: true },
                     { labelKey: 'ac_nav_users', path: '/admin/users', permission: 'users.view' },
                     { labelKey: 'roles', path: '/admin/roles', permission: 'roles.view' },
                     { labelKey: 'permissions', path: '/admin/permissions', permission: ['permissions.view', 'roles.view'] },
@@ -537,8 +544,10 @@ watch(() => props.collapsed, (newVal) => {
 // group keys are exactly the feature keys.
 const canAccessGroup = (group) => authStore.canAccessFeature(group);
 
-// Pages with a `permission` (any one of a list) need it as well.
-const canSeeChild = (child) => !child.permission || authStore.can(child.permission);
+// Pages marked `masterOnly` (Features Management) are hidden from everyone
+// but the master role, admins included. Pages with a `permission` need it.
+const canSeeChild = (child) => (!child.masterOnly || authStore.isMaster)
+    && (!child.permission || authStore.can(child.permission));
 
 // Every entry is gated by its feature key — collapsible groups by the group
 // key, plain entries (POS, inquiries, visitors) by their own key. Sections
@@ -652,17 +661,30 @@ const onGlobalKeydown = (event) => {
     openSearch();
 };
 
+const onWindowResize = () => {
+    if (props.mobileOpen && window.innerWidth > 992) {
+        closeMobile();
+    }
+};
+
 onMounted(() => {
     document.addEventListener('keydown', onGlobalKeydown);
+    window.addEventListener('resize', onWindowResize, { passive: true });
     scrollActiveIntoView();
 });
 
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', onGlobalKeydown);
+    window.removeEventListener('resize', onWindowResize);
 });
 
 const userName = computed(() => authStore.user?.name || t('system_administrator'));
 const userEmail = computed(() => authStore.user?.email || '');
+const userRoleTitle = computed(() => {
+    if (authStore.isMaster) return t('role_master') || (locale.value === 'ar' ? 'المدير الرئيسي' : 'Master Admin');
+    if (authStore.isSuperAdmin) return t('role_superadmin') || (locale.value === 'ar' ? 'مدير النظام' : 'Super Admin');
+    return authStore.roleNames?.[0] || authStore.user?.email || '';
+});
 const userInitials = computed(() => {
     const name = (authStore.user?.name || t('system_administrator')).trim();
     const parts = name.split(/\s+/).filter(Boolean);
@@ -689,17 +711,16 @@ const userInitials = computed(() => {
         linear-gradient(180deg, #0a0f1e 0%, #0d1526 50%, #0f1a2e 100%);
     color: var(--sb-text);
     position: fixed;
-    inset-inline-start: 0;
+    right: 0 !important;
+    left: auto !important;
     top: 0;
     height: 100vh;
     z-index: 1000;
     transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
-    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04), 0 0 40px rgba(0, 0, 0, 0.35);
-}
-
-[dir="ltr"] .admin-sidebar {
+    direction: rtl !important;
+    text-align: right;
     box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04), 0 0 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -748,16 +769,22 @@ const userInitials = computed(() => {
 .brand-mark {
     position: relative;
     flex-shrink: 0;
-    width: 38px;
-    height: 38px;
+    width: 40px;
+    height: 40px;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
     color: #ecfeff;
-    box-shadow: 0 6px 18px -6px var(--sb-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 6px 18px -4px var(--sb-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.brand:hover .brand-mark {
+    transform: scale(1.04);
+    box-shadow: 0 8px 22px -4px var(--sb-glow);
 }
 
 .brand-mark-glow {
@@ -802,6 +829,12 @@ const userInitials = computed(() => {
     border-radius: 999px;
     background: var(--sb-accent);
     box-shadow: 0 0 8px var(--sb-glow);
+    animation: pulse-dot 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.85); }
 }
 
 .sidebar-nav {
@@ -962,14 +995,24 @@ const userInitials = computed(() => {
 }
 
 .nav-section-label {
-    padding: 1.15rem 0.85rem 0.4rem;
-    font-size: 0.68rem;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 1.25rem 0.85rem 0.45rem;
+    font-size: 0.7rem;
     font-weight: 700;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: rgba(148, 163, 184, 0.5);
+    color: rgba(148, 163, 184, 0.55);
     white-space: nowrap;
     overflow: hidden;
+}
+
+.nav-section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent);
 }
 
 .nav-section-label:first-child {
@@ -992,16 +1035,33 @@ const userInitials = computed(() => {
     text-decoration: none;
     cursor: pointer;
     border-radius: 10px;
-    font-size: 0.98rem;
+    font-size: 0.95rem;
     font-weight: 600;
     border: 1px solid transparent;
-    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .nav-link:hover,
 .nav-group-header:hover {
-    background: rgba(255, 255, 255, 0.055);
+    background: rgba(255, 255, 255, 0.06);
     color: var(--sb-text-strong);
+    transform: translateX(-2px);
+}
+
+.nav-group-count {
+    margin-inline-start: auto;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(148, 163, 184, 0.7);
+    transition: all 0.2s ease;
+}
+
+.nav-group-header:hover .nav-group-count {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
 }
 
 .nav-link.active {
@@ -1141,7 +1201,8 @@ const userInitials = computed(() => {
 }
 
 .nav-group-items .nav-link {
-    padding: 0.5rem 0.8rem 0.5rem 1.55rem;
+    padding-block: 0.5rem;
+    padding-inline: 1.55rem 0.8rem;
     font-size: 0.9rem;
     font-weight: 600;
     color: rgba(148, 163, 184, 0.62);
@@ -1196,14 +1257,15 @@ const userInitials = computed(() => {
     padding: 0.55rem 0.65rem;
     border-radius: 12px;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid rgba(255, 255, 255, 0.06);
     background: rgba(255, 255, 255, 0.03);
 }
 
 .user-card:hover {
     background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
 }
 
 .sidebar-footer.collapsed .user-card {
@@ -1211,6 +1273,22 @@ const userInitials = computed(() => {
     padding: 0.5rem;
     border: none;
     background: transparent;
+}
+
+.user-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.user-online-dot {
+    position: absolute;
+    bottom: -1px;
+    inset-inline-end: -1px;
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: #10b981;
+    border: 2px solid #0d1527;
 }
 
 .user-avatar {
@@ -1295,31 +1373,17 @@ const userInitials = computed(() => {
 
 @media (max-width: 992px) {
     .admin-sidebar {
-        inset-inline-start: auto;
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
+        right: 0 !important;
+        left: auto !important;
+        transform: translateX(105%) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: none;
-    }
-
-    [dir="ltr"] .admin-sidebar {
-        transform: translateX(-100%);
-    }
-
-    [dir="rtl"] .admin-sidebar {
-        transform: translateX(100%);
+        max-width: 85vw;
     }
 
     .admin-sidebar.mobile-open {
-        transform: translateX(0);
-        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
-    }
-
-    [dir="ltr"] .admin-sidebar.mobile-open {
-        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
-    }
-
-    [dir="rtl"] .admin-sidebar.mobile-open {
-        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+        transform: translateX(0) !important;
+        box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45) !important;
     }
 
     .admin-sidebar .mobile-close-btn {
@@ -1376,47 +1440,67 @@ const userInitials = computed(() => {
 /* Flyout for groups while the sidebar is collapsed. Element Plus teleports
    poppers to <body>, so these can't live in the scoped block above. */
 .el-popover.el-popper.sidebar-flyout {
-    padding: 0.45rem;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: #0f1a2e;
-    box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
-    color: rgba(203, 213, 225, 0.75);
+    padding: 0.5rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(11, 19, 36, 0.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.65);
+    color: rgba(203, 213, 225, 0.8);
+    max-height: 80vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+    direction: rtl !important;
+    text-align: right !important;
 }
 
 .sidebar-flyout .flyout-title {
-    padding: 0.35rem 0.6rem 0.45rem;
-    margin-bottom: 0.2rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.45rem 0.75rem 0.55rem;
+    margin-bottom: 0.35rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.8rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    color: rgba(241, 245, 249, 0.94);
+    color: #ffffff;
+}
+
+.sidebar-flyout .flyout-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(203, 213, 225, 0.7);
 }
 
 .sidebar-flyout .flyout-link {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.45rem 0.6rem;
+    gap: 0.65rem;
+    padding: 0.5rem 0.75rem;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 600;
-    color: rgba(148, 163, 184, 0.8);
+    color: rgba(203, 213, 225, 0.75);
     text-decoration: none;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: all 0.15s ease;
 }
 
 .sidebar-flyout .flyout-link:hover,
 .sidebar-flyout .flyout-link:focus-visible {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(241, 245, 249, 0.94);
+    background: rgba(255, 255, 255, 0.07);
+    color: #ffffff;
+    transform: translateX(-2px);
     outline: none;
 }
 
 .sidebar-flyout .flyout-link.active {
     color: #2dd4bf;
-    background: rgba(45, 212, 191, 0.12);
+    background: rgba(45, 212, 191, 0.14);
     font-weight: 700;
 }
 
@@ -1426,10 +1510,12 @@ const userInitials = computed(() => {
     height: 5px;
     border-radius: 999px;
     background: rgba(148, 163, 184, 0.4);
+    transition: all 0.15s ease;
 }
 
 .sidebar-flyout .flyout-link.active .flyout-dot,
 .sidebar-flyout .flyout-link:hover .flyout-dot {
     background: #2dd4bf;
+    box-shadow: 0 0 6px rgba(45, 212, 191, 0.5);
 }
 </style>

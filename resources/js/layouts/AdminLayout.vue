@@ -50,24 +50,25 @@ watch(mobileSidebarOpen, (open) => {
 
 .admin-main-wrapper {
     flex: 1;
-    margin-right: 268px;
+    margin-right: 268px !important;
+    margin-left: 0 !important;
     transition: margin-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 0;
 }
 
 .admin-main-wrapper.sidebar-collapsed {
-    margin-right: 72px;
+    margin-right: 72px !important;
+    margin-left: 0 !important;
 }
 
 [dir="ltr"] .admin-main-wrapper {
-    margin-right: 0;
-    margin-left: 268px;
-    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-right: 268px !important;
+    margin-left: 0 !important;
 }
 
 [dir="ltr"] .admin-main-wrapper.sidebar-collapsed {
-    margin-right: 0;
-    margin-left: 72px;
+    margin-right: 72px !important;
+    margin-left: 0 !important;
 }
 
 .admin-content {
@@ -93,7 +94,9 @@ watch(mobileSidebarOpen, (open) => {
         display: block;
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         z-index: 999;
         animation: fadeIn 0.2s ease;
     }
