@@ -3,10 +3,10 @@
     <AdminPageHeader :title="t('notifications.preferences')">
       <template #actions>
         <el-button :icon="Refresh" @click="loadPreferences" :loading="loading">
-          {{ t('common.refresh') || 'تحديث' }}
+          {{ t('nf_refresh') }}
         </el-button>
         <el-button :icon="Check" type="primary" @click="saveAllPreferences" :loading="saving">
-          {{ t('common.save_all') || 'حفظ الكل' }}
+          {{ t('notifications.save_all') }}
         </el-button>
       </template>
     </AdminPageHeader>
@@ -38,7 +38,7 @@
         <!-- Browser Push Notification Permission -->
         <div class="control-box">
           <div class="control-icon icon-push">
-            <el-icon :size="24"><Notification /></el-icon>
+            <el-icon :size="24"><NotificationIcon /></el-icon>
           </div>
           <div class="control-info">
             <h4>{{ t('notifications.browser_push') || 'إشعارات سطح المكتب للمتصفح' }}</h4>
@@ -81,9 +81,6 @@
         </el-button>
         <el-button size="small" @click="toggleAllChannel('email_enabled', true)">
           {{ t('notifications.enable_all_email') || 'تفعيل البريد' }}
-        </el-button>
-        <el-button size="small" @click="toggleAllChannel('push_enabled', true)">
-          {{ t('notifications.enable_all_push') || 'تفعيل إشعارات الدفع' }}
         </el-button>
         <el-button size="small" type="danger" plain @click="disableAllChannels">
           {{ t('notifications.disable_all') || 'تعطيل الكل' }}
@@ -147,8 +144,10 @@
               <span class="channel-name">{{ t('notifications.push') }}</span>
               <span class="channel-hint">{{ t('notifications.push_hint') || 'إشعار منبثق فوري للمتصفح' }}</span>
             </div>
+            <el-tag size="small" type="info" effect="plain" class="not-connected">{{ t('notifications.not_connected') }}</el-tag>
             <el-switch
-              v-model="pref.push_enabled"
+              :model-value="false"
+              disabled
               @change="autoSavePreference(pref)"
               active-color="#8b5cf6"
             />
@@ -160,8 +159,10 @@
               <span class="channel-name">{{ t('notifications.sms') }}</span>
               <span class="channel-hint">{{ t('notifications.sms_hint') || 'رسالة هاتفية قصيرة SMS (للطوارئ)' }}</span>
             </div>
+            <el-tag size="small" type="info" effect="plain" class="not-connected">{{ t('notifications.not_connected') }}</el-tag>
             <el-switch
-              v-model="pref.sms_enabled"
+              :model-value="false"
+              disabled
               @change="autoSavePreference(pref)"
               active-color="#f59e0b"
             />
@@ -177,7 +178,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { ref, onMounted } from 'vue';
 import {
   Setting, Check, Refresh, Bell, BellFilled, MuteNotification,
-  ShoppingCart, Box, Money, Notification
+  ShoppingCart, Box, Money, Notification as NotificationIcon
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
@@ -189,7 +190,10 @@ const notificationsStore = useNotificationsStore();
 
 const loading = ref(false);
 const saving = ref(false);
-const browserPermission = ref(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+// The browser API, read through window: a bare `Notification` here once
+// resolved to the icon component and broke the permission button.
+const DesktopNotification = typeof window !== 'undefined' && 'Notification' in window ? window.Notification : null;
+const browserPermission = ref(DesktopNotification ? DesktopNotification.permission : 'unsupported');
 
 const defaultTypes = ['order', 'inventory', 'warehouse', 'financial', 'system'];
 
@@ -288,11 +292,11 @@ const testSound = () => {
 
 // Browser Push Notification Controls
 const requestBrowserPermission = async () => {
-  if (typeof Notification === 'undefined') {
-    ElMessage.warning('متصفحك لا يدعم إشعارات سطح المكتب');
+  if (!DesktopNotification) {
+    ElMessage.warning(t('notifications.perm_unsupported'));
     return;
   }
-  const result = await Notification.requestPermission();
+  const result = await DesktopNotification.requestPermission();
   browserPermission.value = result;
   if (result === 'granted') {
     ElMessage.success(t('notifications.permission_granted') || 'تم منح إذن الإشعارات بنجاح!');
@@ -303,9 +307,9 @@ const requestBrowserPermission = async () => {
 };
 
 const sendTestBrowserNotification = () => {
-  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    new Notification('أوان التقدم - إشعار تجريبي', {
-      body: 'تم ضبط إعدادات التنبيهات بنجاح.',
+  if (DesktopNotification?.permission === 'granted') {
+    new DesktopNotification(t('notifications.test_desktop_title'), {
+      body: t('notifications.test_desktop_body'),
       icon: '/favicon.ico',
     });
   }
@@ -314,6 +318,7 @@ const sendTestBrowserNotification = () => {
 const formatPermissionStatus = (perm) => {
   if (perm === 'granted') return t('notifications.perm_granted') || 'مفعل';
   if (perm === 'denied') return t('notifications.perm_denied') || 'محظور';
+  if (perm === 'unsupported') return t('notifications.perm_unsupported');
   return t('notifications.perm_default') || 'غير مفعل';
 };
 
@@ -530,6 +535,10 @@ onMounted(() => {
 
 .channel-row:hover {
   background: #f8fafc;
+}
+
+.not-connected {
+  margin-inline-start: auto;
 }
 
 .channel-info {

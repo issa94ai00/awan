@@ -12,55 +12,140 @@ use Illuminate\Support\Facades\Log;
 class NotificationService
 {
     /**
-     * Send notification to a user
+     * Send notification to a user.
+     *
+     * Which channels fire comes from the user's preference row for the
+     * notification's category (order, inventory, …), falling back to an
+     * 'all' row. The preferences screen saves per-category rows, so reading
+     * only 'all' — as this used to — meant switching a category off did
+     * nothing. With no row at all, the in-app feed is on and the rest off.
+     *
+     * $channels, when given, overrides the preferences: an admin sending a
+     * message by hand picks the channels explicitly.
+     *
+     * Returns null when the in-app channel is off, since no row is stored.
      */
-    public function sendToUser($userId, $title, $message, $type = 'info', array $data = []): Notification
+    public function sendToUser($userId, $title, $message, $type = 'info', array $data = [], ?array $channels = null): ?Notification
     {
-        $notification = Notification::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $message,
-            'type' => $type,
-            'data' => $data,
-        ]);
+        $preference = $this->preferenceFor($userId, $type);
 
-        // Get user preferences
-        $preferences = NotificationPreference::where('user_id', $userId)
-            ->where('notification_type', 'all')
-            ->first();
-
-        if ($preferences) {
-            // Send email if enabled
-            if ($preferences->email_enabled) {
-                $this->sendEmail($userId, $title, $message, $data);
+        $wants = function (string $channel, bool $default) use ($channels, $preference): bool {
+            if ($channels !== null) {
+                return in_array($channel, $channels, true);
             }
 
-            // Send SMS if enabled
-            if ($preferences->sms_enabled) {
-                $this->sendSms($userId, $message);
-            }
+            return $preference ? (bool) $preference->{$channel . '_enabled'} : $default;
+        };
 
-            // Send push notification if enabled
-            if ($preferences->push_enabled) {
-                $this->sendPushNotification($userId, $title, $message, $data);
-            }
+        $notification = null;
+
+        if ($wants('in_app', true)) {
+            $notification = Notification::create([
+                'user_id' => $userId,
+                'title' => $title,
+                'message' => $message,
+                'type' => $type,
+                'data' => $data,
+            ]);
+        }
+
+        if ($wants('email', false)) {
+            $this->sendEmail($userId, $title, $message, $data);
+        }
+
+        if ($wants('sms', false)) {
+            $this->sendSms($userId, $message);
+        }
+
+        if ($wants('push', false)) {
+            $this->sendPushNotification($userId, $title, $message, $data);
         }
 
         return $notification;
     }
 
     /**
-     * Send notification to multiple users
+     * Send notification to multiple users. Returns only the notifications
+     * actually stored (users who switched the category off are skipped).
      */
-    public function sendToUsers(array $userIds, $title, $message, $type = 'info', array $data = []): array
+    public function sendToUsers(array $userIds, $title, $message, $type = 'info', array $data = [], ?array $channels = null): array
     {
         $notifications = [];
 
         foreach ($userIds as $userId) {
-            $notifications[] = $this->sendToUser($userId, $title, $message, $type, $data);
+            $notification = $this->sendToUser($userId, $title, $message, $type, $data, $channels);
+            if ($notification) {
+                $notifications[] = $notification;
+            }
         }
 
         return $notifications;
+    }
+
+    /**
+     * The preference row that governs a notification of this type: the
+     * category's own row first, then the user's 'all' row.
+     */
+    protected function preferenceFor($userId, string $type): ?NotificationPreference
+    {
+        return NotificationPreference::where('user_id', $userId)
+            ->whereIn('notification_type', [Notification::categoryFor($type), NotificationPreference::TYPE_ALL])
+            ->orderByRaw("notification_type = ?", [NotificationPreference::TYPE_ALL])
+            ->first();
+    }
+
+    /**
+     * Raise a recurring operational alert (low stock, pending orders, …) for
+     * every admin without piling up copies.
+     *
+     * The hourly scan used to create a fresh notification every run, so one
+     * unresolved shortage became 24 unread items a day per admin. Now each
+     * alert has a key, and per admin:
+     *  - an unread alert with that key is refreshed in place (new figures,
+     *    no new row, no new chime);
+     *  - once read, it is raised again only after $remindAfterHours, as a
+     *    reminder that the problem is still there.
+     *
+     * Returns how many new notifications were stored.
+     */
+    public function raiseAlert(string $key, string $title, string $message, string $type, array $data = [], int $remindAfterHours = 24): int
+    {
+        $data['alert_key'] = $key;
+        $stored = 0;
+
+        foreach ($this->adminIds() as $userId) {
+            $latest = Notification::where('user_id', $userId)
+                ->where('data->alert_key', $key)
+                ->latest('id')
+                ->first();
+
+            if ($latest && !$latest->is_read) {
+                $latest->update(['title' => $title, 'message' => $message, 'data' => $data]);
+                continue;
+            }
+
+            if ($latest && $latest->read_at && $latest->read_at->gt(now()->subHours($remindAfterHours))) {
+                continue;
+            }
+
+            if ($this->sendToUser($userId, $title, $message, $type, $data)) {
+                $stored++;
+            }
+        }
+
+        return $stored;
+    }
+
+    /**
+     * The condition behind an alert has cleared (stock replenished, orders
+     * confirmed): mark its still-unread notifications read so the badge
+     * stops counting a problem that no longer exists.
+     */
+    public function resolveAlert(string $key): int
+    {
+        return Notification::where('data->alert_key', $key)
+            ->unread()
+            ->update(['is_read' => true, 'read_at' => now()]);
     }
 
     /**
@@ -83,6 +168,11 @@ class NotificationService
             $message = $fallback['message'];
             $type = $fallback['type'];
             $templateType = NotificationTemplate::TYPE_IN_APP;
+        }
+
+        $preference = $this->preferenceFor($userId, $type);
+        if ($preference && !$preference->in_app_enabled) {
+            return null;
         }
 
         $notification = Notification::create([
@@ -201,7 +291,7 @@ class NotificationService
     /**
      * Send warehouse notification
      */
-    public function sendWarehouseNotification($userId, $warehouseName, $message, $type = 'info'): Notification
+    public function sendWarehouseNotification($userId, $warehouseName, $message, $type = 'info'): ?Notification
     {
         return $this->sendToUser($userId, "Warehouse: {$warehouseName}", $message, $type, [
             'warehouse_name' => $warehouseName,
@@ -260,24 +350,29 @@ class NotificationService
     }
 
     /**
-     * Delete old notifications
+     * Delete old notifications that have been read. Unread ones are kept
+     * however old: nobody has seen them yet.
      */
     public function deleteOldNotifications($days = 90): int
     {
-        return Notification::where('created_at', '<', now()->subDays($days))
+        return Notification::read()
+            ->where('created_at', '<', now()->subDays($days))
             ->delete();
     }
 
     /**
      * Notify all administrators
      */
-    public function notifyAdmins($title, $message, $type = 'info', array $data = []): array
+    public function notifyAdmins($title, $message, $type = 'info', array $data = [], ?array $channels = null): array
     {
-        $adminIds = User::whereHas('roles', function ($q) {
+        return $this->sendToUsers($this->adminIds(), $title, $message, $type, $data, $channels);
+    }
+
+    public function adminIds(): array
+    {
+        return User::whereHas('roles', function ($q) {
             $q->whereIn('name', ['admin', 'master']);
         })->orWhere('id', 1)->pluck('id')->unique()->all();
-
-        return $this->sendToUsers($adminIds, $title, $message, $type, $data);
     }
 
     /**

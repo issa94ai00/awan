@@ -62,3 +62,9 @@ Schedule::command('alerts:check --notify')
     ->hourly()
     ->withoutOverlapping();
 
+
+// Read notifications older than 90 days are pruned; unread ones are kept.
+Schedule::call(fn () => app(\App\Services\NotificationService::class)->deleteOldNotifications(90))
+    ->name('notifications:prune-read')
+    ->dailyAt('02:30')
+    ->withoutOverlapping();

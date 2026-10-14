@@ -1144,7 +1144,6 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/unread-count', [NotificationController::class, 'getUnreadCount'])->name('api.notifications.unread-count');
             Route::get('/stats', [NotificationController::class, 'getStats'])->name('api.notifications.stats');
             Route::get('/system-alerts', [NotificationController::class, 'getSystemAlerts'])->name('api.notifications.system-alerts');
-            Route::get('/users', [NotificationController::class, 'getUsers'])->name('api.notifications.users');
             Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('api.notifications.read-all');
             Route::post('/mark-multiple-read', [NotificationController::class, 'markMultipleAsRead'])->name('api.notifications.mark-multiple-read');
             Route::post('/delete-multiple', [NotificationController::class, 'destroyMultiple'])->name('api.notifications.delete-multiple');
@@ -1168,10 +1167,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::delete('/templates/{id}', [NotificationController::class, 'destroyTemplate'])->whereNumber('id')->name('api.notifications.templates.destroy');
                 Route::post('/send', [NotificationController::class, 'sendNotification'])->name('api.notifications.send');
                 Route::post('/send-bulk', [NotificationController::class, 'sendBulkNotification'])->name('api.notifications.send-bulk');
+                // Every user's name and email, for picking a recipient.
+                Route::get('/users', [NotificationController::class, 'getUsers'])->name('api.notifications.users');
             });
 
             Route::get('/{id}', [NotificationController::class, 'show'])->whereNumber('id')->name('api.notifications.show');
             Route::post('/{id}/read', [NotificationController::class, 'markAsRead'])->whereNumber('id')->name('api.notifications.read');
+            Route::post('/{id}/unread', [NotificationController::class, 'markAsUnread'])->whereNumber('id')->name('api.notifications.unread');
             Route::delete('/{id}', [NotificationController::class, 'destroy'])->whereNumber('id')->name('api.notifications.destroy');
         });
 

@@ -1,497 +1,331 @@
 <template>
   <div class="notifications-page">
-    <AdminPageHeader :title="t('notifications.title')">
+    <AdminPageHeader :title="t('nf_title')" :subtitle="t('nf_subtitle')">
       <template #actions>
-        <el-button :icon="Refresh" @click="refreshAll" :loading="loading || alertsLoading">
-          {{ t('common.refresh') || 'تحديث' }}
+        <el-button :icon="Refresh" :loading="loading" @click="refreshAll">
+          {{ t('nf_refresh') }}
         </el-button>
-        <el-button :icon="Check" @click="markAllAsRead" :disabled="unreadCount === 0">
-          {{ t('notifications.mark_all_read') }}
+        <el-dropdown trigger="click" @command="onMoreCommand">
+          <el-button :icon="MoreFilled">{{ t('nf_more') }}</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="preferences" :icon="Setting">{{ t('nf_open_preferences') }}</el-dropdown-item>
+              <el-dropdown-item command="delete-read" :icon="Delete" :disabled="summary.read === 0" divided>
+                {{ t('nf_delete_all_read', { count: summary.read }) }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button :icon="Check" :disabled="summary.unread === 0" @click="markAllAsRead">
+          {{ t('nf_mark_all_read') }}
         </el-button>
-        <el-button :icon="Delete" type="danger" plain @click="deleteAllRead" :disabled="readCount === 0">
-          {{ t('notifications.delete_all_read') || 'حذف المقروء' }}
-        </el-button>
-        <el-button type="primary" :icon="Plus" @click="openSendDialog">
-          {{ t('notifications.send_notification') }}
+        <el-button v-if="canSend" type="primary" :icon="Promotion" @click="openSendDialog">
+          {{ t('nf_send') }}
         </el-button>
       </template>
     </AdminPageHeader>
 
-    <!-- Top KPI Stat Cards -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card card-total">
-          <div class="stat-content">
-            <div class="stat-icon icon-blue">
-              <el-icon><Bell /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ totalCount }}</h3>
-              <p>{{ t('notifications.total') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card card-unread">
-          <div class="stat-content">
-            <div class="stat-icon icon-orange">
-              <el-icon><Message /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ unreadCount }}</h3>
-              <p>{{ t('notifications.unread') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card card-read">
-          <div class="stat-content">
-            <div class="stat-icon icon-green">
-              <el-icon><CircleCheck /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ readCount }}</h3>
-              <p>{{ t('notifications.read') }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card
-          shadow="hover"
-          class="stat-card card-alerts"
-          :class="{ 'has-alerts': systemAlertsCount > 0 }"
-          @click="activeTab = 'alerts'"
-          style="cursor: pointer"
-        >
-          <div class="stat-content">
-            <div class="stat-icon icon-red">
-              <el-icon><Warning /></el-icon>
-            </div>
-            <div class="stat-info">
-              <h3>{{ systemAlertsCount }}</h3>
-              <p>{{ t('notifications.system_alerts') || 'تنبيهات النظام النشطة' }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Main Navigation Tabs -->
     <el-card class="main-card" shadow="never">
       <el-tabs v-model="activeTab" class="notification-tabs">
-        <!-- TAB 1: Notification Feed -->
+        <!-- Inbox -->
         <el-tab-pane name="feed">
           <template #label>
             <span class="tab-label">
               <el-icon><Bell /></el-icon>
-              <span>{{ t('notifications.feed_tab') || 'سجل الإشعارات' }}</span>
-              <el-badge v-if="unreadCount > 0" :value="unreadCount" class="tab-badge" />
+              <span>{{ t('nf_tab_inbox') }}</span>
+              <span v-if="summary.unread > 0" class="tab-count">{{ summary.unread }}</span>
             </span>
           </template>
 
-          <!-- Search & Filters Toolbar -->
-          <div class="filter-toolbar">
-            <div class="filter-inputs">
-              <el-input
-                v-model="filters.search"
-                :placeholder="t('notifications.search_placeholder') || 'بحث في نص أو عنوان الإشعار...'"
-                :prefix-icon="Search"
-                clearable
-                @clear="handleSearch"
-                @keyup.enter="handleSearch"
-                class="search-input"
-              />
-
-              <el-select
-                v-model="filters.type"
-                :placeholder="t('notifications.select_type')"
-                clearable
-                @change="handleFilterChange"
-                class="filter-select"
+          <!-- Status + search -->
+          <div class="toolbar">
+            <div class="status-switch" role="tablist">
+              <button
+                v-for="s in statusOptions"
+                :key="s.value"
+                type="button"
+                role="tab"
+                class="status-btn"
+                :class="{ active: filters.status === s.value }"
+                :aria-selected="filters.status === s.value"
+                @click="setStatus(s.value)"
               >
-                <el-option value="" :label="t('common.all_types') || 'جميع التصنيفات'" />
-                <el-option value="info" :label="t('notifications.info')" />
-                <el-option value="success" :label="t('notifications.success')" />
-                <el-option value="warning" :label="t('notifications.warning')" />
-                <el-option value="error" :label="t('notifications.error')" />
-                <el-option value="order" :label="t('notifications.order_updates') || 'الطلبات'" />
-                <el-option value="inventory" :label="t('notifications.inventory_alerts') || 'المخزون'" />
-                <el-option value="warehouse" :label="t('notifications.warehouse') || 'المستودعات'" />
-                <el-option value="financial" :label="t('notifications.payment_notifications') || 'المالية'" />
-                <el-option value="system" :label="t('notifications.system_messages') || 'النظام'" />
-              </el-select>
-
-              <el-select
-                v-model="filters.status"
-                :placeholder="t('notifications.select_status')"
-                clearable
-                @change="handleFilterChange"
-                class="filter-select"
-              >
-                <el-option value="" :label="t('common.all_status') || 'جميع الحالات'" />
-                <el-option value="unread" :label="t('notifications.unread')" />
-                <el-option value="read" :label="t('notifications.read')" />
-              </el-select>
+                {{ s.label }}
+                <span class="status-num">{{ s.count }}</span>
+              </button>
             </div>
+            <el-input
+              v-model="filters.search"
+              :placeholder="t('nf_search_placeholder')"
+              :prefix-icon="Search"
+              clearable
+              class="nf-search"
+            />
+          </div>
 
-            <div class="filter-actions">
-              <el-button type="primary" :icon="Search" @click="handleSearch">
-                {{ t('common.search') }}
-              </el-button>
-              <el-button @click="resetFilters">
-                {{ t('common.reset') || 'إعادة ضبط' }}
-              </el-button>
+          <!-- Categories -->
+          <div class="category-chips">
+            <button
+              v-for="c in categoryOptions"
+              :key="c.value || 'all'"
+              type="button"
+              class="chip"
+              :class="[{ active: filters.category === c.value }, c.value ? `cat-${c.value}` : '']"
+              @click="setCategory(c.value)"
+            >
+              <el-icon v-if="c.icon" :size="14"><component :is="c.icon" /></el-icon>
+              <span>{{ c.label }}</span>
+              <span v-if="c.unread > 0" class="chip-unread">{{ c.unread }}</span>
+            </button>
+          </div>
+
+          <!-- Selection bar -->
+          <div v-if="notifications.length" class="select-bar" :class="{ 'has-selection': selectedIds.length > 0 }">
+            <el-checkbox
+              :model-value="allOnPageSelected"
+              :indeterminate="selectedIds.length > 0 && !allOnPageSelected"
+              @change="toggleSelectAll"
+            >
+              {{ selectedIds.length ? t('nf_selected', { count: selectedIds.length }) : t('nf_select_page') }}
+            </el-checkbox>
+            <div v-if="selectedIds.length" class="select-actions">
+              <el-button size="small" :icon="Check" @click="handleBatchMarkRead">{{ t('nf_mark_read') }}</el-button>
+              <el-button size="small" type="danger" plain :icon="Delete" @click="handleBatchDelete">{{ t('nf_delete') }}</el-button>
+              <el-button size="small" text @click="selectedIds = []">{{ t('nf_clear_selection') }}</el-button>
             </div>
           </div>
 
-          <!-- Batch Operations Bar (when rows are selected) -->
-          <transition name="el-zoom-in-top">
-            <div v-if="selectedRowIds.length > 0" class="batch-bar">
-              <div class="batch-info">
-                <el-icon><Tickets /></el-icon>
-                <span>{{ t('notifications.selected_count', { count: selectedRowIds.length }) || `تم تحديد ${selectedRowIds.length} إشعار` }}</span>
-              </div>
-              <div class="batch-btns">
-                <el-button size="small" type="primary" :icon="Check" @click="handleBatchMarkRead">
-                  {{ t('notifications.mark_selected_read') || 'تحديد كمقروء' }}
-                </el-button>
-                <el-button size="small" type="danger" :icon="Delete" @click="handleBatchDelete">
-                  {{ t('notifications.delete_selected') || 'حذف المحدد' }}
-                </el-button>
-                <el-button size="small" @click="clearSelection">
-                  {{ t('common.cancel') }}
-                </el-button>
-              </div>
+          <!-- List -->
+          <div v-loading="loading" class="inbox">
+            <div v-if="!loading && notifications.length === 0" class="empty-state">
+              <el-icon :size="44"><component :is="emptyState.icon" /></el-icon>
+              <h3>{{ emptyState.title }}</h3>
+              <p>{{ emptyState.text }}</p>
+              <el-button v-if="hasActiveFilters" size="small" @click="resetFilters">{{ t('nf_clear_filters') }}</el-button>
             </div>
-          </transition>
 
-          <!-- Table -->
-          <el-table
-            ref="tableRef"
-            :data="notifications"
-            v-loading="loading"
-            stripe
-            border
-            @selection-change="handleSelectionChange"
-            class="notifications-table"
-          >
-            <el-table-column type="selection" width="45" align="center" />
-
-            <el-table-column :label="t('notifications.status')" width="75" align="center">
-              <template #default="{ row }">
-                <el-tooltip :content="row.is_read ? t('notifications.read') : t('notifications.unread')" placement="top">
-                  <span class="status-dot" :class="{ unread: !row.is_read }"></span>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="type" :label="t('notifications.type')" width="130">
-              <template #default="{ row }">
-                <el-tag :type="getTypeTag(row.type)" effect="light" class="type-tag">
-                  <el-icon class="mr-1"><component :is="getTypeIcon(row.type)" /></el-icon>
-                  <span>{{ formatTypeName(row.type) }}</span>
-                </el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="title" :label="t('notifications.title')" min-width="200">
-              <template #default="{ row }">
-                <div class="title-cell" :class="{ unread: !row.is_read }" @click="viewNotification(row)">
-                  <span class="title-text">{{ row.title }}</span>
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="message" :label="t('notifications.message')" min-width="260" show-overflow-tooltip>
-              <template #default="{ row }">
-                <span class="message-preview">{{ row.message }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column :label="t('notifications.event_action') || 'الحدث المرتبط'" width="130" align="center">
-              <template #default="{ row }">
-                <el-button
-                  v-if="row.target_route"
-                  size="small"
-                  type="primary"
-                  link
-                  @click="goToTargetRoute(row.target_route)"
+            <section v-for="group in groupedNotifications" :key="group.key" class="day-group">
+              <h4 class="day-label">{{ group.label }}</h4>
+              <ul class="items">
+                <li
+                  v-for="item in group.items"
+                  :key="item.id"
+                  class="item"
+                  :class="{ unread: !item.is_read, selected: selectedIds.includes(item.id) }"
+                  tabindex="0"
+                  @click="openNotification(item)"
+                  @keydown.enter="openNotification(item)"
                 >
-                  <el-icon><ArrowRight /></el-icon>
-                  <span>{{ t('notifications.go_to_event') || 'انتقال للحدث' }}</span>
-                </el-button>
-                <span v-else class="text-slate-400 text-xs">—</span>
-              </template>
-            </el-table-column>
+                  <el-checkbox
+                    class="item-check"
+                    :model-value="selectedIds.includes(item.id)"
+                    @click.stop
+                    @change="toggleSelected(item.id)"
+                  />
+                  <div class="item-icon" :class="`cat-${item.category || 'system'}`">
+                    <el-icon :size="18"><component :is="typeIcon(item.type)" /></el-icon>
+                  </div>
+                  <div class="item-body">
+                    <div class="item-head">
+                      <span class="item-title">{{ item.title }}</span>
+                      <span class="item-time" :title="formatDate(item.created_at)">{{ timeAgo(item.created_at) }}</span>
+                    </div>
+                    <p class="item-message">{{ item.message }}</p>
+                    <div class="item-meta">
+                      <span class="type-pill" :class="`cat-${item.category || 'system'}`">{{ typeLabel(item.type) }}</span>
+                      <button
+                        v-if="item.target_route"
+                        type="button"
+                        class="open-link"
+                        @click.stop="goTo(item)"
+                      >
+                        {{ t('nf_open_related') }}
+                        <el-icon :size="12" class="dir-arrow"><ArrowRight /></el-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="item-actions" @click.stop>
+                    <el-tooltip :content="item.is_read ? t('nf_mark_unread') : t('nf_mark_read')" placement="top">
+                      <button type="button" class="icon-btn" :aria-label="item.is_read ? t('nf_mark_unread') : t('nf_mark_read')" @click="toggleRead(item)">
+                        <el-icon :size="15"><component :is="item.is_read ? Message : Check" /></el-icon>
+                      </button>
+                    </el-tooltip>
+                    <el-tooltip :content="t('nf_delete')" placement="top">
+                      <button type="button" class="icon-btn danger" :aria-label="t('nf_delete')" @click="deleteSingle(item)">
+                        <el-icon :size="15"><Delete /></el-icon>
+                      </button>
+                    </el-tooltip>
+                  </div>
+                  <span v-if="!item.is_read" class="unread-dot" aria-hidden="true"></span>
+                </li>
+              </ul>
+            </section>
+          </div>
 
-            <el-table-column prop="created_at" :label="t('common.created_at')" width="180">
-              <template #default="{ row }">
-                <div class="time-cell">
-                  <span class="exact-time">{{ formatDate(row.created_at) }}</span>
-                  <span class="relative-time">{{ formatTimeAgo(row.created_at) }}</span>
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column :label="t('common.actions')" width="140" align="center" fixed="right">
-              <template #default="{ row }">
-                <div class="row-actions">
-                  <el-tooltip :content="t('common.view')" placement="top">
-                    <el-button size="small" circle :icon="View" @click="viewNotification(row)" />
-                  </el-tooltip>
-                  <el-tooltip :content="row.is_read ? (t('notifications.mark_unread') || 'تحديد كغير مقروء') : t('notifications.marked_read')" placement="top">
-                    <el-button
-                      size="small"
-                      circle
-                      :type="row.is_read ? 'default' : 'success'"
-                      :icon="Check"
-                      @click="toggleReadStatus(row)"
-                    />
-                  </el-tooltip>
-                  <el-tooltip :content="t('common.delete')" placement="top">
-                    <el-button size="small" circle type="danger" :icon="Delete" @click="deleteSingle(row)" />
-                  </el-tooltip>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <!-- Pagination -->
-          <div class="pagination-container">
+          <div v-if="pagination.total > pagination.per_page" class="pagination-container">
             <el-pagination
               v-model:current-page="pagination.page"
               v-model:page-size="pagination.per_page"
               :total="pagination.total"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next, jumper"
+              :page-sizes="[20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              background
+              small
               @size-change="loadNotifications"
               @current-change="loadNotifications"
             />
           </div>
         </el-tab-pane>
 
-        <!-- TAB 2: Operational System Alerts -->
+        <!-- Live operational alerts -->
         <el-tab-pane name="alerts">
           <template #label>
             <span class="tab-label">
               <el-icon><Warning /></el-icon>
-              <span>{{ t('notifications.system_alerts_center') || 'مركز تنبيهات النظام التشغيلية' }}</span>
-              <el-badge v-if="systemAlertsCount > 0" :value="systemAlertsCount" type="danger" class="tab-badge" />
+              <span>{{ t('nf_tab_alerts') }}</span>
+              <span v-if="systemAlerts.length > 0" class="tab-count danger">{{ systemAlerts.length }}</span>
             </span>
           </template>
 
-          <div class="alerts-tab-content">
-            <div class="alerts-intro">
-              <div class="intro-text">
-                <h3>{{ t('notifications.operational_pulse') || 'نبض العمليات والمستودعات والمالية' }}</h3>
-                <p>{{ t('notifications.operational_pulse_desc') || 'يقوم النظام تلقائياً بتحليل المخزون المتدني، والطلبات المعلقة، واستلامات البضائع، والفواتير المتأخرة لتنبيهك الفوري.' }}</p>
-              </div>
-              <el-button :icon="Refresh" @click="loadSystemAlerts" :loading="alertsLoading">
-                {{ t('common.refresh') }}
-              </el-button>
-            </div>
+          <div class="alerts-intro">
+            <p>{{ t('nf_alerts_intro') }}</p>
+            <span v-if="alertsCheckedAt" class="checked-at">{{ t('nf_alerts_checked', { time: timeAgo(alertsCheckedAt) }) }}</span>
+          </div>
 
-            <div v-if="alertsLoading" class="alerts-loading">
-              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-              <span>{{ t('common.loading') }}...</span>
-            </div>
-
-            <div v-else-if="systemAlerts.length === 0" class="alerts-empty-state">
-              <el-icon :size="48" class="text-emerald-500"><CircleCheck /></el-icon>
-              <h3>{{ t('notifications.all_systems_normal') || 'جميع العمليات بحالة ممتازة' }}</h3>
-              <p>{{ t('notifications.no_operational_alerts') || 'لا توجد طلبات معلقة أو نواقص مخزون حرجة حالياً.' }}</p>
+          <div v-loading="alertsLoading" class="alerts-wrap">
+            <div v-if="!alertsLoading && systemAlerts.length === 0" class="empty-state">
+              <el-icon :size="44" class="ok"><CircleCheck /></el-icon>
+              <h3>{{ t('nf_alerts_none_title') }}</h3>
+              <p>{{ t('nf_alerts_none_text') }}</p>
             </div>
 
             <div v-else class="alerts-grid">
-              <el-card
+              <article
                 v-for="alert in systemAlerts"
                 :key="alert.id"
-                shadow="hover"
                 class="alert-card"
-                :class="`alert-severity-${alert.severity}`"
+                :class="`sev-${alert.severity}`"
               >
-                <div class="alert-card-header">
-                  <div class="header-main">
-                    <span class="severity-pill" :class="alert.severity">
-                      {{ formatSeverity(alert.severity) }}
-                    </span>
-                    <h4 class="alert-title">{{ currentLocale === 'ar' ? alert.title : (alert.title_en || alert.title) }}</h4>
+                <header class="alert-head">
+                  <div class="alert-icon" :class="`cat-${alert.type}`">
+                    <el-icon :size="18"><component :is="typeIcon(alert.type)" /></el-icon>
                   </div>
-                  <span class="count-badge" :class="alert.severity">
-                    {{ alert.count }}
+                  <div class="alert-heading">
+                    <span class="sev-pill" :class="alert.severity">{{ severityLabel(alert.severity) }}</span>
+                    <h4>{{ isAr ? alert.title : (alert.title_en || alert.title) }}</h4>
+                  </div>
+                  <span class="alert-count">{{ alert.count }}</span>
+                </header>
+                <p class="alert-desc">{{ isAr ? alert.message : (alert.message_en || alert.message) }}</p>
+                <div v-if="alert.items && alert.items.length" class="samples">
+                  <span v-for="it in alert.items" :key="it.id" class="sample">
+                    {{ it.order_number || it.invoice_number || it.name || it.sku || `#${it.id}` }}
                   </span>
                 </div>
-
-                <p class="alert-desc">{{ currentLocale === 'ar' ? alert.message : (alert.message_en || alert.message) }}</p>
-
-                <!-- Sample Items Preview (if present) -->
-                <div v-if="alert.items && alert.items.length" class="alert-items-preview">
-                  <span class="preview-title">{{ t('notifications.affected_samples') || 'عينة من السجلات المتأثرة:' }}</span>
-                  <div class="preview-tags">
-                    <span v-for="it in alert.items" :key="it.id" class="sample-chip">
-                      {{ it.order_number || it.invoice_number || it.name || it.sku || `#${it.id}` }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="alert-card-footer">
-                  <el-button
-                    type="primary"
-                    :icon="ArrowRight"
-                    @click="goToTargetRoute(alert.route)"
-                    class="action-btn"
-                  >
-                    {{ t('notifications.take_action') || 'معالجة الأمر الآن' }}
+                <footer class="alert-foot">
+                  <el-button type="primary" plain size="small" @click="router.push(alert.route)">
+                    {{ t('nf_alert_action') }}
+                    <el-icon class="el-icon--right dir-arrow"><ArrowRight /></el-icon>
                   </el-button>
-                </div>
-              </el-card>
+                </footer>
+              </article>
             </div>
           </div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
 
-    <!-- Dialog: View Notification Details -->
-    <el-dialog
-      v-model="showViewDialog"
-      :title="selectedNotification?.title || t('notifications.details')"
-      width="560px"
-      destroy-on-close
-      class="detail-dialog"
+    <!-- Detail -->
+    <el-drawer
+      v-model="showDetail"
+      :title="t('nf_details')"
+      :direction="isAr ? 'ltr' : 'rtl'"
+      size="440px"
+      class="detail-drawer"
     >
-      <div v-if="selectedNotification" class="notification-detail-content">
-        <div class="detail-header-row">
-          <el-tag :type="getTypeTag(selectedNotification.type)" class="type-tag">
-            <el-icon class="mr-1"><component :is="getTypeIcon(selectedNotification.type)" /></el-icon>
-            <span>{{ formatTypeName(selectedNotification.type) }}</span>
-          </el-tag>
-          <span class="detail-time">{{ formatDate(selectedNotification.created_at) }}</span>
+      <div v-if="current" class="detail">
+        <div class="detail-top">
+          <div class="item-icon lg" :class="`cat-${current.category || 'system'}`">
+            <el-icon :size="22"><component :is="typeIcon(current.type)" /></el-icon>
+          </div>
+          <div>
+            <span class="type-pill" :class="`cat-${current.category || 'system'}`">{{ typeLabel(current.type) }}</span>
+            <h3 class="detail-title">{{ current.title }}</h3>
+            <span class="detail-time">{{ formatDate(current.created_at) }} · {{ timeAgo(current.created_at) }}</span>
+          </div>
         </div>
-
-        <div class="detail-message-box">
-          <p>{{ selectedNotification.message }}</p>
-        </div>
-
-        <div v-if="selectedNotification.read_at" class="read-receipt">
-          <el-icon color="#10b981"><Check /></el-icon>
-          <span>{{ t('notifications.read_at') || 'تمت القراءة في' }}: {{ formatDate(selectedNotification.read_at) }}</span>
-        </div>
-
-        <div v-if="selectedNotification.target_route" class="target-link-box">
-          <el-button type="primary" :icon="ArrowRight" @click="goToTargetRoute(selectedNotification.target_route)">
-            {{ t('notifications.go_to_event') || 'الانتقال إلى الحدث المرتبط' }}
-          </el-button>
-        </div>
+        <p class="detail-message">{{ current.message }}</p>
+        <p v-if="current.read_at" class="detail-read">
+          <el-icon><Check /></el-icon>
+          {{ t('nf_read_at', { time: formatDate(current.read_at) }) }}
+        </p>
+        <el-button v-if="current.target_route" type="primary" class="detail-go" @click="goTo(current)">
+          {{ t('nf_open_related') }}
+          <el-icon class="el-icon--right dir-arrow"><ArrowRight /></el-icon>
+        </el-button>
       </div>
       <template #footer>
         <div class="detail-footer">
-          <el-button type="danger" plain :icon="Delete" @click="deleteFromDialog">
-            {{ t('common.delete') }}
-          </el-button>
-          <el-button @click="showViewDialog = false">
-            {{ t('common.close') }}
+          <el-button type="danger" plain :icon="Delete" @click="deleteSingle(current, true)">{{ t('nf_delete') }}</el-button>
+          <el-button v-if="current" :icon="Message" @click="toggleRead(current); showDetail = false">
+            {{ current.is_read ? t('nf_mark_unread') : t('nf_mark_read') }}
           </el-button>
         </div>
       </template>
-    </el-dialog>
+    </el-drawer>
 
-    <!-- Dialog: Compose & Send Notification -->
-    <el-dialog
-      v-model="showSendDialog"
-      :title="t('notifications.send_notification')"
-      width="620px"
-      destroy-on-close
-    >
-      <el-form
-        ref="sendFormRef"
-        :model="sendForm"
-        :rules="sendRules"
-        label-position="top"
-        v-loading="sending"
-      >
-        <el-form-item :label="t('notifications.target_audience') || 'الجهة المستلمة'" prop="send_to">
+    <!-- Compose -->
+    <el-dialog v-model="showSendDialog" :title="t('nf_send')" width="600px" destroy-on-close>
+      <el-form ref="sendFormRef" :model="sendForm" :rules="sendRules" label-position="top">
+        <el-form-item :label="t('nf_send_to')" prop="send_to">
           <el-radio-group v-model="sendForm.send_to">
-            <el-radio-button value="user">{{ t('notifications.specific_user') || 'مستخدم محدد' }}</el-radio-button>
-            <el-radio-button value="all_admins">{{ t('notifications.all_admins') || 'جميع المدراء (Admins)' }}</el-radio-button>
-            <el-radio-button value="all_users">{{ t('notifications.all_users') || 'جميع المستخدمين' }}</el-radio-button>
+            <el-radio-button value="user">{{ t('nf_send_to_user') }}</el-radio-button>
+            <el-radio-button value="all_admins">{{ t('nf_send_to_admins') }}</el-radio-button>
+            <el-radio-button value="all_users">{{ t('nf_send_to_all') }}</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item
-          v-if="sendForm.send_to === 'user'"
-          :label="t('notifications.recipient')"
-          prop="user_id"
-        >
-          <el-select
-            v-model="sendForm.user_id"
-            :placeholder="t('notifications.select_user')"
-            filterable
-            class="w-full"
-          >
-            <el-option
-              v-for="user in users"
-              :key="user.id"
-              :value="user.id"
-              :label="`${user.name} (${user.email})`"
-            />
+        <el-form-item v-if="sendForm.send_to === 'user'" :label="t('nf_recipient')" prop="user_id">
+          <el-select v-model="sendForm.user_id" :placeholder="t('nf_recipient_placeholder')" filterable class="w-full">
+            <el-option v-for="user in users" :key="user.id" :value="user.id" :label="`${user.name} (${user.email})`" />
           </el-select>
         </el-form-item>
 
         <el-row :gutter="16">
-          <el-col :span="16">
-            <el-form-item :label="t('notifications.notification_title') || 'عنوان الإشعار'" prop="title">
-              <el-input v-model="sendForm.title" :placeholder="t('notifications.title_placeholder') || 'أدخل عنوان الإشعار...'" />
+          <el-col :xs="24" :sm="16">
+            <el-form-item :label="t('nf_field_title')" prop="title">
+              <el-input v-model="sendForm.title" maxlength="255" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item :label="t('notifications.type')" prop="type">
+          <el-col :xs="24" :sm="8">
+            <el-form-item :label="t('nf_field_type')" prop="type">
               <el-select v-model="sendForm.type" class="w-full">
-                <el-option value="info" :label="t('notifications.info')" />
-                <el-option value="success" :label="t('notifications.success')" />
-                <el-option value="warning" :label="t('notifications.warning')" />
-                <el-option value="error" :label="t('notifications.error')" />
-                <el-option value="order" :label="t('notifications.order_updates') || 'طلب'" />
-                <el-option value="inventory" :label="t('notifications.inventory_alerts') || 'مخزون'" />
-                <el-option value="financial" :label="t('notifications.payment_notifications') || 'مالي'" />
+                <el-option v-for="type in sendTypes" :key="type" :value="type" :label="typeLabel(type)" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-form-item :label="t('notifications.message')" prop="message">
-          <el-input
-            v-model="sendForm.message"
-            type="textarea"
-            :rows="4"
-            :placeholder="t('notifications.message_placeholder') || 'اكتب نص الإشعار بالتفصيل...'"
-          />
+        <el-form-item :label="t('nf_field_message')" prop="message">
+          <el-input v-model="sendForm.message" type="textarea" :rows="4" />
         </el-form-item>
 
-        <el-form-item :label="t('notifications.target_route') || 'رابط الحدث الداخلي (اختياري)'">
-          <el-input
-            v-model="sendForm.route"
-            :placeholder="t('notifications.route_placeholder') || 'مثال: /admin/stock أو /admin/sales/sales-orders'"
-          />
+        <el-form-item :label="t('nf_field_route')" prop="route">
+          <el-input v-model="sendForm.route" placeholder="/admin/stock" dir="ltr" />
         </el-form-item>
 
-        <el-form-item :label="t('notifications.channels')">
+        <el-form-item :label="t('nf_field_channels')" prop="channels">
           <el-checkbox-group v-model="sendForm.channels">
-            <el-checkbox value="in_app">{{ t('notifications.in_app') }}</el-checkbox>
-            <el-checkbox value="email">{{ t('notifications.email') }}</el-checkbox>
-            <el-checkbox value="sms">{{ t('notifications.sms') }}</el-checkbox>
-            <el-checkbox value="push">{{ t('notifications.push') }}</el-checkbox>
+            <el-checkbox value="in_app">{{ t('nf_channel_in_app') }}</el-checkbox>
+            <el-checkbox value="email">{{ t('nf_channel_email') }}</el-checkbox>
           </el-checkbox-group>
         </el-form-item>
+        <p class="form-hint">{{ t('nf_channels_hint') }}</p>
       </el-form>
 
       <template #footer>
-        <el-button @click="showSendDialog = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="handleSendSubmit" :loading="sending">
-          {{ t('notifications.send') }}
-        </el-button>
+        <el-button @click="showSendDialog = false">{{ t('nf_cancel') }}</el-button>
+        <el-button type="primary" :loading="sending" @click="handleSendSubmit">{{ t('nf_send_now') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -499,140 +333,137 @@
 
 <script setup>
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-  Bell, Plus, Check, Message, Search, View, Delete, CircleCheck,
-  Warning, WarningFilled, Refresh, ArrowRight, Tickets, Box,
-  ShoppingCart, Money, Loading
+  Bell, Check, Message, Search, Delete, CircleCheck, Warning, WarningFilled,
+  Refresh, ArrowRight, Box, ShoppingCart, Money, MoreFilled, Setting,
+  Promotion, House, InfoFilled, Filter
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import notificationsService from '@/services/notifications';
 import { useNotificationsStore } from '@/stores/notifications';
+import { useAuthStore } from '@/stores/auth';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const notificationsStore = useNotificationsStore();
-const currentLocale = computed(() => locale.value);
+const authStore = useAuthStore();
+const isAr = computed(() => locale.value === 'ar');
 
-// State
+// Template management and sending are admin-only on the server.
+const canSend = computed(() => authStore.isSuperAdmin || authStore.hasRole(['admin', 'master']));
+
+const CATEGORIES = ['order', 'inventory', 'warehouse', 'financial', 'system'];
+
 const activeTab = ref('feed');
 const loading = ref(false);
 const alertsLoading = ref(false);
-const sending = ref(false);
-const showViewDialog = ref(false);
-const showSendDialog = ref(false);
-const selectedNotification = ref(null);
-const selectedRows = ref([]);
-
 const notifications = ref([]);
-const users = ref([]);
 const systemAlerts = ref([]);
-const totalCount = ref(0);
-const unreadCount = ref(0);
-const readCount = ref(0);
-const systemAlertsCount = ref(0);
+const alertsCheckedAt = ref(null);
+const selectedIds = ref([]);
+const summary = ref({ total: 0, unread: 0, read: 0 });
+const categoryCounts = ref({});
+const filters = ref({ search: '', category: '', status: '' });
+const pagination = ref({ page: 1, per_page: 20, total: 0 });
 
-const filters = ref({
-  search: '',
-  type: '',
-  status: '',
-});
+// ---- Labels & icons ----
+const typeIcon = (type) => ({
+  success: CircleCheck,
+  warning: Warning,
+  error: WarningFilled,
+  order: ShoppingCart,
+  inventory: Box,
+  warehouse: House,
+  financial: Money,
+  system: Setting,
+}[type] || InfoFilled);
 
-const pagination = ref({
-  page: 1,
-  per_page: 20,
-  total: 0,
-});
+const typeLabel = (type) => (
+  ['info', 'success', 'warning', 'error', ...CATEGORIES].includes(type) ? t(`nf_type_${type}`) : type
+);
 
-const sendFormRef = ref(null);
-const sendForm = ref({
-  send_to: 'user',
-  user_id: null,
-  title: '',
-  message: '',
-  type: 'info',
-  route: '',
-  channels: ['in_app'],
-});
+const severityLabel = (sev) => t(`nf_sev_${['critical', 'warning'].includes(sev) ? sev : 'info'}`);
 
-const sendRules = {
-  title: [{ required: true, message: t('notifications.title_required') || 'عنوان الإشعار مطلوب', trigger: 'blur' }],
-  message: [{ required: true, message: t('notifications.body_required') || 'نص الإشعار مطلوب', trigger: 'blur' }],
-  user_id: [
-    {
-      validator: (rule, value, callback) => {
-        if (sendForm.value.send_to === 'user' && !value) {
-          callback(new Error(t('notifications.user_required') || 'يرجى اختيار المستخدم المستلم'));
-        } else {
-          callback();
-        }
-      },
-      trigger: 'change',
-    },
-  ],
-};
+const statusOptions = computed(() => [
+  { value: '', label: t('nf_status_all'), count: summary.value.total },
+  { value: 'unread', label: t('nf_status_unread'), count: summary.value.unread },
+  { value: 'read', label: t('nf_status_read'), count: summary.value.read },
+]);
 
-const selectedRowIds = computed(() => selectedRows.value.map((r) => r.id));
+const categoryOptions = computed(() => [
+  { value: '', label: t('nf_cat_all'), icon: Filter, unread: 0 },
+  ...CATEGORIES.map((c) => ({
+    value: c,
+    label: t(`nf_cat_${c}`),
+    icon: typeIcon(c),
+    unread: categoryCounts.value[c]?.unread || 0,
+  })),
+]);
 
-// Methods
-const refreshAll = async () => {
-  await Promise.all([
-    loadNotifications(),
-    loadSystemAlerts(),
-    loadStats(),
-  ]);
-};
+const hasActiveFilters = computed(() => !!(filters.value.search || filters.value.category || filters.value.status));
 
-const loadStats = async () => {
-  try {
-    const res = await notificationsService.getStats();
-    const data = res.data || {};
-    totalCount.value = data.total ?? totalCount.value;
-    unreadCount.value = data.unread ?? unreadCount.value;
-    readCount.value = data.read ?? readCount.value;
-    systemAlertsCount.value = data.system_alerts_count ?? systemAlertsCount.value;
-  } catch (e) {
-    // silent
+const emptyState = computed(() => {
+  if (filters.value.search || filters.value.category) {
+    return { icon: Search, title: t('nf_empty_filtered_title'), text: t('nf_empty_filtered_text') };
   }
-};
-
-const loadUsers = async () => {
-  try {
-    const res = await notificationsService.getUsers();
-    users.value = res.data || [];
-  } catch (error) {
-    console.error('Failed to load users:', error);
+  if (filters.value.status === 'unread') {
+    return { icon: CircleCheck, title: t('nf_empty_unread_title'), text: t('nf_empty_unread_text') };
   }
-};
+  return { icon: Bell, title: t('nf_empty_title'), text: t('nf_empty_text') };
+});
 
+// ---- Grouping by day ----
+const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+const groupedNotifications = computed(() => {
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 86400000);
+  const groups = [];
+  const index = {};
+  for (const item of notifications.value) {
+    const d = new Date(item.created_at);
+    const key = dayKey(d);
+    if (!index[key]) {
+      let label;
+      if (key === dayKey(today)) label = t('nf_today');
+      else if (key === dayKey(yesterday)) label = t('nf_yesterday');
+      else label = d.toLocaleDateString(isAr.value ? 'ar-SY' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+      index[key] = { key, label, items: [] };
+      groups.push(index[key]);
+    }
+    index[key].items.push(item);
+  }
+  return groups;
+});
+
+// ---- Loading ----
 const loadNotifications = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.value.page,
-      per_page: pagination.value.per_page,
-    };
-    if (filters.value.search) params.search = filters.value.search.trim();
-    if (filters.value.type) params.type = filters.value.type;
-    if (filters.value.status === 'unread') params.unread_only = 1;
-    if (filters.value.status === 'read') params.status = 'read';
+    const params = { page: pagination.value.page, per_page: pagination.value.per_page };
+    if (filters.value.search.trim()) params.search = filters.value.search.trim();
+    if (filters.value.category) params.category = filters.value.category;
+    if (filters.value.status) params.status = filters.value.status;
 
-    const response = await notificationsService.getNotifications(params);
-    const resData = response.data || {};
-    const rows = Array.isArray(resData.data) ? resData.data : (Array.isArray(resData) ? resData : []);
+    const { data } = await notificationsService.getNotifications(params);
+    notifications.value = Array.isArray(data?.data) ? data.data : [];
+    pagination.value.total = data?.total ?? notifications.value.length;
+    if (data?.summary) summary.value = data.summary;
+    if (data?.categories) categoryCounts.value = data.categories;
+    notificationsStore.unreadCount = summary.value.unread;
 
-    notifications.value = rows;
-    pagination.value.total = resData.total ?? rows.length;
-
-    if (resData.summary) {
-      totalCount.value = resData.summary.total ?? totalCount.value;
-      unreadCount.value = resData.summary.unread ?? unreadCount.value;
-      readCount.value = resData.summary.read ?? readCount.value;
+    // A page emptied by deletes or filtering falls back to the last page.
+    if (notifications.value.length === 0 && pagination.value.page > 1 && data?.last_page) {
+      pagination.value.page = data.last_page;
+      return loadNotifications();
     }
+    const onPage = new Set(notifications.value.map((n) => n.id));
+    selectedIds.value = selectedIds.value.filter((id) => onPage.has(id));
   } catch (error) {
-    ElMessage.error(t('common.load_error'));
+    ElMessage.error(t('nf_load_error'));
   } finally {
     loading.value = false;
   }
@@ -641,707 +472,865 @@ const loadNotifications = async () => {
 const loadSystemAlerts = async () => {
   alertsLoading.value = true;
   try {
-    const res = await notificationsService.getSystemAlerts();
-    const data = res.data || {};
-    systemAlerts.value = data.alerts || [];
-    systemAlertsCount.value = data.total_alerts || systemAlerts.value.length;
+    const { data } = await notificationsService.getSystemAlerts();
+    systemAlerts.value = data?.alerts || [];
+    alertsCheckedAt.value = data?.timestamp || new Date().toISOString();
   } catch (e) {
-    // silent
+    // Leave the last result in place
   } finally {
     alertsLoading.value = false;
   }
 };
 
-const handleSearch = () => {
+const refreshAll = () => Promise.all([loadNotifications(), loadSystemAlerts()]);
+
+// ---- Filters ----
+const setStatus = (value) => {
+  filters.value.status = value;
   pagination.value.page = 1;
   loadNotifications();
 };
 
-const handleFilterChange = () => {
+const setCategory = (value) => {
+  filters.value.category = value;
   pagination.value.page = 1;
   loadNotifications();
 };
 
 const resetFilters = () => {
-  filters.value = { search: '', type: '', status: '' };
+  filters.value = { search: '', category: '', status: '' };
   pagination.value.page = 1;
   loadNotifications();
 };
 
-const handleSelectionChange = (rows) => {
-  selectedRows.value = rows;
+let searchTimer = null;
+watch(() => filters.value.search, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    pagination.value.page = 1;
+    loadNotifications();
+  }, 350);
+});
+
+// ---- Selection ----
+const allOnPageSelected = computed(() => notifications.value.length > 0 && selectedIds.value.length === notifications.value.length);
+
+const toggleSelectAll = () => {
+  selectedIds.value = allOnPageSelected.value ? [] : notifications.value.map((n) => n.id);
 };
 
-const clearSelection = () => {
-  selectedRows.value = [];
+const toggleSelected = (id) => {
+  selectedIds.value = selectedIds.value.includes(id)
+    ? selectedIds.value.filter((x) => x !== id)
+    : [...selectedIds.value, id];
 };
 
-// Item Actions
-const viewNotification = async (notification) => {
-  selectedNotification.value = notification;
-  showViewDialog.value = true;
-  if (!notification.is_read) {
-    await toggleReadStatus(notification, true);
+// ---- Item actions ----
+const showDetail = ref(false);
+const current = ref(null);
+
+const applyRead = (item, isRead) => {
+  if (item.is_read === isRead) return;
+  item.is_read = isRead;
+  item.read_at = isRead ? new Date().toISOString() : null;
+  const delta = isRead ? -1 : 1;
+  summary.value.unread = Math.max(0, summary.value.unread + delta);
+  summary.value.read = Math.max(0, summary.value.read - delta);
+  const cat = categoryCounts.value[item.category];
+  if (cat) cat.unread = Math.max(0, cat.unread + delta);
+  notificationsStore.unreadCount = summary.value.unread;
+};
+
+const markRead = async (item) => {
+  if (item.is_read) return;
+  await notificationsService.markAsRead(item.id);
+  applyRead(item, true);
+};
+
+const toggleRead = async (item) => {
+  try {
+    if (item.is_read) {
+      await notificationsService.markAsUnread(item.id);
+      applyRead(item, false);
+    } else {
+      await markRead(item);
+    }
+  } catch (e) {
+    ElMessage.error(t('nf_action_error'));
   }
 };
 
-const toggleReadStatus = async (notification, silent = false) => {
+const openNotification = (item) => {
+  current.value = item;
+  showDetail.value = true;
+  markRead(item).catch(() => {});
+};
+
+const goTo = (item) => {
+  markRead(item).catch(() => {});
+  showDetail.value = false;
+  router.push(item.target_route);
+};
+
+const deleteSingle = async (item, fromDetail = false) => {
+  if (!item) return;
   try {
-    if (!notification.is_read) {
-      await notificationsService.markAsRead(notification.id);
-      notification.is_read = true;
-      notification.read_at = new Date().toISOString();
-      unreadCount.value = Math.max(0, unreadCount.value - 1);
-      readCount.value = readCount.value + 1;
-      notificationsStore.unreadCount = unreadCount.value;
-      if (!silent) ElMessage.success(t('notifications.marked_read'));
-    }
-  } catch (error) {
-    ElMessage.error(t('common.action_error'));
+    await notificationsService.deleteNotification(item.id);
+    if (fromDetail) showDetail.value = false;
+    ElMessage.success(t('nf_deleted', { count: 1 }));
+    await loadNotifications();
+  } catch (e) {
+    ElMessage.error(t('nf_action_error'));
   }
 };
 
 const markAllAsRead = async () => {
   try {
     await notificationsService.markAllAsRead();
-    ElMessage.success(t('notifications.all_marked_read'));
-    notifications.value.forEach((n) => {
-      n.is_read = true;
-      n.read_at = n.read_at || new Date().toISOString();
-    });
-    unreadCount.value = 0;
-    readCount.value = totalCount.value;
-    notificationsStore.unreadCount = 0;
-  } catch (error) {
-    ElMessage.error(t('common.action_error'));
-  }
-};
-
-const deleteSingle = async (notification) => {
-  try {
-    await ElMessageBox.confirm(t('common.delete_confirm'), t('common.warning'), {
-      type: 'warning',
-      confirmButtonText: t('common.delete'),
-      cancelButtonText: t('common.cancel'),
-    });
-    await notificationsService.deleteNotification(notification.id);
-    ElMessage.success(t('common.delete_success'));
-    await refreshAll();
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error(t('common.delete_error'));
-  }
-};
-
-const deleteFromDialog = async () => {
-  if (!selectedNotification.value) return;
-  const n = selectedNotification.value;
-  showViewDialog.value = false;
-  await deleteSingle(n);
-};
-
-const deleteAllRead = async () => {
-  try {
-    await ElMessageBox.confirm(
-      t('notifications.delete_all_read_confirm') || 'هل أنت متأكد من حذف جميع الإشعارات المقروءة؟',
-      t('common.warning'),
-      { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
-    );
-    await notificationsService.deleteAllRead();
-    ElMessage.success(t('common.delete_success'));
-    await refreshAll();
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error(t('common.delete_error'));
+    ElMessage.success(t('nf_all_marked_read'));
+    await loadNotifications();
+  } catch (e) {
+    ElMessage.error(t('nf_action_error'));
   }
 };
 
 const handleBatchMarkRead = async () => {
-  if (selectedRowIds.value.length === 0) return;
   try {
-    await notificationsService.markMultipleAsRead(selectedRowIds.value);
-    ElMessage.success(t('notifications.marked_read'));
-    clearSelection();
-    await refreshAll();
-  } catch (error) {
-    ElMessage.error(t('common.action_error'));
+    await notificationsService.markMultipleAsRead(selectedIds.value);
+    selectedIds.value = [];
+    await loadNotifications();
+  } catch (e) {
+    ElMessage.error(t('nf_action_error'));
   }
 };
 
 const handleBatchDelete = async () => {
-  if (selectedRowIds.value.length === 0) return;
+  const count = selectedIds.value.length;
   try {
-    await ElMessageBox.confirm(
-      t('notifications.delete_selected_confirm', { count: selectedRowIds.value.length }) || `هل أنت متأكد من حذف ${selectedRowIds.value.length} إشعار؟`,
-      t('common.warning'),
-      { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
-    );
-    await notificationsService.deleteMultiple(selectedRowIds.value);
-    ElMessage.success(t('common.delete_success'));
-    clearSelection();
-    await refreshAll();
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error(t('common.delete_error'));
+    await ElMessageBox.confirm(t('nf_delete_selected_confirm', { count }), t('nf_delete'), {
+      type: 'warning',
+      confirmButtonText: t('nf_delete'),
+      cancelButtonText: t('nf_cancel'),
+    });
+  } catch {
+    return;
+  }
+  try {
+    await notificationsService.deleteMultiple(selectedIds.value);
+    selectedIds.value = [];
+    ElMessage.success(t('nf_deleted', { count }));
+    await loadNotifications();
+  } catch (e) {
+    ElMessage.error(t('nf_action_error'));
   }
 };
 
-const goToTargetRoute = (route) => {
-  if (!route) return;
-  showViewDialog.value = false;
-  router.push(route);
+const onMoreCommand = async (command) => {
+  if (command === 'preferences') {
+    router.push({ name: 'admin.notifications.preferences' });
+    return;
+  }
+  if (command === 'delete-read') {
+    try {
+      await ElMessageBox.confirm(t('nf_delete_all_read_confirm', { count: summary.value.read }), t('nf_delete'), {
+        type: 'warning',
+        confirmButtonText: t('nf_delete'),
+        cancelButtonText: t('nf_cancel'),
+      });
+    } catch {
+      return;
+    }
+    try {
+      const { data } = await notificationsService.deleteAllRead();
+      ElMessage.success(t('nf_deleted', { count: data?.count ?? summary.value.read }));
+      pagination.value.page = 1;
+      await loadNotifications();
+    } catch (e) {
+      ElMessage.error(t('nf_action_error'));
+    }
+  }
 };
 
-// Send Dialog
-const openSendDialog = () => {
-  sendForm.value = {
-    send_to: 'user',
-    user_id: users.value.length ? users.value[0].id : null,
-    title: '',
-    message: '',
-    type: 'info',
-    route: '',
-    channels: ['in_app'],
-  };
+// ---- Compose ----
+const users = ref([]);
+const sending = ref(false);
+const showSendDialog = ref(false);
+const sendFormRef = ref(null);
+const sendTypes = ['info', 'success', 'warning', 'error', ...CATEGORIES];
+const blankSendForm = () => ({
+  send_to: 'user',
+  user_id: null,
+  title: '',
+  message: '',
+  type: 'info',
+  route: '',
+  channels: ['in_app'],
+});
+const sendForm = ref(blankSendForm());
+
+const sendRules = computed(() => ({
+  title: [{ required: true, message: t('nf_title_required'), trigger: 'blur' }],
+  message: [{ required: true, message: t('nf_message_required'), trigger: 'blur' }],
+  user_id: [{
+    validator: (rule, value, cb) => (sendForm.value.send_to === 'user' && !value ? cb(new Error(t('nf_recipient_required'))) : cb()),
+    trigger: 'change',
+  }],
+  route: [{
+    validator: (rule, value, cb) => (value && !/^\/(?!\/)/.test(value) ? cb(new Error(t('nf_route_invalid'))) : cb()),
+    trigger: 'blur',
+  }],
+  channels: [{ type: 'array', required: true, min: 1, message: t('nf_channels_required'), trigger: 'change' }],
+}));
+
+const openSendDialog = async () => {
+  sendForm.value = blankSendForm();
   showSendDialog.value = true;
+  if (!users.value.length) {
+    try {
+      const { data } = await notificationsService.getUsers();
+      users.value = data || [];
+    } catch (e) {
+      // Recipient list stays empty; sending to groups still works
+    }
+  }
 };
 
 const handleSendSubmit = async () => {
   if (!sendFormRef.value) return;
-  await sendFormRef.value.validate(async (valid) => {
-    if (valid) {
-      sending.value = true;
-      try {
-        await notificationsService.sendNotification(sendForm.value);
-        ElMessage.success(t('notifications.sent_successfully'));
-        showSendDialog.value = false;
-        await refreshAll();
-      } catch (error) {
-        ElMessage.error(t('common.save_error'));
-      } finally {
-        sending.value = false;
-      }
-    }
+  try {
+    await sendFormRef.value.validate();
+  } catch {
+    return;
+  }
+  sending.value = true;
+  try {
+    const { data } = await notificationsService.sendNotification(sendForm.value);
+    ElMessage.success(t('nf_sent', { count: data?.count ?? 1 }));
+    showSendDialog.value = false;
+    await loadNotifications();
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || t('nf_action_error'));
+  } finally {
+    sending.value = false;
+  }
+};
+
+// ---- Formatting ----
+const formatDate = (value) => {
+  if (!value) return '';
+  return new Date(value).toLocaleString(isAr.value ? 'ar-SY' : 'en-GB', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 };
 
-// Formatting Helpers
-const getTypeTag = (type) => {
-  const map = {
-    info: 'info',
-    success: 'success',
-    warning: 'warning',
-    error: 'danger',
-    order: 'primary',
-    inventory: 'warning',
-    warehouse: 'primary',
-    financial: 'success',
-    system: 'info',
-  };
-  return map[type] || 'info';
-};
-
-const getTypeIcon = (type) => {
-  const map = {
-    info: Bell,
-    success: CircleCheck,
-    warning: Warning,
-    error: WarningFilled,
-    order: ShoppingCart,
-    inventory: Box,
-    warehouse: Box,
-    financial: Money,
-    system: Bell,
-  };
-  return map[type] || Bell;
-};
-
-const formatTypeName = (type) => {
-  const map = {
-    info: t('notifications.info'),
-    success: t('notifications.success'),
-    warning: t('notifications.warning'),
-    error: t('notifications.error'),
-    order: t('notifications.order_updates') || 'طلب',
-    inventory: t('notifications.inventory_alerts') || 'مخزون',
-    warehouse: t('notifications.warehouse') || 'مستودع',
-    financial: t('notifications.payment_notifications') || 'مالي',
-    system: t('notifications.system_messages') || 'نظام',
-  };
-  return map[type] || type;
-};
-
-const formatSeverity = (sev) => {
-  if (sev === 'critical') return t('notifications.critical') || 'حرج';
-  if (sev === 'warning') return t('notifications.warning');
-  return t('notifications.info');
-};
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleString(locale.value === 'ar' ? 'ar-EG' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const formatTimeAgo = (dateStr) => {
-  if (!dateStr) return '';
-  const diffMs = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  const isAr = locale.value === 'ar';
-  if (minutes < 1) return isAr ? 'الآن' : 'just now';
-  if (minutes < 60) return isAr ? `منذ ${minutes} دقيقة` : `${minutes}m ago`;
+const timeAgo = (value) => {
+  if (!value) return '';
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
+  const rtf = new Intl.RelativeTimeFormat(isAr.value ? 'ar' : 'en', { numeric: 'auto' });
+  if (minutes < 1) return t('nf_just_now');
+  if (minutes < 60) return rtf.format(-minutes, 'minute');
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return isAr ? `منذ ${hours} ساعة` : `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return isAr ? `منذ ${days} يوم` : `${days}d ago`;
+  if (hours < 24) return rtf.format(-hours, 'hour');
+  return rtf.format(-Math.floor(hours / 24), 'day');
 };
 
-onMounted(() => {
-  loadUsers();
-  refreshAll();
+// Keep the list in step with the header's polling: when new notifications
+// arrive while this page is open, reload the first page.
+watch(() => notificationsStore.unreadCount, (count) => {
+  if (count > summary.value.unread && pagination.value.page === 1 && !loading.value) {
+    loadNotifications();
+  }
 });
+
+onMounted(refreshAll);
+onUnmounted(() => clearTimeout(searchTimer));
 </script>
 
 <style scoped>
 .notifications-page {
   padding: 1.5rem;
-}
-
-.stats-row {
-  margin-bottom: 1.5rem;
-}
-
-.stat-card {
-  border-radius: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: all 0.25s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.stat-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  color: white;
-  flex-shrink: 0;
-}
-
-.icon-blue { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35); }
-.icon-orange { background: linear-gradient(135deg, #f97316 0%, #c2410c 100%); box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35); }
-.icon-green { background: linear-gradient(135deg, #10b981 0%, #047857 100%); box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35); }
-.icon-red { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35); }
-
-.card-alerts.has-alerts {
-  border-color: #fca5a5;
-  background: linear-gradient(to bottom, #fff5f5, #ffffff);
-}
-
-.stat-info h3 {
-  margin: 0;
-  font-size: 1.65rem;
-  font-weight: 700;
-  color: #1e293b;
-  line-height: 1.2;
-}
-
-.stat-info p {
-  margin: 0.25rem 0 0 0;
-  font-size: 0.85rem;
-  color: #64748b;
-  font-weight: 500;
+  --cat-order: #2563eb;
+  --cat-inventory: #d97706;
+  --cat-warehouse: #0891b2;
+  --cat-financial: #059669;
+  --cat-system: #64748b;
 }
 
 .main-card {
   border-radius: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .tab-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   font-weight: 600;
 }
 
-.tab-badge {
-  margin-inline-start: 0.25rem;
+.tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--el-color-primary);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
 }
 
-.filter-toolbar {
+.tab-count.danger {
+  background: var(--el-color-danger);
+}
+
+/* Toolbar */
+.toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-  padding: 1rem;
-  background: #f8fafc;
-  border-radius: 10px;
-}
-
-.filter-inputs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: 0.75rem;
-  flex: 1;
+  margin-bottom: 0.75rem;
 }
 
-.search-input {
-  width: 260px;
+.status-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
 }
 
-.filter-select {
-  width: 170px;
-}
-
-.filter-actions {
-  display: flex;
+.status-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.batch-bar {
+.status-btn.active {
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.status-num {
+  font-size: 0.75rem;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.nf-search {
+  width: 280px;
+  max-width: 100%;
+}
+
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--el-border-color);
+  border-radius: 999px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+
+.chip.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.chip-unread {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--el-color-danger);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.select-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  min-height: 40px;
+  padding: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem;
   border-radius: 8px;
 }
 
-.batch-info {
+.select-bar.has-selection {
+  background: var(--el-color-primary-light-9);
+}
+
+.select-actions {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #1d4ed8;
-  font-weight: 600;
-  font-size: 0.88rem;
+  gap: 0.4rem;
 }
 
-.batch-btns {
-  display: flex;
-  gap: 0.5rem;
+/* Inbox list */
+.inbox {
+  min-height: 160px;
 }
 
-.status-dot {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: #cbd5e1;
+.day-group + .day-group {
+  margin-top: 1rem;
 }
 
-.status-dot.unread {
-  background: #3b82f6;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
-}
-
-.title-cell {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.title-cell.unread .title-text {
+.day-label {
+  margin: 0 0 0.4rem;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  color: #0f172a;
+  letter-spacing: 0.02em;
+  color: var(--el-text-color-secondary);
 }
 
-.title-text {
-  color: #334155;
-  transition: color 0.15s ease;
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
-.title-cell:hover .title-text {
-  color: #2563eb;
+.item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  outline: none;
 }
 
-.message-preview {
-  color: #64748b;
+.item + .item {
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.item:hover,
+.item:focus-visible {
+  background: var(--el-fill-color-light);
+}
+
+.item.unread {
+  background: var(--el-color-primary-light-9);
+}
+
+.item.unread:hover {
+  background: var(--el-color-primary-light-8);
+}
+
+.item.selected {
+  box-shadow: inset 3px 0 0 var(--el-color-primary);
+}
+
+[dir='rtl'] .item.selected {
+  box-shadow: inset -3px 0 0 var(--el-color-primary);
+}
+
+.item-check {
+  height: 36px;
+}
+
+.item-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--cat, var(--cat-system));
+  background: color-mix(in srgb, var(--cat, var(--cat-system)) 12%, transparent);
+}
+
+.item-icon.lg {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.cat-order { --cat: var(--cat-order); }
+.cat-inventory { --cat: var(--cat-inventory); }
+.cat-warehouse { --cat: var(--cat-warehouse); }
+.cat-financial { --cat: var(--cat-financial); }
+.cat-system { --cat: var(--cat-system); }
+
+.item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.item-title {
+  color: var(--el-text-color-regular);
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item.unread .item-title {
+  color: var(--el-text-color-primary);
+  font-weight: 700;
+}
+
+.item-time {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--el-text-color-secondary);
+}
+
+.item-message {
+  display: -webkit-box;
+  margin: 0.2rem 0 0.4rem;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.type-pill {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--cat, var(--cat-system));
+  background: color-mix(in srgb, var(--cat, var(--cat-system)) 12%, transparent);
+}
+
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--el-color-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.open-link:hover {
+  text-decoration: underline;
+}
+
+[dir='rtl'] .dir-arrow {
+  transform: scaleX(-1);
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.item:hover .item-actions,
+.item:focus-within .item-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .item-actions {
+    opacity: 1;
+  }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+.icon-btn.danger:hover {
+  border-color: var(--el-color-danger);
+  color: var(--el-color-danger);
+}
+
+.unread-dot {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: 4px;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--el-color-primary);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 3.5rem 1rem;
+  text-align: center;
+  color: var(--el-text-color-secondary);
+}
+
+.empty-state h3 {
+  margin: 0.4rem 0 0;
+  color: var(--el-text-color-primary);
+  font-size: 1.05rem;
+}
+
+.empty-state p {
+  margin: 0 0 0.5rem;
   font-size: 0.86rem;
 }
 
-.time-cell {
-  display: flex;
-  flex-direction: column;
-}
-
-.exact-time {
-  font-size: 0.82rem;
-  color: #334155;
-}
-
-.relative-time {
-  font-size: 0.74rem;
-  color: #94a3b8;
-}
-
-.row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
+.empty-state .ok {
+  color: var(--el-color-success);
 }
 
 .pagination-container {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
 }
 
-/* System Alerts Center Styles */
-.alerts-tab-content {
-  padding: 0.5rem 0;
-}
-
+/* Alerts */
 .alerts-intro {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.25rem;
-  background: #f8fafc;
-  border-radius: 10px;
-}
-
-.intro-text h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.intro-text p {
-  margin: 0.25rem 0 0 0;
-  font-size: 0.83rem;
-  color: #64748b;
-}
-
-.alerts-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 4rem 1rem;
-  color: #64748b;
-}
-
-.alerts-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
   gap: 0.5rem;
-  padding: 4rem 1rem;
-  color: #64748b;
+  margin-bottom: 1rem;
+  font-size: 0.86rem;
+  color: var(--el-text-color-secondary);
 }
 
-.alerts-empty-state h3 {
-  margin: 0.5rem 0 0 0;
-  color: #0f172a;
-  font-size: 1.2rem;
+.alerts-intro p {
+  margin: 0;
+}
+
+.checked-at {
+  font-size: 0.78rem;
+}
+
+.alerts-wrap {
+  min-height: 160px;
 }
 
 .alerts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 1.25rem;
-}
-
-.alert-card {
-  border-radius: 12px;
-  transition: all 0.25s ease;
-}
-
-.alert-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-}
-
-.alert-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.header-main {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.alert-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.severity-pill {
-  display: inline-block;
-  align-self: flex-start;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.severity-pill.critical { background: #fee2e2; color: #dc2626; }
-.severity-pill.warning { background: #fef3c7; color: #d97706; }
-.severity-pill.info { background: #dbeafe; color: #2563eb; }
-
-.count-badge {
-  padding: 0.3rem 0.75rem;
-  border-radius: 999px;
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
-.count-badge.critical { background: #fee2e2; color: #b91c1c; }
-.count-badge.warning { background: #fef3c7; color: #b45309; }
-.count-badge.info { background: #e0e7ff; color: #3730a3; }
-
-.alert-desc {
-  margin: 0 0 1rem 0;
-  font-size: 0.86rem;
-  line-height: 1.45;
-  color: #475569;
-}
-
-.alert-items-preview {
-  margin-bottom: 1.25rem;
-  padding: 0.75rem;
-  background: #f8fafc;
-  border-radius: 8px;
-}
-
-.preview-title {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #64748b;
-  margin-bottom: 0.4rem;
-}
-
-.preview-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.sample-chip {
-  padding: 0.2rem 0.5rem;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: #334155;
-}
-
-.alert-card-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.alert-card.alert-severity-critical {
-  border-left: 4px solid #ef4444;
-}
-
-[dir="rtl"] .alert-card.alert-severity-critical {
-  border-left: 1px solid rgba(0, 0, 0, 0.05);
-  border-right: 4px solid #ef4444;
-}
-
-.alert-card.alert-severity-warning {
-  border-left: 4px solid #f59e0b;
-}
-
-[dir="rtl"] .alert-card.alert-severity-warning {
-  border-left: 1px solid rgba(0, 0, 0, 0.05);
-  border-right: 4px solid #f59e0b;
-}
-
-.alert-card.alert-severity-info {
-  border-left: 4px solid #3b82f6;
-}
-
-[dir="rtl"] .alert-card.alert-severity-info {
-  border-left: 1px solid rgba(0, 0, 0, 0.05);
-  border-right: 4px solid #3b82f6;
-}
-
-/* Detail Modal */
-.notification-detail-content {
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1rem;
 }
 
-.detail-header-row {
+.alert-card {
   display: flex;
+  flex-direction: column;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--el-border-color-lighter);
+  border-inline-start: 4px solid var(--sev, var(--el-color-info));
+  border-radius: 12px;
+  background: var(--el-bg-color);
+}
+
+.alert-card.sev-critical { --sev: var(--el-color-danger); }
+.alert-card.sev-warning { --sev: var(--el-color-warning); }
+.alert-card.sev-info { --sev: var(--el-color-primary); }
+
+.alert-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.alert-icon {
+  display: flex;
+  flex-shrink: 0;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--cat, var(--cat-system));
+  background: color-mix(in srgb, var(--cat, var(--cat-system)) 12%, transparent);
+}
+
+.alert-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-heading h4 {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  color: var(--el-text-color-primary);
+}
+
+.sev-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--sev);
+}
+
+.alert-count {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--sev);
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-desc {
+  margin: 0.6rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
+}
+
+.samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.sample {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  font-size: 0.74rem;
+  color: var(--el-text-color-regular);
+}
+
+.alert-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+/* Detail drawer */
+.detail-top {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.detail-title {
+  margin: 0.35rem 0 0.2rem;
+  font-size: 1.05rem;
+  color: var(--el-text-color-primary);
 }
 
 .detail-time {
-  font-size: 0.8rem;
-  color: #94a3b8;
+  font-size: 0.78rem;
+  color: var(--el-text-color-secondary);
 }
 
-.detail-message-box {
+.detail-message {
+  margin: 1.25rem 0;
   padding: 1rem;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.detail-message-box p {
-  margin: 0;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
   font-size: 0.92rem;
-  line-height: 1.6;
-  color: #1e293b;
+  line-height: 1.7;
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
 }
 
-.read-receipt {
+.detail-read {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
   font-size: 0.78rem;
-  color: #059669;
+  color: var(--el-color-success);
 }
 
-.target-link-box {
-  display: flex;
-  justify-content: center;
-  padding-top: 0.5rem;
+.detail-go {
+  width: 100%;
 }
 
 .detail-footer {
   display: flex;
   justify-content: space-between;
+}
+
+.form-hint {
+  margin: -0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 640px) {
+  .notifications-page {
+    padding: 1rem;
+  }
+
+  .nf-search {
+    width: 100%;
+  }
+
+  .status-switch {
+    width: 100%;
+  }
+
+  .status-btn {
+    flex: 1;
+    justify-content: center;
+  }
 }
 </style>

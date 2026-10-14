@@ -2,6 +2,31 @@ import { defineStore } from 'pinia';
 import notificationsService from '@/services/notifications';
 
 let pollTimer = null;
+let visibilityHandler = null;
+
+// The browser's Notification API. Read through window so an imported icon
+// named Notification can never shadow it.
+const desktopApi = () => (typeof window !== 'undefined' && 'Notification' in window ? window.Notification : null);
+const desktopAllowed = () => desktopApi()?.permission === 'granted';
+
+function showDesktopNotification(item) {
+    const Api = desktopApi();
+    if (!Api || Api.permission !== 'granted' || !item) return;
+    try {
+        const n = new Api(item.title || '', {
+            body: item.message || '',
+            icon: '/favicon.ico',
+            tag: `notification-${item.id}`,
+        });
+        n.onclick = () => {
+            window.focus();
+            if (item.target_route) window.location.assign(item.target_route);
+            n.close();
+        };
+    } catch (e) {
+        // Some browsers only allow notifications from a service worker
+    }
+}
 
 // Gentle Web Audio API synthesizer for clean, zero-asset notification chimes
 function playNotificationChime() {
@@ -62,7 +87,9 @@ export const useNotificationsStore = defineStore('notifications', {
         loading: false,
         alertsLoading: false,
         soundEnabled: localStorage.getItem('notification_sound_enabled') !== 'false',
-        previousUnreadCount: 0,
+        // False until the first count arrives, so loading the page with
+        // unread items already waiting does not chime.
+        countInitialized: false,
         lastAlertsFetch: null,
     }),
 
@@ -106,13 +133,18 @@ export const useNotificationsStore = defineStore('notifications', {
             try {
                 const res = await notificationsService.getUnreadCount();
                 const newCount = res.data?.count ?? 0;
+                const arrived = this.countInitialized && newCount > this.unreadCount;
 
-                if (triggerSound && this.soundEnabled && newCount > this.unreadCount && this.previousUnreadCount > 0) {
-                    playNotificationChime();
-                }
-
-                this.previousUnreadCount = this.unreadCount;
                 this.unreadCount = newCount;
+                this.countInitialized = true;
+
+                if (arrived && triggerSound) {
+                    if (this.soundEnabled) playNotificationChime();
+                    if (document.hidden && desktopAllowed()) {
+                        const latest = await notificationsService.getNotifications({ per_page: 1, unread_only: 1 });
+                        showDesktopNotification(latest.data?.data?.[0]);
+                    }
+                }
             } catch (e) {
                 // Silent fail - badge stays at last known value
             }
@@ -166,6 +198,18 @@ export const useNotificationsStore = defineStore('notifications', {
                 this.unreadCount = Math.max(0, this.unreadCount - 1);
                 this.summary.unread = Math.max(0, this.summary.unread - 1);
                 this.summary.read = (this.summary.read || 0) + 1;
+            }
+        },
+
+        async markAsUnread(id) {
+            await notificationsService.markAsUnread(id);
+            const item = this.items.find((n) => n.id === id);
+            if (item && item.is_read) {
+                item.is_read = false;
+                item.read_at = null;
+                this.unreadCount += 1;
+                this.summary.unread = (this.summary.unread || 0) + 1;
+                this.summary.read = Math.max(0, (this.summary.read || 0) - 1);
             }
         },
 
@@ -224,10 +268,10 @@ export const useNotificationsStore = defineStore('notifications', {
 
         async deleteAllRead() {
             await notificationsService.deleteAllRead();
-            const readCount = this.items.filter((n) => n.is_read).length;
+            // The server deletes every read notification, not only the ones
+            // loaded here, so take the totals from it.
             this.items = this.items.filter((n) => !n.is_read);
-            this.summary.read = 0;
-            this.summary.total = Math.max(0, (this.summary.total || 0) - readCount);
+            await this.fetchStats();
         },
 
         toggleSound() {
@@ -243,20 +287,35 @@ export const useNotificationsStore = defineStore('notifications', {
             playNotificationChime();
         },
 
+        // A hidden tab only keeps polling when desktop notifications are
+        // allowed (that is the point of them); otherwise it waits and
+        // catches up the moment it is shown again.
         startPolling(intervalMs = 35000) {
             this.stopPolling();
             this.fetchUnreadCount(false);
             this.fetchSystemAlerts();
             pollTimer = setInterval(() => {
+                if (document.hidden && !desktopAllowed()) return;
                 this.fetchUnreadCount(true);
-                this.fetchSystemAlerts();
+                if (!document.hidden) this.fetchSystemAlerts();
             }, intervalMs);
+            visibilityHandler = () => {
+                if (!document.hidden) {
+                    this.fetchUnreadCount(true);
+                    this.fetchSystemAlerts();
+                }
+            };
+            document.addEventListener('visibilitychange', visibilityHandler);
         },
 
         stopPolling() {
             if (pollTimer) {
                 clearInterval(pollTimer);
                 pollTimer = null;
+            }
+            if (visibilityHandler) {
+                document.removeEventListener('visibilitychange', visibilityHandler);
+                visibilityHandler = null;
             }
         },
     },

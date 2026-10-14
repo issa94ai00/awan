@@ -30,6 +30,7 @@ class Notification extends Model
         'icon',
         'badge_type',
         'target_route',
+        'category',
     ];
 
     const TYPE_INFO = 'info';
@@ -41,6 +42,32 @@ class Notification extends Model
     const TYPE_WAREHOUSE = 'warehouse';
     const TYPE_FINANCIAL = 'financial';
     const TYPE_SYSTEM = 'system';
+
+    /**
+     * The preference categories a user can switch on and off. The generic
+     * types (info, success, warning, error) are announcements, so they fall
+     * under 'system'.
+     */
+    const CATEGORIES = [
+        self::TYPE_ORDER,
+        self::TYPE_INVENTORY,
+        self::TYPE_WAREHOUSE,
+        self::TYPE_FINANCIAL,
+        self::TYPE_SYSTEM,
+    ];
+
+    public static function categoryFor(?string $type): string
+    {
+        return in_array($type, self::CATEGORIES, true) ? $type : self::TYPE_SYSTEM;
+    }
+
+    /** The notification types that belong to a category. */
+    public static function typesInCategory(string $category): array
+    {
+        return $category === self::TYPE_SYSTEM
+            ? [self::TYPE_SYSTEM, self::TYPE_INFO, self::TYPE_SUCCESS, self::TYPE_WARNING, self::TYPE_ERROR]
+            : [$category];
+    }
 
     public function user()
     {
@@ -76,6 +103,11 @@ class Notification extends Model
         return $query->where('type', $type);
     }
 
+    public function scopeInCategory($query, string $category)
+    {
+        return $query->whereIn('type', self::typesInCategory($category));
+    }
+
     public function scopeForUser($query, $userId)
     {
         return $query->where('user_id', $userId);
@@ -102,6 +134,11 @@ class Notification extends Model
         };
     }
 
+    public function getCategoryAttribute(): string
+    {
+        return self::categoryFor($this->type);
+    }
+
     public function getIconAttribute(): string
     {
         return match($this->type) {
@@ -121,10 +158,11 @@ class Notification extends Model
             return $query;
         }
 
-        return $query->where(function ($q) use ($search) {
-            $q->where('title', 'like', "%{$search}%")
-              ->orWhere('message', 'like', "%{$search}%")
-              ->orWhere('type', 'like', "%{$search}%");
+        $like = '%' . addcslashes($search, '%_\\') . '%';
+
+        return $query->where(function ($q) use ($like) {
+            $q->where('title', 'like', $like)
+              ->orWhere('message', 'like', $like);
         });
     }
 

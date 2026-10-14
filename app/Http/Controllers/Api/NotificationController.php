@@ -13,6 +13,7 @@ use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class NotificationController extends Controller
 {
@@ -38,16 +39,32 @@ class NotificationController extends Controller
             $query->read();
         }
 
-        if ($request->filled('type') && $request->type !== 'all') {
+        if ($request->filled('category') && in_array($request->category, Notification::CATEGORIES, true)) {
+            $query->inCategory($request->category);
+        } elseif ($request->filled('type') && $request->type !== 'all') {
             $query->byType($request->type);
         }
 
-        $totalCount = Notification::where('user_id', $userId)->count();
-        $unreadCount = Notification::where('user_id', $userId)->unread()->count();
-        $readCount = Notification::where('user_id', $userId)->read()->count();
+        // One grouped pass gives the totals and the per-category counts the
+        // filter chips show, instead of a count query per figure.
+        $byType = Notification::where('user_id', $userId)
+            ->selectRaw('type, COUNT(*) as total, SUM(is_read = 0) as unread')
+            ->groupBy('type')
+            ->get();
+
+        $categories = array_fill_keys(Notification::CATEGORIES, ['total' => 0, 'unread' => 0]);
+        foreach ($byType as $row) {
+            $category = Notification::categoryFor($row->type);
+            $categories[$category]['total'] += (int) $row->total;
+            $categories[$category]['unread'] += (int) $row->unread;
+        }
+
+        $totalCount = (int) $byType->sum('total');
+        $unreadCount = (int) $byType->sum('unread');
+        $readCount = $totalCount - $unreadCount;
 
         $perPage = min(100, max(5, (int) $request->input('per_page', 20)));
-        $paginated = $query->latest()->paginate($perPage);
+        $paginated = $query->latest()->latest('id')->paginate($perPage);
 
         return response()->json([
             'data' => $paginated->items(),
@@ -60,6 +77,7 @@ class NotificationController extends Controller
                 'unread' => $unreadCount,
                 'read' => $readCount,
             ],
+            'categories' => $categories,
         ]);
     }
 
@@ -76,9 +94,21 @@ class NotificationController extends Controller
         $notification = Notification::where('user_id', auth()->id())
             ->findOrFail($id);
 
-        $this->notificationService->markAsRead($id);
+        if (!$notification->is_read) {
+            $notification->markAsRead();
+        }
 
         return response()->json(['message' => 'Notification marked as read']);
+    }
+
+    public function markAsUnread($id)
+    {
+        $notification = Notification::where('user_id', auth()->id())
+            ->findOrFail($id);
+
+        $notification->markAsUnread();
+
+        return response()->json(['message' => 'Notification marked as unread']);
     }
 
     public function markAllAsRead()
@@ -134,16 +164,44 @@ class NotificationController extends Controller
         return response()->json($users);
     }
 
+    /**
+     * Live operational alerts. The admin header polls this on every page for
+     * every signed-in user, and the figures are the same for all of them, so
+     * the scan is cached for a minute rather than re-run per request.
+     */
     public function getSystemAlerts()
+    {
+        $payload = Cache::remember('notifications:system-alerts', 60, function () {
+            $alerts = $this->scanSystemAlerts();
+
+            return [
+                'alerts' => $alerts,
+                'total_alerts' => count($alerts),
+                'timestamp' => now()->toISOString(),
+            ];
+        });
+
+        return response()->json($payload);
+    }
+
+    protected function scanSystemAlerts(): array
     {
         $alerts = [];
 
         // 1. Low stock & Out of stock alert
-        $lowStockCount = Product::whereNotNull('min_stock')->whereColumn('stock_quantity', '<=', 'min_stock')->count();
+        $lowStockCount = Product::whereNotNull('min_stock')
+            ->where('stock_quantity', '>', 0)
+            ->whereColumn('stock_quantity', '<=', 'min_stock')
+            ->count();
         $outOfStockCount = Product::where('stock_quantity', '<=', 0)->count();
         if ($lowStockCount > 0 || $outOfStockCount > 0) {
-            $sampleProducts = Product::where('stock_quantity', '<=', 0)
+            // Out of stock first, then the lowest of the rest.
+            $sampleProducts = Product::where(function ($q) {
+                    $q->where('stock_quantity', '<=', 0)
+                      ->orWhere(fn ($q) => $q->whereNotNull('min_stock')->whereColumn('stock_quantity', '<=', 'min_stock'));
+                })
                 ->select('id', 'name_ar', 'name_en', 'sku', 'stock_quantity')
+                ->orderBy('stock_quantity')
                 ->take(5)
                 ->get()
                 ->map(fn($p) => [
@@ -161,7 +219,7 @@ class NotificationController extends Controller
                 'title_en' => 'Low & Out of Stock Alert',
                 'message' => "يوجد {$outOfStockCount} منتج نافد من المخزون، و {$lowStockCount} منتج بحاجة لإعادة طلب.",
                 'message_en' => "{$outOfStockCount} products out of stock, {$lowStockCount} items below reorder point.",
-                'count' => $lowStockCount,
+                'count' => $lowStockCount + $outOfStockCount,
                 'route' => '/admin/stock',
                 'icon' => 'package',
                 'items' => $sampleProducts,
@@ -248,11 +306,7 @@ class NotificationController extends Controller
             ];
         }
 
-        return response()->json([
-            'alerts' => $alerts,
-            'total_alerts' => count($alerts),
-            'timestamp' => now()->toISOString(),
-        ]);
+        return $alerts;
     }
 
     public function destroy($id)
@@ -440,8 +494,10 @@ class NotificationController extends Controller
             'title' => 'required|string|max:255',
             'message' => 'required|string',
             'type' => 'nullable|in:info,success,warning,error,order,inventory,warehouse,financial,system',
-            'route' => 'nullable|string',
+            // An in-app path such as /admin/stock, never an external URL.
+            'route' => ['nullable', 'string', 'max:255', 'regex:#^/(?!/)#'],
             'channels' => 'nullable|array',
+            'channels.*' => 'in:in_app,email,sms,push',
             'data' => 'nullable|array',
         ]);
 
@@ -449,44 +505,24 @@ class NotificationController extends Controller
         if (!empty($validated['route'])) {
             $data['route'] = $validated['route'];
         }
-        if (!empty($validated['channels'])) {
-            $data['channels'] = $validated['channels'];
-        }
+        $data['sent_by'] = auth()->id();
+
+        // A message sent by hand goes out on the channels the sender ticked,
+        // whatever the recipient's preferences; nothing ticked means in-app.
+        $channels = !empty($validated['channels']) ? array_values($validated['channels']) : ['in_app'];
 
         $type = $validated['type'] ?? 'info';
-        $sendTo = $validated['send_to'] ?? ($validated['user_id'] ? 'user' : 'all_admins');
+        $sendTo = $validated['send_to'] ?? (!empty($validated['user_id']) ? 'user' : 'all_admins');
 
-        if ($sendTo === 'all_admins') {
-            $notifications = $this->notificationService->notifyAdmins(
-                $validated['title'],
-                $validated['message'],
-                $type,
-                $data
-            );
-            return response()->json(['message' => 'Notification sent to all admins', 'count' => count($notifications)], 201);
-        }
+        $recipientIds = match ($sendTo) {
+            'all_users' => User::pluck('id')->all(),
+            'all_admins' => $this->notificationService->adminIds(),
+            default => [(int) $validated['user_id']],
+        };
 
-        if ($sendTo === 'all_users') {
-            $allUserIds = User::pluck('id')->all();
-            $notifications = $this->notificationService->sendToUsers(
-                $allUserIds,
-                $validated['title'],
-                $validated['message'],
-                $type,
-                $data
-            );
-            return response()->json(['message' => 'Notification sent to all users', 'count' => count($notifications)], 201);
-        }
+        $this->notificationService->sendToUsers($recipientIds, $validated['title'], $validated['message'], $type, $data, $channels);
 
-        $notification = $this->notificationService->sendToUser(
-            $validated['user_id'],
-            $validated['title'],
-            $validated['message'],
-            $type,
-            $data
-        );
-
-        return response()->json($notification, 201);
+        return response()->json(['message' => 'Notification sent', 'count' => count($recipientIds)], 201);
     }
 
     public function sendBulkNotification(Request $request)

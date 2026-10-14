@@ -492,13 +492,16 @@ const notificationsOpen = ref(false);
 const activeNotificationTab = ref('notifications');
 const notificationFilter = ref('all');
 
-const filteredNotifications = computed(() => {
-    const list = notificationsStore.items || [];
-    if (notificationFilter.value === 'unread') {
-        return list.filter((n) => !n.is_read);
-    }
-    return list;
+// "Unread" asks the server for unread items rather than filtering the ten
+// loaded ones, which may all be read while older unread ones exist. An item
+// marked read in place stays in view until the list is reloaded.
+const filteredNotifications = computed(() => notificationsStore.items || []);
+
+watch(notificationFilter, () => {
+    if (notificationsOpen.value) notificationsStore.fetchRecent(recentParams());
 });
+
+const recentParams = () => (notificationFilter.value === 'unread' ? { unread_only: 1 } : {});
 
 const onOpenNotifications = () => {
     refreshNotificationData();
@@ -506,7 +509,7 @@ const onOpenNotifications = () => {
 
 const refreshNotificationData = async () => {
     await Promise.all([
-        notificationsStore.fetchRecent(),
+        notificationsStore.fetchRecent(recentParams()),
         notificationsStore.fetchSystemAlerts(),
     ]);
 };
@@ -527,8 +530,7 @@ const handleNotificationClick = async (item) => {
 
 const handleToggleItemRead = async (item) => {
     if (item.is_read) {
-        item.is_read = false;
-        notificationsStore.unreadCount = Math.max(0, notificationsStore.unreadCount + 1);
+        await notificationsStore.markAsUnread(item.id);
     } else {
         await notificationsStore.markAsRead(item.id);
     }

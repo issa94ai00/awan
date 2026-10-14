@@ -16,6 +16,10 @@ export const notificationsService = {
         return api.post(`${BASE}/${id}/read`);
     },
 
+    markAsUnread(id) {
+        return api.post(`${BASE}/${id}/unread`);
+    },
+
     markAllAsRead() {
         return api.post(`${BASE}/read-all`);
     },
