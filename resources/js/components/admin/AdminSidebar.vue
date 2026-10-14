@@ -963,7 +963,7 @@ const userInitials = computed(() => {
 
 .nav-section-label {
     padding: 1.15rem 0.85rem 0.4rem;
-    font-size: 0.6rem;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
@@ -992,7 +992,8 @@ const userInitials = computed(() => {
     text-decoration: none;
     cursor: pointer;
     border-radius: 10px;
-    font-size: 0.9rem;
+    font-size: 0.98rem;
+    font-weight: 600;
     border: 1px solid transparent;
     transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -1002,7 +1003,6 @@ const userInitials = computed(() => {
     background: rgba(255, 255, 255, 0.055);
     color: var(--sb-text-strong);
 }
-    font-weight: 600;
 
 .nav-link.active {
     color: var(--sb-accent);
@@ -1025,7 +1025,7 @@ const userInitials = computed(() => {
 
 .nav-ic {
     flex-shrink: 0;
-    font-size: 1.05rem;
+    font-size: 1.12rem;
     opacity: 0.85;
     transition: transform 0.2s ease, opacity 0.2s ease, color 0.2s ease;
 }
@@ -1142,7 +1142,8 @@ const userInitials = computed(() => {
 
 .nav-group-items .nav-link {
     padding: 0.5rem 0.8rem 0.5rem 1.55rem;
-    font-size: 0.83rem;
+    font-size: 0.9rem;
+    font-weight: 600;
     color: rgba(148, 163, 184, 0.62);
     border: none;
     background: transparent;
@@ -1153,7 +1154,6 @@ const userInitials = computed(() => {
     color: var(--sb-text-strong);
     background: rgba(255, 255, 255, 0.045);
 }
-    font-weight: 600;
 
 .nav-group-items .nav-link.active {
     color: var(--sb-accent);
@@ -1400,10 +1400,10 @@ const userInitials = computed(() => {
     gap: 0.6rem;
     padding: 0.45rem 0.6rem;
     border-radius: 8px;
-    font-size: 0.83rem;
+    font-size: 0.9rem;
+    font-weight: 600;
     color: rgba(148, 163, 184, 0.8);
     text-decoration: none;
-    font-weight: 600;
     transition: background 0.15s ease, color 0.15s ease;
 }
 
