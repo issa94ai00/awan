@@ -29,14 +29,25 @@ use App\Models\AuditLog;
 use App\Models\Report;
 use App\Models\Dashboard as AnalyticsDashboard;
 use App\Models\AnalyticsMetric;
+use App\Services\Sales\RepDashboardService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function stats(Request $request): JsonResponse
+    public function stats(Request $request, RepDashboardService $repDashboard): JsonResponse
     {
+        // A sales rep's landing screen is their own business, never the
+        // company's totals (see RepDashboardService).
+        if ($request->user()?->isSalesScoped()) {
+            return response()->json([
+                'success' => true,
+                'message' => null,
+                'data' => $repDashboard->build($request->user()),
+            ]);
+        }
+
         try {
             \Log::info('DashboardController::stats - Starting dashboard statistics retrieval');
             

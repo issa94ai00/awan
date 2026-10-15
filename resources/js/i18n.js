@@ -3,6 +3,7 @@ import accessMessages from './locales/access';
 import accessRolesMessages from './locales/access-roles';
 import accessPermissionsMessages from './locales/access-permissions';
 import accessUsersMessages from './locales/access-users';
+import repDashboardMessages from './locales/rep-dashboard';
 
 const messages = {
     en: {
@@ -13213,8 +13214,8 @@ const messages = {
     }
 };
 
-// The access-control screens keep their strings in ./locales.
-for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages]) {
+// The access-control screens and the rep dashboard keep their strings in ./locales.
+for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages, repDashboardMessages]) {
     Object.assign(messages.en, bundle.en);
     Object.assign(messages.ar, bundle.ar);
 }

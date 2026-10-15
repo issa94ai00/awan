@@ -1053,7 +1053,9 @@ Route::prefix('v1')->middleware('web')->group(function () {
         });
 
         // Analytics & Reporting (التحليلات والتقارير)
-        Route::prefix('analytics')->group(function () {
+        // Company-wide figures: a sales rep's dashboard is built from their
+        // own sales instead (DashboardController::stats).
+        Route::prefix('analytics')->middleware('not_sales_scoped')->group(function () {
             // Overview (نظرة عامة) — the BI landing screen's whole card row.
             Route::get('/overview', [AnalyticsController::class, 'getOverview'])->name('api.analytics.overview');
 

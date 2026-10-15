@@ -246,3 +246,37 @@ test('the signed-in user payload says whether reports are confined', function ()
     $this->actingAs($this->rep1User)->getJson('/api/v1/auth/user')->assertOk()->assertJsonPath('data.user.is_sales_scoped', true);
     $this->actingAs($this->adminUser)->getJson('/api/v1/auth/user')->assertOk()->assertJsonPath('data.user.is_sales_scoped', false);
 });
+
+// ---------------------------------------------------------------- dashboard
+
+test('a sales rep dashboard holds only their own business', function () {
+    \App\Models\Payment::create([
+        'payment_number' => 'PAY-T-1', 'invoice_id' => $this->invoice1->id, 'customer_id' => $this->customer->id,
+        'payment_method' => 'cash', 'status' => 'completed', 'amount' => 100, 'payment_date' => now(),
+    ]);
+    $this->invoice1->forceFill(['due_amount' => 200, 'paid_amount' => 100])->save();
+    $this->invoice2->forceFill(['due_amount' => 600])->save();
+    \App\Models\EmployeeCommission::create([
+        'employee_id' => $this->rep1Employee->id, 'month' => now()->startOfMonth(),
+        'commission_rate' => 10, 'monthly_target' => 1000, 'total_sales' => 0,
+    ]);
+
+    $data = $this->actingAs($this->rep1User)->getJson('/api/v1/dashboard/stats')->assertOk()->json('data');
+
+    expect($data['scope'])->toBe('rep')
+        ->and($data['sales']['month'])->toEqual(300)
+        ->and($data['collections']['collected_month'])->toEqual(100)
+        ->and($data['collections']['outstanding'])->toEqual(200)
+        ->and($data['target']['achievement'])->toEqual(30)
+        ->and($data['target']['commission'])->toEqual(30)
+        ->and(collect($data['recent_invoices'])->pluck('invoice_number')->all())->toBe(['INV-TEST-001'])
+        ->and($data['profile']['warehouse']['id'])->toBe($this->wh1->id)
+        ->and($data)->not->toHaveKey('payrolls');
+});
+
+test('admins keep the company dashboard, and reps cannot read company analytics', function () {
+    $admin = $this->actingAs($this->adminUser)->getJson('/api/v1/dashboard/stats')->assertOk()->json('data');
+    expect($admin)->not->toHaveKey('scope');
+
+    $this->actingAs($this->rep1User)->getJson('/api/v1/analytics/sales/trend')->assertForbidden();
+});

@@ -8,6 +8,7 @@ use App\Http\Middleware\IsAdmin;
 use App\Http\Middleware\LoadSettings;
 use App\Http\Middleware\TrackVisitors;
 use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\DenySalesScoped;
 use App\Http\Middleware\EnsureCanManageOrders;
 use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\EnsureMaster;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RequireRole::class,
             'feature' => EnsureFeatureEnabled::class,
             'master' => EnsureMaster::class,
+            'not_sales_scoped' => DenySalesScoped::class,
         ]);
         $middleware->web(append: [
             SetLocale::class,
