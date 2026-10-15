@@ -488,7 +488,8 @@
                         <el-select
                             v-model="form.assigned_employee_id"
                             filterable
-                            clearable
+                            :clearable="!isSalesRep"
+                            :disabled="isSalesRep"
                             :placeholder="t('unassigned')"
                         >
                             <el-option
@@ -759,6 +760,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useInvoicesStore } from '@/stores/invoices';
 import { useCustomersStore } from '@/stores/customers';
+import { useAuthStore } from '@/stores/auth';
 import { customersApi } from '@/api/customers';
 import { posApi } from '@/api/pos';
 import api from '@/api';
@@ -792,6 +794,11 @@ const router = useRouter();
 const route = useRoute();
 const invoicesStore = useInvoicesStore();
 const customersStore = useCustomersStore();
+const authStore = useAuthStore();
+
+// A sales rep's invoices are credited to them, and they cannot hand one to
+// someone else — the server enforces the same (User::isSalesScoped).
+const isSalesRep = computed(() => !!authStore.user?.is_sales_scoped && !!authStore.user?.employee_id);
 
 const isEdit = computed(() => !!route.params.id);
 const searchInputRef = ref(null);
@@ -1934,6 +1941,12 @@ onMounted(async () => {
         salesEmployees.value = data?.data ?? data ?? [];
     } catch (error) {
         salesEmployees.value = [];
+    }
+
+    // A new invoice is credited to the rep raising it; one being reopened
+    // keeps whoever it was saved with.
+    if (!isEdit.value && isSalesRep.value) {
+        form.assigned_employee_id = authStore.user.employee_id;
     }
 
     if (isEdit.value) {

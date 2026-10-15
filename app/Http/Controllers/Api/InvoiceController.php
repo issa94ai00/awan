@@ -434,6 +434,12 @@ class InvoiceController extends Controller
                 $this->ensureServesCustomer($request, (int) $validated['customer_id']);
             }
 
+            // A rep's sale is credited to the rep, whatever the request says.
+            $repEmployeeId = $request->user()?->isSalesScoped() ? $request->user()->employee?->id : null;
+            if ($repEmployeeId) {
+                $validated['assigned_employee_id'] = $repEmployeeId;
+            }
+
             // Fetch all products to get their names
             $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
             $products = Product::whereIn('id', $productIds)->get()->keyBy('id');

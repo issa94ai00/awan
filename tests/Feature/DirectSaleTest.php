@@ -209,6 +209,35 @@ it('credits the sale to a rep when one is named', function () {
     expect((int) Invoice::latest('id')->first()->assigned_employee_id)->toBe($employee->id);
 });
 
+it('credits a rep\'s own sale to the rep, whoever the request names', function () {
+    $branch = sale('BRANCH9');
+    $product = stocked($branch, 20);
+
+    $staff = fn (string $email, ?int $userId = null) => Employee::create([
+        'user_id' => $userId,
+        'first_name' => 'مندوب',
+        'last_name' => $email,
+        'email' => $email,
+        'position' => 'مندوب مبيعات',
+        'department' => 'المبيعات',
+        'hire_date' => now()->subYear()->toDateString(),
+        'status' => 'نشط',
+    ]);
+
+    $repUser = User::factory()->operator()->create();
+    $rep = $staff('self@example.test', $repUser->id);
+    $colleague = $staff('other@example.test');
+
+    $this->actingAs($repUser)->postJson('/api/v1/invoices', [
+        'assigned_employee_id' => $colleague->id,
+        'items' => [
+            ['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 100, 'warehouse_id' => $branch->id],
+        ],
+    ])->assertCreated();
+
+    expect((int) Invoice::latest('id')->first()->assigned_employee_id)->toBe($rep->id);
+});
+
 it('sells without a rep, because a counter sale has none', function () {
     $branch = sale('BRANCH7');
     $product = stocked($branch, 20);
