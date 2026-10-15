@@ -123,6 +123,39 @@ class PurchaseOrder extends Model
         return $this->belongsTo(Invoice::class);
     }
 
+    /**
+     * The purchase orders a user may see. A sales rep (User::isSalesScoped)
+     * sees the ones they raised and those buying in for their own sales — a
+     * sales order or invoice they wrote or are credited with. Everyone else
+     * sees every order.
+     */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        if (! $user || ! $user->isSalesScoped()) {
+            return $query;
+        }
+
+        $employeeId = $user->employee?->id;
+        $ownSale = fn ($sale) => $sale->where(function ($sale) use ($user, $employeeId) {
+            $sale->where('created_by', $user->id);
+
+            if ($employeeId) {
+                $sale->orWhere('assigned_employee_id', $employeeId);
+            }
+        });
+
+        return $query->where(function ($q) use ($user, $ownSale) {
+            $q->where('purchase_orders.created_by', $user->id)
+                ->orWhereHas('salesOrder', $ownSale)
+                ->orWhereHas('invoice', $ownSale);
+        });
+    }
+
+    public function isVisibleTo(?User $user): bool
+    {
+        return static::query()->whereKey($this->getKey())->visibleTo($user)->exists();
+    }
+
     /** The stage this order is at, whatever spelling its status was stored in. */
     public static function normalizeStatus(?string $status): string
     {

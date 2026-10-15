@@ -26,7 +26,8 @@ class PurchaseOrderController extends Controller
         // receipts_count tells the list whether an order's goods already
         // arrived, so a completed row can point at its receipt instead of
         // offering a receive action that would double-count the stock.
-        $query = PurchaseOrder::with(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts');
+        $query = PurchaseOrder::with(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts')
+            ->visibleTo($request->user());
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -59,7 +60,7 @@ class PurchaseOrderController extends Controller
                 'orders' => $purchaseOrders->items(),
                 // Counted over the whole table: a badge that only counted the
                 // current page would say nothing about how much is waiting.
-                'status_counts' => $this->statusCounts(),
+                'status_counts' => $this->statusCounts($request),
                 'pagination' => [
                     'current_page' => $purchaseOrders->currentPage(),
                     'last_page' => $purchaseOrders->lastPage(),
@@ -69,6 +70,14 @@ class PurchaseOrderController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /** A sales rep reaches only their own orders (PurchaseOrder::scopeVisibleTo). */
+    private function ensureVisible(PurchaseOrder $order): void
+    {
+        if (! $order->isVisibleTo(auth()->user())) {
+            abort(403, 'غير مصرح لك بعرض طلب الشراء هذا');
+        }
     }
 
     /** Every stored spelling that means the given stage. */
@@ -83,9 +92,10 @@ class PurchaseOrderController extends Controller
         return array_values(array_unique([$stage, ...$aliases]));
     }
 
-    private function statusCounts(): array
+    private function statusCounts(Request $request): array
     {
         $counts = PurchaseOrder::query()
+            ->visibleTo($request->user())
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
@@ -195,6 +205,8 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
+        $this->ensureVisible($order);
+
         $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', 'receipts', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
@@ -207,6 +219,8 @@ class PurchaseOrderController extends Controller
 
     public function update(Request $request, PurchaseOrder $order): JsonResponse
     {
+        $this->ensureVisible($order);
+
         $current = PurchaseOrder::normalizeStatus($order->status);
 
         /*
@@ -464,6 +478,8 @@ class PurchaseOrderController extends Controller
                 'data' => null,
             ], 403);
         }
+
+        $this->ensureVisible($order);
 
         if ($current === $target) {
             $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
