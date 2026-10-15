@@ -3,42 +3,6 @@ import { employeesApi } from '@/api/employees';
 import { useAuthStore } from '@/stores/auth';
 import router from '@/router';
 
-const sampleEmployees = [
-    {
-        id: 1,
-        name: 'أحمد العلي',
-        department: 'الموارد البشرية',
-        position: 'مدير الموارد البشرية',
-        status: 'نشط',
-        email: 'ahmed.ali@example.com',
-        phone: '+966 50 000 0001',
-        hire_date: '2022-04-15',
-        avatar: ''
-    },
-    {
-        id: 2,
-        name: 'سارة محمد',
-        department: 'الموارد البشرية',
-        position: 'أخصائية توظيف',
-        status: 'نشط',
-        email: 'sara.mohamed@example.com',
-        phone: '+966 50 000 0002',
-        hire_date: '2023-01-09',
-        avatar: ''
-    },
-    {
-        id: 3,
-        name: 'خالد حسن',
-        department: 'الإدارة',
-        position: 'محلل رواتب',
-        status: 'غير نشط',
-        email: 'khaled.hassan@example.com',
-        phone: '+966 50 000 0003',
-        hire_date: '2021-09-12',
-        avatar: ''
-    }
-];
-
 export const useEmployeesStore = defineStore('employees', {
     state: () => ({
         employees: [],
@@ -77,14 +41,11 @@ export const useEmployeesStore = defineStore('employees', {
                     total: p.total || this.employees.length
                 };
             } catch (err) {
-                if (err.response?.status === 404 || err.code === 'ERR_NETWORK') {
-                    this.employees = sampleEmployees;
-                    this.pagination.total = sampleEmployees.length;
-                } else {
-                    this.error = err.response?.data?.message || err.message || 'Failed to load employees';
-                    console.error('Employees load error:', err);
-                    throw err;
-                }
+                // No stand-in data: the list used to fill with three made-up
+                // employees whenever the server could not be reached.
+                this.error = err.response?.data?.message || err.message || 'Failed to load employees';
+                console.error('Employees load error:', err);
+                throw err;
             } finally {
                 this.loading = false;
             }
@@ -114,9 +75,9 @@ export const useEmployeesStore = defineStore('employees', {
             }
         },
 
-        // A failed save is reported as one. Create and update used to answer a
-        // 404 or a dropped connection by inventing the employee locally, so the
-        // form said "saved" for a record the server never received.
+        // A failed save or delete is reported as one. These used to answer a
+        // 404 or a dropped connection by changing the list locally, so the
+        // screen said "done" for something the server never received.
         async createEmployee(payload) {
             this.loading = true;
             this.error = null;
@@ -200,12 +161,6 @@ export const useEmployeesStore = defineStore('employees', {
                 this.employees = this.employees.filter((employee) => employee.id !== id);
                 this.pagination.total -= 1;
             } catch (err) {
-                if (err.response?.status === 404 || err.code === 'ERR_NETWORK') {
-                    this.employees = this.employees.filter((employee) => employee.id !== id);
-                    this.pagination.total -= 1;
-                    return;
-                }
-
                 this.error = err.response?.data?.message || err.message || 'Failed to delete employee';
                 console.error('Delete employee error:', err);
                 throw err;
