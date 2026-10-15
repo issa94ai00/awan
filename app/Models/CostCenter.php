@@ -31,6 +31,17 @@ class CostCenter extends Model
         'is_active' => 'boolean',
     ];
 
+    /**
+     * The warehouse cache below outlives a request in a queue worker, so a
+     * centre that is added, moved or removed clears it rather than leaving
+     * postings pointed at the old answer.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => static::forgetWarehouseCache());
+        static::deleted(fn () => static::forgetWarehouseCache());
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
