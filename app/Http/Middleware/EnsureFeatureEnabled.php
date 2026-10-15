@@ -28,6 +28,10 @@ class EnsureFeatureEnabled
             $path = substr($path, strlen('api/'));
         }
 
+        if ($request->isMethod('GET') && Feature::isOpenLookup($path)) {
+            return $next($request);
+        }
+
         $keys = Feature::resolveKeysForPath($path);
 
         if ($keys === []) {

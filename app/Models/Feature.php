@@ -95,7 +95,36 @@ class Feature extends Model
         // and quote screens use them too: a sales role keeps its clients while
         // the POS module is switched off. Adding one also needs customers.create.
         'pos/customers' => ['pos', 'sales', 'crm'],
+        // The product search of the sales-order and quote forms: a sales role
+        // sees the whole catalogue there with POS switched off.
+        'pos/products/lookup' => ['pos', 'sales'],
     ];
+
+    /**
+     * Lookups every signed-in user reads whatever modules they hold: the
+     * warehouse list fills the warehouse pickers and report filters of the
+     * sales, inventory and report screens. Only reading them is open; writing
+     * stays behind the module (and the admin gate on the routes).
+     */
+    private const OPEN_LOOKUPS = [
+        'admin/wms/warehouses',
+        'admin/wms/managers',
+        'wms/warehouses',
+        'wms/managers',
+    ];
+
+    public static function isOpenLookup(string $path): bool
+    {
+        $path = trim($path, '/');
+
+        foreach (self::OPEN_LOOKUPS as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * Every feature key that may open an API path — holding any one of them
