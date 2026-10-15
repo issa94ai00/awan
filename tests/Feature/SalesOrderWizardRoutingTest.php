@@ -13,7 +13,7 @@ use App\Services\Inventory\InventoryService;
  * can save and confirm in one step.
  */
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 
     $this->main = Warehouse::create(['name' => 'الرئيسي', 'code' => 'WH-WZ-1', 'is_active' => true, 'is_primary' => true]);
     $this->branch = Warehouse::create(['name' => 'الفرع', 'code' => 'WH-WZ-2', 'is_active' => true]);

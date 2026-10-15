@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Feature;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
@@ -22,7 +23,17 @@ function userWithRole(?string $roleName, bool $isAdmin = false): User
     $roleId = null;
 
     if ($roleName !== null) {
-        $roleId = Role::firstOrCreate(['name' => $roleName], ['display_name' => $roleName])->id;
+        $role = Role::firstOrCreate(['name' => $roleName], ['display_name' => $roleName]);
+        $roleId = $role->id;
+
+        // The modules each role holds on the Features Management screen in
+        // production; the module gate runs before the checks tested here.
+        $modules = [
+            'sells' => ['dashboard', 'content', 'sales', 'inventory', 'pos', 'crm'],
+            'accountant' => ['dashboard', 'accounting', 'bi_analytics', 'reports'],
+            'marketer' => ['dashboard', 'content', 'crm', 'inquiries', 'reports'],
+        ][$roleName] ?? [];
+        $role->features()->syncWithoutDetaching(Feature::whereIn('key', $modules)->pluck('id'));
     }
 
     return User::factory()->create([
@@ -166,12 +177,20 @@ it('leaves operational work open to the staff who do it', function () {
 });
 
 /**
- * The main dashboard reads this for every role. It sits under `/analytics`,
- * next to the financial endpoints that are now gated, so it is easy to close
- * by accident — which would leave the landing screen empty for the sales team.
+ * Every role lands on a dashboard. A sales rep's is built from their own
+ * business (DashboardController::stats), so the company-wide sales trend under
+ * `/analytics` is closed to them; other roles still read it.
  */
-it('leaves the dashboard sales trend open to every role', function () {
+it('gives every role a dashboard, and keeps company analytics from sales reps', function () {
     $this->actingAs(userWithRole('sells'))
+        ->getJson('/api/v1/dashboard/stats')
+        ->assertOk();
+
+    $this->actingAs(userWithRole('sells'))
+        ->getJson('/api/v1/analytics/sales/trend?days=30&group_by=day')
+        ->assertForbidden();
+
+    $this->actingAs(userWithRole('accountant'))
         ->getJson('/api/v1/analytics/sales/trend?days=30&group_by=day')
         ->assertOk();
 

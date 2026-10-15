@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 
 it('builds a filtered sales report and exposes a csv export', function () {
-    $admin = User::factory()->create();
+    $admin = User::factory()->operator()->create();
 
     $warehouse = Warehouse::create([
         'name' => 'Main Warehouse',

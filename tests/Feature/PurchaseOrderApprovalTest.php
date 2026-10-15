@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Feature;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Role;
@@ -188,3 +189,72 @@ it('lets a received order still be saved from the edit form', function () {
 
     expect($order->fresh()->notes)->toBe('وصلت ناقصة قطعتين');
 });
+
+it('allows sells user to create a draft purchase order', function () {
+    $purchases = Feature::firstOrCreate(['key' => 'purchases'], ['name_ar' => 'المشتريات', 'name_en' => 'Purchases', 'group' => 'purchases', 'is_enabled' => true]);
+    $sellsRole = Role::firstOrCreate(['name' => 'sells'], ['display_name' => 'sells', 'guard_name' => 'web']);
+    $sellsRole->features()->syncWithoutDetaching([$purchases->id]);
+    $sellsUser = User::factory()->create([
+        'is_admin' => false,
+        'role_id' => $sellsRole->id,
+    ]);
+    $sellsUser->roles()->sync([$sellsRole->id]);
+
+    $response = $this->actingAs($sellsUser)
+        ->postJson('/api/v1/admin/purchase-orders', [
+            'supplier_id' => $this->supplier->id,
+            'status' => 'pending',
+            'order_date' => '2026-10-15',
+            'items' => [
+                ['product_id' => $this->product->id, 'quantity' => 5, 'unit_price' => 50],
+            ],
+        ])
+        ->assertCreated();
+
+    expect($response->json('data.status'))->toBe('pending')
+        ->and(PurchaseOrder::find($response->json('data.id'))->status)->toBe('pending');
+});
+
+it('forbids sells user from creating an already approved purchase order', function () {
+    $purchases = Feature::firstOrCreate(['key' => 'purchases'], ['name_ar' => 'المشتريات', 'name_en' => 'Purchases', 'group' => 'purchases', 'is_enabled' => true]);
+    $sellsRole = Role::firstOrCreate(['name' => 'sells'], ['display_name' => 'sells', 'guard_name' => 'web']);
+    $sellsRole->features()->syncWithoutDetaching([$purchases->id]);
+    $sellsUser = User::factory()->create([
+        'is_admin' => false,
+        'role_id' => $sellsRole->id,
+    ]);
+    $sellsUser->roles()->sync([$sellsRole->id]);
+
+    $this->actingAs($sellsUser)
+        ->postJson('/api/v1/admin/purchase-orders', [
+            'supplier_id' => $this->supplier->id,
+            'status' => 'confirmed',
+            'order_date' => '2026-10-15',
+            'items' => [
+                ['product_id' => $this->product->id, 'quantity' => 5, 'unit_price' => 50],
+            ],
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('message', 'فقط المسؤول يمكنه اعتماد طلب الشراء');
+});
+
+it('forbids sells user from approving a pending purchase order', function () {
+    $order = ($this->makeOrder)('pending');
+
+    $purchases = Feature::firstOrCreate(['key' => 'purchases'], ['name_ar' => 'المشتريات', 'name_en' => 'Purchases', 'group' => 'purchases', 'is_enabled' => true]);
+    $sellsRole = Role::firstOrCreate(['name' => 'sells'], ['display_name' => 'sells', 'guard_name' => 'web']);
+    $sellsRole->features()->syncWithoutDetaching([$purchases->id]);
+    $sellsUser = User::factory()->create([
+        'is_admin' => false,
+        'role_id' => $sellsRole->id,
+    ]);
+    $sellsUser->roles()->sync([$sellsRole->id]);
+
+    $this->actingAs($sellsUser)
+        ->putJson("/api/v1/admin/purchase-orders/{$order->id}/status", ['status' => 'confirmed'])
+        ->assertStatus(403)
+        ->assertJsonPath('message', 'فقط المسؤول يمكنه اعتماد طلب الشراء');
+
+    expect($order->fresh()->status)->toBe('pending');
+});
+

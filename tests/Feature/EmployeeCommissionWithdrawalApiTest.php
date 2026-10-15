@@ -59,7 +59,7 @@ test('a withdrawal in the base currency needs no conversion', function () {
         ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('data.base_amount', '500.00')
+        ->assertJsonPath('data.base_amount', '500.00000')
         ->assertJsonPath('data.exchange_rate', '1.00000000');
 
     $this->assertDatabaseHas('employee_commissions', [
@@ -80,7 +80,7 @@ test('a withdrawal in a foreign currency converts using the recorded rate', func
     // 375 SAR / 3.75 = 100 USD
     $response->assertStatus(201)
         ->assertJsonPath('data.currency_code', 'SAR')
-        ->assertJsonPath('data.base_amount', '100.00');
+        ->assertJsonPath('data.base_amount', '100.00000');
 
     $this->assertDatabaseHas('employee_commissions', [
         'id' => $this->commission['id'],
@@ -100,7 +100,7 @@ test('an explicit exchange rate overrides the recorded one', function () {
         ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('data.base_amount', '100.00');
+        ->assertJsonPath('data.base_amount', '100.00000');
 });
 
 test('a currency with no rate on file is refused rather than guessed', function () {
@@ -163,7 +163,7 @@ test('the monthly statement balance reflects the converted withdrawal total', fu
     // total_sales is 0 in this test (no invoices), so commission is 0 and
     // balance is simply the negative of the converted withdrawal.
     $updated->assertStatus(200)
-        ->assertJsonPath('data.withdrawals', '100.00')
+        ->assertJsonPath('data.withdrawals', '100.00000')
         ->assertJsonPath('data.balance', -100)
         ->assertJsonPath('data.balance_status', 'debtor');
 });

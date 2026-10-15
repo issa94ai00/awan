@@ -172,7 +172,7 @@ test('restoring the parent commission record does not resurrect its withdrawals,
     // The financial settlement: `withdrawals` no longer carries the frozen
     // pre-delete snapshot (80) once restored — it is re-summed against the
     // live ledger, which has nothing active, so it settles to zero.
-    $restore->assertJsonPath('data.withdrawals', '0.00');
+    $restore->assertJsonPath('data.withdrawals', '0.00000');
     $this->assertDatabaseHas('employee_commissions', ['id' => $this->commission['id'], 'withdrawals' => 0]);
 });
 
@@ -194,7 +194,7 @@ test('restoring the parent commission record settles withdrawals to include one 
     $restore = $this->putJson("/api/v1/admin/employee-commissions/{$this->commission['id']}/restore", [], $this->auth);
     $restore->assertStatus(200);
 
-    $restore->assertJsonPath('data.withdrawals', '80.00');
+    $restore->assertJsonPath('data.withdrawals', '80.00000');
     $this->assertDatabaseHas('employee_commissions', ['id' => $this->commission['id'], 'withdrawals' => 80]);
 });
 

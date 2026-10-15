@@ -16,7 +16,7 @@ use App\Services\Sales\PaymentRecorder;
  * rest of the payment flow already meets.
  */
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 
     $this->customer = Customer::create([
         'name' => 'عميل',

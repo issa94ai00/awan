@@ -16,7 +16,7 @@ use Illuminate\Http\UploadedFile;
  * import that does not keep the buckets adding up quietly corrupts all of them.
  */
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->operator()->create();
     $this->token = $this->admin->createToken('test-token')->plainTextToken;
     $this->excel = app(ProductExcelService::class);
 

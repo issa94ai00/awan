@@ -37,7 +37,7 @@ beforeEach(function () {
         'cost_price' => 40,
     ]);
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
     $this->inventory = app(InventoryService::class);
 
     // 100 on the shelf: 10 damaged, 5 quarantined, 85 sound — of which 20 are

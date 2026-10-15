@@ -28,7 +28,7 @@ function trendInvoice(array $attributes, string $createdAt): Invoice
 
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 12:00:00'); // a Wednesday
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
     $this->customer = Customer::create(['name' => 'Trend Customer', 'email' => 'trend@example.test', 'phone' => '0999000111']);
 
     trendInvoice(['customer_id' => $this->customer->id, 'total' => 100, 'paid_amount' => 100, 'due_amount' => 0, 'status' => Invoice::STATUS_DELIVERED], '2026-09-01 10:00:00');

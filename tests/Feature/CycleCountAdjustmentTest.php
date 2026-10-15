@@ -16,7 +16,7 @@ use App\Models\WarehouseInventory;
  * `InventoryService::adjust()` so the movement and the FIFO layers move with it.
  */
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 
     $this->warehouse = Warehouse::create([
         'name' => 'مستودع الجرد',

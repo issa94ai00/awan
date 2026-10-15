@@ -27,7 +27,7 @@ use App\Services\Sales\SalesOrderWorkflowService;
  *    "Unknown column" instead of answering which warehouse could cover a line.
  */
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 
     $this->main = Warehouse::create([
         'name' => 'المستودع الرئيسي',

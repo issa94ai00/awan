@@ -15,7 +15,7 @@ use Illuminate\Support\Carbon;
  * invoices tab ignored a range with only one end set.
  */
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->operator()->create();
     $this->customer = Customer::create(['name' => 'زبون الفترات', 'status' => 'active']);
 
     $this->invoiceAt = function (string $number, string $when) {

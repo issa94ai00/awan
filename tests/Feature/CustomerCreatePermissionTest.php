@@ -49,3 +49,12 @@ test('an admin adds clients without being granted anything', function () {
     $this->actingAs(User::factory()->admin()->create(), 'sanctum')
         ->postJson('/api/v1/pos/customers', ['name' => 'عميل المدير', 'phone' => '0999000504'])->assertCreated();
 });
+
+test('a sales user searches the whole catalogue on the order form while POS is off', function () {
+    $category = \App\Models\Category::create(['name_ar' => 'خلاطات', 'name_en' => 'Mixers', 'slug' => 'mixers', 'is_active' => true]);
+    \App\Models\Product::factory()->count(3)->create(['category_id' => $category->id, 'is_active' => true]);
+
+    $api = $this->actingAs($this->rep, 'sanctum');
+    expect(count($api->getJson('/api/v1/pos/products/lookup')->assertOk()->json('data')))->toBe(3);
+    $api->getJson("/api/v1/pos/products/lookup?category_id={$category->id}")->assertOk();
+});

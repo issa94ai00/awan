@@ -23,7 +23,7 @@ beforeEach(function () {
     $this->syp = Currency::where('code', 'SYP')->firstOrFail();
     $this->sar = Currency::where('code', 'SAR')->firstOrFail();
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 
     $this->customer = Customer::create([
         'name' => 'عميل',

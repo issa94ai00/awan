@@ -7,9 +7,10 @@ use App\Models\Role;
 use App\Models\User;
 
 /**
- * The storefront lists each variant of a product as its own product: a floor
- * drain in three sizes shows as three cards, each with its own name, code,
- * price and stock. Admin listings keep one row per product.
+ * The storefront lists a product once however many sizes it has, and the
+ * shopper picks the size on the product's page. Asked with expand_variants=1
+ * (the line pickers of orders and receipts), each variant is its own row with
+ * its own name, code, price and stock. Admin listings keep one row per product.
  */
 beforeEach(function () {
     $this->category = Category::create([
@@ -30,8 +31,14 @@ beforeEach(function () {
     ]);
 });
 
-test('the public product list returns one row per variant, plus products without variants', function () {
+test('the storefront lists a product once, whatever its sizes', function () {
     $rows = collect($this->getJson('/api/v1/products?per_page=50')->assertOk()->json('data'));
+
+    expect($rows->pluck('sku')->sort()->values()->all())->toBe(['FD-1', 'TAP-1']);
+});
+
+test('expanded, the product list returns one row per variant, plus products without variants', function () {
+    $rows = collect($this->getJson('/api/v1/products?per_page=50&expand_variants=1')->assertOk()->json('data'));
 
     expect($rows)->toHaveCount(4);
     expect($rows->pluck('listing_key')->unique())->toHaveCount(4);
@@ -49,30 +56,30 @@ test('the public product list returns one row per variant, plus products without
     expect($tap['variant_id'])->toBeNull()->and($tap['name_ar'])->toBe('حنفية');
 });
 
-test('the pagination total counts variant rows', function () {
-    $response = $this->getJson('/api/v1/products?per_page=2')->assertOk();
+test('expanded, the pagination total counts variant rows', function () {
+    $response = $this->getJson('/api/v1/products?per_page=2&expand_variants=1')->assertOk();
 
     expect($response->json('pagination.total'))->toBe(4)
         ->and($response->json('pagination.last_page'))->toBe(2);
 });
 
-test('a variant is found by its own code and sorted by its own price', function () {
-    $found = $this->getJson('/api/v1/products?search=FD-1-4')->assertOk()->json('data');
+test('expanded, a variant is found by its own code and sorted by its own price', function () {
+    $found = $this->getJson('/api/v1/products?search=FD-1-4&expand_variants=1')->assertOk()->json('data');
     expect($found)->toHaveCount(1)->and($found[0]['sku'])->toBe('FD-1-4');
 
-    $sorted = collect($this->getJson('/api/v1/products?sort=price_asc')->assertOk()->json('data'))->pluck('sku')->all();
+    $sorted = collect($this->getJson('/api/v1/products?sort=price_asc&expand_variants=1')->assertOk()->json('data'))->pluck('sku')->all();
     expect($sorted)->toBe(['FD-1-3', 'FD-1-4', 'FD-1-5', 'TAP-1']);
 
-    $cheap = $this->getJson('/api/v1/products?max_price=1')->json('data');
+    $cheap = $this->getJson('/api/v1/products?max_price=1&expand_variants=1')->json('data');
     expect(collect($cheap)->pluck('sku')->sort()->values()->all())->toBe(['FD-1-3', 'FD-1-4']);
 });
 
-test('the category page lists variants too, and expand_variants=0 groups them', function () {
-    $rows = $this->getJson('/api/v1/categories/drainage/products')->assertOk()->json('data.products');
-    expect($rows)->toHaveCount(4);
-
-    $grouped = $this->getJson('/api/v1/products?expand_variants=0')->assertOk()->json('data');
+test('the category page lists a product once, and its variants when expanded', function () {
+    $grouped = $this->getJson('/api/v1/categories/drainage/products')->assertOk()->json('data.products');
     expect($grouped)->toHaveCount(2);
+
+    $rows = $this->getJson('/api/v1/categories/drainage/products?expand_variants=1')->assertOk()->json('data.products');
+    expect($rows)->toHaveCount(4);
 });
 
 test('the admin product list stays one row per product', function () {
@@ -156,7 +163,7 @@ test('what a product cost is kept from shoppers but given to staff', function ()
     $this->drain->update(['cost_price' => 3]);
     ProductVariant::where('sku', 'FD-1-4')->update(['cost_price' => 0.5]);
 
-    $public = collect($this->getJson('/api/v1/products?per_page=50')->assertOk()->json('data'));
+    $public = collect($this->getJson('/api/v1/products?per_page=50&expand_variants=1')->assertOk()->json('data'));
     expect($public->every(fn ($row) => ! array_key_exists('cost_price', $row)))->toBeTrue();
 
     $page = $this->getJson('/api/v1/products/floor-drain')->assertOk()->json('data');
@@ -167,7 +174,7 @@ test('what a product cost is kept from shoppers but given to staff', function ()
         'is_admin' => false,
         'role_id' => Role::firstOrCreate(['name' => 'employee'], ['display_name' => 'employee'])->id,
     ]);
-    $staff = collect($this->actingAs($buyer)->getJson('/api/v1/products?per_page=50')->assertOk()->json('data'));
+    $staff = collect($this->actingAs($buyer)->getJson('/api/v1/products?per_page=50&expand_variants=1')->assertOk()->json('data'));
     expect((float) $staff->firstWhere('sku', 'FD-1-4')['cost_price'])->toBe(0.5)
         ->and((float) $staff->firstWhere('sku', 'FD-1-3')['cost_price'])->toBe(3.0);
 

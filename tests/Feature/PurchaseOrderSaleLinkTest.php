@@ -146,7 +146,7 @@ it('keeps purchase orders off the sale detail for whoever cannot see purchasing'
         ->postJson('/api/v1/admin/purchase-orders', ($this->payload)(['sales_order_id' => $this->salesOrder['id']]))
         ->assertCreated();
 
-    $seller = User::factory()->create();
+    $seller = User::factory()->operator()->create();
 
     $this->actingAs($seller, 'sanctum')
         ->getJson("/api/v1/sales-orders/{$this->salesOrder['id']}/detail")

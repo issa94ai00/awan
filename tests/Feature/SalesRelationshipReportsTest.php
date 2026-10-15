@@ -10,7 +10,7 @@ use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 
 it('groups sales totals by employee, customer and warehouse for ERP reporting', function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouseA = Warehouse::create([
         'name' => 'Warehouse A',
@@ -119,7 +119,7 @@ it('groups sales totals by employee, customer and warehouse for ERP reporting', 
         'updated_at' => now(),
     ]);
 
-    $user = \App\Models\User::factory()->create();
+    $user = \App\Models\User::factory()->operator()->create();
 
     Invoice::create([
         'invoice_number' => 'INV-REPORT-001',
@@ -215,7 +215,7 @@ it('keeps the core ERP entity relationships connected and queryable', function (
 });
 
 it('calculates sales performance and gross profit by entity', function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouse = Warehouse::create([
         'name' => 'Profit Hub',
@@ -291,7 +291,7 @@ it('calculates sales performance and gross profit by entity', function () {
 });
 
 it('calculates product profitability by warehouse and product', function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouse = Warehouse::create([
         'name' => 'Product Profit Hub',
@@ -367,7 +367,7 @@ it('calculates product profitability by warehouse and product', function () {
  * table read "Unknown" even for lines with a recorded split.
  */
 it('splits a sales-order line\'s profit across each warehouse its fulfilment plan actually used', function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouseA = Warehouse::create([
         'name' => 'Split Warehouse A', 'code' => 'SPLIT-A', 'is_active' => true,
@@ -424,7 +424,7 @@ it('splits a sales-order line\'s profit across each warehouse its fulfilment pla
  * real warehouse was one relation away.
  */
 it('reads a line\'s own warehouse for invoice product profitability, not just the header\'s', function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouse = Warehouse::create([
         'name' => 'Invoice Line Warehouse', 'code' => 'INV-LINE-WH', 'is_active' => true,

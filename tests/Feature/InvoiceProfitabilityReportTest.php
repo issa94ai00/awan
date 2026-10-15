@@ -16,7 +16,7 @@ use App\Models\Warehouse;
  * was invisible.
  */
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->operator()->create();
 
     $this->warehouse = Warehouse::create([
         'name' => 'Main Warehouse',

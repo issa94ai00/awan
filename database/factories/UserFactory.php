@@ -2,6 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Models\Feature;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -51,6 +54,25 @@ class UserFactory extends Factory
      * behind a role, those tests failed — not because the behaviour changed,
      * but because the fixture had never matched what the test claimed it was.
      */
+    /**
+     * A staff account whose role opens every module on the Features Management
+     * screen, for tests about what a module does rather than who may open it.
+     * The role's name is neutral: it does not make the user a sales rep
+     * (User::isSalesScoped) or a super admin.
+     */
+    public function operator(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            $role = Role::firstOrCreate(
+                ['name' => 'test-operator', 'guard_name' => 'web'],
+                ['display_name' => 'مشغّل الاختبارات', 'is_active' => true]
+            );
+            $role->features()->syncWithoutDetaching(Feature::pluck('id'));
+            $user->roles()->syncWithoutDetaching([$role->id]);
+            $user->unsetRelation('roles');
+        });
+    }
+
     public function admin(): static
     {
         return $this->state(fn (array $attributes) => [

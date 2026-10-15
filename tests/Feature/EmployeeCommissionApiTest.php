@@ -80,7 +80,7 @@ test('commission record store computes balance, status and cumulative balance', 
 
     // 100000 * 5% = 5000; 5000 - 200 = 4800; 4800 - 3000 = 1800 (creditor)
     $response->assertStatus(201)
-        ->assertJsonPath('data.total_sales', '100000.00')
+        ->assertJsonPath('data.total_sales', '100000.00000')
         ->assertJsonPath('data.commission_amount', 5000)
         ->assertJsonPath('data.net_due', 4800);
 

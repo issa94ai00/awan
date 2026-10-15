@@ -46,7 +46,7 @@ beforeEach(function () {
         'location_type' => Warehouse::TYPE_BRANCH,
     ]);
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
     $this->workflow = app(SalesOrderWorkflowService::class);
 
     $this->product = Product::create([

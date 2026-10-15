@@ -11,7 +11,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
 });
 
 test('sales order creation prefers assigned employee warehouse when fulfillment warehouse is omitted', function () {

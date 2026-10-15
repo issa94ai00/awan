@@ -47,7 +47,7 @@ beforeEach(function () {
         ]);
     };
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
     $this->token = $this->user->createToken('test-token')->plainTextToken;
 
     $this->customer = Customer::create([

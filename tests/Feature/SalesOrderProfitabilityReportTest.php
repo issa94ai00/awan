@@ -19,7 +19,7 @@ use App\Models\Warehouse;
  * which rather than presenting a forecast as a fact.
  */
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->operator()->create();
 
     $this->warehouse = Warehouse::create([
         'name' => 'Main Warehouse',

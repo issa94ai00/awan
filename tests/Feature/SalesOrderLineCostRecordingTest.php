@@ -22,7 +22,7 @@ use App\Services\Sales\SalesOrderWorkflowService;
  * cost; it now writes that onto the line as the goods leave.
  */
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->operator()->create();
     $this->workflow = app(SalesOrderWorkflowService::class);
 
     $this->main = Warehouse::create([

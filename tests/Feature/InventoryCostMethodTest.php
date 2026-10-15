@@ -23,7 +23,7 @@ class InventoryCostMethodTest extends TestCase
     {
         parent::setUp();
 
-        $this->admin = User::factory()->create();
+        $this->admin = User::factory()->operator()->create();
         $this->warehouse = Warehouse::create([
             'name' => 'Main Warehouse',
             'code' => 'WH-TEST',

@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $warehouse = Warehouse::create(['name' => 'KPI Warehouse', 'code' => 'KPI-WH', 'is_active' => true]);
     $this->basin = Product::create(['name_ar' => 'مغسلة', 'name_en' => 'Basin', 'sku' => 'KPI-BASIN', 'price' => 100, 'cost_price' => 60, 'is_active' => true]);

@@ -64,7 +64,7 @@ function shortageOrder(array $lines): SalesOrder
 }
 
 it('returns the shortfall as data when confirmation is refused', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $warehouse = shortageWarehouse('W1');
 
     $product = Product::factory()->create(['name_ar' => 'خلاط مغسلة', 'sku' => 'MIX-1', 'cost_price' => 90]);
@@ -85,7 +85,7 @@ it('returns the shortfall as data when confirmation is refused', function () {
 });
 
 it('reads the shortfall on its own so the purchase screen can prefill', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $warehouse = shortageWarehouse('W2');
 
     $product = Product::factory()->create(['name_ar' => 'حنفية', 'cost_price' => 40]);
@@ -104,7 +104,7 @@ it('reads the shortfall on its own so the purchase screen can prefill', function
 });
 
 it('sums availability across every warehouse before calling anything short', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $a = shortageWarehouse('A');
     $b = shortageWarehouse('B');
 
@@ -122,7 +122,7 @@ it('sums availability across every warehouse before calling anything short', fun
 });
 
 it('does not promise the same units to two lines of the same product', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $warehouse = shortageWarehouse('W3');
 
     $product = Product::factory()->create(['cost_price' => 25]);
@@ -142,7 +142,7 @@ it('does not promise the same units to two lines of the same product', function 
 });
 
 it('suggests the price last actually paid to a supplier over the catalogue cost', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $warehouse = shortageWarehouse('W4');
 
     $product = Product::factory()->create(['cost_price' => 100]);
@@ -170,7 +170,7 @@ it('suggests the price last actually paid to a supplier over the catalogue cost'
 });
 
 it('reports nothing short when stock covers the order', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->operator()->create();
     $warehouse = shortageWarehouse('W5');
 
     $product = Product::factory()->create(['cost_price' => 10]);

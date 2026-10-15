@@ -32,7 +32,7 @@ function inventoryReportStock(Warehouse $warehouse, Product $product, int $quant
 }
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create(), 'sanctum');
+    $this->actingAs(User::factory()->operator()->create(), 'sanctum');
 
     $this->main = inventoryReportWarehouse('INV-A');
     $this->branch = inventoryReportWarehouse('INV-B');
