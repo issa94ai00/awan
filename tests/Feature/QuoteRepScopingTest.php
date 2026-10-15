@@ -235,3 +235,37 @@ test('a rep records payments from their own customers only', function () {
     $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/payments', $body($this->others))
         ->assertJsonMissingValidationErrors('customer_id');
 });
+
+test('a rep collects at delivery from their own customers only', function () {
+    $shipped = function (Customer $customer) {
+        $order = \App\Models\SalesOrder::create([
+            'order_number' => 'SO-REP-'.uniqid(), 'customer_id' => $customer->id,
+            'subtotal' => 100, 'total' => 100, 'status' => 'shipped',
+        ]);
+        \App\Models\Invoice::create([
+            'invoice_number' => 'INV-'.$order->order_number, 'customer_id' => $customer->id, 'sales_order_id' => $order->id,
+            'subtotal' => 100, 'tax' => 0, 'discount' => 0, 'total' => 100, 'status' => 'pending',
+        ]);
+
+        return $order;
+    };
+    $settle = ['status' => 'delivered', 'settle' => true, 'payment_method' => 'cash'];
+    $api = $this->actingAs($this->rep1, 'sanctum');
+
+    $foreign = $shipped($this->others);
+    $api->postJson("/api/v1/sales-orders/{$foreign->id}/transition", $settle)->assertUnprocessable();
+    // The whole delivery is rolled back and no money is booked.
+    expect($foreign->fresh()->status)->toBe('shipped');
+    expect(\App\Models\Payment::count())->toBe(0);
+
+    // Delivering it without collecting is still allowed.
+    $api->postJson("/api/v1/sales-orders/{$foreign->id}/transition", ['status' => 'delivered'])->assertOk();
+
+    $own = $shipped($this->ownByLink);
+    $api->postJson("/api/v1/sales-orders/{$own->id}/transition", $settle)->assertOk();
+    expect(\App\Models\Payment::where('sales_order_id', $own->id)->exists())->toBeTrue();
+
+    $other = $shipped($this->others);
+    $this->actingAs($this->admin, 'sanctum')->postJson("/api/v1/sales-orders/{$other->id}/transition", $settle)->assertOk();
+    expect(\App\Models\Payment::where('sales_order_id', $other->id)->exists())->toBeTrue();
+});

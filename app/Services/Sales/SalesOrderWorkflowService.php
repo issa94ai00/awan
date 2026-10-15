@@ -1264,6 +1264,17 @@ class SalesOrderWorkflowService
             throw new RuntimeException('لا توجد فاتورة لتسويتها على هذا الطلب.');
         }
 
+        // A rep collects from their own customers only, as on the payments
+        // screen. Refusing here rolls the whole delivery back, so it can be
+        // recorded again without the collection.
+        $user = auth()->user();
+        $customerIds = array_filter(array_unique([(int) $order->customer_id, (int) $invoice->customer_id]));
+        foreach ($customerIds as $customerId) {
+            if ($user && ! $user->servesCustomer($customerId)) {
+                throw new RuntimeException('هذا العميل غير مسند إليك. يمكنك تسجيل التسليم بدون تحصيل، والتحصيل لعملائك فقط.');
+            }
+        }
+
         $outstanding = $this->payments->outstanding($invoice);
         if ($outstanding <= 0.009) {
             $effects['settlement'] = ['already_settled' => true];
