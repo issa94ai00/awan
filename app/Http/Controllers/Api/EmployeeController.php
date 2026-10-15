@@ -139,6 +139,7 @@ class EmployeeController extends Controller
             ? $this->pickedLoginRole($request, $validated['role_id'] ?? null)
             : null;
         unset($validated['role_id']);
+        $validated = $this->fillBlankRequired($validated);
 
         // The login and the staff record land together: a failure creating the
         // employee used to leave a login behind with no one attached to it.
@@ -222,6 +223,7 @@ class EmployeeController extends Controller
         $user = $employee->user;
         $roleId = $validated['role_id'] ?? null;
         unset($validated['role_id']);
+        $validated = $this->fillBlankRequired($validated);
         $role = null;
         if ($roleId && ($user || !empty($validated['password'])) && (int) $roleId !== (int) $user?->role_id) {
             $role = $this->pickedLoginRole($request, (int) $roleId, $user);
@@ -239,6 +241,21 @@ class EmployeeController extends Controller
             'message' => 'Employee updated successfully',
             'data' => $this->present($employee->refresh()),
         ]);
+    }
+
+    /**
+     * Blank optional fields arrive as null, but these columns are NOT NULL:
+     * inserting the null failed with a server error.
+     */
+    private function fillBlankRequired(array $validated): array
+    {
+        foreach (['employment_type' => '', 'contract_type' => '', 'salary' => 0, 'bonus' => 0] as $field => $blank) {
+            if (array_key_exists($field, $validated) && $validated[$field] === null) {
+                $validated[$field] = $blank;
+            }
+        }
+
+        return $validated;
     }
 
     /** The employee as the form reads it: with whether and how they sign in. */

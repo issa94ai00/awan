@@ -223,3 +223,27 @@ describe('the login role picked on the employee form', function () {
         expect(Employee::where('email', 'hadi@example.com')->exists())->toBeFalse();
     });
 });
+
+test('admin employees API creates an employee when optional fields are left blank', function () {
+    $response = $this->withHeader('Authorization', "Bearer {$this->token}")
+        ->postJson('/api/v1/admin/employees', [
+            'name' => 'عيسى',
+            'email' => 'blank-fields@example.com',
+            'phone' => '+963900000000',
+            'position' => 'مندوب',
+            'department' => 'المبيعات',
+            'hire_date' => now()->toDateString(),
+            'status' => 'نشط',
+            'salary' => '',
+            'bonus' => '',
+            'employment_type' => '',
+            'contract_type' => '',
+        ]);
+
+    $response->assertStatus(201);
+    $this->assertDatabaseHas('employees', [
+        'email' => 'blank-fields@example.com',
+        'contract_type' => '',
+        'employment_type' => '',
+    ]);
+});
