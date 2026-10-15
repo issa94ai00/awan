@@ -519,6 +519,14 @@ class PurchaseRequestController extends Controller
             ], 422);
         }
 
+        if ($validated['status'] === SalesOrder::STATUS_CONFIRMED && ! $request->user()?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'فقط المسؤول يمكنه اعتماد طلب الشراء',
+                'data' => null,
+            ], 403);
+        }
+
         try {
             $result = $this->workflow->transitionTo(
                 $salesOrder,

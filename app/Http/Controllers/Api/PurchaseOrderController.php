@@ -143,8 +143,16 @@ class PurchaseOrderController extends Controller
 
             $this->assertOneSaleLink($validated);
 
+            $status = $validated['status'] ?? PurchaseOrder::STATUS_PENDING;
+            if ($status === PurchaseOrder::STATUS_CONFIRMED && ! $request->user()?->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فقط المسؤول يمكنه اعتماد طلب الشراء',
+                ], 403);
+            }
+
             $validated['order_number'] = $this->nextOrderNumber();
-            $validated['status'] = $validated['status'] ?? 'pending';
+            $validated['status'] = $status;
             $validated['order_date'] = $validated['order_date'] ?? now()->toDateString();
             $validated['created_by'] = auth()->id();
 
@@ -260,6 +268,14 @@ class PurchaseOrderController extends Controller
         // cancelled order — could be walked around by saving the form.
         if (!empty($validated['status'])) {
             $target = PurchaseOrder::normalizeStatus($validated['status']);
+
+            if ($target === PurchaseOrder::STATUS_CONFIRMED && ! $request->user()?->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'فقط المسؤول يمكنه اعتماد طلب الشراء',
+                    'data' => null,
+                ], 403);
+            }
 
             if ($target !== $current && !in_array($target, PurchaseOrder::STATUS_TRANSITIONS[$current] ?? [], true)) {
                 return response()->json([
@@ -441,6 +457,14 @@ class PurchaseOrderController extends Controller
         $current = PurchaseOrder::normalizeStatus($order->status);
         $target = PurchaseOrder::normalizeStatus($validated['status']);
 
+        if ($target === PurchaseOrder::STATUS_CONFIRMED && ! $request->user()?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'فقط المسؤول يمكنه اعتماد طلب الشراء',
+                'data' => null,
+            ], 403);
+        }
+
         if ($current === $target) {
             $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
@@ -483,8 +507,15 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
-    public function destroy(PurchaseOrder $order): JsonResponse
+    public function destroy(Request $request, PurchaseOrder $order): JsonResponse
     {
+        if (! $request->user()?->isAdmin() && ! $request->user()?->hasRole('manager')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'فقط المسؤول يمكنه حذف طلب الشراء',
+                'data' => null,
+            ], 403);
+        }
         // A receipt booked stock and posted a journal entry against this
         // order; deleting it leaves both pointing at nothing. The screen only
         // greyed the option out, so the API itself did not refuse.

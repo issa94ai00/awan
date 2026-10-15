@@ -420,12 +420,15 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/categories/{category:id}', [CategoryController::class, 'update'])->name('api.admin.categories.update');
             Route::delete('/categories/{category:id}', [CategoryController::class, 'destroy'])->name('api.admin.categories.destroy');
 
-            // Admin Suppliers — purchasing is an admin group in the sidebar,
-            // and supplier records carry the prices the business buys at.
-            Route::middleware('role:admin')->group(function () {
+            // Admin Suppliers — suppliers listing is available to purchasing/sales/accounting,
+            // but modifying suppliers or making supplier payments/returns remains admin-only.
+            Route::middleware('role:admin,manager,sells,accountant')->group(function () {
                 Route::get('/suppliers', [SupplierController::class, 'index'])->name('api.admin.suppliers.index');
-                Route::post('/suppliers', [SupplierController::class, 'store'])->name('api.admin.suppliers.store');
                 Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->name('api.admin.suppliers.show');
+            });
+
+            Route::middleware('role:admin')->group(function () {
+                Route::post('/suppliers', [SupplierController::class, 'store'])->name('api.admin.suppliers.store');
                 Route::put('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('api.admin.suppliers.update');
                 Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('api.admin.suppliers.destroy');
 
@@ -454,10 +457,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::middleware('role:admin')->group(function () {
                 Route::get('/employees', [EmployeeController::class, 'index'])->name('api.admin.employees.index');
                 Route::post('/employees', [EmployeeController::class, 'store'])->name('api.admin.employees.store');
+                Route::get('/employees/form-options', [EmployeeController::class, 'formOptions'])->name('api.admin.employees.form-options');
                 Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
                 Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
                 Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
-                Route::get('/employees/form-options', [EmployeeController::class, 'formOptions'])->name('api.admin.employees.form-options');
             });
 
             // Employee Customers API
@@ -531,7 +534,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::put('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'update'])->name('api.admin.leave-requests.update');
             Route::delete('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'destroy'])->name('api.admin.leave-requests.destroy');
 
-            Route::middleware('role:admin')->group(function () {
+            Route::middleware('role:admin,manager,sells,accountant')->group(function () {
                 Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
                 Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
                 Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');

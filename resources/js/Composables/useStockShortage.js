@@ -36,7 +36,7 @@ export function useStockShortage() {
         if (!user) return false;
 
         const role = (user.role?.name || user.role_name || '').toLowerCase();
-        return Boolean(user.is_admin) || role === 'admin';
+        return Boolean(user.is_admin) || role === 'admin' || role === 'sells' || authStore.hasRole('sells') || authStore.can(['purchases.orders.view', 'purchases.create']);
     };
 
     /**

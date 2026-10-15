@@ -25,7 +25,7 @@ class EnsureCanManageOrders
             ], 401);
         }
 
-        $allowed = $user->isAdmin() || $user->hasRole('manager') || $user->hasRole('employee');
+        $allowed = $user->isAdmin() || $user->hasRole('manager') || $user->hasRole('employee') || $user->hasRole('sells');
 
         if (!$allowed) {
             return response()->json([

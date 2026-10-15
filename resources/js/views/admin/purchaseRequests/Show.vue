@@ -22,14 +22,14 @@
                         >
                             {{ stageActionLabel(nextForward) }}
                         </el-button>
-                        <el-dropdown v-if="(order.allowed_transitions || []).length" @command="executeStage" trigger="click">
+                        <el-dropdown v-if="allowedTransitions.length" @command="executeStage" trigger="click">
                             <el-button size="small">
                                 {{ $t('change_status') }} <el-icon><ArrowDown /></el-icon>
                             </el-button>
                             <template #dropdown>
                                 <el-dropdown-menu>
                                     <el-dropdown-item
-                                        v-for="stage in order.allowed_transitions"
+                                        v-for="stage in allowedTransitions"
                                         :key="stage"
                                         :command="stage"
                                         :divided="stage === 'cancelled'"
@@ -278,6 +278,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { formatCurrency } from '@/utils/sales';
 import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { usePurchaseRequestsStore } from '@/stores/purchaseRequests';
 import { ElMessage } from 'element-plus';
 import { ArrowDown } from '@element-plus/icons-vue';
@@ -290,7 +291,10 @@ import VariantChip from '@/components/admin/products/VariantChip.vue';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 const store = usePurchaseRequestsStore();
+
+const canApprove = computed(() => Boolean(authStore.isSuperAdmin || authStore.user?.is_admin || authStore.hasRole(['admin', 'master'])));
 
 const order = ref(null);
 const loading = ref(true);
@@ -321,8 +325,16 @@ const stageActionLabel = (stage) => ({
     cancelled: t('cancel_the_request'),
 }[stage] || stage);
 
+const allowedTransitions = computed(() => {
+    const list = order.value?.allowed_transitions || [];
+    if (!canApprove.value) {
+        return list.filter((stage) => stage !== 'confirmed');
+    }
+    return list;
+});
+
 /** The forward move from here — cancelling is an exit, not the next step. */
-const nextForward = computed(() => (order.value?.allowed_transitions || []).find((stage) => stage !== 'cancelled') || null);
+const nextForward = computed(() => allowedTransitions.value.find((stage) => stage !== 'cancelled') || null);
 
 /**
  * A request is a sales order, moved where every sales order is: the order
@@ -331,6 +343,10 @@ const nextForward = computed(() => (order.value?.allowed_transitions || []).find
  * and left the page showing the old status text.
  */
 const executeStage = (stage) => {
+    if (stage === 'confirmed' && !canApprove.value) {
+        ElMessage.error(t('only_admin_can_approve') || 'فقط المسؤول يمكنه اعتماد طلب الشراء');
+        return;
+    }
     router.push({ path: '/admin/sales/sales-orders', query: { open: order.value.id, tab: 'execution', do: stage } });
 };
 

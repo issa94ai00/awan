@@ -1344,13 +1344,21 @@
                         <small class="shortcut-hint">{{ $t('po_shortcut_hint') }}</small>
                         <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
                         <template v-if="!isEditMode">
-                            <el-button :loading="submittingForm" @click="saveOrder({ approve: false })">
-                                {{ $t('po_save_as_pending') }}
+                            <el-button
+                                :type="canApprove ? 'default' : 'primary'"
+                                :loading="submittingForm"
+                                @click="saveOrder({ approve: false })"
+                            >
+                                <i class="fas fa-file-signature"></i> {{ $t('po_save_as_pending') }}
                             </el-button>
-                            <!-- Most requests are placed by the person who approves
-                                 them; saving and approving in one go spares them
-                                 finding the row again to click Approve. -->
-                            <el-button type="primary" :loading="submittingForm" @click="saveOrder({ approve: true })">
+                            <!-- Only admins can approve orders. For admins, saving and approving
+                                 in one go spares them finding the row again to click Approve. -->
+                            <el-button
+                                v-if="canApprove"
+                                type="primary"
+                                :loading="submittingForm"
+                                @click="saveOrder({ approve: true })"
+                            >
                                 <i class="fas fa-circle-check"></i> {{ $t('po_save_and_approve') }}
                             </el-button>
                         </template>
@@ -1667,6 +1675,7 @@
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, onBeforeUnmount, computed, reactive, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
@@ -1704,8 +1713,11 @@ const productImageSrc = (p) => {
 
 const router = useRouter();
 const route = useRoute();
+const authStore = useAuthStore();
 const store = usePurchaseOrdersStore();
 const suppliersStore = useSuppliersStore();
+
+const canApprove = computed(() => Boolean(authStore.isSuperAdmin || authStore.user?.is_admin || authStore.hasRole(['admin', 'master'])));
 
 const searchQuery = ref('');
 
@@ -2615,7 +2627,7 @@ const filledItemCount = computed(() => form.items.filter((item) => item.product_
 
 const savePrimary = () => {
     if (submittingForm.value || loadingForm.value) return;
-    return isEditMode.value ? saveOrder() : saveOrder({ approve: true });
+    return isEditMode.value ? saveOrder() : saveOrder({ approve: canApprove.value });
 };
 
 const openEditDrawer = async (id) => {
@@ -2827,6 +2839,9 @@ const orderPayload = () => {
 };
 
 const saveOrder = async ({ approve = false } = {}) => {
+    if (approve && !canApprove.value) {
+        approve = false;
+    }
     if (!formLocked.value) {
         if (!form.supplier_id) {
             ElMessage.warning(t('please_select_supplier_first'));
@@ -2975,6 +2990,10 @@ const moveToStatus = async (order, status) => {
 };
 
 const approveOrder = async (order) => {
+    if (!canApprove.value) {
+        ElMessage.error(t('only_admin_can_approve') || 'فقط المسؤول يمكنه اعتماد طلب الشراء');
+        return;
+    }
     try {
         await ElMessageBox.confirm(
             t('approve_purchase_order_message', {
@@ -3047,6 +3066,14 @@ const nextStep = (order) => {
     const stage = normalizeStatus(order.status);
 
     if (stage === 'pending') {
+        if (!canApprove.value) {
+            return {
+                label: t('awaiting_approval'),
+                icon: 'fa-hourglass-half',
+                type: 'warning',
+                action: null,
+            };
+        }
         return {
             label: t('approve'),
             icon: 'fa-circle-check',
@@ -3093,6 +3120,17 @@ const drawerStep = computed(() => {
     const stage = normalizeStatus(order.status);
 
     if (stage === 'pending') {
+        if (!canApprove.value) {
+            return {
+                tone: 'warning',
+                type: 'warning',
+                icon: 'fa-hourglass-half',
+                title: t('awaiting_approval'),
+                hint: t('awaiting_admin_approval') || 'بانتظار اعتماد الإدارة لطلب الشراء',
+                actionLabel: null,
+                action: null,
+            };
+        }
         return {
             tone: 'warning',
             type: 'success',
