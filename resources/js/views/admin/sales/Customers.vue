@@ -211,11 +211,14 @@ const openPaymentFor = (customer) => {
     paymentDialogVisible.value = true;
 };
 
-const reload = () => store.fetchCustomers({ page: store.pagination.current_page }).catch(() => {});
-const changePage = (page) => store.fetchCustomers({ page }).catch(() => {});
+// A sales rep sees only the clients they serve; admins and managers see all
+// (PosController::customers ignores `mine` for unscoped users).
+const load = (params = {}) => store.fetchCustomers({ ...params, mine: 1 }).catch(() => {});
+const reload = () => load({ page: store.pagination.current_page });
+const changePage = (page) => load({ page });
 
 onMounted(() => {
-    store.fetchCustomers().catch(() => {});
+    load();
 });
 </script>
 

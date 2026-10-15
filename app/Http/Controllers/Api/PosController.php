@@ -96,11 +96,11 @@ class PosController extends Controller
     {
         $query = Customer::query();
 
-        // The quote form asks for the rep's own customers: those are the only
-        // ones they may quote (QuoteController::ensureOwnCustomer).
-        $user = $request->user();
-        if ($request->boolean('mine') && $user?->isSalesScoped()) {
-            $query->servedBy($user->employee?->id ?? 0);
+        // A sales rep reaches only the customers they serve, on every screen
+        // that lists clients (the `mine` flag the quote form sends is now moot).
+        $employeeId = $this->repEmployeeId($request);
+        if ($employeeId !== null) {
+            $query->servedBy($employeeId);
         }
 
         if ($request->filled('search')) {
@@ -162,13 +162,17 @@ class PosController extends Controller
             $customer = Customer::where('email', $validated['email'])->first();
         }
 
+        $employeeId = $this->repEmployeeId($request);
+
         if ($customer) {
+            // Saving matches by phone/email; a rep must not overwrite another
+            // rep's client that happens to share them.
+            $this->ensureServes($employeeId, $customer);
             $customer->update($validated);
         } else {
             $customer = Customer::create($validated);
 
             // A customer a rep brings in is theirs to serve and quote.
-            $employeeId = $request->user()?->isSalesScoped() ? $request->user()->employee?->id : null;
             if ($employeeId) {
                 $customer->assignEmployee($employeeId);
             }
@@ -208,6 +212,7 @@ class PosController extends Controller
             'status.in' => 'الحالة غير صالحة',
         ]);
 
+        $this->ensureServes($this->repEmployeeId($request), $customer);
         $customer->update($validated);
 
         return response()->json([
@@ -217,8 +222,9 @@ class PosController extends Controller
         ]);
     }
 
-    public function customerDestroy(Customer $customer): JsonResponse
+    public function customerDestroy(Request $request, Customer $customer): JsonResponse
     {
+        $this->ensureServes($this->repEmployeeId($request), $customer);
         $customer->delete();
 
         return response()->json([
@@ -228,12 +234,37 @@ class PosController extends Controller
         ]);
     }
 
-    public function customerShow(Customer $customer): JsonResponse
+    public function customerShow(Request $request, Customer $customer): JsonResponse
     {
+        $this->ensureServes($this->repEmployeeId($request), $customer);
+
         return response()->json([
             'success' => true,
             'message' => 'Customer retrieved successfully',
             'data' => new CustomerResource($customer),
         ]);
+    }
+
+    /**
+     * The employee a sales-scoped user acts as (0 when they have no employee
+     * record, which matches no customer); null for admins and managers.
+     */
+    private function repEmployeeId(Request $request): ?int
+    {
+        $user = $request->user();
+        if (! $user?->isSalesScoped()) {
+            return null;
+        }
+
+        return (int) ($user->employee?->id
+            ?? \App\Models\Employee::where('user_id', $user->id)->value('id')
+            ?? 0);
+    }
+
+    private function ensureServes(?int $employeeId, Customer $customer): void
+    {
+        if ($employeeId !== null && ! Customer::servedBy($employeeId)->whereKey($customer->id)->exists()) {
+            abort(403, 'هذا العميل غير مسند إليك');
+        }
     }
 }

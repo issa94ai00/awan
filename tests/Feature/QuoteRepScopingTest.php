@@ -136,9 +136,29 @@ test('the quote form picker offers a rep their own customers, and a customer the
     $ids = collect($api->getJson('/api/v1/pos/customers?mine=1')->json('data.customers'))->pluck('id');
     expect($ids->sort()->values()->all())->toBe(collect([$this->ownByColumn->id, $this->ownByLink->id])->sort()->values()->all());
 
-    // Without the flag the POS list is unchanged.
-    expect(count($api->getJson('/api/v1/pos/customers')->json('data.customers')))->toBe(3);
+    // The flag is moot: a rep never gets another rep's customers.
+    expect(count($api->getJson('/api/v1/pos/customers')->json('data.customers')))->toBe(2);
 
     $id = $api->postJson('/api/v1/pos/customers', ['name' => 'عميل جديد', 'phone' => '0999000399'])->assertCreated()->json('data.id');
     expect(Customer::servedBy($this->emp1->id)->whereKey($id)->exists())->toBeTrue();
+});
+
+test('a rep cannot open, edit, delete or overwrite another rep\'s customer', function () {
+    $api = $this->actingAs($this->rep1, 'sanctum');
+
+    $api->getJson("/api/v1/pos/customers/{$this->others->id}")->assertForbidden();
+    $api->putJson("/api/v1/pos/customers/{$this->others->id}", ['name' => 'تغيير'])->assertForbidden();
+    $api->deleteJson("/api/v1/pos/customers/{$this->others->id}")->assertForbidden();
+    // Saving with that customer's phone would update them in place.
+    $api->postJson('/api/v1/pos/customers', ['name' => 'تغيير', 'phone' => '0999000303'])->assertForbidden();
+
+    expect($this->others->fresh())->not->toBeNull()->name->toBe('عميل آخر');
+    $api->getJson("/api/v1/pos/customers/{$this->ownByLink->id}")->assertOk();
+});
+
+test('an admin lists and opens every customer', function () {
+    $api = $this->actingAs($this->admin, 'sanctum');
+
+    expect(count($api->getJson('/api/v1/pos/customers?mine=1')->json('data.customers')))->toBe(3);
+    $api->getJson("/api/v1/pos/customers/{$this->others->id}")->assertOk();
 });
