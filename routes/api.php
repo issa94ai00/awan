@@ -130,7 +130,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
     // Staff Customer API (Token-based for staff to manage their customers)
     Route::middleware('auth:sanctum')->prefix('staff/customers')->group(function () {
         Route::get('/', [StaffCustomerController::class, 'index'])->name('api.staff.customers.index');
-        Route::post('/', [StaffCustomerController::class, 'store'])->name('api.staff.customers.store');
+        Route::post('/', [StaffCustomerController::class, 'store'])->middleware('permission:customers.create')->name('api.staff.customers.store');
         Route::get('/{id}', [StaffCustomerController::class, 'show'])->name('api.staff.customers.show');
         Route::put('/{id}', [StaffCustomerController::class, 'update'])->name('api.staff.customers.update');
     });

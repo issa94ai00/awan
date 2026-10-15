@@ -162,3 +162,31 @@ test('an admin lists and opens every customer', function () {
     expect(count($api->getJson('/api/v1/pos/customers?mine=1')->json('data.customers')))->toBe(3);
     $api->getJson("/api/v1/pos/customers/{$this->others->id}")->assertOk();
 });
+
+test('the staff app API keeps a rep to their own customers too', function () {
+    $api = $this->actingAs($this->rep1, 'sanctum');
+
+    $ids = collect($api->getJson('/api/v1/staff/customers')->assertOk()->json('data'))->pluck('id');
+    expect($ids->sort()->values()->all())->toBe(collect([$this->ownByColumn->id, $this->ownByLink->id])->sort()->values()->all());
+
+    $api->getJson("/api/v1/staff/customers/{$this->others->id}")->assertNotFound();
+    $api->putJson("/api/v1/staff/customers/{$this->others->id}", ['name' => 'تغيير'])->assertNotFound();
+    // Adding needs a phone no one has, so another rep's client cannot be overwritten.
+    $api->postJson('/api/v1/staff/customers', ['name' => 'تغيير', 'phone' => '0999000303'])->assertUnprocessable();
+
+    expect($this->others->fresh()->name)->toBe('عميل آخر');
+    $api->getJson("/api/v1/staff/customers/{$this->ownByLink->id}")->assertOk();
+});
+
+test('adding a client through the staff app needs the add-client permission', function () {
+    $marketer = Role::firstOrCreate(['name' => 'marketer'], ['display_name' => 'مسوق', 'guard_name' => 'web', 'is_active' => true]);
+    $this->rep2->roles()->sync([$marketer->id]);
+    $this->rep2->update(['role_id' => $marketer->id]);
+
+    $this->actingAs($this->rep2->fresh(), 'sanctum')
+        ->postJson('/api/v1/staff/customers', ['name' => 'عميل جديد', 'phone' => '0999000398'])->assertForbidden();
+    expect(Customer::where('phone', '0999000398')->exists())->toBeFalse();
+
+    $this->actingAs($this->rep1, 'sanctum')
+        ->postJson('/api/v1/staff/customers', ['name' => 'عميل جديد', 'phone' => '0999000398'])->assertCreated();
+});
