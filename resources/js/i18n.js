@@ -4465,6 +4465,7 @@ const messages = {
         driver_signature: 'Carrier / Driver',
         qr_verification_label: 'Electronic Verification',
         po_duplicate_order: 'Duplicate',
+        po_requested_by: 'Requested by',
         po_duplicated_from: 'Copy of request {number}',
         po_shortcut_hint: 'Ctrl+Enter to save',
         // Goods receipts: filling a receipt from its purchase request.
@@ -11010,6 +11011,7 @@ const messages = {
         driver_signature: 'سائق الشاحنة / الناقل',
         qr_verification_label: 'تحقق إلكتروني معتمد',
         po_duplicate_order: 'تكرار الطلب',
+        po_requested_by: 'مقدم الطلب',
         po_duplicated_from: 'نسخة من الطلب {number}',
         po_shortcut_hint: 'Ctrl+Enter للحفظ',
         // إيصالات الاستلام: تعبئة الإيصال من طلب الشراء المرتبط.

@@ -26,7 +26,7 @@ class PurchaseOrderController extends Controller
         // receipts_count tells the list whether an order's goods already
         // arrived, so a completed row can point at its receipt instead of
         // offering a receive action that would double-count the stock.
-        $query = PurchaseOrder::with(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts');
+        $query = PurchaseOrder::with(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS])->withCount('receipts');
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -170,7 +170,7 @@ class PurchaseOrderController extends Controller
                 return $order;
             });
 
-            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
+            $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -195,7 +195,7 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $order): JsonResponse
     {
-        $order->load(['supplier', 'items.product', 'items.variant', 'receipts', ...self::SALE_LINKS]);
+        $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', 'receipts', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([
@@ -229,7 +229,7 @@ class PurchaseOrderController extends Controller
             $this->assertOneSaleLink($validated);
 
             $order->update($validated);
-            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
+            $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -306,7 +306,7 @@ class PurchaseOrderController extends Controller
             $this->createLines($order, $validated['items']);
         });
 
-        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
+        $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
         return response()->json([
             'success' => true,
@@ -466,7 +466,7 @@ class PurchaseOrderController extends Controller
         }
 
         if ($current === $target) {
-            $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
+            $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
 
             return response()->json([
                 'success' => true,
@@ -497,7 +497,7 @@ class PurchaseOrderController extends Controller
         }
 
         $order->update(['status' => $target]);
-        $order->load(['supplier', 'items.product', 'items.variant', ...self::SALE_LINKS]);
+        $order->load(['supplier', 'creator:id,name', 'items.product', 'items.variant', ...self::SALE_LINKS]);
         $order->loadCount('receipts');
 
         return response()->json([

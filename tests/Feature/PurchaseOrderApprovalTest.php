@@ -258,3 +258,19 @@ it('forbids sells user from approving a pending purchase order', function () {
     expect($order->fresh()->status)->toBe('pending');
 });
 
+
+it('names who requested the order, in the list and on the order', function () {
+    $requester = User::factory()->create(['name' => 'سامر المشتريات']);
+    $order = ($this->makeOrder)();
+    $order->update(['created_by' => $requester->id]);
+
+    $this->actingAs($this->admin)
+        ->getJson('/api/v1/admin/purchase-orders')
+        ->assertOk()
+        ->assertJsonPath('data.orders.0.creator.name', 'سامر المشتريات');
+
+    $this->actingAs($this->admin)
+        ->getJson("/api/v1/admin/purchase-orders/{$order->id}")
+        ->assertOk()
+        ->assertJsonPath('data.creator.name', 'سامر المشتريات');
+});

@@ -135,6 +135,9 @@
                         <template #default="{ row }">
                             <span class="order-number-link" @click="openDetailDrawer(row.id)">{{ row.order_number }}</span>
                             <small class="cell-sub">{{ formatDate(row.order_date || row.created_at) }}</small>
+                            <small v-if="row.creator" class="cell-sub" :title="$t('po_requested_by')">
+                                <i class="fas fa-user"></i> {{ row.creator.name }}
+                            </small>
                             <!-- The sale it buys in for, when there is one. -->
                             <small v-if="saleLinkOf(row)" class="cell-sub sale-ref" :title="saleLinkOf(row).customer">
                                 <i class="fas" :class="saleLinkOf(row).type === 'invoice' ? 'fa-file-invoice-dollar' : 'fa-cart-shopping'"></i>
@@ -411,6 +414,9 @@
                             <i class="fas status-dot-icon" :class="statusIconClass(selectedOrder.status)"></i>
                             {{ getArabicStatus(selectedOrder.status) }}
                         </el-tag>
+                        <small v-if="selectedOrder.creator" class="cell-sub">
+                            <i class="fas fa-user"></i> {{ $t('po_requested_by') }}: {{ selectedOrder.creator.name }}
+                        </small>
                     </div>
                     <div class="drawer-head-actions">
                         <el-button type="primary" plain @click="printOrder(selectedOrder)">
