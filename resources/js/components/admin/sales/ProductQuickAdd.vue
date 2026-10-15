@@ -105,7 +105,7 @@
                         </el-input>
                         <small v-if="errors.price" class="pqa-error">{{ errors.price }}</small>
                     </div>
-                    <div v-else class="pqa-field">
+                    <div v-else-if="!hideCost" class="pqa-field">
                         <label class="pqa-label">
                             {{ purchase ? $t('pqa_cost_price_purchase') : $t('pqa_cost_price') }}
                             <span v-if="!purchase" class="pqa-opt">{{ $t('optional') }}</span>
@@ -217,6 +217,8 @@ const props = defineProps({
     purchase: { type: Boolean, default: false },
     /** A figure already typed on the line, taken as the cost. */
     seedCost: { type: [Number, String], default: '' },
+    /** When true, hide the cost price field (e.g. for sells role). */
+    hideCost: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue', 'created', 'use-existing']);
 
@@ -230,7 +232,7 @@ const currency = baseCurrencyCode();
 const nameRef = ref(null);
 const priceRef = ref(null);
 const costRef = ref(null);
-const priceOrder = computed(() => (props.purchase ? ['cost', 'sale'] : ['sale', 'cost']));
+const priceOrder = computed(() => (props.purchase ? ['cost', 'sale'] : (props.hideCost ? ['sale'] : ['sale', 'cost'])));
 const saving = ref(false);
 const showMore = ref(false);
 const similar = ref([]);

@@ -115,7 +115,8 @@
                                 :loading="customersLoading"
                                 :placeholder="$t('qt_find_customer')"
                                 class="customer-select"
-                                @focus="!customerOptions.length && searchCustomers('')"
+                                @focus="customerOptions.length <= 1 && searchCustomers('')"
+                                @visible-change="(vis) => vis && customerOptions.length <= 1 && searchCustomers('')"
                                 @change="onCustomerChange"
                             >
                                 <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
@@ -523,6 +524,7 @@
                                                         :add-label="$t('add')"
                                                         :purchase-label="$t('so_add_to_purchase_list')"
                                                         :purchase-highlight="Number(p.stock_quantity) <= 0"
+                                                        :show-purchase="canShowPurchase"
                                                         @add="(qty) => addProduct(p, qty)"
                                                         @bump-pending="(delta) => bumpPendingQty(p, delta)"
                                                         @set-pending="(raw) => setPendingQty(p, raw)"
@@ -586,7 +588,7 @@
                                                             {{ formatCurrency(g.product.price) }}
                                                         </span>
                                                     </div>
-                                                    <div v-if="g.product.cost_price" class="cost-stat">
+                                                    <div v-if="canShowPurchase && g.product.cost_price" class="cost-stat">
                                                         <span class="stat-lbl">{{ $t('cost_price') }}:</span>
                                                         <span class="stat-val text-muted">{{ formatCurrency(g.product.cost_price) }}</span>
                                                     </div>
@@ -602,6 +604,7 @@
                                                 :add-label="$t('so_add_to_order')"
                                                 :purchase-label="$t('so_add_to_purchase_list')"
                                                 :purchase-highlight="Number(g.product.stock_quantity) <= 0"
+                                                :show-purchase="canShowPurchase"
                                                 @add="(qty) => addProduct(g.product, qty)"
                                                 @bump-pending="(delta) => bumpPendingQty(g.product, delta)"
                                                 @set-pending="(raw) => setPendingQty(g.product, raw)"
@@ -686,7 +689,7 @@
                                             {{ overStock(line) ? $t('so_stock_shortage') : `${$t('available')}: ${line.stock}` }}
                                         </span>
                                         <button
-                                            v-if="overStock(line)"
+                                            v-if="overStock(line) && canShowPurchase"
                                             type="button"
                                             class="line-shortage-btn"
                                             :title="$t('so_add_to_purchase_list') || 'طلب شراء لهذا البند'"
@@ -978,6 +981,7 @@
         </div>
         <!-- Quick Purchase Dialog -->
         <el-dialog
+            v-if="canShowPurchase"
             v-model="purchaseDialogVisible"
             :title="$t('so_quick_purchase_title') || 'إضافة المنتج لقائمة الشراء / أمر الشراء'"
             width="540px"
@@ -1113,6 +1117,7 @@
             :seed="quickProductSeed"
             :categories="categoryOptions"
             :default-category-id="selectedCategoryId"
+            :hide-cost="!canShowPurchase"
             @created="onQuickProductCreated"
             @use-existing="(row, qty) => addProduct(row, qty)"
         />
@@ -1153,6 +1158,23 @@ const { handleStockShortage } = useStockShortage();
 
 const orderId = route.params.id || null;
 const isEdit = computed(() => !!orderId);
+
+const authStore = useAuthStore();
+const isSellsRole = computed(() => {
+    if (authStore.isSuperAdmin) return false;
+    return authStore.hasRole('sells') ||
+        authStore.user?.role?.name === 'sells' ||
+        authStore.user?.roles?.some((r) => r.name === 'sells') ||
+        Boolean(authStore.user?.is_sales_scoped);
+});
+
+const canShowPurchase = computed(() => {
+    if (authStore.isSuperAdmin) return true;
+    if (isSellsRole.value) return false;
+    return true;
+});
+
+const canAddCustomer = computed(() => authStore.can('customers.create'));
 
 const backArrow = computed(() => (locale.value === 'ar' ? 'fa-arrow-right' : 'fa-arrow-left'));
 const DRAFT_KEY = 'sales-order-draft';
@@ -1265,7 +1287,11 @@ const searchCustomers = (query) => {
     customerTimer = setTimeout(async () => {
         customersLoading.value = true;
         try {
-            const res = await posApi.customers({ search: query || undefined, per_page: 30 });
+            const params = { search: query || undefined, per_page: 30 };
+            if (isSellsRole.value) {
+                params.mine = 1;
+            }
+            const res = await posApi.customers(params);
             const found = res.data?.data?.customers || [];
             const current = customerOptions.value.find((c) => c.id === form.customer_id);
             customerOptions.value = current && !found.some((c) => c.id === current.id) ? [current, ...found] : found;
@@ -1709,8 +1735,6 @@ const onQuickProductCreated = (product, quantity = 1) => {
 const purchaseDialogVisible = ref(false);
 const purchaseDialogProduct = ref(null);
 const suppliersStore = useSuppliersStore();
-// Adding a client needs its own permission (customers.create).
-const canAddCustomer = useAuthStore().can('customers.create');
 const suppliersLoading = ref(false);
 const submittingPurchase = ref(false);
 
@@ -1723,6 +1747,7 @@ const purchaseForm = reactive({
 });
 
 const openPurchaseDialog = async (product) => {
+    if (!canShowPurchase.value) return;
     purchaseDialogProduct.value = product;
     const existingQty = getOrderItemQuantity(product);
     purchaseForm.quantity = existingQty > 0 ? existingQty : 1;
@@ -1747,6 +1772,7 @@ const openPurchaseDialog = async (product) => {
 };
 
 const openPurchaseDialogFromLine = (line) => {
+    if (!canShowPurchase.value) return;
     const pseudoProduct = {
         id: line.product_id,
         variant_id: line.product_variant_id,
@@ -2410,6 +2436,7 @@ onMounted(async () => {
         await loadOrder();
     } else {
         await offerDraft();
+        searchCustomers('');
         setTimeout(() => {
             quickSearchInputRef.value?.focus();
         }, 200);
