@@ -21,6 +21,7 @@ beforeEach(function () {
     // The quote form picks customers through the POS endpoints.
     $pos = Feature::firstOrCreate(['key' => 'pos'], ['name_ar' => 'نقطة البيع', 'name_en' => 'POS', 'group' => 'sales', 'is_enabled' => true]);
     $sells->features()->syncWithoutDetaching([$sales->id, $pos->id]);
+    $sells->givePermissionTo('customers.create');
 
     $rep = function (string $suffix) use ($sells) {
         $user = User::factory()->create(['is_admin' => false, 'role_id' => $sells->id]);

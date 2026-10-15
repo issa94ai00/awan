@@ -14,7 +14,7 @@
                     :prefix-icon="Search"
                 />
                 <el-button :icon="Refresh" :loading="store.loading" @click="reload" />
-                <el-button type="primary" :icon="Plus" @click="router.push('/admin/crm/customers/create')">
+                <el-button v-if="canAddCustomer" type="primary" :icon="Plus" @click="router.push('/admin/crm/customers/create')">
                     {{ $t('add_customer') }}
                 </el-button>
             </template>
@@ -131,6 +131,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Plus, Search, Refresh } from '@element-plus/icons-vue';
 import { useCustomersStore } from '@/stores/customers';
+import { useAuthStore } from '@/stores/auth';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import { formatCurrency, sumBy } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
@@ -141,6 +142,8 @@ const { t } = useI18n();
 
 const router = useRouter();
 const store = useCustomersStore();
+// Adding a client needs its own permission (customers.create).
+const canAddCustomer = useAuthStore().can('customers.create');
 
 const searchQuery = ref('');
 const paymentDialogVisible = ref(false);

@@ -91,7 +91,7 @@
                                         <p class="customer-empty-text">
                                             {{ customerQuery ? $t('qt_no_customer_match', { query: customerQuery }) : $t('qt_no_customers_yet') }}
                                         </p>
-                                        <button type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
+                                        <button v-if="canAddCustomer" type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
                                             <i class="fas fa-user-plus"></i>
                                             <span>{{ customerQuery ? $t('qt_add_as_customer', { query: customerQuery }) : $t('qt_new_customer') }}</span>
                                         </button>
@@ -100,7 +100,7 @@
                             </template>
                         </el-select>
 
-                        <el-tooltip :content="$t('qt_new_customer')" placement="top" :show-after="400">
+                        <el-tooltip v-if="canAddCustomer" :content="$t('qt_new_customer')" placement="top" :show-after="400">
                             <button
                                 type="button"
                                 class="customer-add-btn"
@@ -916,6 +916,7 @@ import { posApi } from '@/api/pos';
 import { categoriesApi } from '@/api/categories';
 import api from '@/api/index';
 import { useQuotesStore } from '@/stores/quotes';
+import { useAuthStore } from '@/stores/auth';
 import { apiErrorMessage, formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
 import { optionKey, variantLabelOf } from '@/utils/productPick';
 import { resolveImageUrl } from '@/utils/productImages';
@@ -937,6 +938,8 @@ const emit = defineEmits(['update:modelValue', 'saved']);
 
 const { t, locale } = useI18n();
 const store = useQuotesStore();
+// Adding a client needs its own permission (customers.create).
+const canAddCustomer = useAuthStore().can('customers.create');
 
 const isFullscreen = ref(false);
 

@@ -753,7 +753,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/pos/options', [PosController::class, 'options'])->name('api.pos.options');
         Route::get('/pos/products/lookup', [PosController::class, 'productLookup'])->name('api.pos.products.lookup');
         Route::get('/pos/customers', [PosController::class, 'customers'])->name('api.pos.customers.index');
-        Route::post('/pos/customers', [PosController::class, 'customerStore'])->name('api.pos.customers.store');
+        Route::post('/pos/customers', [PosController::class, 'customerStore'])->middleware('permission:customers.create')->name('api.pos.customers.store');
         Route::put('/pos/customers/{customer}', [PosController::class, 'customerUpdate'])->name('api.pos.customers.update');
         Route::delete('/pos/customers/{customer}', [PosController::class, 'customerDestroy'])->name('api.pos.customers.destroy');
         Route::get('/pos/customers/{customer}', [PosController::class, 'customerShow'])->name('api.pos.customers.show');

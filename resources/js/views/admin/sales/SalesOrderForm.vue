@@ -135,7 +135,7 @@
                                             <p class="customer-empty-text">
                                                 {{ customerQuery ? $t('qt_no_customer_match', { query: customerQuery }) : $t('qt_no_customers_yet') }}
                                             </p>
-                                            <button type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
+                                            <button v-if="canAddCustomer" type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
                                                 <i class="fas fa-user-plus"></i>
                                                 <span>{{ customerQuery ? $t('qt_add_as_customer', { query: customerQuery }) : $t('qt_new_customer') }}</span>
                                             </button>
@@ -144,7 +144,7 @@
                                 </template>
                             </el-select>
 
-                            <el-tooltip :content="$t('qt_new_customer')" placement="top" :show-after="400">
+                            <el-tooltip v-if="canAddCustomer" :content="$t('qt_new_customer')" placement="top" :show-after="400">
                                 <button
                                     type="button"
                                     class="customer-add-btn"
@@ -1136,6 +1136,7 @@ import { inventoryApi } from '@/api/inventory';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
+import { useAuthStore } from '@/stores/auth';
 import { resolveImageUrl } from '@/utils/productImages';
 import api from '@/api/index';
 import { useStockShortage } from '@/Composables/useStockShortage';
@@ -1708,6 +1709,8 @@ const onQuickProductCreated = (product, quantity = 1) => {
 const purchaseDialogVisible = ref(false);
 const purchaseDialogProduct = ref(null);
 const suppliersStore = useSuppliersStore();
+// Adding a client needs its own permission (customers.create).
+const canAddCustomer = useAuthStore().can('customers.create');
 const suppliersLoading = ref(false);
 const submittingPurchase = ref(false);
 

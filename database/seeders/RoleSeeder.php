@@ -124,6 +124,7 @@ class RoleSeeder extends Seeder
             ['name' => 'hr.manage', 'display_name' => 'إدارة الموارد البشرية', 'module' => 'hr'],
             ['name' => 'marketing.view', 'display_name' => 'عرض التسويق', 'module' => 'marketing'],
             ['name' => 'marketing.campaigns', 'display_name' => 'إدارة الحملات', 'module' => 'marketing'],
+            ['name' => 'customers.create', 'display_name' => 'إضافة عميل جديد', 'module' => 'crm'],
         ];
 
         foreach ($permissions as $permission) {
@@ -165,7 +166,7 @@ class RoleSeeder extends Seeder
             'admin' => $all,
             'manager' => ['dashboard.view', 'products.view', 'products.create', 'products.edit', 'sales.view', 'sales.create', 'inventory.view', 'inventory.manage', 'reports.view'],
             'employee' => ['dashboard.view', 'sales.view'],
-            'sells' => ['dashboard.view', 'categories.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view'],
+            'sells' => ['dashboard.view', 'categories.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view', 'customers.create'],
             'accountant' => ['dashboard.view', 'sales.view', 'inventory.view', 'purchases.view', 'reports.view', 'settings.view'],
             'marketer' => ['dashboard.view', 'products.view', 'marketing.view', 'marketing.campaigns', 'sales.view', 'reports.view'],
         ];

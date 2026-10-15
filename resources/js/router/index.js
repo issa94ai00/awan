@@ -384,7 +384,8 @@ const routes = [
             {
                 path: 'crm/customers/create',
                 name: 'admin.crm.customers.create',
-                component: () => import('@/views/admin/crm/CustomerForm.vue')
+                component: () => import('@/views/admin/crm/CustomerForm.vue'),
+                meta: { permission: 'customers.create' }
             },
             {
                 path: 'crm/customers/:id',

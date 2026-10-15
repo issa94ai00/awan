@@ -12,7 +12,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button type="primary" class="btn-create-premium" @click="createCustomer">
+        <el-button v-if="canAddCustomer" type="primary" class="btn-create-premium" @click="createCustomer">
           <el-icon><Plus /></el-icon> {{ $t('new_client') }}
         </el-button>
       </div>
@@ -234,11 +234,14 @@ import { useRouter } from 'vue-router';
 import { User, Plus, Search, View, Edit, Delete, Money, CreditCard, CircleCheck } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useCustomersStore } from '@/stores/customers';
+import { useAuthStore } from '@/stores/auth';
 
 const { t } = useI18n();
 
 const router = useRouter();
 const store = useCustomersStore();
+// Adding a client needs its own permission (customers.create).
+const canAddCustomer = useAuthStore().can('customers.create');
 
 const searchQuery = ref('');
 const statusFilter = ref('');

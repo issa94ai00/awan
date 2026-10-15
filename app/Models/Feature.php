@@ -91,6 +91,10 @@ class Feature extends Model
     private const SHARED_PATHS = [
         'admin/reports/sales' => ['sales', 'reports'],
         'admin/reports/invoices' => ['sales', 'reports'],
+        // The client list and its add/edit live under /pos, but the CRM, sales
+        // and quote screens use them too: a sales role keeps its clients while
+        // the POS module is switched off. Adding one also needs customers.create.
+        'pos/customers' => ['pos', 'sales', 'crm'],
     ];
 
     /**
