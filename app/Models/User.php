@@ -235,4 +235,19 @@ class User extends Authenticatable
 
         return $this->employee?->warehouse_id ? (int) $this->employee->warehouse_id : null;
     }
+
+    /**
+     * Whether this user may deal with the customer: a sales-scoped user only
+     * with those they serve (Customer::scopeServedBy), everyone else with any.
+     */
+    public function servesCustomer(int $customerId): bool
+    {
+        if (! $this->isSalesScoped()) {
+            return true;
+        }
+
+        $employeeId = $this->employee?->id;
+
+        return $employeeId && Customer::servedBy($employeeId)->whereKey($customerId)->exists();
+    }
 }

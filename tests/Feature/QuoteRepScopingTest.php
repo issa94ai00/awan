@@ -190,3 +190,27 @@ test('adding a client through the staff app needs the add-client permission', fu
     $this->actingAs($this->rep1, 'sanctum')
         ->postJson('/api/v1/staff/customers', ['name' => 'عميل جديد', 'phone' => '0999000398'])->assertCreated();
 });
+
+test('a rep raises sales orders and invoices for their own customers only', function () {
+    $api = $this->actingAs($this->rep1, 'sanctum');
+    $productId = $this->q1->items()->value('product_id');
+    $body = fn (Customer $customer) => [
+        'customer_id' => $customer->id,
+        'items' => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 50]],
+    ];
+
+    $api->postJson('/api/v1/sales-orders', $body($this->others))
+        ->assertUnprocessable()->assertJsonValidationErrors('customer_id');
+    $api->postJson('/api/v1/invoices', $body($this->others))
+        ->assertUnprocessable()->assertJsonValidationErrors('customer_id');
+    expect(\App\Models\SalesOrder::where('customer_id', $this->others->id)->exists())->toBeFalse();
+    expect(\App\Models\Invoice::where('customer_id', $this->others->id)->exists())->toBeFalse();
+
+    // Their own customer passes the check (whatever the rest of the save says).
+    $own = $api->postJson('/api/v1/sales-orders', $body($this->ownByLink));
+    expect($own->json('errors.customer_id'))->toBeNull();
+
+    // Admins are unconfined.
+    $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/sales-orders', $body($this->others))
+        ->assertJsonMissingValidationErrors('customer_id');
+});

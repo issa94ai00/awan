@@ -85,6 +85,8 @@ test('the responsible employee is taken from the request', function () {
 
 test('a request that omits it falls back to the signed-in user', function () {
     $mine = ($this->makeEmployee)('mine@example.com', $this->other, $this->user);
+    // Staff with an employee record order for the customers they serve.
+    $this->customer->assignEmployee($mine->id);
 
     // An order raised without naming anyone still belongs to whoever raised it,
     // rather than being left for nobody to follow up.
@@ -95,8 +97,9 @@ test('a request that omits it falls back to the signed-in user', function () {
 });
 
 test('an explicit employee wins over the signed-in user', function () {
-    ($this->makeEmployee)('mine@example.com', $this->other, $this->user);
+    $mine = ($this->makeEmployee)('mine@example.com', $this->other, $this->user);
     $rep = ($this->makeEmployee)('rep@example.com', $this->warehouse);
+    $this->customer->assignEmployee($mine->id);
 
     // The back office files an order on behalf of the rep who took it.
     ($this->post)(['assigned_employee_id' => $rep->id])

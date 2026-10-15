@@ -18,6 +18,7 @@ use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -361,6 +362,9 @@ class SalesOrderController extends Controller
             'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
 
+        // A rep raises orders for their own customers only.
+        $this->ensureServesCustomer($request, (int) $validated['customer_id']);
+
         $expensesInput = $validated['expenses'] ?? [];
         unset($validated['expenses']);
 
@@ -585,6 +589,12 @@ class SalesOrderController extends Controller
             'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
             'expenses.*.notes' => 'nullable|string|max:1000',
         ]);
+
+        // A rep raises orders for their own customers only; an order already
+        // on someone else's customer can still be edited if it stays there.
+        if (isset($validated['customer_id']) && (int) $validated['customer_id'] !== (int) $salesOrder->customer_id) {
+            $this->ensureServesCustomer($request, (int) $validated['customer_id']);
+        }
 
         // The stage is moved through the workflow endpoints, never by writing
         // the column — a status set here would skip the stock and ledger work
@@ -1346,5 +1356,14 @@ class SalesOrderController extends Controller
             SalesOrder::STATUS_DELIVERED => 'تم التسليم',
             SalesOrder::STATUS_CANCELLED => 'ملغي',
         ][$status] ?? $status;
+    }
+
+    private function ensureServesCustomer(Request $request, int $customerId): void
+    {
+        if (! $request->user()?->servesCustomer($customerId)) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'هذا العميل غير مسند إليك. يمكنك إنشاء طلبات لعملائك فقط.',
+            ]);
+        }
     }
 }

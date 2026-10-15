@@ -429,6 +429,11 @@ class InvoiceController extends Controller
                 'status.in' => 'الحالة غير صالحة',
             ]);
 
+            // A rep invoices their own customers only (a walk-in sale has none).
+            if (isset($validated['customer_id'])) {
+                $this->ensureServesCustomer($request, (int) $validated['customer_id']);
+            }
+
             // Fetch all products to get their names
             $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
             $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
@@ -860,6 +865,12 @@ class InvoiceController extends Controller
                 'items.*.unit_price.required' => 'السعر مطلوب',
                 'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
             ]);
+
+            // A rep invoices their own customers only; an invoice already on
+            // someone else's customer can still be edited if it stays there.
+            if (isset($validated['customer_id']) && (int) $validated['customer_id'] !== (int) $invoice->customer_id) {
+                $this->ensureServesCustomer($request, (int) $validated['customer_id']);
+            }
 
             // A cancelled invoice has had its goods returned and its entries
             // reversed; rewriting its lines would issue stock and post a sale
@@ -1647,5 +1658,14 @@ class InvoiceController extends Controller
                 $q->where('invoices.created_by', $user->id);
             }
         });
+    }
+
+    private function ensureServesCustomer(Request $request, int $customerId): void
+    {
+        if (! $request->user()?->servesCustomer($customerId)) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'هذا العميل غير مسند إليك. يمكنك إنشاء فواتير لعملائك فقط.',
+            ]);
+        }
     }
 }
