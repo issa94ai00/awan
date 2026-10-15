@@ -81,13 +81,15 @@ watch(mobileSidebarOpen, (open) => {
 }
 
 @media (max-width: 992px) {
-    .admin-main-wrapper {
-        margin-right: 0;
-    }
-
-    [dir="ltr"] .admin-main-wrapper {
-        margin-left: 0;
-        margin-right: 0;
+    /* The sidebar is an overlay here. !important to beat the desktop
+       margins above, which are !important themselves — without it every
+       admin page kept a 268px gutter on a phone. */
+    .admin-main-wrapper,
+    .admin-main-wrapper.sidebar-collapsed,
+    [dir="ltr"] .admin-main-wrapper,
+    [dir="ltr"] .admin-main-wrapper.sidebar-collapsed {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 
     .sidebar-overlay {
