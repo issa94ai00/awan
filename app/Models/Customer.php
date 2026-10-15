@@ -118,6 +118,18 @@ class Customer extends Model
             ->wherePivot('is_primary', true);
     }
 
+    /**
+     * The customers an employee serves: through the legacy employee_id column
+     * or the customer_employee link written when they raise an order.
+     */
+    public function scopeServedBy($query, int $employeeId)
+    {
+        return $query->where(function ($q) use ($employeeId) {
+            $q->where('customers.employee_id', $employeeId)
+                ->orWhereHas('customerEmployees', fn ($linked) => $linked->where('employees.id', $employeeId));
+        });
+    }
+
     public function syncPrimaryEmployee(int $employeeId): void
     {
         $this->customerEmployees()->sync(

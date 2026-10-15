@@ -96,6 +96,13 @@ class PosController extends Controller
     {
         $query = Customer::query();
 
+        // The quote form asks for the rep's own customers: those are the only
+        // ones they may quote (QuoteController::ensureOwnCustomer).
+        $user = $request->user();
+        if ($request->boolean('mine') && $user?->isSalesScoped()) {
+            $query->servedBy($user->employee?->id ?? 0);
+        }
+
         if ($request->filled('search')) {
             $query->whereSearch(['name', 'phone', 'email', 'company'], $request->search);
         }
@@ -159,6 +166,12 @@ class PosController extends Controller
             $customer->update($validated);
         } else {
             $customer = Customer::create($validated);
+
+            // A customer a rep brings in is theirs to serve and quote.
+            $employeeId = $request->user()?->isSalesScoped() ? $request->user()->employee?->id : null;
+            if ($employeeId) {
+                $customer->assignEmployee($employeeId);
+            }
         }
 
         return response()->json([

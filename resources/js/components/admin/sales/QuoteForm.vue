@@ -988,7 +988,7 @@ const searchCustomers = (query) => {
     customerTimer = setTimeout(async () => {
         customersLoading.value = true;
         try {
-            const res = await posApi.customers({ search: query || undefined, per_page: 30 });
+            const res = await posApi.customers({ search: query || undefined, per_page: 30, mine: 1 });
             const found = res.data?.data?.customers || [];
             const current = customerOptions.value.find((c) => c.id === form.customer_id);
             customerOptions.value = current && !found.some((c) => c.id === current.id) ? [current, ...found] : found;

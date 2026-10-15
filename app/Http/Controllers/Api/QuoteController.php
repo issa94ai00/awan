@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\Product;
 use App\Models\Quote;
@@ -24,6 +25,7 @@ class QuoteController extends Controller
     public function index(Request $request)
     {
         $query = Quote::query()
+            ->visibleTo($request->user())
             ->with(self::RELATIONS)
             ->withCount('items');
 
@@ -85,6 +87,7 @@ class QuoteController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateQuote($request);
+        $this->ensureOwnCustomer((int) $validated['customer_id']);
         $lines = $this->buildLines($validated['items']);
         $totals = $this->totals($lines, $validated);
 
@@ -115,6 +118,8 @@ class QuoteController extends Controller
 
     public function show(Quote $quote)
     {
+        $this->authorizeQuote($quote);
+
         return response()->json([
             'success' => true,
             'message' => 'Quote retrieved successfully',
@@ -124,6 +129,8 @@ class QuoteController extends Controller
 
     public function update(Request $request, Quote $quote)
     {
+        $this->authorizeQuote($quote);
+
         // Once accepted, rejected or lapsed, the quote is what the customer
         // answered to; rewriting it would change the record of that answer.
         if (! in_array($quote->status, Quote::EDITABLE_STATUSES, true) || $quote->salesOrder()->exists()) {
@@ -131,6 +138,11 @@ class QuoteController extends Controller
         }
 
         $validated = $this->validateQuote($request);
+        // Only a change of customer is checked: a quote a rep already wrote
+        // for someone else's customer stays theirs to revise.
+        if ((int) $validated['customer_id'] !== (int) $quote->customer_id) {
+            $this->ensureOwnCustomer((int) $validated['customer_id']);
+        }
         $lines = $this->buildLines($validated['items']);
         $totals = $this->totals($lines, $validated);
 
@@ -168,6 +180,8 @@ class QuoteController extends Controller
      */
     public function updateStatus(Request $request, Quote $quote)
     {
+        $this->authorizeQuote($quote);
+
         $validated = $request->validate([
             'status' => 'required|in:draft,sent,accepted,rejected,expired',
         ]);
@@ -206,6 +220,8 @@ class QuoteController extends Controller
 
     public function destroy(Quote $quote)
     {
+        $this->authorizeQuote($quote);
+
         // The order keeps a link back to the quote it came from; deleting the
         // quote would leave the order with no record of what was offered.
         if ($quote->salesOrder()->exists()) {
@@ -227,6 +243,9 @@ class QuoteController extends Controller
      */
     public function duplicate(Quote $quote)
     {
+        $this->authorizeQuote($quote);
+        $this->ensureOwnCustomer((int) $quote->customer_id);
+
         $quote->load('items');
 
         // The copy is good for as long as the original was, counted from today.
@@ -265,6 +284,8 @@ class QuoteController extends Controller
 
     public function convertToSalesOrder(Quote $quote)
     {
+        $this->authorizeQuote($quote);
+
         // A conversion that half-succeeded would leave an order carrying the
         // quote's totals with only some of its lines. The quote row is locked
         // so a double click cannot make two orders out of one acceptance.
@@ -500,6 +521,33 @@ class QuoteController extends Controller
         $quote->loadCount('items');
 
         return $this->present($quote);
+    }
+
+    /** A sales rep reaches only their own quotes and their customers' (Quote::scopeVisibleTo). */
+    private function authorizeQuote(Quote $quote): void
+    {
+        if (! $quote->isVisibleTo(auth()->user())) {
+            abort(403, 'غير مصرح لك بالوصول إلى عرض السعر هذا.');
+        }
+    }
+
+    /**
+     * A sales rep writes new quotes for their own customers only
+     * (Customer::scopeServedBy). Admins and managers quote anyone.
+     */
+    private function ensureOwnCustomer(int $customerId): void
+    {
+        $user = auth()->user();
+        if (! $user?->isSalesScoped()) {
+            return;
+        }
+
+        $employeeId = $user->employee?->id;
+        if (! $employeeId || ! Customer::whereKey($customerId)->servedBy($employeeId)->exists()) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'هذا العميل غير مسند إليك. يمكنك إنشاء عروض أسعار لعملائك فقط.',
+            ]);
+        }
     }
 
     private function refuse(string $message, int $code)

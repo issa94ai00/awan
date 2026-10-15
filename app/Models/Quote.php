@@ -90,6 +90,34 @@ class Quote extends Model
         return in_array($status, self::TRANSITIONS[$this->status] ?? [], true);
     }
 
+    /**
+     * The quotes a user may see. A sales rep (User::isSalesScoped) sees the
+     * quotes they wrote and those for their own customers — owned through
+     * either the legacy customers.employee_id column or the customer_employee
+     * link. Admins and managers see every quote.
+     */
+    public function scopeVisibleTo($query, ?User $user)
+    {
+        if (! $user || ! $user->isSalesScoped()) {
+            return $query;
+        }
+
+        $employeeId = $user->employee?->id;
+
+        return $query->where(function ($q) use ($user, $employeeId) {
+            $q->where('quotes.created_by', $user->id);
+
+            if ($employeeId) {
+                $q->orWhereHas('customer', fn ($customer) => $customer->servedBy($employeeId));
+            }
+        });
+    }
+
+    public function isVisibleTo(?User $user): bool
+    {
+        return static::query()->whereKey($this->getKey())->visibleTo($user)->exists();
+    }
+
     /** A quote whose validity ran out while it was still open. */
     public function isPastValidity(): bool
     {
