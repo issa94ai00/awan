@@ -457,6 +457,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
                 Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.admin.employees.show');
                 Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.admin.employees.update');
                 Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('api.admin.employees.destroy');
+                Route::get('/employees/form-options', [EmployeeController::class, 'formOptions'])->name('api.admin.employees.form-options');
             });
 
             // Employee Customers API

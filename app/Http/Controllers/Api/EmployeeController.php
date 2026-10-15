@@ -3,17 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\AccessControlService;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
-    private function createLoginAccount(array $data): int
+    public function __construct(
+        private AccessControlService $access,
+        private AuditService $audit,
+    ) {
+    }
+
+    private function createLoginAccount(array $data, ?Role $role = null): int
     {
-        $role = Role::where('name', 'employee')->first();
+        $role ??= Role::where('name', 'employee')->first();
 
         $user = User::create([
             'name' => $data['name'],
@@ -24,6 +34,38 @@ class EmployeeController extends Controller
         ]);
 
         return $user->id;
+    }
+
+    /**
+     * The role picked for the employee's login, held to the same rules as the
+     * Users & access screen: the users.assign_roles permission, nothing the
+     * actor could not grant themselves, and no unsafe change to an existing
+     * account. Null when no role was picked.
+     */
+    private function pickedLoginRole(Request $request, ?int $roleId, ?User $target = null): ?Role
+    {
+        if (! $roleId) {
+            return null;
+        }
+
+        $actor = $request->user();
+        if (! $actor->can('users.assign_roles')) {
+            abort(403, 'ليس لديك صلاحية تعيين أدوار المستخدمين.');
+        }
+
+        $role = Role::with('permissions:id')->findOrFail($roleId);
+        $this->access->assertCanAssignRoles($actor, collect([$role]));
+
+        if ($target) {
+            $this->access->assertCanManageUser($actor, $target);
+            // The pick replaces the primary role only; other roles stay.
+            $roleIds = $target->roles()->pluck('roles.id')
+                ->reject(fn ($id) => (int) $id === (int) $target->role_id)
+                ->push($role->id)->unique()->values()->all();
+            $this->access->assertRoleChangeIsSafe($actor, $target, $roleIds);
+        }
+
+        return $role;
     }
     public function index(Request $request)
     {
@@ -78,7 +120,7 @@ class EmployeeController extends Controller
             'national_id' => 'nullable|string|max:100',
             'nationality' => 'nullable|string|max:100',
             'contract_start' => 'nullable|date',
-            'contract_end' => 'nullable|date',
+            'contract_end' => 'nullable|date|after_or_equal:contract_start',
             'emergency_contact_name' => 'nullable|string|max:255',
             'emergency_contact_phone' => 'nullable|string|max:50',
             'bank_name' => 'nullable|string|max:255',
@@ -87,20 +129,36 @@ class EmployeeController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
             'avatar' => 'nullable|string|max:1000',
-            'password' => 'nullable|string|min:8'
+            'password' => 'nullable|string|min:8',
+            // The login's primary role. Only read when the employee has, or is
+            // getting, a login.
+            'role_id' => 'nullable|integer|exists:roles,id',
         ]);
 
-        $userId = null;
-        if (!empty($validated['password'])) {
-            $userId = $this->createLoginAccount($validated);
-        }
+        $role = !empty($validated['password'])
+            ? $this->pickedLoginRole($request, $validated['role_id'] ?? null)
+            : null;
+        unset($validated['role_id']);
 
-        $employee = Employee::create(array_merge($validated, ['user_id' => $userId]));
+        // The login and the staff record land together: a failure creating the
+        // employee used to leave a login behind with no one attached to it.
+        $employee = DB::transaction(function () use ($validated, $role) {
+            $userId = null;
+            if (!empty($validated['password'])) {
+                $userId = $this->createLoginAccount($validated, $role);
+            }
+
+            return Employee::create(array_merge($validated, ['user_id' => $userId]));
+        });
+
+        if ($role && $employee->user_id) {
+            $this->logRoleChange($employee->user_id, null, $role);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Employee created successfully',
-            'data' => $employee
+            'data' => $this->present($employee),
         ], 201);
     }
 
@@ -115,7 +173,7 @@ class EmployeeController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Employee retrieved successfully',
-            'data' => $employee->toArray() + ['has_login' => $employee->user_id !== null],
+            'data' => $this->present($employee),
         ]);
     }
 
@@ -144,7 +202,7 @@ class EmployeeController extends Controller
             'national_id' => 'nullable|string|max:100',
             'nationality' => 'nullable|string|max:100',
             'contract_start' => 'nullable|date',
-            'contract_end' => 'nullable|date',
+            'contract_end' => 'nullable|date|after_or_equal:contract_start',
             'emergency_contact_name' => 'nullable|string|max:255',
             'emergency_contact_phone' => 'nullable|string|max:50',
             'bank_name' => 'nullable|string|max:255',
@@ -153,8 +211,70 @@ class EmployeeController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'notes' => 'nullable|string|max:1000',
             'avatar' => 'nullable|string|max:1000',
-            'password' => 'nullable|string|min:8'
+            'password' => 'nullable|string|min:8',
+            // The login's primary role. Only read when the employee has, or is
+            // getting, a login.
+            'role_id' => 'nullable|integer|exists:roles,id',
         ]);
+
+        // A role counts only for a login that exists or is being created, and
+        // only when it changes.
+        $user = $employee->user;
+        $roleId = $validated['role_id'] ?? null;
+        unset($validated['role_id']);
+        $role = null;
+        if ($roleId && ($user || !empty($validated['password'])) && (int) $roleId !== (int) $user?->role_id) {
+            $role = $this->pickedLoginRole($request, (int) $roleId, $user);
+        }
+        $oldRole = $user?->role;
+
+        DB::transaction(fn () => $this->saveEmployee($employee, $validated, $role));
+
+        if ($role && $employee->user_id) {
+            $this->logRoleChange($employee->user_id, $oldRole, $role);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee updated successfully',
+            'data' => $this->present($employee->refresh()),
+        ]);
+    }
+
+    /** The employee as the form reads it: with whether and how they sign in. */
+    private function present(Employee $employee): array
+    {
+        $user = $employee->user;
+        // The login itself stays out of the payload; the form needs only these.
+        $data = collect($employee->toArray())->except('user')->all();
+
+        return $data + [
+            'has_login' => $user !== null,
+            'login_role_id' => $user?->role_id,
+            // Roles beyond the primary one, managed from Users & access.
+            'login_other_roles' => $user
+                ? $user->roles()->where('roles.id', '!=', (int) $user->role_id)->pluck('display_name')->values()
+                : [],
+        ];
+    }
+
+    private function logRoleChange(int $userId, ?Role $old, Role $new): void
+    {
+        $this->audit->log(
+            action: $old ? AuditLog::ACTION_UPDATE : AuditLog::ACTION_CREATE,
+            entityType: User::class,
+            entityId: $userId,
+            description: 'تعيين الدور الأساسي من شاشة الموظفين: '.($old ? "{$old->name} ← " : '').$new->name,
+            oldValues: ['primary_role_id' => $old?->id],
+            newValues: ['primary_role_id' => $new->id],
+            module: AuditLog::MODULE_USERS,
+        );
+    }
+
+    /** Updates the staff record and its login together. */
+    private function saveEmployee(Employee $employee, array $validated, ?Role $role = null): void
+    {
+        $roleChange = $role ? ['role_id' => $role->id] : [];
 
         if (!empty($validated['password'])) {
             if ($employee->user) {
@@ -162,23 +282,37 @@ class EmployeeController extends Controller
                     'name' => $validated['name'],
                     'email' => $validated['email'],
                     'password' => $validated['password'],
-                ]);
+                ] + $roleChange);
             } else {
-                $validated['user_id'] = $this->createLoginAccount($validated);
+                $validated['user_id'] = $this->createLoginAccount($validated, $role);
             }
         } elseif ($employee->user) {
             $employee->user->update([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
-            ]);
+            ] + $roleChange);
         }
 
         $employee->update($validated);
+    }
+
+    /**
+     * Departments, positions and job titles already in use, so the form can
+     * offer them instead of each admin spelling "المبيعات" their own way.
+     */
+    public function formOptions()
+    {
+        $distinct = fn (string $column) => Employee::query()
+            ->whereNotNull($column)->where($column, '!=', '')
+            ->distinct()->orderBy($column)->pluck($column)->values();
 
         return response()->json([
             'success' => true,
-            'message' => 'Employee updated successfully',
-            'data' => $employee
+            'data' => [
+                'departments' => $distinct('department'),
+                'positions' => $distinct('position'),
+                'job_titles' => $distinct('job_title'),
+            ],
         ]);
     }
 

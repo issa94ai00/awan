@@ -129,3 +129,97 @@ test('admin employees API can delete existing employee', function () {
         'id' => $employee->id,
     ]);
 });
+
+test('the employee form is offered the departments, positions and titles already in use', function () {
+    $base = ['phone' => '+963900000001', 'hire_date' => now()->toDateString(), 'status' => 'نشط'];
+    Employee::create($base + ['name' => 'أ', 'email' => 'a@example.com', 'department' => 'المبيعات', 'position' => 'مندوب', 'job_title' => 'مندوب أول']);
+    Employee::create($base + ['name' => 'ب', 'email' => 'b@example.com', 'department' => 'المبيعات', 'position' => 'محاسب']);
+    Employee::create($base + ['name' => 'ج', 'email' => 'c@example.com', 'department' => '', 'position' => 'مندوب']);
+
+    $this->withHeader('Authorization', "Bearer {$this->token}")
+        ->getJson('/api/v1/admin/employees/form-options')
+        ->assertOk()
+        ->assertJsonPath('data.departments', ['المبيعات'])
+        ->assertJsonPath('data.positions', ['محاسب', 'مندوب'])
+        ->assertJsonPath('data.job_titles', ['مندوب أول']);
+});
+
+test('a contract cannot end before it starts', function () {
+    $this->withHeader('Authorization', "Bearer {$this->token}")
+        ->postJson('/api/v1/admin/employees', [
+            'name' => 'سامر', 'email' => 'samer@example.com', 'phone' => '+963900000002',
+            'position' => 'مندوب', 'department' => 'المبيعات', 'hire_date' => now()->toDateString(), 'status' => 'نشط',
+            'contract_start' => '2026-10-01', 'contract_end' => '2026-09-01',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('contract_end');
+});
+
+test('a new employee with a password gets a login, reported back as has_login', function () {
+    $this->withHeader('Authorization', "Bearer {$this->token}")
+        ->postJson('/api/v1/admin/employees', [
+            'name' => 'رنا', 'email' => 'rana@example.com', 'phone' => '+963900000003',
+            'position' => 'مندوب', 'department' => 'المبيعات', 'hire_date' => now()->toDateString(), 'status' => 'نشط',
+            'password' => 'secret-pass-1',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.has_login', true);
+
+    expect(User::where('email', 'rana@example.com')->exists())->toBeTrue();
+    expect(Employee::where('email', 'rana@example.com')->value('user_id'))->not->toBeNull();
+});
+
+describe('the login role picked on the employee form', function () {
+    beforeEach(function () {
+        $role = fn (string $name) => \App\Models\Role::firstOrCreate(['name' => $name], ['display_name' => $name, 'guard_name' => 'web', 'is_active' => true]);
+        $this->employeeRole = $role('employee');
+        $this->sells = $role('sells');
+        $this->marketer = $role('marketer');
+        $this->master = $role('master');
+
+        $this->payload = fn (array $extra = []) => $extra + [
+            'name' => 'هادي', 'email' => 'hadi@example.com', 'phone' => '+963900000010',
+            'position' => 'مندوب', 'department' => 'المبيعات', 'hire_date' => now()->toDateString(), 'status' => 'نشط',
+        ];
+        $this->api = fn () => $this->withHeader('Authorization', "Bearer {$this->token}");
+    });
+
+    test('a new login takes the picked role, or "employee" when none is picked', function () {
+        ($this->api)()->postJson('/api/v1/admin/employees', ($this->payload)(['password' => 'secret-pass-1', 'role_id' => $this->sells->id]))
+            ->assertCreated()->assertJsonPath('data.login_role_id', $this->sells->id);
+        $user = User::where('email', 'hadi@example.com')->first();
+        expect($user->role_id)->toBe($this->sells->id);
+        expect($user->roles()->pluck('name')->all())->toBe(['sells']);
+        $this->assertDatabaseHas('audit_logs', ['entity_type' => User::class, 'entity_id' => $user->id, 'module' => 'users']);
+
+        ($this->api)()->postJson('/api/v1/admin/employees', ($this->payload)(['email' => 'other@example.com', 'password' => 'secret-pass-1']))
+            ->assertCreated()->assertJsonPath('data.login_role_id', $this->employeeRole->id);
+    });
+
+    test('a role without a login is ignored', function () {
+        ($this->api)()->postJson('/api/v1/admin/employees', ($this->payload)(['role_id' => $this->sells->id]))
+            ->assertCreated()->assertJsonPath('data.has_login', false);
+        expect(User::where('email', 'hadi@example.com')->exists())->toBeFalse();
+    });
+
+    test('changing the role replaces the primary one and keeps the others', function () {
+        $id = ($this->api)()->postJson('/api/v1/admin/employees', ($this->payload)(['password' => 'secret-pass-1', 'role_id' => $this->sells->id]))->json('data.id');
+        $user = User::where('email', 'hadi@example.com')->first();
+        $user->roles()->attach($this->marketer->id);
+
+        ($this->api)()->putJson("/api/v1/admin/employees/{$id}", ($this->payload)(['role_id' => $this->employeeRole->id]))
+            ->assertOk()
+            ->assertJsonPath('data.login_role_id', $this->employeeRole->id)
+            ->assertJsonPath('data.login_other_roles', ['marketer'])
+            ->assertJsonMissingPath('data.user');
+
+        expect($user->fresh()->roles()->pluck('name')->sort()->values()->all())->toBe(['employee', 'marketer']);
+    });
+
+    test('the master role is not handed out by a non-master admin', function () {
+        ($this->api)()->postJson('/api/v1/admin/employees', ($this->payload)(['password' => 'secret-pass-1', 'role_id' => $this->master->id]))
+            ->assertForbidden();
+        expect(User::where('email', 'hadi@example.com')->exists())->toBeFalse();
+        expect(Employee::where('email', 'hadi@example.com')->exists())->toBeFalse();
+    });
+});

@@ -114,6 +114,9 @@ export const useEmployeesStore = defineStore('employees', {
             }
         },
 
+        // A failed save is reported as one. Create and update used to answer a
+        // 404 or a dropped connection by inventing the employee locally, so the
+        // form said "saved" for a record the server never received.
         async createEmployee(payload) {
             this.loading = true;
             this.error = null;
@@ -139,14 +142,6 @@ export const useEmployeesStore = defineStore('employees', {
                     this.validationErrors = err.response?.data?.errors || {};
                     this.error = err.response?.data?.message || 'Validation failed';
                     throw err;
-                }
-
-                if (err.response?.status === 404 || err.code === 'ERR_NETWORK') {
-                    const id = Math.max(0, ...this.employees.map((item) => item.id || 0)) + 1;
-                    const employee = { id, status: 'نشط', avatar: '', ...payload };
-                    this.employees.unshift(employee);
-                    this.pagination.total += 1;
-                    return employee;
                 }
 
                 this.error = err.response?.data?.message || err.message || 'Failed to create employee';
@@ -180,11 +175,6 @@ export const useEmployeesStore = defineStore('employees', {
                     this.validationErrors = err.response?.data?.errors || {};
                     this.error = err.response?.data?.message || 'Validation failed';
                     throw err;
-                }
-
-                if (err.response?.status === 404 || err.code === 'ERR_NETWORK') {
-                    this.employees = this.employees.map((employee) => (employee.id === id ? { ...employee, ...payload } : employee));
-                    return this.employees.find((employee) => employee.id === id) || null;
                 }
 
                 this.error = err.response?.data?.message || err.message || 'Failed to update employee';
