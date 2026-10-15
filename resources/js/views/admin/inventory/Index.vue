@@ -9,7 +9,7 @@
                 <el-tooltip :content="$t('refresh')" placement="bottom" :enterable="false">
                     <el-button :icon="Refresh" :loading="refreshing" circle :aria-label="$t('refresh')" @click="refreshAll" />
                 </el-tooltip>
-                <el-dropdown trigger="click" @command="onToolsCommand">
+                <el-dropdown v-if="!readOnly" trigger="click" @command="onToolsCommand">
                     <el-button :loading="exporting || importing">
                         <el-icon><Files /></el-icon>
                         <span>{{ $t('prod_admin_excel') }}</span>
@@ -26,12 +26,14 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-                <router-link :to="{ name: 'admin.inventory.movements' }" custom v-slot="{ navigate }">
+                <router-link v-if="!readOnly" :to="{ name: 'admin.inventory.movements' }" custom v-slot="{ navigate }">
                     <el-button :icon="Tickets" @click="navigate">{{ $t('movement_log') }}</el-button>
                 </router-link>
-                <el-button :icon="Operation" @click="costMethodModalVisible = true">{{ $t('cost_calculation_method') }}</el-button>
-                <el-button :icon="Switch" @click="openMovement('transfer')">{{ $t('transfer_stock') }}</el-button>
-                <el-button type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
+                <template v-if="!readOnly">
+                    <el-button :icon="Operation" @click="costMethodModalVisible = true">{{ $t('cost_calculation_method') }}</el-button>
+                    <el-button :icon="Switch" @click="openMovement('transfer')">{{ $t('transfer_stock') }}</el-button>
+                    <el-button type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
+                </template>
             </template>
         </AdminPageHeader>
 
@@ -40,7 +42,7 @@
         <!-- Stock health. The three status cards are also the table's status
              filter, so the figure and the rows behind it are one click apart. -->
         <AdminStatGrid :min="180">
-            <el-card shadow="never" class="stat-card">
+            <el-card v-if="!readOnly" shadow="never" class="stat-card">
                 <div class="stat-card-inner">
                     <div class="stat-icon-box value"><el-icon><Coin /></el-icon></div>
                     <div class="stat-details">
@@ -180,7 +182,7 @@
                             <span>{{ row.warehouse?.name }} · {{ $t('inv_admin_reorder_at', { value: formatNumber(row.reorder_point) }) }}</span>
                         </div>
                         <span class="stock-pill low"><span class="stock-dot" />{{ formatNumber(row.available) }}</span>
-                        <el-tooltip :content="$t('inv_admin_receive')" placement="top" :enterable="false">
+                        <el-tooltip v-if="!readOnly" :content="$t('inv_admin_receive')" placement="top" :enterable="false">
                             <el-button size="small" circle :icon="Plus" :aria-label="$t('inv_admin_receive')" @click="openMovement('in', row)" />
                         </el-tooltip>
                     </li>
@@ -248,7 +250,7 @@
                             <el-button @click="resetFilters">{{ $t('cat_admin_clear_filters') }}</el-button>
                         </el-empty>
                         <el-empty v-else-if="!stockLoading" :description="$t('no_stock_data')" :image-size="90">
-                            <el-button type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
+                            <el-button v-if="!readOnly" type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
                         </el-empty>
                         <span v-else />
                     </template>
@@ -325,7 +327,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('cost')" width="110" align="center">
+                    <el-table-column v-if="!readOnly" :label="$t('cost')" width="110" align="center">
                         <template #default="{ row }">
                             <span v-if="Number(row.product?.cost_price) > 0">{{ formatMoney(row.product.cost_price) }}</span>
                             <el-tooltip v-else :content="$t('inv_admin_no_cost_hint')" placement="top" :enterable="false">
@@ -334,7 +336,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('value')" width="120" align="center">
+                    <el-table-column v-if="!readOnly" :label="$t('value')" width="120" align="center">
                         <template #default="{ row }">
                             <strong v-if="rowValue(row) > 0">{{ formatMoney(rowValue(row)) }}</strong>
                             <span v-else class="cell-empty">—</span>
@@ -349,7 +351,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('procedures')" width="170" align="center">
+                    <el-table-column v-if="!readOnly" :label="$t('procedures')" width="170" align="center">
                         <template #default="{ row }">
                             <div class="row-actions">
                                 <el-tooltip :content="$t('inv_admin_receive')" placement="top" :enterable="false">
@@ -586,6 +588,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useInventoryStore } from '@/stores/inventory';
+import { useAuthStore } from '@/stores/auth';
 import { inventoryApi } from '@/api/inventory';
 import { productsApi } from '@/api/products';
 import {
@@ -598,6 +601,12 @@ const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const store = useInventoryStore();
+const authStore = useAuthStore();
+
+// A sales rep sees the stock and nothing else: no movements, transfers,
+// imports, cost figures or costing method. The server refuses the same
+// writes (not_sales_scoped).
+const readOnly = computed(() => !!authStore.user?.is_sales_scoped);
 
 const costMethodModalVisible = ref(false);
 const activeCostMethod = ref('FIFO');
@@ -1009,6 +1018,7 @@ const formWarning = computed(() => {
 });
 
 const openMovement = (mode, row = null) => {
+    if (readOnly.value) return;
     Object.assign(mv, {
         mode,
         product_id: row?.product_id || null,
@@ -1219,7 +1229,7 @@ onMounted(() => {
     loadSummary().catch(() => ElMessage.error(t('failed_to_update_data')));
     loadStock();
     loadAttention();
-    fetchCostMethod();
+    if (!readOnly.value) fetchCostMethod();
 });
 
 onBeforeUnmount(() => {
