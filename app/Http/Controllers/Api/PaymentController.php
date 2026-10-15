@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
@@ -253,6 +254,20 @@ class PaymentController extends Controller
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
+
+        // A rep collects from their own customers only — the one named and,
+        // for a payment against an invoice, the one the invoice is for.
+        $customerIds = [(int) $validated['customer_id']];
+        if (! empty($validated['invoice_id'])) {
+            $customerIds[] = (int) Invoice::whereKey($validated['invoice_id'])->value('customer_id');
+        }
+        foreach (array_filter(array_unique($customerIds)) as $customerId) {
+            if (! $request->user()?->servesCustomer($customerId)) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'هذا العميل غير مسند إليك. يمكنك تسجيل دفعات لعملائك فقط.',
+                ]);
+            }
+        }
 
         try {
             $resolved = $this->resolveAmount((float) $validated['amount'], $validated['currency'] ?? null);

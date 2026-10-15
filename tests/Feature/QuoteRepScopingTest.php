@@ -214,3 +214,24 @@ test('a rep raises sales orders and invoices for their own customers only', func
     $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/sales-orders', $body($this->others))
         ->assertJsonMissingValidationErrors('customer_id');
 });
+
+test('a rep records payments from their own customers only', function () {
+    $api = $this->actingAs($this->rep1, 'sanctum');
+    $body = fn (Customer $customer, array $extra = []) => ['customer_id' => $customer->id, 'payment_method' => 'cash', 'amount' => 10] + $extra;
+
+    $api->postJson('/api/v1/payments', $body($this->others))
+        ->assertUnprocessable()->assertJsonValidationErrors('customer_id');
+
+    // Naming their own customer does not let them settle another's invoice.
+    $invoice = \App\Models\Invoice::create([
+        'invoice_number' => 'INV-REP-1', 'customer_id' => $this->others->id,
+        'subtotal' => 100, 'tax' => 0, 'discount' => 0, 'total' => 100, 'status' => 'pending',
+    ]);
+    $api->postJson('/api/v1/payments', $body($this->ownByLink, ['invoice_id' => $invoice->id]))
+        ->assertUnprocessable()->assertJsonValidationErrors('customer_id');
+    expect(\App\Models\Payment::count())->toBe(0);
+
+    $api->postJson('/api/v1/payments', $body($this->ownByLink))->assertJsonMissingValidationErrors('customer_id');
+    $this->actingAs($this->admin, 'sanctum')->postJson('/api/v1/payments', $body($this->others))
+        ->assertJsonMissingValidationErrors('customer_id');
+});
