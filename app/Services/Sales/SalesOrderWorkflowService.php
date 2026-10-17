@@ -1520,6 +1520,8 @@ class SalesOrderWorkflowService
             'invoice_number' => $this->nextInvoiceNumber(),
             'customer_id' => $order->customer_id,
             'sales_order_id' => $order->id,
+            // The sale is credited to the rep the order was raised for.
+            'assigned_employee_id' => $order->assigned_employee_id,
             'warehouse_id' => $order->fulfillment_warehouse_id,
             'subtotal' => $order->subtotal,
             'tax' => $order->tax,
