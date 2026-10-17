@@ -112,7 +112,7 @@
             <!-- Language Switcher -->
             <el-dropdown @command="handleLanguageCommand" class="language-dropdown" trigger="click">
                 <button type="button" class="lang-pill-btn" :title="t('language') || 'اللغة'">
-                    <span class="lang-flag">{{ currentLocale === 'ar' ? '🇸🇾' : '🇬🇧' }}</span>
+                    <span class="lang-flag"><SyriaFlag v-if="currentLocale === 'ar'" /><template v-else>🇬🇧</template></span>
                     <span class="lang-label">{{ currentLocale === 'ar' ? 'العربية' : 'English' }}</span>
                     <el-icon class="lang-arrow"><ArrowDown /></el-icon>
                 </button>
@@ -120,7 +120,7 @@
                     <el-dropdown-menu class="header-custom-dropdown">
                         <el-dropdown-item command="ar" :class="{ 'active-lang': currentLocale === 'ar' }">
                             <div class="lang-menu-item">
-                                <span>🇸🇾 العربية</span>
+                                <span><SyriaFlag /> العربية</span>
                                 <el-icon v-if="currentLocale === 'ar'" class="active-check"><Check /></el-icon>
                             </div>
                         </el-dropdown-item>
@@ -428,6 +428,7 @@ import { useNotificationsStore } from '@/stores/notifications';
 import { useI18n } from 'vue-i18n';
 import { updateDirection } from '@/app';
 import { adminSearchApi } from '@/api/search';
+import SyriaFlag from '@/components/Common/SyriaFlag.vue';
 import {
     Menu, Search, Bell, User, Setting,
     SwitchButton, ArrowDown, Loading, Box, ShoppingCart,
