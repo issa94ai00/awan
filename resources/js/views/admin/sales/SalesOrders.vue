@@ -218,6 +218,16 @@
                     </template>
                 </el-table-column>
 
+                <el-table-column :label="$t('sales_representative')" min-width="150">
+                    <template #default="{ row }">
+                        <div v-if="row.assigned_employee" class="so-stack">
+                            <span><i class="fas fa-user-tie so-muted-icon"></i> {{ row.assigned_employee.name }}</span>
+                            <span v-if="row.assigned_employee.phone" class="so-sub" dir="ltr">{{ row.assigned_employee.phone }}</span>
+                        </div>
+                        <span v-else class="so-sub">{{ $t('unassigned') }}</span>
+                    </template>
+                </el-table-column>
+
                 <el-table-column prop="total" :label="$t('total')" min-width="130" align="right" sortable="custom">
                     <template #default="{ row }">
                         <div class="so-stack so-end">
@@ -500,6 +510,18 @@
                                         <div class="info-item" v-if="selectedOrder.customer?.phone"><span class="lbl">{{ $t('phone') }}</span><strong dir="ltr">{{ selectedOrder.customer.phone }}</strong></div>
                                         <div class="info-item" v-if="selectedOrder.customer?.email"><span class="lbl">{{ $t('mail') }}</span><strong dir="ltr">{{ selectedOrder.customer.email }}</strong></div>
                                     </div>
+                                </el-card>
+                            </el-col>
+                            <el-col :xs="24" :md="12">
+                                <el-card shadow="never" class="info-card">
+                                    <template #header><span class="card-title-txt"><i class="fas fa-user-tie"></i> {{ $t('sales_representative') }}</span></template>
+                                    <div v-if="selectedOrder.assigned_employee" class="info-list">
+                                        <div class="info-item"><span class="lbl">{{ $t('name') }}</span><strong>{{ selectedOrder.assigned_employee.name }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.assigned_employee.position"><span class="lbl">{{ $t('position') }}</span><strong>{{ selectedOrder.assigned_employee.position }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.assigned_employee.phone"><span class="lbl">{{ $t('phone') }}</span><strong dir="ltr">{{ selectedOrder.assigned_employee.phone }}</strong></div>
+                                        <div class="info-item" v-if="selectedOrder.assigned_employee.email"><span class="lbl">{{ $t('mail') }}</span><strong dir="ltr">{{ selectedOrder.assigned_employee.email }}</strong></div>
+                                    </div>
+                                    <p v-else class="muted">{{ $t('unassigned') }}</p>
                                 </el-card>
                             </el-col>
                             <el-col :xs="24" :md="12">

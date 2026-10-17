@@ -46,7 +46,7 @@ class SalesOrderController extends Controller
             ->with([
                 'customer:id,name,phone,company',
                 'fulfillmentWarehouse:id,name',
-                'assignedEmployee:id,first_name,last_name',
+                'assignedEmployee:id,first_name,last_name,phone',
                 'quote:id,quote_number',
                 // The live invoice, for the paid / due column.
                 'invoices' => fn ($q) => $q->where('status', '!=', Invoice::STATUS_CANCELLED)

@@ -217,6 +217,16 @@
                     </template>
                 </el-table-column>
 
+                <el-table-column :label="$t('sales_representative')" min-width="150">
+                    <template #default="{ row }">
+                        <div v-if="row.sales_rep" class="cell-stack">
+                            <span>{{ row.sales_rep.name }}</span>
+                            <span v-if="row.sales_rep.phone" class="cell-secondary" dir="ltr">{{ row.sales_rep.phone }}</span>
+                        </div>
+                        <span v-else class="cell-secondary">{{ $t('unassigned') }}</span>
+                    </template>
+                </el-table-column>
+
                 <el-table-column prop="total" :label="$t('total')" min-width="120" align="right" sortable="custom">
                     <template #default="{ row }">
                         <div class="cell-stack align-end">

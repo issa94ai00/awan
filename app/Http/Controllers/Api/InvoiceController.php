@@ -39,7 +39,13 @@ class InvoiceController extends Controller
             // product and variant for every row cost more than the rest. Other
             // callers (the returns picker) still get the lines.
             $query = $request->boolean('lean')
-                ? Invoice::query()->with(['customer:id,name,phone,email,company', 'salesOrder:id,order_number'])->withCount('items')
+                ? Invoice::query()->with([
+                    'customer:id,name,phone,email,company',
+                    'salesOrder:id,order_number,assigned_employee_id',
+                    // The rep column: the invoice's own rep, or its order's.
+                    'assignedEmployee:id,first_name,last_name,phone',
+                    'salesOrder.assignedEmployee:id,first_name,last_name,phone',
+                ])->withCount('items')
                     ->withSum(['creditNotes as credited_total' => fn ($q) => $q->where('status', '!=', 'cancelled')], 'total')
                 : Invoice::query()->with(['items.product', 'items.variant', 'customer']);
 

@@ -104,6 +104,22 @@ class InvoiceResource extends JsonResource
                     'name' => $this->assignedEmployee->name,
                 ] : null;
             }),
+            // Who the sale is credited to. An invoice raised from a sales order
+            // does not carry a rep of its own, so it names the order's.
+            'sales_rep' => $this->when($this->relationLoaded('assignedEmployee'), function () {
+                $fromOrder = ! $this->assignedEmployee;
+                $rep = $this->assignedEmployee
+                    ?? ($this->relationLoaded('salesOrder') && $this->salesOrder?->relationLoaded('assignedEmployee')
+                        ? $this->salesOrder->assignedEmployee
+                        : null);
+
+                return $rep ? [
+                    'id' => $rep->id,
+                    'name' => $rep->name,
+                    'phone' => $rep->phone,
+                    'from_order' => $fromOrder,
+                ] : null;
+            }),
             'warehouse' => $this->when($this->relationLoaded('warehouse'), function () {
                 return $this->warehouse ? [
                     'id' => $this->warehouse->id,
