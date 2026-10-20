@@ -17,7 +17,7 @@
                             <el-dropdown-item command="export" :icon="Download">
                                 {{ activeFilterCount ? $t('prod_admin_export_filtered') : $t('export_to_excel') }}
                             </el-dropdown-item>
-                            <el-dropdown-item command="import" :icon="Upload">
+                            <el-dropdown-item v-if="canEdit" command="import" :icon="Upload">
                                 {{ $t('import_from_excel') }}
                             </el-dropdown-item>
                         </el-dropdown-menu>
@@ -119,7 +119,7 @@
             </div>
 
             <transition name="bulk">
-                <div v-if="selectedIds.length" class="bulk-bar">
+                <div v-if="canEdit && selectedIds.length" class="bulk-bar">
                     <span class="bulk-count">
                         <el-icon><Select /></el-icon>
                         {{ $t('prod_admin_selected', { count: selectedIds.length }) }}
@@ -167,7 +167,7 @@
                         <span v-else />
                     </template>
 
-                    <el-table-column type="selection" width="44" reserve-selection />
+                    <el-table-column v-if="canEdit" type="selection" width="44" reserve-selection />
 
                     <el-table-column :label="$t('product')" min-width="210" prop="name_ar" sortable="custom">
                         <template #default="{ row }">
@@ -263,6 +263,7 @@
                             <div class="status-cell">
                                 <el-switch
                                     :model-value="row.is_active"
+                                    :disabled="!canEdit"
                                     :loading="savingId === row.id"
                                     class="status-switch"
                                     :aria-label="$t('status')"
@@ -286,7 +287,7 @@
                                     type="button"
                                     class="star-toggle"
                                     :class="{ 'is-on': row.is_featured }"
-                                    :disabled="savingId === row.id"
+                                    :disabled="!canEdit || savingId === row.id"
                                     :aria-pressed="!!row.is_featured"
                                     @click="toggleField(row, 'is_featured', !row.is_featured)"
                                 >
@@ -299,16 +300,16 @@
                     <el-table-column :label="$t('procedures')" width="200" align="center">
                         <template #default="{ row }">
                             <div class="row-actions">
-                                <el-tooltip :content="$t('quick_edit')" placement="top" :enterable="false">
+                                <el-tooltip v-if="canEdit" :content="$t('quick_edit')" placement="top" :enterable="false">
                                     <el-button size="small" circle :icon="Lightning" @click="quickEdit(row)" />
                                 </el-tooltip>
-                                <el-tooltip :content="$t('full_edit')" placement="top" :enterable="false">
+                                <el-tooltip v-if="canEdit" :content="$t('full_edit')" placement="top" :enterable="false">
                                     <el-button size="small" circle :icon="Edit" @click="editProduct(row)" />
                                 </el-tooltip>
                                 <el-tooltip :content="$t('view')" placement="top" :enterable="false">
                                     <el-button size="small" circle :icon="View" @click="viewProduct(row)" />
                                 </el-tooltip>
-                                <el-tooltip :content="$t('delete')" placement="top" :enterable="false">
+                                <el-tooltip v-if="canEdit" :content="$t('delete')" placement="top" :enterable="false">
                                     <el-button size="small" circle plain type="danger" :icon="Delete" @click="deleteProduct(row)" />
                                 </el-tooltip>
                             </div>
@@ -507,6 +508,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { useAuthStore } from '@/stores/auth';
 import { productsApi } from '@/api/products';
 import { inventoryApi } from '@/api/inventory';
 import {
@@ -519,6 +521,8 @@ const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const store = useProductsStore();
+// The sells role may add and view products, not change or delete them.
+const canEdit = computed(() => useAuthStore().canEditProducts);
 
 // ── Filters, sort and paging ─────────────────────────────────────────────
 // All of it lives in the URL, so a filtered list survives a reload, the back
@@ -780,6 +784,7 @@ const savingId = ref(null);
 
 /** Writes one field and patches the row in place, so the table never blinks. */
 const toggleField = async (product, field, value) => {
+    if (!canEdit.value) return;
     savingId.value = product.id;
     try {
         await productsApi.update(product.id, { [field]: value });

@@ -113,3 +113,46 @@ it('says a cancelled request cannot be received', function () {
         ->assertOk()
         ->assertJsonPath('data.receivable', false);
 });
+
+it('returns the discount and discount percentage from the linked purchase order', function () {
+    $order = PurchaseOrder::create([
+        'supplier_id' => $this->supplier->id,
+        'order_number' => 'PO-DISC-' . uniqid(),
+        'status' => 'confirmed',
+        'subtotal' => 100,
+        'discount_percent' => 15,
+        'discount' => 15,
+        'tax' => 0,
+        'total' => 85,
+    ]);
+    $order->items()->create([
+        'product_id' => $this->product->id,
+        'product_name' => 'بلاط أرضي',
+        'quantity' => 10,
+        'unit_price' => 10,
+        'total_price' => 100,
+    ]);
+
+    $details = $this->actingAs($this->admin)
+        ->getJson("/api/v1/purchase-receipts/purchase-order/{$order->id}")
+        ->assertOk();
+
+    expect((float) $details->json('data.discount'))->toBe(15.0)
+        ->and((float) $details->json('data.discount_percent'))->toBe(15.0);
+});
+
+it('allows recording receipt with discount percentage and calculates correct total', function () {
+    $res = ($this->receive)([
+        'discount_percent' => 10,
+        'items' => [
+            ['product_id' => $this->product->id, 'quantity' => 10, 'unit_price' => 10],
+        ],
+    ])->assertCreated();
+
+    // 10 * 10 = 100 goods, 10% discount = 10, total = 90
+    expect((float) $res->json('data.goods_total'))->toBe(100.0)
+        ->and((float) $res->json('data.discount'))->toBe(10.0)
+        ->and((float) $res->json('data.discount_percent'))->toBe(10.0)
+        ->and((float) $res->json('data.total_amount'))->toBe(90.0);
+});
+

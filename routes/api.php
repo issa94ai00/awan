@@ -327,22 +327,24 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/products/next-sku', [ProductController::class, 'nextSku'])->name('api.admin.products.next-sku');
             // Manual print priority within one classification. Declared before
             // /products/{product} so "reorder" is never read as a product id.
-            Route::put('/products/reorder', [ProductController::class, 'reorder'])->name('api.admin.products.reorder');
+            Route::put('/products/reorder', [ProductController::class, 'reorder'])->middleware('edit_products')->name('api.admin.products.reorder');
             Route::get('/products/export', [ProductController::class, 'export'])->name('api.admin.products.export');
-            Route::post('/products/import', [ProductController::class, 'import'])->name('api.admin.products.import');
+            Route::post('/products/import', [ProductController::class, 'import'])->middleware('edit_products')->name('api.admin.products.import');
             Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.admin.products.show');
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
-            Route::put('/products/{product}', [ProductController::class, 'update'])->name('api.admin.products.update');
-            Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('api.admin.products.destroy');
+            Route::put('/products/{product}', [ProductController::class, 'update'])->middleware('edit_products')->name('api.admin.products.update');
+            Route::delete('/products/{product}', [ProductController::class, 'destroy'])->middleware('edit_products')->name('api.admin.products.destroy');
             Route::post('/product-variants', [ProductVariantController::class, 'store'])->name('api.admin.product-variants.store');
-            Route::put('/product-variants/{variant}', [ProductVariantController::class, 'update'])->name('api.admin.product-variants.update');
-            Route::delete('/product-variants/{variant}', [ProductVariantController::class, 'destroy'])->name('api.admin.product-variants.destroy');
+            Route::put('/product-variants/{variant}', [ProductVariantController::class, 'update'])->middleware('edit_products')->name('api.admin.product-variants.update');
+            Route::delete('/product-variants/{variant}', [ProductVariantController::class, 'destroy'])->middleware('edit_products')->name('api.admin.product-variants.destroy');
 
             // Product Units API
             Route::get('/products/{product}/units', [ProductUnitController::class, 'index'])->name('api.admin.product-units.index');
             Route::post('/products/{product}/units', [ProductUnitController::class, 'store'])->name('api.admin.product-units.store');
-            Route::put('/products/{product}/units/{unit}', [ProductUnitController::class, 'update'])->name('api.admin.product-units.update');
-            Route::delete('/products/{product}/units/{unit}', [ProductUnitController::class, 'destroy'])->name('api.admin.product-units.destroy');
+            // Rewrites the product's counts and prices when it moves onto grams.
+            Route::post('/products/{product}/units/generate-weight', [ProductUnitController::class, 'generateWeightUnits'])->middleware('edit_products')->name('api.admin.product-units.generate-weight');
+            Route::put('/products/{product}/units/{unit}', [ProductUnitController::class, 'update'])->middleware('edit_products')->name('api.admin.product-units.update');
+            Route::delete('/products/{product}/units/{unit}', [ProductUnitController::class, 'destroy'])->middleware('edit_products')->name('api.admin.product-units.destroy');
             Route::get('/units/search-barcode', [ProductUnitController::class, 'searchByBarcode'])->name('api.admin.product-units.search-barcode');
 
             // Price-Offer selection lists — named sets of products the admin can
@@ -929,6 +931,12 @@ Route::prefix('v1')->middleware('web')->group(function () {
             // one response, so the profile screen makes a single request.
             Route::get('/customers/{id}/overview', [CustomerOverviewController::class, 'show'])
                 ->whereNumber('id')->name('api.admin.customers.overview');
+
+            // One customer's account statement, under the customers module so
+            // a sales rep — who has no accounting module — can follow their own
+            // clients. The accounting screen's party statement stays as it was.
+            Route::get('/customers/{customer}/statement', [AccountingReportController::class, 'customerStatement'])
+                ->whereNumber('customer')->name('api.admin.customers.statement');
 
             // WMS - Warehouse Management System (نظام إدارة المستودعات)
             Route::prefix('wms')->middleware('web')->group(function () {

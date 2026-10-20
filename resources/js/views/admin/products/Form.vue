@@ -663,6 +663,7 @@ import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { useAuthStore } from '@/stores/auth';
 import { productsApi } from '@/api/products';
 import { Box, Cpu, Check, CircleCheck, Document, Delete, EditPen, Goods, InfoFilled, MagicStick, PictureFilled, Plus, PriceTag, ArrowRight, RefreshRight, Star, ZoomIn } from '@element-plus/icons-vue';
 import { isSameImage, resolveImageUrl, toImagePath } from '@/utils/productImages';
@@ -1128,6 +1129,12 @@ const safeParseGallery = (value) => {
 
 const loadProduct = async () => {
     if (!isEdit.value) return;
+    // The sells role may not change a product; it is sent to the product's
+    // page instead of a form whose save would be refused.
+    if (!useAuthStore().canEditProducts) {
+        router.replace({ name: 'admin.products.show', params: { id: route.params.id } });
+        return;
+    }
     try {
         await store.fetchProduct(route.params.id);
         const p = store.currentProduct;

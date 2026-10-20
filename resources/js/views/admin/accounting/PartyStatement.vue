@@ -541,6 +541,7 @@ import PrintDocumentHeader from '@/components/admin/PrintDocumentHeader.vue';
 import { usePrintSettings } from '@/composables/usePrintSettings';
 import { accountingReportsApi } from '@/api/accountingReports';
 import { customersApi } from '@/api/customers';
+import { useAuthStore } from '@/stores/auth';
 import { suppliersApi } from '@/api/suppliers';
 import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
 
@@ -569,9 +570,14 @@ const partyId = ref(null);
 const parties = ref([]);
 const partiesLoading = ref(false);
 
+// A sales rep sees their own clients' statements only: no supplier side, and
+// the statement comes through the customers module (the picker already lists
+// only the clients they serve).
+const customersOnly = computed(() => useAuthStore().customerStatementsOnly);
+
 const typeOptions = computed(() => [
     { value: 'customer', label: t('client'), icon: 'fas fa-user' },
-    { value: 'supplier', label: t('supplier'), icon: 'fas fa-truck' },
+    ...(customersOnly.value ? [] : [{ value: 'supplier', label: t('supplier'), icon: 'fas fa-truck' }]),
 ]);
 const typeLabel = computed(() => (type.value === 'customer' ? t('client') : t('supplier')));
 
@@ -673,12 +679,10 @@ const reload = async () => {
     loading.value = true;
     error.value = '';
     try {
-        const res = await accountingReportsApi.partyStatement({
-            type: type.value,
-            party_id: partyId.value,
-            date_from: range.value[0],
-            date_to: range.value[1],
-        });
+        const period = { date_from: range.value[0], date_to: range.value[1] };
+        const res = customersOnly.value
+            ? await customersApi.statement(partyId.value, period)
+            : await accountingReportsApi.partyStatement({ type: type.value, party_id: partyId.value, ...period });
         report.value = res.data?.data || null;
         const party = report.value?.party;
         if (party && !parties.value.some((p) => p.id === party.id)) {
@@ -1030,7 +1034,7 @@ onMounted(async () => {
     window.addEventListener('afterprint', removePageMargins);
 
     const q = route.query;
-    if (['customer', 'supplier'].includes(q.type)) type.value = q.type;
+    if (['customer', 'supplier'].includes(q.type) && !customersOnly.value) type.value = q.type;
     const valid = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
     range.value = valid(q.date_from) && valid(q.date_to) ? [String(q.date_from), String(q.date_to)] : presetRange('year');
     preset.value = detectPreset(range.value);

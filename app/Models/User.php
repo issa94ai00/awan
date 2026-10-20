@@ -208,6 +208,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this user may change or delete existing products. The sells
+     * role may only add products and look at them; admins are never held back.
+     */
+    public function mayEditProducts(): bool
+    {
+        return $this->isSuperAdmin() || ! $this->holdsRoleNamed(['sells']);
+    }
+
+    /**
      * Whether this user is restricted to only their own sales and assigned warehouse.
      * Super admins and managers are unconfined.
      */

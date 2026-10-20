@@ -1,3 +1,4 @@
+import api from './index';
 import { posApi } from './pos';
 
 export const customersApi = {
@@ -19,5 +20,10 @@ export const customersApi = {
 
     delete(id) {
         return posApi.customerDelete(id);
-    }
+    },
+
+    // The customer's account statement, open to a sales rep for their own clients.
+    statement(id, params) {
+        return api.get(`/admin/customers/${id}/statement`, { params });
+    },
 };

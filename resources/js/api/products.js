@@ -95,4 +95,8 @@ export const productUnitsApi = {
     remove(productId, unitId) {
         return api.delete(`/admin/products/${productId}/units/${unitId}`);
     },
+    /** The gram and kilo units of a product sold by weight (moves a kilo product onto grams). */
+    generateWeight(productId) {
+        return api.post(`/admin/products/${productId}/units/generate-weight`);
+    },
 };

@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProductUnit;
 use App\Models\Product;
+use App\Services\Inventory\WeightUnitService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class ProductUnitController extends Controller
 {
@@ -60,13 +63,17 @@ class ProductUnitController extends Controller
                 'name' => 'required|string|max:255',
                 'name_ar' => 'nullable|string|max:255',
                 'barcode' => 'nullable|string|max:255',
-                'base_unit_multiplier' => 'required|numeric|min:0.01',
-                'price_multiplier' => 'required|numeric|min:0.01',
+                // Whole base units: stock is counted in integers, so a unit of
+                // half a base unit could never come off a shelf. Weights sell
+                // by the gram for that reason (see generateWeightUnits).
+                'base_unit_multiplier' => 'required|integer|min:1|max:1000000',
+                'price_multiplier' => 'required|numeric|min:0.0001|max:9999.9999',
                 'is_default' => 'nullable|boolean',
             ], [
                 'name.required' => 'اسم الوحدة مطلوب',
                 'base_unit_multiplier.required' => 'معامل الوحدة الأساسية مطلوب',
-                'base_unit_multiplier.min' => 'معامل الوحدة الأساسية يجب أن يكون أكبر من 0',
+                'base_unit_multiplier.integer' => 'معامل الوحدة الأساسية يجب أن يكون عدداً صحيحاً — للبيع بالوزن اجعل الغرام وحدة المنتج الأساسية',
+                'base_unit_multiplier.min' => 'معامل الوحدة الأساسية يجب أن يكون 1 على الأقل',
                 'price_multiplier.required' => 'معامل السعر مطلوب',
                 'price_multiplier.min' => 'معامل السعر يجب أن يكون أكبر من 0',
             ]);
@@ -126,13 +133,17 @@ class ProductUnitController extends Controller
                 'name' => 'required|string|max:255',
                 'name_ar' => 'nullable|string|max:255',
                 'barcode' => 'nullable|string|max:255',
-                'base_unit_multiplier' => 'required|numeric|min:0.01',
-                'price_multiplier' => 'required|numeric|min:0.01',
+                // Whole base units: stock is counted in integers, so a unit of
+                // half a base unit could never come off a shelf. Weights sell
+                // by the gram for that reason (see generateWeightUnits).
+                'base_unit_multiplier' => 'required|integer|min:1|max:1000000',
+                'price_multiplier' => 'required|numeric|min:0.0001|max:9999.9999',
                 'is_default' => 'nullable|boolean',
             ], [
                 'name.required' => 'اسم الوحدة مطلوب',
                 'base_unit_multiplier.required' => 'معامل الوحدة الأساسية مطلوب',
-                'base_unit_multiplier.min' => 'معامل الوحدة الأساسية يجب أن يكون أكبر من 0',
+                'base_unit_multiplier.integer' => 'معامل الوحدة الأساسية يجب أن يكون عدداً صحيحاً — للبيع بالوزن اجعل الغرام وحدة المنتج الأساسية',
+                'base_unit_multiplier.min' => 'معامل الوحدة الأساسية يجب أن يكون 1 على الأقل',
                 'price_multiplier.required' => 'معامل السعر مطلوب',
                 'price_multiplier.min' => 'معامل السعر يجب أن يكون أكبر من 0',
             ]);
@@ -210,6 +221,47 @@ class ProductUnitController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Creates the غرام and كغ units of a product sold by weight, with their
+     * factors and prices worked out. A product still counted in kilos is moved
+     * onto grams first — see WeightUnitService.
+     */
+    public function generateWeightUnits($productId, WeightUnitService $weights): JsonResponse
+    {
+        $product = Product::find($productId);
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'المنتج غير موجود',
+            ], 404);
+        }
+
+        try {
+            $result = $weights->generate($product);
+        } catch (QueryException $e) {
+            throw $e;
+        } catch (RuntimeException $e) {
+            // The service's own refusals, written for the person at the screen.
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['converted']
+                ? 'تم إنشاء وحدتي الغرام والكيلو، وأصبح المنتج يُحسب بالغرام'
+                : 'تم إنشاء وحدتي الغرام والكيلو',
+            'data' => [
+                'units' => $result['units'],
+                'converted' => $result['converted'],
+                'price_rounded' => $result['price_rounded'],
+                'product' => $product->fresh(),
+            ],
+        ]);
     }
 
     /**

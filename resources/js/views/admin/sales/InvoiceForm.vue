@@ -380,7 +380,7 @@
 
                                 <label class="field field-price">
                                     <span class="field-label">{{ t('unit_price') }}</span>
-                                    <el-input v-model.number="item.price" type="number" min="0" step="0.01" />
+                                    <el-input v-model.number="item.price" type="number" min="0" step="any" />
                                 </label>
                             </div>
                         </article>
@@ -764,7 +764,7 @@ import { useAuthStore } from '@/stores/auth';
 import { customersApi } from '@/api/customers';
 import { posApi } from '@/api/pos';
 import api from '@/api';
-import { formatNumber } from '@/utils/currency';
+import { formatNumber, roundUnitPrice } from '@/utils/currency';
 import {
     summariseSources,
     availableAt,
@@ -1421,7 +1421,7 @@ const switchLineVariant = (index, row) => {
     }
 
     const multiplier = Number(line.selectedUnit?.price_multiplier) || 1;
-    const priceUntouched = round2(line.price) === round2(line.base_price * multiplier);
+    const priceUntouched = roundUnitPrice(line.price) === roundUnitPrice(line.base_price * multiplier);
     line.pick = pick;
     line.product_variant_id = row.variant_id || null;
     line.variant_label = row.variant_label || '';
@@ -1429,7 +1429,7 @@ const switchLineVariant = (index, row) => {
     line.sku = row.sku || '';
     line.stock = row.stock_quantity || 0;
     line.base_price = parseFloat(row.price) || 0;
-    if (priceUntouched) line.price = round2(line.base_price * multiplier);
+    if (priceUntouched) line.price = roundUnitPrice(line.base_price * multiplier);
 };
 
 /* ------------------------------------------------------------------ *
@@ -1538,7 +1538,7 @@ const loadProductUnits = async (productId, itemIndex) => {
 const onUnitChange = (index) => {
     const item = items.value[index];
     if (item?.selectedUnit) {
-        item.price = item.base_price * item.selectedUnit.price_multiplier;
+        item.price = roundUnitPrice(item.base_price * item.selectedUnit.price_multiplier);
     }
 };
 

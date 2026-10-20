@@ -316,7 +316,7 @@ class InvoiceController extends Controller
 
         foreach ($lines as $line) {
             if ($issued->has($keyPrefix.':'.$invoice->id.':item:'.$line->id)) {
-                ProductVariant::adjustStockCount((int) $line->product_variant_id, $direction * (int) $line->quantity);
+                ProductVariant::adjustStockCount((int) $line->product_variant_id, $direction * $line->baseQuantity());
             }
         }
     }
@@ -477,12 +477,16 @@ class InvoiceController extends Controller
                 $unit = null;
                 $unitName = null;
                 $unitMultiplier = 1;
+                $unitId = null;
 
                 if (!empty($item['product_unit_id'])) {
                     $unit = $units->get($item['product_unit_id']);
-                    if ($unit) {
+                    // The unit decides how much stock the line moves, so one
+                    // that belongs to another product is dropped, not trusted.
+                    if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
+                        $unitId = $unit->id;
                         $unitName = $unit->name;
-                        $unitMultiplier = (float) $unit->base_unit_multiplier;
+                        $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
                     }
                 }
 
@@ -505,7 +509,7 @@ class InvoiceController extends Controller
                     'unit_price' => $unitPrice,
                     'total_price' => $totalPrice,
                     'notes' => $item['notes'] ?? null,
-                    'product_unit_id' => $item['product_unit_id'] ?? null,
+                    'product_unit_id' => $unitId,
                     'unit_name' => $unitName,
                     'unit_multiplier' => $unitMultiplier,
                     // Kept beside the line for the issue below; not a column.
@@ -528,7 +532,8 @@ class InvoiceController extends Controller
             $shortages = $goods->shortagesFor(array_map(
                 fn (array $line) => [
                     'product_id' => (int) $line['product_id'],
-                    'quantity' => (int) $line['quantity'],
+                    // In base units: two boxes of twelve need 24 on the shelf.
+                    'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
                     'warehouse_id' => (int) $line['warehouse_id'],
                 ],
                 $itemsData
@@ -691,7 +696,7 @@ class InvoiceController extends Controller
                 $issued = $goods->issueAndPostCost(
                     lines: $invoice->items()->get()->map(fn ($line) => [
                         'product_id' => (int) $line->product_id,
-                        'quantity' => (int) $line->quantity,
+                        'quantity' => $line->baseQuantity(),
                         'warehouse_id' => (int) $line->warehouse_id,
                         'unit_cost' => (float) ($line->product?->cost_price ?? 0),
                         // Keyed per line, so a retry is a no-op rather than a
@@ -947,12 +952,14 @@ class InvoiceController extends Controller
                     $unit = null;
                     $unitName = null;
                     $unitMultiplier = 1;
+                    $unitId = null;
 
                     if (!empty($item['product_unit_id'])) {
                         $unit = $units->get($item['product_unit_id']);
-                        if ($unit) {
+                        if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
+                            $unitId = $unit->id;
                             $unitName = $unit->name;
-                            $unitMultiplier = (float) $unit->base_unit_multiplier;
+                            $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
                         }
                     }
 
@@ -967,7 +974,7 @@ class InvoiceController extends Controller
                         'unit_price' => $unitPrice,
                         'total_price' => $totalPrice,
                         'notes' => $item['notes'] ?? null,
-                        'product_unit_id' => $item['product_unit_id'] ?? null,
+                        'product_unit_id' => $unitId,
                         'unit_name' => $unitName,
                         'unit_multiplier' => $unitMultiplier,
                     ];
@@ -1070,7 +1077,7 @@ class InvoiceController extends Controller
                     $shortages = $goods->shortagesFor(array_map(
                         fn (array $line) => [
                             'product_id' => (int) $line['product_id'],
-                            'quantity' => (int) $line['quantity'],
+                            'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
                             'warehouse_id' => (int) $line['warehouse_id'],
                         ],
                         $itemsData
@@ -1191,12 +1198,13 @@ class InvoiceController extends Controller
                 continue;
             }
 
-            $quantity = (int) ($issued['quantity'] ?: $line->quantity);
+            $quantity = (int) ($issued['quantity'] ?: $line->baseQuantity());
             $cost = round((float) $issued['cost'], 5);
 
             $line->forceFill([
                 'total_cost' => $cost,
-                'unit_cost' => $quantity > 0 ? round($cost / $quantity, 5) : 0,
+                // Per unit sold, like unit_price — the movement counts base units.
+                'unit_cost' => $quantity > 0 ? round($cost / $quantity * $line->stockFactor(), 5) : 0,
             ])->save();
         }
     }
@@ -1269,7 +1277,7 @@ class InvoiceController extends Controller
         $issued = $goods->issueAndPostCost(
             lines: $invoice->items()->get()->map(fn ($line) => [
                 'product_id' => (int) $line->product_id,
-                'quantity' => (int) $line->quantity,
+                'quantity' => $line->baseQuantity(),
                 'warehouse_id' => (int) $line->warehouse_id,
                 'unit_cost' => (float) ($line->product?->cost_price ?? 0),
                 'movement_key' => 'invoice:'.$invoice->id.':item:'.$line->id,
@@ -1457,7 +1465,7 @@ class InvoiceController extends Controller
             $goods->returnAndReverseCost(
                 lines: $invoice->items()->with('product')->get()->map(fn ($line) => [
                     'product_id' => (int) $line->product_id,
-                    'quantity' => (int) $line->quantity,
+                    'quantity' => $line->baseQuantity(),
                     'warehouse_id' => (int) $line->warehouse_id,
                     'unit_cost' => (float) ($line->product?->cost_price ?? 0),
                     'movement_key' => 'invoice_cancel:'.$invoice->id.':item:'.$line->id,

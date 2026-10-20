@@ -64,6 +64,7 @@ class PurchaseReceiptController extends Controller
             'tax_amount' => 'nullable|numeric|min:0',
             'discount' => 'nullable|numeric|min:0',
             'discount_percent' => 'nullable|numeric|min:0|max:100',
+            'discount_mode' => 'nullable|in:percent,amount',
             'notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -103,11 +104,17 @@ class PurchaseReceiptController extends Controller
 
         $goodsTotal = (float) collect($validated['items'])->sum(fn ($item) => (int) $item['quantity'] * (float) $item['unit_price']);
 
+        $discountMode = $validated['discount_mode'] ?? 'percent';
         $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
             ? (float) $validated['discount_percent']
             : null;
 
-        if ($discountPercent !== null) {
+        if ($discountMode === 'amount' && isset($validated['discount']) && $validated['discount'] !== '' && $validated['discount'] !== null) {
+            $discount = round((float) $validated['discount'], 5);
+            $discountPercent = ($goodsTotal > 0 && $discount > 0)
+                ? round(($discount / $goodsTotal) * 100, 2)
+                : null;
+        } elseif ($discountPercent !== null) {
             $discount = round(max(0, $goodsTotal) * ($discountPercent / 100), 5);
         } else {
             $discount = round((float) ($validated['discount'] ?? 0), 5);
@@ -122,6 +129,7 @@ class PurchaseReceiptController extends Controller
 
         $validated['discount'] = $discount;
         $validated['discount_percent'] = $discountPercent;
+        unset($validated['discount_mode']);
 
         $receiptTotal = round(
             max(0, $goodsTotal - $discount)
@@ -386,14 +394,24 @@ class PurchaseReceiptController extends Controller
             ], 404);
         }
 
+        $orderSubtotal = (float) ($purchaseOrder->subtotal ?? 0);
+        if ($orderSubtotal <= 0 && $purchaseOrder->items) {
+            $orderSubtotal = (float) $purchaseOrder->items->sum(fn ($i) => (float) $i->unit_price * (float) $i->quantity);
+        }
+
+        $orderDiscount = (float) ($purchaseOrder->discount ?? 0);
+        $orderDiscountPercent = $purchaseOrder->discount_percent !== null && $purchaseOrder->discount_percent !== ''
+            ? (float) $purchaseOrder->discount_percent
+            : ($orderSubtotal > 0 && $orderDiscount > 0 ? round(($orderDiscount / $orderSubtotal) * 100, 2) : null);
+
         return response()->json([
             'success' => true,
             'message' => 'تم جلب بيانات طلب الشراء بنجاح',
             'data' => [
                 'purchase_order' => $purchaseOrder,
                 'supplier_id' => $purchaseOrder->supplier_id,
-                'discount' => (float) ($purchaseOrder->discount ?? 0),
-                'discount_percent' => $purchaseOrder->discount_percent !== null ? (float) $purchaseOrder->discount_percent : null,
+                'discount' => $orderDiscount,
+                'discount_percent' => $orderDiscountPercent,
                 // Whether goods may still come in against it, so the form can
                 // say so before the operator fills anything in.
                 'receivable' => PurchaseOrder::normalizeStatus($purchaseOrder->status) !== PurchaseOrder::STATUS_CANCELLED,

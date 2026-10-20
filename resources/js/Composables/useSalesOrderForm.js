@@ -12,6 +12,7 @@ import api from '@/api/index';
 import { salesOrdersApi } from '@/api/salesOrders';
 import { pickKey, optionKey, baseName, variantLabelOf } from '@/utils/productPick';
 import { localIsoDate } from '@/utils/sales';
+import { roundUnitPrice } from '@/utils/currency';
 
 const KEY = Symbol('salesOrderForm');
 const DRAFT_KEY = 'sales-order-draft';
@@ -104,9 +105,10 @@ function createSalesOrderForm({ orderId }) {
     const overStock = (line) => linePieces(line) > (Number(line.stock) || 0);
 
     /** The catalogue price for the line's unit, before anyone typed over it. */
-    const listPrice = (line) => round2((Number(line.base_price) || 0) * (Number(line.unit?.price_multiplier) || 1));
-    const priceEdited = (line) => Math.abs((Number(line.price) || 0) - listPrice(line)) >= 0.005;
-    const unitCost = (line) => round2((Number(line.cost_price) || 0) * (Number(line.unit?.base_unit_multiplier) || 1));
+    // Kept to five decimals like the server, so a gram's price survives.
+    const listPrice = (line) => roundUnitPrice((Number(line.base_price) || 0) * (Number(line.unit?.price_multiplier) || 1));
+    const priceEdited = (line) => Math.abs((Number(line.price) || 0) - listPrice(line)) >= 0.000005;
+    const unitCost = (line) => roundUnitPrice((Number(line.cost_price) || 0) * (Number(line.unit?.base_unit_multiplier) || 1));
     const belowCost = (line) => unitCost(line) > 0 && (Number(line.price) || 0) < unitCost(line);
 
     const loadUnits = async (line, { keepSelection = false } = {}) => {
@@ -265,7 +267,12 @@ function createSalesOrderForm({ orderId }) {
         routing.loading = true;
         try {
             const { data } = await salesOrdersApi.suggestRouting({
-                items: lines.value.map((line) => ({ product_id: line.product_id, quantity: Number(line.quantity) || 1 })),
+                // The unit too: two boxes need 24 pieces of stock, not two.
+                items: lines.value.map((line) => ({
+                    product_id: line.product_id,
+                    product_unit_id: line.unit?.id || null,
+                    quantity: Number(line.quantity) || 1,
+                })),
             });
             const plan = data?.data || {};
             routing.warehouses = plan.warehouses || [];
@@ -577,7 +584,7 @@ function createSalesOrderForm({ orderId }) {
             product_id: line.product_id,
             product_variant_id: line.product_variant_id || null,
             quantity: Number(line.quantity),
-            unit_price: round2(line.price),
+            unit_price: roundUnitPrice(line.price),
             product_unit_id: line.unit?.id || null,
             // The plan from the routing step; left out to route at confirmation.
             // A plan that no longer adds up to the quantity (changed since)

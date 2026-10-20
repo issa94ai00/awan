@@ -95,7 +95,7 @@
                     <el-input-number
                         v-model="line.price"
                         :min="0"
-                        :precision="2"
+                        :precision="unitPriceDigits(order.listPrice(line))"
                         :step="1"
                         :controls="false"
                         class="price-input"
@@ -149,6 +149,7 @@ import { computed, onUnmounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getImageUrl } from '@/utils/imageUrl';
 import { formatCurrency } from '@/utils/sales';
+import { unitPriceDigits } from '@/utils/currency';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import { useSalesOrderForm } from '@/Composables/useSalesOrderForm';
 

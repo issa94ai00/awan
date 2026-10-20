@@ -8,6 +8,7 @@ use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
 use App\Models\Product;
 use App\Models\PurchaseOrderItem;
+use App\Models\ProductUnit;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
@@ -106,7 +107,7 @@ class SalesOrderWorkflowService
 
         $rows = $warehouses->map(function (Warehouse $warehouse) use ($order, $selected) {
             $items = $order->items->map(function ($item) use ($warehouse, $order) {
-                $required = (int) $item->quantity;
+                $required = $item->baseQuantity();
                 $available = $this->sellableFor((int) $item->product_id, $warehouse->id, $order);
 
                 return [
@@ -546,7 +547,7 @@ class SalesOrderWorkflowService
         // together — separately, each would look affordable while the pair is not.
         $needed = [];
         foreach ($unplanned as $item) {
-            $needed[(int) $item->product_id] = ($needed[(int) $item->product_id] ?? 0) + (int) $item->quantity;
+            $needed[(int) $item->product_id] = ($needed[(int) $item->product_id] ?? 0) + $item->baseQuantity();
         }
 
         $single = $candidates->first(function (Warehouse $warehouse) use ($needed, $free) {
@@ -609,6 +610,9 @@ class SalesOrderWorkflowService
         $short = [];
 
         foreach ($items as $item) {
+            // Shares are counted in the line's unit — a box comes whole from
+            // one warehouse — while the ledger counts base units.
+            $factor = $item->stockFactor();
             $remaining = (int) $item->quantity;
             $shares = [];
 
@@ -617,14 +621,14 @@ class SalesOrderWorkflowService
                     break;
                 }
 
-                $take = min($remaining, $free($warehouse->id, (int) $item->product_id));
+                $take = min($remaining, intdiv($free($warehouse->id, (int) $item->product_id), $factor));
                 if ($take <= 0) {
                     continue;
                 }
 
                 // Taken off the running total as well as the shelf, so the next
                 // line of the same product cannot be promised the same units.
-                $free($warehouse->id, (int) $item->product_id, -$take);
+                $free($warehouse->id, (int) $item->product_id, -$take * $factor);
                 $shares[$warehouse->id] = $take;
                 $remaining -= $take;
             }
@@ -635,7 +639,7 @@ class SalesOrderWorkflowService
                 // taken, they would make the *next* line look shorter than it is
                 // and the message would name a shortfall that does not exist.
                 foreach ($shares as $warehouseId => $quantity) {
-                    $free((int) $warehouseId, (int) $item->product_id, $quantity);
+                    $free((int) $warehouseId, (int) $item->product_id, $quantity * $factor);
                 }
 
                 $short[] = sprintf(
@@ -744,7 +748,9 @@ class SalesOrderWorkflowService
                 );
             }
 
-            $required = (int) $item->quantity;
+            // In base units: the shortfall becomes a purchase line, and
+            // suppliers sell the base unit.
+            $required = $item->baseQuantity();
             $available = (int) $pool[$productId];
             $covered = min($required, $available);
 
@@ -777,7 +783,7 @@ class SalesOrderWorkflowService
                 'unit_price' => $product
                     ? $this->lastPurchasePriceFor($product, $variant)
                     : $this->lastPurchasePrice($productId, null),
-                'sale_price' => round((float) $item->unit_price, 5),
+                'sale_price' => round((float) $item->unit_price / $item->stockFactor(), 5),
                 // Enough for the purchase screen's picker to label the line.
                 'product' => $product?->only(['id', 'name_ar', 'name_en', 'sku', 'price', 'cost_price']),
                 'variant' => $variant?->only(['id', 'sku', 'size', 'color', 'price', 'cost_price']),
@@ -897,8 +903,9 @@ class SalesOrderWorkflowService
 
             // An invoice may sell one size on two lines; the purchase screen
             // refuses a product twice, so they become one line.
+            // Bought in base units: a line sold by the kilo is bought by the gram.
             if (isset($out[$key])) {
-                $out[$key]['quantity'] += (int) $item->quantity;
+                $out[$key]['quantity'] += $item->baseQuantity();
 
                 continue;
             }
@@ -907,9 +914,9 @@ class SalesOrderWorkflowService
                 'product_id' => (int) $item->product_id,
                 'product_variant_id' => $variant?->id,
                 'product_name' => $variant ? $variant->displayName($product->name_ar) : $name,
-                'quantity' => (int) $item->quantity,
+                'quantity' => $item->baseQuantity(),
                 'unit_price' => $this->lastPurchasePriceFor($product, $variant),
-                'sale_price' => round((float) $item->unit_price, 5),
+                'sale_price' => round((float) $item->unit_price / $item->stockFactor(), 5),
                 // The product has sizes but the line does not say which: the
                 // buyer picks one, helped by what the sale called it.
                 'needs_variant' => $needsVariant,
@@ -1029,7 +1036,7 @@ class SalesOrderWorkflowService
         // shelf would promise the same units twice.
         foreach ($order->items as $item) {
             foreach ($item->allocations as $allocation) {
-                $free((int) $allocation->warehouse_id, (int) $item->product_id, -1 * (int) $allocation->quantity);
+                $free((int) $allocation->warehouse_id, (int) $item->product_id, -1 * $item->baseQuantity((int) $allocation->quantity));
             }
         }
 
@@ -1105,7 +1112,8 @@ class SalesOrderWorkflowService
         $plan = [];
 
         foreach ($order->items as $item) {
-            foreach ($this->shipmentSourcesFor($item, $fallbackWarehouseId) as $warehouseId => $quantity) {
+            // In the sold unit: the picker fetches two boxes, not 24 pieces.
+            foreach ($this->lineSourcesFor($item, $fallbackWarehouseId) as $warehouseId => $quantity) {
                 if ($quantity <= 0) {
                     continue;
                 }
@@ -1121,7 +1129,7 @@ class SalesOrderWorkflowService
     /**
      * Which warehouses a line ships from, and how much comes out of each.
      *
-     * Returns `[warehouse_id => quantity]`. Three shapes come out of this, and
+     * Returns `[warehouse_id => base units]`. Three shapes come out of this, and
      * they are the three ways an order gets filled:
      *
      *   - no plan            the whole line leaves the order's warehouse
@@ -1161,7 +1169,7 @@ class SalesOrderWorkflowService
      * lines of the same product on one order share a key. Each takes the share
      * of that key's cost matching the quantity it drew from that source.
      *
-     * @param  array<int,array<int,int>>  $sourcesByItem  item id => [warehouse id => quantity]
+     * @param  array<int,array<int,int>>  $sourcesByItem  item id => [warehouse id => base units]
      * @param  array<string,array{quantity:int, cost:float}>  $costByKey
      */
     private function recordLineCosts(SalesOrder $order, array $sourcesByItem, array $costByKey): void
@@ -1200,12 +1208,31 @@ class SalesOrderWorkflowService
 
             $item->forceFill([
                 'total_cost' => $cost,
-                'unit_cost' => round($cost / $shipped, 5),
+                // Per unit sold, like unit_price — `shipped` counts base units.
+                'unit_cost' => round($cost / $shipped * $item->stockFactor(), 5),
             ])->save();
         }
     }
 
     private function shipmentSourcesFor($item, int $fallbackWarehouseId): array
+    {
+        // The plan is written in the unit the line was sold in; the shelves
+        // count base units, so a line of two boxes of twelve moves twenty-four.
+        $factor = $item->stockFactor();
+
+        return array_map(
+            fn (int $quantity) => $quantity * $factor,
+            $this->lineSourcesFor($item, $fallbackWarehouseId)
+        );
+    }
+
+    /**
+     * shipmentSourcesFor() in the line's own unit — what the picker fetches
+     * and the sourcing screen edits.
+     *
+     * @return array<int,int>
+     */
+    private function lineSourcesFor($item, int $fallbackWarehouseId): array
     {
         $allocations = $item->allocations ?? collect();
 
@@ -1557,6 +1584,11 @@ class SalesOrderWorkflowService
                 'unit_price' => $item->unit_price,
                 'discount' => $item->discount ?? 0,
                 'tax_amount' => $item->tax ?? 0,
+                // The invoice sells in the unit the order did; without these
+                // a line of 2 kg would read, and return, as 2 grams.
+                'product_unit_id' => $item->product_unit_id,
+                'unit_name' => $item->unit_name,
+                'unit_multiplier' => $item->unit_multiplier ?? 1,
             ]);
         }
 
@@ -1908,14 +1940,16 @@ class SalesOrderWorkflowService
         $fallback = (int) $order->fulfillment_warehouse_id;
 
         $lines = $order->items->map(function ($item) use ($warehouses, $order, $fallback) {
-            $planned = $this->shipmentSourcesFor($item, $fallback);
+            // The screen edits the plan in the line's own unit, so what each
+            // warehouse can give is shown in whole units of it too.
+            $planned = $this->lineSourcesFor($item, $fallback);
 
             $sources = $warehouses->map(function (Warehouse $w) use ($item, $order, $planned) {
                 return [
                     'warehouse_id' => $w->id,
                     'warehouse_name' => $w->name,
                     'is_primary' => (bool) $w->is_primary,
-                    'available' => $this->sellableFor((int) $item->product_id, $w->id, $order),
+                    'available' => intdiv($this->sellableFor((int) $item->product_id, $w->id, $order), $item->stockFactor()),
                     'allocated' => (int) ($planned[$w->id] ?? 0),
                 ];
             })->values();
@@ -1932,6 +1966,7 @@ class SalesOrderWorkflowService
                 // because `??` swallows the same warning.
                 'sku' => $item->product?->sku,
                 'quantity' => (int) $item->quantity,
+                'unit_name' => $item->unit_name,
                 'allocated' => $allocated,
                 'remaining' => max(0, (int) $item->quantity - $allocated),
                 // A plan is only complete when every unit has a source named.
@@ -2137,7 +2172,7 @@ class SalesOrderWorkflowService
      *
      * Nothing is reserved; the result is a starting point the seller edits.
      *
-     * @param  array<int, array{product_id:int, quantity:int}>  $items
+     * @param  array<int, array{product_id:int, quantity:int, product_unit_id?:int}>  $items
      * @return array{preferred_warehouse_id: ?int, single_source: bool, warehouses: list<array<string,mixed>>, lines: list<array<string,mixed>>}
      */
     public function suggestSourcing(array $items, ?int $preferredWarehouseId = null): array
@@ -2153,9 +2188,13 @@ class SalesOrderWorkflowService
             }
         }
 
+        // Each line asks in the unit it is sold in; stock is free in base units.
+        $factors = $this->unitFactorsFor($items);
+
         $need = [];
-        foreach ($items as $item) {
-            $need[(int) $item['product_id']] = ($need[(int) $item['product_id']] ?? 0) + max(0, (int) $item['quantity']);
+        foreach (array_values($items) as $index => $item) {
+            $need[(int) $item['product_id']] = ($need[(int) $item['product_id']] ?? 0)
+                + max(0, (int) $item['quantity']) * $factors[$index];
         }
 
         $rank = function (Warehouse $w) use ($preferredWarehouseId) {
@@ -2178,6 +2217,7 @@ class SalesOrderWorkflowService
 
         foreach (array_values($items) as $index => $item) {
             $productId = (int) $item['product_id'];
+            $factor = $factors[$index];
             $remaining = max(0, (int) $item['quantity']);
             $allocations = [];
 
@@ -2193,12 +2233,12 @@ class SalesOrderWorkflowService
                 if ($remaining <= 0) {
                     break;
                 }
-                $take = min($remaining, (int) ($left[$productId][$warehouse->id] ?? 0));
+                $take = min($remaining, intdiv((int) ($left[$productId][$warehouse->id] ?? 0), $factor));
                 if ($take <= 0) {
                     continue;
                 }
                 $allocations[] = ['warehouse_id' => $warehouse->id, 'quantity' => $take];
-                $left[$productId][$warehouse->id] -= $take;
+                $left[$productId][$warehouse->id] -= $take * $factor;
                 $remaining -= $take;
             }
 
@@ -2211,7 +2251,7 @@ class SalesOrderWorkflowService
                 // What each warehouse holds of this product for the order,
                 // before any line takes its share — the figure the screen
                 // shows beside each source.
-                'available' => collect($free[$productId] ?? [])->map(fn ($q) => (int) $q)->all(),
+                'available' => collect($free[$productId] ?? [])->map(fn ($q) => intdiv((int) $q, $factor))->all(),
             ];
         }
 
@@ -2226,6 +2266,30 @@ class SalesOrderWorkflowService
             ])->values()->all(),
             'lines' => $lines,
         ];
+    }
+
+    /**
+     * Base units per sold unit for each line of a not-yet-saved order, by
+     * position. A unit that belongs to another product is ignored rather than
+     * trusted, as when the line is saved.
+     *
+     * @param  array<int, array<string,mixed>>  $items
+     * @return list<int>
+     */
+    private function unitFactorsFor(array $items): array
+    {
+        $items = array_values($items);
+        $units = ProductUnit::whereIn('id', collect($items)->pluck('product_unit_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+
+        return array_map(function (array $item) use ($units) {
+            $unit = $units->get((int) ($item['product_unit_id'] ?? 0));
+
+            return $unit && (int) $unit->product_id === (int) $item['product_id']
+                ? ProductUnit::stockFactorOf($unit->base_unit_multiplier)
+                : 1;
+        }, $items);
     }
 
     /**

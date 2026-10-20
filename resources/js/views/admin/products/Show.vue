@@ -9,7 +9,7 @@
                         <el-tag v-if="product.sku" type="warning" effect="plain">SKU: {{ product.sku }}</el-tag>
                     </div>
                     <div class="header-actions">
-                        <el-button :icon="Edit" type="primary" @click="editProduct">
+                        <el-button v-if="canEdit" :icon="Edit" type="primary" @click="editProduct">
                             {{ $t('edit') }}
                         </el-button>
                         <el-button :icon="ArrowRight" @click="goBack">{{ $t('back') }}</el-button>
@@ -269,12 +269,14 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { useAuthStore } from '@/stores/auth';
 import { ArrowLeftBold, ArrowRight, ArrowRightBold, Edit, StarFilled, ZoomIn } from '@element-plus/icons-vue';
 import { productImages } from '@/utils/productImages';
 
 const route = useRoute();
 const router = useRouter();
 const store = useProductsStore();
+const canEdit = computed(() => useAuthStore().canEditProducts);
 
 const loading = ref(true);
 const product = ref({});

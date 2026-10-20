@@ -768,7 +768,7 @@
                                 <el-input-number
                                     v-model="line.price"
                                     :min="0"
-                                    :precision="2"
+                                    :precision="unitPriceDigits(toNum(line.base_price) * (toNum(line.unit?.price_multiplier) || 1))"
                                     :controls="false"
                                     size="small"
                                     :aria-label="fieldLabel(line, $t('unit_price'))"
@@ -1146,6 +1146,7 @@ import { resolveImageUrl } from '@/utils/productImages';
 import api from '@/api/index';
 import { useStockShortage } from '@/Composables/useStockShortage';
 import { formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
+import { roundUnitPrice, unitPriceDigits } from '@/utils/currency';
 import { optionKey, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
@@ -1513,7 +1514,7 @@ const switchLineVariant = (line, row) => {
     }
 
     const multiplier = toNum(line.unit?.price_multiplier) || 1;
-    const priceUntouched = !toNum(line.base_price) || round2(toNum(line.price)) === round2(toNum(line.base_price) * multiplier);
+    const priceUntouched = !toNum(line.base_price) || roundUnitPrice(line.price) === roundUnitPrice(toNum(line.base_price) * multiplier);
     line.product_variant_id = row.variant_id || null;
     line.name = productName(row);
     line.sku = row.sku || '';
@@ -1522,7 +1523,7 @@ const switchLineVariant = (line, row) => {
     line.image = productImageSrc(row) || line.image;
     line.stock = row.stock_quantity != null ? Number(row.stock_quantity) : undefined;
     line.base_price = listPrice(row);
-    if (priceUntouched) line.price = round2(line.base_price * multiplier);
+    if (priceUntouched) line.price = roundUnitPrice(line.base_price * multiplier);
 };
 
 const executeQuickSearch = async () => {
@@ -1657,7 +1658,7 @@ const loadUnits = async (line, { keepSelection = false } = {}) => {
         if (defaultUnit) {
             line.unit = defaultUnit;
             if (line.base_price) {
-                line.price = round2(line.base_price * defaultUnit.price_multiplier);
+                line.price = roundUnitPrice(line.base_price * defaultUnit.price_multiplier);
             }
         }
     } catch {
@@ -1668,7 +1669,7 @@ const loadUnits = async (line, { keepSelection = false } = {}) => {
 const onUnitChange = (line, unit) => {
     line.unit = unit;
     if (unit?.price_multiplier && line.base_price) {
-        line.price = round2(line.base_price * unit.price_multiplier);
+        line.price = roundUnitPrice(line.base_price * unit.price_multiplier);
     }
 };
 
@@ -2267,7 +2268,7 @@ const submit = async (andConfirm) => {
             product_variant_id: line.product_variant_id || null,
             product_unit_id: line.unit?.id || null,
             quantity: toNum(line.quantity),
-            unit_price: round2(line.price),
+            unit_price: roundUnitPrice(line.price),
             discount: toNum(line.discount),
             tax: toNum(line.tax),
         })),

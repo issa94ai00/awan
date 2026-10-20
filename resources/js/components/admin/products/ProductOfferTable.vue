@@ -71,7 +71,7 @@
                                     :preview-src-list="printMode ? [] : getPreviewList(group.product)"
                                 />
                                 <el-popover
-                                    v-if="!printMode"
+                                    v-if="editable"
                                     placement="top"
                                     :width="228"
                                     trigger="click"
@@ -145,7 +145,7 @@
                                     {{ group.product.name_ar || group.product.name_en }}
                                 </span>
                                 <button
-                                    v-if="!printMode && !visibleColumns.product"
+                                    v-if="editable && !visibleColumns.product"
                                     type="button"
                                     class="cell-name-edit"
                                     :title="$t('edit')"
@@ -166,7 +166,7 @@
                                 {{ $t('add_variant') }}
                             </button>
                             <button
-                                v-if="!printMode && !visibleColumns.product"
+                                v-if="editable && !visibleColumns.product"
                                 type="button"
                                 class="remove-item-btn"
                                 :title="$t('remove_item')"
@@ -182,7 +182,7 @@
                             <div class="cell-product-name-row">
                                 <div class="cell-product-name">{{ group.product.name_ar || group.product.name_en }}</div>
                                 <button
-                                    v-if="!printMode"
+                                    v-if="editable"
                                     type="button"
                                     class="cell-name-edit"
                                     :title="$t('edit')"
@@ -215,7 +215,7 @@
                                 <el-icon><Plus /></el-icon>
                             </button>
                             <button
-                                v-if="!printMode && visibleColumns.product"
+                                v-if="editable && visibleColumns.product"
                                 type="button"
                                 class="add-item-variant-icon remove-item-icon"
                                 :title="$t('remove_item')"
@@ -250,7 +250,7 @@
                     <td
                         v-if="visibleColumns.details"
                         class="cell-detail"
-                        :class="{ 'has-two-actions': !printMode && isVariantRow(item) }"
+                        :class="{ 'has-two-actions': editable && isVariantRow(item) }"
                     >
                         <div class="cell-detail-view">
                             <div v-if="item.size" class="detail-size">{{ item.size }}</div>
@@ -271,7 +271,7 @@
                              two absolutely-positioned buttons claiming the same
                              corner, so the delete sat exactly on top of the edit
                              and the edit could not be clicked at all. -->
-                        <div v-if="!printMode" class="cell-row-actions">
+                        <div v-if="editable" class="cell-row-actions">
                             <el-tooltip :content="$t('edit')" placement="top" effect="dark">
                                 <button
                                     type="button"
@@ -309,8 +309,8 @@
                     <td
                         v-if="visibleColumns.specs"
                         class="cell-specs"
-                        :class="{ 'has-spec-table': specRows(item).length, editable: !printMode }"
-                        @dblclick="!printMode && $emit('edit-specs', group, item)"
+                        :class="{ 'has-spec-table': specRows(item).length, editable: editable }"
+                        @dblclick="editable && $emit('edit-specs', group, item)"
                     >
                         <table v-if="specRows(item).length" class="spec-table">
                             <tbody>
@@ -321,7 +321,7 @@
                             </tbody>
                         </table>
                         <div v-else class="detail-na">&mdash;</div>
-                        <el-tooltip v-if="!printMode" :content="$t('edit_specifications')" placement="top" effect="dark">
+                        <el-tooltip v-if="editable" :content="$t('edit_specifications')" placement="top" effect="dark">
                             <button
                                 type="button"
                                 class="cell-edit-btn cell-specs-btn"
@@ -335,11 +335,11 @@
                     <td
                         v-if="visibleColumns.price"
                         class="cell-price"
-                        :class="{ editing: !printMode && editingId === item.id }"
-                        @dblclick="!printMode && $emit('start-edit', item)"
+                        :class="{ editing: editable && editingId === item.id }"
+                        @dblclick="editable && $emit('start-edit', item)"
                     >
                         <input
-                            v-if="!printMode && editingId === item.id"
+                            v-if="editable && editingId === item.id"
                             v-model="localEditValue"
                             type="text"
                             inputmode="decimal"
@@ -358,7 +358,7 @@
                                 {{ formatPrice(item.originalPrice) }}
                             </span>
                         </template>
-                        <el-tooltip v-if="!printMode" :content="$t('click_to_edit_price')" placement="top" effect="dark">
+                        <el-tooltip v-if="editable" :content="$t('click_to_edit_price')" placement="top" effect="dark">
                             <button type="button" class="cell-edit-btn" @click="$emit('start-edit', item)">
                                 <el-icon><EditPen /></el-icon>
                             </button>
@@ -377,11 +377,11 @@
                         v-if="visibleColumns.offer && iIdx === 0"
                         :rowspan="group.items.length"
                         class="cell-offer"
-                        :class="{ editing: !printMode && editingId === offerRowId(group) }"
-                        @dblclick="!printMode && hasVariants(group) && $emit('start-edit', offerItem(group))"
+                        :class="{ editing: editable && editingId === offerRowId(group) }"
+                        @dblclick="editable && hasVariants(group) && $emit('start-edit', offerItem(group))"
                     >
                         <input
-                            v-if="!printMode && editingId === offerRowId(group)"
+                            v-if="editable && editingId === offerRowId(group)"
                             v-model="localEditValue"
                             type="text"
                             inputmode="decimal"
@@ -403,7 +403,7 @@
                                 {{ formatPrice(offerItem(group).originalPrice) }}
                             </span>
                         </template>
-                        <el-tooltip v-if="!printMode && hasVariants(group)" :content="$t('click_to_edit_price')" placement="top" effect="dark">
+                        <el-tooltip v-if="editable && hasVariants(group)" :content="$t('click_to_edit_price')" placement="top" effect="dark">
                             <button type="button" class="cell-edit-btn" @click="$emit('start-edit', offerItem(group))">
                                 <el-icon><EditPen /></el-icon>
                             </button>
@@ -425,11 +425,11 @@
                     <td
                         v-if="visibleColumns.inventory"
                         class="cell-stock"
-                        :class="{ editing: !printMode && editingStockId === item.id }"
-                        @dblclick="!printMode && $emit('start-edit-stock', item)"
+                        :class="{ editing: editable && editingStockId === item.id }"
+                        @dblclick="editable && $emit('start-edit-stock', item)"
                     >
                         <input
-                            v-if="!printMode && editingStockId === item.id"
+                            v-if="editable && editingStockId === item.id"
                             v-model="localStockValue"
                             type="text"
                             inputmode="numeric"
@@ -440,7 +440,7 @@
                             @blur="$emit('commit-edit-stock', localStockValue)"
                         />
                         <span v-else>{{ item.stock_quantity ?? 0 }}</span>
-                        <el-tooltip v-if="!printMode" :content="$t('click_to_edit_stock')" placement="top" effect="dark">
+                        <el-tooltip v-if="editable" :content="$t('click_to_edit_stock')" placement="top" effect="dark">
                             <button type="button" class="cell-edit-btn" @click="$emit('start-edit-stock', item)">
                                 <el-icon><EditPen /></el-icon>
                             </button>
@@ -485,6 +485,9 @@ const props = defineProps({
     editStockValue: { type: String, default: '' },
     itemStatus: { type: Object, default: () => ({}) },
     printMode: { type: Boolean, default: false },
+    // Shows the prices without any of the editors — for a role that may view
+    // products but not change them (UserResource::can_edit_products).
+    readonly: { type: Boolean, default: false },
     visibleColumns: {
         type: Object,
         default: () => ({ code: true, image: true, product: true, illustration: true, details: true, specs: true, price: true, cost: true, offer: true, pack: true, inventory: true }),
@@ -591,6 +594,7 @@ const colWidth = (key) => ({
 const MM_PER_ROW_PX = 59.4 / 295;
 
 /** Rows stand at a set height, rather than being however tall their content is. */
+const editable = computed(() => !props.printMode && !props.readonly);
 const hasFixedRows = computed(() => props.printMode || props.rowHeight > 0);
 
 const tableVars = computed(() => (props.rowHeight > 0

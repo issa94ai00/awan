@@ -170,7 +170,7 @@
                                 </button>
                             </el-tooltip>
                         </div>
-                        <el-tooltip :content="arrangeTooltip" placement="bottom" effect="dark">
+                        <el-tooltip v-if="canEdit" :content="arrangeTooltip" placement="bottom" effect="dark">
                             <span class="arrange-toggle-wrap">
                                 <button
                                     type="button"
@@ -467,7 +467,7 @@
         </div>
 
         <div v-else v-loading="loading" class="offer-table-wrap screen-only">
-            <ProductOfferTable :groups="groupedProducts" :loading="loading" :editing-id="editingId" :edit-value="editValue" :visible-columns="visibleColumns"
+            <ProductOfferTable :groups="groupedProducts" :loading="loading" :readonly="!canEdit" :editing-id="editingId" :edit-value="editValue" :visible-columns="visibleColumns"
                 :column-widths="columnWidths" :row-height="rowHeight" @update:column-widths="applyColumnWidths"
                 :editing-stock-id="editingStockId" :edit-stock-value="editStockValue" :item-status="itemStatus"
                 @start-edit="startEdit" @commit-edit="commitEdit" @cancel-edit="cancelEdit"
@@ -1317,6 +1317,7 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useProductsStore } from '@/stores/products';
+import { useAuthStore } from '@/stores/auth';
 import { useSettingsStore } from '@/stores/settings';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
@@ -1331,6 +1332,8 @@ const draggable = defineAsyncComponent(() => import('vuedraggable'));
 
 const { t } = useI18n();
 const store = useProductsStore();
+// The sells role views the catalogue without its editors.
+const canEdit = computed(() => useAuthStore().canEditProducts);
 const settingsStore = useSettingsStore();
 
 const searchQuery = ref('');
@@ -1454,6 +1457,7 @@ watch(isOnline, (online) => {
 //
 // @returns {Promise<{ok: boolean, queued: boolean, error: unknown}>}
 async function saveField(id, patch) {
+    if (!canEdit.value) return { ok: false, queued: false, error: null };
     // Offline edits go straight to the queue instead of attempting a request
     // that is guaranteed to fail.
     if (!isOnline.value) {

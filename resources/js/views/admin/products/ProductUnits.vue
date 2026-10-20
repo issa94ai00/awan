@@ -40,7 +40,7 @@
                             <span class="option-name">{{ productName(product) }}</span>
                             <span class="option-meta">
                                 <span v-if="product.sku" dir="ltr">{{ product.sku }}</span>
-                                <span v-if="product.price != null">{{ formatMoney(product.price) }}</span>
+                                <span v-if="product.price != null">{{ formatUnitPrice(product.price) }}</span>
                             </span>
                         </div>
                     </div>
@@ -80,7 +80,7 @@
                         </span>
                         <span class="fact">
                             <span class="fact-label">{{ t('pu_price') }}</span>
-                            <strong>{{ formatMoney(basePrice) }}</strong>
+                            <strong>{{ formatUnitPrice(basePrice) }}</strong>
                         </span>
                         <span v-if="selectedProduct.stock_quantity != null" class="fact">
                             <span class="fact-label">{{ t('pu_stock') }}</span>
@@ -98,6 +98,13 @@
                 <div class="units-head">
                     <h3>{{ t('pu_units_title') }}</h3>
                     <span v-if="units.length" class="count-pill">{{ units.length }}</span>
+                </div>
+
+                <div v-if="canEdit && baseWeight && !hasWeightUnits" class="weight-callout">
+                    <p>{{ t('pu_weight_hint') }}</p>
+                    <el-button type="primary" plain :icon="MagicStick" :loading="generatingWeight" @click="generateWeightUnits">
+                        {{ t('pu_weight_generate') }}
+                    </el-button>
                 </div>
 
                 <div v-if="units.length" class="units-grid">
@@ -130,7 +137,7 @@
                             <div>
                                 <dt>{{ t('pu_unit_price') }}</dt>
                                 <dd>
-                                    <strong>{{ formatMoney(unitPrice(unit)) }}</strong>
+                                    <strong>{{ formatUnitPrice(unitPrice(unit)) }}</strong>
                                     <span class="multiplier" dir="ltr">×{{ formatQty(unit.price_multiplier) }}</span>
                                 </dd>
                             </div>
@@ -165,7 +172,7 @@
 
                         <footer class="unit-actions">
                             <el-button
-                                v-if="!unit.is_default"
+                                v-if="canEdit && !unit.is_default"
                                 text
                                 size="small"
                                 :icon="Star"
@@ -175,7 +182,7 @@
                                 {{ t('pu_make_default') }}
                             </el-button>
                             <span v-else></span>
-                            <div class="action-group">
+                            <div v-if="canEdit" class="action-group">
                                 <el-tooltip :content="t('edit_unit')" placement="top">
                                     <el-button :icon="Edit" circle size="small" :aria-label="t('edit_unit')" @click="openEditUnitDialog(unit)" />
                                 </el-tooltip>
@@ -266,8 +273,8 @@
                         >
                             <el-input-number
                                 v-model="unitForm.base_unit_multiplier"
-                                :min="0.01"
-                                :precision="2"
+                                :min="1"
+                                :precision="0"
                                 :step="1"
                                 controls-position="right"
                                 class="full-width"
@@ -278,8 +285,8 @@
                         <el-form-item :label="t('price_multiplier')" prop="price_multiplier" :error="serverErrors.price_multiplier">
                             <el-input-number
                                 v-model="unitForm.price_multiplier"
-                                :min="0.01"
-                                :precision="2"
+                                :min="0.0001"
+                                :precision="4"
                                 :step="1"
                                 :disabled="priceFollowsQty"
                                 controls-position="right"
@@ -322,7 +329,7 @@
                         }) }}
                     </div>
                     <div class="preview-price">
-                        <strong>{{ formatMoney(formPrice) }}</strong>
+                        <strong>{{ formatUnitPrice(formPrice) }}</strong>
                         <span
                             v-if="formDelta !== 0"
                             :class="['delta', formDelta > 0 ? 'delta-up' : 'delta-down']"
@@ -352,17 +359,20 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { useAuthStore } from '@/stores/auth';
 import { productsApi, productUnitsApi } from '@/api/products';
 import { posApi } from '@/api/pos';
-import { formatMoney, formatNumber } from '@/utils/currency';
+import { formatNumber, formatUnitPrice } from '@/utils/currency';
 import { getImageUrl } from '@/utils/imageUrl';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
     ScaleToOriginal, Box, Plus, Edit, Delete, Ticket, Search, Right,
-    Star, StarFilled, CopyDocument,
+    Star, StarFilled, CopyDocument, MagicStick,
 } from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
+// The sells role may add units but not change or remove existing ones.
+const canEdit = computed(() => useAuthStore().canEditProducts);
 const route = useRoute();
 const router = useRouter();
 
@@ -412,11 +422,12 @@ const unitRules = {
     name: [{ required: true, message: t('unit_name_required'), trigger: 'blur' }],
     base_unit_multiplier: [
         { required: true, message: t('conversion_factor_required'), trigger: 'blur' },
-        { type: 'number', min: 0.01, message: t('conversion_factor_min'), trigger: 'blur' }
+        // Stock is counted in whole base units, as the server insists.
+        { type: 'integer', min: 1, message: t('conversion_factor_whole'), trigger: 'blur' }
     ],
     price_multiplier: [
         { required: true, message: t('price_multiplier_required'), trigger: 'blur' },
-        { type: 'number', min: 0.01, message: t('price_multiplier_min'), trigger: 'blur' }
+        { type: 'number', min: 0.0001, message: t('price_multiplier_min'), trigger: 'blur' }
     ],
 };
 
@@ -425,9 +436,9 @@ const toNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// 12.00 reads as 12; 1.50 stays 1.5.
+// 12.00 reads as 12; 1.50 stays 1.5; a price factor of 0.0025 keeps its digits.
 const formatQty = (value) => toNumber(value).toLocaleString(locale.value === 'en' ? 'en-US' : 'ar-SY', {
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 4,
 });
 
 const productName = (product) => (locale.value === 'en'
@@ -443,6 +454,23 @@ const unitAltName = (unit) => {
 };
 
 const baseUnitName = computed(() => selectedProduct.value?.unit || t('piece'));
+
+// Mirrors ProductUnit::weightKind on the server: 'g', 'kg' or null.
+const GRAM_NAMES = ['g', 'gr', 'gram', 'grams', 'غ', 'غرام', 'جرام', 'غم'];
+const KILO_NAMES = ['kg', 'kgs', 'kilo', 'kilogram', 'kilograms', 'كغ', 'كيلو', 'كيلوغرام', 'كيلوجرام', 'كغم'];
+const weightKind = (name) => {
+    const key = String(name || '').trim().toLowerCase();
+    if (GRAM_NAMES.includes(key)) return 'g';
+    if (KILO_NAMES.includes(key)) return 'kg';
+    return null;
+};
+const unitWeight = (unit) => weightKind(unit.name) || weightKind(unit.name_ar);
+const baseWeight = computed(() => weightKind(selectedProduct.value?.unit));
+// Already counted in grams with both units right: nothing left to generate.
+const hasWeightUnits = computed(() => baseWeight.value === 'g'
+    && units.value.some(u => unitWeight(u) === 'g' && toNumber(u.base_unit_multiplier) === 1)
+    && units.value.some(u => unitWeight(u) === 'kg' && toNumber(u.base_unit_multiplier) === 1000));
+const generatingWeight = ref(false);
 const basePrice = computed(() => toNumber(selectedProduct.value?.price));
 
 const unitPrice = (unit) => basePrice.value * toNumber(unit.price_multiplier);
@@ -639,6 +667,51 @@ const makeDefault = async (unit) => {
         ElMessage.error(errorMessage(error, t('failed_to_save_unit')));
     } finally {
         defaultingId.value = null;
+    }
+};
+
+const generateWeightUnits = async () => {
+    const price = basePrice.value;
+    const fromKilo = baseWeight.value === 'kg';
+    const stock = toNumber(selectedProduct.value?.stock_quantity);
+    const message = fromKilo
+        ? t('pu_weight_confirm_kg', {
+            stock: formatNumber(stock),
+            grams: formatNumber(stock * 1000),
+            price: formatUnitPrice(price),
+            gram: formatUnitPrice(price / 1000),
+            kilo: formatUnitPrice(price),
+        })
+        : t('pu_weight_confirm_g', { gram: formatUnitPrice(price), kilo: formatUnitPrice(price * 1000) });
+
+    try {
+        await ElMessageBox.confirm(message, t('pu_weight_title'), {
+            confirmButtonText: t('pu_weight_go'),
+            cancelButtonText: t('cancel'),
+            type: fromKilo ? 'warning' : 'info',
+        });
+    } catch {
+        return;
+    }
+
+    generatingWeight.value = true;
+    try {
+        const res = await productUnitsApi.generateWeight(selectedProductId.value);
+        const data = res.data?.data || {};
+        if (data.product) {
+            // The unit, price and stock all change when a kilo product moves onto grams.
+            const { unit, price: newPrice, cost_price, stock_quantity } = data.product;
+            const fresh = { unit, price: newPrice, cost_price, stock_quantity };
+            selectedProduct.value = { ...selectedProduct.value, ...fresh };
+            products.value = products.value.map(p => (p.id === data.product.id ? { ...p, ...fresh } : p));
+        }
+        units.value = data.units || [];
+        ElMessage.success(data.converted ? t('pu_weight_done_converted') : res.data?.message);
+        if (data.price_rounded) ElMessage.warning(t('pu_weight_rounded'));
+    } catch (error) {
+        ElMessage.error(errorMessage(error, t('failed_to_save_unit')));
+    } finally {
+        generatingWeight.value = false;
     }
 };
 
@@ -889,6 +962,27 @@ onMounted(async () => {
 
 .fact-label {
     color: #8492a6;
+}
+
+/* Weight units */
+.weight-callout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px dashed #c6d3e3;
+    border-radius: 12px;
+    background: #f7f9fc;
+}
+
+.weight-callout p {
+    margin: 0;
+    flex: 1 1 260px;
+    color: #3d4d63;
+    font-size: 0.9rem;
 }
 
 /* Units */

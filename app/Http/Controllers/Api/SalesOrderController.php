@@ -775,6 +775,7 @@ class SalesOrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
+            'items.*.product_unit_id' => 'nullable|integer',
             'fulfillment_warehouse_id' => 'nullable|integer|exists:warehouses,id',
         ]);
 
@@ -865,9 +866,11 @@ class SalesOrderController extends Controller
 
             if (! empty($unitId)) {
                 $unit = $units->get($unitId);
-                if ($unit) {
+                // A unit decides how much stock the line moves, so one that
+                // belongs to another product is dropped rather than trusted.
+                if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
                     $unitName = $unit->name_ar ?: $unit->name;
-                    $unitMultiplier = (float) $unit->base_unit_multiplier;
+                    $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
                 } else {
                     $unitId = null;
                 }

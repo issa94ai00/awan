@@ -609,9 +609,11 @@ class RmaController extends Controller
                     // key here: markAsReceived() above already assigns rather
                     // than adds, and `delta` is derived from the old count, so
                     // re-submitting the same dialog can never double-book stock.
+                    // Counted in the unit the invoice sold — two boxes back
+                    // are 24 pieces on the shelf.
                     app(InventoryService::class)->move(
                         $rmaItem->product_id,
-                        $delta,
+                        $delta * ($rmaItem->invoiceItem?->stockFactor() ?? 1),
                         $warehouseId,
                         $delta > 0
                             ? StockMovement::TYPE_IN

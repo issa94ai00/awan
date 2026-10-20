@@ -42,10 +42,22 @@ export const useAuthStore = defineStore('auth', () => {
         return wanted.some((name) => permissions.value.includes(name));
     }
 
+    // The sells role adds and views products but may not change or delete
+    // them (User::mayEditProducts). An older session without the flag keeps
+    // the editors; the server refuses the writes either way.
+    const canEditProducts = computed(() => user.value?.can_edit_products !== false);
+
     function hasRole(name) {
         const wanted = Array.isArray(name) ? name : [name];
         return wanted.some((role) => roleNames.value.includes(role));
     }
+
+    // A sales rep reads their own clients' statements through the customers
+    // module (GET /admin/customers/{id}/statement) rather than the accounting
+    // one they are not given. Anyone who can open the accounting statement
+    // keeps that screen as it is.
+    const customerStatementsOnly = computed(() => hasRole('sells')
+        && !(canAccessFeature('accounting') && can('accounting.party_statement.view')));
 
     async function init() {
         if (!token.value) return;
@@ -130,7 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
     return {
         user, token, loading, error, isAuthenticated,
         features, isSuperAdmin, isMaster, canAccessFeature,
-        permissions, roleNames, can, hasRole,
+        permissions, roleNames, can, hasRole, canEditProducts, customerStatementsOnly,
         init, fetchUser, refreshUser, login, logout,
     };
 });

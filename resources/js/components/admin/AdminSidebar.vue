@@ -283,6 +283,9 @@ const menu = [
                     { labelKey: 'quotes', path: '/admin/sales/quotes' },
                     { labelKey: 'sales_orders', path: '/admin/sales/sales-orders' },
                     { labelKey: 'payments', path: '/admin/sales/payments' },
+                    // A rep's way to their clients' statements; accountants
+                    // reach the same screen under accounting.
+                    { labelKey: 'party_statement', path: '/admin/accounting/party-statement', customerStatements: true },
                     { labelKey: 'professional_sales_reports', path: '/admin/sales/reports' },
                 ],
             },
@@ -549,6 +552,7 @@ const canAccessGroup = (group) => authStore.canAccessFeature(group);
 // but the master role, admins included. Every other page needs its page
 // permission (config/pagePermissions.js), granted on the Roles screen.
 const canSeeChild = (child) => {
+    if (child.customerStatements) return authStore.customerStatementsOnly;
     if (child.masterOnly && !authStore.isMaster) return false;
     const permission = pagePermissionFor(child.path);
     return !permission || authStore.can(permission);

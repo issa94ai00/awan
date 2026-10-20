@@ -87,6 +87,29 @@ export const formatMoney = (value, options = {}) => {
     return `${formatted} ${currencyCode}`;
 };
 
+/**
+ * A unit price as the server stores it, to five decimals. Rounding to cents
+ * would sell a gram at 0.0036 for nothing.
+ */
+export const roundUnitPrice = (value) => Math.round(toNumber(value) * 1e5) / 1e5;
+
+/** Decimals a unit price needs on screen: two, or up to five for a price under one. */
+export const unitPriceDigits = (value) => {
+    const price = Math.abs(roundUnitPrice(value));
+    if (price === 0 || price >= 1) return 2;
+    const decimals = (String(price).split('.')[1] || '').length;
+    return Math.min(5, Math.max(2, decimals));
+};
+
+/**
+ * A unit price for display: `formatMoney` with the decimals the price needs,
+ * so a gram at 0.0036 does not read 0.00.
+ */
+export const formatUnitPrice = (value, options = {}) => formatMoney(value, {
+    ...options,
+    decimals: Math.max(currencyDecimals(options.code || baseCurrencyCode()), unitPriceDigits(value)),
+});
+
 /** A plain count — localised, but never given a currency. */
 export const formatNumber = (value) => toNumber(value).toLocaleString(numberLocale());
 

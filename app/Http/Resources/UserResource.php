@@ -26,6 +26,8 @@ class UserResource extends JsonResource
             'is_super_admin' => $this->isSuperAdmin(),
             // Sales reps see only their own sales (User::isSalesScoped).
             'is_sales_scoped' => $this->isSalesScoped(),
+            // The sells role adds and views products but may not change them.
+            'can_edit_products' => $this->mayEditProducts(),
             'role' => $this->role ? [
                 'id' => $this->role->id,
                 'name' => $this->role->name,

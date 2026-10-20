@@ -179,7 +179,9 @@ const routes = [
             {
                 path: 'accounting/party-statement',
                 name: 'admin.accounting.party-statement',
-                component: () => import('@/views/admin/accounting/PartyStatement.vue')
+                component: () => import('@/views/admin/accounting/PartyStatement.vue'),
+                // Also open to a sales rep, for their own clients only.
+                meta: { customerStatements: true }
             },
             {
                 path: 'accounting/fixed-assets',
@@ -780,6 +782,9 @@ const router = createRouter({
 // Every sidebar page also needs its page permission (config/pagePermissions.js),
 // and routes with `meta.permission` need that too (any one of a list).
 const canAccessAdminPath = (auth, to) => {
+    if (to.matched.some(record => record.meta?.customerStatements) && auth.customerStatementsOnly) {
+        return true;
+    }
     const pagePermission = pagePermissionFor(to.path);
     return auth.canAccessFeature(featureForPath(to.path))
         && (!to.matched.some(record => record.meta?.masterOnly) || auth.isMaster)

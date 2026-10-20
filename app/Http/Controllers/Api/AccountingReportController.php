@@ -676,6 +676,22 @@ class AccountingReportController extends Controller
      * ledger records the movement and not the party: a receivable line says
      * 400 moved, and only the invoice behind it says whose 400 it was.
      */
+    /**
+     * The party statement for one customer, open to whoever may see that
+     * customer: a sales rep (User::isSalesScoped) only for the clients they
+     * serve, everyone else for any.
+     */
+    public function customerStatement(Request $request, int $customer): JsonResponse
+    {
+        if (! $request->user()?->servesCustomer($customer)) {
+            abort(403, 'هذا العميل غير مسند إليك.');
+        }
+
+        $request->merge(['type' => 'customer', 'party_id' => $customer]);
+
+        return $this->partyStatement($request);
+    }
+
     public function partyStatement(Request $request): JsonResponse
     {
         $validated = $request->validate([

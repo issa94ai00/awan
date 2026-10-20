@@ -102,8 +102,17 @@
                     <el-table-column prop="receipt_date" :label="$t('the_date')" width="120" align="center">
                         <template #default="{ row }">{{ formatDate(row.receipt_date) }}</template>
                     </el-table-column>
-                    <el-table-column :label="$t('rc_total')" width="120" align="center">
-                        <template #default="{ row }">{{ money(row.total_amount) }}</template>
+                    <el-table-column :label="$t('rc_total')" width="130" align="center">
+                        <template #default="{ row }">
+                            <div class="money-cell">
+                                <strong>{{ money(row.total_amount) }}</strong>
+                                <div v-if="num(row.discount) > 0" class="discount-table-tag" :title="`${$t('discount')}: ${money(row.discount)}`">
+                                    <i class="fas fa-tag"></i>
+                                    <span>-{{ money(row.discount) }}</span>
+                                    <small v-if="row.discount_percent != null && num(row.discount_percent) > 0">({{ row.discount_percent }}%)</small>
+                                </div>
+                            </div>
+                        </template>
                     </el-table-column>
                     <!-- What was paid against it, how, and what is still owed. -->
                     <el-table-column :label="$t('rc_paid')" width="150" align="center">
@@ -225,6 +234,23 @@
                             </el-table>
 
                             <div class="financial-summary-block mt-4">
+                                <div class="financial-row">
+                                    <span>{{ $t('rc_goods_value') }}</span>
+                                    <span>{{ money(selectedReceipt.goods_total) }}</span>
+                                </div>
+                                <div v-if="num(selectedReceipt.discount) > 0" class="financial-row discount-row">
+                                    <span>
+                                        {{ $t('discount') }}
+                                        <span v-if="selectedReceipt.discount_percent != null && num(selectedReceipt.discount_percent) > 0" class="discount-badge-pill">
+                                            {{ selectedReceipt.discount_percent }}%
+                                        </span>
+                                    </span>
+                                    <span class="text-danger">− {{ money(selectedReceipt.discount) }}</span>
+                                </div>
+                                <div v-if="num(selectedReceipt.tax_amount) > 0" class="financial-row">
+                                    <span>{{ $t('tax_label') }}</span>
+                                    <span>+ {{ money(selectedReceipt.tax_amount) }}</span>
+                                </div>
                                 <div class="financial-row grand-total">
                                     <span>{{ $t('grand_total_label') }}</span>
                                     <span>{{ money(selectedReceipt.total_amount) }}</span>
@@ -428,16 +454,18 @@
                         </div>
                         <el-alert v-if="orderPendingApproval" type="warning" :closable="false" show-icon class="mt-2" :title="$t('rc_order_not_approved')" />
                         <el-alert v-if="orderAlreadyReceived" type="info" :closable="false" show-icon class="mt-2" :title="$t('rc_order_already_received')" />
-                        <!-- The receipt carries no discount of its own, so an order
-                             discount is not in the supplier's balance unless it is
-                             priced into the lines. -->
                         <el-alert
-                            v-if="num(linkedOrder.discount) > 0"
-                            type="info"
+                            v-if="num(linkedOrder.discount) > 0 || (linkedOrder.discount_percent != null && num(linkedOrder.discount_percent) > 0)"
+                            type="success"
                             :closable="false"
                             show-icon
                             class="mt-2"
-                            :title="$t('rc_order_discount_note', { amount: money(linkedOrder.discount) })"
+                            :title="$t('rc_order_discount_applied_note', {
+                                amount: money(linkedOrder.discount),
+                                percent: linkedOrder.discount_percent != null && num(linkedOrder.discount_percent) > 0
+                                    ? linkedOrder.discount_percent
+                                    : (num(linkedOrder.subtotal) > 0 ? (Math.round((num(linkedOrder.discount) / num(linkedOrder.subtotal)) * 10000) / 100) : 0)
+                            })"
                         />
                     </div>
                 </div>
@@ -651,14 +679,104 @@
                         <span class="step-num">4</span>
                         <h3>{{ $t('rc_step_finish') }}</h3>
                     </div>
-                    <!-- Kept out of the item prices on purpose: tax paid to a
-                         supplier is recoverable from the authority, so booking it
-                         into the cost of the goods overstates the stock and hides
-                         the claim. -->
-                    <el-form-item :label="$t('purchase_tax_amount')">
-                        <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" :disabled="isEditMode" />
-                        <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
-                    </el-form-item>
+                    <el-row :gutter="20">
+                        <!-- Discount Field with Mode Switcher (% vs Currency), Quick Presets, and Live Preview -->
+                        <el-col :xs="24" :sm="12">
+                            <el-form-item :error="discountTooLarge ? $t('rc_discount_exceeds_goods') : ''" class="financial-form-item discount-form-item">
+                                <template #label>
+                                    <div class="form-label-with-mode">
+                                        <span class="label-text">
+                                            <i class="fas fa-tag label-icon text-primary"></i>
+                                            {{ $t('discount') }}
+                                        </span>
+                                        <div v-if="!isEditMode" class="discount-mode-toggle" role="radiogroup" :title="$t('discount')">
+                                            <button
+                                                type="button"
+                                                class="mode-btn"
+                                                :class="{ 'is-active': form.discount_mode === 'percent' }"
+                                                @click.prevent="setDiscountMode('percent')"
+                                            >
+                                                %
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="mode-btn"
+                                                :class="{ 'is-active': form.discount_mode === 'amount' }"
+                                                @click.prevent="setDiscountMode('amount')"
+                                            >
+                                                {{ currencyCode }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <div class="discount-field-container">
+                                    <!-- Percentage input mode (default & primary) -->
+                                    <el-input
+                                        v-if="form.discount_mode === 'percent'"
+                                        v-model="form.discount_percent"
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        step="any"
+                                        :placeholder="$t('discount_percent')"
+                                        class="financial-input"
+                                        :disabled="isEditMode"
+                                        @input="updateDiscountFromPercent"
+                                    >
+                                        <template #append>%</template>
+                                    </el-input>
+
+                                    <!-- Direct amount input mode -->
+                                    <el-input
+                                        v-else
+                                        v-model="form.discount"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        :placeholder="$t('discount_amount_placeholder')"
+                                        class="financial-input"
+                                        :disabled="isEditMode"
+                                        @input="updateDiscountPercentFromAmount"
+                                    >
+                                        <template #append>{{ currencyCode }}</template>
+                                    </el-input>
+
+                                    <!-- Quick Presets & Live Calculated Preview -->
+                                    <div v-if="!isEditMode" class="discount-helper-row">
+                                        <div v-if="form.discount_mode === 'percent'" class="discount-preset-chips">
+                                            <button
+                                                v-for="p in DISCOUNT_PRESETS"
+                                                :key="p"
+                                                type="button"
+                                                class="preset-chip"
+                                                :class="{ 'is-active': num(form.discount_percent) === p }"
+                                                @click.prevent="applyDiscountPreset(p)"
+                                            >
+                                                {{ p }}%
+                                            </button>
+                                        </div>
+                                        <span v-if="form.discount_mode === 'percent' && num(form.discount) > 0" class="discount-live-val">
+                                            = − {{ money(form.discount) }}
+                                        </span>
+                                        <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && goodsTotal > 0" class="discount-live-val">
+                                            ≈ {{ (Math.round((num(form.discount) / goodsTotal) * 10000) / 100).toFixed(2) }}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </el-form-item>
+                        </el-col>
+
+                        <!-- Tax amount -->
+                        <el-col :xs="24" :sm="12">
+                            <el-form-item :label="$t('purchase_tax_amount')">
+                                <el-input v-model="form.tax_amount" type="number" min="0" step="0.01" :disabled="isEditMode">
+                                    <template #append>{{ currencyCode }}</template>
+                                </el-input>
+                                <small class="field-hint">{{ $t('purchase_tax_hint') }}</small>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
 
                     <!-- Paid as the goods come in, in part or in full. Recorded as a
                          supplier payment linked to this receipt; the rest stays
@@ -704,11 +822,20 @@
                             <span>{{ $t('rc_goods_value') }}</span>
                             <span>{{ money(goodsTotal) }}</span>
                         </div>
+                        <div v-if="num(form.discount) > 0" class="financial-row discount-row">
+                            <span>
+                                {{ $t('discount') }}
+                                <span v-if="form.discount_percent !== '' && form.discount_percent != null && num(form.discount_percent) > 0" class="discount-badge-pill">
+                                    {{ form.discount_percent }}%
+                                </span>
+                            </span>
+                            <span class="text-danger">− {{ money(form.discount) }}</span>
+                        </div>
                         <div class="financial-row">
                             <span>{{ $t('tax_label') }}</span>
                             <span>+ {{ money(form.tax_amount) }}</span>
                         </div>
-                        <div class="financial-row grand-total">
+                        <div class="financial-row grand-total" :class="{ 'total-invalid': discountTooLarge }">
                             <span>{{ $t('rc_total') }}</span>
                             <span>{{ money(receiptTotal) }}</span>
                         </div>
@@ -927,12 +1054,18 @@ const blankRow = (overrides = {}) => ({
     ...overrides,
 });
 
+const currencyCode = computed(() => baseCurrencyCode());
+const DISCOUNT_PRESETS = [5, 10, 15, 20, 25];
+
 const form = reactive({
     supplier_id: '',
     purchase_order_id: '',
     warehouse_id: '',
     receipt_date: '',
     tax_amount: 0,
+    discount: 0,
+    discount_percent: '',
+    discount_mode: 'percent',
     notes: '',
     // Paid on the spot, if anything; the rest stays owed.
     paid_amount: 0,
@@ -981,6 +1114,9 @@ const resetForm = () => {
     form.warehouse_id = defaultWarehouseId();
     form.receipt_date = todayIso();
     form.tax_amount = 0;
+    form.discount = 0;
+    form.discount_percent = '';
+    form.discount_mode = 'percent';
     form.notes = '';
     form.paid_amount = 0;
     form.payment_method = 'cash';
@@ -1196,6 +1332,36 @@ const applyOrder = async (orderId, { askBeforeReplacing = true } = {}) => {
     if (!orderAlreadyReceived.value && !(data.purchase_order?.receipts_count > 0)) {
         form.tax_amount = num(data.purchase_order?.tax);
     }
+
+    // Apply discount from the linked purchase order:
+    const orderDiscountPercent = data.discount_percent != null && data.discount_percent !== ''
+        ? num(data.discount_percent)
+        : (data.purchase_order?.discount_percent != null && data.purchase_order?.discount_percent !== ''
+            ? num(data.purchase_order.discount_percent)
+            : null);
+
+    if (orderDiscountPercent !== null && orderDiscountPercent > 0) {
+        form.discount_mode = 'percent';
+        form.discount_percent = orderDiscountPercent;
+        updateDiscountFromPercent();
+    } else if (num(data.discount) > 0 || num(data.purchase_order?.discount) > 0) {
+        const disc = num(data.discount || data.purchase_order?.discount);
+        const orderSubtotal = num(data.purchase_order?.subtotal) || 0;
+        if (orderSubtotal > 0) {
+            form.discount_mode = 'percent';
+            form.discount_percent = Math.round((disc / orderSubtotal) * 10000) / 100;
+            updateDiscountFromPercent();
+        } else {
+            form.discount_mode = 'amount';
+            form.discount = disc;
+            updateDiscountPercentFromAmount();
+        }
+    } else {
+        form.discount = 0;
+        form.discount_percent = '';
+        form.discount_mode = 'percent';
+    }
+
     if (!form.notes) form.notes = t('rc_default_note', { number: data.purchase_order?.order_number });
     if (!form.warehouse_id) form.warehouse_id = defaultWarehouseId();
 
@@ -1213,6 +1379,29 @@ const refillFromOrder = async () => {
         return;
     }
     fillLinesFromOrder();
+
+    if (linkedOrder.value) {
+        const orderDiscountPercent = linkedOrder.value.discount_percent != null && linkedOrder.value.discount_percent !== ''
+            ? num(linkedOrder.value.discount_percent)
+            : null;
+        if (orderDiscountPercent !== null && orderDiscountPercent > 0) {
+            form.discount_mode = 'percent';
+            form.discount_percent = orderDiscountPercent;
+            updateDiscountFromPercent();
+        } else if (num(linkedOrder.value.discount) > 0) {
+            const disc = num(linkedOrder.value.discount);
+            const orderSubtotal = num(linkedOrder.value.subtotal) || 0;
+            if (orderSubtotal > 0) {
+                form.discount_mode = 'percent';
+                form.discount_percent = Math.round((disc / orderSubtotal) * 10000) / 100;
+                updateDiscountFromPercent();
+            } else {
+                form.discount_mode = 'amount';
+                form.discount = disc;
+                updateDiscountPercentFromAmount();
+            }
+        }
+    }
 };
 
 // The common case — everything came as asked — in one click.
@@ -1350,10 +1539,78 @@ const searchProducts = (query) => {
 };
 
 const goodsTotal = computed(() => form.items.reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
-const receiptTotal = computed(() => goodsTotal.value + num(form.tax_amount));
+const discountTooLarge = computed(() => num(form.discount) > goodsTotal.value);
+const receiptTotal = computed(() => Math.max(0, goodsTotal.value - num(form.discount)) + num(form.tax_amount));
 const owedAfterPayment = computed(() => Math.max(0, receiptTotal.value - num(form.paid_amount)));
 const filledItemCount = computed(() => form.items.filter((item) => item.product_id).length);
 const totalUnits = computed(() => form.items.reduce((sum, item) => sum + (item.product_id ? num(item.quantity) : 0), 0));
+
+const setDiscountMode = (mode) => {
+    form.discount_mode = mode;
+    if (mode === 'percent') {
+        if (num(form.discount) > 0 && (form.discount_percent === '' || form.discount_percent == null)) {
+            updateDiscountPercentFromAmount();
+        }
+        updateDiscountFromPercent();
+    } else {
+        if (num(form.discount_percent) > 0 && num(form.discount) === 0) {
+            updateDiscountFromPercent();
+        }
+    }
+};
+
+const applyDiscountPreset = (p) => {
+    form.discount_mode = 'percent';
+    if (num(form.discount_percent) === p) {
+        form.discount_percent = '';
+        form.discount = 0;
+    } else {
+        form.discount_percent = p;
+        updateDiscountFromPercent();
+    }
+};
+
+const updateDiscountFromPercent = () => {
+    if (form.discount_percent === '' || form.discount_percent == null) {
+        form.discount = 0;
+        return;
+    }
+    let pct = num(form.discount_percent);
+    if (pct < 0) {
+        pct = 0;
+        form.discount_percent = 0;
+    }
+    if (pct > 100) {
+        pct = 100;
+        form.discount_percent = 100;
+    }
+    const subtotalVal = goodsTotal.value;
+    if (subtotalVal >= 0) {
+        form.discount = Math.round((pct / 100) * subtotalVal * 100) / 100;
+    }
+};
+
+const updateDiscountPercentFromAmount = () => {
+    const disc = num(form.discount);
+    const subtotalVal = goodsTotal.value;
+    if (subtotalVal <= 0 || disc <= 0) {
+        form.discount_percent = '';
+        return;
+    }
+    form.discount_percent = Math.round((disc / subtotalVal) * 10000) / 100;
+};
+
+watch(goodsTotal, () => {
+    if (form.discount_mode === 'percent') {
+        if (form.discount_percent !== '' && form.discount_percent != null) {
+            updateDiscountFromPercent();
+        } else {
+            form.discount = 0;
+        }
+    } else {
+        updateDiscountPercentFromAmount();
+    }
+});
 
 // Stock is taken in once per product (or variant) per receipt, so a second
 // line for the same one never reached the warehouse. Two sizes of one product
@@ -1443,6 +1700,9 @@ const openEditDrawer = async (id) => {
         form.purchase_order_id = receipt.purchase_order_id || '';
         form.warehouse_id = receipt.warehouse_id;
         form.receipt_date = formatDate(receipt.receipt_date);
+        form.discount = num(receipt.discount);
+        form.discount_percent = receipt.discount_percent != null && receipt.discount_percent !== '' ? num(receipt.discount_percent) : '';
+        form.discount_mode = (receipt.discount_percent != null && receipt.discount_percent !== '') ? 'percent' : 'amount';
         // Shown but locked, like the lines: the tax was posted with them.
         form.tax_amount = receipt.tax_amount ?? 0;
         form.notes = receipt.notes || '';
@@ -1628,6 +1888,10 @@ const saveReceipt = async () => {
     }
 
     if (!isEditMode.value) {
+        if (discountTooLarge.value) {
+            ElMessage.warning(t('rc_discount_exceeds_goods'));
+            return;
+        }
         if (!form.warehouse_id) {
             ElMessage.warning(t('please_select_receiving_warehouse'));
             return;
@@ -1674,6 +1938,11 @@ const saveReceipt = async () => {
             const paid = mayPay.value ? num(form.paid_amount) : 0;
             await purchaseReceiptsApi.create({
                 ...form,
+                discount: num(form.discount),
+                discount_percent: form.discount_mode === 'percent' && form.discount_percent !== '' && form.discount_percent != null
+                    ? num(form.discount_percent)
+                    : (form.discount_percent !== '' && form.discount_percent != null ? num(form.discount_percent) : null),
+                discount_mode: form.discount_mode,
                 paid_amount: paid > 0 ? paid : null,
                 payment_method: paid > 0 ? form.payment_method : null,
                 payment_reference: paid > 0 ? (form.payment_reference || null) : null,
@@ -2579,4 +2848,121 @@ onMounted(async () => {
 .pay-dialog-meta { margin: 0 0 1rem; color: var(--el-text-color-regular); line-height: 1.7; }
 .financial-row.text-danger { color: var(--el-color-danger); font-weight: 600; }
 .financial-row.text-success { color: var(--el-color-success); font-weight: 600; }
+
+/* Financial inputs & discount UX */
+.form-label-with-mode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+.discount-mode-toggle {
+    display: inline-flex;
+    background: #e2e8f0;
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+.discount-mode-toggle .mode-btn {
+    border: none;
+    background: transparent;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.discount-mode-toggle .mode-btn:hover {
+    color: #0f172a;
+}
+.discount-mode-toggle .mode-btn.is-active {
+    background: #ffffff;
+    color: #2563eb;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.discount-field-container {
+    width: 100%;
+}
+.discount-helper-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+.discount-preset-chips {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.preset-chip {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.preset-chip:hover {
+    border-color: #94a3b8;
+    background: #f1f5f9;
+}
+.preset-chip.is-active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+.discount-live-val {
+    font-size: 0.75rem;
+    color: #ef4444;
+    font-weight: 600;
+    margin-inline-start: auto;
+}
+.discount-figure {
+    font-variant-numeric: tabular-nums;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.discount-figure.has-discount {
+    color: #ef4444;
+    font-weight: 600;
+}
+.discount-badge-pill {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.discount-table-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.discount-table-tag i {
+    font-size: 0.65rem;
+}
+.financial-row.discount-row {
+    color: #ef4444;
+}
+.financial-row.grand-total.total-invalid {
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+}
 </style>
