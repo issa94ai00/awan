@@ -417,7 +417,7 @@
                             {{ paymentStateLabel(printInvoiceData.payment_state) }}
                         </span>
                         <span class="inv-dh-count">
-                            <i class="fas fa-box-open"></i> {{ printItemsCount }} {{ $t('items') || 'أصناف' }} ({{ printTotalQuantity }} قطعة)
+                            <i class="fas fa-box-open"></i> {{ printItemsCount }} {{ $t('items') || 'أصناف' }} · {{ printQuantitySummary }}
                         </span>
                         <span class="inv-dh-pages-est">
                             <i class="fas fa-file-lines"></i> {{ estimatedPages === 1 ? 'صفحة A4 واحدة' : `${estimatedPages} صفحات A4 تقريباً` }}
@@ -616,11 +616,11 @@
                             <table class="inv-print-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 34px; text-align: center;">#</th>
+                                        <th style="width: 30px; text-align: center;">#</th>
                                         <th v-if="printSettings.showImages" style="width: 48px; text-align: center;">{{ $t('image') || 'الصورة' }}</th>
                                         <th>{{ $t('product') || 'المنتج / البيان والتفاصيل' }}</th>
                                         <th v-if="printSettings.showSku" style="width: 105px;">{{ $t('sku') || 'الرمز / SKU' }}</th>
-                                        <th style="width: 80px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
+                                        <th style="width: 72px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
                                         <th style="width: 110px; text-align: left;">{{ $t('unit_price') || 'السعر الإفرادي' }}</th>
                                         <th v-if="hasItemDiscount" style="width: 85px; text-align: left;">{{ $t('discount') || 'الخصم' }}</th>
                                         <th v-if="hasItemTax" style="width: 85px; text-align: left;">{{ $t('tax') || 'الضريبة' }}</th>
@@ -628,7 +628,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="(item, idx) in (printInvoiceData.items || [])" :key="item.id || idx">
+                                    <tr v-for="(item, idx) in (printInvoiceData.items || [])" :key="item.id || idx" class="inv-item-row">
                                         <td style="text-align: center;" class="inv-row-idx">{{ idx + 1 }}</td>
                                         <td v-if="printSettings.showImages" class="inv-print-img-cell" style="text-align: center;">
                                             <EntityImage
@@ -639,7 +639,7 @@
                                                 :lazy="false"
                                             />
                                         </td>
-                                        <td>
+                                        <td class="inv-item-cell">
                                             <div class="inv-item-name">{{ item.product_name || item.product?.name_ar || item.product?.name || item.notes || '-' }}</div>
                                             <div v-if="item.product?.name_en" class="inv-item-name-en">{{ item.product.name_en }}</div>
                                             <div v-if="item.product_variant_id && item.variant" class="inv-item-variant">
@@ -658,12 +658,11 @@
                                         </td>
                                         <td style="text-align: center;" class="inv-qty-cell">
                                             <span class="inv-qty-num">{{ item.quantity }}</span>
-                                            <span v-if="item.unit_name || item.product_unit?.name" class="inv-unit-label">
-                                                {{ item.unit_name || item.product_unit?.name }}
-                                            </span>
+                                            <span v-if="printUnitOf(item)" class="inv-unit-label">{{ printUnitOf(item) }}</span>
                                         </td>
                                         <td style="text-align: left;" class="inv-price-cell" dir="ltr">
                                             {{ formatCurrency(item.unit_price) }}
+                                            <span v-if="printUnitOf(item)" class="inv-per-unit">/ {{ printUnitOf(item) }}</span>
                                         </td>
                                         <td v-if="hasItemDiscount" style="text-align: left;" class="inv-discount-cell" dir="ltr">
                                             {{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}
@@ -684,7 +683,7 @@
                                             <strong class="inv-sum-count">{{ printItemsCount }}</strong> {{ $t('items') || 'أصناف' }}
                                             ·
                                             <span>{{ $t('total_quantity') || 'مجموع الكميات' }}:</span>
-                                            <strong class="inv-sum-count">{{ printTotalQuantity }}</strong>
+                                            <strong class="inv-sum-count">{{ printQuantitySummary }}</strong>
                                         </td>
                                         <td :colspan="(hasItemDiscount ? 1 : 0) + (hasItemTax ? 1 : 0) + 2" class="inv-sum-total" dir="ltr">
                                             <span class="inv-sum-subtext">{{ $t('subtotal') }}:</span>
@@ -1212,7 +1211,19 @@ const signatureImageUrl = computed(() => {
 
 const printItemsCount = computed(() => printInvoiceData.value?.items?.length || 0);
 
-const printTotalQuantity = computed(() => (printInvoiceData.value?.items || []).reduce((acc, it) => acc + (toNum(it.quantity)), 0));
+// The unit a line was sold in — a box, a kilo — as the customer reads it.
+const printUnitOf = (item) => item?.unit_name || item?.product_unit?.name || '';
+
+// Quantities only add up within one unit: "12 قطعة · 3 كرتونة", never "15 قطعة".
+const printQuantitySummary = computed(() => {
+    const totals = new Map();
+    (printInvoiceData.value?.items || []).forEach((it) => {
+        const unit = printUnitOf(it) || 'قطعة';
+        totals.set(unit, (totals.get(unit) || 0) + toNum(it.quantity));
+    });
+    if (!totals.size) return '0';
+    return [...totals].map(([unit, qty]) => `${qty} ${unit}`).join(' · ');
+});
 
 const estimatedPages = computed(() => {
     const items = printInvoiceData.value?.items?.length || 0;
@@ -1459,12 +1470,15 @@ const triggerPrintInvoice = async () => {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
                 }
+                .inv-table-summary-row {
+                    break-before: avoid !important;
+                    page-break-before: avoid !important;
+                }
                 .inv-doc-ribbon,
                 .inv-print-meta-grid,
                 .inv-print-summary-row,
                 .inv-print-signatures,
-                .inv-print-footer,
-                .inv-print-closing-section {
+                .inv-print-footer {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
                 }
@@ -2608,13 +2622,37 @@ onBeforeUnmount(() => {
 
 .inv-print-table tbody td {
     border: 1px solid #e2e8f0;
-    padding: 5px 8px;
+    border-inline-color: #f1f5f9;
+    padding: 6px 8px;
     text-align: right;
     vertical-align: middle;
 }
 
 .inv-print-table tbody tr:nth-child(even) {
-    background: #fbfcfd;
+    background: #f8fafc;
+}
+
+/* Each row reads as one unit: a clear rule under it, none of it split across pages. */
+.inv-print-table tbody tr.inv-item-row td {
+    border-bottom-color: #cbd5e1;
+}
+
+.inv-print-table tbody tr.inv-item-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+/* Long product names wrap inside their column instead of stretching the table. */
+.inv-item-cell {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.inv-price-cell,
+.inv-discount-cell,
+.inv-tax-cell,
+.inv-total-cell {
+    white-space: nowrap;
 }
 
 .inv-row-idx {
@@ -2629,6 +2667,7 @@ onBeforeUnmount(() => {
 
 .inv-item-name {
     font-weight: 700;
+    font-size: 11.5px;
     color: #0f172a;
     line-height: 1.45;
 }
@@ -2671,18 +2710,29 @@ onBeforeUnmount(() => {
 
 .inv-qty-cell {
     font-weight: 800;
+    background: var(--inv-highlight-bg, #f8fafc);
 }
 
 .inv-qty-num {
-    font-size: 12px;
+    display: block;
+    font-size: 13px;
+    line-height: 1.2;
     color: #0f172a;
 }
 
 .inv-unit-label {
+    display: block;
     font-size: 9px;
-    font-weight: normal;
+    font-weight: 600;
     color: #64748b;
-    margin-inline-start: 2px;
+    line-height: 1.2;
+}
+
+.inv-per-unit {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #94a3b8;
 }
 
 .inv-price-cell {
@@ -3023,6 +3073,10 @@ onBeforeUnmount(() => {
     font-size: 10px;
 }
 
+.inv-printable-sheet.density-compact .inv-qty-num {
+    font-size: 11.5px;
+}
+
 .inv-printable-sheet.density-compact .inv-print-summary-row {
     margin-bottom: 10px;
 }
@@ -3195,15 +3249,21 @@ onBeforeUnmount(() => {
         break-before: auto !important;
     }
 
+    /* Each closing block stays whole, but the section may split between them —
+       holding all of it together pushed it to a new page and left a blank half. */
     .inv-doc-ribbon,
     .inv-print-meta-grid,
     .inv-print-table tr,
     .inv-print-summary-row,
     .inv-print-signatures,
-    .inv-print-footer,
-    .inv-print-closing-section {
+    .inv-print-footer {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+    }
+
+    .inv-table-summary-row {
+        break-before: avoid !important;
+        page-break-before: avoid !important;
     }
 
     .inv-print-table thead {
