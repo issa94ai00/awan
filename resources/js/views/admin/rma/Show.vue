@@ -198,7 +198,12 @@
                     <div class="credit-note" v-for="note in creditNotes" :key="note.id">
                         <div class="credit-note-head">
                             <strong>{{ note.credit_note_number }}</strong>
-                            <el-tag :type="creditNoteTagType(note.status)" size="small">{{ note.status_text }}</el-tag>
+                            <span class="credit-note-actions">
+                                <el-tag :type="creditNoteTagType(note.status)" size="small">{{ note.status_text }}</el-tag>
+                                <el-button size="small" circle text type="primary" :title="t('print')" :aria-label="t('print')" @click="openCreditNotePrint(note.id)">
+                                    <i class="fas fa-print"></i>
+                                </el-button>
+                            </span>
                         </div>
                         <dl class="fact-list compact">
                             <div class="fact-row">
@@ -299,7 +304,9 @@
                 <el-button type="primary" :loading="completeLoading" @click="submitComplete">{{ t('confirm_and_close_request') }}</el-button>
             </template>
         </el-dialog>
-    </div>
+  
+    <CreditNotePrintDialog v-model="creditNotePrintVisible" :credit-note-id="creditNotePrintId" />
+  </div>
 </template>
 
 <script setup>
@@ -310,6 +317,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import rmaService from '@/services/rma'
+import CreditNotePrintDialog from '@/components/admin/sales/CreditNotePrintDialog.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -373,6 +381,14 @@ const sumRefund = (predicate) =>
     .reduce((sum, item) => sum + (parseFloat(item.refund_amount) || 0), 0)
 
 const creditNotes = computed(() => rma.value.credit_notes || [])
+
+// The printable credit note for one of them.
+const creditNotePrintVisible = ref(false)
+const creditNotePrintId = ref(null)
+const openCreditNotePrint = (id) => {
+  creditNotePrintId.value = id
+  creditNotePrintVisible.value = true
+}
 
 const creditNoteTagType = (status) => ({
   issued: 'warning',
@@ -1000,6 +1016,7 @@ onMounted(() => {
 .credit-note + .credit-note { margin-top: 0.75rem; }
 .credit-note-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.4rem; }
 .credit-note-head strong { font-variant-numeric: tabular-nums; }
+.credit-note-actions { display: inline-flex; align-items: center; gap: 0.25rem; }
 
 /* ── Dialogs ────────────────────────────────────────────────────────── */
 .rma-dialog { width: 600px; max-width: 92vw; }

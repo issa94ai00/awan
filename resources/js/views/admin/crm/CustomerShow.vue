@@ -264,6 +264,13 @@
                 <el-table-column :label="$t('date')" width="130">
                   <template #default="{ row }">{{ date(row.issue_date) }}</template>
                 </el-table-column>
+                <el-table-column width="64" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" circle text type="primary" :title="$t('print')" :aria-label="$t('print')" @click="openCreditNotePrint(row.id)">
+                      <i class="fas fa-print"></i>
+                    </el-button>
+                  </template>
+                </el-table-column>
               </el-table>
               <EmptyHint v-if="!data.credit_notes.length" text="لا توجد إشعارات دائنة لهذا العميل." />
             </el-tab-pane>
@@ -351,6 +358,8 @@
       :customer-id="customer.id"
       @saved="loadOverview"
     />
+
+    <CreditNotePrintDialog v-model="creditNotePrintVisible" :credit-note-id="creditNotePrintId" />
   </div>
 </template>
 
@@ -363,6 +372,7 @@ import { User, Back, Edit, Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElTag } from 'element-plus';
 import api from '@/api';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
+import CreditNotePrintDialog from '@/components/admin/sales/CreditNotePrintDialog.vue';
 
 const { t } = useI18n();
 import {
@@ -461,6 +471,14 @@ const kpis = computed(() => [
     hint: `${metrics.value.returns_count || 0} مرتجع · ${metrics.value.open_returns_count || 0} قيد المعالجة`,
   },
 ]);
+
+// The printable credit note for one row of the tab.
+const creditNotePrintVisible = ref(false);
+const creditNotePrintId = ref(null);
+const openCreditNotePrint = (id) => {
+  creditNotePrintId.value = id;
+  creditNotePrintVisible.value = true;
+};
 
 const creditNoteTone = (status) => ({
   issued: 'warning',
