@@ -318,8 +318,11 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column width="96" align="center">
+                <el-table-column width="128" align="center">
                     <template #default="{ row }">
+                        <el-tooltip :content="$t('print')" placement="top" :enterable="false">
+                            <el-button size="small" circle text type="primary" :aria-label="$t('print')" @click="openPrint(row)"><i class="fas fa-print"></i></el-button>
+                        </el-tooltip>
                         <template v-if="row.can_change">
                             <el-tooltip :content="$t('edit')" placement="top" :enterable="false">
                                 <el-button size="small" circle text :aria-label="$t('edit')" @click="openEdit(row)"><i class="fas fa-pen"></i></el-button>
@@ -641,6 +644,8 @@
                 <el-button type="primary" :loading="store.saving" :disabled="!!editBlocker" @click="saveEdit">{{ $t('save_changes') }}</el-button>
             </template>
         </el-dialog>
+
+        <CustomerPaymentPrintDialog v-model="printVisible" :payment="printRow" :foreign="!!printRow && isForeign(printRow)" />
     </div>
 </template>
 
@@ -653,6 +658,7 @@ import { Plus, Refresh, RefreshLeft, Search } from '@element-plus/icons-vue';
 import { usePaymentsStore } from '@/stores/payments';
 import { expensesApi } from '@/api/expenses';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
+import CustomerPaymentPrintDialog from '@/components/admin/sales/CustomerPaymentPrintDialog.vue';
 import ExpenseDialog from '@/components/admin/sales/ExpenseDialog.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
@@ -699,6 +705,14 @@ const invoiceState = (row) => {
 
 const isForeign = (row) => row.tendered_amount !== null && row.tendered_amount !== undefined
     && row.currency && !store.wallets.find((w) => w.currency === row.currency)?.is_base;
+
+// The receipt (or refund) voucher for one payment, printed from its list row.
+const printVisible = ref(false);
+const printRow = ref(null);
+const openPrint = (row) => {
+    printRow.value = row;
+    printVisible.value = true;
+};
 
 // ── Summary ──────────────────────────────────────────────────────────────
 const summary = computed(() => store.summary || {
