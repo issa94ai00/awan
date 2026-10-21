@@ -11,6 +11,16 @@
             <div class="detail-header">
                 <span class="detail-number" dir="ltr">{{ ret?.return_number || summary?.return_number }}</span>
                 <el-tag type="success" effect="light" round size="small">{{ $t('pret_status_completed') }}</el-tag>
+                <el-button
+                    v-if="ret?.id || summary?.id"
+                    size="small"
+                    type="primary"
+                    plain
+                    class="detail-print-btn"
+                    @click="emit('print', ret?.id || summary?.id)"
+                >
+                    <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                </el-button>
             </div>
         </template>
 
@@ -137,7 +147,7 @@ const props = defineProps({
     summary: { type: Object, default: null },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'print']);
 const { t } = useI18n();
 
 const ret = ref(null);
@@ -184,6 +194,7 @@ const toneOf = (value) => (Math.abs(value) < 0.005 ? 'tone-flat' : value > 0 ? '
 
 <style scoped>
 .detail-header { display: flex; align-items: center; gap: 0.6rem; }
+.detail-print-btn { margin-inline-start: auto; }
 .detail-number { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.1rem; color: #0f172a; }
 
 .facts {

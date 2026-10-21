@@ -163,9 +163,14 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column width="48" align="center">
-                    <template #default>
-                        <el-icon class="row-chevron"><ArrowLeft /></el-icon>
+                <el-table-column width="96" align="center">
+                    <template #default="{ row }">
+                        <div class="row-end-actions">
+                            <el-button size="small" type="primary" plain :title="$t('print')" @click.stop="openPrint(row.id)">
+                                <i class="fas fa-print"></i>
+                            </el-button>
+                            <el-icon class="row-chevron"><ArrowLeft /></el-icon>
+                        </div>
                     </template>
                 </el-table-column>
             </el-table>
@@ -195,7 +200,9 @@
             @saved="onSaved"
         />
 
-        <PurchaseReturnDetail v-model="detailVisible" :summary="detailRow" />
+        <PurchaseReturnDetail v-model="detailVisible" :summary="detailRow" @print="openPrint" />
+
+        <PurchaseReturnPrintDialog v-model="printVisible" :return-id="printReturnId" />
     </div>
 </template>
 
@@ -210,6 +217,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import PurchaseReturnForm from '@/components/admin/purchases/PurchaseReturnForm.vue';
 import PurchaseReturnDetail from '@/components/admin/purchases/PurchaseReturnDetail.vue';
+import PurchaseReturnPrintDialog from '@/components/admin/purchases/PurchaseReturnPrintDialog.vue';
 import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { suppliersApi } from '@/api/suppliers';
 import { useInventoryStore } from '@/stores/inventory';
@@ -386,6 +394,14 @@ const detailRow = ref(null);
 
 const openCreate = () => { createVisible.value = true; };
 
+// The purchase return note for one return.
+const printVisible = ref(false);
+const printReturnId = ref(null);
+const openPrint = (id) => {
+    printReturnId.value = id;
+    printVisible.value = true;
+};
+
 const openDetail = (row) => {
     detailRow.value = row;
     detailVisible.value = true;
@@ -437,6 +453,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.row-end-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
 .purchase-returns { font-family: 'Cairo', sans-serif; }
 
 /* ── Cards ── */
