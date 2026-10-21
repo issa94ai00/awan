@@ -47,6 +47,7 @@ final class PagePermissions
         // Returns (RMA)
         'rma.view' => ['نظرة عامة على المرتجعات', 'rma', 'rma', '/admin/rma'],
         'rma.create' => ['إنشاء طلب إرجاع', 'rma', 'rma', '/admin/rma/create'],
+        'rma.credit_notes.view' => ['صفحة الإشعارات الدائنة', 'rma', 'rma', '/admin/rma/credit-notes'],
 
         // Purchases
         'purchases.view' => ['عرض المشتريات', 'purchases', 'purchases', '/admin/purchases'],

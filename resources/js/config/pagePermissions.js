@@ -23,6 +23,7 @@ const PAGE_PERMISSIONS = [
     ['/admin/sales/reports', 'sales.reports.view'],
     ['/admin/rma', 'rma.view'],
     ['/admin/rma/create', 'rma.create'],
+    ['/admin/rma/credit-notes', 'rma.credit_notes.view'],
     ['/admin/purchases', 'purchases.view'],
     ['/admin/purchases/suppliers', 'purchases.suppliers.view'],
     ['/admin/purchases/orders', 'purchases.orders.view'],

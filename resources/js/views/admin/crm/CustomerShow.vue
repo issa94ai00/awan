@@ -273,6 +273,12 @@
                 </el-table-column>
               </el-table>
               <EmptyHint v-if="!data.credit_notes.length" text="لا توجد إشعارات دائنة لهذا العميل." />
+              <!-- The tab shows the latest few; the full list lives on its own page. -->
+              <div v-else class="tab-view-all">
+                <el-button text type="primary" @click="router.push({ path: '/admin/rma/credit-notes', query: { customer_id: customer.id || route.params.id, customer_name: customer.name || undefined } })">
+                  {{ $t('cn_view_all_for_customer') }} <i class="fas fa-arrow-left"></i>
+                </el-button>
+              </div>
             </el-tab-pane>
 
             <el-tab-pane name="returns" :label="tabLabel('المرتجعات', data.rma_requests)">
@@ -588,6 +594,9 @@ onMounted(loadOverview);
 </script>
 
 <style scoped>
+.tab-view-all { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
+[dir='ltr'] .tab-view-all i { transform: scaleX(-1); }
+
 .crm-customer-show {
   padding: 4px;
 }

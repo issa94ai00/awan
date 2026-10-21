@@ -757,6 +757,11 @@ const routes = [
                 component: () => import('@/views/admin/rma/Form.vue')
             },
             {
+                path: 'rma/credit-notes',
+                name: 'admin.credit-notes.index',
+                component: () => import('@/views/admin/rma/CreditNotes.vue')
+            },
+            {
                 path: 'rma/:id',
                 name: 'admin.rma.show',
                 component: () => import('@/views/admin/rma/Show.vue')

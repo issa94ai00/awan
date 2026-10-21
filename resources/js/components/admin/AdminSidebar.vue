@@ -294,6 +294,7 @@ const menu = [
                 children: [
                     { labelKey: 'overview', path: '/admin/rma' },
                     { labelKey: 'create', path: '/admin/rma/create' },
+                    { labelKey: 'credit_notes', path: '/admin/rma/credit-notes' },
                 ],
             },
             {
