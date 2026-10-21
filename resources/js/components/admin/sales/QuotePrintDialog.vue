@@ -34,7 +34,7 @@
                         <i class="fas fa-hourglass-half"></i> {{ validity.label }}
                     </span>
                     <span class="qp-dh-count">
-                        <i class="fas fa-box-open"></i> {{ $t('qt_print_lines', { count: lineCount, qty: totalQuantity }) }}
+                        <i class="fas fa-box-open"></i> {{ $t('qt_print_lines', { count: lineCount, qty: quantitySummary }) }}
                     </span>
                     <span class="qp-dh-pages-est">
                         <i class="fas fa-file-lines"></i> {{ $t('qt_print_pages', { count: estimatedPages }, estimatedPages) }}
@@ -206,11 +206,11 @@
                         <table class="qp-print-table">
                             <thead>
                                 <tr>
-                                    <th class="c-center" style="width: 34px;">#</th>
+                                    <th class="c-center" style="width: 30px;">#</th>
                                     <th v-if="printSettings.showImages" class="c-center" style="width: 48px;">{{ $t('qt_print_image') }}</th>
                                     <th>{{ $t('product') }}</th>
                                     <th v-if="printSettings.showSku" style="width: 105px;">SKU</th>
-                                    <th class="c-center" style="width: 80px;">{{ $t('quantity') }}</th>
+                                    <th class="c-center" style="width: 72px;">{{ $t('quantity') }}</th>
                                     <th class="c-end" style="width: 110px;">{{ $t('unit_price') }}</th>
                                     <th v-if="hasLineDiscount" class="c-end" style="width: 85px;">{{ $t('discount') }}</th>
                                     <th v-if="hasLineTax" class="c-end" style="width: 85px;">{{ $t('tax') }}</th>
@@ -218,7 +218,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(item, idx) in items" :key="item.id || idx">
+                                <tr v-for="(item, idx) in items" :key="item.id || idx" class="qp-item-row">
                                     <td class="c-center qp-row-idx">{{ idx + 1 }}</td>
                                     <td v-if="printSettings.showImages" class="c-center qp-print-img-cell">
                                         <EntityImage
@@ -229,7 +229,7 @@
                                             :lazy="false"
                                         />
                                     </td>
-                                    <td>
+                                    <td class="qp-item-cell">
                                         <div class="qp-item-name">{{ itemName(item) }}</div>
                                         <div v-if="item.product?.name_en && lang === 'ar'" class="qp-item-name-en">{{ item.product.name_en }}</div>
                                         <div v-if="item.description && item.product && item.description !== itemName(item)" class="qp-item-desc">{{ item.description }}</div>
@@ -237,9 +237,12 @@
                                     <td v-if="printSettings.showSku" class="qp-sku-cell"><code>{{ item.product?.sku || '—' }}</code></td>
                                     <td class="c-center qp-qty-cell">
                                         <span class="qp-qty-num">{{ item.quantity }}</span>
-                                        <span v-if="item.product?.unit" class="qp-unit-label">{{ item.product.unit }}</span>
+                                        <span v-if="unitOf(item)" class="qp-unit-label">{{ unitOf(item) }}</span>
                                     </td>
-                                    <td class="c-end qp-price-cell" dir="ltr">{{ formatCurrency(item.unit_price) }}</td>
+                                    <td class="c-end qp-price-cell" dir="ltr">
+                                        {{ formatCurrency(item.unit_price) }}
+                                        <span v-if="unitOf(item)" class="qp-per-unit">/ {{ unitOf(item) }}</span>
+                                    </td>
                                     <td v-if="hasLineDiscount" class="c-end qp-discount-cell" dir="ltr">{{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}</td>
                                     <td v-if="hasLineTax" class="c-end qp-tax-cell" dir="ltr">{{ toNum(item.tax) ? formatCurrency(item.tax) : '—' }}</td>
                                     <td class="c-end qp-total-cell" dir="ltr"><strong>{{ formatCurrency(item.total) }}</strong></td>
@@ -253,7 +256,7 @@
                                         <strong class="qp-sum-count">{{ lineCount }}</strong>
                                         ·
                                         <span>{{ $t('qt_print_total_qty') }}:</span>
-                                        <strong class="qp-sum-count">{{ totalQuantity }}</strong>
+                                        <strong class="qp-sum-count">{{ quantitySummary }}</strong>
                                     </td>
                                     <td :colspan="(hasLineDiscount ? 1 : 0) + (hasLineTax ? 1 : 0) + 2" class="qp-sum-total" dir="ltr">
                                         <span class="qp-sum-subtext">{{ $t('subtotal') }}:</span>
@@ -442,7 +445,19 @@ const companyAddress = computed(() => site.value.contact_address || site.value.a
 
 const items = computed(() => quote.value?.items || []);
 const lineCount = computed(() => items.value.length);
-const totalQuantity = computed(() => items.value.reduce((sum, item) => sum + toNum(item.quantity), 0));
+// The unit a line is quoted in — a box, a kilo — as the customer reads it.
+const unitOf = (item) => item?.unit_name || item?.product?.unit || '';
+
+// Quantities only add up within one unit: "12 pcs · 3 boxes", never "15 pcs".
+const quantitySummary = computed(() => {
+    const totals = new Map();
+    items.value.forEach((item) => {
+        const unit = unitOf(item) || t('qt_print_pcs');
+        totals.set(unit, (totals.get(unit) || 0) + toNum(item.quantity));
+    });
+    if (!totals.size) return '0';
+    return [...totals].map(([unit, qty]) => `${qty} ${unit}`).join(' · ');
+});
 const hasLineDiscount = computed(() => items.value.some((item) => toNum(item.discount)));
 const hasLineTax = computed(() => items.value.some((item) => toNum(item.tax)));
 
@@ -548,9 +563,12 @@ const printCss = () => `
     .qp-document-body { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 10mm 12mm !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; background: #fff !important; }
     .qp-print-table thead { display: table-header-group !important; }
     .qp-print-table tfoot { display: table-row-group !important; }
-    .qp-print-table tr, .qp-doc-ribbon, .qp-print-meta-grid, .qp-print-summary-row, .qp-print-signatures, .qp-print-footer, .qp-print-closing-section {
+    /* Each closing block stays whole, but the section may split between them —
+       holding all of it together pushed it to a new page and left a blank half. */
+    .qp-print-table tr, .qp-doc-ribbon, .qp-print-meta-grid, .qp-print-summary-row, .qp-print-signatures, .qp-print-footer {
         break-inside: avoid !important; page-break-inside: avoid !important;
     }
+    .qp-table-summary-row { break-before: avoid !important; page-break-before: avoid !important; }
     .qp-screen-only { display: none !important; }
 `;
 
@@ -815,19 +833,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
     background: var(--qp-header-bg); color: #ffffff; border: 1px solid var(--qp-header-bg);
     padding: 6px 8px; text-align: start; font-weight: 800; font-size: 10.5px; line-height: 1.4;
 }
-.qp-print-table tbody td { border: 1px solid #e2e8f0; padding: 5px 8px; text-align: start; vertical-align: middle; }
-.qp-print-table tbody tr:nth-child(even) { background: #fbfcfd; }
+.qp-print-table tbody td { border: 1px solid #e2e8f0; border-inline-color: #f1f5f9; padding: 6px 8px; text-align: start; vertical-align: middle; }
+.qp-print-table tbody tr:nth-child(even) { background: #f8fafc; }
+/* Each row reads as one unit: a clear rule under it, none of it split across pages. */
+.qp-print-table tbody tr.qp-item-row td { border-bottom-color: #cbd5e1; }
+.qp-print-table tbody tr.qp-item-row { break-inside: avoid; page-break-inside: avoid; }
+/* Long product names wrap inside their column instead of stretching the table. */
+.qp-item-cell { overflow-wrap: anywhere; word-break: break-word; }
+.qp-price-cell, .qp-discount-cell, .qp-tax-cell, .qp-total-cell { white-space: nowrap; }
 .qp-print-table .c-center { text-align: center; }
 .qp-print-table .c-end { text-align: end; }
 .qp-row-idx { color: #64748b; font-weight: 700; font-size: 10px; }
 .qp-print-img-cell { padding: 2px !important; }
-.qp-item-name { font-weight: 700; color: #0f172a; line-height: 1.45; }
+.qp-item-name { font-weight: 700; font-size: 11.5px; color: #0f172a; line-height: 1.45; }
 .qp-item-name-en { font-size: 9px; color: #64748b; direction: ltr; text-align: start; }
 .qp-item-desc { font-size: 9px; color: #64748b; margin-top: 2px; }
 .qp-sku-cell code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font-size: 9.5px; color: #475569; font-family: 'JetBrains Mono', monospace; }
-.qp-qty-cell { font-weight: 800; }
-.qp-qty-num { font-size: 12px; color: #0f172a; }
-.qp-unit-label { font-size: 9px; font-weight: normal; color: #64748b; margin-inline-start: 2px; }
+.qp-qty-cell { font-weight: 800; background: var(--qp-highlight-bg, #f8fafc); }
+.qp-qty-num { display: block; font-size: 13px; line-height: 1.2; color: #0f172a; }
+.qp-unit-label { display: block; font-size: 9px; font-weight: 600; color: #64748b; line-height: 1.2; }
+.qp-per-unit { display: block; font-size: 8.5px; font-weight: 500; color: #94a3b8; }
 .qp-price-cell { color: #334155; font-weight: 600; }
 .qp-discount-cell { color: #dc2626; font-weight: 600; }
 .qp-tax-cell { color: #64748b; }
@@ -898,6 +923,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 .qp-printable-sheet.density-compact .qp-print-table tbody td { padding: 3px 6px; }
 .qp-printable-sheet.density-compact .qp-print-table thead th { padding: 4px 6px; }
 .qp-printable-sheet.density-compact .qp-item-name { font-size: 10px; }
+.qp-printable-sheet.density-compact .qp-qty-num { font-size: 11.5px; }
 .qp-printable-sheet.density-compact .qp-print-summary-row { margin-bottom: 10px; }
 .qp-printable-sheet.density-compact .qp-print-signatures { margin-top: 10px; padding-top: 6px; }
 .qp-printable-sheet.density-compact .sig-title { margin-bottom: 12px; }
