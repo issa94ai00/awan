@@ -9,6 +9,9 @@
             >
                 <template #actions>
                     <el-tag :type="statusType(count.status)" effect="dark" size="large">{{ count.status_text }}</el-tag>
+                    <el-button type="primary" plain @click="printVisible = true">
+                        <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                    </el-button>
                 </template>
             </AdminPageHeader>
 
@@ -153,6 +156,9 @@
         </div>
 
         <el-empty v-else :description="$t('wms.cycle_count_not_found')" />
+
+        <!-- The count sheet before counting, the variance report after. -->
+        <CycleCountPrintDialog v-model="printVisible" :count="count" />
     </div>
 </template>
 
@@ -165,6 +171,7 @@ import { wmsService } from '@/services/wms';
 import api from '@/api';
 import { formatNumber as formatCount } from '@/utils/currency';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import CycleCountPrintDialog from '@/components/admin/wms/CycleCountPrintDialog.vue';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -174,6 +181,7 @@ const loading = ref(false);
 const saving = ref(false);
 const products = ref([]);
 const bins = ref([]);
+const printVisible = ref(false);
 
 const itemForm = reactive({ product_id: null, bin_id: null, counted_quantity: 0, variance_reason: '', notes: '' });
 

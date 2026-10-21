@@ -1490,7 +1490,7 @@ class WmsController extends Controller
     /** Every cycle count action answers with the refreshed count — same reasoning as picking. */
     private function cycleCountResponse(CycleCount $count, string $message)
     {
-        $count->refresh()->load(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'items.product:id,sku,name_ar,name_en', 'items.bin:id,bin_code']);
+        $count->refresh()->load(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'adjuster:id,name', 'items.product:id,sku,name_ar,name_en,unit', 'items.bin:id,bin_code']);
 
         return response()->json([
             'success' => true,
@@ -1524,6 +1524,8 @@ class WmsController extends Controller
             'counter_name' => $c->counter?->name,
             'reviewer_id' => $c->reviewer_id ? (int) $c->reviewer_id : null,
             'reviewer_name' => $c->reviewer?->name,
+            // Only when loaded: the list does not need it, the detail prints it.
+            'adjuster_name' => $c->relationLoaded('adjuster') ? $c->adjuster?->name : null,
             'total_items' => (int) $c->total_items,
             'variance_items' => (int) $c->variance_items,
             'variance_value' => (float) $c->variance_value,
@@ -1552,6 +1554,8 @@ class WmsController extends Controller
                 'sku' => $i->product?->sku,
                 'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
                 'bin_code' => $i->bin?->bin_code,
+                'unit' => $i->product?->unit,
+                'unit_cost' => (float) $i->unit_cost,
                 'expected_quantity' => (int) $i->expected_quantity,
                 'counted_quantity' => (int) $i->counted_quantity,
                 'variance' => (int) $i->variance,
@@ -1568,7 +1572,7 @@ class WmsController extends Controller
 
     public function showCycleCount($id)
     {
-        $count = CycleCount::with(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'items.product:id,sku,name_ar,name_en', 'items.bin:id,bin_code'])
+        $count = CycleCount::with(['warehouse:id,name,code', 'bin:id,bin_code', 'counter:id,name', 'reviewer:id,name', 'adjuster:id,name', 'items.product:id,sku,name_ar,name_en,unit', 'items.bin:id,bin_code'])
             ->findOrFail($id);
 
         return response()->json([
