@@ -1572,13 +1572,13 @@
                             <th v-if="printSettings.showImages" style="width: 52px; text-align: center;">{{ $t('image') || 'الصورة' }}</th>
                             <th>{{ $t('product') || 'المنتج / الصنف' }}</th>
                             <th style="width: 120px;">{{ $t('sku') || 'الرمز' }}</th>
-                            <th style="width: 70px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
+                            <th style="width: 72px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
                             <th style="width: 105px; text-align: left;">{{ $t('unit_cost') || 'السعر الإفرادي' }}</th>
                             <th style="width: 115px; text-align: left;">{{ $t('total') || 'الإجمالي' }}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx">
+                        <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx" class="po-item-row">
                             <td style="text-align: center;" class="po-row-idx">{{ idx + 1 }}</td>
                             <td v-if="printSettings.showImages" class="po-print-img-cell" style="text-align: center;">
                                 <EntityImage
@@ -1588,7 +1588,7 @@
                                     shape="square"
                                 />
                             </td>
-                            <td>
+                            <td class="po-item-cell">
                                 <div class="po-item-name">{{ item.product?.name_ar || item.product_name || '-' }}</div>
                                 <div v-if="item.product?.name_en" class="po-item-name-en">{{ item.product.name_en }}</div>
                                 <div v-if="item.product_variant_id" class="po-item-variant">
@@ -1598,17 +1598,35 @@
                             <td class="po-sku-cell">
                                 <code>{{ item.variant?.sku || item.product?.sku || '—' }}</code>
                             </td>
-                            <td style="text-align: center; font-weight: 700;">
-                                {{ item.quantity }}
+                            <td style="text-align: center;" class="po-qty-cell">
+                                <span class="po-qty-num">{{ item.quantity }}</span>
+                                <span v-if="printUnitOf(item)" class="po-unit-label">{{ printUnitOf(item) }}</span>
                             </td>
-                            <td style="text-align: left;" dir="ltr">
+                            <td style="text-align: left;" class="po-price-cell" dir="ltr">
                                 {{ money(item.unit_price) }}
+                                <span v-if="printUnitOf(item)" class="po-per-unit">/ {{ printUnitOf(item) }}</span>
                             </td>
-                            <td style="text-align: left; font-weight: 800;" dir="ltr">
+                            <td style="text-align: left;" class="po-total-cell" dir="ltr">
                                 {{ money(item.quantity * item.unit_price) }}
                             </td>
                         </tr>
                     </tbody>
+                    <tfoot>
+                        <tr class="po-table-summary-row">
+                            <td :colspan="(printSettings.showImages ? 1 : 0) + 4" class="po-sum-label">
+                                <i class="fas fa-layer-group"></i>
+                                <span>{{ $t('qt_print_lines_total') }}:</span>
+                                <strong class="po-sum-count">{{ (printOrderData.items || []).length }}</strong>
+                                ·
+                                <span>{{ $t('qt_print_total_qty') }}:</span>
+                                <strong class="po-sum-count">{{ printQuantitySummary }}</strong>
+                            </td>
+                            <td colspan="2" class="po-sum-total" dir="ltr">
+                                <span class="po-sum-subtext">{{ $t('subtotal') }}:</span>
+                                <strong>{{ money(printOrderData.subtotal ?? printSubtotal) }}</strong>
+                            </td>
+                        </tr>
+                    </tfoot>
                 </table>
 
                 <!-- Totals & Notes Block -->
@@ -2530,6 +2548,23 @@ const printOrder = async (orderOrRow) => {
         printOrderLoading.value = false;
     }
 };
+
+// The unit a line is bought in, as the supplier reads it.
+const printUnitOf = (item) => item?.unit_name || item?.product?.unit || '';
+
+// Quantities only add up within one unit: "12 قطعة · 3 كرتونة", never "15 قطعة".
+const printQuantitySummary = computed(() => {
+    const totals = new Map();
+    (printOrderData.value?.items || []).forEach((item) => {
+        const unit = printUnitOf(item) || t('qt_print_pcs');
+        totals.set(unit, (totals.get(unit) || 0) + num(item.quantity));
+    });
+    if (!totals.size) return '0';
+    return [...totals].map(([unit, qty]) => `${qty} ${unit}`).join(' · ');
+});
+
+const printSubtotal = computed(() => (printOrderData.value?.items || [])
+    .reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
 
 const triggerPrintOrder = async () => {
     await nextTick();
@@ -5576,14 +5611,109 @@ onMounted(async () => {
     font-size: 10.5px;
 }
 
+.po-print-table tbody td {
+    border-inline-color: #f1f5f9;
+}
+
+.po-print-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+/* Each row reads as one unit: a clear rule under it, none of it split across pages. */
+.po-print-table tbody tr.po-item-row td {
+    border-bottom-color: #cbd5e1;
+}
+
+.po-print-table tbody tr.po-item-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+/* Long product names wrap inside their column instead of stretching the table. */
+.po-item-cell {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.po-qty-cell {
+    font-weight: 800;
+    background: #f8fafc;
+}
+
+.po-qty-num {
+    display: block;
+    font-size: 13px;
+    line-height: 1.2;
+    color: #0f172a;
+}
+
+.po-unit-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    color: #64748b;
+    line-height: 1.2;
+}
+
+.po-price-cell,
+.po-total-cell {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.po-total-cell {
+    font-weight: 800;
+}
+
+.po-per-unit {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+.po-table-summary-row td {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+    padding: 6px 10px;
+    font-size: 11px;
+}
+
+.po-sum-label {
+    color: #334155;
+}
+
+.po-sum-label i,
+.po-sum-count {
+    color: #1e3a8a;
+}
+
+.po-sum-count {
+    font-weight: 800;
+    margin-inline: 2px;
+}
+
+.po-sum-total {
+    text-align: left !important;
+    font-size: 12px;
+    color: #1e3a8a;
+}
+
+.po-sum-subtext {
+    font-size: 10px;
+    color: #64748b;
+    margin-inline-end: 4px;
+}
+
 .po-print-img-cell {
     padding: 3px !important;
 }
 
 .po-item-name {
     font-weight: 700;
+    font-size: 11.5px;
     color: #0f172a;
-    line-height: 1.3;
+    line-height: 1.45;
 }
 
 .po-item-name-en {
@@ -5796,12 +5926,27 @@ onMounted(async () => {
         display: block !important;
     }
 
+    /* Rows stay whole, but the table may run onto the next page — holding all
+       of it together pushed a long order off the sheet. */
     .po-print-meta-grid,
-    .po-print-table,
+    .po-print-table tr,
     .po-print-summary-row,
     .po-print-signatures {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+    }
+
+    .po-print-table thead {
+        display: table-header-group !important;
+    }
+
+    .po-print-table tfoot {
+        display: table-row-group !important;
+    }
+
+    .po-table-summary-row {
+        break-before: avoid !important;
+        page-break-before: avoid !important;
     }
 
     .po-meta-card-header,
