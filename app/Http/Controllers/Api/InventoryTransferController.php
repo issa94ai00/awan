@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferItem;
+use App\Models\Product;
+use App\Models\Warehouse;
 use App\Models\WarehouseInventory;
 use App\Models\StockMovement;
+use App\Services\Field\BranchReplenishmentService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Inventory\ReplenishmentWorkflowService;
 use App\Services\InventoryAllocationService;
@@ -28,38 +31,63 @@ class InventoryTransferController extends Controller
     protected InventoryAllocationService $allocationService;
     protected InventoryService $inventory;
     protected ReplenishmentWorkflowService $workflow;
+    protected BranchReplenishmentService $replenishment;
 
     public function __construct(
         InventoryAllocationService $allocationService,
         InventoryService $inventory,
-        ReplenishmentWorkflowService $workflow
+        ReplenishmentWorkflowService $workflow,
+        BranchReplenishmentService $replenishment
     ) {
         $this->allocationService = $allocationService;
         $this->inventory = $inventory;
         $this->workflow = $workflow;
+        $this->replenishment = $replenishment;
     }
 
     public function index(Request $request)
     {
         $query = InventoryTransfer::with(['fromWarehouse', 'toWarehouse', 'items.product', 'createdBy']);
 
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('from_warehouse_id')) {
+        // `filled`, not `has`: an empty filter sent by a form used to match
+        // status = '' and return nothing at all.
+        if ($request->filled('from_warehouse_id')) {
             $query->where('from_warehouse_id', $request->from_warehouse_id);
         }
 
-        if ($request->has('to_warehouse_id')) {
+        if ($request->filled('to_warehouse_id')) {
             $query->where('to_warehouse_id', $request->to_warehouse_id);
         }
 
-        $transfers = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 15);
+        // Either end: "everything that touched this warehouse".
+        if ($request->filled('warehouse_id')) {
+            $query->where(fn ($q) => $q->where('from_warehouse_id', $request->warehouse_id)
+                ->orWhere('to_warehouse_id', $request->warehouse_id));
+        }
+
+        if ($request->filled('search')) {
+            $term = $request->search;
+            $query->where(fn ($q) => $q->whereSearch(['transfer_number', 'notes'], $term)
+                ->orWhereHas('items.product', fn ($p) => $p->whereSearch(['name_ar', 'name_en', 'sku'], $term)));
+        }
+
+        // Counted before the status filter, so the tabs can show every stage.
+        $statusCounts = (clone $query)->reorder()
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $transfers = $query->orderBy('created_at', 'desc')->orderByDesc('id')
+            ->paginate(min((int) ($request->per_page ?: 15), 200));
 
         return response()->json([
             'success' => true,
             'data' => $transfers,
+            'status_counts' => $statusCounts,
         ]);
     }
 
@@ -71,6 +99,7 @@ class InventoryTransferController extends Controller
             'items.product',
             'items.variant',
             'createdBy',
+            'approvedBy',
             'shippedBy',
             'receivedBy'
         ])->findOrFail($id);
@@ -89,9 +118,24 @@ class InventoryTransferController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_cost' => 'required|numeric|min:0',
-            'notes' => 'nullable|string',
+            'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
+            'notes' => 'nullable|string|max:1000',
         ]);
+
+        // Every short line reported at once, as the field app does, rather than
+        // the first one found while reserving — and in words the warehouse
+        // reads, not "Insufficient stock for product ID: 12".
+        $shortfalls = $this->replenishment->shortfalls($request->items, (int) $request->from_warehouse_id);
+
+        if ($shortfalls !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->replenishment->shortfallSummary($shortfalls, Warehouse::find($request->from_warehouse_id)),
+                'data' => ['reason' => 'insufficient_source_stock', 'shortfalls' => $shortfalls],
+            ], 422);
+        }
+
+        $products = Product::whereIn('id', collect($request->items)->pluck('product_id'))->get()->keyBy('id');
 
         try {
             DB::beginTransaction();
@@ -109,8 +153,14 @@ class InventoryTransferController extends Controller
                 // Reserve through the service so availability is judged against
                 // the same buckets every other path uses, and the reservation is
                 // tracked in one place.
+                $product = $products[$item['product_id']];
+
                 if (!$this->inventory->reserve($item['product_id'], $item['quantity'], $request->from_warehouse_id)) {
-                    throw new \Exception("Insufficient stock for product ID: {$item['product_id']}");
+                    // Only stock that moved since the check above lands here.
+                    throw new \Exception(sprintf(
+                        'تغيّر رصيد "%s" في مستودع المصدر أثناء الحفظ. أعد المحاولة.',
+                        $product->name_ar ?? $product->name_en ?? ('#' . $product->id)
+                    ));
                 }
 
                 InventoryTransferItem::create([
@@ -118,7 +168,9 @@ class InventoryTransferController extends Controller
                     'product_id' => $item['product_id'],
                     'product_variant_id' => $item['product_variant_id'] ?? null,
                     'quantity_requested' => $item['quantity'],
-                    'unit_cost' => $item['unit_cost'],
+                    // Costed from the catalogue, as the field app does: what the
+                    // company's own goods are worth is not the form's to say.
+                    'unit_cost' => (float) ($product->cost_price ?? 0),
                     'batch_number' => $item['batch_number'] ?? null,
                     'expiry_date' => $item['expiry_date'] ?? null,
                     'notes' => $item['notes'] ?? null,

@@ -878,13 +878,14 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/inventory/check-availability', [EnhancedInventoryController::class, 'checkAvailability'])->name('api.inventory.check-availability');
         Route::post('/inventory/update-reorder-points', [EnhancedInventoryController::class, 'updateReorderPoints'])->name('api.inventory.update-reorder-points');
 
-        // Inventory Transfers (نقل المخزون)
+        // Inventory Transfers (نقل المخزون). A sales rep may look but not move
+        // stock; reps ask for it through the field app's replenishment instead.
         Route::get('/inventory/transfers', [InventoryTransferController::class, 'index'])->name('api.inventory.transfers.index');
-        Route::post('/inventory/transfers', [InventoryTransferController::class, 'store'])->name('api.inventory.transfers.store');
+        Route::post('/inventory/transfers', [InventoryTransferController::class, 'store'])->middleware('not_sales_scoped')->name('api.inventory.transfers.store');
         Route::get('/inventory/transfers/{id}', [InventoryTransferController::class, 'show'])->name('api.inventory.transfers.show');
-        Route::post('/inventory/transfers/{id}/ship', [InventoryTransferController::class, 'ship'])->name('api.inventory.transfers.ship');
-        Route::post('/inventory/transfers/{id}/receive', [InventoryTransferController::class, 'receive'])->name('api.inventory.transfers.receive');
-        Route::post('/inventory/transfers/{id}/cancel', [InventoryTransferController::class, 'cancel'])->name('api.inventory.transfers.cancel');
+        Route::post('/inventory/transfers/{id}/ship', [InventoryTransferController::class, 'ship'])->middleware('not_sales_scoped')->name('api.inventory.transfers.ship');
+        Route::post('/inventory/transfers/{id}/receive', [InventoryTransferController::class, 'receive'])->middleware('not_sales_scoped')->name('api.inventory.transfers.receive');
+        Route::post('/inventory/transfers/{id}/cancel', [InventoryTransferController::class, 'cancel'])->middleware('not_sales_scoped')->name('api.inventory.transfers.cancel');
 
         // Enhanced Sales Orders & Multi-Channel (طلبات المبيعات المتقدمة)
         Route::get('/sales-orders/enhanced', [EnhancedSalesOrderController::class, 'index'])->name('api.sales-orders.enhanced.index');

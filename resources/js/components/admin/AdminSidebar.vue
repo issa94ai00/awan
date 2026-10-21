@@ -351,6 +351,7 @@ const menu = [
                     { labelKey: 'picking_lists', path: '/admin/wms/picking' },
                     { labelKey: 'packing_lists', path: '/admin/wms/packing' },
                     { labelKey: 'cycle_counts', path: '/admin/wms/cycle-counts' },
+                    { labelKey: 'trf_title', path: '/admin/wms/transfers' },
                     { labelKey: 'wms_performance', path: '/admin/wms/performance' },
                 ],
             },

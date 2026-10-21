@@ -88,6 +88,7 @@ final class PagePermissions
         'wms.picking.view' => ['صفحة قوائم الالتقاط', 'wms', 'wms', '/admin/wms/picking'],
         'wms.packing.view' => ['صفحة قوائم التعبئة', 'wms', 'wms', '/admin/wms/packing'],
         'wms.cycle_counts.view' => ['صفحة الجرد الدوري', 'wms', 'wms', '/admin/wms/cycle-counts'],
+        'wms.transfers.view' => ['صفحة نقل المخزون', 'wms', 'wms', '/admin/wms/transfers'],
         'wms.performance.view' => ['صفحة أداء المستودعات', 'wms', 'wms', '/admin/wms/performance'],
 
         // Human resources

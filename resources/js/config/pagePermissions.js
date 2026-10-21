@@ -56,6 +56,7 @@ const PAGE_PERMISSIONS = [
     ['/admin/wms/picking', 'wms.picking.view'],
     ['/admin/wms/packing', 'wms.packing.view'],
     ['/admin/wms/cycle-counts', 'wms.cycle_counts.view'],
+    ['/admin/wms/transfers', 'wms.transfers.view'],
     ['/admin/wms/performance', 'wms.performance.view'],
     ['/admin/hr', 'hr.view'],
     ['/admin/hr/employees', 'hr.employees.view'],

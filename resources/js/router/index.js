@@ -608,6 +608,11 @@ const routes = [
                 component: () => import('@/views/admin/wms/CycleCounts.vue')
             },
             {
+                path: 'wms/transfers',
+                name: 'admin.wms.transfers',
+                component: () => import('@/views/admin/wms/Transfers.vue')
+            },
+            {
                 path: 'wms/cycle-counts/:id',
                 name: 'admin.wms.cycle-counts.show',
                 component: () => import('@/views/admin/wms/CycleCountDetail.vue')
