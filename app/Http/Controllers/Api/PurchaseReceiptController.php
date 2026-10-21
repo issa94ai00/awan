@@ -338,7 +338,7 @@ class PurchaseReceiptController extends Controller
 
     public function show(PurchaseReceipt $receipt)
     {
-        $receipt->load(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'payments']);
+        $receipt->load(['purchaseOrder', 'supplier', 'warehouse', 'creator', 'items.product', 'items.variant', 'payments']);
 
         return response()->json([
             'success' => true,

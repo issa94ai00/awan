@@ -132,11 +132,14 @@
                     <el-table-column prop="notes" :label="$t('comments')" min-width="160" show-overflow-tooltip />
                     
                     <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="220" align="center">
+                    <el-table-column :label="$t('actions')" width="260" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button size="small" type="primary" plain @click="openPrint(row.id)" :title="$t('print')">
+                                    <i class="fas fa-print"></i>
                                 </el-button>
                                 <el-button
                                     v-if="mayPay && num(row.due_amount) >= 0.01"
@@ -181,6 +184,11 @@
         >
             <div v-if="loadingDetail" v-loading="loadingDetail" style="min-height: 250px;"></div>
             <div v-else-if="selectedReceipt" class="drawer-detail-content">
+                <div class="drawer-print-bar">
+                    <el-button type="primary" plain size="small" @click="openPrint(selectedReceipt.id)">
+                        <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                    </el-button>
+                </div>
                 <!-- Timeline status step -->
                 <div class="timeline-step-tracker mb-4">
                     <div class="visual-progress-timeline">
@@ -358,6 +366,8 @@
                 </el-row>
             </div>
         </el-drawer>
+
+        <PurchaseReceiptPrintDialog v-model="printVisible" :receipt-id="printReceiptId" />
 
         <!-- Form Drawer (Create / Edit) -->
         <el-drawer
@@ -989,6 +999,7 @@ import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
+import PurchaseReceiptPrintDialog from '@/components/admin/purchases/PurchaseReceiptPrintDialog.vue';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { paymentMethodLabel } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
@@ -1641,6 +1652,14 @@ const filteredReceipts = computed(() => {
 const recentCount = computed(() => Math.min(store.receipts.length, 5));
 
 // Drawer Actions
+// The goods received note for one receipt.
+const printVisible = ref(false);
+const printReceiptId = ref(null);
+const openPrint = (id) => {
+    printReceiptId.value = id;
+    printVisible.value = true;
+};
+
 const openDetailDrawer = async (id) => {
     detailDrawerVisible.value = true;
     loadingDetail.value = true;
@@ -2072,6 +2091,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.drawer-print-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+}
+
 .purchases-page {
     padding: 0;
     font-family: 'Cairo', sans-serif;
