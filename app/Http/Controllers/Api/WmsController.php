@@ -961,7 +961,7 @@ class WmsController extends Controller
     {
         $list->refresh()->load([
             'warehouse:id,name,code', 'salesOrder.customer:id,name,phone',
-            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode', 'items.bin',
+            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode,unit', 'items.bin',
         ]);
 
         return response()->json([
@@ -1012,6 +1012,8 @@ class WmsController extends Controller
             'sales_order_id' => $l->sales_order_id ? (int) $l->sales_order_id : null,
             'order_number' => $l->salesOrder?->order_number,
             'customer_name' => $l->salesOrder?->customer?->name,
+            'customer_phone' => $l->salesOrder?->customer?->phone,
+            'notes' => $l->notes,
             'picker_id' => $l->picker_id ? (int) $l->picker_id : null,
             'picker_name' => $l->picker?->name,
             'total_items' => $total,
@@ -1034,6 +1036,7 @@ class WmsController extends Controller
                 'sku' => $i->product?->sku,
                 'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
                 'barcode' => $i->barcode,
+                'unit' => $i->product?->unit,
                 'bin_code' => $i->bin?->bin_code,
                 'bin_location' => $i->bin ? trim(($i->bin->zone ?? '').' '.($i->bin->rack ?? '').' '.($i->bin->shelf ?? '')) : null,
                 'quantity_to_pick' => (int) $i->quantity_to_pick,
@@ -1061,7 +1064,7 @@ class WmsController extends Controller
     {
         $list = PickingList::with([
             'warehouse:id,name,code', 'salesOrder.customer:id,name,phone',
-            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode', 'items.bin',
+            'picker:id,name', 'items.product:id,sku,name_ar,name_en,barcode,unit', 'items.bin',
         ])->findOrFail($id);
 
         return response()->json([
@@ -1197,7 +1200,7 @@ class WmsController extends Controller
     /** Every packing action answers with the refreshed list — same reasoning as picking. */
     private function packingResponse(PackingList $list, string $message)
     {
-        $list->refresh()->load(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name', 'packer:id,name', 'items.product:id,sku,name_ar,name_en']);
+        $list->refresh()->load(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name,phone,address', 'packer:id,name', 'items.product:id,sku,name_ar,name_en,unit']);
 
         return response()->json([
             'success' => true,
@@ -1221,6 +1224,12 @@ class WmsController extends Controller
             'sales_order_id' => $l->sales_order_id ? (int) $l->sales_order_id : null,
             'order_number' => $l->salesOrder?->order_number,
             'customer_name' => $l->salesOrder?->customer?->name,
+            // What a package label needs to reach the customer.
+            'customer_phone' => $l->salesOrder?->customer?->phone,
+            'delivery_address' => $this->deliveryAddress($l->salesOrder),
+            'fulfillment_type' => $l->salesOrder?->fulfillment_type,
+            'carrier' => $l->salesOrder?->carrier,
+            'tracking_number' => $l->salesOrder?->tracking_number,
             'packer_id' => $l->packer_id ? (int) $l->packer_id : null,
             'packer_name' => $l->packer?->name,
             'total_packages' => (int) $l->total_packages,
@@ -1245,6 +1254,7 @@ class WmsController extends Controller
                 'sku' => $i->product?->sku,
                 'product_name' => $i->product?->name_ar ?? $i->product?->name_en,
                 'quantity' => (int) $i->quantity,
+                'unit' => $i->product?->unit,
                 'package_number' => $i->package_number,
                 'dimensions' => $i->dimensions,
                 'weight' => $i->weight !== null ? (float) $i->weight : null,
@@ -1256,9 +1266,30 @@ class WmsController extends Controller
         return $row;
     }
 
+    /**
+     * Where an order's goods go, as one line: the order's shipping address when
+     * it has one — stored as text, or as parts under the array cast — else the
+     * customer's own.
+     */
+    private function deliveryAddress($order): ?string
+    {
+        $address = $order?->shipping_address;
+
+        if (is_array($address)) {
+            $address = implode('، ', array_filter(array_map(
+                fn ($part) => is_scalar($part) ? trim((string) $part) : null,
+                $address
+            )));
+        }
+
+        $address = is_string($address) ? trim($address) : '';
+
+        return $address !== '' ? $address : ($order?->customer?->address ?: null);
+    }
+
     public function showPackingList($id)
     {
-        $list = PackingList::with(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name', 'packer:id,name', 'items.product:id,sku,name_ar,name_en'])
+        $list = PackingList::with(['warehouse:id,name,code', 'pickingList:id,list_number,status', 'salesOrder.customer:id,name,phone,address', 'packer:id,name', 'items.product:id,sku,name_ar,name_en,unit'])
             ->findOrFail($id);
 
         return response()->json([

@@ -9,6 +9,9 @@
             >
                 <template #actions>
                     <el-tag :type="statusType(list.status)" effect="dark" size="large">{{ list.status_text }}</el-tag>
+                    <el-button type="primary" plain @click="printVisible = true">
+                        <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                    </el-button>
                 </template>
             </AdminPageHeader>
 
@@ -116,6 +119,9 @@
 
         <el-empty v-else :description="$t('wms.packing_list_not_found')" />
 
+        <!-- The packing slip, and a label for each package. -->
+        <PackingListPrintDialog v-model="printVisible" :list="list" />
+
         <!-- Edit package details -->
         <el-dialog v-model="showEditDialog" :title="$t('wms.edit_package_details')" width="480px">
             <el-form :model="editForm" label-position="top">
@@ -199,9 +205,11 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
 import { formatNumber as formatCount } from '@/utils/currency';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import PackingListPrintDialog from '@/components/admin/wms/PackingListPrintDialog.vue';
 
 const { t } = useI18n();
 const route = useRoute();
+const printVisible = ref(false);
 
 const list = ref(null);
 const loading = ref(false);

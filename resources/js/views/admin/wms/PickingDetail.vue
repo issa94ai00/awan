@@ -11,6 +11,9 @@
                 <template #actions>
                     <el-tag :type="statusType(list.status)" effect="dark" size="large">{{ list.status_text }}</el-tag>
                     <el-tag :type="priorityType(list.priority)" effect="plain" size="large">{{ list.priority_text }}</el-tag>
+                    <el-button type="primary" plain @click="printVisible = true">
+                        <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                    </el-button>
                 </template>
             </AdminPageHeader>
 
@@ -133,6 +136,8 @@
         </div>
 
         <el-empty v-else :description="$t('picking_list_not_found')" />
+
+        <PickingListPrintDialog v-model="printVisible" :list="list" />
     </div>
 </template>
 
@@ -143,10 +148,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { wmsService } from '@/services/wms';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import PickingListPrintDialog from '@/components/admin/wms/PickingListPrintDialog.vue';
 
 const { t } = useI18n();
 
 const route = useRoute();
+const printVisible = ref(false);
 const router = useRouter();
 
 const list = ref(null);
