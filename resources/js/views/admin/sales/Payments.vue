@@ -557,9 +557,14 @@
                     </template>
                 </el-table-column>
 
-                <el-table-column width="120" align="center">
+                <el-table-column width="150" align="center">
                     <template #default="{ row }">
                         <div class="actions-row">
+                            <el-tooltip :content="$t('print')" placement="top" :enterable="false">
+                                <el-button size="small" circle text type="primary" :aria-label="$t('print')" @click="openExpensePrint(row)">
+                                    <i class="fas fa-print"></i>
+                                </el-button>
+                            </el-tooltip>
                             <el-tooltip v-if="row.status === 'pending'" :content="$t('pay_expense_mark_paid')" placement="top" :enterable="false">
                                 <el-button size="small" circle text type="success" :aria-label="$t('pay_expense_mark_paid')" @click="markExpenseAsPaid(row)">
                                     <i class="fas fa-check"></i>
@@ -646,6 +651,13 @@
         </el-dialog>
 
         <CustomerPaymentPrintDialog v-model="printVisible" :payment="printRow" :foreign="!!printRow && isForeign(printRow)" />
+
+        <ExpensePrintDialog
+            v-model="expensePrintVisible"
+            :expense="expensePrintRow"
+            :category-label="expensePrintRow ? expenseCategoryLabel(expensePrintRow.category) : ''"
+            :status-label="expensePrintRow ? expenseStatusLabel(expensePrintRow.status) : ''"
+        />
     </div>
 </template>
 
@@ -659,6 +671,7 @@ import { usePaymentsStore } from '@/stores/payments';
 import { expensesApi } from '@/api/expenses';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import CustomerPaymentPrintDialog from '@/components/admin/sales/CustomerPaymentPrintDialog.vue';
+import ExpensePrintDialog from '@/components/admin/sales/ExpensePrintDialog.vue';
 import ExpenseDialog from '@/components/admin/sales/ExpenseDialog.vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
@@ -1025,6 +1038,14 @@ const EXPENSE_STATUS_LABELS = computed(() => ({
     rejected: t('pay_expense_status_rejected'),
 }));
 const expenseStatusLabel = (status) => EXPENSE_STATUS_LABELS.value[normalizeStatus(status)] || status || '—';
+
+// The payment voucher for one expense, printed from its list row.
+const expensePrintVisible = ref(false);
+const expensePrintRow = ref(null);
+const openExpensePrint = (row) => {
+    expensePrintRow.value = row;
+    expensePrintVisible.value = true;
+};
 
 const statusTagType = (status) => {
     switch (normalizeStatus(status)) {
