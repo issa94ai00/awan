@@ -213,8 +213,20 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column width="64" align="center">
+                    <el-table-column width="100" align="center">
                         <template #default="{ row }">
+                            <el-tooltip :content="$t('print')" placement="top" :enterable="false">
+                                <el-button
+                                    size="small"
+                                    circle
+                                    text
+                                    type="primary"
+                                    :aria-label="$t('print')"
+                                    @click="openPrint(row.id)"
+                                >
+                                    <i class="fas fa-print"></i>
+                                </el-button>
+                            </el-tooltip>
                             <el-tooltip :content="$t('cancel_the_payment')" placement="top" :enterable="false">
                                 <el-button
                                     size="small"
@@ -302,6 +314,8 @@
             :preset-supplier-id="formSupplierId"
             @saved="onSaved"
         />
+
+        <SupplierPaymentPrintDialog v-model="printVisible" :payment-id="printPaymentId" />
     </div>
 </template>
 
@@ -316,6 +330,7 @@ import {
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import SupplierPaymentForm from '@/components/admin/purchases/SupplierPaymentForm.vue';
+import SupplierPaymentPrintDialog from '@/components/admin/purchases/SupplierPaymentPrintDialog.vue';
 import { useSupplierPaymentsStore } from '@/stores/supplierPayments';
 import { apiErrorMessage, formatCurrency, formatDate, localIsoDate, paymentMethodLabel } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
@@ -324,6 +339,14 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const store = useSupplierPaymentsStore();
+
+// The payment voucher for one payment.
+const printVisible = ref(false);
+const printPaymentId = ref(null);
+const openPrint = (id) => {
+    printPaymentId.value = id;
+    printVisible.value = true;
+};
 
 // Card is accepted by the API (a goods receipt can be paid by card), so it can
 // be filtered on even though this screen never records one.
