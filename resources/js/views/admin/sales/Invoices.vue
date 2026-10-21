@@ -1405,6 +1405,10 @@ const triggerPrintInvoice = async () => {
                 .brand-domain-badge, .domain-badge {
                     display: none !important;
                 }
+                /* A print stylesheet another screen left loaded may hide every element. */
+                #invoice-printable-doc * {
+                    visibility: visible !important;
+                }
                 #invoice-printable-doc {
                     visibility: visible !important;
                     opacity: 1 !important;

@@ -557,6 +557,8 @@ const printCss = () => `
     a { text-decoration: none !important; color: inherit !important; }
     a[href]:after, abbr[title]:after { content: none !important; }
     .brand-domain-badge, .domain-badge { display: none !important; }
+    /* A print stylesheet another screen left loaded may hide every element. */
+    #${SHEET_ID}, #${SHEET_ID} * { visibility: visible !important; }
     #${SHEET_ID} { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; border: none !important; box-shadow: none !important; background: #fff !important; display: block !important; }
     .qp-print-cover { display: block !important; width: 100% !important; height: 297mm !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: hidden !important; break-after: page !important; page-break-after: always !important; }
     .qp-print-cover img { width: 100% !important; height: 297mm !important; object-fit: cover !important; }

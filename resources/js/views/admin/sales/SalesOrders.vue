@@ -3010,6 +3010,10 @@ const triggerPrintOrder = async () => {
                 .domain-badge {
                     display: none !important;
                 }
+                /* A print stylesheet another screen left loaded may hide every element. */
+                #sales-order-printable-doc * {
+                    visibility: visible !important;
+                }
                 #sales-order-printable-doc {
                     visibility: visible !important;
                     opacity: 1 !important;

@@ -578,7 +578,9 @@ onMounted(() => {
 
 <style>
 @media print {
-    body * {
+    /* Unscoped, and Vite keeps it loaded after leaving this screen: it must
+       only hide a page that holds the statement, or other print sheets go blank. */
+    body:has(#commission-print-content) * {
         visibility: hidden;
     }
     #commission-print-content,
