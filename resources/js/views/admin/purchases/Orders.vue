@@ -2566,9 +2566,57 @@ const printQuantitySummary = computed(() => {
 const printSubtotal = computed(() => (printOrderData.value?.items || [])
     .reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price), 0));
 
+const PO_PRINT_IFRAME_ID = 'po-print-hidden-iframe';
+
+const PO_PRINT_STYLES = `
+    @page { size: A4 portrait; margin: 0 !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; color: #0f172a !important; direction: rtl !important; height: auto !important; overflow: visible !important; }
+    a[href]:after, abbr[title]:after { content: none !important; }
+    .brand-domain-badge, .domain-badge, .po-screen-only, .po-print-toolbar { display: none !important; }
+    /* A print stylesheet another screen left loaded may hide every element. */
+    #purchase-order-printable-doc, #purchase-order-printable-doc * { visibility: visible !important; }
+    #purchase-order-printable-doc { width: 100% !important; margin: 0 !important; padding: 10mm 12mm !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; display: block !important; }
+`;
+
+/*
+ * Print through an isolated iframe holding only the sheet. The dialog renders
+ * inside the admin layout, so printing the page meant hiding that layout —
+ * and the sheet with it.
+ */
 const triggerPrintOrder = async () => {
     await nextTick();
-    window.print();
+    const sheet = document.getElementById('purchase-order-printable-doc');
+    if (!sheet) return;
+
+    document.getElementById(PO_PRINT_IFRAME_ID)?.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = PO_PRINT_IFRAME_ID;
+    Object.assign(iframe.style, { position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh', border: '0', opacity: '0', pointerEvents: 'none', zIndex: '-9999' });
+    document.body.appendChild(iframe);
+
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).map((node) => node.outerHTML).join('\n');
+    const title = `${t('official_purchase_order') || 'أمر شراء'} ${printOrderData.value?.order_number || ''}`
+        .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+        <base href="${window.location.origin}/"><title>${title}</title>
+        ${styles}<style>${PO_PRINT_STYLES}</style>
+        </head><body>${sheet.outerHTML}</body></html>`);
+    doc.close();
+
+    // Images and webfonts have to arrive before the print dialog snapshots the page.
+    const pending = Array.from(doc.images).filter((img) => !img.complete);
+    await Promise.race([
+        Promise.all(pending.map((img) => new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; }))),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+    await Promise.race([doc.fonts?.ready, new Promise((resolve) => setTimeout(resolve, 1500))]);
+
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(() => iframe.remove(), 60000);
 };
 
 const openCreateDrawer = () => {
@@ -3469,6 +3517,7 @@ const fillFromSale = async (link) => {
 onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize);
     document.removeEventListener('click', handleClickOutsideQuickSearch);
+    document.getElementById(PO_PRINT_IFRAME_ID)?.remove();
 });
 
 onMounted(async () => {
@@ -5868,51 +5917,9 @@ onMounted(async () => {
         display: none !important;
     }
 
-    /* Hide background app layout & screen elements */
-    :global(.admin-layout),
-    :global(.admin-sidebar),
-    :global(.admin-header),
-    :global(.admin-main-wrapper),
-    :global(.sidebar-overlay),
     .po-screen-only,
-    .po-print-toolbar,
-    :global(.el-dialog__header),
-    :global(.el-dialog__footer),
-    :global(.dialog-footer),
-    :global(.el-dialog__headerbtn) {
+    .po-print-toolbar {
         display: none !important;
-    }
-
-    /* Keep the dialog overlay visible but transparent & static */
-    :global(.el-overlay),
-    :global(.el-overlay-dialog) {
-        position: static !important;
-        display: block !important;
-        background: transparent !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        overflow: visible !important;
-        width: 100% !important;
-        height: auto !important;
-        inset: auto !important;
-        z-index: auto !important;
-    }
-
-    :global(.el-dialog.po-print-dialog) {
-        position: static !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-shadow: none !important;
-        border: none !important;
-        background: transparent !important;
-        border-radius: 0 !important;
-    }
-
-    :global(.el-dialog.po-print-dialog .el-dialog__body) {
-        padding: 0 !important;
-        margin: 0 !important;
     }
 
     #purchase-order-printable-doc {
