@@ -10,6 +10,9 @@
                 <router-link to="/admin/inventory">
                     <el-button><i class="fas fa-warehouse mr-1"></i> {{ $t('inventory_board') }}</el-button>
                 </router-link>
+                <el-button @click="openStatementPrint">
+                    <i class="fas fa-print"></i> {{ $t('mv_print_statement') }}
+                </el-button>
                 <el-button type="primary" class="create-btn" @click="openAdjustmentDrawer">
                     <i class="fas fa-plus"></i> {{ $t('new_stock_adjustment') }}
                 </el-button>
@@ -120,8 +123,8 @@
                     </el-table-column>
                     <el-table-column :label="$t('quantity')" width="120" align="center">
                         <template #default="{ row }">
-                            <strong :class="quantityColorClass(row.movement_type)" style="font-size: 1rem;">
-                                {{ row.movement_type === 'in' ? '+' : '-' }}{{ row.quantity }}
+                            <strong :class="quantityColorClass(row)" style="font-size: 1rem;" dir="ltr">
+                                {{ signedQuantity(row) }}
                             </strong>
                         </template>
                     </el-table-column>
@@ -137,6 +140,15 @@
                     </el-table-column>
                     <el-table-column :label="$t('notes')" min-width="180" show-overflow-tooltip>
                         <template #default="{ row }">{{ row.notes || '-' }}</template>
+                    </el-table-column>
+                    <el-table-column width="60" align="center">
+                        <template #default="{ row }">
+                            <el-tooltip :content="$t('print')" placement="top" :enterable="false">
+                                <el-button size="small" circle text type="primary" :aria-label="$t('print')" @click="openVoucherPrint(row)">
+                                    <i class="fas fa-print"></i>
+                                </el-button>
+                            </el-tooltip>
+                        </template>
                     </el-table-column>
                 </el-table>
 
@@ -214,7 +226,13 @@
                 </el-form-item>
 
                 <el-form-item :label="$t('quantity')" required>
-                    <el-input-number v-model="form.quantity" :min="1" style="width: 100%" />
+                    <!-- An adjustment is signed: a count that finds fewer units takes them off. -->
+                    <el-input-number
+                        v-model="form.quantity"
+                        :min="form.movement_type === 'adjustment' ? -999999 : 1"
+                        style="width: 100%"
+                    />
+                    <p v-if="form.movement_type === 'adjustment'" class="field-hint">{{ $t('mv_adjustment_sign_hint') }}</p>
                 </el-form-item>
 
                 <el-form-item :label="$t('reference_code_hint')">
@@ -235,6 +253,13 @@
                 </div>
             </el-form>
         </el-drawer>
+
+        <StockMovementPrintDialog
+            v-model="printVisible"
+            :movement="printMovement"
+            :filters="printFilters"
+            :filter-labels="printFilterLabels"
+        />
     </div>
 </template>
 
@@ -249,6 +274,7 @@ import { stockMovementsApi } from '@/api/stockMovements';
 import { productsApi } from '@/api/products';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import StockMovementPrintDialog from '@/components/admin/inventory/StockMovementPrintDialog.vue';
 
 const { t } = useI18n();
 
@@ -371,6 +397,10 @@ const saveAdjustment = async () => {
         ElMessage.warning(t('please_set_quantity'));
         return;
     }
+    // Only an adjustment may take stock off with a negative figure.
+    if (form.movement_type !== 'adjustment' && form.quantity < 1) {
+        form.quantity = Math.abs(form.quantity) || 1;
+    }
 
     submittingForm.value = true;
     try {
@@ -412,11 +442,44 @@ const getArabicType = (type) => {
     return t('movement_adjustment');
 };
 
-const quantityColorClass = (type) => {
-    const val = String(type || '').toLowerCase();
+// In and out are magnitudes with the type giving the direction; an adjustment
+// keeps its own sign, so shrinkage is negative and a surplus positive.
+const signedQuantity = (row) => {
+    const qty = Number(row.quantity) || 0;
+    if (row.movement_type === 'in') return `+${Math.abs(qty)}`;
+    if (row.movement_type === 'out') return `-${Math.abs(qty)}`;
+    return qty > 0 ? `+${qty}` : String(qty);
+};
+
+const quantityColorClass = (row) => {
+    const val = String(row.movement_type || '').toLowerCase();
     if (val === 'in') return 'text-success';
     if (val === 'out') return 'text-danger';
-    return 'text-warning';
+    return (Number(row.quantity) || 0) < 0 ? 'text-danger' : 'text-warning';
+};
+
+// ── Printing ───────────────────────────────────────────────────────────────
+const printVisible = ref(false);
+const printMovement = ref(null);
+const printFilters = ref({});
+const printFilterLabels = ref({});
+
+const openVoucherPrint = (row) => {
+    printMovement.value = row;
+    printVisible.value = true;
+};
+
+// The statement covers what the filters match, not just the page on screen.
+const openStatementPrint = () => {
+    const { product_id, warehouse_id, movement_type, from_date, to_date } = filters;
+    printFilters.value = { product_id, warehouse_id, movement_type, from_date, to_date };
+    const product = productOptions.value.find((p) => p.id === product_id);
+    printFilterLabels.value = {
+        product: product ? (product.name_ar || product.name_en || product.name) : '',
+        warehouse: inventoryStore.warehouses.find((w) => w.id === warehouse_id)?.name || '',
+    };
+    printMovement.value = null;
+    printVisible.value = true;
 };
 
 const route = useRoute();
@@ -451,6 +514,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.field-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
 .inventory-page {
     font-family: 'Cairo', sans-serif;
 }
