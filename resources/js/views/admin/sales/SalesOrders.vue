@@ -1198,7 +1198,7 @@
                             {{ getArabicStatus(printOrderData.status) }}
                         </span>
                         <span class="so-dh-count">
-                            <i class="fas fa-box-open"></i> {{ $t('so_items_n', { count: printItemsCount }) }} ({{ printTotalQuantity }} قطعة)
+                            <i class="fas fa-box-open"></i> {{ $t('so_items_n', { count: printItemsCount }) }} · {{ printQuantitySummary }}
                         </span>
                         <span class="so-dh-pages-est">
                             <i class="fas fa-file-lines"></i> {{ estimatedPages === 1 ? 'صفحة A4 واحدة' : `${estimatedPages} صفحات A4 تقريباً` }}
@@ -1403,23 +1403,24 @@
                         <table class="so-print-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 34px; text-align: center;">#</th>
+                                    <th class="so-col-idx" style="width: 30px; text-align: center;">#</th>
                                     <th v-if="printSettings.showImages" style="width: 48px; text-align: center;">{{ $t('image') || 'الصورة' }}</th>
                                     <th>{{ $t('product') || 'المنتج / البيان والتفاصيل' }}</th>
                                     <th v-if="printSettings.showSku" style="width: 105px;">{{ $t('sku') || 'الرمز / SKU' }}</th>
-                                    <th style="width: 80px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
+                                    <th style="width: 72px; text-align: center;">{{ $t('quantity') || 'الكمية' }}</th>
                                     <!-- Commercial columns if showPrices -->
                                     <th v-if="printSettings.showPrices" style="width: 110px; text-align: left;">{{ $t('unit_price') || 'السعر الإفرادي' }}</th>
                                     <th v-if="printSettings.showPrices && hasItemDiscount" style="width: 85px; text-align: left;">{{ $t('discount') || 'الخصم' }}</th>
                                     <th v-if="printSettings.showPrices && hasItemTax" style="width: 85px; text-align: left;">{{ $t('tax') || 'الضريبة' }}</th>
                                     <th v-if="printSettings.showPrices" style="width: 125px; text-align: left;">{{ $t('total') || 'الإجمالي' }}</th>
                                     <!-- Warehouse checklist columns if !showPrices -->
-                                    <th v-if="!printSettings.showPrices" style="width: 115px; text-align: center;">{{ $t('warehouse_location') || 'موقع الصرف / الرف' }}</th>
-                                    <th v-if="!printSettings.showPrices" style="width: 75px; text-align: center;">{{ $t('item_checked') || 'التجهيز' }}</th>
+                                    <th v-if="!printSettings.showPrices" style="width: 100px; text-align: center;">{{ $t('warehouse_location') || 'موقع الصرف / الرف' }}</th>
+                                    <th v-if="!printSettings.showPrices" style="width: 80px; text-align: center;">{{ $t('so_picked_qty') || 'الكمية المجهزة' }}</th>
+                                    <th v-if="!printSettings.showPrices" style="width: 52px; text-align: center;">{{ $t('item_checked') || 'التجهيز' }}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx">
+                                <tr v-for="(item, idx) in (printOrderData.items || [])" :key="item.id || idx" class="so-item-row">
                                     <td style="text-align: center;" class="so-row-idx">{{ idx + 1 }}</td>
                                     <td v-if="printSettings.showImages" class="so-print-img-cell" style="text-align: center;">
                                         <EntityImage
@@ -1430,7 +1431,7 @@
                                             :lazy="false"
                                         />
                                     </td>
-                                    <td>
+                                    <td class="so-item-cell">
                                         <div class="so-item-name">{{ item.product?.name_ar || item.product?.name || item.description || '-' }}</div>
                                         <div v-if="item.product?.name_en" class="so-item-name-en">{{ item.product.name_en }}</div>
                                         <div v-if="item.product_variant_id" class="so-item-variant">
@@ -1449,13 +1450,12 @@
                                     </td>
                                     <td style="text-align: center;" class="so-qty-cell">
                                         <span class="so-qty-num">{{ item.quantity }}</span>
-                                        <span v-if="item.product_unit?.name || item.unit_name || item.unit" class="so-unit-label">
-                                            {{ item.product_unit?.name || item.unit_name || item.unit }}
-                                        </span>
+                                        <span v-if="printUnitOf(item)" class="so-unit-label">{{ printUnitOf(item) }}</span>
                                     </td>
                                     <!-- Commercial pricing cells -->
                                     <td v-if="printSettings.showPrices" style="text-align: left;" class="so-price-cell" dir="ltr">
                                         {{ formatCurrency(item.unit_price) }}
+                                        <span v-if="printUnitOf(item)" class="so-per-unit">/ {{ printUnitOf(item) }}</span>
                                     </td>
                                     <td v-if="printSettings.showPrices && hasItemDiscount" style="text-align: left;" class="so-discount-cell" dir="ltr">
                                         {{ toNum(item.discount) ? `− ${formatCurrency(item.discount)}` : '—' }}
@@ -1468,10 +1468,13 @@
                                     </td>
                                     <!-- Warehouse checklist cells -->
                                     <td v-if="!printSettings.showPrices" style="text-align: center;" class="so-loc-cell">
-                                        <span class="so-loc-badge">
-                                            <i class="fas fa-boxes-stacked text-muted"></i>
-                                            {{ item.bin?.code || printOrderData.fulfillment_warehouse?.name || 'مستودع رئيسي' }}
+                                        <span v-if="item.bin?.code" class="so-loc-badge">
+                                            <i class="fas fa-boxes-stacked text-muted"></i> {{ item.bin.code }}
                                         </span>
+                                        <span v-else class="so-write-in"></span>
+                                    </td>
+                                    <td v-if="!printSettings.showPrices" style="text-align: center;" class="so-picked-cell">
+                                        <span class="so-write-in"></span>
                                     </td>
                                     <td v-if="!printSettings.showPrices" style="text-align: center;" class="so-check-cell">
                                         <span class="so-check-box"></span>
@@ -1486,7 +1489,7 @@
                                         <strong class="so-sum-count">{{ printItemsCount }}</strong> {{ $t('items') || 'أصناف' }}
                                         ·
                                         <span>{{ $t('total_quantity') || 'مجموع الكميات' }}:</span>
-                                        <strong class="so-sum-count">{{ printTotalQuantity }}</strong>
+                                        <strong class="so-sum-count">{{ printQuantitySummary }}</strong>
                                     </td>
                                     <!-- Commercial total cell -->
                                     <td v-if="printSettings.showPrices" :colspan="(hasItemDiscount ? 1 : 0) + (hasItemTax ? 1 : 0) + 2" class="so-sum-total" dir="ltr">
@@ -1494,7 +1497,7 @@
                                         <strong>{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</strong>
                                     </td>
                                     <!-- Non-priced dispatch cell -->
-                                    <td v-else colspan="2" class="so-sum-dispatch" style="text-align: center;">
+                                    <td v-else colspan="3" class="so-sum-dispatch" style="text-align: center;">
                                         <i class="fas fa-clipboard-check text-success"></i>
                                         <span>نسخة جرد وتحميل مستودعي</span>
                                     </td>
@@ -1596,8 +1599,8 @@
                                             <strong>{{ printItemsCount }} أصناف</strong>
                                         </div>
                                         <div class="so-dd-row">
-                                            <span>إجمالي القطع:</span>
-                                            <strong>{{ printTotalQuantity }} قطعة</strong>
+                                            <span>إجمالي الكميات:</span>
+                                            <strong>{{ printQuantitySummary }}</strong>
                                         </div>
                                         <div class="so-dd-row" v-if="printOrderData.fulfillment_warehouse">
                                             <span>مستودع التحميل:</span>
@@ -2757,8 +2760,18 @@ const printItemsCount = computed(() => {
     return printOrderData.value?.items?.length || 0;
 });
 
-const printTotalQuantity = computed(() => {
-    return (printOrderData.value?.items || []).reduce((acc, it) => acc + (toNum(it.quantity)), 0);
+// The unit a line was sold in — a box, a kilo — as the customer reads it.
+const printUnitOf = (item) => item?.product_unit?.name || item?.unit_name || item?.unit || '';
+
+// Quantities only add up within one unit: "12 قطعة · 3 كرتونة", never "15 قطعة".
+const printQuantitySummary = computed(() => {
+    const totals = new Map();
+    (printOrderData.value?.items || []).forEach((it) => {
+        const unit = printUnitOf(it) || 'قطعة';
+        totals.set(unit, (totals.get(unit) || 0) + toNum(it.quantity));
+    });
+    if (!totals.size) return '0';
+    return [...totals].map(([unit, qty]) => `${qty} ${unit}`).join(' · ');
 });
 
 const estimatedPages = computed(() => {
@@ -3062,12 +3075,15 @@ const triggerPrintOrder = async () => {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
                 }
+                .so-table-summary-row {
+                    break-before: avoid !important;
+                    page-break-before: avoid !important;
+                }
                 .so-doc-ribbon,
                 .so-print-meta-grid,
                 .so-print-summary-row,
                 .so-print-signatures,
-                .so-print-footer,
-                .so-print-closing-section {
+                .so-print-footer {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
                 }
@@ -5104,13 +5120,37 @@ onMounted(async () => {
 
 .so-print-table tbody td {
     border: 1px solid #e2e8f0;
-    padding: 5px 8px;
+    border-inline-color: #f1f5f9;
+    padding: 6px 8px;
     text-align: right;
     vertical-align: middle;
 }
 
 .so-print-table tbody tr:nth-child(even) {
-    background: #fbfcfd;
+    background: #f8fafc;
+}
+
+/* Each row reads as one unit: a clear rule under it, none of it split across pages. */
+.so-print-table tbody tr.so-item-row td {
+    border-bottom-color: #cbd5e1;
+}
+
+.so-print-table tbody tr.so-item-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+/* Long product names wrap inside their column instead of stretching the table. */
+.so-item-cell {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.so-price-cell,
+.so-discount-cell,
+.so-tax-cell,
+.so-total-cell {
+    white-space: nowrap;
 }
 
 .so-row-idx {
@@ -5125,6 +5165,7 @@ onMounted(async () => {
 
 .so-item-name {
     font-weight: 700;
+    font-size: 11.5px;
     color: #0f172a;
     line-height: 1.45;
 }
@@ -5167,18 +5208,38 @@ onMounted(async () => {
 
 .so-qty-cell {
     font-weight: 800;
+    background: var(--so-highlight-bg, #f8fafc);
 }
 
 .so-qty-num {
-    font-size: 12px;
+    display: block;
+    font-size: 13px;
+    line-height: 1.2;
     color: #0f172a;
 }
 
 .so-unit-label {
+    display: block;
     font-size: 9px;
-    font-weight: normal;
+    font-weight: 600;
     color: #64748b;
-    margin-inline-start: 2px;
+    line-height: 1.2;
+}
+
+.so-per-unit {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+/* A line the picker fills in by hand. */
+.so-write-in {
+    display: inline-block;
+    width: 80%;
+    min-width: 40px;
+    height: 16px;
+    border-bottom: 1px dashed #94a3b8;
 }
 
 .so-price-cell {
@@ -5218,8 +5279,8 @@ onMounted(async () => {
 
 .so-check-box {
     display: inline-block;
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
     border: 1.5px solid #64748b;
     border-radius: 3px;
     background: #ffffff;
@@ -5252,10 +5313,7 @@ onMounted(async () => {
     font-size: 11px;
     font-weight: 700;
     color: #047857;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+    white-space: nowrap;
 }
 
 .so-sum-subtext {
@@ -5593,6 +5651,10 @@ onMounted(async () => {
     font-size: 10px;
 }
 
+.so-printable-sheet.density-compact .so-qty-num {
+    font-size: 11.5px;
+}
+
 .so-printable-sheet.density-compact .so-print-summary-row {
     margin-bottom: 10px;
 }
@@ -5792,15 +5854,21 @@ onMounted(async () => {
         break-before: auto !important;
     }
 
+    /* Each closing block stays whole, but the section may split between them —
+       holding all of it together pushed it to a new page and left a blank half. */
     .so-doc-ribbon,
     .so-print-meta-grid,
     .so-print-table tr,
     .so-print-summary-row,
     .so-print-signatures,
-    .so-print-footer,
-    .so-print-closing-section {
+    .so-print-footer {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+    }
+
+    .so-table-summary-row {
+        break-before: avoid !important;
+        page-break-before: avoid !important;
     }
 
     .so-print-table thead {
