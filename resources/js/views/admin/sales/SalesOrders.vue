@@ -5734,14 +5734,14 @@ onMounted(async () => {
     }
 
     /* Clean printing for listing table when printing page without modal */
-    :global(body:not(.so-print-dialog-open)) .admin-sidebar,
-    :global(body:not(.so-print-dialog-open)) .admin-header,
-    :global(body:not(.so-print-dialog-open)) .page-actions-bar,
-    :global(body:not(.so-print-dialog-open)) .table-filter-bar,
-    :global(body:not(.so-print-dialog-open)) .pagination-container,
-    :global(body:not(.so-print-dialog-open)) .detail-drawer,
-    :global(body:not(.so-print-dialog-open)) .action-buttons,
-    :global(body:not(.so-print-dialog-open)) .bulk-actions-toolbar {
+    :global(body:not(.so-print-dialog-open) .admin-sidebar),
+    :global(body:not(.so-print-dialog-open) .admin-header),
+    :global(body:not(.so-print-dialog-open) .page-actions-bar),
+    :global(body:not(.so-print-dialog-open) .table-filter-bar),
+    :global(body:not(.so-print-dialog-open) .pagination-container),
+    :global(body:not(.so-print-dialog-open) .detail-drawer),
+    :global(body:not(.so-print-dialog-open) .action-buttons),
+    :global(body:not(.so-print-dialog-open) .bulk-actions-toolbar) {
         display: none !important;
     }
 
