@@ -248,8 +248,113 @@
                         stripe
                         highlight-current-row
                         :row-class-name="invoiceRowClass"
+                        row-key="id"
                         @sort-change="handleInvoiceSortChange"
+                        @expand-change="handleInvoiceExpand"
                     >
+                        <!-- The invoice's profit, product by product. Loaded
+                             when a row is opened rather than with the page:
+                             the table pages at up to 500 invoices. -->
+                        <el-table-column type="expand" width="44">
+                            <template #default="{ row }">
+                                <div v-loading="invoiceLines[row.id]?.loading" class="invoice-lines">
+                                    <div class="invoice-lines-title">
+                                        <i class="fas fa-boxes-stacked"></i>
+                                        {{ $t('invoice_lines_profit') }} — {{ row.invoice_number }}
+                                    </div>
+                                    <el-alert
+                                        v-if="invoiceLines[row.id]?.error"
+                                        :title="$t('failed_to_load_invoice_lines')"
+                                        type="error"
+                                        :closable="false"
+                                        show-icon
+                                    />
+                                    <el-table
+                                        v-else-if="invoiceLines[row.id]?.data"
+                                        :data="invoiceLines[row.id].data.lines"
+                                        size="small"
+                                        border
+                                        :empty-text="$t('no_invoice_lines')"
+                                        :row-class-name="invoiceRowClass"
+                                        :summary-method="() => invoiceLinesSummary(invoiceLines[row.id].data)"
+                                        show-summary
+                                    >
+                                        <el-table-column type="index" width="44" align="center" />
+                                        <el-table-column :label="$t('product')" min-width="220">
+                                            <template #default="{ row: line }">
+                                                <div class="line-product">{{ line.product_name }}</div>
+                                                <p v-if="line.sku || line.warehouse_name" class="table-sub-note">
+                                                    <span v-if="line.sku">{{ line.sku }}</span>
+                                                    <span v-if="line.sku && line.warehouse_name"> · </span>
+                                                    <span v-if="line.warehouse_name">{{ line.warehouse_name }}</span>
+                                                </p>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('quantity')" width="100" align="center">
+                                            <template #default="{ row: line }">
+                                                {{ line.quantity }}
+                                                <span v-if="line.unit_name" class="table-sub-note">{{ line.unit_name }}</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('unit_price')" width="115">
+                                            <template #default="{ row: line }">{{ formatMoney(line.unit_price) }}</template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('line_revenue')" width="125">
+                                            <template #default="{ row: line }"><strong>{{ formatMoney(line.revenue) }}</strong></template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('line_unit_cost')" width="115">
+                                            <template #default="{ row: line }">
+                                                <span class="cost-cell">{{ formatMoney(line.unit_cost) }}</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('cost_of_goods')" width="125">
+                                            <template #default="{ row: line }">
+                                                <el-tooltip
+                                                    v-if="line.estimated"
+                                                    :content="$t(line.uncosted ? 'line_uncosted_hint' : 'line_estimated_hint')"
+                                                    placement="top"
+                                                >
+                                                    <span class="cost-cell is-estimated">≈ {{ formatMoney(line.total_cost) }}</span>
+                                                </el-tooltip>
+                                                <span v-else class="cost-cell">{{ formatMoney(line.total_cost) }}</span>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('gross_profit')" width="130">
+                                            <template #default="{ row: line }">
+                                                <strong :class="profitClass(line)">{{ formatMoney(line.gross_profit) }}</strong>
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column :label="$t('profit_margin')" width="150">
+                                            <template #default="{ row: line }">
+                                                <div class="margin-cell">
+                                                    <div class="margin-cell-top">
+                                                        <span :class="profitClass(line)">{{ formatMarginPercent(line.gross_margin) }}</span>
+                                                        <el-tooltip v-if="line.uncosted" :content="$t('line_uncosted_hint')" placement="top">
+                                                            <i class="fas fa-triangle-exclamation margin-warning"></i>
+                                                        </el-tooltip>
+                                                    </div>
+                                                    <div class="margin-bar" :class="profitClass(line)">
+                                                        <span :style="{ width: marginBarWidth(line.gross_margin) }"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </el-table-column>
+                                    </el-table>
+                                    <!-- Whatever the header discounts or adds is
+                                         nobody's line, so it is shown on its own;
+                                         with it the lines add up to the invoice. -->
+                                    <p
+                                        v-if="invoiceLines[row.id]?.data && Math.abs(invoiceLines[row.id].data.adjustment) >= 0.005"
+                                        class="invoice-lines-adjustment"
+                                    >
+                                        {{ $t('invoice_level_adjustment') }}:
+                                        <strong :class="invoiceLines[row.id].data.adjustment < 0 ? 'profit-negative' : 'profit-positive'">
+                                            {{ formatMoney(invoiceLines[row.id].data.adjustment) }}
+                                        </strong>
+                                    </p>
+                                </div>
+                            </template>
+                        </el-table-column>
                         <!-- The identifier is the way into the record. Only the
                              number is a link, rather than the whole row: the sole
                              detail screen these have is the edit form, and a
@@ -1257,6 +1362,38 @@ const invoiceRowClass = ({ row }) => (Number(row.gross_profit) < 0 ? 'row-loss' 
 
 const formatMarginPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
 
+// Per-invoice line breakdowns, keyed by invoice id and fetched once each.
+const invoiceLines = reactive({});
+
+const handleInvoiceExpand = async (row, expandedRows) => {
+    const opened = expandedRows.some((r) => r.id === row.id);
+    if (!opened || invoiceLines[row.id]?.data || invoiceLines[row.id]?.loading) return;
+    invoiceLines[row.id] = { loading: true, data: null, error: false };
+    try {
+        const response = await api.get(`/admin/reports/invoices/${row.id}/lines`);
+        invoiceLines[row.id] = { loading: false, data: response.data?.data || { lines: [], adjustment: 0 }, error: false };
+    } catch (error) {
+        invoiceLines[row.id] = { loading: false, data: null, error: true };
+    }
+};
+
+// The footer is the invoice's own figures, not a sum of the columns, so it
+// agrees with the row above even when the header carries a discount.
+const invoiceLinesSummary = (data) => {
+    const margin = data.net_revenue > 0 ? (data.gross_profit / data.net_revenue) * 100 : 0;
+    return [
+        '',
+        t('invoice_lines_total'),
+        '',
+        '',
+        formatMoney(data.net_revenue),
+        '',
+        formatMoney(data.total_cost),
+        formatMoney(data.gross_profit),
+        formatMarginPercent(margin),
+    ];
+};
+
 // Clamped: a margin can exceed 100% only when cost is missing, and can run far
 // negative on a bad sale — neither should draw a bar off the end of the cell.
 const marginBarWidth = (value) => `${Math.min(Math.abs(Number(value) || 0), 100)}%`;
@@ -1962,4 +2099,29 @@ onMounted(() => {
 
 .profit-positive { color: #16a34a; }
 .profit-negative { color: #dc2626; }
+
+.invoice-lines {
+    padding: 0.75rem 1rem 1rem;
+    min-height: 60px;
+    background: var(--el-fill-color-lighter, #fafafa);
+}
+
+.invoice-lines-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+}
+
+.line-product {
+    font-weight: 500;
+}
+
+.invoice-lines-adjustment {
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
 </style>

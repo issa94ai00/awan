@@ -512,6 +512,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::get('/reports/invoices/product-profitability', [SalesReportController::class, 'invoiceProductProfitability'])->name('api.admin.reports.invoices.product-profitability');
             Route::get('/reports/invoices/top-performers', [SalesReportController::class, 'invoiceTopPerformers'])->name('api.admin.reports.invoices.top-performers');
             Route::get('/reports/invoices/export', [SalesReportController::class, 'invoiceExport'])->name('api.admin.reports.invoices.export');
+            Route::get('/reports/invoices/{invoice}/lines', [SalesReportController::class, 'invoiceLines'])->whereNumber('invoice')->name('api.admin.reports.invoices.lines');
 
             // Purchase Reports API
             Route::get('/reports/purchases', [PurchaseReportController::class, 'purchaseReport'])->name('api.admin.reports.purchases');

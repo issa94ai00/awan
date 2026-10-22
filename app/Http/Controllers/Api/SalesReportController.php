@@ -1064,6 +1064,64 @@ class SalesReportController extends Controller
     }
 
     /**
+     * Profit line by line for one invoice, for the report row that expands.
+     *
+     * Each line is costed the way invoiceLineCostQuery() costs the invoice:
+     * the cost the sale recorded, else quantity against today's cost_price.
+     * Whatever the header adds or takes off on top of the lines — an
+     * invoice-wide discount, extra charges — is reported as its own
+     * adjustment, so the lines plus it come to the invoice's own profit.
+     */
+    public function invoiceLines(Request $request, int $invoice)
+    {
+        $query = Invoice::query()->whereKey($invoice);
+        $this->applyOwnSalesScope($query, $request);
+        $record = $query->with(['items.product', 'items.warehouse:id,name'])->firstOrFail();
+
+        $lines = $record->items->map(function ($item) {
+            $revenue = (float) $item->total_price;
+            $measured = $item->total_cost !== null;
+            $cost = $measured
+                ? (float) $item->total_cost
+                : (float) (($item->product?->cost_price ?? 0) * ($item->quantity ?? 0));
+            $profit = $revenue - $cost;
+
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->name ?? $item->product_name ?? '-',
+                'sku' => $item->product?->sku,
+                'warehouse_name' => $item->warehouse?->name,
+                'unit_name' => $item->unit_name,
+                'quantity' => (float) $item->quantity,
+                'unit_price' => (float) $item->unit_price,
+                'revenue' => round($revenue, 5),
+                'unit_cost' => $item->quantity > 0 ? round($cost / $item->quantity, 5) : 0,
+                'total_cost' => round($cost, 5),
+                'gross_profit' => round($profit, 5),
+                'gross_margin' => $revenue > 0 ? round(($profit / $revenue) * 100, 2) : 0,
+                'estimated' => ! $measured,
+                'uncosted' => ! $measured && (float) ($item->product?->cost_price ?? 0) <= 0,
+            ];
+        })->values();
+
+        $netRevenue = (float) $record->total - (float) $record->tax;
+        $lineRevenue = (float) $lines->sum('revenue');
+        $cost = (float) $lines->sum('total_cost');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'lines' => $lines,
+                'adjustment' => round($netRevenue - $lineRevenue, 5),
+                'net_revenue' => round($netRevenue, 5),
+                'total_cost' => round($cost, 5),
+                'gross_profit' => round($netRevenue - $cost, 5),
+            ],
+        ]);
+    }
+
+    /**
      * What each invoice's lines cost, as a joinable subquery.
      *
      * Prefers the cost recorded on the line itself: the goods issue consumes
