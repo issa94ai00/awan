@@ -249,7 +249,7 @@
                                             {{ inv.status === 'paid' ? $t('paid') : $t('on_hold') }}
                                         </el-tag>
                                     </div>
-                                    <span style="font-weight:700;">${{ parseFloat(inv.total).toFixed(2) }}</span>
+                                    <span style="font-weight:700;">{{ formatCurrency(inv.total) }}</span>
                                 </div>
                             </div>
                             <span v-else>-</span>

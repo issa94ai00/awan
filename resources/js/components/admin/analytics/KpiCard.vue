@@ -42,8 +42,8 @@
 
 <script setup>
 import { computed } from 'vue';
-import { useI18n } from 'vue-i18n';
 import { CaretTop, CaretBottom, Minus } from '@element-plus/icons-vue';
+import { formatDecimal } from '@/utils/numberFormat';
 
 /**
  * One headline figure, and honestly how it moved.
@@ -73,8 +73,6 @@ const props = defineProps({
     riseIsGood: { type: Boolean, default: true },
 });
 
-const { locale } = useI18n();
-
 const hasDelta = computed(() => (
     props.comparison && props.comparison.change_percent !== null && props.comparison.change_percent !== undefined
 ));
@@ -87,13 +85,14 @@ const deltaIcon = computed(() => {
 
 const deltaText = computed(() => {
     const percent = Number(props.comparison?.change_percent ?? 0);
-    const formatted = new Intl.NumberFormat(locale.value === 'en' ? 'en-US' : 'ar-SY', {
+    const formatted = formatDecimal(Math.abs(percent), {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
-    }).format(Math.abs(percent));
+        suffix: '%',
+    });
 
     const sign = percent > 0 ? '+' : (percent < 0 ? '−' : '');
-    return `${sign}${formatted}%`;
+    return `${sign}${formatted}`;
 });
 </script>
 

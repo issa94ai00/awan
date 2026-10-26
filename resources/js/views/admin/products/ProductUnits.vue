@@ -363,6 +363,7 @@ import { useAuthStore } from '@/stores/auth';
 import { productsApi, productUnitsApi } from '@/api/products';
 import { posApi } from '@/api/pos';
 import { formatNumber, formatUnitPrice } from '@/utils/currency';
+import { formatQuantity } from '@/utils/numberFormat';
 import { getImageUrl } from '@/utils/imageUrl';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -437,9 +438,7 @@ const toNumber = (value) => {
 };
 
 // 12.00 reads as 12; 1.50 stays 1.5; a price factor of 0.0025 keeps its digits.
-const formatQty = (value) => toNumber(value).toLocaleString(locale.value === 'en' ? 'en-US' : 'ar-SY', {
-    maximumFractionDigits: 4,
-});
+const formatQty = (value) => formatQuantity(toNumber(value), 4);
 
 const productName = (product) => (locale.value === 'en'
     ? (product.name_en || product.name_ar)

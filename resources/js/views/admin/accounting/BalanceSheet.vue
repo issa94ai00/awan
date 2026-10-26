@@ -19,7 +19,7 @@
             <div class="status-details">
                 <h4 v-if="isBalanced">{{ $t('balance_sheet_balanced') }}</h4>
                 <h4 v-else>{{ $t('balance_sheet_unbalanced') }}</h4>
-                <p>{{ $t('assets_label') }} <strong>${{ totalAssets.toFixed(2) }}</strong> {{ $t('liabilities_plus_equity_label') }} <strong>${{ (totalLiabilities + totalEquity).toFixed(2) }}</strong></p>
+                <p>{{ $t('assets_label') }} <strong>{{ formatMoney(totalAssets) }}</strong> {{ $t('liabilities_plus_equity_label') }} <strong>{{ formatMoney(totalLiabilities + totalEquity) }}</strong></p>
             </div>
         </div>
 
@@ -36,10 +36,10 @@
                         </el-table-column>
                         <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
                         <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
-                            <template #default="{ row }"><strong class="text-success">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
+                            <template #default="{ row }"><strong class="text-success">{{ formatMoney(row.balance) }}</strong></template>
                         </el-table-column>
                     </el-table>
-                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalAssets.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>{{ formatMoney(totalAssets) }}</strong></div>
                 </el-card>
             </el-col>
             <el-col :xs="24" :lg="8">
@@ -54,10 +54,10 @@
                         </el-table-column>
                         <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
                         <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
-                            <template #default="{ row }"><strong class="text-warning">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
+                            <template #default="{ row }"><strong class="text-warning">{{ formatMoney(row.balance) }}</strong></template>
                         </el-table-column>
                     </el-table>
-                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalLiabilities.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>{{ formatMoney(totalLiabilities) }}</strong></div>
                 </el-card>
             </el-col>
             <el-col :xs="24" :lg="8">
@@ -72,13 +72,13 @@
                         </el-table-column>
                         <el-table-column prop="name" :label="$t('the_account')" min-width="140" />
                         <el-table-column prop="balance" :label="$t('balance')" width="120" align="right">
-                            <template #default="{ row }"><strong class="text-info">${{ parseFloat(row.balance).toFixed(2) }}</strong></template>
+                            <template #default="{ row }"><strong class="text-info">{{ formatMoney(row.balance) }}</strong></template>
                         </el-table-column>
                     </el-table>
                     <div v-if="!store.loading && !equityAccounts.length" class="empty-state-box">
                         {{ $t('no_equity_accounts_yet') }}
                     </div>
-                    <div class="section-total">{{ $t('total_label') }} <strong>${{ totalEquity.toFixed(2) }}</strong></div>
+                    <div class="section-total">{{ $t('total_label') }} <strong>{{ formatMoney(totalEquity) }}</strong></div>
                 </el-card>
             </el-col>
         </el-row>
@@ -87,11 +87,11 @@
         <div class="totals-summary-footer mt-4">
             <div class="summary-col">
                 <span>{{ $t('total_assets') }}</span>
-                <h3 class="text-success">${{ totalAssets.toFixed(2) }}</h3>
+                <h3 class="text-success">{{ formatMoney(totalAssets) }}</h3>
             </div>
             <div class="summary-col">
                 <span>{{ $t('total_liabilities_and_equity') }}</span>
-                <h3 class="text-warning">${{ (totalLiabilities + totalEquity).toFixed(2) }}</h3>
+                <h3 class="text-warning">{{ formatMoney(totalLiabilities + totalEquity) }}</h3>
             </div>
             <div class="summary-col status-col">
                 <span>{{ $t('balance_state') }}</span>
@@ -107,6 +107,7 @@
 import { computed, onMounted } from 'vue';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { formatMoney } from '@/utils/currency';
 
 const store = useAccountingReportsStore();
 

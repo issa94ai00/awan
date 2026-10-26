@@ -193,7 +193,8 @@ import { useI18n } from 'vue-i18n';
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
-import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { matchesSearch } from '@/utils/search';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
@@ -205,7 +206,10 @@ const store = useAccountingReportsStore();
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
 /** Table cells: the figure without the code, a dash for nothing. */
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(value || 0, { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 const cell = (value) => (Number(value) ? plain(value) : '—');
 
 const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];

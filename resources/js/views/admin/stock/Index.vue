@@ -551,7 +551,7 @@ const deleteAssignment = async (id) => {
 
 const formatNumber = (num) => {
     if (num === null || num === undefined) return '0';
-    return Number(num).toLocaleString('en-US');
+    return formatCount(num);
 };
 
 const formatPrice = (price) => formatMoney(price);

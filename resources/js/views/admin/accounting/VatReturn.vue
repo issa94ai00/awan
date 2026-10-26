@@ -202,7 +202,8 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { accountingReportsApi } from '@/api/accountingReports';
-import { formatMoney, formatNumber, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, formatNumber, baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, formatPercent, moneyDecimals } from '@/utils/numberFormat';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -210,7 +211,10 @@ const router = useRouter();
 
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(value || 0, { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 
 const localDate = (d) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 const todayIso = localDate(new Date());
@@ -291,7 +295,7 @@ const effectiveRate = computed(() => {
     const base = Number(report.value?.sales_base || 0);
     if (!base) return null;
     const pct = (Number(report.value.output_tax.amount || 0) / base) * 100;
-    return `${new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 2 }).format(pct)}%`;
+    return formatPercent(pct, 2);
 });
 
 const reconciliationRows = computed(() => {

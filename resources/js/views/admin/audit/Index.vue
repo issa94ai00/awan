@@ -52,7 +52,7 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs font-medium text-slate-500 mb-1">{{ $t('audit.total_logs') || 'إجمالي العمليات المسجلة' }}</p>
-            <h3 class="text-2xl font-bold text-slate-900">{{ stats.total_logs.toLocaleString() }}</h3>
+            <h3 class="text-2xl font-bold text-slate-900">{{ formatNumber(stats.total_logs) }}</h3>
             <span class="text-xs text-slate-400 mt-1 block">
               {{ $t('today') || 'اليوم' }}: <strong class="text-indigo-600">{{ stats.today_logs }}</strong>
             </span>
@@ -612,6 +612,7 @@ import {
   Delete, View, Monitor, InfoFilled, Filter
 } from '@element-plus/icons-vue';
 import auditService from '@/services/audit';
+import { formatNumber } from '@/utils/currency';
 import * as echarts from 'echarts';
 
 const { t } = useI18n();

@@ -222,6 +222,7 @@ import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { suppliersApi } from '@/api/suppliers';
 import { useInventoryStore } from '@/stores/inventory';
 import { apiErrorMessage, formatCurrency, formatDate } from '@/utils/sales';
+import { formatNumber } from '@/utils/currency';
 import { variantLabelOf } from '@/utils/productPick';
 
 const { t } = useI18n();
@@ -358,7 +359,7 @@ const statCards = computed(() => {
     const s = summary.value || {};
     const variance = Number(s.variance) || 0;
     return [
-        { key: 'count', icon: Van, tone: 'blue', title: t('purchase_returns'), value: Number(s.count || 0).toLocaleString() },
+        { key: 'count', icon: Van, tone: 'blue', title: t('purchase_returns'), value: formatNumber(s.count) },
         { key: 'credit', icon: Coin, tone: 'green', title: t('pret_total_credited'), value: formatCurrency(s.credit) },
         { key: 'tax', icon: Box, tone: 'purple', title: t('tax_returned'), value: formatCurrency(s.tax) },
         {

@@ -469,6 +469,8 @@
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { productImages, toImagePath } from '@/utils/productImages';
 import { mergeSpecs } from '@/utils/productSpecs';
+import { currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { EditPen, Loading, Check, Clock, WarningFilled, UploadFilled, Delete, Plus } from '@element-plus/icons-vue';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -791,7 +793,8 @@ const packQuantity = (product) => {
 
 const formatPrice = (price) => {
     if (price === null || price === undefined) return '—';
-    return Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(price, { minimumFractionDigits: places, maximumFractionDigits: places });
 };
 </script>
 

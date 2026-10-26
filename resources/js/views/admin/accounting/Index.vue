@@ -540,8 +540,8 @@ import {
     formatMoney as formatMoneyWith,
     formatNumber,
     baseCurrencyCode,
-    numberLocale,
 } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
@@ -550,7 +550,7 @@ const reportsStore = useAccountingReportsStore();
 
 const baseCode = baseCurrencyCode();
 const formatMoney = (value) => formatMoneyWith(value || 0);
-const formatPct = (value) => `${Number(value || 0).toLocaleString(numberLocale(), { maximumFractionDigits: 1 })}%`;
+const formatPct = (value) => formatPercent(value || 0, 1);
 const formatDate = (date) => (date ? String(date).slice(0, 10) : '');
 
 /** Local calendar date: `toISOString()` is UTC and names yesterday until 03:00 here. */

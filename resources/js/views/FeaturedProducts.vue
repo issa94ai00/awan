@@ -67,8 +67,8 @@
                                     </div>
                                 </div>
                                 <div v-if="product.show_price !== false" class="product-price-row">
-                                    <span v-if="product.sale_price" class="price-old">{{ formatPrice(product.price) }} {{ product.currency || 'SAR' }}</span>
-                                    <span class="price-current">{{ formatPrice(product.sale_price || product.price) }} {{ product.currency || 'SAR' }}</span>
+                                    <span v-if="product.sale_price" class="price-old">{{ formatPrice(product.price, product.currency) }} {{ product.currency || baseCurrencyCode() }}</span>
+                                    <span class="price-current">{{ formatPrice(product.sale_price || product.price, product.currency) }} {{ product.currency || baseCurrencyCode() }}</span>
                                     <span v-if="product.sale_price && product.discount_percentage" class="discount-badge">-{{ product.discount_percentage }}%</span>
                                 </div>
                                 <div class="product-actions-row">
@@ -139,6 +139,8 @@ import { useProductsStore } from '@/stores/products';
 import { useSettingsStore } from '@/stores/settings';
 import { useI18n } from 'vue-i18n';
 import { useSeo } from '@/Composables/useSeo';
+import { baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 
 import axios from 'axios';
 
@@ -238,9 +240,9 @@ function closeLightbox() {
 function nextImage() { lightbox.index = (lightbox.index + 1) % lightbox.images.length; }
 function prevImage() { lightbox.index = (lightbox.index - 1 + lightbox.images.length) % lightbox.images.length; }
 
-function formatPrice(price) {
-    if (!price) return '0';
-    return Number(price).toLocaleString(locale.value === 'en' ? 'en-US' : 'ar-SA');
+function formatPrice(price, code) {
+    const places = moneyDecimals(currencyDecimals(code));
+    return formatDecimal(price, { minimumFractionDigits: places, maximumFractionDigits: places });
 }
 
 function getGalleryImages(product) {

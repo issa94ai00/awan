@@ -269,7 +269,7 @@ class BankReconciliationController extends Controller
                 'success' => false,
                 'message' => sprintf(
                     'لا يمكن إقفال تسوية بفارق %s. الفارق ليس توقيتاً — راجع حركة ناقصة أو مكررة في أحد السجلين.',
-                    number_format($summary['difference'], 2)
+                    format_amount($summary['difference'])
                 ),
                 'data' => ['summary' => $summary],
             ], 422);

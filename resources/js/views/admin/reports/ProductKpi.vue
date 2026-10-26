@@ -286,7 +286,8 @@
 </template>
 
 <script setup>
-import { formatMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
+import { formatCompact, formatPercent as formatPercentWith } from '@/utils/numberFormat';
 import { matchesSearch } from '@/utils/search';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
@@ -848,8 +849,8 @@ const exportCsv = () => {
  * ------------------------------------------------------------------ */
 const formatCurrency = (value) => formatMoney(Number(value) || 0);
 const formatNumber = (value) => formatCount(Number(value) || 0);
-const formatPercent = (value) => `${new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 1 }).format(Number(value) || 0)}%`;
-const compactNumber = (value) => new Intl.NumberFormat(numberLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+const formatPercent = (value) => formatPercentWith(value, 1);
+const compactNumber = (value) => formatCompact(value);
 const profitTone = (row) => (Number(row.gross_profit) < 0 ? 'tone-bad' : (row.uncosted ? 'tone-muted' : 'tone-good'));
 
 onMounted(() => {

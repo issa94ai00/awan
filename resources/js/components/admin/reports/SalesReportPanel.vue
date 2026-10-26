@@ -319,6 +319,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
@@ -423,7 +424,7 @@ const valueLabel = computed(() => props.dimensionValueLabel || t('total_sales'))
 const countLabel = computed(() => props.dimensionCountLabel || t('count'));
 const dueLabel = computed(() => props.dimensionDueLabel || t('due_amount'));
 
-const formatCount = (value) => Number(value || 0).toLocaleString();
+const formatCount = (value) => formatNumber(value || 0);
 
 const dimensionCards = computed(() => [
     {
@@ -672,7 +673,7 @@ onMounted(renderChart);
 onBeforeUnmount(disposeChart);
 
 const formatMoney = (value) => formatMoneyWith(value || 0);
-const formatPercentage = (value) => `${Number(value || 0).toFixed(2)}%`;
+const formatPercentage = (value) => formatPercent(value || 0, 2);
 const formatValue = (value, format) => {
     if (format === 'currency') return formatMoney(value);
     if (format === 'percent') return formatPercentage(value);

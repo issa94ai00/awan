@@ -686,6 +686,7 @@ import {
     paymentMethodLabel,
 } from '@/utils/sales';
 import { formatMoney } from '@/utils/currency';
+import { moneyDecimals } from '@/utils/numberFormat';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -696,7 +697,7 @@ const METHOD_ICONS = { cash: 'fa-money-bill-wave', card: 'fa-credit-card', bank_
 const methodIcon = (method) => METHOD_ICONS[method] || 'fa-coins';
 
 /** Each wallet is written in its own currency's precision — never the base's. */
-const formatWalletTotal = (wallet) => formatMoney(wallet.total, { code: wallet.currency, decimals: wallet.decimal_places });
+const formatWalletTotal = (wallet) => formatMoney(wallet.total, { code: wallet.currency, decimals: moneyDecimals(wallet.decimal_places) });
 const showWallets = computed(() => store.wallets.length > 1 || store.wallets.some((w) => !w.is_base));
 
 const goToInvoice = (invoice) => router.push(`/admin/sales/invoices/${invoice.id}/edit`);

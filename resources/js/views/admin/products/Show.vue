@@ -264,7 +264,8 @@
 
 <script setup>
 import EntityImage from '@/components/admin/EntityImage.vue';
-import { baseCurrencyCode } from '@/utils/currency';
+import { baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -310,11 +311,8 @@ const getStockTag = (stock) => {
 };
 
 const formatPrice = (price) => {
-    if (price === null || price === undefined) return '0.00';
-    return Number(price).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(price ?? 0, { minimumFractionDigits: places, maximumFractionDigits: places });
 };
 
 const formatDate = (dateStr) => {

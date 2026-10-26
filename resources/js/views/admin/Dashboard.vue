@@ -801,6 +801,7 @@ import { featureForPath } from '@/config/features';
 import { pagePermissionFor } from '@/config/pagePermissions';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
+import { formatCompact, formatPercent } from '@/utils/numberFormat';
 import { statusTagType, statusLabel } from '@/utils/sales';
 import DashboardSkeleton from '@/components/admin/DashboardSkeleton.vue';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
@@ -986,7 +987,7 @@ const automationSuccessRate = computed(() => {
     if (total <= 0) return '—';
 
     const rate = Math.round((toNumber(workflowStats.value.executions_completed) / total) * 100);
-    return `${formatNumber(rate)}%`;
+    return formatPercent(rate, 0);
 });
 
 /* ---- Headline figures, kept numeric so both the cards and the strip read them ---- */
@@ -1019,7 +1020,7 @@ const monthDelta = computed(() => {
     const rounded = Math.round(change);
     return {
         direction: change >= 0 ? 'up' : 'down',
-        label: `${formatNumber(Math.abs(rounded))}%`,
+        label: formatPercent(Math.abs(rounded), 0),
     };
 });
 
@@ -1273,7 +1274,6 @@ const renderRevenueTrend = () => {
     const revenue = salesTrend.value.map((d) => Number(d.revenue) || 0);
     const orders = salesTrend.value.map((d) => Number(d.orders) || 0);
 
-    const compact = new Intl.NumberFormat(dateLocale.value, { notation: 'compact', maximumFractionDigits: 1 });
     const axisLabel = (value) => {
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? value : formatDay(value);
@@ -1301,7 +1301,7 @@ const renderRevenueTrend = () => {
             axisLabel: { color: '#94a3b8', formatter: axisLabel, hideOverlap: true },
         },
         yAxis: [
-            { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { color: '#94a3b8', formatter: (v) => compact.format(v) } },
+            { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } }, axisLabel: { color: '#94a3b8', formatter: (v) => formatCompact(v) } },
             { type: 'value', splitLine: { show: false }, axisLabel: { show: false }, minInterval: 1 }
         ],
         series: [

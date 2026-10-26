@@ -199,6 +199,143 @@
                     </el-form>
                 </section>
 
+                <section v-show="activeSection === 'numbers'" class="settings-section">
+                    <el-form :model="form" label-position="top" @submit.prevent>
+                        <el-alert
+                            :title="$t('ns_display_only')"
+                            type="info"
+                            :closable="false"
+                            show-icon
+                            class="mb-4"
+                        />
+
+                        <div class="numbers-layout">
+                            <div class="numbers-fields">
+                                <h3 class="sub-head sub-head--first">{{ $t('ns_group_writing') }}</h3>
+                                <el-row :gutter="20">
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_digits')">
+                                            <el-select v-model="form.number_digits" class="w-full">
+                                                <el-option v-for="item in numberChoices.digits" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_negative_format')">
+                                            <el-select v-model="form.number_negative_format" class="w-full">
+                                                <el-option v-for="item in numberChoices.negative" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_decimal_separator')">
+                                            <el-select v-model="form.number_decimal_separator" class="w-full">
+                                                <el-option v-for="item in numberChoices.decimal" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item
+                                            :label="$t('ns_thousands_separator')"
+                                            :error="separatorConflict ? $t('ns_sep_conflict') : ''"
+                                        >
+                                            <el-select v-model="form.number_thousands_separator" class="w-full">
+                                                <el-option v-for="item in numberChoices.thousands" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+
+                                <h3 class="sub-head">{{ $t('ns_group_precision') }}</h3>
+                                <el-row :gutter="20">
+                                    <el-col :xs="24" :md="8">
+                                        <el-form-item :label="$t('ns_money_decimals')">
+                                            <el-select v-model="form.number_money_decimals" class="w-full">
+                                                <el-option v-for="item in numberChoices.money" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                            <p class="field-hint">{{ $t('ns_money_decimals_hint') }}</p>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="8">
+                                        <el-form-item :label="$t('ns_quantity_decimals')">
+                                            <el-select v-model="form.number_quantity_decimals" class="w-full">
+                                                <el-option v-for="item in numberChoices.quantity" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                            <p class="field-hint">{{ $t('ns_quantity_decimals_hint') }}</p>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="8">
+                                        <el-form-item :label="$t('ns_percent_decimals')">
+                                            <el-select v-model="form.number_percent_decimals" class="w-full">
+                                                <el-option v-for="item in numberChoices.percent" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+
+                                <h3 class="sub-head">{{ $t('ns_group_rounding') }}</h3>
+                                <el-row :gutter="20">
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_rounding_mode')">
+                                            <el-select v-model="form.number_rounding_mode" class="w-full">
+                                                <el-option v-for="item in numberChoices.rounding" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_trailing_zeros')">
+                                            <el-select v-model="form.number_trailing_zeros" class="w-full">
+                                                <el-option v-for="item in numberChoices.trailing" :key="item.value" :label="item.label" :value="item.value" />
+                                            </el-select>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+
+                                <h3 class="sub-head">{{ $t('ns_group_money') }}</h3>
+                                <el-row :gutter="20">
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_currency_display')">
+                                            <el-radio-group v-model="form.number_currency_display">
+                                                <el-radio-button v-for="item in numberChoices.currencyDisplay" :key="item.value" :value="item.value">{{ item.label }}</el-radio-button>
+                                            </el-radio-group>
+                                        </el-form-item>
+                                    </el-col>
+                                    <el-col :xs="24" :md="12">
+                                        <el-form-item :label="$t('ns_currency_position')">
+                                            <el-radio-group v-model="form.number_currency_position">
+                                                <el-radio-button v-for="item in numberChoices.currencyPosition" :key="item.value" :value="item.value">{{ item.label }}</el-radio-button>
+                                            </el-radio-group>
+                                        </el-form-item>
+                                    </el-col>
+                                </el-row>
+
+                                <el-button :icon="RefreshLeft" @click="resetNumberSettings">{{ $t('ns_reset') }}</el-button>
+                            </div>
+
+                            <aside class="numbers-preview" :aria-label="$t('ns_preview')">
+                                <header class="numbers-preview-head">
+                                    <strong>{{ $t('ns_preview') }}</strong>
+                                    <small>{{ $t('ns_preview_hint') }}</small>
+                                </header>
+                                <dl class="numbers-preview-list">
+                                    <div v-for="row in numberPreview" :key="row.key" class="numbers-preview-row">
+                                        <dt>{{ row.label }}</dt>
+                                        <dd><bdi>{{ row.value }}</bdi></dd>
+                                    </div>
+                                </dl>
+                                <div v-for="group in roundingPreview" :key="group.places" class="numbers-rounding">
+                                    <span class="numbers-rounding-title">{{ $t('ns_preview_rounding', { n: group.places }) }}</span>
+                                    <div v-for="row in group.rows" :key="row.source" class="numbers-rounding-row">
+                                        <bdi class="numbers-rounding-source">{{ row.source }}</bdi>
+                                        <span aria-hidden="true">{{ locale === 'en' ? '→' : '←' }}</span>
+                                        <bdi>{{ row.value }}</bdi>
+                                    </div>
+                                </div>
+                            </aside>
+                        </div>
+                    </el-form>
+                </section>
+
                 <section v-show="activeSection === 'contact'" class="settings-section">
                     <el-form :model="form" label-position="top" @submit.prevent>
                         <div class="lang-switch-bar">
@@ -1471,14 +1608,25 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import {
     Setting, Money, Phone, Share, Search, Bell, OfficeBuilding, Aim, Brush,
     Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor, Printer,
-    Plus, Delete, ArrowUp, ArrowDown, Location
+    Plus, Delete, ArrowUp, ArrowDown, Location, Odometer, RefreshLeft
 } from '@element-plus/icons-vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
 import ImageDropzone from '@/components/admin/settings/ImageDropzone.vue';
 import LengthMeter from '@/components/admin/settings/LengthMeter.vue';
 // Aliased: `baseCurrencyCode` is already the name of this screen's own ref.
-import { baseCurrencyCode as resolveBaseCurrency } from '@/utils/currency';
+import { baseCurrencyCode as resolveBaseCurrency, formatMoney as formatMoneyIn, formatUnitPrice } from '@/utils/currency';
+import {
+    NUMBER_DEFAULTS,
+    NUMBER_SETTING_KEYS,
+    ROUNDING_MODES,
+    decimalSeparator,
+    formatCompact,
+    formatDecimal,
+    formatPercent,
+    formatQuantity,
+    previewNumberSettings,
+} from '@/utils/numberFormat';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import currenciesApi from '@/api/currencies';
 
@@ -1499,6 +1647,7 @@ const sectionGroups = computed(() => [
         sections: [
             { key: 'general', label: t('general'), hint: t('settings_hint_general'), icon: Setting },
             { key: 'localization', label: t('currency_and_language'), hint: t('settings_hint_localization'), icon: Money },
+            { key: 'numbers', label: t('ns_section'), hint: t('ns_section_hint'), icon: Odometer },
         ],
     },
     {
@@ -1530,7 +1679,7 @@ const sectionGroups = computed(() => [
 ]);
 
 const allSections = computed(() => sectionGroups.value.flatMap((group) => group.sections));
-const sectionKeys = ['general', 'localization', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'printing', 'notifications'];
+const sectionKeys = ['general', 'localization', 'numbers', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'printing', 'notifications'];
 
 // Kept in the URL so a reload or a shared link lands on the same section.
 const activeSection = ref(sectionKeys.includes(route.query.section) ? route.query.section : 'general');
@@ -1547,6 +1696,7 @@ const SOCIAL_KEYS = ['facebook', 'instagram', 'twitter', 'youtube', 'linkedin'];
 const sectionFor = (key) => {
     if (/^(site_|show_)/.test(key)) return 'general';
     if (['default_currency', 'default_language', 'timezone'].includes(key)) return 'localization';
+    if (/^number_/.test(key)) return 'numbers';
     if (/^(contact_|address|working_hours)/.test(key)) return 'contact';
     if (SOCIAL_KEYS.includes(key)) return 'social';
     if (/^meta_|^google_analytics$|^ogImage$/.test(key)) return 'seo';
@@ -1700,7 +1850,8 @@ const form = reactive({
     print_show_footer: true,
     print_authorized_person: '',
     print_authorized_title: '',
-    print_terms: ''
+    print_terms: '',
+    ...NUMBER_DEFAULTS,
 });
 
 const colorPalettes = [
@@ -2303,6 +2454,9 @@ const loadSettings = (settings) => {
     headerBannerFile.value = null;
     coverImageFile.value = null;
     Object.keys(pendingFiles).forEach((key) => { pendingFiles[key] = ''; });
+    NUMBER_SETTING_KEYS.forEach((key) => {
+        form[key] = settings[key] ? String(settings[key]) : NUMBER_DEFAULTS[key];
+    });
     takeSnapshot();
 };
 
@@ -2476,12 +2630,80 @@ const clientErrors = () => {
         if (error) errors.push({ field: key, section: 'social', message: `${socialFields.value.find((f) => f.key === key)?.label}: ${error}` });
     });
     if (analyticsError.value) errors.push({ field: 'google_analytics', section: 'seo', message: `Google Analytics: ${analyticsError.value}` });
+    if (separatorConflict.value) errors.push({ field: 'number_thousands_separator', section: 'numbers', message: t('ns_sep_conflict') });
     branches.value.forEach((branch, index) => {
         const error = urlError(branch.map_url);
         if (error) errors.push({ field: 'contact_branches', section: 'contact', message: `${t('settings_branch_map')} (${index + 1}): ${error}` });
     });
     return errors;
 };
+
+/* ---- Numbers & decimals ---- */
+
+// The values match NumberFormat::OPTIONS, which the server validates against.
+const choicesOf = (pairs) => pairs.map(([value, key]) => ({ value, label: t(key) }));
+const placesUpTo = (max) => Array.from({ length: max + 1 }, (_, n) => ({
+    value: String(n),
+    label: n === 0 ? t('ns_places_0') : t('ns_places', { n }),
+}));
+
+const numberChoices = computed(() => ({
+    digits: choicesOf([['auto', 'ns_digits_auto'], ['latin', 'ns_digits_latin'], ['arabic', 'ns_digits_arabic']]),
+    decimal: choicesOf([['auto', 'ns_sep_auto'], ['.', 'ns_sep_dot'], [',', 'ns_sep_comma'], ['٫', 'ns_sep_arabic_decimal']]),
+    thousands: choicesOf([
+        ['auto', 'ns_sep_auto'], [',', 'ns_sep_comma'], ['.', 'ns_sep_dot'], ['٬', 'ns_sep_arabic_thousands'],
+        ['space', 'ns_sep_space'], ['apostrophe', 'ns_sep_apostrophe'], ['none', 'ns_sep_none'],
+    ]),
+    negative: choicesOf([['minus', 'ns_negative_minus'], ['parentheses', 'ns_negative_parentheses'], ['trailing', 'ns_negative_trailing']]),
+    money: [{ value: 'currency', label: t('ns_money_decimals_currency') }, ...placesUpTo(4)],
+    quantity: placesUpTo(4),
+    percent: placesUpTo(3),
+    rounding: choicesOf(ROUNDING_MODES.map((mode) => [mode, `ns_round_${mode}`])),
+    trailing: choicesOf([['keep', 'ns_trailing_keep'], ['drop_whole', 'ns_trailing_drop_whole'], ['drop_all', 'ns_trailing_drop_all']]),
+    currencyDisplay: choicesOf([['code', 'ns_currency_code'], ['symbol', 'ns_currency_symbol']]),
+    currencyPosition: choicesOf([['after', 'ns_currency_after'], ['before', 'ns_currency_before']]),
+}));
+
+const numberDraft = computed(() => Object.fromEntries(NUMBER_SETTING_KEYS.map((key) => [key, form[key]])));
+
+// `auto` resolves per language, so the clash is checked against what it resolves to.
+const separatorConflict = computed(() => {
+    void locale.value;
+    const decimal = previewNumberSettings(numberDraft.value, decimalSeparator);
+    return form.number_thousands_separator === decimal;
+});
+
+const numberPreview = computed(() => {
+    void locale.value;
+    const code = form.default_currency;
+
+    return previewNumberSettings(numberDraft.value, () => [
+        { key: 'amount', label: t('ns_preview_amount'), value: formatMoneyIn(1234567.891, { code }) },
+        { key: 'negative', label: t('ns_preview_negative'), value: formatMoneyIn(-2500.5, { code }) },
+        { key: 'whole', label: t('ns_preview_whole'), value: formatMoneyIn(150, { code }) },
+        { key: 'unit', label: t('ns_preview_unit_price'), value: formatUnitPrice(0.0036, { code }) },
+        { key: 'quantity', label: t('ns_preview_quantity'), value: formatQuantity(1250.3756) },
+        { key: 'percent', label: t('ns_preview_percent'), value: formatPercent(12.3456) },
+        { key: 'compact', label: t('ns_preview_compact'), value: formatCompact(1250000) },
+    ]);
+});
+
+const roundingPreview = computed(() => {
+    void locale.value;
+
+    return previewNumberSettings(numberDraft.value, () => [
+        { places: 2, values: [2.345, 2.355, -2.345, 2.341] },
+        { places: 0, values: [2.5, 3.5, -2.5, 2.1] },
+    ].map(({ places, values }) => ({
+        places,
+        rows: values.map((value) => ({
+            source: String(value),
+            value: formatDecimal(value, { minimumFractionDigits: places, maximumFractionDigits: places }),
+        })),
+    })));
+});
+
+const resetNumberSettings = () => Object.assign(form, NUMBER_DEFAULTS);
 
 const openLink = (url) => {
     if (isUrl(url)) window.open(url, '_blank', 'noopener');
@@ -3270,6 +3492,107 @@ onBeforeUnmount(() => {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--st-text);
+}
+
+/* ── Numbers & decimals ── */
+.sub-head--first {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.numbers-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 1.75rem;
+    align-items: start;
+}
+
+.numbers-preview {
+    position: sticky;
+    top: 1rem;
+    padding: 1rem 1.1rem;
+    border-radius: 14px;
+    border: 1px solid var(--st-border);
+    background: #fff;
+    box-shadow: 0 6px 18px -14px rgba(15, 23, 42, 0.4);
+}
+
+.numbers-preview-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-bottom: 0.75rem;
+}
+
+.numbers-preview-head strong {
+    font-size: 0.95rem;
+    color: var(--st-text);
+}
+
+.numbers-preview-head small,
+.numbers-rounding-title {
+    font-size: 0.75rem;
+    color: var(--st-muted);
+}
+
+.numbers-preview-list {
+    margin: 0;
+}
+
+.numbers-preview-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px dashed var(--st-border);
+}
+
+.numbers-preview-row dt {
+    font-size: 0.8rem;
+    color: var(--st-muted);
+}
+
+.numbers-preview-row dd {
+    margin: 0;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--st-text);
+    white-space: nowrap;
+}
+
+.numbers-rounding {
+    margin-top: 0.9rem;
+}
+
+.numbers-rounding-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--st-text);
+}
+
+.numbers-rounding-row > :last-child {
+    font-weight: 700;
+    text-align: end;
+}
+
+.numbers-rounding-source {
+    color: var(--st-muted);
+}
+
+@media (max-width: 1100px) {
+    .numbers-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .numbers-preview {
+        position: static;
+    }
 }
 
 /* ── Branches ── */

@@ -337,6 +337,7 @@ import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import { matchesSearch } from '@/utils/search';
+import { formatMoney } from '@/utils/currency';
 import {
     Plus,
     Search,
@@ -372,10 +373,7 @@ const settlementForm = reactive({
     paid_on: new Date().toISOString().slice(0, 10),
 });
 
-const money = (value) => Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
+const money = (value) => formatMoney(value || 0);
 
 const formatDate = (val) => {
     if (!val) return '—';

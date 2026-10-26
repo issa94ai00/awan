@@ -1567,7 +1567,7 @@ class AccountingReportController extends Controller
             'unposted_invoices',
             'فواتير غير مُرحَّلة إلى دفتر الأستاذ',
             (int) $unpostedInvoices->n,
-            'إيراد بقيمة ' . number_format((float) $unpostedInvoices->amount, 2) . ' لا يظهر في قائمة الدخل رغم إصدار فاتورته.',
+            'إيراد بقيمة ' . format_amount((float) $unpostedInvoices->amount) . ' لا يظهر في قائمة الدخل رغم إصدار فاتورته.',
             'شغّل: php artisan accounting:backfill --type=invoices --apply'
         );
 
@@ -1582,7 +1582,7 @@ class AccountingReportController extends Controller
             'unposted_payments',
             'دفعات غير مُرحَّلة',
             (int) $unpostedPayments->n,
-            'تحصيل بقيمة ' . number_format((float) $unpostedPayments->amount, 2) . ' لم يصل الصندوق ولم يُخفِّض ذمم العملاء في الدفاتر.',
+            'تحصيل بقيمة ' . format_amount((float) $unpostedPayments->amount) . ' لم يصل الصندوق ولم يُخفِّض ذمم العملاء في الدفاتر.',
             'شغّل: php artisan accounting:backfill --type=payments --apply'
         );
 
@@ -1598,7 +1598,7 @@ class AccountingReportController extends Controller
             'unposted_supplier_payments',
             'مدفوعات موردين غير مُرحَّلة',
             (int) $unpostedSupplierPayments->n,
-            'صرف بقيمة '.number_format((float) $unpostedSupplierPayments->amount, 2).' خرج من الخزينة دون أن يُخفِّض ذمم الموردين في الدفاتر.',
+            'صرف بقيمة '.format_amount((float) $unpostedSupplierPayments->amount).' خرج من الخزينة دون أن يُخفِّض ذمم الموردين في الدفاتر.',
             'راجع سجل مدفوعات الموردين وأعد تسجيل ما لم يُرحَّل.'
         );
 
@@ -1614,7 +1614,7 @@ class AccountingReportController extends Controller
             'unposted_payrolls',
             'مسيرات رواتب غير مُرحَّلة',
             (int) $unpostedPayrolls->n,
-            'رواتب بصافي '.number_format((float) $unpostedPayrolls->amount, 2).' استُحقّت ولم تظهر كمصروف في قائمة الدخل.',
+            'رواتب بصافي '.format_amount((float) $unpostedPayrolls->amount).' استُحقّت ولم تظهر كمصروف في قائمة الدخل.',
             'افتح المسيرة وأعد حفظ حالتها لترحيل قيد الاستحقاق.'
         );
 
@@ -1713,7 +1713,7 @@ class AccountingReportController extends Controller
             'ledger_drift',
             'اختلال إجمالي دفتر الأستاذ',
             abs($drift) > self::EPSILON ? 1 : 0,
-            'فرق ' . number_format($drift, 2) . ' بين إجمالي المدين والدائن على مستوى الدفتر كله.',
+            'فرق ' . format_amount($drift) . ' بين إجمالي المدين والدائن على مستوى الدفتر كله.',
             'ابدأ من القيود غير المتوازنة أعلاه.'
         );
 

@@ -52,6 +52,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { isCollapsed, setCollapsed, registerSection, unregisterSection } from '@/utils/collapsedSections';
+import { formatNumber } from '@/utils/currency';
 
 const props = defineProps({
     /** Stable name for the section; the remembered state is keyed by it. */
@@ -68,7 +69,7 @@ const collapsed = computed(() => isCollapsed(props.id));
 
 const toggle = () => setCollapsed(props.id, !collapsed.value);
 
-const formatCount = (value) => Number(value || 0).toLocaleString();
+const formatCount = (value) => formatNumber(value || 0);
 
 const cardRef = ref(null);
 const inView = ref(false);

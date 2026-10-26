@@ -658,7 +658,7 @@
 </template>
 
 <script setup>
-import { baseCurrencyCode, currencyOptions as buildCurrencyOptions } from '@/utils/currency';
+import { baseCurrencyCode, currencyOptions as buildCurrencyOptions, formatUnitPrice } from '@/utils/currency';
 import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -1059,7 +1059,7 @@ const handleGalleryPreview = (file) => {
 
 const formatMoney = (value) => {
     if (value === null || value === undefined || value === '') return '—';
-    return Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
+    return formatUnitPrice(value);
 };
 
 const submitForm = async () => {

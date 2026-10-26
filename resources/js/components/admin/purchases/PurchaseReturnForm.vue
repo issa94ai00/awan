@@ -310,7 +310,8 @@ import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { productsApi } from '@/api/products';
 import { inventoryApi } from '@/api/inventory';
 import { apiErrorMessage, formatCurrency, localIsoDate } from '@/utils/sales';
-import { baseCurrencyCode, currencyDecimals, numberLocale } from '@/utils/currency';
+import { baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { optionKey, pickKey, baseName, variantLabelOf, optionFromLine } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
@@ -667,9 +668,8 @@ const isFuture = (date) => date.getTime() > Date.now();
 
 // Figures inside the form, where the currency is already said once below.
 const formatAmount = (value) => {
-    const places = currencyDecimals(baseCurrencyCode());
-    return new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: places, maximumFractionDigits: places })
-        .format(Number(value) || 0);
+    const places = moneyDecimals(currencyDecimals(baseCurrencyCode()));
+    return formatDecimal(Number(value) || 0, { minimumFractionDigits: places, maximumFractionDigits: places });
 };
 
 // ── Save ─────────────────────────────────────────────────────────────────

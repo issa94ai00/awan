@@ -226,3 +226,23 @@ if (! function_exists('image_path')) {
         return $url;
     }
 }
+
+if (! function_exists('number_format_settings')) {
+    /**
+     * Settings → Numbers & decimals, every key present, for the boot payload.
+     *
+     * @return array<string, string>
+     */
+    function number_format_settings(): array
+    {
+        return App\Support\NumberFormat::settings();
+    }
+}
+
+if (! function_exists('format_amount')) {
+    /** An amount for a message, written the way the number settings ask. */
+    function format_amount(float|int|string|null $value, int $currencyPlaces = 2): string
+    {
+        return App\Support\NumberFormat::amount($value ?? 0, $currencyPlaces);
+    }
+}

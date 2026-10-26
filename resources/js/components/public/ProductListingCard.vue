@@ -69,6 +69,7 @@ import { useI18n } from 'vue-i18n';
 import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
+import { formatMoney } from '@/utils/currency';
 
 const props = defineProps({
     product: { type: Object, default: null },
@@ -121,7 +122,7 @@ const showPrice = computed(() => settings.value.show_product_price === '1'
     && priceRange.value.min > 0);
 
 // Dollars, as everywhere else in the shop, with thousands grouped.
-const formatPrice = (value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatPrice = (value) => formatMoney(value);
 
 const displayName = computed(() => (locale.value === 'en'
     ? (props.product.name_en || props.product.name_ar)

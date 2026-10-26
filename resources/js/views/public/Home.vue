@@ -298,6 +298,7 @@ import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { getImageUrl } from '@/utils/imageUrl';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { formatNumber } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import ProductListingCard from '@/components/public/ProductListingCard.vue';
@@ -318,7 +319,7 @@ const loading = ref(true);
 const heroQuery = ref('');
 
 const isRtl = computed(() => locale.value === 'ar');
-const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+const formatCount = (value) => formatNumber(value);
 
 /** The generic drawings carry their own slate tile; framed as icons, not photos. */
 const isDrawing = (category) => !category.image && /\/images_items\/generic\//.test(category.thumbnail || '');

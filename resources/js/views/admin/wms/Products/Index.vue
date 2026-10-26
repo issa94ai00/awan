@@ -139,7 +139,8 @@
 </template>
 
 <script setup>
-import { formatNumber as formatCount } from '@/utils/currency';
+import { currencyDecimals, formatNumber as formatCount } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { useI18n } from 'vue-i18n';
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
@@ -297,7 +298,8 @@ function formatNumber(num) {
 
 function formatPrice(price) {
     if (price === null || price === undefined) return '—';
-    return Number(price).toFixed(2);
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(price, { minimumFractionDigits: places, maximumFractionDigits: places });
 }
 </script>
 

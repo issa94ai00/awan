@@ -126,6 +126,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useSeo } from '@/Composables/useSeo';
 import { useListingQuery } from '@/Composables/useListingQuery';
+import { formatNumber } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import ProductListingCard from '@/components/public/ProductListingCard.vue';
@@ -304,7 +305,7 @@ onBeforeUnmount(() => {
 const rangeFrom = computed(() => ((pagination.value.current_page || 1) - 1) * (pagination.value.per_page || query.value.per) + 1);
 const rangeTo = computed(() => Math.min(rangeFrom.value + products.value.length - 1, pagination.value.total || 0));
 
-const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+const formatCount = (value) => formatNumber(value);
 
 let toastTimer = null;
 const showToast = (message, error = false) => {

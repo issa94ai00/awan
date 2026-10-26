@@ -516,7 +516,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { bankReconciliationsApi } from '@/api/bankReconciliations';
-import { formatMoney, formatNumber, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, formatNumber, baseCurrencyCode, currencyDecimals, numberLocale } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
@@ -525,7 +526,10 @@ const router = useRouter();
 
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(Number(value || 0), { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 const dateOnly = (value) => String(value || '').slice(0, 10);
 const dateTime = (value) => (value ? new Date(value).toLocaleString(numberLocale(), { dateStyle: 'medium', timeStyle: 'short' }) : '');
 

@@ -89,7 +89,7 @@
                                 :title="$t('party_statement')"
                                 @click="openSupplierStatement(row.id)"
                             >
-                                ${{ parseFloat(row.balance || 0).toFixed(2) }}
+                                {{ formatMoney(row.balance) }}
                             </span>
                         </template>
                     </el-table-column>
@@ -195,7 +195,7 @@
                             <el-table :data="connectedOrders" style="width: 100%" stripe size="small">
                                 <el-table-column prop="order_number" :label="$t('order_number')" />
                                 <el-table-column prop="total" :label="$t('grand_total')">
-                                    <template #default="{ row }">${{ parseFloat(row.total || 0).toFixed(2) }}</template>
+                                    <template #default="{ row }">{{ formatMoney(row.total) }}</template>
                                 </el-table-column>
                                 <el-table-column prop="status" :label="$t('status')" width="100">
                                     <template #default="{ row }">
@@ -219,7 +219,7 @@
                                 <div class="info-item" style="display: flex; justify-content: space-between; align-items: center;">
                                     <div>
                                         <span class="lbl">{{ $t('current_balance_label') }}</span>
-                                        <strong style="color: var(--danger-dark); font-size: 1.1rem; display: block;">${{ parseFloat(selectedSupplier.balance || 0).toFixed(2) }}</strong>
+                                        <strong style="color: var(--danger-dark); font-size: 1.1rem; display: block;">{{ formatMoney(selectedSupplier.balance) }}</strong>
                                     </div>
                                     <el-button size="small" type="primary" plain @click="openSupplierStatement(selectedSupplier.id)">
                                         <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
@@ -227,7 +227,7 @@
                                 </div>
                                 <div class="info-item">
                                     <span class="lbl">{{ $t('available_credit_label') }}</span>
-                                    <strong>${{ parseFloat(selectedSupplier.credit_limit || 0).toFixed(2) }}</strong>
+                                    <strong>{{ formatMoney(selectedSupplier.credit_limit) }}</strong>
                                 </div>
                                 <div class="info-item" v-if="selectedSupplier.tax_number">
                                     <span class="lbl">{{ $t('tax_number_label') }}</span>
@@ -349,7 +349,7 @@
                                     {{ $t('lg_opening_balance_note') }}
                                 </small>
                                 <small v-else class="text-muted" style="color: var(--text-muted); display: flex; align-items: center; justify-content: space-between;">
-                                    <span>{{ $t('outstanding_balance') }}: <strong>${{ parseFloat(form.balance || 0).toFixed(2) }}</strong></span>
+                                    <span>{{ $t('outstanding_balance') }}: <strong>{{ formatMoney(form.balance) }}</strong></span>
                                     <el-button type="primary" link size="small" @click="openSupplierStatement(editingSupplierId)">
                                         <i class="fas fa-file-invoice mr-1"></i> {{ $t('party_statement') }}
                                     </el-button>
@@ -384,6 +384,7 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { formatMoney } from '@/utils/currency';
 
 const { t } = useI18n();
 const router = useRouter();

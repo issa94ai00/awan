@@ -62,9 +62,9 @@ class PaymentRecorder
         if ($amount - $due > 0.009) {
             throw new RuntimeException(sprintf(
                 'المبلغ (%s) يتجاوز المتبقي على الفاتورة %s (%s).',
-                number_format($amount, 2),
+                format_amount($amount),
                 $invoice->invoice_number,
-                number_format($due, 2)
+                format_amount($due)
             ));
         }
 

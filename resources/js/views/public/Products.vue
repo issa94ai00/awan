@@ -130,6 +130,7 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { triggerFadeUp } from '@/utils/fadeUp';
+import { formatNumber } from '@/utils/currency';
 import { useSeo } from '@/Composables/useSeo';
 import { useListingQuery } from '@/Composables/useListingQuery';
 import { useProductsStore } from '@/stores/products';
@@ -339,7 +340,7 @@ const rangeFrom = computed(() => ((pagination.value.current_page || 1) - 1) * (p
 const rangeTo = computed(() => Math.min(rangeFrom.value + products.value.length - 1, pagination.value.total || 0));
 
 function formatCount(value) {
-    return Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+    return formatNumber(value);
 }
 
 let toastTimer = null;

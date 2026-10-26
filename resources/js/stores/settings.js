@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import settingsApi from '@/api/settings';
+import { applyNumberSettings } from '@/utils/numberFormat';
 
 export const useSettingsStore = defineStore('settings', {
     state: () => ({
@@ -14,6 +15,7 @@ export const useSettingsStore = defineStore('settings', {
             try {
                 const res = await settingsApi.get();
                 this.data = res.data.data?.settings || {};
+                applyNumberSettings(this.data);
                 this.currencies = res.data.data?.currencies || [];
                 this.baseCurrency = res.data.data?.base_currency || this.data.default_currency || null;
             } catch (err) {
@@ -31,6 +33,7 @@ export const useSettingsStore = defineStore('settings', {
             try {
                 const res = await settingsApi.update(payload);
                 this.data = res.data.data?.settings || this.data;
+                applyNumberSettings(this.data);
                 this.currencies = res.data.data?.currencies || this.currencies;
                 this.baseCurrency = res.data.data?.base_currency || this.data.default_currency || this.baseCurrency;
                 return res;

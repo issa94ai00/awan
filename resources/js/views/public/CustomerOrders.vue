@@ -95,7 +95,7 @@
                                 </div>
 
                                 <div class="order-card-summary">
-                                    <span class="order-total-price">${{ parseFloat(order.total).toFixed(2) }}</span>
+                                    <span class="order-total-price">{{ formatMoney(order.total) }}</span>
                                     <small class="toggle-detail-text">
                                         <i class="fas" :class="expandedOrders.includes(order.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                                         {{ expandedOrders.includes(order.id) ? (t('hide_details') || 'إخفاء التفاصيل') : (t('show_details') || 'عرض التفاصيل') }}
@@ -122,7 +122,7 @@
                                                 <tr v-for="item in order.items" :key="item.id">
                                                     <td>{{ item.product_name }}</td>
                                                     <td>{{ item.quantity }}</td>
-                                                    <td style="text-align: left;">${{ parseFloat(item.total).toFixed(2) }}</td>
+                                                    <td style="text-align: left;">{{ formatMoney(item.total) }}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -137,7 +137,7 @@
                                             <strong>{{ inv.invoice_number }}</strong>
                                             <div style="display:flex; align-items:center; gap:10px;">
                                                 <span :class="getStatusClass(inv.status)" style="font-size:0.75rem;">{{ inv.status_label || getStatusText(inv.status) }}</span>
-                                                <span class="invoice-total">${{ parseFloat(inv.total).toFixed(2) }}</span>
+                                                <span class="invoice-total">{{ formatMoney(inv.total) }}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -168,6 +168,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useCustomerAuthStore } from '@/stores/customerAuth';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
+import { formatMoney } from '@/utils/currency';
 
 // Stores
 const customerAuth = useCustomerAuthStore();

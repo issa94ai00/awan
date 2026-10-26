@@ -45,7 +45,7 @@ class SupplierPaymentRecorder
             if ($amount > $receipt->dueAmount() + 0.01) {
                 throw new RuntimeException(sprintf(
                     'المبلغ أكبر من المتبقي على الإيصال (%s).',
-                    number_format($receipt->dueAmount(), 2)
+                    format_amount($receipt->dueAmount())
                 ));
             }
 

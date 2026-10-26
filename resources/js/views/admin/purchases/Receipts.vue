@@ -231,13 +231,13 @@
                                 </el-table-column>
                                 <el-table-column prop="quantity" :label="$t('quantity_received')" width="140" align="center" />
                                 <el-table-column prop="unit_price" :label="$t('purchase_price')" width="130">
-                                    <template #default="{ row }">${{ parseFloat(row.unit_price || 0).toFixed(2) }}</template>
+                                    <template #default="{ row }">{{ formatUnitPrice(row.unit_price) }}</template>
                                 </el-table-column>
                                 <el-table-column prop="sale_price" :label="$t('sale_price')" width="130">
-                                    <template #default="{ row }">{{ row.sale_price != null ? '$' + parseFloat(row.sale_price).toFixed(2) : '-' }}</template>
+                                    <template #default="{ row }">{{ row.sale_price != null ? formatUnitPrice(row.sale_price) : '-' }}</template>
                                 </el-table-column>
                                 <el-table-column :label="$t('grand_total')" width="130">
-                                    <template #default="{ row }">${{ (row.quantity * row.unit_price).toFixed(2) }}</template>
+                                    <template #default="{ row }">{{ money(row.quantity * row.unit_price) }}</template>
                                 </el-table-column>
                             </el-table>
 
@@ -770,7 +770,7 @@
                                             = − {{ money(form.discount) }}
                                         </span>
                                         <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && goodsTotal > 0" class="discount-live-val">
-                                            ≈ {{ (Math.round((num(form.discount) / goodsTotal) * 10000) / 100).toFixed(2) }}%
+                                            ≈ {{ formatPercent((num(form.discount) / goodsTotal) * 100, 2) }}
                                         </span>
                                     </div>
                                 </div>
@@ -989,7 +989,8 @@ import { useProductsStore } from '@/stores/products';
 import { useInventoryStore } from '@/stores/inventory';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
-import { baseCurrencyCode, formatMoney } from '@/utils/currency';
+import { baseCurrencyCode, formatMoney, formatUnitPrice } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
 import { productsApi } from '@/api/products';
 import { Search } from '@element-plus/icons-vue';

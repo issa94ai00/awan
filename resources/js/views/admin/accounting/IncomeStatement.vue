@@ -47,7 +47,7 @@
                 <h4>{{ isProfit ? 'صافي ربح للفترة' : 'صافي خسارة للفترة' }}</h4>
                 <p>
                     <strong>{{ money(netIncome) }}</strong>
-                    <span v-if="netMarginPct !== null"> — بهامش صافي {{ netMarginPct }}٪ من صافي الإيرادات</span>
+                    <span v-if="netMarginPct !== null"> — بهامش صافي {{ formatPercent(netMarginPct) }} من صافي الإيرادات</span>
                 </p>
                 <p v-if="comparison" class="comparison-note">
                     مقارنة بالفترة السابقة ({{ comparison.period.from }} — {{ comparison.period.to }}):
@@ -93,7 +93,7 @@
                         <td>
                             {{ $t('gross_profit_amount') }}
                             <el-tag v-if="grossMarginPct !== null" size="small" effect="plain" :type="grossMarginPct >= 0 ? 'success' : 'danger'">
-                                هامش {{ grossMarginPct }}٪
+                                هامش {{ formatPercent(grossMarginPct) }}
                             </el-tag>
                         </td>
                         <td class="num">{{ money(s.gross_profit) }}</td>
@@ -149,6 +149,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAccountingReportsStore } from '@/stores/accountingReports';
 import { formatCurrency } from '@/utils/sales';
+import { formatPercent } from '@/utils/numberFormat';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 const { t } = useI18n();
@@ -204,7 +205,7 @@ const deltaLabel = (current, previous) => {
     if (Math.abs(diff) < 0.005) return t('no_change');
 
     const base = Math.abs(num(previous));
-    const pct = base > 0.005 ? ` (${Math.abs((diff / base) * 100).toFixed(1)}٪)` : '';
+    const pct = base > 0.005 ? ` (${formatPercent(Math.abs((diff / base) * 100), 1)})` : '';
     return `${diff > 0 ? '▲' : '▼'} ${money(Math.abs(diff))}${pct}`;
 };
 

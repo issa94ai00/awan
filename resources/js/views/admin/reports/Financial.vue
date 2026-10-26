@@ -267,7 +267,8 @@
 </template>
 
 <script setup>
-import { formatMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
+import { formatCompact, formatPercent as formatPercentWith } from '@/utils/numberFormat';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
@@ -836,8 +837,8 @@ const exportReport = async () => {
 // Report figures are quoted whole; cents on a year's revenue are noise.
 const formatCurrency = (value) => formatMoney(Number(value) || 0, { decimals: 0 });
 const formatNumber = (value) => formatCount(Number(value) || 0);
-const formatPercent = (value) => `${new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 1 }).format(Number(value) || 0)}%`;
-const compactNumber = (value) => new Intl.NumberFormat(numberLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+const formatPercent = (value) => formatPercentWith(value, 1);
+const compactNumber = (value) => formatCompact(value);
 const statusText = (status) => t(`sales_status_${status}`);
 
 onMounted(() => {

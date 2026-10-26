@@ -454,6 +454,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue';
 import { matchesSearch } from '@/utils/search';
+import { formatMoney } from '@/utils/currency';
 import {
     Plus,
     Search,
@@ -528,10 +529,7 @@ const statusTagType = (status) => {
     return 'info';
 };
 
-const money = (value) => Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-});
+const money = (value) => formatMoney(value || 0);
 
 const formatDate = (val) => {
     if (!val) return '—';

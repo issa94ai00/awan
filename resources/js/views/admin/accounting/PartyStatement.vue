@@ -543,7 +543,8 @@ import { accountingReportsApi } from '@/api/accountingReports';
 import { customersApi } from '@/api/customers';
 import { useAuthStore } from '@/stores/auth';
 import { suppliersApi } from '@/api/suppliers';
-import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -551,7 +552,10 @@ const router = useRouter();
 
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(value || 0, { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 
 const localDate = (d) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 const todayIso = localDate(new Date());

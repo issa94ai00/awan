@@ -64,7 +64,7 @@
                                     <span v-if="product.model">{{ product.model }}</span>
                                 </div>
                                 <div v-if="product.price" class="product-price">
-                                    <span>${{ formatPrice(product.price) }}</span>
+                                    <span>{{ formatPrice(product.price) }}</span>
                                 </div>
                             </div>
                             <div class="product-actions-row">
@@ -151,6 +151,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCategoriesStore } from '@/stores/categories';
 import { useProductsStore } from '@/stores/products';
+import { formatMoney } from '@/utils/currency';
 
 const route = useRoute();
 const router = useRouter();
@@ -238,10 +239,7 @@ function getPageNumbers() {
 }
 
 function formatPrice(price) {
-    return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(price);
+    return formatMoney(price);
 }
 
 onMounted(() => loadCategory());

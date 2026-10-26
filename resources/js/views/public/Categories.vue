@@ -237,6 +237,7 @@ import { triggerFadeUp } from '@/utils/fadeUp';
 import { matchesSearch } from '@/utils/search';
 import { useListingQuery } from '@/Composables/useListingQuery';
 import { useSeo } from '@/Composables/useSeo';
+import { formatNumber } from '@/utils/currency';
 import ProductListingCard from '@/components/public/ProductListingCard.vue';
 import ListingPagination from '@/components/public/ListingPagination.vue';
 import ListingToolbar from '@/components/public/ListingToolbar.vue';
@@ -249,7 +250,7 @@ const router = useRouter();
 const isRtl = computed(() => locale.value === 'ar');
 const isSearch = computed(() => typeof route.query.q === 'string' && route.query.q.trim() !== '');
 const sectionRef = ref(null);
-const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+const formatCount = (value) => formatNumber(value);
 
 /* ------------------------------------------------------------------ *
  * All categories

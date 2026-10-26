@@ -52,9 +52,9 @@
                                     <p class="cart-item-category">{{ item.product?.category?.name_ar || 'منتجات' }}</p>
                                     <div class="cart-item-price">
                                         <span v-if="item.product?.sale_price && item.product.sale_price < item.product.price" class="original-price">
-                                            {{ formatPrice(item.product.price) }} {{ item.product?.currency || 'SAR' }}
+                                            {{ formatPrice(item.product.price) }} {{ item.product?.currency || baseCurrencyCode() }}
                                         </span>
-                                        <span class="sale-price">{{ formatPrice(item.product?.sale_price || item.price) }} {{ item.product?.currency || 'SAR' }}</span>
+                                        <span class="sale-price">{{ formatPrice(item.product?.sale_price || item.price) }} {{ item.product?.currency || baseCurrencyCode() }}</span>
                                     </div>
                                 </div>
                                 <div class="cart-item-actions">
@@ -69,7 +69,7 @@
                                     </div>
                                     <div class="cart-item-subtotal">
                                         <span class="subtotal-label">المجموع:</span>
-                                        <span class="subtotal-value">{{ formatPrice(item.quantity * (item.product?.sale_price || item.price)) }} {{ item.product?.currency || 'SAR' }}</span>
+                                        <span class="subtotal-value">{{ formatPrice(item.quantity * (item.product?.sale_price || item.price)) }} {{ item.product?.currency || baseCurrencyCode() }}</span>
                                     </div>
                                     <button class="btn-remove-item" @click="removeItem(item.id)">
                                         <i class="fas fa-times"></i>
@@ -128,6 +128,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import cartApi from '@/api/cart';
+import { baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 
 const settingsStore = useSettingsStore();
 
@@ -135,7 +137,7 @@ const loading = ref(true);
 const items = ref([]);
 const cartTotal = ref(0);
 const totalItems = ref(0);
-const currency = ref('SAR');
+const currency = ref(baseCurrencyCode());
 
 const settings = computed(() => settingsStore.data || {});
 const whatsappNumber = computed(() => settings.value.contact_whatsapp || '963900000000');
@@ -151,8 +153,8 @@ const whatsappMessage = computed(() => {
 });
 
 function formatPrice(price) {
-    if (!price) return '0';
-    return Number(price).toLocaleString('ar-SA');
+    const places = moneyDecimals(currencyDecimals(currency.value));
+    return formatDecimal(price, { minimumFractionDigits: places, maximumFractionDigits: places });
 }
 
 async function loadCart() {

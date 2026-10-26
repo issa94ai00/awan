@@ -258,8 +258,8 @@ class PayrollController extends Controller
                 'success' => false,
                 'message' => sprintf(
                     'المبلغ (%s) يتجاوز المستحق المجمَّع (%s). استحقّ الأشهر الناقصة أولاً.',
-                    number_format($amount, 2),
-                    number_format($accrued, 2)
+                    format_amount($amount),
+                    format_amount($accrued)
                 ),
                 'data' => null,
             ], 422);

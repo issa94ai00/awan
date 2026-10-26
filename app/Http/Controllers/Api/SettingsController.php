@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Support\ImageStore;
+use App\Support\NumberFormat;
 use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -172,7 +173,21 @@ class SettingsController extends Controller
             'settings.print_authorized_title' => 'nullable|string|max:255',
             'settings.print_terms' => 'nullable|string|max:2000',
             'settings.print_watermark' => ['nullable', 'string', 'in:draft,approved,paid,official,'],
+            ...collect(NumberFormat::OPTIONS)
+                ->mapWithKeys(fn (array $allowed, string $key) => ["settings.$key" => ['nullable', 'string', Rule::in($allowed)]])
+                ->all(),
         ]);
+
+        // 1.234 cannot mean both one-point-two and twelve hundred.
+        $decimalMark = $request->input('settings.number_decimal_separator');
+        $groupingMark = $request->input('settings.number_thousands_separator');
+        if ($decimalMark && $decimalMark !== 'auto' && $decimalMark === $groupingMark) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.',
+                'errors' => ['settings.number_thousands_separator' => ['لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.']],
+            ], 422);
+        }
 
         $data = $request->input('settings', []);
 
@@ -204,6 +219,7 @@ class SettingsController extends Controller
         foreach ($data as $key => $value) {
             $this->updateSettingWithAliases($key, $value);
         }
+        NumberFormat::forget();
 
         // Replacing a logo used to leave the old file on disk for good — the
         // setting row was simply pointed somewhere else. Each replaced path is

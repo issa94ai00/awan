@@ -140,7 +140,7 @@ class ProductVariantController extends Controller
         if ($onHand > 0) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن حذف متغيّر ما زال في المخزون (المتوفر '.rtrim(rtrim(number_format($onHand, 2, '.', ''), '0'), '.').'). أخرج الكمية أو سوِّها أولاً.',
+                'message' => 'لا يمكن حذف متغيّر ما زال في المخزون (المتوفر '.\App\Support\NumberFormat::quantity($onHand).'). أخرج الكمية أو سوِّها أولاً.',
                 'data' => null,
             ], 422);
         }

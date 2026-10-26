@@ -35,7 +35,7 @@
 
             <el-table-column :prop="countKey" :label="countLabel" width="110" align="center">
                 <template #default="{ row }">
-                    <span class="count-pill">{{ Number(row[countKey] || 0).toLocaleString() }}</span>
+                    <span class="count-pill">{{ formatNumber(row[countKey] || 0) }}</span>
                 </template>
             </el-table-column>
 
@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
 import CollapsibleCard from '@/components/admin/reports/CollapsibleCard.vue';
 
 defineProps({

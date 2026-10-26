@@ -501,7 +501,8 @@
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
-import { baseCurrencyCode } from '@/utils/currency';
+import { baseCurrencyCode, currencyDecimals, formatNumber } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { productImages } from '@/utils/productImages';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -724,11 +725,11 @@ const statCards = computed(() => {
 const rowImages = (row) => productImages(row);
 
 const formatPrice = (price) => {
-    if (price === null || price === undefined) return '0.00';
-    return Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(price ?? 0, { minimumFractionDigits: places, maximumFractionDigits: places });
 };
 
-const formatCount = (value) => Number(value ?? 0).toLocaleString('en-US');
+const formatCount = (value) => formatNumber(value ?? 0);
 
 const lowThreshold = (row) => (Number(row.min_stock) > 0 ? Number(row.min_stock) : 10);
 

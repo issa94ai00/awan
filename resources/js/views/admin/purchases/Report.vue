@@ -416,7 +416,8 @@ import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import { useSuppliersStore } from '@/stores/suppliers';
-import { formatMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
+import { formatMoney, formatNumber as formatCount } from '@/utils/currency';
+import { formatCompact, formatDecimal } from '@/utils/numberFormat';
 import { formatDate, localIsoDate } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
 
@@ -892,7 +893,6 @@ const renderTrend = async () => {
         ? trend.value.slice().sort((a, b) => b.total_spend - a.total_spend).slice(0, 12)
         : trend.value;
     const labels = rows.map(periodName);
-    const compact = new Intl.NumberFormat(numberLocale(), { notation: 'compact', maximumFractionDigits: 1 });
 
     trendChart.setOption({
         grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
@@ -914,7 +914,7 @@ const renderTrend = async () => {
             axisLabel: { color: '#64748b', hideOverlap: true },
         },
         yAxis: [
-            { type: 'value', axisLabel: { color: '#94a3b8', formatter: (v) => compact.format(v) }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            { type: 'value', axisLabel: { color: '#94a3b8', formatter: (v) => formatCompact(v) }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
             { type: 'value', minInterval: 1, axisLabel: { color: '#94a3b8' }, splitLine: { show: false } },
         ],
         series: [
@@ -964,10 +964,11 @@ const exportReport = async () => {
 
 // ── Formatting ───────────────────────────────────────────────────────────
 const formatCurrency = (value) => formatMoney(value);
-const formatPercent = (value, digits = 1) => `${new Intl.NumberFormat(numberLocale(), {
+const formatPercent = (value, digits = 1) => formatDecimal(value, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-}).format(Number(value) || 0)}%`;
+    suffix: '%',
+});
 
 const signedCurrency = (value) => {
     const amount = Number(value) || 0;

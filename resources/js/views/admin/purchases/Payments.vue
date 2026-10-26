@@ -63,7 +63,7 @@
                 <div class="stat-inner">
                     <div class="stat-icon blue"><el-icon><Tickets /></el-icon></div>
                     <div class="stat-details">
-                        <h3>{{ Number(store.pagination.total || 0).toLocaleString() }}</h3>
+                        <h3>{{ formatNumber(store.pagination.total) }}</h3>
                         <p>{{ $t('payments') }} · {{ periodLabel }}</p>
                     </div>
                 </div>
@@ -333,6 +333,7 @@ import SupplierPaymentForm from '@/components/admin/purchases/SupplierPaymentFor
 import SupplierPaymentPrintDialog from '@/components/admin/purchases/SupplierPaymentPrintDialog.vue';
 import { useSupplierPaymentsStore } from '@/stores/supplierPayments';
 import { apiErrorMessage, formatCurrency, formatDate, localIsoDate, paymentMethodLabel } from '@/utils/sales';
+import { formatNumber } from '@/utils/currency';
 import { matchesSearch } from '@/utils/search';
 
 const { t, locale } = useI18n();

@@ -100,6 +100,7 @@ import { computed, ref, watch, useId } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { PER_PAGE_OPTIONS } from '@/Composables/useListingQuery';
+import { formatNumber } from '@/utils/currency';
 
 const props = defineProps({
     /** { current_page, last_page, per_page, total } as the API returns it. */
@@ -165,7 +166,7 @@ const isRtl = computed(() => locale.value === 'ar');
 const prevIcon = computed(() => (isRtl.value ? 'fas fa-chevron-right' : 'fas fa-chevron-left'));
 const nextIcon = computed(() => (isRtl.value ? 'fas fa-chevron-left' : 'fas fa-chevron-right'));
 
-const formatCount = (value) => Number(value || 0).toLocaleString(isRtl.value ? 'ar-SY' : 'en-US');
+const formatCount = (value) => formatNumber(value || 0);
 </script>
 
 <style scoped>

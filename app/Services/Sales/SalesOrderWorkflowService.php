@@ -2553,15 +2553,15 @@ class SalesOrderWorkflowService
 
             if (! $posted) {
                 $add('error', 'invoice_not_posted', 'الفاتورة غير مُرحَّلة إلى دفتر الأستاذ',
-                    'الفاتورة '.$invoice->invoice_number.' بقيمة '.number_format((float) $invoice->total, 2)
+                    'الفاتورة '.$invoice->invoice_number.' بقيمة '.format_amount((float) $invoice->total)
                         .' غير موجودة في القيود، فالإيراد لا يظهر في قائمة الدخل بينما تظهر تكلفته.',
                     'رحِّل الفاتورة إلى دفتر الأستاذ لتتطابق الإيرادات مع التكاليف.');
             }
 
             if (abs((float) $invoice->total - (float) $order->total) > 0.01) {
                 $add('error', 'invoice_total_mismatch', 'إجمالي الفاتورة لا يطابق إجمالي الطلب',
-                    'الطلب '.number_format((float) $order->total, 2).' والفاتورة '
-                        .number_format((float) $invoice->total, 2).'.',
+                    'الطلب '.format_amount((float) $order->total).' والفاتورة '
+                        .format_amount((float) $invoice->total).'.',
                     'راجع بنود الفاتورة أو أعد إثباتها من الطلب.');
             }
         }
@@ -2661,8 +2661,8 @@ class SalesOrderWorkflowService
 
             if ($due > 0.01 && $hasShipped) {
                 $add('info', 'invoice_unpaid', 'الفاتورة غير محصَّلة',
-                    'المتبقي على العميل '.number_format($due, 2).' من أصل '
-                        .number_format((float) $invoice->total, 2).'.',
+                    'المتبقي على العميل '.format_amount($due).' من أصل '
+                        .format_amount((float) $invoice->total).'.',
                     'سجّل دفعة من شاشة المدفوعات.');
             }
         }

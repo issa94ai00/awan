@@ -140,7 +140,7 @@ class PurchaseReceiptController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'المبلغ المدفوع أكبر من قيمة الإيصال',
-                'errors' => ['paid_amount' => ['المبلغ المدفوع أكبر من قيمة الإيصال ('.number_format($receiptTotal, 2).')']],
+                'errors' => ['paid_amount' => ['المبلغ المدفوع أكبر من قيمة الإيصال ('.format_amount($receiptTotal).')']],
             ], 422);
         }
 

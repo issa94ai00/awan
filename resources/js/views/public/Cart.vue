@@ -41,11 +41,11 @@
                                     <p class="cart-item-category">{{ $p(item.product.category, 'name') || t('category') || 'تصنيف' }}</p>
                                     <div class="cart-item-price">
                                         <template v-if="item.product.sale_price && parseFloat(item.product.sale_price) < parseFloat(item.product.price)">
-                                            <span class="original-price">${{ parseFloat(item.product.price).toFixed(2) }}</span>
-                                            <span class="sale-price">${{ parseFloat(item.product.sale_price).toFixed(2) }}</span>
+                                            <span class="original-price">{{ formatMoney(item.product.price) }}</span>
+                                            <span class="sale-price">{{ formatMoney(item.product.sale_price) }}</span>
                                         </template>
                                         <template v-else>
-                                            <span class="price">${{ parseFloat(item.price).toFixed(2) }}</span>
+                                            <span class="price">{{ formatMoney(item.price) }}</span>
                                         </template>
                                     </div>
                                 </div>
@@ -61,7 +61,7 @@
                                     </div>
                                     <div class="cart-item-subtotal">
                                         <span class="subtotal-label">{{ t('subtotal') || 'المجموع:' }}</span>
-                                        <span class="subtotal-value">${{ parseFloat(item.subtotal).toFixed(2) }}</span>
+                                        <span class="subtotal-value">{{ formatMoney(item.subtotal) }}</span>
                                     </div>
                                     <button class="btn-remove-item" @click="handleRemoveItem(item.id)" :disabled="cartStore.loading">
                                         <i class="fas fa-times"></i>
@@ -83,7 +83,7 @@
                             
                             <div class="summary-row">
                                 <span>{{ t('subtotal') || 'المجموع الفرعي' }}</span>
-                                <span>${{ cartStore.totalAmount.toFixed(2) }}</span>
+                                <span>{{ formatMoney(cartStore.totalAmount) }}</span>
                             </div>
                             
                             <div class="summary-row">
@@ -95,7 +95,7 @@
                             
                             <div class="summary-row summary-total">
                                 <span>{{ t('total') || 'الإجمالي' }}</span>
-                                <span class="total-value">${{ cartStore.totalAmount.toFixed(2) }}</span>
+                                <span class="total-value">{{ formatMoney(cartStore.totalAmount) }}</span>
                             </div>
 
                             <div class="cart-actions">
@@ -227,6 +227,7 @@ import { useCartStore } from '@/stores/cart';
 import { useSettingsStore } from '@/stores/settings';
 import { useCustomerAuthStore } from '@/stores/customerAuth';
 import { getImageUrl } from '@/utils/imageUrl';
+import { formatMoney } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 
@@ -259,7 +260,7 @@ const whatsappMessageText = computed(() => {
     if (!cart.value || !cart.value.items) return '';
     // $p is generally used in templates, we can just use the fallback here
     const itemsStr = cart.value.items.map(i => `${i.product.name_ar} (Qty: ${i.quantity})`).join('\n');
-    return `Hello, I'd like to place an order:\n${itemsStr}\nTotal: $${cartStore.totalAmount.toFixed(2)}`;
+    return `Hello, I'd like to place an order:\n${itemsStr}\nTotal: ${formatMoney(cartStore.totalAmount)}`;
 });
 
 // Helpers

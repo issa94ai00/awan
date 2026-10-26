@@ -241,7 +241,8 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { accountingReportsApi } from '@/api/accountingReports';
-import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, formatPercent, moneyDecimals } from '@/utils/numberFormat';
 import { matchesSearch } from '@/utils/search';
 
 const { t } = useI18n();
@@ -250,11 +251,14 @@ const router = useRouter();
 
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(Number(value || 0), { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 const pctOf = (part, whole) => {
     const w = Number(whole || 0);
-    if (!w) return '0%';
-    return `${new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 0 }).format((Number(part || 0) / w) * 100)}%`;
+    if (!w) return formatPercent(0, 0);
+    return formatPercent((Number(part || 0) / w) * 100, 0);
 };
 
 /** Local calendar date: `toISOString()` is UTC and names yesterday until 03:00 here. */

@@ -1253,7 +1253,7 @@
                                         = − {{ money(form.discount) }}
                                     </span>
                                     <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && formSubtotal > 0" class="discount-live-val">
-                                        ≈ {{ (Math.round((num(form.discount) / formSubtotal) * 10000) / 100).toFixed(2) }}%
+                                        ≈ {{ formatPercent((num(form.discount) / formSubtotal) * 100, 2) }}
                                     </span>
                                 </div>
                             </div>
@@ -1291,7 +1291,7 @@
                             </el-input>
                             <div class="tax-helper-row">
                                 <span v-if="num(form.tax) > 0 && formSubtotal > 0" class="tax-live-val">
-                                    ≈ {{ (Math.round((num(form.tax) / Math.max(1, formSubtotal - num(form.discount))) * 10000) / 100).toFixed(2) }}%
+                                    ≈ {{ formatPercent((num(form.tax) / Math.max(1, formSubtotal - num(form.discount))) * 100, 2) }}
                                 </span>
                             </div>
                         </el-form-item>
@@ -1706,6 +1706,7 @@ import { useSuppliersStore } from '@/stores/suppliers';
 import { purchaseOrdersApi } from '@/api/purchaseOrders';
 import { productsApi } from '@/api/products';
 import { baseCurrencyCode, formatMoney } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import { normalizePurchaseOrderStatus } from '@/utils/purchaseOrderStatus';
 
 const normalizeStatus = normalizePurchaseOrderStatus;

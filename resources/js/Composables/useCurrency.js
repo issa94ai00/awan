@@ -8,6 +8,7 @@ import {
     formatMoney as formatMoneyWith,
     formatNumber as formatNumberWith,
 } from '@/utils/currency';
+import { moneyDecimals } from '@/utils/numberFormat';
 
 /**
  * Money on the admin screens, written in the currency the books are kept in.
@@ -42,7 +43,8 @@ export function useCurrency() {
 
     const decimals = computed(() => {
         const places = Number(baseCurrency.value?.decimal_places);
-        return Number.isFinite(places) && places >= 0 ? places : FALLBACK_CURRENCY.decimal_places;
+        // The number settings may fix a precision over the currency's own.
+        return moneyDecimals(Number.isFinite(places) && places >= 0 ? places : FALLBACK_CURRENCY.decimal_places);
     });
 
     const formatMoney = (value, options = {}) => {

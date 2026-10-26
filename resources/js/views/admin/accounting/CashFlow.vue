@@ -144,7 +144,7 @@
                                 <span class="flow-amt">{{ plain(row.amount) }}</span>
                             </div>
                             <div class="flow-bar"><span :style="{ width: share(row.amount, side === 'in' ? section.data.total_in : section.data.total_out) + '%' }"></span></div>
-                            <small class="flow-share">{{ share(row.amount, side === 'in' ? section.data.total_in : section.data.total_out) }}%</small>
+                            <small class="flow-share">{{ formatPercent(share(row.amount, side === 'in' ? section.data.total_in : section.data.total_out), 0) }}</small>
                         </div>
                     </div>
                 </div>
@@ -159,7 +159,8 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { accountingReportsApi } from '@/api/accountingReports';
-import { formatMoney, baseCurrencyCode, numberLocale } from '@/utils/currency';
+import { formatMoney, baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, formatPercent, moneyDecimals } from '@/utils/numberFormat';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -167,7 +168,10 @@ const router = useRouter();
 
 const baseCode = baseCurrencyCode();
 const money = (value) => formatMoney(value || 0);
-const plain = (value) => new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+const plain = (value) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(Number(value || 0), { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 
 /** "Cash, Bank" / "الصندوق والبنك", joined the way each language joins a list. */
 const listOf = (items) => new Intl.ListFormat(locale.value === 'en' ? 'en' : 'ar', { type: 'conjunction' }).format(items || []);

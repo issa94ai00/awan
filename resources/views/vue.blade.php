@@ -245,6 +245,10 @@
                 site_description_en: {!! json_encode(get_setting('site_description_en') ?? 'At Awan Al Taqaddam, we offer building supplies that combine global quality with modern design, to be your ideal partner in your construction projects.') !!},
                 show_site_name: {{ get_setting('show_site_name') ?? '1' }},
                 show_product_price: {{ get_setting('show_product_price') ?? '0' }},
+                {{-- Settings → Numbers & decimals; read by resources/js/utils/numberFormat.js. --}}
+                @foreach(number_format_settings() as $numberKey => $numberValue)
+                {{ $numberKey }}: {!! json_encode($numberValue, JSON_UNESCAPED_UNICODE) !!},
+                @endforeach
                 default_currency: {!! json_encode(base_currency_code()) !!},
                 default_language: {!! json_encode(get_setting('default_language') ?? 'ar') !!},
                 timezone: {!! json_encode(get_setting('timezone') ?? 'Asia/Riyadh') !!},

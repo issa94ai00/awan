@@ -96,7 +96,7 @@
                             </el-table-column>
                             <el-table-column prop="total" :label="$t('total')" width="140">
                                 <template #default="{ row }">
-                                    <strong>${{ parseFloat(row.total || 0).toFixed(2) }}</strong>
+                                    <strong>{{ formatMoney(row.total) }}</strong>
                                 </template>
                             </el-table-column>
                             <el-table-column :label="$t('status')" width="140" align="center">
@@ -182,6 +182,7 @@ import { usePurchaseOrdersStore } from '@/stores/purchaseOrders';
 import { useSuppliersStore } from '@/stores/suppliers';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
+import { formatMoney } from '@/utils/currency';
 
 const { t } = useI18n();
 

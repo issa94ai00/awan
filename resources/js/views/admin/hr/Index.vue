@@ -342,6 +342,7 @@ import { usePayrollsStore } from '@/stores/payrolls';
 import { useEmployeesStore } from '@/stores/employees';
 import { useAttendanceStore } from '@/stores/attendance';
 import { useLeaveRequestsStore } from '@/stores/leaveRequests';
+import { formatMoney as formatBaseMoney } from '@/utils/currency';
 import {
     Refresh,
     Plus,
@@ -378,12 +379,7 @@ const autoGenForm = reactive({
 });
 
 // Formatting Helpers
-const formatMoney = (val) => {
-    return Number(val || 0).toLocaleString(undefined, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2
-    });
-};
+const formatMoney = (val) => formatBaseMoney(val || 0);
 
 const formatDate = (val) => {
     if (!val) return '—';

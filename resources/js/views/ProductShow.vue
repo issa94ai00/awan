@@ -87,7 +87,7 @@
 
                         <div v-if="product.price" class="product-details-price">
                             <span class="price-label">السعر:</span>
-                            <span class="price-value">${{ formatPrice(product.price) }}</span>
+                            <span class="price-value">{{ formatPrice(product.price) }}</span>
                         </div>
 
                         <div class="product-description">
@@ -145,7 +145,7 @@
                         <div class="inquiry-product-details">
                             <h3>{{ product?.name_ar }}</h3>
                             <p v-if="product?.name_en" class="product-en">{{ product.name_en }}</p>
-                            <p v-if="product?.price" class="product-price">${{ formatPrice(product.price) }}</p>
+                            <p v-if="product?.price" class="product-price">{{ formatPrice(product.price) }}</p>
                         </div>
                     </div>
 
@@ -257,6 +257,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProductsStore } from '@/stores/products';
 import { useInquiriesStore } from '@/stores/inquiries';
+import { formatMoney } from '@/utils/currency';
 
 const route = useRoute();
 const router = useRouter();
@@ -323,10 +324,7 @@ async function loadProduct() {
 }
 
 function formatPrice(price) {
-    return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(price);
+    return formatMoney(price);
 }
 
 function nextImage() {

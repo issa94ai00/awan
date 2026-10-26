@@ -32,7 +32,7 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs font-medium text-slate-500 mb-1">{{ $t('audit.total_logs') || 'إجمالي العمليات المسجلة' }}</p>
-            <h3 class="text-2xl font-bold text-slate-900">{{ stats.total_logs.toLocaleString() }}</h3>
+            <h3 class="text-2xl font-bold text-slate-900">{{ formatNumber(stats.total_logs) }}</h3>
           </div>
           <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
             <el-icon><Document /></el-icon>
@@ -155,6 +155,7 @@ import { ref, onMounted, nextTick } from 'vue';
 import { DataBoard, Search, Refresh, Document, User, Folder, Warning } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
+import { formatNumber } from '@/utils/currency';
 import auditService from '@/services/audit';
 import * as echarts from 'echarts';
 

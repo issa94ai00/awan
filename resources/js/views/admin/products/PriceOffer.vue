@@ -338,7 +338,7 @@
 
         <div v-if="total > 0" class="summary-strip screen-only">
             <div class="summary-item">
-                <span class="summary-value">{{ total.toLocaleString('en-US') }}</span>
+                <span class="summary-value">{{ formatNumber(total) }}</span>
                 <span class="summary-label">{{ $t('in_table') }}</span>
             </div>
             <div class="summary-divider"></div>
@@ -1322,6 +1322,8 @@ import { useSettingsStore } from '@/stores/settings';
 import { productsApi } from '@/api/products';
 import { waitForImages, renderTableToPdf } from '@/utils/pdfExport';
 import { matchesSearch } from '@/utils/search';
+import { currencyDecimals, formatNumber } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { useOfflineSync } from '@/Composables/useOfflineSync';
 import { Search, Loading, Close, Download, Refresh, RefreshLeft, Operation, Grid, Delete, Connection, CircleCheck, MagicStick, Check, ArrowDown, Sort, Rank, WarningFilled, Printer, User, Collection, Picture, Document, View, Upload } from '@element-plus/icons-vue';
 
@@ -2665,7 +2667,10 @@ function clearCategories() {
     onCategoryChange();
 }
 
-const formatSummaryPrice = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatSummaryPrice = (v) => {
+    const places = moneyDecimals(currencyDecimals());
+    return formatDecimal(v, { minimumFractionDigits: places, maximumFractionDigits: places });
+};
 
 // --- Arrange mode: the order the printed sheet reads in ---------------------
 // `products.sort_order` already existed and was editable one product at a time

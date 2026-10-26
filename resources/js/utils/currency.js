@@ -18,6 +18,12 @@
  */
 
 import i18n from '@/i18n';
+import {
+    formatDecimal,
+    formatQuantity,
+    moneyDecimals,
+    activeNumberSettings,
+} from '@/utils/numberFormat';
 
 /** Mirrors CurrencyService::FALLBACK — used only before anything has loaded. */
 export const FALLBACK_CURRENCY = { code: 'USD', symbol: '$', decimal_places: 2 };
@@ -64,27 +70,39 @@ const toNumber = (value) => {
 };
 
 /**
- * An amount followed by its currency code: `1,234.00 USD`.
+ * An amount with its currency: `1,234.00 USD` by default.
  *
- * Deliberately not `Intl`'s `style: 'currency'`, which renders a localised
- * symbol — the code is unambiguous next to a figure someone may be reconciling
- * against a ledger, and it is what the sales screens have always shown.
+ * Digits, separators, rounding and whether the code or the symbol is shown come
+ * from the number settings (`utils/numberFormat`). The default stays the code
+ * after the figure rather than `Intl`'s localised symbol — the code is
+ * unambiguous next to a figure someone may be reconciling against a ledger.
  *
  * @param {number|string} value
  * @param {{ code?: string, decimals?: number }} [options] `decimals` overrides
- *   the currency's own precision, for report screens that quote round figures.
+ *   the configured precision, for report screens that quote round figures.
  */
 export const formatMoney = (value, options = {}) => {
     const { code, decimals } = options;
     const currencyCode = code || baseCurrencyCode();
-    const places = Number.isFinite(Number(decimals)) ? Number(decimals) : currencyDecimals(currencyCode);
+    const places = decimals !== undefined && decimals !== null && Number.isFinite(Number(decimals))
+        ? Number(decimals)
+        : moneyDecimals(currencyDecimals(currencyCode));
 
-    const formatted = new Intl.NumberFormat(numberLocale(), {
+    const settings = activeNumberSettings();
+    const label = settings.number_currency_display === 'symbol'
+        ? (currencyInfo(currencyCode)?.symbol || currencyCode)
+        : currencyCode;
+    const before = settings.number_currency_position === 'before';
+    // A code is a word and keeps its space; a symbol hugs a figure it leads ($12).
+    const gap = label === currencyCode || !before ? ' ' : '';
+
+    return formatDecimal(toNumber(value), {
         minimumFractionDigits: places,
         maximumFractionDigits: places,
-    }).format(toNumber(value));
-
-    return `${formatted} ${currencyCode}`;
+        trailingZeros: settings.number_trailing_zeros,
+        prefix: before ? `${label}${gap}` : '',
+        suffix: before ? '' : `${gap}${label}`,
+    });
 };
 
 /**
@@ -107,11 +125,11 @@ export const unitPriceDigits = (value) => {
  */
 export const formatUnitPrice = (value, options = {}) => formatMoney(value, {
     ...options,
-    decimals: Math.max(currencyDecimals(options.code || baseCurrencyCode()), unitPriceDigits(value)),
+    decimals: Math.max(moneyDecimals(currencyDecimals(options.code || baseCurrencyCode())), unitPriceDigits(value)),
 });
 
-/** A plain count — localised, but never given a currency. */
-export const formatNumber = (value) => toNumber(value).toLocaleString(numberLocale());
+/** A plain count or quantity — in the configured style, never given a currency. */
+export const formatNumber = (value) => formatQuantity(toNumber(value));
 
 /**
  * The active currencies as `{ code, label }` options for a select.

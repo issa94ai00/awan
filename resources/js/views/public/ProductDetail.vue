@@ -88,10 +88,10 @@
                         <div v-if="settings.show_product_price === '1' && product.show_price && parseFloat(view.price) > 0" class="product-details-price">
                             <span class="price-label">{{ t('price') || 'السعر:' }}</span>
                             <span class="price-value" v-if="view.has_sale" style="display: inline-flex; flex-direction: column;">
-                                <span class="sale-price" style="color:#dc2626; font-size:1.8rem; font-weight:700;">${{ parseFloat(view.sale_price).toFixed(2) }}</span>
-                                <span class="original-price" style="text-decoration:line-through; color:#999; font-size:1rem; margin-top:-5px;">${{ parseFloat(view.price).toFixed(2) }}</span>
+                                <span class="sale-price" style="color:#dc2626; font-size:1.8rem; font-weight:700;">{{ formatMoney(view.sale_price) }}</span>
+                                <span class="original-price" style="text-decoration:line-through; color:#999; font-size:1rem; margin-top:-5px;">{{ formatMoney(view.price) }}</span>
                             </span>
-                            <span class="price-value" v-else>${{ parseFloat(view.price).toFixed(2) }}</span>
+                            <span class="price-value" v-else>{{ formatMoney(view.price) }}</span>
                         </div>
 
                         <!-- Variant picker: each size / colour / material the product comes in -->
@@ -110,7 +110,7 @@
                                         :class="{ active: v.id === selectedVariantId, unavailable: !variantInStock(v) }"
                                         @click="selectVariant(v.id)">
                                     <span class="variant-chip-label">{{ v.label || v.sku }}</span>
-                                    <span v-if="showPrices && parseFloat(v.price) > 0" class="variant-chip-price">${{ parseFloat(v.price).toFixed(2) }}</span>
+                                    <span v-if="showPrices && parseFloat(v.price) > 0" class="variant-chip-price">{{ formatMoney(v.price) }}</span>
                                 </button>
                             </div>
                         </div>
@@ -131,7 +131,7 @@
                                              class="variant-chip"
                                              :class="{ active: s.id === product.id, unavailable: !s.in_stock }">
                                     <span class="variant-chip-label">{{ s.label }}</span>
-                                    <span v-if="showPrices && s.show_price && parseFloat(s.price) > 0" class="variant-chip-price">${{ parseFloat(s.price).toFixed(2) }}</span>
+                                    <span v-if="showPrices && s.show_price && parseFloat(s.price) > 0" class="variant-chip-price">{{ formatMoney(s.price) }}</span>
                                 </router-link>
                             </div>
                         </div>
@@ -222,7 +222,7 @@
                                             :title="t('pd_compare_pick')"
                                             @click="selectVariant(v.id)">
                                         <span class="compare-pick-label">{{ v.label || v.sku }}</span>
-                                        <span v-if="showPrices && parseFloat(v.price) > 0" class="compare-pick-price">${{ parseFloat(v.price).toFixed(2) }}</span>
+                                        <span v-if="showPrices && parseFloat(v.price) > 0" class="compare-pick-price">{{ formatMoney(v.price) }}</span>
                                     </button>
                                 </th>
                             </tr>
@@ -289,11 +289,11 @@
                                     </div>
                                     <div v-if="settings.show_product_price === '1' && related.show_price && parseFloat(related.price) > 0" class="product-price">
                                         <template v-if="related.has_sale">
-                                            <span style="text-decoration: line-through; color: #888; font-size: 0.85rem; margin-left: 0.3rem;">${{ parseFloat(related.price).toFixed(2) }}</span>
-                                            <span>${{ parseFloat(related.sale_price).toFixed(2) }}</span>
+                                            <span style="text-decoration: line-through; color: #888; font-size: 0.85rem; margin-left: 0.3rem;">{{ formatMoney(related.price) }}</span>
+                                            <span>{{ formatMoney(related.sale_price) }}</span>
                                         </template>
                                         <template v-else>
-                                            <span>${{ parseFloat(related.price).toFixed(2) }}</span>
+                                            <span>{{ formatMoney(related.price) }}</span>
                                         </template>
                                     </div>
                                 </div>
@@ -337,7 +337,7 @@
                         <div class="inquiry-product-details">
                             <h3>{{ viewName }}</h3>
                             <p v-if="settings.show_product_price === '1' && product.show_price && parseFloat(view.price) > 0" class="product-price">
-                                ${{ parseFloat(view.has_sale ? view.sale_price : view.price).toFixed(2) }}
+                                {{ formatMoney(view.has_sale ? view.sale_price : view.price) }}
                             </p>
                         </div>
                     </div>
@@ -428,6 +428,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { getImageUrl } from '@/utils/imageUrl';
+import { formatMoney } from '@/utils/currency';
 import { triggerFadeUp } from '@/utils/fadeUp';
 import { useSeo } from '@/Composables/useSeo';
 import { useI18n } from 'vue-i18n';

@@ -139,7 +139,8 @@ import { useI18n } from 'vue-i18n';
 import { InfoFilled } from '@element-plus/icons-vue';
 import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { apiErrorMessage, formatCurrency, formatDate } from '@/utils/sales';
-import { baseCurrencyCode, currencyDecimals, numberLocale } from '@/utils/currency';
+import { baseCurrencyCode, currencyDecimals } from '@/utils/currency';
+import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
@@ -179,9 +180,8 @@ const totalCost = computed(() => (ret.value?.items || [])
 const variance = computed(() => (Number(ret.value?.credit_amount) || 0) - totalCost.value);
 
 const formatAmount = (value) => {
-    const places = currencyDecimals(baseCurrencyCode());
-    return new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: places, maximumFractionDigits: places })
-        .format(Number(value) || 0);
+    const places = moneyDecimals(currencyDecimals(baseCurrencyCode()));
+    return formatDecimal(Number(value) || 0, { minimumFractionDigits: places, maximumFractionDigits: places });
 };
 
 const signed = (value) => {

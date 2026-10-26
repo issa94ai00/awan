@@ -190,7 +190,7 @@
                     <span class="tab-label-custom">
                         <i class="fas fa-file-invoice-dollar tab-icon"></i>
                         <span>{{ $t('invoices') }}</span>
-                        <span v-if="invoicePagination.total > 0" class="tab-badge">{{ Number(invoicePagination.total).toLocaleString() }}</span>
+                        <span v-if="invoicePagination.total > 0" class="tab-badge">{{ formatNumber(invoicePagination.total) }}</span>
                     </span>
                 </template>
 
@@ -531,7 +531,7 @@
                     <span class="tab-label-custom">
                         <i class="fas fa-boxes-packing tab-icon"></i>
                         <span>{{ $t('sales_orders_pipeline') }}</span>
-                        <span v-if="pagination.total > 0" class="tab-badge">{{ Number(pagination.total).toLocaleString() }}</span>
+                        <span v-if="pagination.total > 0" class="tab-badge">{{ formatNumber(pagination.total) }}</span>
                     </span>
                 </template>
                 <el-alert
@@ -715,7 +715,8 @@
 </template>
 
 <script setup>
-import { formatMoney as formatMoneyWith } from '@/utils/currency';
+import { formatMoney as formatMoneyWith, formatNumber } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import { formatDate as formatSalesDate } from '@/utils/sales';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted } from 'vue';
@@ -1360,7 +1361,7 @@ const profitClass = (row) => (Number(row.gross_profit) < 0 ? 'profit-negative' :
 // it is marked on the row rather than left to be spotted in a column of numbers.
 const invoiceRowClass = ({ row }) => (Number(row.gross_profit) < 0 ? 'row-loss' : '');
 
-const formatMarginPercent = (value) => `${Number(value || 0).toFixed(1)}%`;
+const formatMarginPercent = (value) => formatPercent(value, 1);
 
 // Per-invoice line breakdowns, keyed by invoice id and fetched once each.
 const invoiceLines = reactive({});

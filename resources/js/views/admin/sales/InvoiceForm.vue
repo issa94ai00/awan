@@ -764,7 +764,8 @@ import { useAuthStore } from '@/stores/auth';
 import { customersApi } from '@/api/customers';
 import { posApi } from '@/api/pos';
 import api from '@/api';
-import { formatNumber, roundUnitPrice } from '@/utils/currency';
+import { formatMoney, formatNumber, roundUnitPrice } from '@/utils/currency';
+import { formatPercent } from '@/utils/numberFormat';
 import {
     summariseSources,
     availableAt,
@@ -1311,12 +1312,9 @@ const impliedRate = (amount, base) => {
 };
 
 // 10, not 10.00; 12.5, not 12.50 — a rate reads as it was typed.
-const percent = (value) =>
-    new Intl.NumberFormat('ar-SY', { maximumFractionDigits: 2 }).format(rate(value)) + '%';
+const percent = (value) => formatPercent(rate(value), 2);
 
-const money = (value) =>
-    new Intl.NumberFormat('ar-SY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        .format(Number(value) || 0) + ' ' + t('currency');
+const money = (value) => formatMoney(value);
 
 const stockTone = (quantity) => {
     const value = Number(quantity) || 0;

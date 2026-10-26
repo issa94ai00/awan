@@ -429,9 +429,9 @@ class PaymentController extends Controller
             if ($newAmount - $room > 0.009) {
                 return $this->refuse(sprintf(
                     'المبلغ (%s) يتجاوز المتبقي على الفاتورة %s (%s).',
-                    number_format($newAmount, 2),
+                    format_amount($newAmount),
                     $invoice->invoice_number,
-                    number_format(max(0, $room), 2)
+                    format_amount(max(0, $room))
                 ));
             }
 
