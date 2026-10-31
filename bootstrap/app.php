@@ -9,6 +9,7 @@ use App\Http\Middleware\LoadSettings;
 use App\Http\Middleware\TrackVisitors;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\DenySalesScoped;
+use App\Http\Middleware\DenySalesRep;
 use App\Http\Middleware\EnsureCanEditProducts;
 use App\Http\Middleware\EnsureCanManageOrders;
 use App\Http\Middleware\EnsureFeatureEnabled;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'feature' => EnsureFeatureEnabled::class,
             'master' => EnsureMaster::class,
             'not_sales_scoped' => DenySalesScoped::class,
+            'not_sales_rep' => DenySalesRep::class,
             'edit_products' => EnsureCanEditProducts::class,
         ]);
         $middleware->web(append: [

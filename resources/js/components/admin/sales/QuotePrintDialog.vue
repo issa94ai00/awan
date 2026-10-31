@@ -318,6 +318,13 @@
                                                 <td class="val">{{ formatDate(quote.valid_until) }}</td>
                                             </tr>
                                         </table>
+                                        <div v-if="printSettings.showAmountInWords !== false && quoteAmountInWords" class="qp-tafqeet-box">
+                                            <div class="qp-tafqeet-label">
+                                                <i class="fas fa-pen-fancy"></i>
+                                                <span>{{ $t('amount_in_words') || 'المبلغ كتابةً' }}:</span>
+                                            </div>
+                                            <div class="qp-tafqeet-text">{{ quoteAmountInWords }}</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -385,6 +392,7 @@ import { useQuotesStore } from '@/stores/quotes';
 import { useSettingsStore } from '@/stores/settings';
 import { resolveImageUrl } from '@/utils/productImages';
 import { customerName, formatCurrency, formatDate, statusIcon, statusLabel } from '@/utils/sales';
+import { tafqeet } from '@/utils/tafqeet';
 import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
 import { A4_HEIGHT_MM, A4_WIDTH_MM, addSheetPages, sheetCaptureOptions } from '@/utils/printPdf';
 
@@ -428,6 +436,14 @@ const toNum = (value) => Number(value) || 0;
 
 const lang = computed(() => (locale.value === 'en' ? 'en' : 'ar'));
 const dir = computed(() => (lang.value === 'en' ? 'ltr' : 'rtl'));
+
+const quoteAmountInWords = computed(() => {
+    if (!quote.value || quote.value.total === undefined || quote.value.total === null) return '';
+    return tafqeet(quote.value.total, {
+        currency: quote.value.currency,
+        locale: lang.value,
+    });
+});
 // The sheet's typeface; every element inside inherits it through --qp-font.
 const sheetStyle = computed(() => ({ '--qp-font': printFontStack(printSettings.fontFamily) }));
 
@@ -571,6 +587,29 @@ const printCss = () => `
         break-inside: avoid !important; page-break-inside: avoid !important;
     }
     .qp-table-summary-row { break-before: avoid !important; page-break-before: avoid !important; }
+    .qp-tafqeet-box {
+        margin-top: 8px !important;
+        padding: 6px 8px !important;
+        background: #f8fafc !important;
+        border: 1px dashed #94a3b8 !important;
+        border-radius: 4px !important;
+        display: block !important;
+    }
+    .qp-tafqeet-label {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        font-size: 9px !important;
+        font-weight: bold !important;
+        color: #1e3a8a !important;
+        margin-bottom: 2px !important;
+    }
+    .qp-tafqeet-text {
+        font-size: 10.5px !important;
+        font-weight: bold !important;
+        color: #0f172a !important;
+        line-height: 1.4 !important;
+    }
     .qp-screen-only { display: none !important; }
 `;
 
@@ -892,6 +931,46 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 .qp-totals-table .grand-val { font-size: 14.5px; }
 .qp-totals-table .valid-row td { color: #15803d; font-weight: 700; font-size: 11px; }
 .qp-totals-table .valid-row.is-lapsed td { color: #dc2626; }
+
+/* Tafqeet / Amount in words */
+.qp-tafqeet-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #ffffff;
+    border: 1px dashed var(--qp-border-color, #cbd5e1);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+.qp-tafqeet-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--qp-primary, #1e3a8a);
+    margin-bottom: 3px;
+}
+.qp-tafqeet-label i {
+    font-size: 9.5px;
+    color: var(--qp-primary, #1e3a8a);
+}
+.qp-tafqeet-text {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.5;
+    word-break: break-word;
+}
+.qp-printable-sheet.density-compact .qp-tafqeet-box {
+    margin-top: 6px;
+    padding: 5px 8px;
+}
+.qp-printable-sheet.density-compact .qp-tafqeet-label {
+    font-size: 9px;
+}
+.qp-printable-sheet.density-compact .qp-tafqeet-text {
+    font-size: 10px;
+}
 
 /* Signatures */
 .qp-print-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; padding-top: 10px; border-top: 1px dashed #cbd5e1; }

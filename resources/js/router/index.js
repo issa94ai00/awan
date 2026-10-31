@@ -101,7 +101,8 @@ const routes = [
             {
                 path: 'settings',
                 name: 'admin.settings',
-                component: () => import('@/views/admin/Settings.vue')
+                component: () => import('@/views/admin/Settings.vue'),
+                meta: { settings: true }
             },
             {
                 // Currencies and their rates. Separate from settings because a
@@ -788,7 +789,8 @@ const router = createRouter({
 // Whether the signed-in account may open an admin page. The feature that
 // guards the page is looked up from the path; a path that belongs to no module
 // (the dashboard, the profile screens) is always allowed.
-// Routes marked `masterOnly` (Features Management) are closed to admins too.
+// Routes marked `masterOnly` (Features Management) are closed to admins too,
+// and the settings route is closed to sales reps (auth.canOpenSettings).
 // Every sidebar page also needs its page permission (config/pagePermissions.js),
 // and routes with `meta.permission` need that too (any one of a list).
 const canAccessAdminPath = (auth, to) => {
@@ -798,6 +800,7 @@ const canAccessAdminPath = (auth, to) => {
     const pagePermission = pagePermissionFor(to.path);
     return auth.canAccessFeature(featureForPath(to.path))
         && (!to.matched.some(record => record.meta?.masterOnly) || auth.isMaster)
+        && (!to.matched.some(record => record.meta?.settings) || auth.canOpenSettings)
         && (!pagePermission || auth.can(pagePermission))
         && to.matched.every(record => !record.meta?.permission || auth.can(record.meta.permission));
 };

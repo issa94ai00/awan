@@ -30,6 +30,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             showCustomerInfo: sys.print_show_customer_info !== '0' && sys.print_show_customer_info !== false,
             showPaymentDetails: sys.print_show_payment_details !== '0' && sys.print_show_payment_details !== false,
             showNotes: sys.print_show_notes !== '0' && sys.print_show_notes !== false,
+            showAmountInWords: sys.print_show_amount_in_words !== '0' && sys.print_show_amount_in_words !== false,
             showSignatures: sys.print_show_signatures !== '0' && sys.print_show_signatures !== false,
             showFooter: sys.print_show_footer !== '0' && sys.print_show_footer !== false,
             customNotes: sys.print_terms || '',
@@ -58,7 +59,11 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
         return null;
     };
 
-    const initial = { ...getSystemDefaults(), ...(loadStoredPreferences() || {}) };
+    const storedPrefs = loadStoredPreferences() || {};
+    const initial = { ...getSystemDefaults(), ...storedPrefs };
+    if (initial.showAmountInWords === undefined || initial.showAmountInWords === null) {
+        initial.showAmountInWords = true;
+    }
     const printSettings = reactive(initial);
 
     // Watch settings store changes if loaded later
@@ -84,6 +89,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             printSettings.showCustomerInfo = true;
             printSettings.showPaymentDetails = true;
             printSettings.showNotes = true;
+            printSettings.showAmountInWords = true;
             printSettings.showSignatures = true;
             printSettings.showFooter = true;
         } else if (presetKey === 'receipt') {
@@ -98,6 +104,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             printSettings.showCustomerInfo = true;
             printSettings.showPaymentDetails = true;
             printSettings.showNotes = false;
+            printSettings.showAmountInWords = true;
             printSettings.showSignatures = false;
             printSettings.showFooter = true;
         } else if (presetKey === 'commercial') {
@@ -112,6 +119,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             printSettings.showCustomerInfo = true;
             printSettings.showPaymentDetails = true;
             printSettings.showNotes = true;
+            printSettings.showAmountInWords = true;
             printSettings.showSignatures = true;
             printSettings.showFooter = true;
         } else if (presetKey === 'warehouse') {
@@ -126,6 +134,7 @@ export function usePrintSettings(docType = 'invoice', initialOverrides = {}) {
             printSettings.showCustomerInfo = true;
             printSettings.showPaymentDetails = false;
             printSettings.showNotes = true;
+            printSettings.showAmountInWords = true;
             printSettings.showSignatures = true;
             printSettings.showFooter = true;
         }

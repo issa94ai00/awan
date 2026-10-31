@@ -184,7 +184,7 @@
                     <span class="user-role">{{ userRoleTitle }}</span>
                 </div>
                 <router-link
-                    v-if="!isCollapsed"
+                    v-if="!isCollapsed && authStore.canOpenSettings"
                     to="/admin/settings"
                     class="user-action"
                     :class="{ active: matchesRoute('/admin/settings') }"

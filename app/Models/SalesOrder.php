@@ -13,6 +13,7 @@ class SalesOrder extends Model
 
     protected $fillable = [
         'order_number',
+        'revision',
         'customer_id',
         'quote_id',
         'status',
@@ -52,6 +53,7 @@ class SalesOrder extends Model
     ];
 
     protected $casts = [
+        'revision' => 'integer',
         'subtotal' => 'decimal:5',
         'tax' => 'decimal:5',
         'discount' => 'decimal:5',
@@ -173,6 +175,12 @@ class SalesOrder extends Model
     public function statusHistory()
     {
         return $this->hasMany(SalesOrderStatusHistory::class)->orderBy('id');
+    }
+
+    /** Earlier versions this order replaced, oldest first. */
+    public function revisions()
+    {
+        return $this->hasMany(SalesOrderRevision::class)->orderBy('revision');
     }
 
     public function getStatusTextAttribute()

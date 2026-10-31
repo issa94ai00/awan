@@ -762,6 +762,13 @@
                                                     <td class="val due-val" dir="ltr">{{ formatCurrency(printInvoiceData.due_amount) }}</td>
                                                 </tr>
                                             </table>
+                                            <div v-if="printSettings.showAmountInWords !== false && invoiceAmountInWords" class="inv-tafqeet-box">
+                                                <div class="inv-tafqeet-label">
+                                                    <i class="fas fa-pen-fancy"></i>
+                                                    <span>{{ $t('amount_in_words') || 'المبلغ كتابةً' }}:</span>
+                                                </div>
+                                                <div class="inv-tafqeet-text">{{ invoiceAmountInWords }}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -844,6 +851,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { ensurePrintFont, printFontCssUrl, printFontStack, waitForPrintFont } from '@/utils/printFonts';
 import { A4_HEIGHT_MM, A4_WIDTH_MM, addSheetPages, sheetCaptureOptions } from '@/utils/printPdf';
+import { tafqeet } from '@/utils/tafqeet';
 import {
     ORDER_STATUSES,
     apiErrorMessage,
@@ -856,7 +864,7 @@ import {
     statusLabel,
 } from '@/utils/sales';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const store = useInvoicesStore();
@@ -1183,6 +1191,14 @@ const {
 // The sheet's typeface; every element inside inherits it through --inv-font.
 const printSheetStyle = computed(() => ({ '--inv-font': printFontStack(printSettings.fontFamily) }));
 
+const invoiceAmountInWords = computed(() => {
+    if (!printInvoiceData.value || printInvoiceData.value.total === undefined || printInvoiceData.value.total === null) return '';
+    return tafqeet(printInvoiceData.value.total, {
+        currency: printInvoiceData.value.currency,
+        locale: locale?.value === 'en' ? 'en' : 'ar',
+    });
+});
+
 watch(() => [printInvoiceDialogVisible.value, printSettings.fontFamily], ([visible, font]) => {
     if (visible) ensurePrintFont(font);
 });
@@ -1485,6 +1501,29 @@ const triggerPrintInvoice = async () => {
                 .inv-print-footer {
                     break-inside: avoid !important;
                     page-break-inside: avoid !important;
+                }
+                .inv-tafqeet-box {
+                    margin-top: 8px !important;
+                    padding: 6px 8px !important;
+                    background: #f8fafc !important;
+                    border: 1px dashed #94a3b8 !important;
+                    border-radius: 4px !important;
+                    display: block !important;
+                }
+                .inv-tafqeet-label {
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 4px !important;
+                    font-size: 9px !important;
+                    font-weight: bold !important;
+                    color: #1e3a8a !important;
+                    margin-bottom: 2px !important;
+                }
+                .inv-tafqeet-text {
+                    font-size: 10.5px !important;
+                    font-weight: bold !important;
+                    color: #0f172a !important;
+                    line-height: 1.4 !important;
                 }
                 .inv-screen-only,
                 .inv-print-toolbar {
@@ -2942,6 +2981,46 @@ onBeforeUnmount(() => {
 
 .inv-totals-table .due-val {
     font-size: 12px;
+}
+
+/* Tafqeet / Amount in words */
+.inv-tafqeet-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #ffffff;
+    border: 1px dashed var(--inv-border-color, #cbd5e1);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+.inv-tafqeet-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--inv-primary, #1e3a8a);
+    margin-bottom: 3px;
+}
+.inv-tafqeet-label i {
+    font-size: 9.5px;
+    color: var(--inv-primary, #1e3a8a);
+}
+.inv-tafqeet-text {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.5;
+    word-break: break-word;
+}
+.inv-printable-sheet.density-compact .inv-tafqeet-box {
+    margin-top: 6px;
+    padding: 5px 8px;
+}
+.inv-printable-sheet.density-compact .inv-tafqeet-label {
+    font-size: 9px;
+}
+.inv-printable-sheet.density-compact .inv-tafqeet-text {
+    font-size: 10px;
 }
 
 /* ── Signatures ── */

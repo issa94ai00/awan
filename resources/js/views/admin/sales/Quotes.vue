@@ -345,6 +345,13 @@
                     <div v-if="Number(selected.discount)"><span>{{ $t('qt_extra_discount') }}</span><span class="num">−{{ formatCurrency(selected.discount) }}</span></div>
                     <div v-if="Number(selected.tax)"><span>{{ $t('qt_extra_tax') }}</span><span class="num">+{{ formatCurrency(selected.tax) }}</span></div>
                     <div class="grand"><span>{{ $t('total') }}</span><span class="num">{{ formatCurrency(selected.total) }}</span></div>
+                    <div v-if="quoteDrawerAmountInWords" class="drawer-tafqeet">
+                        <span class="drawer-tafqeet-label">
+                            <i class="fas fa-pen-fancy"></i>
+                            {{ $t('amount_in_words') || 'المبلغ كتابةً' }}:
+                        </span>
+                        <strong class="drawer-tafqeet-text">{{ quoteDrawerAmountInWords }}</strong>
+                    </div>
                 </div>
 
                 <div v-if="selected.notes || selected.terms" class="drawer-notes">
@@ -393,6 +400,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import QuoteForm from '@/components/admin/sales/QuoteForm.vue';
 import QuotePrintDialog from '@/components/admin/sales/QuotePrintDialog.vue';
+import { tafqeet } from '@/utils/tafqeet';
 import { useQuotesStore } from '@/stores/quotes';
 import {
     QUOTE_STATUSES,
@@ -630,6 +638,13 @@ const journey = (quote) => {
 const detailVisible = ref(false);
 const detailLoading = ref(false);
 const selected = ref(null);
+const quoteDrawerAmountInWords = computed(() => {
+    if (!selected.value || selected.value.total === undefined || selected.value.total === null) return '';
+    return tafqeet(selected.value.total, {
+        currency: selected.value.currency,
+        locale: locale?.value === 'en' ? 'en' : 'ar',
+    });
+});
 
 const openDetail = async (quote) => {
     selected.value = quote;
@@ -1003,6 +1018,33 @@ onBeforeUnmount(() => {
 .drawer-totals { align-self: flex-end; width: min(300px, 100%); }
 .drawer-totals > div { display: flex; justify-content: space-between; padding: 0.25rem 0; font-size: 0.88rem; }
 .drawer-totals .grand { border-top: 2px solid #0f172a; margin-top: 0.25rem; padding-top: 0.5rem; font-weight: 800; font-size: 1.05rem; }
+.drawer-tafqeet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.7rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+.drawer-tafqeet-label {
+    font-size: 0.72rem;
+    color: #64748b;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.drawer-tafqeet-label i {
+    color: #2563eb;
+}
+.drawer-tafqeet-text {
+    color: #0f172a;
+    font-weight: 700;
+}
 
 .drawer-notes { display: grid; gap: 0.75rem; }
 .drawer-notes h5 { margin: 0 0 0.2rem; font-size: 0.8rem; color: #64748b; }

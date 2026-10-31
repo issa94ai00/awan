@@ -13,6 +13,7 @@ class RmaRequest extends Model
         'customer_id',
         'sales_order_id',
         'invoice_id',
+        'warehouse_id',
         'rma_number',
         'reason',
         'type',
@@ -74,6 +75,12 @@ class RmaRequest extends Model
     public function invoice()
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    /** The warehouse the returned goods are booked back into. */
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function items()

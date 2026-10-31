@@ -1,5 +1,5 @@
 <template>
-    <div class="inventory-index">
+    <div class="inventory-index" :class="{ 'is-compact-mode': isCompact }">
         <AdminPageHeader
             icon="fas fa-warehouse"
             :title="$t('inventory_dashboard')"
@@ -9,6 +9,12 @@
                 <el-tooltip :content="$t('refresh')" placement="bottom" :enterable="false">
                     <el-button :icon="Refresh" :loading="refreshing" circle :aria-label="$t('refresh')" @click="refreshAll" />
                 </el-tooltip>
+
+                <!-- Print inventory sheet / physical count sheet -->
+                <el-button :icon="Printer" @click="openPrintDialog()">
+                    {{ $t('inv_admin_print_sheet') }}
+                </el-button>
+
                 <el-dropdown v-if="!readOnly" trigger="click" @command="onToolsCommand">
                     <el-button :loading="exporting || importing">
                         <el-icon><Files /></el-icon>
@@ -26,27 +32,80 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
+
                 <router-link v-if="!readOnly" :to="{ name: 'admin.inventory.movements' }" custom v-slot="{ navigate }">
                     <el-button :icon="Tickets" @click="navigate">{{ $t('movement_log') }}</el-button>
                 </router-link>
+
                 <template v-if="!readOnly">
-                    <el-button :icon="Operation" @click="costMethodModalVisible = true">{{ $t('cost_calculation_method') }}</el-button>
+                    <el-button :icon="Operation" @click="costMethodModalVisible = true">
+                        {{ $t('cost_calculation_method') }}
+                        <span class="header-method-badge">{{ activeCostMethod }}</span>
+                    </el-button>
                     <el-button :icon="Switch" @click="openMovement('transfer')">{{ $t('transfer_stock') }}</el-button>
-                    <el-button type="primary" :icon="Plus" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
+                    <el-button type="primary" :icon="Plus" class="cta-btn" @click="openMovement('in')">{{ $t('inv_admin_record_movement') }}</el-button>
                 </template>
             </template>
         </AdminPageHeader>
 
         <input ref="fileInput" type="file" accept=".xlsx" class="visually-hidden" @change="onFileSelected" />
 
-        <!-- Stock health. The three status cards are also the table's status
-             filter, so the figure and the rows behind it are one click apart. -->
-        <AdminStatGrid :min="180">
+        <!-- Stock Health Ratio Visual Bar -->
+        <div v-if="summary" class="health-index-card">
+            <div class="health-header">
+                <div class="health-title">
+                    <span class="health-pulse"></span>
+                    <strong>{{ $t('inv_admin_health_ratio') }}</strong>
+                    <span class="health-hint">({{ formatNumber(totalRowsCount) }} {{ $t('total_items') || 'أصناف' }})</span>
+                </div>
+                <div class="health-legend">
+                    <button type="button" class="legend-chip ok" :class="{ 'is-active': filters.status === 'ok' }" @click="toggleStatus('ok')">
+                        <span class="dot"></span>
+                        <span>{{ $t('inv_admin_health_healthy') }}: {{ healthShares.ok }}%</span>
+                    </button>
+                    <button type="button" class="legend-chip low" :class="{ 'is-active': filters.status === 'low' }" @click="toggleStatus('low')">
+                        <span class="dot"></span>
+                        <span>{{ $t('inv_admin_health_low') }}: {{ healthShares.low }}%</span>
+                    </button>
+                    <button type="button" class="legend-chip out" :class="{ 'is-active': filters.status === 'out' }" @click="toggleStatus('out')">
+                        <span class="dot"></span>
+                        <span>{{ $t('inv_admin_health_out') }}: {{ healthShares.out }}%</span>
+                    </button>
+                </div>
+            </div>
+            <div class="health-progress-bar" role="progressbar" aria-label="Inventory health distribution">
+                <div
+                    class="bar-segment ok"
+                    :style="{ width: healthShares.ok + '%' }"
+                    :title="`${$t('inv_admin_health_healthy')}: ${healthShares.ok}%`"
+                    @click="toggleStatus('ok')"
+                />
+                <div
+                    class="bar-segment low"
+                    :style="{ width: healthShares.low + '%' }"
+                    :title="`${$t('inv_admin_health_low')}: ${healthShares.low}%`"
+                    @click="toggleStatus('low')"
+                />
+                <div
+                    class="bar-segment out"
+                    :style="{ width: healthShares.out + '%' }"
+                    :title="`${$t('inv_admin_health_out')}: ${healthShares.out}%`"
+                    @click="toggleStatus('out')"
+                />
+            </div>
+        </div>
+
+        <!-- Stock health KPI cards -->
+        <AdminStatGrid :min="175">
+            <!-- Total Stock Value -->
             <el-card v-if="!readOnly" shadow="never" class="stat-card">
                 <div class="stat-card-inner">
                     <div class="stat-icon-box value"><el-icon><Coin /></el-icon></div>
                     <div class="stat-details">
-                        <h3>{{ summary ? formatMoney(summary.total_value) : '—' }}</h3>
+                        <h3>
+                            <template v-if="hideFinancials">••••••••</template>
+                            <template v-else>{{ summary ? formatMoney(summary.total_value) : '—' }}</template>
+                        </h3>
                         <p>
                             {{ $t('total_stock_value') }}
                             <el-tooltip :content="$t('cost_calculation_method_management')" placement="top" :enterable="false">
@@ -58,6 +117,8 @@
                     </div>
                 </div>
             </el-card>
+
+            <!-- Available Units for Sale -->
             <el-card shadow="never" class="stat-card">
                 <div class="stat-card-inner">
                     <div class="stat-icon-box units"><el-icon><Box /></el-icon></div>
@@ -72,6 +133,19 @@
                     </div>
                 </div>
             </el-card>
+
+            <!-- Active Products (SKUs) -->
+            <el-card shadow="never" class="stat-card">
+                <div class="stat-card-inner">
+                    <div class="stat-icon-box skus"><el-icon><Grid /></el-icon></div>
+                    <div class="stat-details">
+                        <h3>{{ summary?.products_with_stock ? formatNumber(summary.products_with_stock) : '—' }}</h3>
+                        <p>{{ $t('inv_admin_active_skus') }}</p>
+                    </div>
+                </div>
+            </el-card>
+
+            <!-- Status Filter Cards -->
             <el-card
                 v-for="card in statusCards"
                 :key="card.key"
@@ -86,21 +160,41 @@
                 @keydown.space.prevent="toggleStatus(card.key)"
             >
                 <div class="stat-card-inner">
-                    <div class="stat-icon-box" :class="card.key"><el-icon><component :is="card.icon" /></el-icon></div>
+                    <div class="stat-icon-box" :class="card.key">
+                        <el-icon><component :is="card.icon" /></el-icon>
+                    </div>
                     <div class="stat-details">
-                        <h3>{{ summary ? formatNumber(card.value) : '—' }}</h3>
+                        <div class="stat-val-row">
+                            <h3>{{ summary ? formatNumber(card.value) : '—' }}</h3>
+                            <span v-if="filters.status === card.key" class="filter-active-tag">
+                                {{ $t('inv_admin_filter_active') }}
+                            </span>
+                        </div>
                         <p>{{ card.title }}</p>
                     </div>
                 </div>
             </el-card>
         </AdminStatGrid>
 
+        <!-- Warehouses distribution & Today's Activity / Reorder Watchlist -->
         <div class="overview-grid">
-            <!-- Warehouses: each one filters the table -->
+            <!-- Warehouses List -->
             <section class="panel-card">
                 <header class="panel-head">
-                    <h2><el-icon><OfficeBuilding /></el-icon> {{ $t('stock_across_warehouses') }}</h2>
-                    <span v-if="warehouses.length" class="panel-hint">{{ $t('inv_admin_click_to_filter') }}</span>
+                    <div class="panel-title-group">
+                        <h2><el-icon><OfficeBuilding /></el-icon> {{ $t('stock_across_warehouses') }}</h2>
+                        <span v-if="warehouses.length" class="panel-hint">{{ $t('inv_admin_click_to_filter') }}</span>
+                    </div>
+                    <el-button
+                        v-if="filters.warehouse_id"
+                        size="small"
+                        type="primary"
+                        link
+                        :icon="RefreshLeft"
+                        @click="filters.warehouse_id = null; applyFilters()"
+                    >
+                        {{ $t('all_warehouses') }}
+                    </el-button>
                 </header>
 
                 <div v-if="summaryLoading && !warehouses.length" class="skeleton-list">
@@ -118,6 +212,7 @@
                     >
                         <span class="warehouse-top">
                             <span class="warehouse-name">
+                                <span class="wh-pin" :class="{ 'is-active': filters.warehouse_id === w.id }"></span>
                                 <strong>{{ w.name }}</strong>
                                 <span v-if="w.code" class="wh-code" dir="ltr">{{ w.code }}</span>
                                 <el-tag v-if="!w.is_active" type="info" size="small" effect="plain">{{ $t('inactive') }}</el-tag>
@@ -129,17 +224,24 @@
                         <span class="wh-bar" aria-hidden="true">
                             <span class="wh-bar-fill" :style="{ width: warehouseShare(w) + '%' }" />
                         </span>
-                        <span class="wh-share">{{ $t('inv_admin_share', { value: warehouseShare(w, true) }) }}</span>
+                        <span class="wh-meta-line">
+                            <span class="wh-share">{{ $t('inv_admin_share', { value: warehouseShare(w, true) }) }}</span>
+                            <span v-if="filters.warehouse_id === w.id" class="wh-selected-indicator">
+                                <el-icon><Check /></el-icon> {{ $t('inv_admin_filter_active') }}
+                            </span>
+                        </span>
                     </button>
                 </div>
                 <el-empty v-else :description="$t('no_warehouses')" :image-size="70" />
             </section>
 
-            <!-- Today and what needs reordering -->
+            <!-- Today's Activity and Needs Reordering -->
             <section class="panel-card">
                 <header class="panel-head">
                     <h2><el-icon><Calendar /></el-icon> {{ $t('today_s_activity') }}</h2>
-                    <router-link :to="{ name: 'admin.inventory.movements' }" class="panel-link">{{ $t('movement_log') }}</router-link>
+                    <router-link :to="{ name: 'admin.inventory.movements' }" class="panel-link">
+                        {{ $t('movement_log') }} &rarr;
+                    </router-link>
                 </header>
 
                 <div class="today-stats">
@@ -167,23 +269,34 @@
                 </div>
 
                 <div class="reorder-head">
-                    <h3>{{ $t('inv_admin_reorder_title') }}</h3>
-                    <el-button v-if="(summary?.low_stock_rows || 0) > attention.length" link type="primary" @click="toggleStatus('low', true)">
+                    <div class="reorder-title-box">
+                        <span class="reorder-alert-icon"><el-icon><Warning /></el-icon></span>
+                        <h3>{{ $t('inv_admin_reorder_title') }}</h3>
+                    </div>
+                    <el-button v-if="(summary?.low_stock_rows || 0) > 0" link type="primary" @click="toggleStatus('low', true)">
                         {{ $t('inv_admin_view_all', { count: formatNumber(summary.low_stock_rows) }) }}
                     </el-button>
                 </div>
+
                 <div v-if="attentionLoading && !attention.length" class="skeleton-list">
                     <el-skeleton :rows="2" animated />
                 </div>
                 <ul v-else-if="attention.length" class="reorder-list">
                     <li v-for="row in attention" :key="row.id" class="reorder-item">
+                        <div class="reorder-img">
+                            <EntityImage :src="row.product?.image_main || ''" type="product" :size="36" />
+                        </div>
                         <div class="reorder-text">
                             <strong>{{ productName(row) }}</strong>
                             <span>{{ row.warehouse?.name }} · {{ $t('inv_admin_reorder_at', { value: formatNumber(row.reorder_point) }) }}</span>
                         </div>
-                        <span class="stock-pill low"><span class="stock-dot" />{{ formatNumber(row.available) }}</span>
+                        <div class="reorder-qty-pill">
+                            <span class="stock-pill low">
+                                <span class="stock-dot" />{{ formatNumber(row.available) }}
+                            </span>
+                        </div>
                         <el-tooltip v-if="!readOnly" :content="$t('inv_admin_receive')" placement="top" :enterable="false">
-                            <el-button size="small" circle :icon="Plus" :aria-label="$t('inv_admin_receive')" @click="openMovement('in', row)" />
+                            <el-button size="small" type="primary" plain circle :icon="Plus" :aria-label="$t('inv_admin_receive')" @click="openMovement('in', row)" />
                         </el-tooltip>
                     </li>
                 </ul>
@@ -194,12 +307,42 @@
             </section>
         </div>
 
-        <!-- Balances table -->
-        <section class="panel-card">
-            <header class="panel-head">
-                <h2><el-icon><Grid /></el-icon> {{ $t('item_balances_by_warehouse') }}</h2>
+        <!-- Balances Table Panel -->
+        <section class="panel-card table-panel-card">
+            <header class="panel-head table-head">
+                <div class="table-head-title">
+                    <h2><el-icon><Grid /></el-icon> {{ $t('item_balances_by_warehouse') }}</h2>
+                    <span v-if="total > 0" class="table-head-badge">{{ formatNumber(total) }} {{ $t('total_items') || 'أرصدة' }}</span>
+                </div>
+
+                <div class="table-view-controls">
+                    <!-- Hide/Show financial values -->
+                    <el-tooltip v-if="!readOnly" :content="hideFinancials ? $t('inv_admin_show_financials') : $t('inv_admin_hide_financials')" placement="top" :enterable="false">
+                        <el-button
+                            circle
+                            size="small"
+                            :type="hideFinancials ? 'warning' : 'default'"
+                            @click="hideFinancials = !hideFinancials"
+                        >
+                            <el-icon><component :is="hideFinancials ? Hide : View" /></el-icon>
+                        </el-button>
+                    </el-tooltip>
+
+                    <!-- Table density toggle (Compact / Normal) -->
+                    <el-tooltip :content="isCompact ? $t('inv_admin_density_normal') : $t('inv_admin_density_compact')" placement="top" :enterable="false">
+                        <el-button
+                            circle
+                            size="small"
+                            :type="isCompact ? 'primary' : 'default'"
+                            @click="isCompact = !isCompact"
+                        >
+                            <el-icon><Operation /></el-icon>
+                        </el-button>
+                    </el-tooltip>
+                </div>
             </header>
 
+            <!-- Filters Bar -->
             <div class="filters">
                 <el-input
                     v-model="filters.search"
@@ -214,20 +357,76 @@
                     class="filter-select"
                     :placeholder="$t('all_warehouses')"
                     clearable
+                    filterable
                     @change="applyFilters"
                 >
                     <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
                 </el-select>
+
                 <el-radio-group v-model="filters.status" class="filter-status" @change="applyFilters">
                     <el-radio-button value="">{{ $t('cat_admin_all') }}</el-radio-button>
-                    <el-radio-button value="ok">{{ $t('available') }}</el-radio-button>
-                    <el-radio-button value="low">{{ $t('low') }}</el-radio-button>
-                    <el-radio-button value="out">{{ $t('out_of_stock_short') }}</el-radio-button>
+                    <el-radio-button value="ok">
+                        <span class="status-tab-item">
+                            <span class="status-circle ok"></span>
+                            {{ $t('available') }}
+                        </span>
+                    </el-radio-button>
+                    <el-radio-button value="low">
+                        <span class="status-tab-item">
+                            <span class="status-circle low"></span>
+                            {{ $t('low') }}
+                        </span>
+                    </el-radio-button>
+                    <el-radio-button value="out">
+                        <span class="status-tab-item">
+                            <span class="status-circle out"></span>
+                            {{ $t('out_of_stock_short') }}
+                        </span>
+                    </el-radio-button>
                 </el-radio-group>
+
                 <el-button v-if="activeFilterCount" :icon="RefreshLeft" @click="resetFilters">
                     {{ $t('prod_admin_clear_filters', { count: activeFilterCount }) }}
                 </el-button>
             </div>
+
+            <!-- Active Filter Badges Bar -->
+            <div v-if="activeFilterCount" class="active-chips-bar">
+                <span class="chips-title">{{ $t('filtered_by') || 'التصفية النشطة:' }}</span>
+                <el-tag v-if="filters.search" closable size="small" type="info" @close="filters.search = ''; applyFilters()">
+                    {{ $t('search') }}: "{{ filters.search }}"
+                </el-tag>
+                <el-tag v-if="selectedWarehouseObj" closable size="small" type="primary" @close="filters.warehouse_id = null; applyFilters()">
+                    {{ $t('warehouse') }}: {{ selectedWarehouseObj.name }}
+                </el-tag>
+                <el-tag v-if="filters.status" closable size="small" :type="statusTagType(filters.status)" @close="filters.status = ''; applyFilters()">
+                    {{ $t('status') }}: {{ statusLabel(filters.status) }}
+                </el-tag>
+                <el-button link type="danger" size="small" @click="resetFilters">
+                    {{ $t('clear_all') || 'مسح الكل' }}
+                </el-button>
+            </div>
+
+            <!-- Batch Selection Action Bar -->
+            <transition name="el-zoom-in-top">
+                <div v-if="selectedRows.length" class="batch-bar">
+                    <div class="batch-count">
+                        <el-icon><Check /></el-icon>
+                        <strong>{{ $t('inv_admin_selected_count', { count: selectedRows.length }) }}</strong>
+                    </div>
+                    <div class="batch-actions">
+                        <el-button size="small" :icon="Printer" type="primary" plain @click="openPrintDialog(true)">
+                            {{ $t('inv_admin_print_selected') }}
+                        </el-button>
+                        <el-button size="small" :icon="Download" plain @click="exportSelected">
+                            {{ $t('inv_admin_export_selected') }}
+                        </el-button>
+                        <el-button size="small" link @click="clearSelection">
+                            {{ $t('inv_admin_clear_selection') }}
+                        </el-button>
+                    </div>
+                </div>
+            </transition>
 
             <el-result v-if="loadError && !rows.length" icon="error" :title="$t('failed_to_load_stock_data')">
                 <template #extra>
@@ -237,12 +436,15 @@
 
             <div v-else class="table-wrapper">
                 <el-table
+                    ref="tableRef"
                     v-loading="stockLoading"
                     :data="rows"
                     row-key="id"
                     style="width: 100%"
+                    :size="isCompact ? 'small' : 'default'"
                     :row-class-name="rowClassName"
                     :default-sort="defaultSort"
+                    @selection-change="onSelectionChange"
                     @sort-change="onSortChange"
                 >
                     <template #empty>
@@ -255,10 +457,14 @@
                         <span v-else />
                     </template>
 
-                    <el-table-column :label="$t('product')" min-width="230">
+                    <!-- Selection column for batch actions -->
+                    <el-table-column type="selection" width="46" align="center" />
+
+                    <!-- Product -->
+                    <el-table-column :label="$t('product')" min-width="250">
                         <template #default="{ row }">
                             <div class="product-cell">
-                                <EntityImage :src="row.product?.image_main || ''" type="product" :size="44" />
+                                <EntityImage :src="row.product?.image_main || ''" type="product" :size="isCompact ? 36 : 44" class="p-thumb" />
                                 <div class="cell-stack">
                                     <router-link
                                         v-if="row.product?.id"
@@ -268,81 +474,114 @@
                                         {{ productName(row) }}
                                     </router-link>
                                     <span v-else class="product-name">{{ productName(row) }}</span>
-                                    <span class="cell-meta">
+                                    <div class="cell-meta">
                                         <el-tooltip v-if="row.product?.sku" :content="$t('prod_admin_copy_sku')" placement="top" :enterable="false">
                                             <button type="button" class="sku-chip" dir="ltr" @click="copySku(row.product.sku)">
-                                                {{ row.product.sku }}
+                                                <span class="sku-txt">{{ row.product.sku }}</span>
                                                 <el-icon :size="11"><DocumentCopy /></el-icon>
                                             </button>
                                         </el-tooltip>
-                                    </span>
+                                        <span v-if="row.product?.barcode" class="barcode-tag" dir="ltr">
+                                            {{ row.product.barcode }}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('warehouse')" min-width="130">
+                    <!-- Warehouse & Bin -->
+                    <el-table-column :label="$t('warehouse')" min-width="140">
                         <template #default="{ row }">
-                            <button
-                                v-if="row.warehouse"
-                                type="button"
-                                class="chip-button"
-                                :title="$t('inv_admin_filter_by_warehouse')"
-                                @click="toggleWarehouse(row.warehouse.id)"
-                            >
-                                {{ row.warehouse.name }}
-                            </button>
-                            <span v-else class="cell-empty">—</span>
-                            <span v-if="row.bin?.code" class="cell-secondary" dir="ltr">{{ row.bin.code }}</span>
+                            <div class="warehouse-cell">
+                                <button
+                                    v-if="row.warehouse"
+                                    type="button"
+                                    class="chip-button"
+                                    :title="$t('inv_admin_filter_by_warehouse')"
+                                    @click="toggleWarehouse(row.warehouse.id)"
+                                >
+                                    {{ row.warehouse.name }}
+                                </button>
+                                <span v-else class="cell-empty">—</span>
+                                <span v-if="row.bin?.code" class="bin-badge" dir="ltr">{{ row.bin.code }}</span>
+                            </div>
                         </template>
                     </el-table-column>
 
-                    <!-- On hand, reserved and available side by side: without them a
-                         balance that dropped because another order reserved it looks
-                         like stock that went missing. -->
+                    <!-- On hand -->
                     <el-table-column :label="$t('inv_admin_on_hand')" prop="quantity" sortable="custom" width="105" align="center">
                         <template #default="{ row }">
-                            <span class="num-muted">{{ formatNumber(row.quantity) }}</span>
+                            <span class="num-on-hand">{{ formatNumber(row.quantity) }}</span>
                         </template>
                     </el-table-column>
 
+                    <!-- Reserved -->
                     <el-table-column :label="$t('reserved')" prop="reserved_quantity" sortable="custom" width="100" align="center">
                         <template #default="{ row }">
-                            <span v-if="Number(row.reserved_quantity) > 0" class="num-reserved">{{ formatNumber(row.reserved_quantity) }}</span>
-                            <span v-else class="cell-empty">—</span>
-                        </template>
-                    </el-table-column>
-
-                    <el-table-column :label="$t('available_amount')" prop="available" sortable="custom" width="130" align="center">
-                        <template #default="{ row }">
-                            <el-tooltip :content="stockHint(row)" placement="top" :enterable="false">
-                                <span class="stock-pill" :class="stockLevel(row)">
-                                    <span class="stock-dot" />
-                                    {{ formatNumber(row.available) }}
-                                </span>
-                            </el-tooltip>
-                            <span v-if="unsellable(row) > 0" class="cell-secondary cell-warn">
-                                {{ $t('inv_admin_unsellable', { count: formatNumber(unsellable(row)) }) }}
+                            <span v-if="Number(row.reserved_quantity) > 0" class="num-reserved" :title="`${formatNumber(row.reserved_quantity)} units reserved for active orders`">
+                                {{ formatNumber(row.reserved_quantity) }}
                             </span>
-                        </template>
-                    </el-table-column>
-
-                    <el-table-column v-if="!readOnly" :label="$t('cost')" width="110" align="center">
-                        <template #default="{ row }">
-                            <span v-if="Number(row.product?.cost_price) > 0">{{ formatMoney(row.product.cost_price) }}</span>
-                            <el-tooltip v-else :content="$t('inv_admin_no_cost_hint')" placement="top" :enterable="false">
-                                <span class="cell-empty cell-warn-soft">{{ $t('inv_admin_no_cost') }}</span>
-                            </el-tooltip>
-                        </template>
-                    </el-table-column>
-
-                    <el-table-column v-if="!readOnly" :label="$t('value')" width="120" align="center">
-                        <template #default="{ row }">
-                            <strong v-if="rowValue(row) > 0">{{ formatMoney(rowValue(row)) }}</strong>
                             <span v-else class="cell-empty">—</span>
                         </template>
                     </el-table-column>
 
+                    <!-- Available with Mini Level Bar -->
+                    <el-table-column :label="$t('available_amount')" prop="available" sortable="custom" width="145" align="center">
+                        <template #default="{ row }">
+                            <div class="available-cell">
+                                <el-tooltip :content="stockHint(row)" placement="top" :enterable="false">
+                                    <span class="stock-pill" :class="stockLevel(row)">
+                                        <span class="stock-dot" />
+                                        {{ formatNumber(row.available) }}
+                                    </span>
+                                </el-tooltip>
+
+                                <!-- Mini stock level gauge relative to reorder point -->
+                                <div v-if="Number(row.reorder_point) > 0" class="mini-gauge" :title="`Reorder: ${formatNumber(row.reorder_point)}`">
+                                    <div
+                                        class="mini-gauge-fill"
+                                        :class="stockLevel(row)"
+                                        :style="{ width: Math.min(100, Math.round((Number(row.available) / Number(row.reorder_point)) * 100)) + '%' }"
+                                    />
+                                </div>
+
+                                <span v-if="unsellable(row) > 0" class="cell-secondary cell-warn">
+                                    {{ $t('inv_admin_unsellable', { count: formatNumber(unsellable(row)) }) }}
+                                </span>
+                            </div>
+                        </template>
+                    </el-table-column>
+
+                    <!-- Cost (respects hideFinancials) -->
+                    <el-table-column v-if="!readOnly" :label="$t('cost')" width="115" align="center">
+                        <template #default="{ row }">
+                            <template v-if="hideFinancials">
+                                <span class="masked-num">••••••</span>
+                            </template>
+                            <template v-else>
+                                <span v-if="Number(row.product?.cost_price) > 0" class="cost-num">{{ formatMoney(row.product.cost_price) }}</span>
+                                <el-tooltip v-else :content="$t('inv_admin_no_cost_hint')" placement="top" :enterable="false">
+                                    <span class="cell-empty cell-warn-soft">{{ $t('inv_admin_no_cost') }}</span>
+                                </el-tooltip>
+                            </template>
+                        </template>
+                    </el-table-column>
+
+                    <!-- Total Value (respects hideFinancials) -->
+                    <el-table-column v-if="!readOnly" :label="$t('value')" width="130" align="center">
+                        <template #default="{ row }">
+                            <template v-if="hideFinancials">
+                                <span class="masked-num">••••••••</span>
+                            </template>
+                            <template v-else>
+                                <strong v-if="rowValue(row) > 0" class="value-num">{{ formatMoney(rowValue(row)) }}</strong>
+                                <span v-else class="cell-empty">—</span>
+                            </template>
+                        </template>
+                    </el-table-column>
+
+                    <!-- Latest update -->
                     <el-table-column :label="$t('latest_update')" prop="updated_at" sortable="custom" width="130" align="center">
                         <template #default="{ row }">
                             <el-tooltip :content="formatDate(row.updated_at)" placement="top" :enterable="false">
@@ -351,20 +590,21 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column v-if="!readOnly" :label="$t('procedures')" width="170" align="center">
+                    <!-- Procedures / Actions -->
+                    <el-table-column v-if="!readOnly" :label="$t('procedures')" width="180" align="center" fixed="right">
                         <template #default="{ row }">
                             <div class="row-actions">
                                 <el-tooltip :content="$t('inv_admin_receive')" placement="top" :enterable="false">
-                                    <el-button size="small" circle :icon="Plus" :aria-label="$t('inv_admin_receive')" @click="openMovement('in', row)" />
+                                    <el-button size="small" circle :icon="Plus" class="act-btn receive" :aria-label="$t('inv_admin_receive')" @click="openMovement('in', row)" />
                                 </el-tooltip>
                                 <el-tooltip :content="$t('inv_admin_count')" placement="top" :enterable="false">
-                                    <el-button size="small" circle :icon="EditPen" :aria-label="$t('inv_admin_count')" @click="openMovement('count', row)" />
+                                    <el-button size="small" circle :icon="EditPen" class="act-btn count" :aria-label="$t('inv_admin_count')" @click="openMovement('count', row)" />
                                 </el-tooltip>
                                 <el-tooltip :content="$t('transfer_stock')" placement="top" :enterable="false">
-                                    <el-button size="small" circle :icon="Switch" :aria-label="$t('transfer_stock')" @click="openMovement('transfer', row)" />
+                                    <el-button size="small" circle :icon="Switch" class="act-btn transfer" :aria-label="$t('transfer_stock')" @click="openMovement('transfer', row)" />
                                 </el-tooltip>
                                 <el-dropdown trigger="click" @command="(cmd) => onRowCommand(cmd, row)">
-                                    <el-button size="small" circle :icon="MoreFilled" :aria-label="$t('inv_admin_more')" />
+                                    <el-button size="small" circle :icon="MoreFilled" class="act-btn more" :aria-label="$t('inv_admin_more')" />
                                     <template #dropdown>
                                         <el-dropdown-menu>
                                             <el-dropdown-item command="out" :icon="Top">{{ $t('inv_admin_issue') }}</el-dropdown-item>
@@ -397,11 +637,10 @@
             </div>
         </section>
 
-        <!-- One drawer for every kind of movement: the product, the warehouse and
-             the balance before and after stay in view whichever kind it is. -->
+        <!-- Movement Drawer (In, Out, Count, Transfer) -->
         <el-drawer
             v-model="drawerVisible"
-            :size="isNarrow ? '100%' : '500px'"
+            :size="isNarrow ? '100%' : '520px'"
             direction="rtl"
             class="movement-drawer"
             :close-on-click-modal="!submitting"
@@ -422,6 +661,7 @@
                     <el-segmented v-model="mv.mode" :options="modeOptions" block class="mode-switch" @change="onModeChange" />
                 </el-form-item>
 
+                <!-- Product Selection -->
                 <el-form-item :label="$t('product')" required>
                     <el-select
                         v-model="mv.product_id"
@@ -443,6 +683,7 @@
                     </el-select>
                 </el-form-item>
 
+                <!-- Warehouses -->
                 <template v-if="mv.mode === 'transfer'">
                     <div class="transfer-grid">
                         <el-form-item :label="$t('from_warehouse')" required>
@@ -496,7 +737,7 @@
                     </el-select>
                 </el-form-item>
 
-                <!-- The balance this movement starts from, and where it leaves it -->
+                <!-- Live Dynamic Balance Impact Card -->
                 <div v-if="mv.product_id && sourceWarehouseId" class="balance-card" :class="{ 'is-loading': balanceLoading }">
                     <div class="balance-col">
                         <span class="balance-label">{{ $t('inv_admin_on_hand') }}</span>
@@ -504,11 +745,11 @@
                     </div>
                     <div class="balance-col">
                         <span class="balance-label">{{ $t('reserved') }}</span>
-                        <strong>{{ formatNumber(sourceBalance.reserved) }}</strong>
+                        <strong class="text-warn">{{ formatNumber(sourceBalance.reserved) }}</strong>
                     </div>
                     <div class="balance-col">
                         <span class="balance-label">{{ $t('available_amount') }}</span>
-                        <strong>{{ formatNumber(sourceBalance.available) }}</strong>
+                        <strong class="text-ok">{{ formatNumber(sourceBalance.available) }}</strong>
                     </div>
                     <div class="balance-col balance-after" :class="afterTone">
                         <span class="balance-label">{{ $t('inv_admin_after') }}</span>
@@ -516,6 +757,7 @@
                     </div>
                 </div>
 
+                <!-- Quantity Controls -->
                 <el-form-item v-if="mv.mode === 'count'" :label="$t('inv_admin_counted_quantity')" required>
                     <el-input-number v-model="mv.counted" :min="0" :step="1" step-strictly controls-position="right" style="width: 100%" />
                     <span class="field-hint">
@@ -528,15 +770,26 @@
                 </el-form-item>
                 <el-form-item v-else :label="$t('quantity')" required>
                     <el-input-number v-model="mv.quantity" :min="1" :step="1" step-strictly controls-position="right" style="width: 100%" />
+
+                    <!-- Quick quantity increment pills -->
+                    <div class="quick-qty-strip">
+                        <span class="quick-qty-label">{{ $t('inv_admin_quick_qty') }}:</span>
+                        <button type="button" class="quick-qty-btn" @click="mv.quantity = 1">1</button>
+                        <button type="button" class="quick-qty-btn" @click="mv.quantity = 5">5</button>
+                        <button type="button" class="quick-qty-btn" @click="mv.quantity = 10">10</button>
+                        <button type="button" class="quick-qty-btn" @click="mv.quantity = 50">50</button>
+                        <button
+                            v-if="(mv.mode === 'out' || mv.mode === 'transfer') && sourceBalance.available > 0"
+                            type="button"
+                            class="quick-qty-btn use-all"
+                            @click="mv.quantity = sourceBalance.available"
+                        >
+                            {{ $t('inv_admin_use_all') }} ({{ formatNumber(sourceBalance.available) }})
+                        </button>
+                    </div>
+
                     <span v-if="(mv.mode === 'out' || mv.mode === 'transfer') && sourceWarehouseId && mv.product_id" class="field-hint">
                         {{ $t('inv_admin_max_available', { count: formatNumber(sourceBalance.available) }) }}
-                        <el-button
-                            v-if="sourceBalance.available > 0 && mv.quantity !== sourceBalance.available"
-                            link
-                            type="primary"
-                            size="small"
-                            @click="mv.quantity = sourceBalance.available"
-                        >{{ $t('inv_admin_use_all') }}</el-button>
                     </span>
                 </el-form-item>
 
@@ -574,6 +827,15 @@
             v-model="costMethodModalVisible"
             @saved="onCostMethodSaved"
         />
+
+        <!-- Inventory Balance & Stock-Take Print Dialog -->
+        <InventoryBalancePrintDialog
+            v-model="printDialogVisible"
+            :filters="filters"
+            :warehouses="warehouses"
+            :selected-rows="printSelectedOnly ? selectedRows : []"
+            :read-only="readOnly"
+        />
     </div>
 </template>
 
@@ -582,6 +844,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminStatGrid from '@/components/admin/AdminStatGrid.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import CostCalculationMethodModal from '@/components/admin/inventory/CostCalculationMethodModal.vue';
+import InventoryBalancePrintDialog from '@/components/admin/inventory/InventoryBalancePrintDialog.vue';
 import { formatMoney as formatBaseMoney, formatNumber as formatCount, numberLocale } from '@/utils/currency';
 import { useI18n } from 'vue-i18n';
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -594,7 +857,7 @@ import { productsApi } from '@/api/products';
 import {
     Plus, Search, Refresh, RefreshLeft, Edit, EditPen, Switch, Tickets, Download, Upload, Files, ArrowDown,
     DocumentCopy, Coin, Box, CircleCheck, Warning, RemoveFilled, OfficeBuilding, Calendar, Sort, Bottom, Top,
-    Grid, MoreFilled, Operation,
+    Grid, MoreFilled, Operation, Printer, View, Hide, Check
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
@@ -604,12 +867,62 @@ const store = useInventoryStore();
 const authStore = useAuthStore();
 
 // A sales rep sees the stock and nothing else: no movements, transfers,
-// imports, cost figures or costing method. The server refuses the same
-// writes (not_sales_scoped).
+// imports, cost figures or costing method.
 const readOnly = computed(() => !!authStore.user?.is_sales_scoped);
 
 const costMethodModalVisible = ref(false);
 const activeCostMethod = ref('FIFO');
+
+// Financial privacy toggle (hide costs and valuations)
+const hideFinancials = ref(false);
+
+// View density mode (compact vs comfortable)
+const isCompact = ref(false);
+
+// Selection state
+const tableRef = ref(null);
+const selectedRows = ref([]);
+
+const onSelectionChange = (selection) => {
+    selectedRows.value = selection;
+};
+
+const clearSelection = () => {
+    tableRef.value?.clearSelection();
+    selectedRows.value = [];
+};
+
+// Print dialog state
+const printDialogVisible = ref(false);
+const printSelectedOnly = ref(false);
+
+const openPrintDialog = (selectedOnly = false) => {
+    printSelectedOnly.value = selectedOnly;
+    printDialogVisible.value = true;
+};
+
+const exportSelected = () => {
+    if (!selectedRows.value.length) return;
+    // Export selected items directly as CSV/XLSX
+    const headers = ['Product', 'SKU', 'Warehouse', 'On Hand', 'Reserved', 'Available'];
+    const rowsData = selectedRows.value.map((r) => [
+        `"${productName(r).replace(/"/g, '""')}"`,
+        `"${r.product?.sku || ''}"`,
+        `"${r.warehouse?.name || ''}"`,
+        r.quantity || 0,
+        r.reserved_quantity || 0,
+        r.available || 0,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rowsData.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `inventory-selected-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    ElMessage.success(t('balances_exported'));
+};
 
 const fetchCostMethod = async () => {
     try {
@@ -647,14 +960,36 @@ const relativeDate = (d) => {
     return formatDate(d).substring(0, 10);
 };
 
-// ── Summary ──────────────────────────────────────────────────────────────
+// ── Summary & Health Ratio ───────────────────────────────────────────────
 const summary = computed(() => store.summary);
 const today = computed(() => store.today);
 const warehouses = computed(() => store.warehouses);
 const summaryLoading = ref(false);
 
-/** Units on the shelf that are reserved, damaged or held — on hand, not for sale. */
 const heldUnits = computed(() => Math.max(0, (summary.value?.total_quantity || 0) - (summary.value?.total_available || 0)));
+
+const totalRowsCount = computed(() => {
+    if (!summary.value) return 0;
+    const inStock = summary.value.in_stock_rows || 0;
+    const outStock = summary.value.out_of_stock_rows || 0;
+    return inStock + outStock;
+});
+
+const healthShares = computed(() => {
+    const s = summary.value;
+    if (!s) return { ok: 0, low: 0, out: 0 };
+    const low = Math.max(0, Number(s.low_stock_rows) || 0);
+    const inStock = Math.max(0, Number(s.in_stock_rows) || 0);
+    const ok = Math.max(0, inStock - low);
+    const out = Math.max(0, Number(s.out_of_stock_rows) || 0);
+    const total = ok + low + out;
+    if (!total) return { ok: 0, low: 0, out: 0 };
+    return {
+        ok: Math.round((ok / total) * 100),
+        low: Math.round((low / total) * 100),
+        out: Math.round((out / total) * 100),
+    };
+});
 
 const statusCards = computed(() => [
     {
@@ -667,12 +1002,29 @@ const statusCards = computed(() => [
     { key: 'out', title: t('inv_admin_out_rows'), value: summary.value?.out_of_stock_rows || 0, icon: RemoveFilled },
 ]);
 
+const statusLabel = (st) => ({
+    ok: t('available'),
+    low: t('low'),
+    out: t('out_of_stock_short'),
+}[st] || st);
+
+const statusTagType = (st) => ({
+    ok: 'success',
+    low: 'warning',
+    out: 'danger',
+}[st] || 'info');
+
 const warehouseShare = (w, exact = false) => {
     const all = warehouses.value.reduce((sum, x) => sum + Math.max(0, Number(x.total_available) || 0), 0);
     if (!all) return 0;
     const share = (Math.max(0, Number(w.total_available) || 0) / all) * 100;
     return exact ? Math.round(share) : Math.max(share > 0 ? 2 : 0, share);
 };
+
+const selectedWarehouseObj = computed(() => {
+    if (!filters.warehouse_id) return null;
+    return warehouses.value.find((w) => w.id === filters.warehouse_id) || null;
+});
 
 const loadSummary = async () => {
     summaryLoading.value = true;
@@ -683,14 +1035,12 @@ const loadSummary = async () => {
     }
 };
 
-// Rows at their reorder point across the whole stock, lowest first — not the
-// first few of whatever page the table happens to be showing.
 const attention = ref([]);
 const attentionLoading = ref(false);
 const loadAttention = async () => {
     attentionLoading.value = true;
     try {
-        const res = await inventoryApi.getStock({ status: 'low', sort_by: 'available', sort_dir: 'asc', per_page: 5 });
+        const res = await inventoryApi.getStock({ status: 'low', sort_by: 'available', sort_dir: 'asc', per_page: 6 });
         attention.value = res.data?.data?.stock || [];
     } catch {
         attention.value = [];
@@ -699,7 +1049,7 @@ const loadAttention = async () => {
     }
 };
 
-// ── Filters, sort and paging (kept in the URL) ───────────────────────────
+// ── Filters, sort and paging ─────────────────────────────────────────────
 const filters = reactive({ search: '', warehouse_id: null, status: '' });
 const sort = reactive({ by: 'updated_at', order: 'desc' });
 const currentPage = ref(1);
@@ -765,12 +1115,10 @@ const loadStock = async () => {
             sort_by: sort.by,
             sort_dir: sort.order,
         });
-        // A slower, older response must not overwrite the rows of a newer one.
         if (seq !== stockRequest) return;
         const data = res.data?.data || {};
         rows.value = data.stock || [];
         total.value = data.pagination?.total || 0;
-        // Past the last page after a filter shrank the list: go to the last one.
         const last = data.pagination?.last_page || 1;
         if (!rows.value.length && currentPage.value > last) {
             currentPage.value = last;
@@ -834,7 +1182,6 @@ const onSizeChange = () => {
 // ── Row helpers ──────────────────────────────────────────────────────────
 const productName = (row) => row.product?.name_ar || row.product?.name_en || row.product?.name || row.product?.sku || '—';
 
-/** Units on the shelf that cannot be sold at all — not merely spoken for. */
 const unsellable = (row) => (Number(row.damaged_quantity) || 0) + (Number(row.quarantined_quantity) || 0);
 
 const stockLevel = (row) => {
@@ -909,13 +1256,8 @@ const modeOptions = computed(() => [
     { label: t('inv_admin_transfer_short'), value: 'transfer' },
 ]);
 
-// A fresh key per submission, so a double click or a retried request cannot
-// move the stock twice. It used to be `manual:<reference>`, and the key is
-// unique across all movements — a stock count entered for twenty products
-// under one reference recorded the first and silently skipped the rest.
 const newKey = () => `manual:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 
-// Product search
 const productOptions = ref([]);
 const productSearchLoading = ref(false);
 let productSearchTimer = null;
@@ -926,18 +1268,16 @@ const searchProducts = (query) => {
         try {
             const res = await productsApi.getAll({ search: query || undefined, per_page: 30 });
             const found = res.data?.data || [];
-            // Keep the chosen product in the list so its label does not turn into an id.
             const chosen = productOptions.value.find((p) => p.id === mv.product_id);
             productOptions.value = chosen && !found.some((p) => p.id === chosen.id) ? [chosen, ...found] : found;
         } catch {
-            // Keep whatever was showing rather than blanking the list.
+            // keep existing list
         } finally {
             productSearchLoading.value = false;
         }
     }, 300);
 };
 
-// Balances of the chosen product, per warehouse
 const balances = ref({});
 const balanceLoading = ref(false);
 let balanceRequest = 0;
@@ -952,7 +1292,6 @@ const loadBalances = async () => {
         if (seq !== balanceRequest) return;
         const map = {};
         (res.data?.data?.stock || [])
-            // Manual movements land on the product itself, not on a variant.
             .filter((r) => !r.product_variant_id)
             .forEach((r) => {
                 const b = map[r.warehouse_id] || (map[r.warehouse_id] = { quantity: 0, reserved: 0, available: 0 });
@@ -991,7 +1330,6 @@ const afterTone = computed(() => {
     return mv.mode === 'in' ? 'up' : 'down';
 });
 
-// Why the submit button is off; the first reason wins.
 const blockReason = computed(() => {
     if (!mv.product_id) return 'product';
     if (mv.mode === 'transfer') {
@@ -1076,7 +1414,6 @@ const submitMovement = async () => {
                 product_id: mv.product_id,
                 warehouse_id: mv.warehouse_id,
                 movement_type: mv.mode === 'count' ? 'adjustment' : mv.mode,
-                // A count is recorded as the difference from the books, signed.
                 quantity: mv.mode === 'count' ? countDelta.value : mv.quantity,
                 reference: mv.reference || null,
                 notes: mv.notes || null,
@@ -1118,8 +1455,6 @@ const onToolsCommand = (command) => {
 const exportStock = async () => {
     exporting.value = true;
     try {
-        // The same rows the table shows — the متاح filter included, which used
-        // to be dropped here and exported every row instead.
         const res = await inventoryApi.exportStock(filterParams());
         const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
@@ -1159,9 +1494,6 @@ const onFileSelected = async (event) => {
         const errors = data.errors || [];
         const ignored = data.ignored_columns || [];
 
-        // New and updated balances are counted apart, so it is obvious when a
-        // sheet added a product to another warehouse rather than editing its
-        // existing balance.
         const stats = [
             [t('inv_admin_import_products_created'), data.products_created],
             [t('inv_admin_import_products_matched'), data.products_matched],
@@ -1174,15 +1506,10 @@ const onFileSelected = async (event) => {
             .map(([label, n]) => `<li><span>${escapeHtml(label)}</span><strong>${formatNumber(n ?? 0)}</strong></li>`)
             .join('')}</ul>`;
 
-        // Computed columns the sheet carried but the importer does not apply.
-        // Said out loud, because an operator who edited the reserved column and
-        // saw a success message would otherwise assume it took.
         if (ignored.length) {
             html += `<p class="import-note">${escapeHtml(t('computed_columns_not_imported', { columns: ignored.join(t('list_separator')) }))}</p>`;
         }
 
-        // Rows are listed rather than counted, and the numbers match the
-        // spreadsheet's own gutter so each one can be found and fixed.
         if (errors.length) {
             html += `<p class="import-errors-title">${escapeHtml(t('rows_not_imported'))} (${formatNumber(errors.length)})</p><ul class="import-errors">${errors
                 .slice(0, 20)
@@ -1212,8 +1539,6 @@ const onFileSelected = async (event) => {
 const isNarrow = ref(false);
 const onResize = () => { isNarrow.value = window.innerWidth < 768; };
 
-// Navigating to this screen while already on it (the sidebar link) reuses the
-// component, so a new URL has to be read here.
 watch(() => route.query, (query) => {
     if (route.name !== 'admin.inventory.index' || queryKey(query) === lastQueryKey) return;
     readQuery();
@@ -1255,6 +1580,8 @@ onBeforeUnmount(() => {
     --danger-soft: #fef2f2;
     --purple: #7c3aed;
     --purple-soft: #f5f3ff;
+    --teal: #0d9488;
+    --teal-soft: #f0fdfa;
     --gold: #b45309;
     --gold-soft: #fef3c7;
 
@@ -1263,6 +1590,115 @@ onBeforeUnmount(() => {
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
+/* Header badges and buttons */
+.header-method-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-inline-start: 6px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #4f46e5;
+    background: #eef2ff;
+    border-radius: 4px;
+}
+.cta-btn {
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+/* ── Health Ratio Visual Bar ────────────────────────────────────────── */
+.health-index-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 0.85rem 1.15rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.health-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+}
+.health-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.92rem;
+}
+.health-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7);
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+.health-hint {
+    color: var(--ink-mute);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.health-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.legend-chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+.legend-chip.ok .dot { background: var(--ok); }
+.legend-chip.low .dot { background: var(--warn); }
+.legend-chip.out .dot { background: var(--danger); }
+.legend-chip:hover { background: #f8fafc; border-color: var(--line); }
+.legend-chip.is-active {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    font-weight: 700;
+}
+
+.health-progress-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    overflow: hidden;
+    gap: 2px;
+}
+.bar-segment {
+    height: 100%;
+    cursor: pointer;
+    transition: width 0.4s ease, opacity 0.2s ease;
+}
+.bar-segment:hover { opacity: 0.85; }
+.bar-segment.ok { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.bar-segment.low { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.bar-segment.out { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
 /* ── Stat cards ─────────────────────────────────────────────────────── */
 .stat-card {
     border-radius: 14px;
@@ -1270,31 +1706,44 @@ onBeforeUnmount(() => {
     transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 .stat-card.is-clickable { cursor: pointer; }
-.stat-card.is-clickable:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06); }
+.stat-card.is-clickable:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); }
 .stat-card.is-clickable:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.stat-card.is-selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.stat-card.is-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1.5px var(--primary) inset, 0 4px 12px rgba(37, 99, 235, 0.12);
+}
 
 .stat-card-inner { display: flex; align-items: center; gap: 0.9rem; }
 .stat-icon-box {
-    width: 46px;
-    height: 46px;
+    width: 48px;
+    height: 48px;
     flex-shrink: 0;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.3rem;
+    font-size: 1.35rem;
 }
 .stat-icon-box.value { background: var(--gold-soft); color: var(--gold); }
 .stat-icon-box.units { background: var(--purple-soft); color: var(--purple); }
+.stat-icon-box.skus { background: var(--teal-soft); color: var(--teal); }
 .stat-icon-box.ok { background: var(--ok-soft); color: var(--ok); }
 .stat-icon-box.low { background: var(--warn-soft); color: var(--warn); }
 .stat-icon-box.out { background: var(--danger-soft); color: var(--danger); }
 
-.stat-details { min-width: 0; }
+.stat-details { min-width: 0; flex: 1; }
+.stat-val-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .stat-details h3 { margin: 0; font-size: 1.35rem; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stat-details p { margin: 0.2rem 0 0; color: var(--ink-mute); font-size: 0.8rem; font-weight: 600; }
 .stat-note { font-weight: 500; color: #94a3b8; }
+.filter-active-tag {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary);
+}
 
 /* ── Panels ─────────────────────────────────────────────────────────── */
 .overview-grid {
@@ -1323,6 +1772,11 @@ onBeforeUnmount(() => {
     gap: 0.75rem;
     margin-bottom: 0.9rem;
 }
+.panel-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
 .panel-head h2 {
     margin: 0;
     display: flex;
@@ -1345,28 +1799,41 @@ onBeforeUnmount(() => {
     flex-direction: column;
     gap: 0.35rem;
     width: 100%;
-    padding: 0.6rem 0.75rem;
-    border: 1px solid transparent;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--line);
     border-radius: 10px;
-    background: transparent;
+    background: #fbfcfe;
     font: inherit;
     color: inherit;
     text-align: start;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition: all 0.15s ease;
 }
-.warehouse-row:hover { background: #f8fafc; }
+.warehouse-row:hover { background: #f8fafc; border-color: #cbd5e1; }
 .warehouse-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
-.warehouse-row.is-selected { background: var(--primary-soft); border-color: #bfdbfe; }
+.warehouse-row.is-selected {
+    background: var(--primary-soft);
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 1px #93c5fd;
+}
 .warehouse-row.is-inactive { opacity: 0.7; }
 .warehouse-top { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
 .warehouse-name { display: flex; align-items: center; gap: 0.4rem; min-width: 0; flex-wrap: wrap; }
+.wh-pin {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #94a3b8;
+}
+.wh-pin.is-active { background: var(--primary); }
 .wh-code { color: var(--ink-mute); font-size: 0.72rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .wh-qty { font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
 .wh-bar { position: relative; display: block; height: 8px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
 .wh-bar-fill { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: linear-gradient(90deg, #3b82f6, #6366f1); transition: width 0.3s ease; }
 .warehouse-row.is-selected .wh-bar-fill { background: var(--primary); }
+.wh-meta-line { display: flex; justify-content: space-between; align-items: center; }
 .wh-share { font-size: 0.72rem; color: #94a3b8; }
+.wh-selected-indicator { font-size: 0.72rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 2px; }
 
 /* Today */
 .today-stats {
@@ -1379,15 +1846,16 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.6rem;
+    padding: 0.65rem 0.75rem;
     border-radius: 10px;
     background: #f8fafc;
+    border: 1px solid var(--line);
     min-width: 0;
 }
 .today-item div { display: flex; flex-direction: column; min-width: 0; }
 .today-item strong { font-size: 1.15rem; font-weight: 800; line-height: 1.2; }
 .today-item div span { font-size: 0.72rem; color: var(--ink-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.today-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.today-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.1rem; }
 .today-icon.neutral { background: var(--primary-soft); color: var(--primary); }
 .today-icon.in { background: var(--ok-soft); color: var(--ok); }
 .today-icon.out { background: var(--danger-soft); color: var(--danger); }
@@ -1395,27 +1863,33 @@ onBeforeUnmount(() => {
     .today-stats { grid-template-columns: minmax(0, 1fr); }
 }
 
-.reorder-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-.reorder-head h3 { margin: 0; font-size: 0.85rem; font-weight: 700; color: #334155; }
-.reorder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.reorder-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.reorder-title-box { display: flex; align-items: center; gap: 0.4rem; }
+.reorder-alert-icon { color: var(--warn); display: flex; align-items: center; }
+.reorder-head h3 { margin: 0; font-size: 0.88rem; font-weight: 700; color: #334155; }
+.reorder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
 .reorder-item {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.5rem 0.65rem;
+    gap: 0.65rem;
+    padding: 0.5rem 0.75rem;
     border: 1px solid #fde68a;
     border-radius: 10px;
     background: var(--warn-soft);
+    transition: background 0.15s ease;
 }
+.reorder-item:hover { background: #fef3c7; }
+.reorder-img { flex-shrink: 0; }
 .reorder-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.reorder-text strong { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reorder-text strong { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1e293b; }
 .reorder-text span { font-size: 0.72rem; color: var(--ink-mute); }
-.reorder-item .el-button { margin: 0; }
+.reorder-qty-pill { flex-shrink: 0; }
+.reorder-item .el-button { margin: 0; flex-shrink: 0; }
 .reorder-empty {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.85rem;
     border-radius: 10px;
     background: var(--ok-soft);
     color: #15803d;
@@ -1423,10 +1897,86 @@ onBeforeUnmount(() => {
     font-weight: 600;
 }
 
-/* ── Filters ────────────────────────────────────────────────────────── */
-.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+/* ── Table Panel & Toolbar ───────────────────────────────────────────── */
+.table-panel-card { padding-bottom: 1.25rem; }
+.table-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.table-head-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.table-head-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+.table-view-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
 .filter-search { flex: 1 1 260px; max-width: 380px; }
 .filter-select { width: 190px; }
+.status-tab-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.status-circle {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+.status-circle.ok { background: var(--ok); }
+.status-circle.low { background: var(--warn); }
+.status-circle.out { background: var(--danger); }
+
+/* Active chips */
+.active-chips-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    font-size: 0.8rem;
+}
+.chips-title { color: var(--ink-mute); font-weight: 600; }
+
+/* Batch actions bar */
+.batch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+.batch-count {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--primary);
+    font-size: 0.85rem;
+}
+.batch-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
 
 /* ── Table ──────────────────────────────────────────────────────────── */
 .table-wrapper { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
@@ -1435,7 +1985,8 @@ onBeforeUnmount(() => {
 [dir="ltr"] .table-wrapper :deep(.row-out td.el-table__cell:first-child) { box-shadow: inset 3px 0 0 var(--danger); }
 [dir="ltr"] .table-wrapper :deep(.row-low td.el-table__cell:first-child) { box-shadow: inset 3px 0 0 var(--warn); }
 
-.product-cell { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+.product-cell { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.p-thumb { flex-shrink: 0; border-radius: 8px; }
 .cell-stack { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .product-name {
     font-weight: 700;
@@ -1448,7 +1999,7 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 a.product-name:hover { color: var(--primary); text-decoration: underline; }
-.cell-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cell-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .cell-secondary { display: block; font-size: 0.74rem; color: var(--ink-mute); margin-top: 0.15rem; }
 .cell-warn { color: var(--danger); }
 .cell-empty { color: #94a3b8; font-size: 0.8rem; }
@@ -1458,43 +2009,64 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0 0.4rem;
+    padding: 0 0.45rem;
     border: 1px solid var(--line);
     border-radius: 6px;
     background: #f8fafc;
     color: #475569;
-    font: 600 0.7rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    font: 600 0.72rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
     cursor: pointer;
+    transition: all 0.15s ease;
 }
-.sku-chip:hover { border-color: var(--primary); color: var(--primary); }
+.sku-chip:hover { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+.barcode-tag {
+    font-size: 0.68rem;
+    color: #64748b;
+    font-family: ui-monospace, monospace;
+    background: #f1f5f9;
+    padding: 0 4px;
+    border-radius: 4px;
+}
 
+.warehouse-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
 .chip-button {
     max-width: 100%;
-    padding: 0.1rem 0.55rem;
+    padding: 0.15rem 0.6rem;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: #fff;
     color: #334155;
     font: inherit;
     font-size: 0.78rem;
-    line-height: 1.5;
+    line-height: 1.4;
     text-align: start;
     cursor: pointer;
+    transition: all 0.15s ease;
 }
 .chip-button:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.bin-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: #475569;
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+}
 
-.num-muted { color: #475569; font-weight: 600; }
-.num-reserved { color: var(--warn); font-weight: 700; }
+.num-on-hand { color: #1e293b; font-weight: 700; font-size: 0.9rem; }
+.num-reserved { color: var(--warn); font-weight: 800; background: var(--warn-soft); padding: 1px 6px; border-radius: 6px; }
 
+.available-cell { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
 .stock-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    min-width: 56px;
+    min-width: 60px;
     justify-content: center;
-    padding: 0.15rem 0.6rem;
+    padding: 0.18rem 0.65rem;
     border-radius: 999px;
-    font-weight: 700;
+    font-weight: 800;
     font-size: 0.85rem;
     cursor: default;
 }
@@ -1503,9 +2075,33 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 .stock-pill.low { color: #b45309; background: var(--warn-soft); }
 .stock-pill.out { color: #b91c1c; background: var(--danger-soft); }
 
+/* Mini gauge */
+.mini-gauge {
+    width: 54px;
+    height: 4px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+.mini-gauge-fill {
+    height: 100%;
+    border-radius: inherit;
+    transition: width 0.3s ease;
+}
+.mini-gauge-fill.ok { background: var(--ok); }
+.mini-gauge-fill.low { background: var(--warn); }
+.mini-gauge-fill.out { background: var(--danger); }
+
+.cost-num { font-size: 0.85rem; color: #475569; }
+.value-num { font-size: 0.9rem; color: #0f172a; }
+.masked-num { color: #94a3b8; font-size: 0.85rem; letter-spacing: 2px; }
+
 .row-actions { display: flex; flex-wrap: nowrap; gap: 0.3rem; justify-content: center; }
-.row-actions .el-button + .el-button,
-.row-actions :deep(.el-dropdown) .el-button { margin-inline-start: 0; }
+.act-btn { transition: transform 0.15s ease; }
+.act-btn:hover { transform: scale(1.1); }
+.act-btn.receive:hover { color: var(--ok); border-color: var(--ok); }
+.act-btn.count:hover { color: var(--purple); border-color: var(--purple); }
+.act-btn.transfer:hover { color: var(--primary); border-color: var(--primary); }
 
 .pagination-row {
     display: flex;
@@ -1517,7 +2113,13 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 }
 .pagination-summary { font-size: 0.82rem; color: var(--ink-mute); }
 
-/* ── Movement drawer ────────────────────────────────────────────────── */
+/* ── Compact Density Mode ───────────────────────────────────────────── */
+.is-compact-mode :deep(.el-table__cell) { padding: 4px 0 !important; }
+.is-compact-mode .product-cell { gap: 0.45rem; }
+.is-compact-mode .product-name { font-size: 0.82rem; }
+.is-compact-mode .stock-pill { font-size: 0.78rem; padding: 0.1rem 0.5rem; }
+
+/* ── Movement Drawer ────────────────────────────────────────────────── */
 .drawer-title { display: flex; align-items: center; gap: 0.75rem; }
 .drawer-title h3 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--ink); }
 .drawer-title p { margin: 0.15rem 0 0; font-size: 0.78rem; color: var(--ink-mute); }
@@ -1527,7 +2129,7 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 .drawer-icon.count { background: var(--purple-soft); color: var(--purple); }
 .drawer-icon.transfer { background: var(--primary-soft); color: var(--primary); }
 
-.mode-switch { width: 100%; }
+.mode-switch { width: 100%; margin-bottom: 0.5rem; }
 
 .product-option { display: flex; justify-content: space-between; gap: 0.75rem; }
 .product-option-name { overflow: hidden; text-overflow: ellipsis; }
@@ -1548,7 +2150,7 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.85rem 0.75rem;
     margin-bottom: 1.1rem;
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -1563,9 +2165,43 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 .balance-after.up strong { color: var(--ok); }
 .balance-after.down strong { color: var(--danger); }
 
+/* Quick quantity buttons */
+.quick-qty-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
+}
+.quick-qty-label { font-size: 0.75rem; color: var(--ink-mute); margin-inline-end: 2px; }
+.quick-qty-btn {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.quick-qty-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-soft);
+}
+.quick-qty-btn.use-all {
+    color: #4f46e5;
+    border-color: #c7d2fe;
+    background: #eef2ff;
+    font-weight: 700;
+}
+
 .field-hint { display: flex; align-items: center; gap: 0.35rem; width: 100%; margin-top: 0.3rem; font-size: 0.78rem; color: var(--ink-mute); line-height: 1.4; }
 .delta-up { color: var(--ok); }
 .delta-down { color: var(--danger); }
+.text-ok { color: var(--ok); }
+.text-warn { color: var(--warn); }
 
 .form-alert { margin-bottom: 1rem; }
 
@@ -1592,7 +2228,7 @@ a.product-name:hover { color: var(--primary); text-decoration: underline; }
 </style>
 
 <style>
-/* The import result is rendered by ElMessageBox outside this component. */
+/* Modal import result rendered by ElMessageBox */
 .inventory-import-result { max-width: 460px; width: calc(100% - 32px); }
 .inventory-import-result .import-summary { list-style: none; margin: 0; padding: 0; }
 .inventory-import-result .import-summary li { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid #f1f5f9; }

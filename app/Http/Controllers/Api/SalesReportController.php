@@ -1797,10 +1797,7 @@ class SalesReportController extends Controller
                 $q->orWhere("{$table}.assigned_employee_id", $employeeId);
             }
         });
-
-        if ($table === 'sales_orders' && ($warehouseId = $user->scopedWarehouseId())) {
-            $query->where('sales_orders.fulfillment_warehouse_id', $warehouseId);
-        }
+        // An order routed to another warehouse is still the rep's own.
     }
 
     /** A sales rep's stock reports cover their own warehouse only. */

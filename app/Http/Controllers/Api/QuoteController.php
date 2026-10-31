@@ -503,6 +503,7 @@ class QuoteController extends Controller
     private function present(Quote $quote): array
     {
         return $quote->toArray() + [
+            'currency' => base_currency_code(),
             'is_past_validity' => $quote->isPastValidity(),
             'allowed_statuses' => $quote->salesOrder ? [] : (Quote::TRANSITIONS[$quote->status] ?? []),
             'is_editable' => ! $quote->salesOrder && in_array($quote->status, Quote::EDITABLE_STATUSES, true),

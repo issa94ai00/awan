@@ -848,6 +848,11 @@
                         </div>
                         <span class="num">{{ formatCurrency(total) }}</span>
                     </div>
+
+                    <div v-if="quoteTotalInWords" class="quote-tafqeet-box">
+                        <span class="tafqeet-lbl"><i class="fas fa-pen-fancy"></i> {{ $t('amount_in_words') || 'المبلغ كتابةً' }}:</span>
+                        <strong class="tafqeet-val">{{ quoteTotalInWords }}</strong>
+                    </div>
                 </div>
             </div>
 
@@ -918,6 +923,7 @@ import api from '@/api/index';
 import { useQuotesStore } from '@/stores/quotes';
 import { useAuthStore } from '@/stores/auth';
 import { apiErrorMessage, formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
+import { tafqeet } from '@/utils/tafqeet';
 import { optionKey, variantLabelOf } from '@/utils/productPick';
 import { resolveImageUrl } from '@/utils/productImages';
 import EntityImage from '@/components/admin/EntityImage.vue';
@@ -1442,6 +1448,13 @@ const subtotal = computed(() => round2(form.items.reduce((sum, line) => sum + li
 const totalPieces = computed(() => form.items.reduce((sum, line) => sum + toNum(line.quantity), 0));
 const discountTooBig = computed(() => toNum(form.discount) > subtotal.value + 0.00001);
 const total = computed(() => round2(Math.max(0, subtotal.value - toNum(form.discount)) + toNum(form.tax)));
+const quoteTotalInWords = computed(() => {
+    if (!total.value && total.value !== 0) return '';
+    return tafqeet(total.value, {
+        currency: form.currency,
+        locale: locale?.value === 'en' ? 'en' : 'ar',
+    });
+});
 
 // Discount Mode Toggle
 const discountMode = ref('amount'); // 'amount' | 'percent'
@@ -3205,6 +3218,34 @@ onUnmounted(() => {
 
 .totals-row.grand .num {
     color: #2563eb;
+}
+
+.quote-tafqeet-box {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.quote-tafqeet-box .tafqeet-lbl {
+    font-size: 0.72rem;
+    color: #64748b;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.quote-tafqeet-box .tafqeet-lbl i {
+    color: #2563eb;
+}
+.quote-tafqeet-box .tafqeet-val {
+    font-size: 0.8rem;
+    color: #0f172a;
+    font-weight: 700;
+    line-height: 1.4;
 }
 
 .blocker {

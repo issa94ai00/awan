@@ -117,9 +117,7 @@ class RepDashboardService
                 $q->orWhere('sales_orders.assigned_employee_id', $employeeId);
             }
         });
-        if ($warehouseId = $user->scopedWarehouseId()) {
-            $query->where('sales_orders.fulfillment_warehouse_id', $warehouseId);
-        }
+        // An order routed to another warehouse is still the rep's own.
 
         $byStatus = (clone $query)->select('status', DB::raw('COUNT(*) as c'))->groupBy('status')->pluck('c', 'status');
 

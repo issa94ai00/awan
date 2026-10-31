@@ -217,6 +217,18 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this user is a sales rep: the sells role, without the admin or
+     * manager standing that would lift it. A rep raises sales orders and
+     * nothing past that — no confirming or moving them, no purchasing.
+     */
+    public function isSalesRep(): bool
+    {
+        return ! $this->isSuperAdmin()
+            && $this->holdsRoleNamed(['sells'])
+            && ! $this->holdsRoleNamed(['manager']);
+    }
+
+    /**
      * Whether this user is restricted to only their own sales and assigned warehouse.
      * Super admins and managers are unconfined.
      */

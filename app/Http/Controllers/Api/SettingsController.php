@@ -167,6 +167,7 @@ class SettingsController extends Controller
             'settings.print_show_customer_info' => 'sometimes|boolean',
             'settings.print_show_payment_details' => 'sometimes|boolean',
             'settings.print_show_notes' => 'sometimes|boolean',
+            'settings.print_show_amount_in_words' => 'sometimes|boolean',
             'settings.print_show_signatures' => 'sometimes|boolean',
             'settings.print_show_footer' => 'sometimes|boolean',
             'settings.print_authorized_person' => 'nullable|string|max:255',
@@ -194,7 +195,7 @@ class SettingsController extends Controller
         $booleanFields = [
             'show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications',
             'print_show_cover', 'print_show_qr', 'print_show_logo', 'print_show_contacts', 'print_show_images', 'print_show_sku',
-            'print_show_customer_info', 'print_show_payment_details', 'print_show_notes', 'print_show_signatures', 'print_show_footer'
+            'print_show_customer_info', 'print_show_payment_details', 'print_show_notes', 'print_show_amount_in_words', 'print_show_signatures', 'print_show_footer'
         ];
         foreach ($booleanFields as $field) {
             if (! isset($data[$field])) {

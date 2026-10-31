@@ -135,11 +135,18 @@
                             <span v-else>-</span>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('procedures')" width="80" fixed="right">
+                    <el-table-column :label="$t('procedures')" :width="mayPrint ? 124 : 80" fixed="right">
                         <template #default="{ row }">
-                            <el-button type="primary" size="small" @click="viewDetails(row)">
-                                {{ $t('an_offer') }}
-                            </el-button>
+                            <div class="row-actions">
+                                <el-button type="primary" size="small" @click="viewDetails(row)">
+                                    {{ $t('an_offer') }}
+                                </el-button>
+                                <el-tooltip v-if="mayPrint" :content="$t('pr_print_hint')" placement="top" :enterable="false">
+                                    <el-button size="small" circle :aria-label="$t('print')" @click="printRequest(row)">
+                                        <i class="fas fa-print"></i>
+                                    </el-button>
+                                </el-tooltip>
+                            </div>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -166,6 +173,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
 import { formatCurrency } from '@/utils/sales';
 import { usePurchaseRequestsStore } from '@/stores/purchaseRequests';
@@ -234,6 +242,14 @@ const groupedLines = (order) => {
     return [...groups.values()];
 };
 
+// A request is a sales order: it prints with the order's own print preview,
+// in a new tab so this list stays where it was.
+const authStore = useAuthStore();
+const mayPrint = computed(() => authStore.can('sales.orders.view'));
+const printRequest = (row) => {
+    window.open(router.resolve({ path: '/admin/sales/sales-orders', query: { print: row.id } }).href, '_blank');
+};
+
 const viewDetails = (row) => {
     router.push({ name: 'admin.purchase-requests.show', params: { id: row.id } });
 };
@@ -269,6 +285,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 .purchase-requests-page {
     padding: 0;
 }

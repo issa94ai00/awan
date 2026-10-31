@@ -55,6 +55,11 @@ class InvoiceController extends Controller
                 $query->where('customer_id', $request->customer_id);
             }
 
+            // The returns picker: only invoices a return can be filed against.
+            if ($request->boolean('returnable')) {
+                $query->returnable();
+            }
+
             if ($request->filled('payment_method')) {
                 $query->where('payment_method', $request->payment_method);
             }

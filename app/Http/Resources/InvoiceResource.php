@@ -39,6 +39,7 @@ class InvoiceResource extends JsonResource
             // Without this the client cannot reconcile subtotal against total.
             'additional_charges' => (float) $this->additional_charges,
             'total' => (float) $this->total,
+            'currency' => $this->currency ?: base_currency_code(),
 
             // Collection state. The payments endpoint maintains these columns,
             // but they were missing from this resource, so no client could tell

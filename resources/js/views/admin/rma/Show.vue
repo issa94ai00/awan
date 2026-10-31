@@ -166,6 +166,10 @@
                             <dt>{{ t('original_sales_invoice') }}</dt>
                             <dd class="fact-accent">#{{ rma.order_number }}</dd>
                         </div>
+                        <div class="fact-row" v-if="rma.warehouse">
+                            <dt>{{ t('destination_warehouse') }}</dt>
+                            <dd>{{ rma.warehouse }}</dd>
+                        </div>
                         <div class="fact-row">
                             <dt>{{ t('settlement_type') }}</dt>
                             <dd><el-tag :type="getReturnTypeClass(rma.return_type)" size="small">{{ getReturnTypeLabel(rma.return_type) }}</el-tag></dd>
@@ -438,6 +442,7 @@ const loadRma = async () => {
       customer_phone: data.customer?.phone || '',
       order_number: data.invoice?.invoice_number || 'N/A',
       order_id: data.invoice_id,
+      warehouse: data.warehouse?.name || null,
       return_type: data.type || 'refund',
       reason: data.reason || 'defective',
       reason_description: data.reason_description || 'N/A',

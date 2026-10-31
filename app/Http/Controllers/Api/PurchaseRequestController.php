@@ -445,7 +445,10 @@ class PurchaseRequestController extends Controller
                 'status_text' => $order->status_text,
                 // The stages it can move to from here, so the screen offers
                 // only moves the workflow will accept.
-                'allowed_transitions' => SalesOrderWorkflowService::TRANSITIONS[$order->status] ?? [],
+                // A sales rep may not move a request at all (User::isSalesRep).
+                'allowed_transitions' => auth()->user()?->isSalesRep()
+                    ? []
+                    : (SalesOrderWorkflowService::TRANSITIONS[$order->status] ?? []),
                 'total' => (float) $order->total,
                 'subtotal' => (float) $order->subtotal,
                 'order_date' => $order->order_date?->format('Y-m-d'),
@@ -743,7 +746,9 @@ class PurchaseRequestController extends Controller
             'order_number' => $salesOrder->order_number,
             'status' => $salesOrder->status,
             'status_text' => $salesOrder->status_text,
-            'allowed_transitions' => SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? [],
+            'allowed_transitions' => auth()->user()?->isSalesRep()
+                ? []
+                : (SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? []),
             'total' => (float) $salesOrder->total,
             'subtotal' => (float) $salesOrder->subtotal,
             'order_date' => $salesOrder->order_date?->format('Y-m-d'),

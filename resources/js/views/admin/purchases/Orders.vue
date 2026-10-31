@@ -18,7 +18,7 @@
                     @keyup.enter="loadOrders(1)"
                     @clear="loadOrders(1)"
                 />
-                <el-button type="primary" class="create-btn" @click="openCreateDrawer">
+                <el-button v-if="!readOnly" type="primary" class="create-btn" @click="openCreateDrawer">
                     <i class="fas fa-plus"></i> {{ $t('new_purchase_order') }}
                 </el-button>
             </template>
@@ -303,7 +303,7 @@
                         <template #default="{ row }">
                             <div class="row-actions">
                                 <el-button
-                                    v-if="nextStep(row).action"
+                                    v-if="nextStep(row).action && !readOnly"
                                     size="small"
                                     :type="nextStep(row).type"
                                     :loading="busyOrderId === row.id"
@@ -334,14 +334,14 @@
                                             <el-dropdown-item command="print">
                                                 <i class="fas fa-print"></i> {{ $t('print') }}
                                             </el-dropdown-item>
-                                            <el-dropdown-item command="edit" :disabled="!canEdit(row)">
+                                            <el-dropdown-item v-if="!readOnly" command="edit" :disabled="!canEdit(row)">
                                                 <i class="fas fa-edit"></i> {{ $t('edit') }}
                                             </el-dropdown-item>
-                                            <el-dropdown-item command="duplicate">
+                                            <el-dropdown-item v-if="!readOnly" command="duplicate">
                                                 <i class="fas fa-copy"></i> {{ $t('po_duplicate_order') }}
                                             </el-dropdown-item>
                                             <el-dropdown-item
-                                                v-if="isApproved(row)"
+                                                v-if="isApproved(row) && !readOnly"
                                                 command="reopen"
                                                 divided
                                             >
@@ -358,7 +358,7 @@
                                                  and journal entry point back at
                                                  it; deleting it leaves both
                                                  referring to nothing. -->
-                                            <el-dropdown-item command="delete" divided :disabled="!canDelete(row)">
+                                            <el-dropdown-item v-if="!readOnly" command="delete" divided :disabled="!canDelete(row)">
                                                 <i class="fas fa-trash"></i> {{ $t('delete') }}
                                             </el-dropdown-item>
                                         </el-dropdown-menu>
@@ -376,7 +376,7 @@
                     <el-button v-if="isFiltered" @click="clearFilters">
                         <i class="fas fa-rotate-left"></i> {{ $t('show_all_orders') }}
                     </el-button>
-                    <el-button v-else type="primary" size="medium" @click="openCreateDrawer">
+                    <el-button v-else-if="!readOnly" type="primary" size="medium" @click="openCreateDrawer">
                         <i class="fas fa-plus"></i> {{ $t('create_first_purchase_order') }}
                     </el-button>
                 </div>
@@ -422,7 +422,7 @@
                         <el-button type="primary" plain @click="printOrder(selectedOrder)">
                             <i class="fas fa-print"></i> {{ $t('print') }}
                         </el-button>
-                        <el-button plain @click="duplicateFromDrawer">
+                        <el-button v-if="!readOnly" plain @click="duplicateFromDrawer">
                             <i class="fas fa-copy"></i> {{ $t('po_duplicate_order') }}
                         </el-button>
                         <el-button v-if="canEdit(selectedOrder)" plain @click="editFromDrawer">
@@ -566,7 +566,7 @@
                                 </div>
                             </div>
                             <el-button
-                                v-if="drawerStep.action"
+                                v-if="drawerStep.action && !readOnly"
                                 :type="drawerStep.type"
                                 class="next-step-cta"
                                 :loading="busyOrderId === selectedOrder.id"
@@ -1741,6 +1741,10 @@ const route = useRoute();
 const authStore = useAuthStore();
 const store = usePurchaseOrdersStore();
 const suppliersStore = useSuppliersStore();
+
+// A sales rep looks at purchase orders but does not raise or move them
+// (User::isSalesRep); the API refuses the writes either way.
+const readOnly = computed(() => authStore.isSalesRep);
 
 const canApprove = computed(() => Boolean(authStore.isSuperAdmin || authStore.user?.is_admin || authStore.hasRole(['admin', 'master'])));
 
@@ -3060,8 +3064,8 @@ const isCancelled = (order) => normalizeStatus(order?.status) === 'cancelled';
 // Every order can be opened for editing; a received or cancelled one opens
 // with its lines locked (see formLocked), since those are what the stock and
 // the ledger were built from.
-const canEdit = (order) => !!order;
-const canCancel = (order) => !isClosed(order);
+const canEdit = (order) => !!order && !readOnly.value;
+const canCancel = (order) => !isClosed(order) && !readOnly.value;
 // A receipt's stock movement and journal entry point back at the order.
 const canDelete = (order) => normalizeStatus(order?.status) !== 'completed' && !(order?.receipts_count > 0);
 
@@ -3541,7 +3545,9 @@ onMounted(async () => {
     const shortageFor = route.query.shortage_for_order;
     const fromSalesOrder = route.query.from_sales_order;
     const addProductId = route.query.add_product_id;
-    if (shortageFor) {
+    if (readOnly.value) {
+        if (shortageFor || fromSalesOrder || addProductId) router.replace({ query: {} });
+    } else if (shortageFor) {
         await prefillFromShortage(shortageFor);
         // Cleared so a refresh does not reopen the drawer over work in progress.
         router.replace({ query: {} });

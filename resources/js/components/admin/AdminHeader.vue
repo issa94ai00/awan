@@ -405,7 +405,7 @@
                             <el-icon><User /></el-icon>
                             <span>{{ t('profile') }}</span>
                         </el-dropdown-item>
-                        <el-dropdown-item command="settings">
+                        <el-dropdown-item v-if="authStore.canOpenSettings" command="settings">
                             <el-icon><Setting /></el-icon>
                             <span>{{ t('settings') }}</span>
                         </el-dropdown-item>

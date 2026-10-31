@@ -23,16 +23,6 @@ use Illuminate\Validation\ValidationException;
 
 class RmaController extends Controller
 {
-    /**
-     * Invoice statuses a return can be filed against.
-     *
-     * Restricted to `delivered` only, every invoice in this business's data
-     * was ineligible — confirmed is where an invoice actually sits once the
-     * sale is finalized, since the shipping stages (processing/shipped) are
-     * not part of this business's real workflow.
-     */
-    private const RMA_ELIGIBLE_INVOICE_STATUSES = ['confirmed', 'delivered'];
-
     public function index(Request $request)
     {
         $query = $this->buildFilteredQuery($request);
@@ -187,6 +177,7 @@ class RmaController extends Controller
         $rmaRequest = RmaRequest::with([
             'customer',
             'invoice',
+            'warehouse',
             'invoice.items',
             'items.product',
             'items.variant',
@@ -244,6 +235,8 @@ class RmaController extends Controller
         $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'invoice_id' => 'required|exists:invoices,id',
+            // Where the returned goods go back into stock, decided up front.
+            'warehouse_id' => 'required|exists:warehouses,id',
             'reason' => 'required|in:defective,wrong_item,damaged,not_as_described,changed_mind,other',
             'type' => 'required|in:refund,exchange,store_credit',
             'reason_description' => 'nullable|string|max:1000',
@@ -274,6 +267,8 @@ class RmaController extends Controller
             'customer_id.exists' => 'العميل المحدد غير موجود',
             'invoice_id.required' => 'حقل الفاتورة مطلوب',
             'invoice_id.exists' => 'الفاتورة المحددة غير موجودة',
+            'warehouse_id.required' => 'يجب تحديد المستودع الوجهة',
+            'warehouse_id.exists' => 'المستودع المحدد غير موجود',
             'reason.required' => 'حقل سبب الإرجاع مطلوب',
             'type.required' => 'حقل نوع الإرجاع مطلوب',
             'items.required' => 'يجب إضافة منتج واحد على الأقل',
@@ -290,9 +285,13 @@ class RmaController extends Controller
             if ($invoice->customer_id != $request->customer_id) {
                 throw new \Exception('الفاتورة لا تنتمي للعميل المحدد');
             }
+            if (! $request->user()?->servesCustomer((int) $request->customer_id)) {
+                throw new \Exception('هذا العميل غير مسند إليك. يمكنك تسجيل المرتجعات لعملائك فقط.');
+            }
 
             // Check if the invoice is eligible for a return
-            if (! in_array($invoice->status, self::RMA_ELIGIBLE_INVOICE_STATUSES, true)) {
+            // Which invoices qualify is Invoice::scopeReturnable, shared with the picker.
+            if (! $invoice->isReturnable()) {
                 throw new \Exception('لا يمكن إنشاء طلب إرجاع لفاتورة لم تُعتمد أو تُسلَّم بعد');
             }
 
@@ -325,6 +324,7 @@ class RmaController extends Controller
             $rmaRequest = RmaRequest::create([
                 'customer_id' => $request->customer_id,
                 'invoice_id' => $request->invoice_id,
+                'warehouse_id' => $request->warehouse_id,
                 'rma_number' => $rmaNumber,
                 'reason' => $request->reason,
                 'type' => $request->type,
@@ -549,6 +549,7 @@ class RmaController extends Controller
             DB::beginTransaction();
 
             $warehouseId = $request->warehouse_id
+                ?? $rmaRequest->warehouse_id
                 ?? $rmaRequest->invoice?->warehouse_id
                 ?? Warehouse::first()?->id;
 
@@ -880,6 +881,12 @@ class RmaController extends Controller
         // status=delivered for that customer.
         $query = Customer::query();
 
+        // A sales rep files returns for their own customers only.
+        $user = $request->user();
+        if ($user?->isSalesScoped()) {
+            $user->employee ? $query->servedBy($user->employee->id) : $query->whereRaw('1 = 0');
+        }
+
         if ($request->has('search') && ! empty($request->search)) {
             $query->whereSearch(['name', 'phone', 'email'], $request->search);
         }
@@ -946,6 +953,7 @@ class RmaController extends Controller
         }
 
         $request->validate([
+            'warehouse_id' => 'sometimes|required|exists:warehouses,id',
             'reason_description' => 'nullable|string|max:1000',
             // Every address field is independently optional — see store().
             'return_address' => 'nullable|array',
@@ -964,6 +972,7 @@ class RmaController extends Controller
             'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
             'items.*.notes' => 'nullable|string|max:500',
         ], [
+            'warehouse_id.required' => 'يجب تحديد المستودع الوجهة',
             'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
         ]);
 
@@ -972,6 +981,7 @@ class RmaController extends Controller
 
             // Update basic fields
             $basicFields = $request->only([
+                'warehouse_id',
                 'reason_description',
                 'admin_notes',
                 'refund_method',

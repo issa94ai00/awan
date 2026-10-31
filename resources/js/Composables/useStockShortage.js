@@ -33,7 +33,7 @@ export function useStockShortage() {
      */
     const canRaisePurchaseOrder = () => {
         const user = authStore.user;
-        if (!user) return false;
+        if (!user || authStore.isSalesRep) return false;
 
         const role = (user.role?.name || user.role_name || '').toLowerCase();
         return Boolean(user.is_admin) || role === 'admin' || role === 'sells' || authStore.hasRole('sells') || authStore.can(['purchases.orders.view', 'purchases.create']);

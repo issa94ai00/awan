@@ -77,7 +77,7 @@
         <!-- Locked order: confirmed orders cannot have lines rewritten -->
         <section v-else-if="isLocked" class="locked">
             <i class="fas fa-lock locked-icon"></i>
-            <h2>{{ t('order_locked_after_confirmation') }}</h2>
+            <h2>{{ t('so_locked_title') }}</h2>
             <p>{{ lockedReason }}</p>
             <dl class="locked-facts">
                 <div><dt>{{ t('status') }}</dt><dd>{{ statusLabel(loadedOrder?.status) }}</dd></div>
@@ -89,12 +89,42 @@
                     <i class="fas fa-eye"></i>&nbsp;{{ t('open_order_to_follow_stages') }}
                 </el-button>
             </div>
-            <p class="locked-note">{{ t('why_items_are_locked') }}</p>
+            <p class="locked-note">{{ t('so_rep_locked_note') }}</p>
         </section>
 
         <!-- New / Edit Form View Matching Quotes New Form UI/UX -->
         <div v-else ref="formRoot" class="order-form-container panel-card">
             <el-form label-position="top" class="quote-form order-form" @submit.prevent>
+                <!-- Past confirmation only the lines and their pricing change. -->
+                <el-alert
+                    v-if="amending"
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                    class="amend-notice"
+                    :title="t('so_amend_title', { status: statusLabel(loadedOrder?.status) })"
+                    :description="t(['shipped', 'delivered'].includes(loadedOrder?.status) ? 'so_amend_notice_shipped' : 'so_amend_notice')"
+                />
+                <!-- Past the pending stage an edit is saved as a new version; the current one is kept. -->
+                <el-alert
+                    v-if="versioning"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    class="amend-notice"
+                    :title="t('so_new_revision_title', { next: currentRevision + 1 })"
+                    :description="t('so_new_revision_notice', { current: currentRevision })"
+                />
+                <el-form-item v-if="versioning" :label="t('so_revision_note')" class="revision-note">
+                    <el-input
+                        v-model="revisionNote"
+                        type="textarea"
+                        :rows="2"
+                        maxlength="500"
+                        show-word-limit
+                        :placeholder="t('so_revision_note_ph')"
+                    />
+                </el-form-item>
                 <!-- ── Head Grid: Customer & Delivery Date ── -->
                 <div class="head-grid">
                     <!-- Customer Selection -->
@@ -110,7 +140,8 @@
                                 v-model="form.customer_id"
                                 filterable
                                 remote
-                                clearable
+                                :clearable="!amending"
+                                :disabled="amending"
                                 :remote-method="searchCustomers"
                                 :loading="customersLoading"
                                 :placeholder="$t('qt_find_customer')"
@@ -222,7 +253,7 @@
                 <!-- ── Secondary Head Grid: Fulfilment, Warehouse, Order Date ── -->
                 <div class="head-subgrid">
                     <el-form-item :label="$t('so_fulfillment_type')">
-                        <el-select v-model="form.fulfillment_type" style="width: 100%">
+                        <el-select v-model="form.fulfillment_type" :disabled="amending" style="width: 100%">
                             <el-option value="ship" :label="$t('so_shipping_transfer')" />
                             <el-option value="pickup" :label="$t('so_pickup_branch')" />
                             <el-option value="delivery" :label="$t('so_direct_delivery')" />
@@ -233,7 +264,8 @@
                         <el-select
                             v-model="form.fulfillment_warehouse_id"
                             filterable
-                            clearable
+                            :clearable="!authStore.isSalesRep && !amending"
+                            :disabled="authStore.isSalesRep || amending"
                             :placeholder="$t('choose_warehouse_placeholder')"
                             style="width: 100%"
                         >
@@ -840,6 +872,7 @@
 
                 <!-- ── Additional Expenses & Shipping ── -->
                 <OrderExpensesEditor
+                    v-if="!amending"
                     v-model="form.expenses"
                     class="order-expenses-section"
                     @total-change="onExpensesTotalChange"
@@ -904,6 +937,7 @@
                             <el-input-number
                                 v-else
                                 v-model="form.shipping_cost"
+                                :disabled="amending"
                                 :min="0"
                                 :precision="2"
                                 :controls="false"
@@ -960,6 +994,7 @@
                             </span>
                         </el-tooltip>
                         <el-tooltip
+                            v-if="!authStore.isSalesRep && !versioning"
                             :disabled="!issues.length"
                             :content="$t('so_fix_to_continue')"
                             placement="top"
@@ -1159,8 +1194,20 @@ const { handleStockShortage } = useStockShortage();
 
 const orderId = route.params.id || null;
 const isEdit = computed(() => !!orderId);
-
 const authStore = useAuthStore();
+
+// A manager edits the order at any stage; a sales rep (sales-scoped) edits it
+// until it is delivered or cancelled. Past confirmation the API moves the
+// hold, the stock and the invoice with the lines
+// (SalesOrderWorkflowService::amendLines), and every edit past the pending
+// stage is kept as a new version of the order (snapshotRevision).
+const isScoped = computed(() => Boolean(authStore.user?.is_sales_scoped));
+const AMENDABLE_STATUSES = computed(() => (isScoped.value
+    ? ['confirmed', 'processing', 'shipped']
+    : ['confirmed', 'processing', 'shipped', 'delivered']));
+const EDITABLE_STATUSES = computed(() => (isScoped.value
+    ? ['pending', ...AMENDABLE_STATUSES.value]
+    : ['pending', ...AMENDABLE_STATUSES.value, 'cancelled']));
 const isSellsRole = computed(() => {
     if (authStore.isSuperAdmin) return false;
     return authStore.hasRole('sells') ||
@@ -1221,6 +1268,10 @@ const saving = ref(null); // null | 'draft' | 'confirm'
 const loading = ref(false);
 const isLocked = ref(false);
 const loadedOrder = ref(null);
+const amending = computed(() => isEdit.value && AMENDABLE_STATUSES.value.includes(loadedOrder.value?.status));
+const versioning = computed(() => isEdit.value && !!loadedOrder.value && loadedOrder.value.status !== 'pending');
+const currentRevision = computed(() => Number(loadedOrder.value?.revision) || 1);
+const revisionNote = ref('');
 const dirty = ref(false);
 let lineSeq = 0;
 
@@ -2027,7 +2078,11 @@ const fetchWarehouses = async () => {
         const res = await inventoryApi.getWarehouses({ per_page: 100, is_active: true });
         const data = res.data?.data || res.data || [];
         warehouses.value = Array.isArray(data) ? data : [];
-        if (!form.fulfillment_warehouse_id && warehouses.value.length) {
+        // A sales rep's new order is filled from their own warehouse, and they
+        // cannot change it (the API holds to it either way).
+        if (authStore.isSalesRep) {
+            if (!isEdit.value) form.fulfillment_warehouse_id = authStore.user?.employee_warehouse_id || null;
+        } else if (!form.fulfillment_warehouse_id && warehouses.value.length) {
             form.fulfillment_warehouse_id = warehouses.value[0].id;
         }
     } catch {
@@ -2112,7 +2167,9 @@ const offerDraft = async () => {
         order_date: saved.order_date || today(),
         expected_delivery: saved.expected_delivery || inDays(3),
         fulfillment_type: saved.fulfillment_type || 'ship',
-        fulfillment_warehouse_id: saved.fulfillment_warehouse_id || null,
+        fulfillment_warehouse_id: authStore.isSalesRep
+            ? (authStore.user?.employee_warehouse_id || null)
+            : (saved.fulfillment_warehouse_id || null),
         shipping_cost: toNum(saved.shipping_cost),
         shipping_address: saved.shipping_address || '',
         discount: toNum(saved.discount),
@@ -2167,7 +2224,7 @@ const loadOrder = async () => {
         loadedOrder.value = order;
         if (!order) return;
 
-        if (order.status !== 'pending') {
+        if (!EDITABLE_STATUSES.value.includes(order.status)) {
             isLocked.value = true;
             return;
         }
@@ -2284,14 +2341,18 @@ const submit = async (andConfirm) => {
                 notes: exp.notes || null,
             })),
         ...(andConfirm && !isEdit.value ? { execute: 'confirm' } : {}),
+        ...(versioning.value && revisionNote.value.trim() ? { revision_note: revisionNote.value.trim() } : {}),
     };
 
     try {
         let orderIdToOpen = orderId;
         let execution = null;
+        let updateMessage = null;
 
         if (isEdit.value) {
-            await salesOrdersApi.update(orderId, payload);
+            const { data: updated } = await salesOrdersApi.update(orderId, payload);
+            // A new version was made: say so, with its number.
+            if (updated?.revision) updateMessage = updated.message;
             orderIdToOpen = orderId;
             if (andConfirm) {
                 try {
@@ -2323,9 +2384,9 @@ const submit = async (andConfirm) => {
                 await ElMessageBox.alert(execution.message || t('so_saved_not_confirmed'), t('so_saved_as_draft'), { type: 'warning' }).catch(() => {});
             }
         } else {
-            ElMessage.success(execution?.confirmed
+            ElMessage.success(updateMessage || (execution?.confirmed
                 ? t('so_saved_and_confirmed')
-                : (isEdit.value ? t('sales_order_updated') : t('sales_order_created')));
+                : (isEdit.value ? t('sales_order_updated') : t('sales_order_created'))));
         }
 
         if (orderIdToOpen) {
@@ -4105,6 +4166,9 @@ onUnmounted(() => {
 }
 
 /* Locked Section */
+.amend-notice { margin-bottom: 1rem; }
+.revision-note { margin-bottom: 1rem; }
+
 .locked {
     max-width: 640px;
     margin: 2rem auto;

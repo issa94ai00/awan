@@ -1550,6 +1550,13 @@
                             </label>
                             <label class="toggle-row">
                                 <span>
+                                    <strong>{{ $t('show_amount_in_words') || 'المبلغ كتابةً (تفقيط)' }}</strong>
+                                    <small>{{ $t('show_amount_in_words_hint') || 'كتابة إجمالي المبلغ بالحروف (تفقيط) في عروض الأسعار والفواتير' }}</small>
+                                </span>
+                                <el-switch v-model="form.print_show_amount_in_words" />
+                            </label>
+                            <label class="toggle-row">
+                                <span>
                                     <strong>{{ $t('show_signatures') || 'الأختام والتواقيع الرسمية' }}</strong>
                                     <small>{{ $t('show_signatures_hint') || 'إظهار مساحة وتواقيع المستلم والمحاسب والختم المعتمد' }}</small>
                                 </span>
@@ -1846,6 +1853,7 @@ const form = reactive({
     print_show_customer_info: true,
     print_show_payment_details: true,
     print_show_notes: true,
+    print_show_amount_in_words: true,
     print_show_signatures: true,
     print_show_footer: true,
     print_authorized_person: '',
@@ -2423,6 +2431,7 @@ const loadSettings = (settings) => {
     form.print_show_customer_info = normalizeBoolean(settings.print_show_customer_info ?? '1');
     form.print_show_payment_details = normalizeBoolean(settings.print_show_payment_details ?? '1');
     form.print_show_notes = normalizeBoolean(settings.print_show_notes ?? '1');
+    form.print_show_amount_in_words = normalizeBoolean(settings.print_show_amount_in_words ?? '1');
     form.print_show_signatures = normalizeBoolean(settings.print_show_signatures ?? '1');
     form.print_show_footer = normalizeBoolean(settings.print_show_footer ?? '1');
     form.print_authorized_person = settings.print_authorized_person || '';

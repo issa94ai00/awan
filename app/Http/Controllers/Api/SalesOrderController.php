@@ -13,10 +13,12 @@ use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -156,10 +158,8 @@ class SalesOrderController extends Controller
                     $q->where('sales_orders.created_by', $user->id);
                 }
             });
-
-            if ($scopedWh = $user->scopedWarehouseId()) {
-                $query->where('sales_orders.fulfillment_warehouse_id', $scopedWh);
-            }
+            // Not narrowed to the rep's warehouse: routing may send their order
+            // to another one, and it stays theirs (show() checks the same way).
         }
 
         if ($request->filled('customer_id')) {
@@ -375,8 +375,12 @@ class SalesOrderController extends Controller
             'expenses.*.notes' => 'nullable|string|max:1000',
         ], $this->validationMessages());
 
-        // A rep raises orders for their own customers only.
+        // A rep raises orders for their own customers only, and only as drafts:
+        // confirming is someone else's step (User::isSalesRep).
         $this->ensureServesCustomer($request, (int) $validated['customer_id']);
+        if (($validated['execute'] ?? null) === 'confirm' && $request->user()?->isSalesRep()) {
+            abort(403, 'تأكيد الطلبية خارج صلاحيات موظف المبيعات.');
+        }
 
         $expensesInput = $validated['expenses'] ?? [];
         unset($validated['expenses']);
@@ -408,6 +412,13 @@ class SalesOrderController extends Controller
         if (! empty($validated['assigned_employee_id']) && empty($validated['fulfillment_warehouse_id'])) {
             $employee = Employee::find($validated['assigned_employee_id']);
             $validated['fulfillment_warehouse_id'] = $employee?->warehouse_id;
+        }
+
+        // A sales rep's order is filled from their own warehouse, whatever the
+        // request says; routing it elsewhere is the office's call.
+        if ($request->user()?->isSalesRep()) {
+            $validated['fulfillment_warehouse_id'] = $request->user()->employee?->warehouse_id;
+            $this->dropRepSourcing($request);
         }
 
         // No blind fallback to the first active warehouse. An order nobody has
@@ -553,17 +564,35 @@ class SalesOrderController extends Controller
 
     public function update(Request $request, SalesOrder $salesOrder)
     {
-        // Editing is only safe while the order is still a plan. Once it is
-        // confirmed it has a reservation, an invoice and a posted entry behind
-        // it, and silently rewriting the lines here left all three describing
-        // quantities and amounts the order no longer had.
-        if ($salesOrder->status !== SalesOrder::STATUS_PENDING) {
+        // A sales rep edits their own orders only, as they see only those.
+        if ($request->user()?->isSalesScoped() && ! $this->ownsOrder($request->user(), $salesOrder)) {
+            abort(403, 'غير مصرح لك بتعديل هذا الطلب');
+        }
+
+        // Who may edit what:
+        //  - a manager (anyone not sales-scoped) edits the order at any stage,
+        //    delivered and cancelled included;
+        //  - a sales rep edits freely while the order is pending, and past
+        //    confirmation only up to shipment — never once it is delivered or
+        //    cancelled.
+        // Past confirmation an edit never overwrites the order: the version as
+        // it stood is kept (SalesOrderWorkflowService::snapshotRevision) and
+        // the order moves on to the next revision. Lines are then re-applied
+        // with the stock hold (or the shipped stock), the picking lists and the
+        // invoice with its entry — see SalesOrderWorkflowService::amendLines.
+        $status = (string) $salesOrder->status;
+        $scoped = (bool) $request->user()?->isSalesScoped();
+        if ($scoped && in_array($status, [SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'لا يمكن تعديل بنود طلب بعد تأكيده. ألغِ الطلب أو أنشئ إشعاراً دائناً بدلاً من ذلك.',
+                'message' => 'لا يمكن لموظف المبيعات تعديل طلب بعد تسليمه أو إلغائه. راجع المدير لتعديله.',
                 'data' => null,
             ], 422);
         }
+        $amending = in_array($status, SalesOrderWorkflowService::AMENDABLE_STAGES, true);
+        $cancelled = $status === SalesOrder::STATUS_CANCELLED;
+        // Every edit after the pending stage is kept as a new version.
+        $versioning = $status !== SalesOrder::STATUS_PENDING;
 
         $deliveryAnchor = $request->filled('order_date') || ! $salesOrder->order_date
             ? 'after_or_equal:order_date'
@@ -607,7 +636,12 @@ class SalesOrderController extends Controller
             'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
             'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
             'expenses.*.notes' => 'nullable|string|max:1000',
+            // Why the confirmed order is being changed — kept on the version
+            // it replaces.
+            'revision_note' => 'nullable|string|max:500',
         ], $this->validationMessages());
+        $revisionNote = $validated['revision_note'] ?? null;
+        unset($validated['revision_note']);
 
         // A rep raises orders for their own customers only; an order already
         // on someone else's customer can still be edited if it stays there.
@@ -657,6 +691,26 @@ class SalesOrderController extends Controller
 
         $hasWarehouseInput = $request->has('fulfillment_warehouse_id');
 
+        // A sales rep may not move the order to another warehouse (or re-plan
+        // its lines across warehouses); it keeps the one it has.
+        if ($request->user()?->isSalesRep()) {
+            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
+            $hasWarehouseInput = true;
+            $this->dropRepSourcing($request);
+        }
+
+        // Past confirmation only the lines and their pricing change here. Who
+        // the order is for and whose it is sit on the invoice and the ledger,
+        // and how it is fulfilled and charged for delivery have their own
+        // endpoint; the lines are re-sourced by the amendment itself.
+        if ($amending) {
+            foreach (['customer_id', 'assigned_employee_id', 'fulfillment_warehouse_id', 'fulfillment_type', 'shipping_cost'] as $key) {
+                $validated[$key] = $salesOrder->{$key};
+            }
+            $hasWarehouseInput = true;
+            $this->dropRepSourcing($request);
+        }
+
         $lineItems = $this->buildLineItems($request->items);
         $subtotal = collect($lineItems)->sum(
             fn (array $item) => ($item['unit_price'] * $item['quantity']) - $item['discount'] + $item['tax']
@@ -687,7 +741,7 @@ class SalesOrderController extends Controller
         $validated['tax'] = $taxAmount;
         $validated['tax_percent'] = $taxPercent;
 
-        $expensesProvided = $request->has('expenses');
+        $expensesProvided = $request->has('expenses') && ! $amending;
         $expensesInput = $validated['expenses'] ?? [];
         unset($validated['expenses']);
 
@@ -712,9 +766,21 @@ class SalesOrderController extends Controller
         }
 
         $createdExpenses = [];
+        $revision = null;
         try {
-            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $expensesProvided, $expensesInput, $request, &$createdExpenses) {
+            DB::transaction(function () use ($salesOrder, $validated, $lineItems, $expensesProvided, $expensesInput, $request, $amending, $cancelled, $versioning, $revisionNote, &$createdExpenses, &$revision) {
+                // The version being replaced is kept before anything is written.
+                if ($versioning) {
+                    $revision = $this->workflow->snapshotRevision($salesOrder, $revisionNote);
+                }
+
                 $salesOrder->update($validated);
+
+                if ($amending) {
+                    $this->workflow->amendLines($salesOrder, $lineItems);
+
+                    return;
+                }
 
                 if ($expensesProvided) {
                     foreach ($salesOrder->expenses()->get() as $oldExp) {
@@ -757,7 +823,9 @@ class SalesOrderController extends Controller
                     $created[] = $salesOrder->items()->create($item);
                 }
 
-                $plan = $this->planFrom($created, $request->items);
+                // A cancelled order holds no stock, so its lines are only
+                // rewritten — it is not routed or reserved again.
+                $plan = $cancelled ? [] : $this->planFrom($created, $request->items);
                 if (array_filter($plan)) {
                     $salesOrder->routings()->sync([]);
                     $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
@@ -775,12 +843,18 @@ class SalesOrderController extends Controller
             }
         }
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'expenses']);
+        $salesOrder->refresh()->load(['customer', 'creator', 'items.product', 'items.productUnit', 'items.variant', 'expenses']);
 
         return response()->json([
             'success' => true,
-            'message' => 'تم تحديث طلب البيع بنجاح',
+            'message' => $revision
+                ? 'تم حفظ التعديلات كإصدار جديد ('.$salesOrder->revision.') مع الاحتفاظ بالإصدار السابق ('.$revision->revision.').'
+                : 'تم تحديث طلب البيع بنجاح',
             'data' => $salesOrder,
+            'revision' => $revision ? [
+                'previous' => $revision->revision,
+                'current' => (int) $salesOrder->revision,
+            ] : null,
         ]);
     }
 
@@ -1011,10 +1085,9 @@ class SalesOrderController extends Controller
 
         $entries = JournalEntryHeader::with('lines.ledgerAccount')
             ->where(function ($q) use ($salesOrder, $invoice, $paymentKeys, $expenseKeys) {
-                $q->whereIn('posting_key', [
-                    'so_cogs:'.$salesOrder->id,
-                    'so_cogs:'.$salesOrder->id.':reversal',
-                ]);
+                // The shipment's cost entry and any amendment's beneath it.
+                $q->where('posting_key', 'so_cogs:'.$salesOrder->id)
+                    ->orWhere('posting_key', 'like', 'so_cogs:'.$salesOrder->id.':%');
 
                 if ($invoice) {
                     // Anchored on the colon: a bare "invoice:1%" prefix would
@@ -1053,6 +1126,11 @@ class SalesOrderController extends Controller
                 // Null, not empty, for whoever may not see purchasing.
                 'purchase_orders' => $this->linkedPurchaseOrders($salesOrder),
                 'history' => $salesOrder->statusHistory,
+                // The versions this order replaced, oldest first, each with its
+                // header and lines as they stood.
+                'revisions' => SalesOrderWorkflowService::versioningReady()
+                    ? $salesOrder->revisions()->with('replacedBy:id,name')->get()
+                    : [],
                 'routing' => $this->routingPayload($salesOrder),
                 'timeline' => [
                     'confirmed_at' => $salesOrder->confirmed_at,
@@ -1079,13 +1157,21 @@ class SalesOrderController extends Controller
     }
 
     /** Shared by the routing endpoint and the detail screen, so they cannot drift. */
+    // A sales rep sees the routing but may not act on it, save delivering a
+    // shipped order of their own (User::isSalesRep, repMayMove).
     private function routingPayload(SalesOrder $salesOrder): array
     {
+        $user = auth()->user();
+        $salesRep = (bool) $user?->isSalesRep();
+        $transitions = SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? [];
+
         return $this->workflow->routingOptions($salesOrder) + [
             'fulfillment_type' => $salesOrder->fulfillment_type,
             'status' => $salesOrder->status,
-            'allowed_transitions' => SalesOrderWorkflowService::TRANSITIONS[$salesOrder->status] ?? [],
-            'can_change_fulfillment_type' => ! in_array(
+            'allowed_transitions' => $salesRep
+                ? array_values(array_filter($transitions, fn ($target) => $this->repMayMove($user, $salesOrder, $target)))
+                : $transitions,
+            'can_change_fulfillment_type' => ! $salesRep && ! in_array(
                 $salesOrder->status,
                 [SalesOrder::STATUS_SHIPPED, SalesOrder::STATUS_DELIVERED, SalesOrder::STATUS_CANCELLED],
                 true
@@ -1122,9 +1208,14 @@ class SalesOrderController extends Controller
     /** The per-line sourcing plan and what each warehouse could supply. */
     public function sourcing(SalesOrder $salesOrder)
     {
+        $plan = $this->workflow->sourcingPlan($salesOrder);
+        if (auth()->user()?->isSalesRep()) {
+            $plan['editable'] = false;
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $this->workflow->sourcingPlan($salesOrder),
+            'data' => $plan,
         ]);
     }
 
@@ -1182,6 +1273,11 @@ class SalesOrderController extends Controller
             'payment_method' => 'nullable|in:cash,card,bank_transfer,check',
             'payment_reference' => 'nullable|string|max:100',
         ]);
+
+        $user = $request->user();
+        if ($user?->isSalesRep() && ! $this->repMayMove($user, $salesOrder, $validated['status'])) {
+            abort(403, 'موظف المبيعات يسلّم ويسوّي طلبياته بعد شحنها فقط.');
+        }
 
         try {
             $result = $this->workflow->transitionTo($salesOrder, $validated['status'], $validated);
@@ -1356,7 +1452,8 @@ class SalesOrderController extends Controller
             'invoice' => $invoice?->load('items.product'),
             'journal_entries' => JournalEntryHeader::with('lines.ledgerAccount')
                 ->where(function ($q) use ($salesOrder, $invoice) {
-                    $q->where('posting_key', 'so_cogs:'.$salesOrder->id);
+                    $q->where('posting_key', 'so_cogs:'.$salesOrder->id)
+                        ->orWhere('posting_key', 'like', 'so_cogs:'.$salesOrder->id.':%');
                     if ($invoice) {
                         $q->orWhere('posting_key', 'invoice:'.$invoice->id)
                             ->orWhere('posting_key', 'like', 'invoice:'.$invoice->id.':%');
@@ -1378,6 +1475,36 @@ class SalesOrderController extends Controller
             SalesOrder::STATUS_DELIVERED => 'تم التسليم',
             SalesOrder::STATUS_CANCELLED => 'ملغي',
         ][$status] ?? $status;
+    }
+
+    /** Whether the order is the user's own: raised by them or assigned to them. */
+    private function ownsOrder(User $user, SalesOrder $salesOrder): bool
+    {
+        $employeeId = $user->employee?->id;
+
+        return (int) $salesOrder->created_by === (int) $user->id
+            || ($employeeId && (int) $salesOrder->assigned_employee_id === (int) $employeeId);
+    }
+
+    /** Strips a sales rep's per-line warehouse plan: sourcing is the office's. */
+    private function dropRepSourcing(Request $request): void
+    {
+        $request->merge([
+            'items' => array_map(fn ($item) => Arr::except((array) $item, 'allocations'), (array) $request->input('items', [])),
+        ]);
+    }
+
+    /**
+     * The one stage a sales rep moves: once the office has confirmed, prepared
+     * and shipped their own order, they hand it over and collect (delivered,
+     * with its settlement). Confirming, preparing, shipping and cancelling
+     * stay with the office.
+     */
+    private function repMayMove(User $user, SalesOrder $salesOrder, string $target): bool
+    {
+        return $this->ownsOrder($user, $salesOrder)
+            && $salesOrder->status === SalesOrder::STATUS_SHIPPED
+            && $target === SalesOrder::STATUS_DELIVERED;
     }
 
     private function ensureServesCustomer(Request $request, int $customerId): void

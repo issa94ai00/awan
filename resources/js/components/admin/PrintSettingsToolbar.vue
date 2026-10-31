@@ -220,6 +220,7 @@
                                 <span class="cp-sec-title"><i class="fas fa-file-shield"></i> {{ $t('cover_and_signatures') || 'الغلاف والاعتماد' }}</span>
                                 <div class="cp-switches-grid">
                                     <el-checkbox v-model="modelValue.showCover">{{ $t('include_cover_page') || 'صفحة غلاف رسمية A4' }}</el-checkbox>
+                                    <el-checkbox v-model="modelValue.showAmountInWords">{{ $t('show_amount_in_words') || 'المبلغ كتابةً (تفقيط)' }}</el-checkbox>
                                     <el-checkbox v-model="modelValue.showSignatures">{{ $t('show_signatures') || 'التوقيعات والختم الرسمي' }}</el-checkbox>
                                     <el-checkbox v-model="modelValue.showNotes">{{ $t('notes') || 'الملاحظات والشروط' }}</el-checkbox>
                                     <el-checkbox v-model="modelValue.showFooter">{{ $t('show_footer') || 'تذييل المستند' }}</el-checkbox>

@@ -42,6 +42,11 @@
                         <el-button size="small" plain @click="openOrder">
                             <i class="fas fa-route"></i>&nbsp;{{ $t('so_open_in_orders') }}
                         </el-button>
+                        <el-tooltip v-if="mayPrint" :content="$t('pr_print_hint')" placement="top" :enterable="false">
+                            <el-button size="small" type="primary" plain @click="printRequest">
+                                <i class="fas fa-print"></i>&nbsp;{{ $t('print') }}
+                            </el-button>
+                        </el-tooltip>
                     </div>
                 </el-card>
 
@@ -492,6 +497,13 @@ const saveItems = async () => {
     } finally {
         saving.value = false;
     }
+};
+
+// A request is a sales order: it prints with the order's own print preview
+// (priced, or as an unpriced dispatch note), in a new tab so this screen stays.
+const mayPrint = computed(() => authStore.can('sales.orders.view'));
+const printRequest = () => {
+    window.open(router.resolve({ path: '/admin/sales/sales-orders', query: { print: order.value.id } }).href, '_blank');
 };
 
 const openOrder = () => {

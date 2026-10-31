@@ -319,6 +319,28 @@ class Invoice extends Model
         return $this->belongsTo(SalesOrder::class);
     }
 
+    /**
+     * Invoices a return can be filed against: those whose goods have left.
+     * An order's invoice follows the order and sits at `shipped` once it goes
+     * out (and stays there through delivery); a direct invoice is finalized
+     * at `confirmed`. An order's invoice still at `confirmed` has goods only
+     * reserved, which a cancellation undoes, not a return.
+     */
+    public function scopeReturnable($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereIn('invoices.status', [self::STATUS_SHIPPED, self::STATUS_DELIVERED])
+                ->orWhere(fn ($direct) => $direct->where('invoices.status', self::STATUS_CONFIRMED)
+                    ->whereNull('invoices.sales_order_id'));
+        });
+    }
+
+    public function isReturnable(): bool
+    {
+        return in_array($this->status, [self::STATUS_SHIPPED, self::STATUS_DELIVERED], true)
+            || ($this->status === self::STATUS_CONFIRMED && ! $this->sales_order_id);
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);

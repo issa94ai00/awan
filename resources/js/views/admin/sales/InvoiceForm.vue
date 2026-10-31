@@ -589,6 +589,10 @@
                             <dt>{{ t('grand_total_label') }}</dt>
                             <dd>{{ money(total) }}</dd>
                         </div>
+                        <div v-if="invoiceTotalInWords" class="invoice-tafqeet-line">
+                            <span class="tafqeet-lbl"><i class="fas fa-pen-fancy"></i> {{ t('amount_in_words') || 'المبلغ كتابةً' }}:</span>
+                            <span class="tafqeet-txt">{{ invoiceTotalInWords }}</span>
+                        </div>
                     </dl>
 
                     <label class="field">
@@ -766,6 +770,7 @@ import { posApi } from '@/api/pos';
 import api from '@/api';
 import { formatMoney, formatNumber, roundUnitPrice } from '@/utils/currency';
 import { formatPercent } from '@/utils/numberFormat';
+import { tafqeet } from '@/utils/tafqeet';
 import {
     summariseSources,
     availableAt,
@@ -1276,6 +1281,14 @@ const taxAmount = computed(() =>
 const total = computed(() =>
     Math.max(0, subtotal.value - discountAmount.value + taxAmount.value + totalExpenses.value)
 );
+
+const invoiceTotalInWords = computed(() => {
+    if (!total.value && total.value !== 0) return '';
+    return tafqeet(total.value, {
+        currency: form.currency,
+        locale: locale?.value === 'en' ? 'en' : 'ar',
+    });
+});
 
 // True once the discount alone would take the total past zero — the point
 // where it stops being the discount that determines the total. A rate is capped
@@ -2920,6 +2933,34 @@ onUnmounted(() => {
 
 .total-line.grand dt { color: var(--ink); font-weight: 700; }
 .total-line.grand dd { font-weight: 800; font-size: 1.2rem; }
+
+.invoice-tafqeet-line {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    background: var(--surface-soft, #f8fafc);
+    border: 1px dashed var(--line, #cbd5e1);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.invoice-tafqeet-line .tafqeet-lbl {
+    font-size: 0.72rem;
+    color: var(--ink-soft, #64748b);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.invoice-tafqeet-line .tafqeet-lbl i {
+    color: var(--brand, #2563eb);
+}
+.invoice-tafqeet-line .tafqeet-txt {
+    font-size: 0.8rem;
+    color: var(--ink, #0f172a);
+    font-weight: 700;
+    line-height: 1.4;
+}
 
 .settlement {
     display: flex;

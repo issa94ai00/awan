@@ -539,13 +539,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
             Route::middleware('role:admin,manager,sells,accountant')->group(function () {
                 Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('api.admin.purchase-orders.index');
-                Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->name('api.admin.purchase-orders.store');
+                Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])->middleware('not_sales_rep')->name('api.admin.purchase-orders.store');
                 Route::get('/purchase-orders/{order}', [PurchaseOrderController::class, 'show'])->name('api.admin.purchase-orders.show');
-                Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->name('api.admin.purchase-orders.update');
+                Route::put('/purchase-orders/{order}', [PurchaseOrderController::class, 'update'])->middleware('not_sales_rep')->name('api.admin.purchase-orders.update');
                 // Approving is a one-word change, so it does not go through
                 // update() — that endpoint rewrites every line of the order.
-                Route::put('/purchase-orders/{order}/status', [PurchaseOrderController::class, 'updateStatus'])->name('api.admin.purchase-orders.update-status');
-                Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->name('api.admin.purchase-orders.destroy');
+                Route::put('/purchase-orders/{order}/status', [PurchaseOrderController::class, 'updateStatus'])->middleware('not_sales_rep')->name('api.admin.purchase-orders.update-status');
+                Route::delete('/purchase-orders/{order}', [PurchaseOrderController::class, 'destroy'])->middleware('not_sales_rep')->name('api.admin.purchase-orders.destroy');
             });
 
             // Admin Inventory Movements
@@ -752,7 +752,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/admin/purchase-requests', [PurchaseRequestController::class, 'adminStore'])->name('api.purchase-requests.admin.store');
             Route::get('/purchase-requests', [PurchaseRequestController::class, 'adminIndex'])->name('api.purchase-requests.admin.index');
             Route::get('/purchase-requests/{salesOrder}', [PurchaseRequestController::class, 'adminShow'])->name('api.purchase-requests.admin.show');
-            Route::put('/purchase-requests/{salesOrder}/status', [PurchaseRequestController::class, 'adminUpdateStatus'])->name('api.purchase-requests.admin.update-status');
+            Route::put('/purchase-requests/{salesOrder}/status', [PurchaseRequestController::class, 'adminUpdateStatus'])->middleware('not_sales_rep')->name('api.purchase-requests.admin.update-status');
             Route::put('/purchase-requests/{salesOrder}/items', [PurchaseRequestController::class, 'adminUpdateItems'])->name('api.purchase-requests.admin.update-items');
             Route::put('/purchase-requests/{salesOrder}/assign', [PurchaseRequestController::class, 'adminAssignEmployee'])->name('api.purchase-requests.admin.assign');
         });
@@ -808,8 +808,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->whereNumber('salesOrder')->name('api.sales-orders.show');
         Route::put('/sales-orders/{salesOrder}', [SalesOrderController::class, 'update'])->whereNumber('salesOrder')->name('api.sales-orders.update');
         Route::delete('/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->whereNumber('salesOrder')->name('api.sales-orders.destroy');
-        Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->whereNumber('salesOrder')->name('api.sales-orders.convert-to-invoice');
-        Route::post('/sales-orders/{salesOrder}/confirm', [SalesOrderController::class, 'confirmOrder'])->whereNumber('salesOrder')->name('api.sales-orders.confirm');
+        Route::post('/sales-orders/{salesOrder}/convert-to-invoice', [SalesOrderController::class, 'convertToInvoice'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.convert-to-invoice');
+        Route::post('/sales-orders/{salesOrder}/confirm', [SalesOrderController::class, 'confirmOrder'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.confirm');
         // Order routing and execution stages. Each of these moves stock, the
         // invoice and the ledger together — see SalesOrderWorkflowService.
         Route::get('/sales-orders/{salesOrder}/detail', [SalesOrderController::class, 'detail'])->whereNumber('salesOrder')->name('api.sales-orders.detail');
@@ -817,16 +817,16 @@ Route::prefix('v1')->middleware('web')->group(function () {
         // What stock cannot cover, for prefilling a purchase order.
         Route::get('/sales-orders/{salesOrder}/shortages', [SalesOrderController::class, 'stockShortages'])->whereNumber('salesOrder')->name('api.sales-orders.shortages');
         // The order's lines as a purchase order, to open the purchase screen prefilled.
-        Route::get('/sales-orders/{salesOrder}/purchase-draft', [SalesOrderController::class, 'purchaseDraft'])->whereNumber('salesOrder')->name('api.sales-orders.purchase-draft');
+        Route::get('/sales-orders/{salesOrder}/purchase-draft', [SalesOrderController::class, 'purchaseDraft'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.purchase-draft');
         // Where each line's goods come from. A line may be split across
         // warehouses; saving the plan moves the stock hold with it.
         Route::get('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'sourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing');
-        Route::put('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'saveSourcing'])->whereNumber('salesOrder')->name('api.sales-orders.sourcing.save');
+        Route::put('/sales-orders/{salesOrder}/sourcing', [SalesOrderController::class, 'saveSourcing'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.sourcing.save');
         // The set of warehouses the order may draw on. Sourcing above then
         // distributes each line across exactly these.
-        Route::put('/sales-orders/{salesOrder}/routings', [SalesOrderController::class, 'saveRoutings'])->whereNumber('salesOrder')->name('api.sales-orders.routings.save');
+        Route::put('/sales-orders/{salesOrder}/routings', [SalesOrderController::class, 'saveRoutings'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.routings.save');
         Route::post('/sales-orders/{salesOrder}/transition', [SalesOrderController::class, 'transition'])->whereNumber('salesOrder')->name('api.sales-orders.transition');
-        Route::post('/sales-orders/{salesOrder}/fulfillment-type', [SalesOrderController::class, 'changeFulfillmentType'])->whereNumber('salesOrder')->name('api.sales-orders.fulfillment-type');
+        Route::post('/sales-orders/{salesOrder}/fulfillment-type', [SalesOrderController::class, 'changeFulfillmentType'])->whereNumber('salesOrder')->middleware('not_sales_rep')->name('api.sales-orders.fulfillment-type');
 
         // Payments (مدفوعات)
         Route::get('/payments', [PaymentController::class, 'index'])->name('api.payments.index');

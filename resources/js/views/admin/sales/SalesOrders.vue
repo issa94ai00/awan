@@ -197,6 +197,7 @@
                         <div class="so-stack">
                             <span class="so-mono" dir="ltr">
                                 {{ row.order_number }}
+                                <span v-if="row.revision > 1" class="so-rev-badge">v{{ row.revision }}</span>
                                 <el-tooltip v-if="row.follow_up?.needs_attention" :content="row.follow_up.attention_reasons.join(' — ')" placement="top">
                                     <i class="fas fa-triangle-exclamation so-flag"></i>
                                 </el-tooltip>
@@ -288,7 +289,7 @@
                     <template #default="{ row }">
                         <div class="so-row-actions" @click.stop>
                             <el-button
-                                v-if="ROW_NEXT[normalizeStatus(row.status)]"
+                                v-if="(!authStore.isSalesRep || normalizeStatus(row.status) === 'shipped') && ROW_NEXT[normalizeStatus(row.status)]"
                                 size="small"
                                 :type="STAGE_ACTIONS[ROW_NEXT[normalizeStatus(row.status)]].type"
                                 plain
@@ -307,7 +308,7 @@
                                         <el-dropdown-item command="print"><i class="fas fa-print"></i> {{ $t('print') }}</el-dropdown-item>
                                         <el-dropdown-item command="execution"><i class="fas fa-diagram-project"></i> {{ $t('fulfilment_and_routing') }}</el-dropdown-item>
                                         <el-dropdown-item command="documents"><i class="fas fa-file-invoice-dollar"></i> {{ $t('documents_and_entries') }}</el-dropdown-item>
-                                        <el-dropdown-item v-if="normalizeStatus(row.status) === 'pending'" command="edit"><i class="fas fa-edit"></i> {{ $t('edit') }}</el-dropdown-item>
+                                        <el-dropdown-item v-if="canEditOrder(row)" command="edit"><i class="fas fa-edit"></i> {{ $t('edit') }}</el-dropdown-item>
                                         <el-dropdown-item v-if="mayPurchase && normalizeStatus(row.status) !== 'cancelled'" command="purchase">
                                             <i class="fas fa-cart-plus"></i> {{ $t('so_create_purchase_request') }}
                                         </el-dropdown-item>
@@ -357,7 +358,16 @@
                     <i class="fas fa-file-lines"></i>
                     <span>{{ $t('sales_order_details') }}</span>
                     <strong v-if="selectedOrder">{{ selectedOrder.order_number }}</strong>
+                    <span v-if="selectedOrder?.revision > 1" class="so-rev-badge">{{ $t('so_version_n', { n: selectedOrder.revision }) }}</span>
                     <div v-if="selectedOrder" class="drawer-header-actions">
+                        <el-button
+                            v-if="canEditOrder(selectedOrder)"
+                            size="small"
+                            plain
+                            @click="openEditDrawer(selectedOrder.id)"
+                        >
+                            <i class="fas fa-edit"></i>&nbsp;{{ $t('edit') }}
+                        </el-button>
                         <el-button
                             size="small"
                             plain
@@ -632,6 +642,34 @@
                                 </div>
                             </div>
                             <el-empty v-else :description="$t('no_stage_history')" :image-size="52" />
+                        </el-card>
+
+                        <!-- Versions: what the order looked like before each edit past confirmation -->
+                        <el-card shadow="never" class="info-card mb-3">
+                            <template #header><span class="card-title-txt"><i class="fas fa-code-branch"></i> {{ $t('so_versions') }}</span></template>
+                            <div class="rev-list">
+                                <div class="rev-row is-current">
+                                    <strong>{{ $t('so_version_n', { n: selectedOrder?.revision || 1 }) }}</strong>
+                                    <el-tag size="small" type="success" effect="plain">{{ $t('so_current_version') }}</el-tag>
+                                    <span class="rev-total">{{ formatCurrency(selectedOrder?.total) }}</span>
+                                </div>
+                                <div v-for="rev in revisionsNewestFirst" :key="rev.id" class="rev-row">
+                                    <div class="rev-main">
+                                        <strong>{{ $t('so_version_n', { n: rev.revision }) }}</strong>
+                                        <span class="rev-meta">
+                                            {{ $t('so_version_at_stage', { status: getArabicStatus(rev.status) }) }}
+                                            · {{ formatDateTime(rev.created_at) }}
+                                            · {{ $t('so_version_replaced_by', { name: rev.replaced_by?.name || $t('the_system') }) }}
+                                        </span>
+                                        <p v-if="rev.note" class="history-note">{{ rev.note }}</p>
+                                    </div>
+                                    <span class="rev-total">{{ formatCurrency(rev.total) }}</span>
+                                    <el-button size="small" text type="primary" @click="viewedRevision = rev">
+                                        <i class="fas fa-eye"></i>&nbsp;{{ $t('so_view_version') }}
+                                    </el-button>
+                                </div>
+                                <p v-if="!revisions.length" class="rev-empty">{{ $t('so_no_previous_versions') }}</p>
+                            </div>
                         </el-card>
 
                         <el-row :gutter="16">
@@ -1059,6 +1097,51 @@
                 </el-tabs>
             </div>
         </el-drawer>
+
+        <!-- One earlier version of the order, as it stood when it was replaced -->
+        <el-dialog
+            :model-value="!!viewedRevision"
+            :title="viewedRevision ? `${selectedOrder?.order_number || ''} — ${$t('so_version_n', { n: viewedRevision.revision })}` : ''"
+            width="760px"
+            @close="viewedRevision = null"
+        >
+            <template v-if="viewedRevision">
+                <p class="rev-meta">
+                    {{ $t('so_version_at_stage', { status: getArabicStatus(viewedRevision.status) }) }}
+                    · {{ viewedRevision.snapshot?.header?.customer_name || '—' }}
+                    · {{ formatDateTime(viewedRevision.created_at) }}
+                </p>
+                <el-table :data="viewedRevision.snapshot?.items || []" size="small" border>
+                    <el-table-column type="index" width="44" />
+                    <el-table-column :label="$t('so_rev_product')" min-width="200">
+                        <template #default="{ row }">
+                            {{ row.product_name || '—' }}
+                            <span v-if="row.variant_name" class="rev-meta"> — {{ row.variant_name }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('so_rev_qty')" width="110">
+                        <template #default="{ row }">{{ row.quantity }} <span class="rev-meta">{{ row.unit_name || '' }}</span></template>
+                    </el-table-column>
+                    <el-table-column :label="$t('so_rev_unit_price')" width="120">
+                        <template #default="{ row }">{{ formatCurrency(row.unit_price) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('discount')" width="100">
+                        <template #default="{ row }">{{ formatCurrency(row.discount) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('total')" width="130">
+                        <template #default="{ row }">{{ formatCurrency(row.total) }}</template>
+                    </el-table-column>
+                </el-table>
+                <dl class="rev-totals">
+                    <div><dt>{{ $t('subtotal') }}</dt><dd>{{ formatCurrency(viewedRevision.subtotal) }}</dd></div>
+                    <div><dt>{{ $t('discount') }}</dt><dd>{{ formatCurrency(viewedRevision.discount) }}</dd></div>
+                    <div><dt>{{ $t('tax') }}</dt><dd>{{ formatCurrency(viewedRevision.tax) }}</dd></div>
+                    <div><dt>{{ $t('so_rev_shipping') }}</dt><dd>{{ formatCurrency(viewedRevision.shipping_cost) }}</dd></div>
+                    <div class="is-grand"><dt>{{ $t('grand_total') }}</dt><dd>{{ formatCurrency(viewedRevision.total) }}</dd></div>
+                </dl>
+                <p v-if="viewedRevision.note" class="history-note">{{ viewedRevision.note }}</p>
+            </template>
+        </el-dialog>
 
         <!-- Fulfilment type change: needs a delivery fee for ship/delivery -->
         <el-dialog v-model="typeDialogVisible" :title="$t('change_fulfilment_type')" width="440px" :close-on-click-modal="false">
@@ -1744,6 +1827,7 @@ import EntityImage from '@/components/admin/EntityImage.vue';
 import ExpenseDialog from '@/components/admin/sales/ExpenseDialog.vue';
 import { variantLabelOf } from '@/utils/productPick';
 import { useStockShortage } from '@/Composables/useStockShortage';
+import { useAuthStore } from '@/stores/auth';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -1766,6 +1850,9 @@ import {
 const router = useRouter();
 const route = useRoute();
 const { handleStockShortage, canRaisePurchaseOrder } = useStockShortage();
+// A sales rep raises orders and does not move them on, save delivering and
+// settling their own once shipped (User::isSalesRep; the API decides).
+const authStore = useAuthStore();
 const store = useSalesOrdersStore();
 
 
@@ -2442,6 +2529,18 @@ const journalEntries = computed(() => detail.value.journal_entries || []);
 const stockMovements = computed(() => detail.value.stock_movements || []);
 const diagnostics = computed(() => detail.value.diagnostics || []);
 const history = computed(() => detail.value.history || []);
+const revisions = computed(() => detail.value.revisions || []);
+const revisionsNewestFirst = computed(() => [...revisions.value].reverse());
+const viewedRevision = ref(null);
+
+// A manager edits at any stage; a sales rep until delivery or cancellation.
+// Past the pending stage the API keeps the current version and saves a new one.
+const canEditOrder = (order) => {
+    if (!order) return false;
+    const status = normalizeStatus(order.status);
+    if (authStore.user?.is_sales_scoped) return ['pending', 'confirmed', 'processing', 'shipped'].includes(status);
+    return true;
+};
 const followUp = computed(() => detail.value.follow_up || {});
 
 // Additional Expenses state & helpers
@@ -3319,6 +3418,36 @@ onMounted(async () => {
 .so-strong { font-weight: 600; }
 .so-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
 .so-flag { color: #dc2626; margin-inline-start: 0.3rem; font-size: 0.8rem; }
+.so-rev-badge {
+    display: inline-block;
+    margin-inline-start: 0.35rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #1d4ed8;
+    background: rgba(37, 99, 235, 0.12);
+}
+.rev-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.rev-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+}
+.rev-row.is-current { background: var(--el-fill-color-light); }
+.rev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.rev-meta { font-size: 0.76rem; color: var(--text-muted); }
+.rev-total { margin-inline-start: auto; font-weight: 700; white-space: nowrap; }
+.rev-empty { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+.rev-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; margin: 0.9rem 0 0; }
+.rev-totals div { display: flex; flex-direction: column; }
+.rev-totals dt { font-size: 0.74rem; color: var(--text-muted); }
+.rev-totals dd { margin: 0; font-weight: 700; }
+.rev-totals .is-grand dd { color: var(--el-color-primary); }
 .so-muted-icon { color: #94a3b8; font-size: 0.8rem; }
 
 .so-pill {

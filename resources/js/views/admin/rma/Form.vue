@@ -258,6 +258,15 @@
                     <div class="rail-card">
                         <h3 class="rail-title">{{ t('settlement_type_and_handling') }}</h3>
 
+                        <el-form-item prop="warehouse_id" class="bare-item">
+                            <label class="field">
+                                <span class="field-label">{{ t('destination_warehouse') }}</span>
+                                <el-select v-model="form.warehouse_id" :placeholder="t('select_warehouse')" filterable class="full-width">
+                                    <el-option v-for="w in warehouses" :key="w.id" :value="w.id" :label="w.name" />
+                                </el-select>
+                            </label>
+                        </el-form-item>
+
                         <label class="field">
                             <span class="field-label">{{ t('settlement_type') }}</span>
                             <el-select v-model="form.return_type" :placeholder="t('select_default_handling')" class="full-width">
@@ -414,11 +423,9 @@ const rmaId = computed(() => (route.params.id ? parseInt(route.params.id) : null
 const isEdit = computed(() => !!rmaId.value)
 const goBack = () => router.push('/admin/rma')
 
-// Mirrors RmaController::RMA_ELIGIBLE_INVOICE_STATUSES — confirmed is where
-// an invoice actually sits once a sale is finalized in this business; the
-// shipping stages (processing/shipped) never happen, and restricting to
-// delivered-only left the picker permanently empty.
-const RMA_ELIGIBLE_INVOICE_STATUSES = ['confirmed', 'delivered']
+// Which invoices a return can be filed against is decided by the API
+// (Invoice::scopeReturnable): an order's invoice once shipped or delivered, a
+// direct invoice once confirmed. The picker asks for exactly those.
 
 const formRef = ref(null)
 const loading = ref(false)
@@ -442,6 +449,7 @@ const emptyAddress = () => ({ address_line1: '', city: '', country: '', postal_c
 const form = reactive({
     customer_id: null,
     invoice_id: null,
+    warehouse_id: null,
     reason: 'defective',
     return_type: 'refund',
     reason_description: '',
@@ -490,17 +498,18 @@ const addressPayload = () => {
 const rules = {
     customer_id: [{ required: true, message: t('please_select_returning_customer'), trigger: 'change' }],
     invoice_id: [{ required: true, message: t('please_select_original_invoice'), trigger: 'change' }],
+    warehouse_id: [{ required: true, message: t('please_choose_destination_warehouse'), trigger: 'change' }],
     reason: [{ required: true, message: t('return_reason_required'), trigger: 'change' }],
     reason_description: [{ max: 1000, message: t('description_max_1000'), trigger: 'blur' }],
 }
 
 const selectedItemsCount = computed(() => invoiceItems.value.filter((i) => i.selected).length)
 
-const canSubmit = computed(() => !saving.value && !!form.customer_id && !!form.invoice_id && selectedItemsCount.value > 0)
+const canSubmit = computed(() => !saving.value && !!form.customer_id && !!form.invoice_id && !!form.warehouse_id && selectedItemsCount.value > 0)
 
 /**
  * What is still missing before the request can be saved, in the order the page
- * asks for it. Same three conditions `canSubmit` tests, said out loud — the
+ * asks for it. Same conditions `canSubmit` tests, said out loud — the
  * address is deliberately absent, since it never blocks a save.
  */
 const blockers = computed(() => {
@@ -509,6 +518,7 @@ const blockers = computed(() => {
     if (!form.customer_id) missing.push(t('returning_customer'))
     if (!form.invoice_id) missing.push(t('linked_original_invoice'))
     if (!selectedItemsCount.value) missing.push(t('returned_products'))
+    if (!form.warehouse_id) missing.push(t('destination_warehouse'))
 
     return missing
 })
@@ -558,16 +568,15 @@ const onCustomerFocus = () => {
 /**
  * Loads the invoices a return can be raised against.
  *
- * RMA is filed against invoices, not sales orders — this business creates
- * invoices directly and the sales-orders table is never populated.
- * RmaController::store() rejects any invoice that is not confirmed/delivered
- * and any invoice that does not belong to the chosen customer, so both
+ * RMA is filed against invoices — an order's own invoice, or a direct one.
+ * RmaController::store() rejects any invoice that is not returnable
+ * (Invoice::scopeReturnable) or not the chosen customer's, so both
  * constraints are pushed to the API.
  */
 const loadInvoices = async (customerId = null) => {
     invoicesLoading.value = true
     try {
-        const params = { per_page: 200, status: RMA_ELIGIBLE_INVOICE_STATUSES }
+        const params = { per_page: 200, returnable: 1, lean: 1 }
         if (customerId) params.customer_id = customerId
 
         const response = await api.get('/invoices', { params })
@@ -602,7 +611,7 @@ const onCustomerChange = async () => {
 
 const loadCustomerStats = async (customerId) => {
     // invoices.value already holds exactly this customer's return-eligible
-    // invoices (loadInvoices() requested { customer_id, status: RMA_ELIGIBLE_INVOICE_STATUSES }).
+    // invoices (loadInvoices() requested { customer_id, returnable }).
     const availableOrders = invoices.value.length
 
     // The customer's real invoice history, across every status — a separate,
@@ -657,7 +666,7 @@ const loadInvoiceItems = async () => {
             return
         }
 
-        if (!RMA_ELIGIBLE_INVOICE_STATUSES.includes(invoice.status)) {
+        if (!invoices.value.some((i) => i.id === invoice.id)) {
             ElMessage.warning(t('invoice_must_be_delivered'))
             invoiceItems.value = []
             return
@@ -710,6 +719,7 @@ const loadRma = async () => {
 
         form.customer_id = rma.customer_id
         form.invoice_id = rma.invoice_id
+        form.warehouse_id = rma.warehouse_id
         form.reason = rma.reason || 'defective'
         form.return_type = rma.type || 'refund'
         form.reason_description = rma.reason_description || ''
@@ -812,6 +822,7 @@ const submitForm = async () => {
         const data = {
             customer_id: form.customer_id,
             invoice_id: form.invoice_id,
+            warehouse_id: form.warehouse_id,
             reason: form.reason,
             type: form.return_type,
             reason_description: form.reason_description,
@@ -850,9 +861,23 @@ const submitForm = async () => {
 
 const formatCurrency = (val) => formatMoney(val)
 
+/** Warehouses the returned goods can be booked back into. */
+const warehouses = ref([])
+const loadWarehouses = async () => {
+    try {
+        const response = await api.get('/admin/wms/warehouses', { params: { per_page: 100 } })
+        const list = response.data?.data ?? response.data ?? []
+        warehouses.value = (Array.isArray(list) ? list : []).filter((w) => w.is_active !== false)
+    } catch (error) {
+        console.error('Failed to load warehouses:', error)
+        warehouses.value = []
+    }
+}
+
 onMounted(async () => {
     // Customers and invoices are both remote-searched (see onCustomerFocus /
-    // onCustomerChange); there is nothing useful to preload here.
+    // onCustomerChange); only the short warehouse list is preloaded.
+    loadWarehouses()
     if (isEdit.value) {
         await loadRma()
     }

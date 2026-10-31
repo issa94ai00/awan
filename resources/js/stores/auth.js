@@ -59,6 +59,15 @@ export const useAuthStore = defineStore('auth', () => {
     const customerStatementsOnly = computed(() => hasRole('sells')
         && !(canAccessFeature('accounting') && can('accounting.party_statement.view')));
 
+    // A sales rep (User::isSalesRep) raises sales orders and nothing past
+    // that: no confirming or moving them, no purchase orders. The API refuses
+    // those either way; the screens hide them.
+    const isSalesRep = computed(() => !!user.value?.is_sales_rep);
+
+    // The settings screen is closed to sales reps; granting them settings.view
+    // on the Roles screen opens it again.
+    const canOpenSettings = computed(() => !hasRole('sells') || can('settings.view'));
+
     async function init() {
         if (!token.value) return;
         try {
@@ -142,7 +151,7 @@ export const useAuthStore = defineStore('auth', () => {
     return {
         user, token, loading, error, isAuthenticated,
         features, isSuperAdmin, isMaster, canAccessFeature,
-        permissions, roleNames, can, hasRole, canEditProducts, customerStatementsOnly,
+        permissions, roleNames, can, hasRole, canEditProducts, customerStatementsOnly, canOpenSettings, isSalesRep,
         init, fetchUser, refreshUser, login, logout,
     };
 });

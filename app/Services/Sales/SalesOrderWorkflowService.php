@@ -6,13 +6,16 @@ use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\JournalEntryHeader;
 use App\Models\PickingList;
+use App\Models\PickingListItem;
 use App\Models\Product;
 use App\Models\PurchaseOrderItem;
+use App\Models\RmaRequest;
 use App\Models\ProductUnit;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\SalesOrderItemAllocation;
+use App\Models\SalesOrderRevision;
 use App\Models\SalesOrderStatusHistory;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
@@ -23,6 +26,7 @@ use App\Services\PickingService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
@@ -67,6 +71,18 @@ class SalesOrderWorkflowService
 
     /** Stages at which the goods have already physically left the warehouse. */
     private const SHIPPED_STAGES = [SalesOrder::STATUS_SHIPPED, SalesOrder::STATUS_DELIVERED];
+
+    /**
+     * Stages whose lines are rewritten through amendLines, moving the stock and
+     * the invoice with them. Delivered is a manager's correction only — the
+     * controller keeps sales reps to the stages before it.
+     */
+    public const AMENDABLE_STAGES = [
+        SalesOrder::STATUS_CONFIRMED,
+        SalesOrder::STATUS_PROCESSING,
+        SalesOrder::STATUS_SHIPPED,
+        SalesOrder::STATUS_DELIVERED,
+    ];
 
     /** Stages at which stock is held for the order but has not shipped. */
     private const RESERVED_STAGES = [SalesOrder::STATUS_CONFIRMED, SalesOrder::STATUS_PROCESSING];
@@ -390,6 +406,38 @@ class SalesOrderWorkflowService
             throw new RuntimeException($e->getMessage());
         }
 
+        $issued = $this->issueOrderGoods($order, $warehouseId, 'so_cogs:'.$order->id, consumeReserved: true);
+        $movements = $issued['movements'];
+        $cost = $issued['cost'];
+
+        $order->shipped_at = now();
+
+        if (! empty($options['tracking_number'])) {
+            $order->tracking_number = $options['tracking_number'];
+        }
+        if (! empty($options['carrier'])) {
+            $order->carrier = $options['carrier'];
+        }
+
+        $this->syncInvoiceStatus($order, Invoice::STATUS_SHIPPED);
+
+        return $pickingEffects + [
+            'stock_movements' => $movements,
+            'cost_of_goods_sold' => round($cost, 5),
+        ];
+    }
+
+    /**
+     * Moves an order's goods out from wherever each line is planned to come
+     * from and posts their cost under the given key. Shared by shipping and by
+     * amending an order that has already shipped, which passes its own
+     * movement prefix: the keys are per product and warehouse, and the
+     * shipment's would make the amendment's issue look like a repeat.
+     *
+     * @return array{movements: list<int>, cost: float}
+     */
+    private function issueOrderGoods(SalesOrder $order, int $warehouseId, string $postingKey, bool $consumeReserved, string $movementPrefix = 'SO'): array
+    {
         $order->loadMissing('items.allocations');
 
         // Flattened to (product, warehouse, quantity) lines so the shared issue
@@ -420,7 +468,7 @@ class SalesOrderWorkflowService
                     // Keyed per source as well as per product: a split line
                     // writes one movement per warehouse, and sharing a key would
                     // make the second look like a repeat of the first.
-                    'movement_key' => $this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId),
+                    'movement_key' => $this->lineMovementKey($movementPrefix, $order, $item, (int) $sourceWarehouseId),
                 ];
             }
         }
@@ -430,14 +478,15 @@ class SalesOrderWorkflowService
         // drifting into reporting different margins for the same event.
         $issued = $this->goods->issueAndPostCost(
             lines: $lines,
-            postingKey: 'so_cogs:'.$order->id,
+            postingKey: $postingKey,
             label: 'طلب بيع '.$order->order_number,
             reference: $order,
             currency: $order->currency,
             reason: 'إخراج مخزون لطلب بيع رقم '.$order->order_number,
             // The units were held at confirmation; shipping spends that hold
-            // rather than demanding fresh availability.
-            consumeReserved: true,
+            // rather than demanding fresh availability. An amendment of a
+            // shipped order holds nothing and takes from what is free.
+            consumeReserved: $consumeReserved,
             movementReference: 'sales_order',
             movementSource: $order->id,
         );
@@ -445,7 +494,7 @@ class SalesOrderWorkflowService
         $movements = $issued['movements'];
         $cost = $issued['cost'];
 
-        $this->recordLineCosts($order, $sourcesByItem, $issued['cost_by_key'] ?? []);
+        $this->recordLineCosts($order, $sourcesByItem, $issued['cost_by_key'] ?? [], $movementPrefix);
 
         // Warehouse stock moved per product above; the variant's own count
         // follows so the store and the next order see the size that left.
@@ -473,21 +522,7 @@ class SalesOrderWorkflowService
             }
         }
 
-        $order->shipped_at = now();
-
-        if (! empty($options['tracking_number'])) {
-            $order->tracking_number = $options['tracking_number'];
-        }
-        if (! empty($options['carrier'])) {
-            $order->carrier = $options['carrier'];
-        }
-
-        $this->syncInvoiceStatus($order, Invoice::STATUS_SHIPPED);
-
-        return $pickingEffects + [
-            'stock_movements' => $movements,
-            'cost_of_goods_sold' => round($cost, 5),
-        ];
+        return ['movements' => $movements, 'cost' => $cost];
     }
 
     /* ------------------------------------------------------------------ *
@@ -1172,7 +1207,7 @@ class SalesOrderWorkflowService
      * @param  array<int,array<int,int>>  $sourcesByItem  item id => [warehouse id => base units]
      * @param  array<string,array{quantity:int, cost:float}>  $costByKey
      */
-    private function recordLineCosts(SalesOrder $order, array $sourcesByItem, array $costByKey): void
+    private function recordLineCosts(SalesOrder $order, array $sourcesByItem, array $costByKey, string $movementPrefix = 'SO'): void
     {
         if ($costByKey === []) {
             return;
@@ -1184,7 +1219,7 @@ class SalesOrderWorkflowService
             $shipped = 0;
 
             foreach ($sources as $sourceWarehouseId => $quantity) {
-                $issued = $costByKey[$this->lineMovementKey('SO', $order, $item, (int) $sourceWarehouseId)] ?? null;
+                $issued = $costByKey[$this->lineMovementKey($movementPrefix, $order, $item, (int) $sourceWarehouseId)] ?? null;
 
                 if ($issued === null) {
                     continue;
@@ -1382,7 +1417,7 @@ class SalesOrderWorkflowService
                 }
             }
 
-            $this->ledger->reverseFor('so_cogs:'.$order->id);
+            $this->reverseLive('so_cogs:'.$order->id);
             $effects['stock_returned'] = true;
             $effects['returned_by_warehouse'] = $returned;
         } elseif (in_array($from, self::RESERVED_STAGES, true)) {
@@ -1401,7 +1436,7 @@ class SalesOrderWorkflowService
         // not a timestamp — is what says whether there is anything to reverse.
         $invoice = $this->existingInvoice($order);
         if ($invoice) {
-            $this->ledger->reverseFor('invoice:'.$invoice->id);
+            $this->reverseLive('invoice:'.$invoice->id);
             $invoice->update(['status' => Invoice::STATUS_CANCELLED, 'paid_at' => null]);
             $effects['invoice_cancelled'] = $invoice->invoice_number;
 
@@ -1410,6 +1445,151 @@ class SalesOrderWorkflowService
         }
 
         return $effects;
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Amending a confirmed order
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Rewrites the lines of an order that is past confirmation but not yet
+     * delivered, and moves everything that stands behind them: the stock hold
+     * (or, once shipped, the stock itself and its cost), the picking lists,
+     * and the invoice with its entry and the customer's balance.
+     *
+     * The old lines are undone the way a cancellation would undo them and the
+     * new ones applied the way their stage would apply them, so an amended
+     * order ends up exactly where it would be had it been raised that way.
+     * The caller has already written the order's new totals.
+     *
+     * @param  list<array<string,mixed>>  $lineItems  rows for sales_order_items
+     */
+    public function amendLines(SalesOrder $order, array $lineItems): array
+    {
+        $status = $order->status;
+        if (! in_array($status, self::AMENDABLE_STAGES, true)) {
+            throw new RuntimeException('لا يمكن تعديل بنود طلب في مرحلة "'.$this->statusLabel($status).'".');
+        }
+        if ($lineItems === []) {
+            throw new RuntimeException('لا يمكن أن تخلو الطلبية من البنود. ألغِ الطلب بدلاً من ذلك.');
+        }
+
+        $invoice = $this->existingInvoice($order);
+        if ($invoice) {
+            if ($invoice->creditNotes()->where('status', '!=', 'cancelled')->exists()
+                || RmaRequest::where('invoice_id', $invoice->id)->whereNotIn('status', [RmaRequest::STATUS_CANCELLED, RmaRequest::STATUS_REJECTED])->exists()) {
+                throw new RuntimeException('على فاتورة هذا الطلب مرتجع أو إشعار دائن، فلا يمكن تعديل بنوده.');
+            }
+            if ((float) $order->total < (float) $invoice->paid_amount - 0.009) {
+                throw new RuntimeException('إجمالي الطلبية بعد التعديل أقل مما دفعه العميل على فاتورتها.');
+            }
+        }
+
+        // A delivered order is undone and re-issued the way a shipped one is:
+        // either way the goods have left the shelf.
+        $shipped = in_array($status, self::SHIPPED_STAGES, true);
+        $warehouseId = (int) $order->fulfillment_warehouse_id;
+        // Keeps this amendment's movements and entry apart from the shipment's
+        // and from any earlier amendment's.
+        $tag = now()->format('YmdHisu');
+        $effects = ['amended' => true];
+
+        $order->load('items.product', 'items.allocations');
+
+        // Undo the old lines.
+        if ($shipped) {
+            foreach ($order->items as $item) {
+                foreach ($this->shipmentSourcesFor($item, $warehouseId) as $sourceId => $quantity) {
+                    if ($quantity <= 0) {
+                        continue;
+                    }
+
+                    $this->inventory->receive((int) $item->product_id, (int) $quantity, (int) $sourceId, [
+                        'key' => $this->lineMovementKey('SO-AMEND-'.$tag, $order, $item, (int) $sourceId),
+                        'reference' => 'sales_order_amended',
+                        'source' => $order->id,
+                        'reason' => 'إرجاع مخزون لتعديل بنود طلب بيع رقم '.$order->order_number,
+                        'unit_cost' => (float) ($item->product?->cost_price ?? 0),
+                    ]);
+                    ProductVariant::adjustStockCount($item->product_variant_id, (int) $quantity);
+                }
+            }
+            $this->reverseLive('so_cogs:'.$order->id);
+        } else {
+            $this->releaseAll($order, $warehouseId);
+            // The old instruction no longer matches the order; a fresh one is
+            // raised below. A finished list is stood down too, or the new
+            // lines would be shipped against the old count.
+            PickingList::where('sales_order_id', $order->id)
+                ->where('status', '!=', PickingList::STATUS_CANCELLED)
+                ->get()
+                ->each->cancel();
+        }
+
+        // Replace the lines. Picking records keep the product they name but
+        // let go of the line, which is about to be removed.
+        $oldIds = $order->items->pluck('id');
+        PickingListItem::whereIn('sales_order_item_id', $oldIds)->update(['sales_order_item_id' => null]);
+        $order->items()->delete();
+        foreach ($lineItems as $row) {
+            $order->items()->create($row);
+        }
+        $order->unsetRelation('items');
+        $order->load('items.product', 'items.allocations');
+
+        // Apply the new lines at the order's stage.
+        $routing = $this->planSourcing($order);
+        $warehouseId = (int) $routing['warehouse_id'];
+        $order->fulfillment_warehouse_id = $warehouseId;
+        $this->assertCanCover($order, $warehouseId);
+
+        if ($shipped) {
+            $issued = $this->issueOrderGoods(
+                $order,
+                $warehouseId,
+                'so_cogs:'.$order->id.':amended:'.$tag,
+                consumeReserved: false,
+                movementPrefix: 'SO-AMEND-ISSUE-'.$tag,
+            );
+            $effects['stock_movements'] = $issued['movements'];
+            $effects['cost_of_goods_sold'] = round($issued['cost'], 5);
+        } else {
+            $this->reserveAll($order, $warehouseId);
+            try {
+                $lists = $this->picking->createPickingListsForPlan($order, $this->pickingPlanFor($order, $warehouseId));
+                $effects['picking_lists'] = collect($lists)->map(fn ($list) => $list->list_number)->values()->all();
+            } catch (\Throwable $e) {
+                $effects['picking_list_error'] = $e->getMessage();
+                report($e);
+            }
+        }
+        $effects['routing'] = $routing;
+
+        if ($invoice) {
+            $invoice->items()->delete();
+            $this->writeInvoiceLines($invoice, $order);
+            $effects['customer_balance_change'] = $this->restateInvoice($order, $invoice, 'بعد تعديل بنود الطلب');
+            $effects['invoice_number'] = $invoice->invoice_number;
+        }
+
+        $order->save();
+        $this->recordHistory($order, $status, $status, 'تعديل بنود الطلب', $effects);
+
+        return $effects;
+    }
+
+    /**
+     * Reverses every live entry posted under a key — the original and any
+     * restatement or amendment filed beneath it (`key:…`).
+     */
+    private function reverseLive(string $key): void
+    {
+        JournalEntryHeader::where(fn ($q) => $q->where('posting_key', $key)->orWhere('posting_key', 'like', $key.':%'))
+            ->whereNull('reversal_of_id')
+            ->where('status', '!=', 'reversed')
+            ->orderBy('id')
+            ->get()
+            ->each(fn (JournalEntryHeader $entry) => $this->ledger->reverseEntry($entry));
     }
 
     /* ------------------------------------------------------------------ *
@@ -1563,6 +1743,19 @@ class SalesOrderWorkflowService
             'currency' => $order->currency ?: base_currency_code(),
         ]);
 
+        $this->writeInvoiceLines($invoice, $order);
+
+        // Link any expenses recorded on this sales order to the generated invoice
+        Expense::where('sales_order_id', $order->id)
+            ->whereNull('invoice_id')
+            ->update(['invoice_id' => $invoice->id]);
+
+        return $invoice;
+    }
+
+    /** Writes the invoice's lines from the order's, one for one. */
+    private function writeInvoiceLines(Invoice $invoice, SalesOrder $order): void
+    {
         foreach ($order->items as $item) {
             $warehouseId = $item->allocations()->orderByDesc('quantity')->value('warehouse_id')
                 ?? $order->fulfillment_warehouse_id;
@@ -1591,13 +1784,6 @@ class SalesOrderWorkflowService
                 'unit_multiplier' => $item->unit_multiplier ?? 1,
             ]);
         }
-
-        // Link any expenses recorded on this sales order to the generated invoice
-        Expense::where('sales_order_id', $order->id)
-            ->whereNull('invoice_id')
-            ->update(['invoice_id' => $invoice->id]);
-
-        return $invoice;
     }
 
     /** The order's live invoice, if it has one. A cancelled one does not count. */
@@ -1614,11 +1800,13 @@ class SalesOrderWorkflowService
      *
      * @return float how much the customer's balance moved
      */
-    private function restateInvoice(SalesOrder $order, Invoice $invoice): float
+    private function restateInvoice(SalesOrder $order, Invoice $invoice, string $reason = 'بعد تغيير نوع التنفيذ'): float
     {
         $previousTotal = (float) $invoice->total;
 
-        $this->ledger->reverseFor('invoice:'.$invoice->id);
+        // The original entry and any earlier restatement: reversing only the
+        // original left a previous restatement live beside the new one.
+        $this->reverseLive('invoice:'.$invoice->id);
 
         $invoice->update([
             'subtotal' => $order->subtotal,
@@ -1633,9 +1821,11 @@ class SalesOrderWorkflowService
         // original key is now attached to a reversed entry — so the restatement
         // needs a key of its own.
         $this->ledger->post(
-            key: 'invoice:'.$invoice->id.':restated:'.$order->updated_at?->getTimestamp(),
+            // Unique per restatement: two in the same second shared a key, and
+            // post() returned the first instead of writing the second.
+            key: 'invoice:'.$invoice->id.':restated:'.now()->format('YmdHisu'),
             date: now()->toDateString(),
-            description: 'إعادة إثبات فاتورة '.$invoice->invoice_number.' بعد تغيير نوع التنفيذ',
+            description: 'إعادة إثبات فاتورة '.$invoice->invoice_number.' '.$reason,
             lines: $this->invoiceLines($invoice),
             reference: $invoice,
             module: 'sales',
@@ -2423,6 +2613,80 @@ class SalesOrderWorkflowService
     /* ------------------------------------------------------------------ *
      * Stage history and follow-up
      * ------------------------------------------------------------------ */
+
+    /**
+     * Keeps the order as it stands as a revision, and moves the order on to the
+     * next revision number. Called before an edit past confirmation rewrites
+     * it, so the version the customer (and the warehouse) were working from is
+     * never lost. Returns null until the revisions table exists.
+     */
+    public function snapshotRevision(SalesOrder $order, ?string $note = null): ?SalesOrderRevision
+    {
+        if (! self::versioningReady()) {
+            return null;
+        }
+
+        $order->loadMissing('items.product', 'items.variant', 'items.productUnit', 'items.allocations');
+        $current = max(1, (int) $order->revision);
+
+        $header = collect($order->getAttributes())
+            ->only([
+                'order_number', 'customer_id', 'status', 'order_date', 'expected_delivery',
+                'fulfillment_type', 'fulfillment_warehouse_id', 'assigned_employee_id',
+                'subtotal', 'discount', 'discount_percent', 'tax', 'tax_percent',
+                'shipping_cost', 'total', 'shipping_address', 'notes',
+            ])
+            ->all();
+        $header['customer_name'] = $order->customer?->name;
+
+        $lines = $order->items->map(fn ($item) => [
+            'product_id' => (int) $item->product_id,
+            'product_name' => $item->product?->name_ar ?: ($item->product?->name_en ?: $item->description),
+            'product_sku' => $item->variant?->sku ?: $item->product?->sku,
+            'product_variant_id' => $item->product_variant_id,
+            'variant_name' => $item->variant
+                ? trim(implode(' ', array_filter([$item->variant->color, $item->variant->size, $item->variant->material]))) ?: null
+                : null,
+            'product_unit_id' => $item->product_unit_id,
+            'unit_name' => $item->unit_name ?: ($item->productUnit?->name_ar ?: $item->productUnit?->name),
+            'unit_multiplier' => (float) ($item->unit_multiplier ?: 1),
+            'quantity' => (float) $item->quantity,
+            'unit_price' => (float) $item->unit_price,
+            'discount' => (float) $item->discount,
+            'tax' => (float) $item->tax,
+            'total' => (float) ($item->total ?? ((float) $item->unit_price * (float) $item->quantity - (float) $item->discount + (float) $item->tax)),
+            'allocations' => $item->allocations->map(fn ($a) => [
+                'warehouse_id' => (int) $a->warehouse_id,
+                'quantity' => (int) $a->quantity,
+            ])->values()->all(),
+        ])->values()->all();
+
+        $revision = SalesOrderRevision::create([
+            'sales_order_id' => $order->id,
+            'revision' => $current,
+            'status' => (string) $order->status,
+            'subtotal' => (float) $order->subtotal,
+            'discount' => (float) $order->discount,
+            'tax' => (float) $order->tax,
+            'shipping_cost' => (float) $order->shipping_cost,
+            'total' => (float) $order->total,
+            'snapshot' => ['header' => $header, 'items' => $lines],
+            'note' => $note !== null && trim($note) !== '' ? trim($note) : null,
+            'replaced_by' => auth()->id(),
+        ]);
+
+        $order->forceFill(['revision' => $current + 1])->saveQuietly();
+
+        return $revision;
+    }
+
+    /** Whether the revisions migration has run on this database. */
+    public static function versioningReady(): bool
+    {
+        static $ready = null;
+
+        return $ready ??= Schema::hasTable('sales_order_revisions');
+    }
 
     /** Appends one row to the order's stage history. Never updates an existing one. */
     private function recordHistory(SalesOrder $order, ?string $from, string $to, ?string $note, array $effects): void
