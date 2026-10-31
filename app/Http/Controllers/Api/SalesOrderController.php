@@ -320,6 +320,18 @@ class SalesOrderController extends Controller
         ];
     }
 
+    /** Arabic messages for the rules an order form most often trips. */
+    private function validationMessages(): array
+    {
+        return [
+            'expected_delivery.after_or_equal' => 'تاريخ التسليم المتوقع لا يمكن أن يسبق تاريخ الطلب.',
+            'items.required' => 'أضف صنفاً واحداً على الأقل.',
+            'items.*.quantity.integer' => 'الكمية يجب أن تكون عدداً صحيحاً.',
+            'items.*.quantity.min' => 'الكمية يجب أن تكون 1 على الأقل.',
+            'items.*.unit_price.min' => 'سعر الوحدة لا يمكن أن يكون سالباً.',
+        ];
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -332,7 +344,8 @@ class SalesOrderController extends Controller
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
             'order_date' => 'nullable|date',
-            'expected_delivery' => 'nullable|date|after:order_date',
+            // Same-day delivery is allowed (the form's "today" chip).
+            'expected_delivery' => 'nullable|date|after_or_equal:order_date',
             'discount' => 'nullable|numeric|min:0',
             'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
@@ -360,7 +373,7 @@ class SalesOrderController extends Controller
             'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
             'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
             'expenses.*.notes' => 'nullable|string|max:1000',
-        ]);
+        ], $this->validationMessages());
 
         // A rep raises orders for their own customers only.
         $this->ensureServesCustomer($request, (int) $validated['customer_id']);
@@ -552,6 +565,10 @@ class SalesOrderController extends Controller
             ], 422);
         }
 
+        $deliveryAnchor = $request->filled('order_date') || ! $salesOrder->order_date
+            ? 'after_or_equal:order_date'
+            : 'after_or_equal:'.$salesOrder->order_date->toDateString();
+
         $validated = $request->validate([
             // Header fields are optional so item-only saves need not restate
             // customer/shipping/notes — missing keys keep the current values.
@@ -560,7 +577,9 @@ class SalesOrderController extends Controller
             'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
             'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
             'order_date' => 'nullable|date',
-            'expected_delivery' => 'nullable|date|after:order_date',
+            // Same-day delivery is allowed (the form's "today" chip). A save
+            // that leaves order_date out is checked against the stored date.
+            'expected_delivery' => ['nullable', 'date', $deliveryAnchor],
             'discount' => 'nullable|numeric|min:0',
             'discount_percent' => 'nullable|numeric|min:0|max:100',
             'tax' => 'nullable|numeric|min:0',
@@ -588,7 +607,7 @@ class SalesOrderController extends Controller
             'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
             'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
             'expenses.*.notes' => 'nullable|string|max:1000',
-        ]);
+        ], $this->validationMessages());
 
         // A rep raises orders for their own customers only; an order already
         // on someone else's customer can still be edited if it stays there.

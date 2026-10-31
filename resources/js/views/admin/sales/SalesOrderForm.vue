@@ -1917,7 +1917,8 @@ const issues = computed(() => {
         list.push({ key: 'items', target: 'items', text: t('qt_need_lines') });
     }
     form.items.forEach((line, i) => {
-        if (toNum(line.quantity) < 1) {
+        const qty = toNum(line.quantity);
+        if (qty < 1 || !Number.isInteger(qty)) {
             list.push({
                 key: `items.${i}`,
                 target: `line-${i}`,
