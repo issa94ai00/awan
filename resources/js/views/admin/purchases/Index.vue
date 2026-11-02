@@ -8,8 +8,11 @@
                 <p>{{ $t('view_purchase_orders_suppliers_and') }}</p>
             </div>
             <div class="hero-actions">
-                <el-button type="success" @click="goToBladeDashboard" class="control-btn">
-                    <i class="fas fa-external-link-alt"></i> {{ $t('full_control_panel') }}
+                <el-button type="primary" @click="router.push('/admin/purchases/orders')" class="control-btn">
+                    <i class="fas fa-plus"></i> {{ $t('new_purchase_order') || 'طلب شراء جديد' }}
+                </el-button>
+                <el-button type="success" plain @click="router.push('/admin/purchases/suppliers')" class="control-btn">
+                    <i class="fas fa-user-tie"></i> {{ $t('suppliers') || 'الموردين' }}
                 </el-button>
                 <el-button type="primary" @click="refreshData" class="control-btn" plain>
                     <i class="fas fa-sync"></i> {{ $t('data_update') }}

@@ -277,6 +277,7 @@ const menu = [
                 key: 'sales', labelKey: 'sales', icon: ShoppingCart,
                 children: [
                     { labelKey: 'overview', path: '/admin/sales' },
+                    { labelKey: 'pos', path: '/admin/pos' },
                     { labelKey: 'invoices', path: '/admin/sales/invoices' },
                     { labelKey: 'create_invoice', path: '/admin/sales/invoices/create' },
                     { labelKey: 'customers', path: '/admin/sales/customers' },

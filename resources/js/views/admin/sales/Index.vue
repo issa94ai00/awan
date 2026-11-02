@@ -9,6 +9,15 @@
                 <el-button :icon="Refresh" :loading="loading" @click="refreshSummary">
                     {{ $t('data_update') }}
                 </el-button>
+                <el-button type="success" plain @click="router.push('/admin/pos')">
+                    <i class="fas fa-cash-register mr-1"></i> {{ $t('point_of_sale') || 'نقطة البيع' }}
+                </el-button>
+                <el-button type="primary" plain @click="router.push('/admin/sales/invoices/create')">
+                    <i class="fas fa-file-invoice mr-1"></i> {{ $t('create_invoice') || 'فاتورة جديدة' }}
+                </el-button>
+                <el-button type="primary" @click="router.push('/admin/sales/sales-orders/create')">
+                    <i class="fas fa-plus mr-1"></i> {{ $t('new_sales_order') || 'طلب بيع جديد' }}
+                </el-button>
             </template>
         </AdminPageHeader>
 
