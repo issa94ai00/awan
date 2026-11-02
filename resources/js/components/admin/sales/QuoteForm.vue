@@ -775,18 +775,18 @@
                                 <button
                                     type="button"
                                     class="mode-btn"
-                                    :class="{ 'is-active': discountMode === 'amount' }"
-                                    @click="setDiscountMode('amount')"
-                                >
-                                    {{ $t('amount') }}
-                                </button>
-                                <button
-                                    type="button"
-                                    class="mode-btn"
                                     :class="{ 'is-active': discountMode === 'percent' }"
                                     @click="setDiscountMode('percent')"
                                 >
                                     %
+                                </button>
+                                <button
+                                    type="button"
+                                    class="mode-btn"
+                                    :class="{ 'is-active': discountMode === 'amount' }"
+                                    @click="setDiscountMode('amount')"
+                                >
+                                    {{ $t('amount') }}
                                 </button>
                             </div>
                         </div>
@@ -814,9 +814,26 @@
                                 :class="{ 'is-invalid': discountTooBig || errors.discount }"
                             />
                             <span v-if="discountMode === 'percent'" class="discount-calc-preview">
-                                = {{ formatCurrency(form.discount) }}
+                                = − {{ formatCurrency(form.discount) }}
+                            </span>
+                            <span v-else-if="discountMode === 'amount' && Number(form.discount) > 0 && subtotal > 0" class="discount-calc-preview">
+                                ≈ {{ formatPercent((Number(form.discount) / subtotal) * 100, 2) }}
                             </span>
                         </div>
+                    </div>
+
+                    <!-- Discount Quick Presets (% mode) -->
+                    <div v-if="discountMode === 'percent'" class="discount-presets-row">
+                        <button
+                            v-for="p in DISCOUNT_PRESETS"
+                            :key="p"
+                            type="button"
+                            class="preset-chip"
+                            :class="{ 'is-active': Number(discountRate) === p }"
+                            @click.prevent="applyDiscountPreset(p)"
+                        >
+                            {{ p }}%
+                        </button>
                     </div>
 
                     <!-- Extra Tax with Quick 15% VAT Action -->
@@ -914,7 +931,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { posApi } from '@/api/pos';
@@ -923,6 +940,7 @@ import api from '@/api/index';
 import { useQuotesStore } from '@/stores/quotes';
 import { useAuthStore } from '@/stores/auth';
 import { apiErrorMessage, formatCurrency, localIsoDate, statusLabel } from '@/utils/sales';
+import { formatPercent } from '@/utils/numberFormat';
 import { tafqeet } from '@/utils/tafqeet';
 import { optionKey, variantLabelOf } from '@/utils/productPick';
 import { resolveImageUrl } from '@/utils/productImages';
@@ -1457,8 +1475,20 @@ const quoteTotalInWords = computed(() => {
 });
 
 // Discount Mode Toggle
-const discountMode = ref('amount'); // 'amount' | 'percent'
+const discountMode = ref('percent'); // 'percent' | 'amount'
 const discountRate = ref(0);
+
+const DISCOUNT_PRESETS = [5, 10, 15, 20];
+const applyDiscountPreset = (pct) => {
+    discountMode.value = 'percent';
+    if (Number(discountRate.value) === pct) {
+        discountRate.value = 0;
+        form.discount = 0;
+    } else {
+        discountRate.value = pct;
+        onDiscountRateChange();
+    }
+};
 
 const setDiscountMode = (mode) => {
     discountMode.value = mode;
@@ -1473,6 +1503,12 @@ const onDiscountRateChange = () => {
         form.discount = round2((subtotal.value * rate) / 100);
     }
 };
+
+watch(subtotal, () => {
+    if (discountMode.value === 'percent' && discountRate.value > 0) {
+        onDiscountRateChange();
+    }
+});
 
 const applyVat15 = () => {
     const net = Math.max(0, subtotal.value - toNum(form.discount));
@@ -1521,7 +1557,7 @@ const reset = () => {
     justAddedCustomerId.value = null;
     Object.keys(errors).forEach((k) => delete errors[k]);
     saving.value = null;
-    discountMode.value = 'amount';
+    discountMode.value = 'percent';
     discountRate.value = 0;
     quickSearchQuery.value = '';
     selectedCategoryId.value = null;
@@ -1532,6 +1568,9 @@ const reset = () => {
 
     const q = props.quote;
     if (q) {
+        if (toNum(q.discount) > 0 && toNum(q.subtotal) > 0) {
+            discountRate.value = round2((toNum(q.discount) / toNum(q.subtotal)) * 100);
+        }
         Object.assign(form, {
             customer_id: q.customer_id,
             valid_until: q.valid_until && String(q.valid_until).slice(0, 10) >= localIsoDate()
@@ -3180,6 +3219,39 @@ onUnmounted(() => {
     font-size: 0.75rem;
     color: #2563eb;
     white-space: nowrap;
+}
+
+.discount-presets-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+    margin-bottom: 0.35rem;
+}
+
+.preset-chip {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.38rem;
+    border-radius: 4px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    transition: all 0.15s ease;
+}
+
+.preset-chip:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.preset-chip.is-active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #2563eb;
+    font-weight: 700;
 }
 
 .vat-quick-chip {
