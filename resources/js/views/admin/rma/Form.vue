@@ -880,6 +880,49 @@ onMounted(async () => {
     loadWarehouses()
     if (isEdit.value) {
         await loadRma()
+    } else {
+        const queryCid = route.query.customer_id ? parseInt(route.query.customer_id) : null
+        const queryInvId = route.query.invoice_id ? parseInt(route.query.invoice_id) : null
+
+        if (queryCid) {
+            try {
+                const res = await api.get(`/customers/${queryCid}`)
+                const cust = res.data?.data || res.data
+                if (cust) {
+                    customers.value = [cust]
+                    form.customer_id = cust.id
+                    selectedCustomer.value = cust
+                    await loadInvoices(cust.id)
+                    await loadCustomerStats(cust.id)
+                    if (queryInvId) {
+                        form.invoice_id = queryInvId
+                        await loadInvoiceItems()
+                    }
+                }
+            } catch {
+                /* ignore */
+            }
+        } else if (queryInvId) {
+            try {
+                const res = await api.get(`/invoices/${queryInvId}`)
+                const inv = res.data?.data || res.data
+                if (inv && inv.customer_id) {
+                    const custRes = await api.get(`/customers/${inv.customer_id}`)
+                    const cust = custRes.data?.data || custRes.data
+                    if (cust) {
+                        customers.value = [cust]
+                        form.customer_id = cust.id
+                        selectedCustomer.value = cust
+                        await loadInvoices(cust.id)
+                        await loadCustomerStats(cust.id)
+                        form.invoice_id = queryInvId
+                        await loadInvoiceItems()
+                    }
+                }
+            } catch {
+                /* ignore */
+            }
+        }
     }
 })
 </script>

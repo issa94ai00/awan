@@ -341,6 +341,9 @@
                                         <el-dropdown-item command="payments">
                                             <i class="fas fa-receipt"></i> {{ $t('inv_view_payments') }}
                                         </el-dropdown-item>
+                                        <el-dropdown-item v-if="row.status !== 'cancelled'" command="rma">
+                                            <i class="fas fa-rotate-left"></i> {{ $t('rma_create') || 'إنشاء طلب إرجاع (RMA)' }}
+                                        </el-dropdown-item>
                                         <el-dropdown-item v-if="canCancel(row)" command="cancel" divided class="danger-item">
                                             <i class="fas fa-ban"></i> {{ $t('inv_cancel') }}
                                         </el-dropdown-item>
@@ -1164,6 +1167,7 @@ const runCommand = (invoice, command) => {
     if (command === 'open') return openInvoice(invoice);
     if (command === 'order') return goToOrder(invoice.sales_order);
     if (command === 'payments') return router.push({ path: '/admin/sales/payments', query: { search: invoice.invoice_number } });
+    if (command === 'rma') return router.push({ path: '/admin/rma/create', query: { invoice_id: invoice.id, customer_id: invoice.customer_id } });
     if (command === 'cancel') return cancelInvoice(invoice);
     if (command === 'delete') return removeInvoice(invoice);
     return null;
