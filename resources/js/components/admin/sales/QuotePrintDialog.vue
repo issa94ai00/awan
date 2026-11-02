@@ -302,7 +302,10 @@
                                                 <td class="val" dir="ltr">{{ formatCurrency(quote.subtotal) }}</td>
                                             </tr>
                                             <tr v-if="toNum(quote.discount) > 0">
-                                                <td>{{ $t('qt_extra_discount') }}:</td>
+                                                <td>
+                                                    {{ $t('qt_extra_discount') }}
+                                                    <span v-if="quoteDiscountPercent">({{ quoteDiscountPercent }}%)</span>:
+                                                </td>
                                                 <td class="val discount-val" dir="ltr">− {{ formatCurrency(quote.discount) }}</td>
                                             </tr>
                                             <tr v-if="toNum(quote.tax) > 0">
@@ -476,6 +479,19 @@ const quantitySummary = computed(() => {
 });
 const hasLineDiscount = computed(() => items.value.some((item) => toNum(item.discount)));
 const hasLineTax = computed(() => items.value.some((item) => toNum(item.tax)));
+
+const quoteDiscountPercent = computed(() => {
+    if (!props.quote) return null;
+    if (props.quote.discount_percent != null && Number(props.quote.discount_percent) > 0) {
+        return Number(props.quote.discount_percent);
+    }
+    const sub = toNum(props.quote.subtotal);
+    const disc = toNum(props.quote.discount);
+    if (sub > 0 && disc > 0) {
+        return Math.round((disc / sub) * 1000) / 10;
+    }
+    return null;
+});
 
 const itemName = (item) => (lang.value === 'en' && item.product?.name_en) || item.product?.name_ar || item.description || '—';
 

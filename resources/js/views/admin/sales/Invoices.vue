@@ -738,7 +738,10 @@
                                                     <td class="val" dir="ltr">{{ formatCurrency(printInvoiceData.subtotal ?? calcPrintSubtotal(printInvoiceData)) }}</td>
                                                 </tr>
                                                 <tr v-if="toNum(printInvoiceData.discount) > 0">
-                                                    <td>{{ $t('less_discount') || 'الخصم التجاري' }}:</td>
+                                                    <td>
+                                                        {{ $t('less_discount') || 'الخصم التجاري' }}
+                                                        <span v-if="printInvoiceDiscountPercent">({{ printInvoiceDiscountPercent }}%)</span>:
+                                                    </td>
                                                     <td class="val discount-val" dir="ltr">− {{ formatCurrency(printInvoiceData.discount) }}</td>
                                                 </tr>
                                                 <tr v-if="toNum(printInvoiceData.tax) > 0">
@@ -1260,6 +1263,19 @@ const toNum = (val) => {
 };
 
 const hasItemDiscount = computed(() => printInvoiceData.value?.items?.some((item) => toNum(item.discount) > 0) ?? false);
+
+const printInvoiceDiscountPercent = computed(() => {
+    if (!printInvoiceData.value) return null;
+    if (printInvoiceData.value.discount_percent != null && Number(printInvoiceData.value.discount_percent) > 0) {
+        return Number(printInvoiceData.value.discount_percent);
+    }
+    const sub = toNum(printInvoiceData.value.subtotal ?? calcPrintSubtotal(printInvoiceData.value));
+    const disc = toNum(printInvoiceData.value.discount);
+    if (sub > 0 && disc > 0) {
+        return Math.round((disc / sub) * 1000) / 10;
+    }
+    return null;
+});
 
 const hasItemTax = computed(() => printInvoiceData.value?.items?.some((item) => toNum(item.tax_amount) > 0) ?? false);
 
