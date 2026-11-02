@@ -114,6 +114,18 @@
                     </template>
                     <span v-else class="warning">{{ $t('no_exchange_rate_set') }}</span>
                 </div>
+                <div v-if="suggestedDue > 0" class="quick-amounts">
+                    <button type="button" class="quick-chip" @click="fillAmount(suggestedDue)">
+                        <i class="fas fa-check-double mr-1"></i>
+                        {{ $t('spay_fill_full_balance') || 'كامل المبلغ' }} ({{ formatCurrency(suggestedDue) }})
+                    </button>
+                    <button type="button" class="quick-chip" @click="fillAmount(suggestedDue / 2)">
+                        50% ({{ formatCurrency(suggestedDue / 2) }})
+                    </button>
+                    <button type="button" class="quick-chip" @click="fillAmount(suggestedDue / 4)">
+                        25% ({{ formatCurrency(suggestedDue / 4) }})
+                    </button>
+                </div>
             </el-form-item>
 
             <!-- POS-style method buttons -->
@@ -247,6 +259,19 @@ const dueAmount = computed(() => (selectedInvoice.value ? invoiceDue(selectedInv
 const totalOutstanding = computed(() =>
     outstandingInvoices.value.reduce((sum, inv) => sum + invoiceDue(inv), 0)
 );
+
+const suggestedDue = computed(() => {
+    if (dueAmount.value > 0) return dueAmount.value;
+    if (totalOutstanding.value > 0) return totalOutstanding.value;
+    return 0;
+});
+
+const fillAmount = (amt) => {
+    const num = Number(amt) || 0;
+    form.amount = isBaseCurrency.value
+        ? Number(num.toFixed(2))
+        : Number((num * (selectedRate.value || 1)).toFixed(amountPrecision.value));
+};
 
 const currencyList = computed(() => (
     settingsStore.currencies?.length ? settingsStore.currencies : [{ code: baseCode.value }]
@@ -396,6 +421,31 @@ const submit = async (full) => {
 .amount-row {
     display: flex;
     gap: 0.5rem;
+}
+
+.quick-amounts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.45rem;
+}
+
+.quick-chip {
+    border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+    background: #f8fafc;
+    color: #475569;
+    border-radius: 999px;
+    padding: 0.15rem 0.65rem;
+    font-size: 0.76rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+}
+
+.quick-chip:hover {
+    border-color: #93c5fd;
+    color: #2563eb;
+    background: #eff6ff;
 }
 
 .field-hint {
