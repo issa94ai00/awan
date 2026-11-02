@@ -314,6 +314,7 @@ class QuoteController extends Controller
                 'subtotal' => $quote->subtotal,
                 'tax' => $quote->tax,
                 'discount' => $quote->discount,
+                'discount_percent' => ($quote->discount > 0 && $quote->subtotal > 0) ? round(($quote->discount / $quote->subtotal) * 100, 2) : 0,
                 'total' => $quote->total,
                 'notes' => $quote->notes,
                 'created_by' => auth()->id(),

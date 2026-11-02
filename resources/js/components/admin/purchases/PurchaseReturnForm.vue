@@ -153,12 +153,21 @@
                                     :value="optionKey(product)"
                                     :disabled="isTaken(optionKey(product), line)"
                                 >
-                                    <div class="product-option">
-                                        <span class="product-option-name">
-                                            {{ baseName(product) }}
-                                            <VariantChip v-if="product.variant_id" :label="product.variant_label" />
-                                        </span>
-                                        <small v-if="product.sku" dir="ltr">{{ product.sku }}</small>
+                                    <div class="product-option-enhanced">
+                                        <EntityImage
+                                            :src="productImageSrc(product)"
+                                            type="product"
+                                            :size="32"
+                                            shape="square"
+                                            class="option-thumb"
+                                        />
+                                        <div class="option-details">
+                                            <span class="product-option-name">
+                                                {{ baseName(product) }}
+                                                <VariantChip v-if="product.variant_id" :label="product.variant_label" />
+                                            </span>
+                                            <small v-if="product.sku" dir="ltr">{{ product.sku }}</small>
+                                        </div>
                                     </div>
                                 </el-option>
                             </el-select>
@@ -228,15 +237,25 @@
                             <template v-else>—</template>
                         </span>
 
-                        <el-button
-                            circle
-                            text
-                            type="danger"
-                            :icon="Delete"
-                            :disabled="form.items.length <= 1"
-                            :aria-label="$t('delete')"
-                            @click="removeLine(index)"
-                        />
+                        <div class="line-actions">
+                            <el-button
+                                circle
+                                text
+                                type="primary"
+                                :icon="CopyDocument"
+                                :title="$t('duplicate')"
+                                @click="duplicateLine(index)"
+                            />
+                            <el-button
+                                circle
+                                text
+                                type="danger"
+                                :icon="Delete"
+                                :disabled="form.items.length <= 1"
+                                :aria-label="$t('delete')"
+                                @click="removeLine(index)"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -304,7 +323,7 @@
 import { computed, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Delete, Loading, Plus, WarningFilled } from '@element-plus/icons-vue';
+import { CopyDocument, Delete, Loading, Plus, WarningFilled } from '@element-plus/icons-vue';
 import { purchaseReturnsApi } from '@/api/purchaseReturns';
 import { purchaseReceiptsApi } from '@/api/purchaseReceipts';
 import { productsApi } from '@/api/products';
@@ -315,6 +334,8 @@ import { formatDecimal, moneyDecimals } from '@/utils/numberFormat';
 import { optionKey, pickKey, baseName, variantLabelOf, optionFromLine } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
+import EntityImage from '@/components/admin/EntityImage.vue';
+import { resolveImageUrl } from '@/utils/productImages';
 
 const props = defineProps({
     modelValue: { type: Boolean, default: false },
@@ -367,7 +388,13 @@ const saving = ref(false);
 let snapshot = '';
 const serialize = () => JSON.stringify({ ...form, items: form.items.map(({ product_id, product_variant_id, quantity, unit_price }) => ({ product_id, product_variant_id, quantity, unit_price })) });
 
-const drawerSize = computed(() => (window.innerWidth < 768 ? '100%' : window.innerWidth < 1280 ? '75%' : '62%'));
+const drawerSize = computed(() => (window.innerWidth < 768 ? '100%' : '80%'));
+
+const productImageSrc = (p) => {
+    if (!p) return '';
+    const raw = p.image_main || p.image || p.primary_image_url || p.image_url || '';
+    return resolveImageUrl(raw);
+};
 
 const defaultWarehouseId = () => {
     const list = props.warehouses;
@@ -629,6 +656,27 @@ const addLine = () => {
     if (!productResults.value.length) searchProducts('');
 };
 
+const duplicateLine = (index) => {
+    const src = form.items[index];
+    if (!src) return;
+    const cloned = newLine({
+        pick: src.pick,
+        product_id: src.product_id,
+        product_variant_id: src.product_variant_id,
+        variant_label: src.variant_label,
+        option: src.option,
+        product: src.product,
+        quantity: src.quantity,
+        unit_price: src.unit_price,
+        cost: src.cost,
+        available: src.available,
+        received: src.received,
+        alreadyReturned: src.alreadyReturned,
+        returnable: src.returnable,
+    });
+    form.items.splice(index + 1, 0, cloned);
+};
+
 const removeLine = (index) => {
     if (form.items.length > 1) form.items.splice(index, 1);
 };
@@ -773,7 +821,7 @@ const submit = async () => {
 
 .line {
     display: grid;
-    grid-template-columns: minmax(0, 2.6fr) 120px 140px 110px 36px;
+    grid-template-columns: minmax(0, 2.6fr) 120px 140px 110px 72px;
     gap: 0.6rem;
     align-items: start;
 }
@@ -787,12 +835,29 @@ const submit = async () => {
 
 .line-qty, .line-price { width: 100%; }
 .line-product { min-width: 0; }
+.line-actions { display: inline-flex; align-items: center; gap: 0.2rem; padding-top: 0.2rem; }
 
 .line-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
 
+.product-option-enhanced {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 2px 0;
+}
+.product-option-enhanced .option-thumb {
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.product-option-enhanced .option-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+}
 .product-option { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .product-option-name { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; }
-.product-option small { color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.product-option small, .product-option-enhanced small { color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* Sibling sizes under a line */
 .line-sizes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.35rem; }

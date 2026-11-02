@@ -107,6 +107,24 @@ test('an accepted quote becomes one sales order, and is then locked', function (
     expect(Quote::find($quote->id))->not->toBeNull();
 });
 
+test('converting a discounted quote propagates discount percent to sales order', function () {
+    $quoteResp = ($this->make)([
+        'discount' => 20,
+    ])->assertCreated();
+
+    $quote = Quote::find($quoteResp->json('data.id'));
+    ($this->move)($quote, 'accepted')->assertOk();
+
+    $orderResp = ($this->api)()->postJson("/api/v1/quotes/{$quote->id}/convert-to-sales-order")
+        ->assertCreated()
+        ->json('data');
+
+    $so = SalesOrder::find($orderResp['id']);
+    expect((float) $so->discount)->toEqual(20.0)
+        ->and((float) $so->discount_percent)->toEqual(20.0)
+        ->and((float) $so->total)->toEqual(80.0);
+});
+
 test('duplicating makes a fresh draft with the same lines', function () {
     $quote = Quote::find(($this->make)()->json('data.id'));
     ($this->move)($quote, 'rejected')->assertOk();
