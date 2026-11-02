@@ -379,7 +379,13 @@
             class="form-drawer"
             :before-close="confirmCloseForm"
         >
-            <div v-loading="loadingForm" @keydown.ctrl.enter.prevent="saveReceipt" @keydown.meta.enter.prevent="saveReceipt">
+            <div
+                v-loading="loadingForm"
+                @keydown.ctrl.enter.prevent="saveReceipt"
+                @keydown.meta.enter.prevent="saveReceipt"
+                @keydown.f2.exact.prevent="focusQuickSearch"
+                @keydown.f4.exact.prevent="!isEditMode && openQuickAddProduct(null, quickSearchQuery)"
+            >
             <el-form :model="form" label-position="top">
                 <!-- Step 1: who delivered, and against which request. Picking the
                      request fills everything below from it. -->
@@ -533,6 +539,294 @@
                         :title="$t('receipt_lines_locked_notice')"
                     />
 
+                    <!-- Suggested Product Search & Fast Multi-Add Catalog -->
+                    <div v-if="!isEditMode" class="po-catalog-section">
+                        <div ref="quickSearchContainerRef" class="po-suggested-search-panel" @mousedown.stop>
+                            <div class="search-bar-header">
+                                <div class="search-input-box">
+                                    <el-input
+                                        ref="quickSearchInputRef"
+                                        v-model="quickSearchQuery"
+                                        :placeholder="$t('rc_quick_search_placeholder') || $t('po_quick_search_placeholder')"
+                                        clearable
+                                        class="po-search-input"
+                                        @focus="onQuickSearchFocus"
+                                        @input="onQuickSearchInput"
+                                        @clear="onQuickSearchClear"
+                                        @keydown.esc="quickSearchOpen = false"
+                                        @keydown.enter.prevent="onQuickSearchEnter"
+                                    >
+                                        <template #prefix>
+                                            <i v-if="!quickSearchLoading" class="fas fa-search search-icon"></i>
+                                            <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
+                                        </template>
+                                    </el-input>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    class="btn-toggle-suggestions"
+                                    :class="{ 'is-active': quickSearchOpen }"
+                                    @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
+                                    :title="quickSearchOpen ? ($t('po_close_search') || 'إغلاق البحث') : ($t('catalog') || 'الكتالوج السريع')"
+                                >
+                                    <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-list-check'"></i>
+                                    <span>{{ quickSearchOpen ? ($t('po_close_search') || 'إغلاق البحث') : ($t('catalog') || 'الكتالوج السريع') }}</span>
+                                    <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="btn-new-product"
+                                    :title="`${$t('pqa_title') || 'إضافة منتج سريع'} (F4)`"
+                                    @click.stop.prevent="openQuickAddProduct(null, quickSearchQuery)"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                    <span class="btn-text">{{ $t('pqa_button') || 'منتج جديد' }}</span>
+                                    <kbd class="key-hint">F4</kbd>
+                                </button>
+                            </div>
+
+                            <!-- Category quick pills under search bar -->
+                            <div v-if="categoryOptions.length" class="category-pills-bar">
+                                <button
+                                    type="button"
+                                    class="cat-pill"
+                                    :class="{ 'is-active': !selectedCategory }"
+                                    @click="selectedCategory = ''"
+                                >
+                                    {{ $t('all_categories') || 'كل الفئات' }}
+                                </button>
+                                <button
+                                    v-for="cat in categoryOptions.slice(0, 10)"
+                                    :key="cat.id"
+                                    type="button"
+                                    class="cat-pill"
+                                    :class="{ 'is-active': selectedCategory === cat.id }"
+                                    @click="selectedCategory = cat.id; quickSearchOpen = true;"
+                                >
+                                    {{ cat.label }}
+                                </button>
+                            </div>
+
+                            <!-- Suggested Search Results Dropdown Panel -->
+                            <transition name="el-zoom-in-top">
+                                <div
+                                    v-if="quickSearchOpen"
+                                    class="suggested-search-dropdown"
+                                    @click.stop
+                                >
+                                    <!-- Dropdown Banner & Tips -->
+                                    <div class="dropdown-top-strip">
+                                        <div class="strip-left">
+                                            <i class="fas fa-boxes-stacked text-primary"></i>
+                                            <strong>{{ $t('rc_suggested_products') || $t('po_suggested_products') || 'المنتجات المقترحة للاستلام' }}</strong>
+                                            <span class="results-badge">{{ quickSearchGroups.length }}</span>
+                                        </div>
+                                        <div class="strip-right">
+                                            <span class="keep-open-pill">
+                                                <i class="fas fa-thumbtack text-success"></i>
+                                                {{ $t('po_search_hint') || 'القائمة تبقى مفتوحة لتتمكن من إضافة عدة أصناف بسهولة' }}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                class="close-dropdown-btn"
+                                                @click.stop="quickSearchOpen = false"
+                                                :title="$t('close') || 'إغلاق'"
+                                            >
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- List of Suggested Products with Images & Add Button -->
+                                    <div class="suggested-list-scroll">
+                                        <div v-if="quickSearchLoading" class="suggested-loading-state">
+                                            <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                            <span>{{ $t('loading') }}...</span>
+                                        </div>
+
+                                        <div v-else-if="!quickSearchGroups.length" class="suggested-empty-state">
+                                            <i class="fas fa-search-minus empty-icon"></i>
+                                            <p>{{ $t('po_no_products_found') || 'لم يتم العثور على منتجات مطابقة' }}</p>
+                                            <button type="button" class="empty-new-product" @click.stop="openQuickAddProduct(null, quickSearchQuery)">
+                                                <i class="fas fa-plus"></i>
+                                                <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) || `إضافة "${quickSearchQuery.trim()}" كمنتج جديد` }}</span>
+                                                <span v-else>{{ $t('pqa_title') || 'إضافة منتج جديد' }}</span>
+                                            </button>
+                                            <small class="empty-new-hint">{{ $t('pqa_empty_hint') || 'أو اضغط F4 لإنشاء المنتج فوراً' }}</small>
+                                        </div>
+
+                                        <div v-else class="suggested-products-grid">
+                                            <template v-for="g in quickSearchGroups" :key="g.key">
+                                                <div
+                                                    v-if="g.hasVariants"
+                                                    class="suggested-item-card is-group"
+                                                    :class="{ 'item-in-order': groupReceiptCount(g) > 0 }"
+                                                >
+                                                    <div class="group-head">
+                                                        <div class="item-card-image">
+                                                            <EntityImage
+                                                                :src="productImageSrc(g.product)"
+                                                                type="product"
+                                                                :size="52"
+                                                                shape="square"
+                                                                class="card-img"
+                                                            />
+                                                            <span v-if="groupReceiptCount(g) > 0" class="in-order-tag" :title="$t('rc_in_receipt') || 'في الإيصال'">
+                                                                {{ groupReceiptCount(g) }}
+                                                            </span>
+                                                        </div>
+                                                        <div class="item-card-body">
+                                                            <div class="item-card-header">
+                                                                <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
+                                                                <span class="variants-count-chip">
+                                                                    <i class="fas fa-layer-group"></i> {{ $t('po_variants_count', g.rows.length) || `${g.rows.length} مقاسات` }}
+                                                                </span>
+                                                            </div>
+                                                            <div class="item-card-tags">
+                                                                <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                                    {{ g.product.category?.name_ar || g.product.category_name }}
+                                                                </span>
+                                                                <span class="pick-size-hint">
+                                                                    <i class="fas fa-hand-pointer"></i> {{ $t('po_pick_size') || 'اختر المقاس' }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="variant-grid">
+                                                        <div
+                                                            v-for="p in g.rows"
+                                                            :key="optionKey(p)"
+                                                            class="variant-tile"
+                                                            :class="{ 'is-in-order': getReceiptItemCount(p) > 0, 'is-out': stockOf(p) === 0 }"
+                                                        >
+                                                            <div class="variant-tile-info">
+                                                                <div class="variant-tile-title">
+                                                                    <span class="variant-tile-label" dir="ltr">{{ p.variant_label || baseName(p) }}</span>
+                                                                    <span v-if="p.sku" class="sku-chip"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                                </div>
+                                                                <div class="item-card-financials">
+                                                                    <div class="cost-stat">
+                                                                        <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                                        <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
+                                                                    </div>
+                                                                    <div
+                                                                        v-if="stockOf(p) != null"
+                                                                        class="stock-stat"
+                                                                        :class="stockOf(p) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                                    >
+                                                                        <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                                        <span class="stat-val">{{ stockOf(p) }}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="item-card-action">
+                                                                <AddQtyControl
+                                                                    size="sm"
+                                                                    :count="getReceiptItemCount(p)"
+                                                                    :label="$t('add')"
+                                                                    @add="(delta) => addProductToReceipt(p, delta)"
+                                                                    @set="(n) => setReceiptItemCount(p, n)"
+                                                                    @commit="(n) => commitReceiptItemCount(p, n)"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    v-else
+                                                    class="suggested-item-card"
+                                                    :class="{ 'item-in-order': getReceiptItemCount(g.product) > 0 }"
+                                                >
+                                                    <div class="item-card-image">
+                                                        <EntityImage
+                                                            :src="productImageSrc(g.product)"
+                                                            type="product"
+                                                            :size="52"
+                                                            shape="square"
+                                                            class="card-img"
+                                                        />
+                                                        <span v-if="getReceiptItemCount(g.product) > 0" class="in-order-tag" :title="$t('rc_in_receipt') || 'في الإيصال'">
+                                                            {{ getReceiptItemCount(g.product) }}
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="item-card-body">
+                                                        <div class="item-card-header">
+                                                            <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
+                                                        </div>
+
+                                                        <div class="item-card-tags">
+                                                            <span v-if="g.product.sku" class="sku-chip">
+                                                                <i class="fas fa-barcode"></i> {{ g.product.sku }}
+                                                            </span>
+                                                            <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                                {{ g.product.category?.name_ar || g.product.category_name }}
+                                                            </span>
+                                                        </div>
+
+                                                        <div class="item-card-financials">
+                                                            <div class="cost-stat">
+                                                                <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                                <strong class="stat-val text-primary">{{ money(g.product.cost_price || g.product.price) }}</strong>
+                                                            </div>
+                                                            <div v-if="g.product.price && g.product.price !== g.product.cost_price" class="sale-stat">
+                                                                <span class="stat-lbl">{{ $t('sale_price') }}:</span>
+                                                                <span class="stat-val text-muted">{{ money(g.product.price) }}</span>
+                                                            </div>
+                                                            <div
+                                                                v-if="stockOf(g.product) != null"
+                                                                class="stock-stat"
+                                                                :class="stockOf(g.product) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                            >
+                                                                <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                                <span class="stat-val">{{ stockOf(g.product) }}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="item-card-action">
+                                                        <AddQtyControl
+                                                            :count="getReceiptItemCount(g.product)"
+                                                            :label="$t('rc_add_to_receipt') || 'إضافة للإيصال'"
+                                                            @add="(delta) => addProductToReceipt(g.product, delta)"
+                                                            @set="(n) => setReceiptItemCount(g.product, n)"
+                                                            @commit="(n) => commitReceiptItemCount(g.product, n)"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <!-- Dropdown Footer -->
+                                    <div class="dropdown-footer-strip">
+                                        <div class="footer-summary">
+                                            <span class="footer-items-count">
+                                                {{ $t('rc_in_receipt') || 'الأصناف في الإيصال' }}:
+                                                <strong>{{ filledItemCount }}</strong>
+                                            </span>
+                                            <span class="footer-total">
+                                                {{ $t('total') }}:
+                                                <strong>{{ money(goodsTotal) }}</strong>
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="btn-done-search"
+                                            @click.stop="quickSearchOpen = false"
+                                        >
+                                            <i class="fas fa-check"></i> {{ $t('po_close_search') || 'إتمام الإضافة' }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </transition>
+                        </div>
+                    </div>
+
                     <div class="items-grid-wrapper">
                         <div
                             v-for="(item, idx) in form.items"
@@ -559,7 +853,7 @@
                                     <el-option
                                         v-for="p in productOptions"
                                         :key="optionKey(p)"
-                                        :label="[p.name_ar || p.name, p.sku].filter(Boolean).join(' — ')"
+                                        :label="productLabel(p)"
                                         :value="optionKey(p)"
                                     >
                                         <div class="product-option-enhanced">
@@ -940,73 +1234,24 @@
             </template>
         </el-dialog>
 
-        <!-- Quick Add Product Dialog: lets an unlisted item be created and
-             dropped straight into the receipt line that needed it, so a
-             missing product no longer means abandoning the whole receipt to
-             go create it in the catalog first. -->
-        <el-dialog
+        <!-- New product: creates a missing item and drops it straight into the
+             receipt, matching purchase orders UX -->
+        <ProductQuickAdd
             v-model="quickAddDialogVisible"
-            :title="$t('quick_add_product')"
-            width="480px"
-            append-to-body
-            destroy-on-close
-        >
-            <p class="quick-add-hint">{{ $t('quick_add_product_hint') }}</p>
-            <el-form :model="quickAddForm" label-position="top">
-                <el-form-item :label="$t('product_name_ar')" required>
-                    <el-input v-model="quickAddForm.name_ar" />
-                </el-form-item>
-                <el-form-item :label="$t('product_name_en')" required>
-                    <el-input v-model="quickAddForm.name_en" />
-                </el-form-item>
-                <el-form-item :label="$t('category')" required>
-                    <el-select v-model="quickAddForm.category_id" filterable style="width: 100%">
-                        <el-option
-                            v-for="c in productsStore.categories"
-                            :key="c.id"
-                            :label="c.name_ar || c.name"
-                            :value="c.id"
-                        />
-                    </el-select>
-                </el-form-item>
-                <el-row :gutter="16">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('purchase_cost')">
-                            <el-input v-model="quickAddForm.cost_price" type="number" min="0" step="0.01" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('sale_price')" required>
-                            <el-input v-model="quickAddForm.price" type="number" min="0" step="0.01" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-                <el-row :gutter="16">
-                    <el-col :span="12">
-                        <el-form-item :label="$t('sku_optional')">
-                            <el-input v-model="quickAddForm.sku" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                        <el-form-item :label="$t('unit_optional')">
-                            <el-input v-model="quickAddForm.unit" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-            </el-form>
-            <template #footer>
-                <el-button @click="quickAddDialogVisible = false">{{ $t('cancel') }}</el-button>
-                <el-button type="primary" :loading="quickAddSubmitting" @click="submitQuickAddProduct">
-                    {{ $t('save') }}
-                </el-button>
-            </template>
-        </el-dialog>
+            purchase
+            :seed="quickAddSeed"
+            :seed-cost="quickAddSeedCost"
+            :categories="categoryOptions"
+            :stock-note="$t('pqa_stock_note_purchase')"
+            @created="onQuickProductPicked"
+            @use-existing="onQuickProductPicked"
+        />
     </div>
 </template>
 
 <script setup>
 import { useI18n } from 'vue-i18n';
-import { ref, onMounted, onBeforeUnmount, computed, reactive, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePurchaseReceiptsStore } from '@/stores/purchaseReceipts';
 import { useSuppliersStore } from '@/stores/suppliers';
@@ -1027,6 +1272,9 @@ import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
 import PurchaseReceiptPrintDialog from '@/components/admin/purchases/PurchaseReceiptPrintDialog.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
+import AddQtyControl from '@/components/admin/purchases/AddQtyControl.vue';
+import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
+import { categoriesApi } from '@/api/categories';
 import { resolveImageUrl } from '@/utils/productImages';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { paymentMethodLabel } from '@/utils/sales';
@@ -1035,7 +1283,7 @@ import { supplierPaymentsApi } from '@/api/supplierPayments';
 import { useStockShortage } from '@/Composables/useStockShortage';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const productImageSrc = (p) => {
     if (!p) return '';
@@ -1071,18 +1319,21 @@ const drawerSize = computed(() => (viewportWidth.value < 900 ? '100%' : '55%'));
 const formDrawerSize = computed(() => (viewportWidth.value < 1100 ? '100%' : '80%'));
 
 // Quick-add-product state: lets a missing item be created without leaving
-// the receipt form, then drops straight into the row that needed it.
+// the receipt form, then drops straight into the row or receipt.
 const quickAddDialogVisible = ref(false);
-const quickAddSubmitting = ref(false);
 const quickAddTargetIndex = ref(null);
-const quickAddForm = reactive({
-    name_ar: '',
-    name_en: '',
-    category_id: '',
-    cost_price: '',
-    price: '',
-    sku: '',
-    unit: ''
+const quickAddSeed = ref('');
+const quickAddSeedCost = ref('');
+const categories = ref([]);
+
+const categoryOptions = computed(() => {
+    const name = (c) => (locale.value === 'en' && c.name_en ? c.name_en : (c.name_ar || c.name || ''));
+    const list = categories.value.length ? categories.value : (productsStore.categories || []);
+    const roots = list.filter((c) => !c.parent_id);
+    return roots.flatMap((root) => [
+        { id: root.id, parent_id: null, label: name(root) },
+        ...list.filter((c) => c.parent_id === root.id).map((c) => ({ id: c.id, parent_id: c.parent_id, label: name(c) })),
+    ]);
 });
 
 // Rows are keyed by this rather than by index, so removing a middle line does
@@ -1170,6 +1421,10 @@ const resetForm = () => {
     form.items = [blankRow()];
     linkedOrder.value = null;
     orderLines.value = [];
+    quickSearchQuery.value = '';
+    quickSearchOpen.value = false;
+    selectedCategory.value = '';
+    quickSearchResults.value = defaultOptions.value;
 };
 
 // Warehouses load alongside the page; a drawer opened first (from a request's
@@ -1484,7 +1739,9 @@ const rememberProducts = (items = []) => {
 
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
-const siblingVariants = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
+const siblingVariants = (item) => (item.product_id ? siblingsOf(item.product_id) : []);
+const productLabel = (p) => [baseName(p), p.variant_label, p.sku].filter(Boolean).join(' — ');
+const stockOf = (prod) => prod?.stock_quantity ?? prod?.stock ?? null;
 
 // A line's variant details: the product's full size list (loaded for every
 // picked or ordered variant) carries the specs; until it arrives, the
@@ -1857,78 +2114,189 @@ const updateItemPrice = (pick, idx) => {
     }
 };
 
+// Suggested product quick search & multi-add state
+const quickSearchQuery = ref('');
+const quickSearchLoading = ref(false);
+const quickSearchResults = ref([]);
+const quickSearchOpen = ref(false);
+const quickSearchInputRef = ref(null);
+const quickSearchContainerRef = ref(null);
+let quickSearchDebounceTimer = null;
+
+const onQuickSearchFocus = () => {
+    quickSearchOpen.value = true;
+    if (!quickSearchQuery.value && defaultOptions.value.length) {
+        quickSearchResults.value = defaultOptions.value;
+    }
+};
+
+const onQuickSearchInput = (val) => {
+    clearTimeout(quickSearchDebounceTimer);
+    quickSearchOpen.value = true;
+    const query = typeof val === 'string' ? val.trim() : '';
+    if (!query) {
+        quickSearchResults.value = defaultOptions.value;
+        return;
+    }
+    quickSearchLoading.value = true;
+    quickSearchDebounceTimer = setTimeout(async () => {
+        try {
+            const res = await productsApi.getAll({ search: query, per_page: 50, expand_variants: 1 });
+            quickSearchResults.value = res.data.data || [];
+            rememberVariantRows(quickSearchResults.value);
+        } catch {
+            // Keep current suggestions on error
+        } finally {
+            quickSearchLoading.value = false;
+        }
+    }, 250);
+};
+
+const onQuickSearchClear = () => {
+    quickSearchQuery.value = '';
+    quickSearchResults.value = defaultOptions.value;
+};
+
+const focusQuickSearch = () => {
+    quickSearchOpen.value = true;
+    nextTick(() => {
+        quickSearchInputRef.value?.focus();
+    });
+};
+
+const selectedCategory = ref('');
+
+const quickSearchGroups = computed(() => {
+    const groups = new Map();
+    quickSearchResults.value.forEach((row) => {
+        if (selectedCategory.value && row.category_id !== selectedCategory.value && row.category?.id !== selectedCategory.value) {
+            return;
+        }
+        if (!groups.has(row.id)) groups.set(row.id, { key: String(row.id), product: row, rows: [] });
+        groups.get(row.id).rows.push(row);
+    });
+    return [...groups.values()].map((g) => ({ ...g, hasVariants: g.rows.some((r) => r.variant_id) }));
+});
+
+const groupReceiptCount = (group) => group.rows.reduce((sum, row) => sum + getReceiptItemCount(row), 0);
+
+const getReceiptItemCount = (prod) => {
+    const key = optionKey(prod);
+    const existing = form.items.find((item) => item.pick === key);
+    return existing ? num(existing.quantity) : 0;
+};
+
+const setReceiptItemCount = (prod, qty) => {
+    const key = optionKey(prod);
+    const line = form.items.find((item) => item.pick === key);
+    if (line && qty >= 1) line.quantity = qty;
+};
+
+const commitReceiptItemCount = (prod, qty) => {
+    const key = optionKey(prod);
+    const line = form.items.find((item) => item.pick === key);
+    if (!line) return;
+    if (qty < 1) {
+        addProductToReceipt(prod, -num(line.quantity));
+        return;
+    }
+    line.quantity = qty;
+};
+
+const addProductToReceipt = (prod, delta = 1) => {
+    const key = optionKey(prod);
+    rememberProducts([prod]);
+
+    const existingIdx = form.items.findIndex((item) => item.pick === key);
+
+    if (existingIdx !== -1) {
+        const currentQty = num(form.items[existingIdx].quantity);
+        const newQty = currentQty + delta;
+        if (newQty <= 0) {
+            if (form.items.length > 1) {
+                form.items.splice(existingIdx, 1);
+            } else {
+                form.items[0] = blankRow();
+            }
+        } else {
+            form.items[existingIdx].quantity = newQty;
+        }
+        return;
+    }
+
+    if (delta <= 0) return;
+
+    // Check if there is an empty/blank line with no product_id
+    const emptyIdx = form.items.findIndex((item) => !item.product_id);
+    const targetIdx = emptyIdx !== -1 ? emptyIdx : null;
+
+    if (targetIdx !== null) {
+        form.items[targetIdx].pick = key;
+        form.items[targetIdx].quantity = delta;
+        updateItemPrice(key, targetIdx);
+    } else {
+        const newRow = blankRow({
+            pick: key,
+            quantity: delta,
+        });
+        form.items.push(newRow);
+        updateItemPrice(key, form.items.length - 1);
+    }
+};
+
+const onQuickSearchEnter = () => {
+    if (quickSearchLoading.value) return;
+    const first = quickSearchGroups.value[0];
+    if (!first && quickSearchQuery.value.trim()) {
+        openQuickAddProduct(null, quickSearchQuery.value);
+        return;
+    }
+    if (!first) return;
+    if (!first.hasVariants || first.rows.length === 1) addProductToReceipt(first.rows[0], 1);
+};
+
+const handleClickOutsideQuickSearch = (e) => {
+    if (quickSearchContainerRef.value && !quickSearchContainerRef.value.contains(e.target)) {
+        quickSearchOpen.value = false;
+    }
+};
+
 // Quick-add-product: opens pre-filled with whatever price the operator had
-// already typed on this line, since that number is the purchase cost anyway.
-const openQuickAddProduct = (idx) => {
+// already typed on this line, or drops new product into receipt.
+const openQuickAddProduct = (idx = null, seed = '') => {
     quickAddTargetIndex.value = idx;
-    quickAddForm.name_ar = '';
-    quickAddForm.name_en = '';
-    quickAddForm.category_id = '';
-    quickAddForm.cost_price = form.items[idx]?.unit_price || '';
-    quickAddForm.price = '';
-    quickAddForm.sku = '';
-    quickAddForm.unit = '';
-    if (!productsStore.categories.length) {
-        productsStore.fetchCategories().catch(() => {});
+    quickAddSeed.value = String(seed || '').trim();
+    quickAddSeedCost.value = idx !== null ? (form.items[idx]?.unit_price || '') : '';
+    if (!categories.value.length) {
+        categoriesApi.getAll({ per_page: 500 })
+            .then((res) => { categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []); })
+            .catch(() => {});
     }
     quickAddDialogVisible.value = true;
 };
 
-const slugify = (text) => text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
+const onQuickProductPicked = (prod, quantity = 1) => {
+    const qty = Math.max(1, Number(quantity) || 1);
+    const key = optionKey(prod);
+    const idx = quickAddTargetIndex.value;
+    rememberProducts([prod]);
 
-const submitQuickAddProduct = async () => {
-    if (!quickAddForm.name_ar || !quickAddForm.name_en || !quickAddForm.category_id || !quickAddForm.price) {
-        ElMessage.warning(t('please_fill_required_product_fields'));
-        return;
+    if (idx !== null && form.items[idx]) {
+        const line = form.items[idx];
+        line.pick = key;
+        line.product_id = prod.id;
+        line.product_variant_id = prod.variant_id || null;
+        line.unit_price = Number(prod.cost_price) > 0 ? Number(prod.cost_price) : (line.unit_price || Number(prod.price || 0));
+        line.sale_price = prod.price != null ? Number(prod.price) : line.sale_price;
+        line.quantity = qty;
+    } else {
+        const had = num(form.items.find((item) => item.pick === key)?.quantity);
+        addProductToReceipt(prod, 1);
+        const line = form.items.find((item) => item.pick === key);
+        if (line) line.quantity = had + qty;
     }
-
-    quickAddSubmitting.value = true;
-    try {
-        // The catalog requires a unique slug, but this dialog never shows one —
-        // a timestamp suffix keeps two products with the same name from
-        // colliding without asking the operator to think about it.
-        const baseSlug = slugify(quickAddForm.name_en) || 'product';
-        const product = await productsStore.createProduct({
-            name_ar: quickAddForm.name_ar,
-            name_en: quickAddForm.name_en,
-            slug: `${baseSlug}-${Date.now().toString(36)}`,
-            category_id: quickAddForm.category_id,
-            price: quickAddForm.price,
-            cost_price: quickAddForm.cost_price || null,
-            sku: quickAddForm.sku || null,
-            unit: quickAddForm.unit || null,
-            currency: baseCurrencyCode(),
-            stock_quantity: 0
-        });
-
-        // Into the options the row renders from, or it shows the new id.
-        productOptions.value = [product, ...productOptions.value];
-
-        const idx = quickAddTargetIndex.value;
-        if (idx !== null && form.items[idx]) {
-            form.items[idx].pick = pickKey(product.id);
-            form.items[idx].product_id = product.id;
-            form.items[idx].product_variant_id = null;
-            if (!form.items[idx].unit_price) {
-                form.items[idx].unit_price = quickAddForm.cost_price || product.cost_price || product.price;
-            }
-            if (!form.items[idx].sale_price) {
-                form.items[idx].sale_price = quickAddForm.price || product.price;
-            }
-        }
-
-        ElMessage.success(t('product_created_and_selected'));
-        quickAddDialogVisible.value = false;
-    } catch (e) {
-        ElMessage.error(e.response?.data?.message || t('failed_to_create_product'));
-    } finally {
-        quickAddSubmitting.value = false;
-    }
+    quickSearchQuery.value = '';
+    quickSearchOpen.value = false;
 };
 
 const handlePurchaseOrderChange = async (purchaseOrderId) => {
@@ -2113,10 +2481,14 @@ const deleteReceipt = async (id) => {
     }
 };
 
-onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', onResize);
+    document.removeEventListener('click', handleClickOutsideQuickSearch);
+});
 
 onMounted(async () => {
     window.addEventListener('resize', onResize);
+    document.addEventListener('click', handleClickOutsideQuickSearch);
     // A purchase order's detail links here with ?search=<receipt number>.
     if (route.query.search) searchQuery.value = String(route.query.search);
     store.fetchReceipts().catch(() => {});
@@ -2127,10 +2499,14 @@ onMounted(async () => {
     productsApi.getAll({ per_page: 100, expand_variants: 1 })
         .then((res) => {
             defaultOptions.value = res.data.data || [];
+            quickSearchResults.value = defaultOptions.value;
             rememberVariantRows(defaultOptions.value);
             productOptions.value = defaultOptions.value;
             rememberProducts(orderLines.value);
         })
+        .catch(() => {});
+    categoriesApi.getAll({ per_page: 500 })
+        .then((res) => { categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []); })
         .catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
 
@@ -3121,5 +3497,557 @@ onMounted(async () => {
     text-align: center;
     font-weight: 700;
     font-size: 0.88rem;
+}
+
+/* ==========================================================================
+   Suggested Product Search & Multi-Add Panel (Stays Open)
+   ========================================================================== */
+.po-catalog-section {
+    margin-bottom: 1.25rem;
+}
+
+.po-suggested-search-panel {
+    position: relative;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-md, 10px);
+    padding: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.search-bar-header {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.search-input-box {
+    flex: 1;
+    min-width: 0;
+}
+
+.po-search-input :deep(.el-input__wrapper) {
+    background: #ffffff;
+    box-shadow: 0 0 0 1px #cbd5e1 inset;
+    border-radius: 8px;
+    padding: 4px 12px;
+    transition: all 0.2s ease;
+}
+
+.po-search-input :deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 0 0 1px #2563eb inset;
+}
+
+.search-icon {
+    font-size: 0.95rem;
+    color: #64748b;
+    margin-inline-end: 4px;
+}
+
+.btn-toggle-suggestions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.btn-toggle-suggestions:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.btn-toggle-suggestions.is-active {
+    background: #1e3a8a;
+    border-color: #1e3a8a;
+    color: #ffffff;
+}
+
+.count-badge {
+    background: rgba(30, 58, 138, 0.1);
+    color: #1e3a8a;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    font-weight: 700;
+}
+
+.btn-toggle-suggestions.is-active .count-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+.btn-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #047857;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.btn-new-product:hover {
+    background: #059669;
+    border-color: #059669;
+    color: #ffffff;
+}
+
+.btn-new-product .key-hint {
+    font-family: inherit;
+    font-size: 0.68rem;
+    padding: 0 0.35rem;
+    border: 1px solid #a7f3d0;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    color: inherit;
+}
+
+.category-pills-bar {
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.5rem 0.2rem 0;
+    scrollbar-width: thin;
+}
+
+.cat-pill {
+    all: unset;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    transition: all 0.15s ease;
+}
+
+.cat-pill:hover {
+    color: #1e293b;
+    border-color: #cbd5e1;
+}
+
+.cat-pill.is-active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.suggested-search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 999;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.15), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dropdown-top-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.84rem;
+}
+
+.strip-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #1e293b;
+}
+
+.results-badge {
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+}
+
+.strip-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.keep-open-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: #047857;
+    background: #ecfdf5;
+    padding: 0.15rem 0.6rem;
+    border-radius: 9999px;
+    border: 1px solid #a7f3d0;
+}
+
+.close-dropdown-btn {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #64748b;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.close-dropdown-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.suggested-list-scroll {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.6rem;
+}
+
+.suggested-loading-state,
+.suggested-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem 1rem;
+    color: #64748b;
+    gap: 0.6rem;
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 2.2rem;
+    color: #cbd5e1;
+}
+
+.empty-new-product {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border: none;
+    border-radius: 8px;
+    background: #059669;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+    max-width: 100%;
+}
+
+.empty-new-product span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.empty-new-product:hover {
+    background: #047857;
+}
+
+.empty-new-hint {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.suggested-products-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.suggested-item-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    transition: all 0.15s ease;
+}
+
+.suggested-item-card:hover {
+    border-color: #93c5fd;
+    background: #f8fafc;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.suggested-item-card.item-in-order {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.item-card-image {
+    position: relative;
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.item-card-image :deep(.entity-image) {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+}
+
+.in-order-tag {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.05rem 0.35rem;
+    border-radius: 9999px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.item-card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.item-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.item-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.3;
+}
+
+.item-card-tags {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+}
+
+.cat-chip {
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.item-card-financials {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+    margin-top: 0.1rem;
+}
+
+.item-card-financials .stat-lbl {
+    color: #64748b;
+    margin-inline-end: 0.25rem;
+}
+
+.cost-stat .stat-val {
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.sale-stat .stat-val {
+    color: #64748b;
+    font-weight: 500;
+}
+
+.stock-stat.is-in-stock .stat-val {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.stock-stat.is-out-stock .stat-val {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.item-card-action {
+    flex-shrink: 0;
+    margin-inline-start: auto;
+}
+
+.suggested-item-card.is-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+}
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.variants-count-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #6d28d9;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+}
+
+.pick-size-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #64748b;
+    font-size: 0.72rem;
+}
+
+.variant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 0.45rem;
+}
+
+.variant-tile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    background: #f8fafc;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.variant-tile:hover {
+    border-color: #93c5fd;
+    background: #ffffff;
+}
+
+.variant-tile.is-in-order {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.variant-tile.is-out {
+    background: #fff7ed;
+}
+
+.variant-tile-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.variant-tile-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.variant-tile-label {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #1e3a8a;
+    unicode-bidi: isolate;
+}
+
+.variant-tile .item-card-financials {
+    gap: 0.6rem;
+    font-size: 0.74rem;
+}
+
+.dropdown-footer-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.82rem;
+}
+
+.footer-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #475569;
+}
+
+.btn-done-search {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #1e3a8a;
+    color: #ffffff;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.btn-done-search:hover {
+    background: #1e40af;
+}
+
+@media (max-width: 860px) {
+    .search-bar-header { flex-wrap: wrap; }
+    .btn-new-product .key-hint { display: none; }
 }
 </style>
