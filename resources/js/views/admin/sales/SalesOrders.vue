@@ -485,7 +485,11 @@
                                 <span>{{ $t('items_subtotal') }}</span><span>{{ formatCurrency(selectedOrder.subtotal) }}</span>
                             </div>
                             <div class="amount-row" v-if="toNum(selectedOrder.discount)">
-                                <span>{{ $t('less_discount') }}</span><span class="text-danger">({{ formatCurrency(selectedOrder.discount) }})</span>
+                                <span>
+                                    {{ $t('less_discount') }}
+                                    <small v-if="toNum(selectedOrder.discount_percent)" class="text-muted">({{ selectedOrder.discount_percent }}%)</small>
+                                </span>
+                                <span class="text-danger">({{ formatCurrency(selectedOrder.discount) }})</span>
                             </div>
                             <div class="amount-row" v-if="toNum(selectedOrder.tax)">
                                 <span>{{ $t('plus_tax') }}</span><span>{{ formatCurrency(selectedOrder.tax) }}</span>
@@ -1638,7 +1642,10 @@
                                             <td class="val" dir="ltr">{{ formatCurrency(printOrderData.subtotal ?? calcPrintSubtotal(printOrderData)) }}</td>
                                         </tr>
                                         <tr v-if="toNum(printOrderData.discount) > 0">
-                                            <td>{{ $t('less_discount') || 'الخصم الممنوح' }}:</td>
+                                            <td>
+                                                {{ $t('less_discount') || 'الخصم الممنوح' }}
+                                                <span v-if="toNum(printOrderData.discount_percent)" class="so-discount-rate">({{ printOrderData.discount_percent }}%)</span>:
+                                            </td>
                                             <td class="val discount-val" dir="ltr">− {{ formatCurrency(printOrderData.discount) }}</td>
                                         </tr>
                                         <tr v-if="toNum(printOrderData.tax) > 0">

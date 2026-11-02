@@ -1,496 +1,238 @@
 <template>
-    <div class="invoice-builder">
-        <!-- ── Header: what this is, and the two actions that end it ───────── -->
-        <header class="builder-header">
-            <div class="header-identity">
-                <span class="eyebrow">{{ t('sales') }}</span>
-                <h1>{{ isEdit ? t('edit_invoice') : t('create_invoice') }}</h1>
-                <p>{{ t('prepare_invoice_with_products') }}</p>
-            </div>
-
-            <div class="header-actions">
-                <el-button text @click="goBack">
-                    <el-icon><ArrowRight /></el-icon>
-                    {{ t('back_to_invoices') }}
-                </el-button>
-                <el-button
-                    type="primary"
-                    size="large"
-                    :loading="submitting"
-                    :disabled="!canSubmit"
-                    @click="submitInvoice"
-                >
-                    <el-icon><Check /></el-icon>
-                    {{ isEdit ? t('save_changes') : t('create_invoice') }}
-                </el-button>
-            </div>
-        </header>
-
-        <!-- Errors sit above the work, never inside it: a message beside the
-             field it concerns is better, but a refusal from the server names
-             products rather than fields. -->
-        <el-alert
-            v-if="formErrors.length"
-            :title="t('please_fix_errors')"
-            type="error"
-            show-icon
-            class="mb-4"
-            @close="formErrors = []"
+    <div class="order-form-page invoice-form-page">
+        <!-- ── Top Header ─────────────────────────────────────────── -->
+        <AdminPageHeader
+            icon="fas fa-file-invoice-dollar text-primary"
+            :title="isEdit ? t('edit_invoice') : t('create_invoice')"
+            :subtitle="isEdit && loadedInvoice ? `${t('invoice_number')}: ${loadedInvoice.invoice_number}` : t('prepare_invoice_with_products')"
         >
-            <ul class="error-list">
-                <li v-for="(err, idx) in formErrors" :key="idx">{{ err }}</li>
-            </ul>
-        </el-alert>
+            <template #actions>
+                <el-button @click="goBack">
+                    <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_invoices') }}
+                </el-button>
+                <el-button v-if="!isEdit && items.length" text type="danger" @click="confirmClearInvoice">
+                    <i class="fas fa-trash-can"></i>&nbsp;{{ t('clear_the_form') }}
+                </el-button>
+            </template>
+        </AdminPageHeader>
 
-        <div class="builder-grid">
-            <!-- ── Work area ──────────────────────────────────────────────── -->
-            <section class="work-area">
-                <!-- Search is the first thing on the page because it is the
-                     first thing anybody does. -->
-                <div class="search-card">
-                    <div class="search-row">
-                    <div class="search-wrapper">
-                        <el-input
-                            ref="searchInputRef"
-                            v-model="searchQuery"
-                            :placeholder="t('search_product_placeholder')"
-                            size="large"
-                            clearable
-                            @input="onSearchInput"
-                            @focus="showResults = true"
-                            @keydown.down.prevent="navigateResult(1)"
-                            @keydown.up.prevent="navigateResult(-1)"
-                            @keydown.enter.prevent="selectHighlighted"
-                            @keydown.esc.prevent="showResults = false"
-                        >
-                            <template #prefix>
-                                <el-icon><Search /></el-icon>
-                            </template>
-                            <template #suffix>
-                                <kbd class="kbd-hint">Ctrl+B</kbd>
-                            </template>
-                        </el-input>
+        <!-- ── Top Sticky Status Bar ──────────────────────────────── -->
+        <div
+            v-if="!loading"
+            class="status-bar"
+            :class="issues.length ? 'is-blocked' : 'is-ready'"
+        >
+            <div class="sb-lead">
+                <i :class="issues.length ? 'fas fa-circle-exclamation' : 'fas fa-circle-check'"></i>
+                <span class="sb-lead-text">
+                    {{ issues.length ? (t('so_to_finish') || 'في انتظار استكمال البيانات') : (t('so_ready_to_save') || 'الفاتورة جاهزة للحفظ') }}
+                </span>
+                <span v-if="issues.length" class="sb-count">{{ issues.length }}</span>
+            </div>
 
-                        <!-- Anchored to the field itself. It used to be
-                             position-fixed and re-measured on every scroll and
-                             resize, which drifted whenever either happened
-                             between keystroke and render. -->
-                        <Transition name="drop">
-                            <div v-if="showResults && (searchResults.length || searchLoading || searchQuery.length >= 2)" class="results">
-                                <div v-if="searchLoading" class="results-state">
-                                    <el-icon class="is-loading"><Loading /></el-icon>
-                                    {{ t('searching') }}…
-                                </div>
-
-                                <ul v-else-if="searchResults.length" class="results-list">
-                                    <template v-for="g in searchGroups" :key="g.key">
-                                        <!-- A product with sizes is one entry with a row per
-                                             size, so eight sizes of one drain read as one
-                                             product, not as eight unrelated results. Arrow
-                                             keys still walk every size in order. -->
-                                        <li v-if="g.hasVariants" class="result-group">
-                                            <div class="result-group-head">
-                                                <div class="result-thumb">
-                                                    <img v-if="g.product.image_main" :src="getImageUrl(g.product.image_main)" alt="" />
-                                                    <el-icon v-else><Box /></el-icon>
-                                                </div>
-                                                <div class="result-body">
-                                                    <span class="result-name">{{ baseName(g.product) || g.product.name_en }}</span>
-                                                    <span class="result-group-meta">
-                                                        {{ t('po_variants_count', g.rows.length) }} · {{ t('po_pick_size') }}
-                                                    </span>
-                                                </div>
-                                                <!-- The warehouses hold the product, not the size:
-                                                     this is what any of its lines can draw on. -->
-                                                <span v-if="g.product.product_stock_quantity != null" class="result-stock-total">
-                                                    {{ t('so_product_stock_total', { count: formatNumber(g.product.product_stock_quantity) }) }}
-                                                </span>
-                                            </div>
-                                            <ul class="result-sizes">
-                                                <li
-                                                    v-for="r in g.rows"
-                                                    :key="optionKey(r.product)"
-                                                    class="result result-size"
-                                                    :class="{ active: highlightedIndex === r.index, 'in-invoice': inInvoiceQty(r.product) > 0 }"
-                                                    @click="addProduct(r.product)"
-                                                    @mouseenter="highlightedIndex = r.index"
-                                                >
-                                                    <div class="result-body">
-                                                        <span class="result-size-label" dir="ltr">{{ r.product.variant_label || baseName(r.product) }}</span>
-                                                        <span v-if="r.product.sku" class="result-sku">{{ r.product.sku }}</span>
-                                                    </div>
-                                                    <span v-if="inInvoiceQty(r.product) > 0" class="in-invoice-tag" :title="t('quantity')" dir="ltr">
-                                                        ×{{ formatNumber(inInvoiceQty(r.product)) }}
-                                                    </span>
-                                                    <div class="result-side">
-                                                        <span class="result-price">{{ money(r.product.price) }}</span>
-                                                        <span class="result-stock" :class="stockTone(r.product.stock_quantity)">
-                                                            {{ t('available') }} {{ formatNumber(r.product.stock_quantity || 0) }}
-                                                        </span>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </li>
-
-                                        <!-- A product without sizes: one row -->
-                                        <li
-                                            v-else
-                                            class="result"
-                                            :class="{ active: highlightedIndex === g.rows[0].index, 'in-invoice': inInvoiceQty(g.product) > 0 }"
-                                            @click="addProduct(g.product)"
-                                            @mouseenter="highlightedIndex = g.rows[0].index"
-                                        >
-                                            <div class="result-thumb">
-                                                <img v-if="g.product.image_main" :src="getImageUrl(g.product.image_main)" alt="" />
-                                                <el-icon v-else><Box /></el-icon>
-                                            </div>
-
-                                            <div class="result-body">
-                                                <span class="result-name">{{ baseName(g.product) || g.product.name_en }}</span>
-                                                <span v-if="g.product.sku" class="result-sku">{{ g.product.sku }}</span>
-                                            </div>
-
-                                            <span v-if="inInvoiceQty(g.product) > 0" class="in-invoice-tag" :title="t('quantity')" dir="ltr">
-                                                ×{{ formatNumber(inInvoiceQty(g.product)) }}
-                                            </span>
-
-                                            <div class="result-side">
-                                                <span class="result-price">{{ money(g.product.price) }}</span>
-                                                <span class="result-stock" :class="stockTone(g.product.stock_quantity)">
-                                                    {{ t('available') }} {{ formatNumber(g.product.stock_quantity || 0) }}
-                                                </span>
-                                            </div>
-                                        </li>
-                                    </template>
-                                </ul>
-
-                                <div v-else class="results-state muted is-empty">
-                                    <span>{{ t('no_products_found') }}</span>
-                                    <button type="button" class="empty-new-product" @click.stop="openQuickProduct(searchQuery)">
-                                        <i class="fas fa-plus"></i>
-                                        <span>{{ t('pqa_add_named', { name: searchQuery.trim() }) }}</span>
-                                    </button>
-                                    <small class="empty-new-hint">{{ t('pqa_empty_hint') }}</small>
-                                </div>
-                            </div>
-                        </Transition>
-                    </div>
-
-                    <!-- Not in the catalogue yet: create it without leaving the invoice -->
-                    <button
-                        type="button"
-                        class="btn-new-product"
-                        :title="`${t('pqa_title')} (F4)`"
-                        @click="openQuickProduct()"
-                    >
-                        <i class="fas fa-plus"></i>
-                        <span class="btn-text">{{ t('pqa_button') }}</span>
-                        <kbd class="kbd-hint">F4</kbd>
+            <ul v-if="issues.length" class="sb-issues">
+                <li v-for="issue in issues" :key="issue.key">
+                    <button type="button" class="sb-issue" @click="goToIssue(issue)">
+                        <i class="fas fa-angle-left" aria-hidden="true"></i>
+                        {{ issue.text }}
                     </button>
-                    </div>
+                </li>
+            </ul>
 
-                    <p class="search-hint">{{ t('invoice_search_hint') }}</p>
+            <div class="sb-tail">
+                <div class="sb-metrics" aria-live="polite">
+                    <span class="sb-metric">{{ t('so_items_n', { count: items.length }) || `${items.length} أصناف` }}</span>
+                    <span class="sb-dot" aria-hidden="true">·</span>
+                    <span class="sb-metric">{{ t('pieces_count', { count: totalPieces }) || `${totalPieces} قطعة` }}</span>
+                    <span class="sb-total">
+                        <span class="sb-total-label">{{ t('total') }}</span>
+                        <strong>{{ money(total) }}</strong>
+                    </span>
                 </div>
 
-                <!-- Lines -->
-                <div class="lines-card">
-                    <div class="lines-head">
-                        <h2>{{ t('invoice_items') }}</h2>
-                        <span class="count">{{ items.length }} {{ t('item') }}</span>
-                    </div>
+                <span v-if="shortLines.length" class="sb-flag is-warn">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    {{ t('so_lines_over_stock_n', { count: shortLines.length }) || `${shortLines.length} بنود غير متوفرة بالكامل` }}
+                </span>
 
-                    <div v-if="!items.length" class="empty">
-                        <el-icon class="empty-icon"><ShoppingCart /></el-icon>
-                        <p class="empty-title">{{ t('no_items_yet') }}</p>
-                        <p class="empty-hint">{{ t('use_search_to_add_products') }}</p>
-                    </div>
+                <span v-if="draftSavedAt" class="sb-flag is-muted">
+                    <i class="fas fa-floppy-disk"></i>
+                    {{ t('so_kept_on_this_device', { time: draftSavedAt }) || `مسودة محفوظة ${draftSavedAt}` }}
+                </span>
+            </div>
+        </div>
 
-                    <div v-else class="lines">
-                        <article
-                            v-for="(item, index) in items"
-                            :key="item.pick"
-                            class="line"
-                            :class="{ short: isLineShort(item) }"
-                        >
-                            <div class="line-main">
-                                <div class="line-identity">
-                                    <div class="line-thumb">
-                                        <img v-if="item.image" :src="getImageUrl(item.image)" alt="" />
-                                        <el-icon v-else><Box /></el-icon>
-                                    </div>
-                                    <div class="line-identity-text">
-                                        <span class="line-name">{{ item.name }}</span>
-                                        <!-- A variant line spells out its size, colour, material,
-                                             specs and its own codes; a plain line shows its SKU. -->
-                                        <VariantDetails
-                                            v-if="variantInfo(item)"
-                                            :variant="variantInfo(item)"
-                                            show-codes
-                                            class="line-variant-details"
-                                        />
-                                        <template v-else>
-                                            <VariantChip v-if="item.product_variant_id" :label="item.variant_label" class="line-variant" />
-                                            <span v-if="item.sku" class="line-sku">{{ item.sku }}</span>
-                                        </template>
-                                        <!-- The other sizes of this product, one click away:
-                                             changing the size keeps the quantity, the sources
-                                             and a price that was typed. -->
-                                        <div v-if="lineSiblings(item).length > 1" class="line-sizes">
-                                            <span class="line-sizes-label">{{ t('po_switch_size') }}</span>
-                                            <button
-                                                v-for="v in lineSiblings(item)"
-                                                :key="optionKey(v)"
-                                                type="button"
-                                                class="size-chip"
-                                                :class="{ active: optionKey(v) === item.pick, out: Number(v.stock_quantity) <= 0 }"
-                                                :title="[v.sku, money(v.price)].filter(Boolean).join(' · ')"
-                                                @click="switchLineVariant(index, v)"
-                                            >
-                                                <span dir="ltr">{{ v.variant_label || v.sku }}</span>
-                                                <small>{{ formatNumber(v.stock_quantity || 0) }}</small>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+        <!-- Loading skeleton -->
+        <el-skeleton v-if="loading" :rows="8" animated class="order-skeleton" />
 
-                                <div class="line-total">
-                                    <span class="line-total-value">{{ money(item.price * lineQuantity(item)) }}</span>
-                                    <el-button
-                                        text
-                                        type="danger"
-                                        size="small"
-                                        :title="t('remove')"
-                                        @click="removeItem(index)"
-                                    >
-                                        <el-icon><Delete /></el-icon>
-                                    </el-button>
-                                </div>
-                            </div>
+        <!-- ── Main Form Container ────────────────────────────────── -->
+        <div v-else ref="formRoot" class="order-form-container panel-card">
+            <!-- Server / validation errors -->
+            <el-alert
+                v-if="formErrors.length"
+                :title="t('please_fix_errors')"
+                type="error"
+                show-icon
+                class="mb-4"
+                @close="formErrors = []"
+            >
+                <ul class="error-list">
+                    <li v-for="(err, idx) in formErrors" :key="idx">{{ err }}</li>
+                </ul>
+            </el-alert>
 
-                            <!-- Which shelf this empties, and how much of the
-                                 line each takes. The server refuses a line it
-                                 cannot cover; choosing here against live figures
-                                 means finding out now rather than on submit. A
-                                 line can draw from more than one warehouse when
-                                 no single one holds the whole quantity. -->
-                            <div class="allocations">
-                                <div class="allocations-head">
-                                    <span class="field-label">{{ t('sales.source_warehouse') }}</span>
-                                    <span class="allocations-total">{{ t('quantity') }}: {{ formatNumber(lineQuantity(item)) }}</span>
-                                </div>
-
-                                <div v-for="(alloc, aIdx) in item.allocations" :key="aIdx" class="allocation-row">
-                                    <el-select
-                                        v-model="alloc.warehouse_id"
-                                        :placeholder="t('sales.choose_source')"
-                                        :loading="item.loadingStock"
-                                        size="default"
-                                        class="allocation-source"
-                                        @change="onSourceChange(index)"
-                                    >
-                                        <el-option
-                                            v-for="row in item.sources"
-                                            :key="row.warehouse_id"
-                                            :value="row.warehouse_id"
-                                            :label="row.warehouse_name"
-                                            :disabled="isSourceTaken(item, alloc, row.warehouse_id)"
-                                        >
-                                            <span class="option-row">
-                                                <span>{{ row.warehouse_name }}</span>
-                                                <span class="option-stock" :class="{ empty: row.available <= 0 }">
-                                                    {{ formatNumber(row.available) }}
-                                                </span>
-                                            </span>
-                                        </el-option>
-                                    </el-select>
-
-                                    <div class="stepper allocation-qty">
-                                        <button type="button" :disabled="alloc.quantity <= 1" @click="decrementAllocQty(index, aIdx)">
-                                            <el-icon><Minus /></el-icon>
-                                        </button>
-                                        <input
-                                            v-model.number="alloc.quantity"
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            @change="sanitizeAllocQty(index, aIdx)"
-                                            :ref="(el) => { if (aIdx === 0) setQtyRef(item.pick, el); }"
-                                        />
-                                        <button type="button" @click="incrementAllocQty(index, aIdx)">
-                                            <el-icon><Plus /></el-icon>
-                                        </button>
-                                    </div>
-
-                                    <el-button
-                                        v-if="item.allocations.length > 1"
-                                        text
-                                        type="danger"
-                                        size="small"
-                                        class="allocation-remove"
-                                        :title="t('remove')"
-                                        @click="removeAllocation(index, aIdx)"
-                                    >
-                                        <el-icon><Delete /></el-icon>
-                                    </el-button>
-
-                                    <!-- Stated on the allocation that caused it,
-                                         not collected into a banner the reader
-                                         has to map back. -->
-                                    <p v-if="isAllocationShort(item, alloc)" class="allocation-warning">
-                                        <el-icon><WarningFilled /></el-icon>
-                                        {{ t('sales.line_short_at_warehouse', {
-                                            product: item.name,
-                                            warehouse: warehouseName(item, alloc.warehouse_id),
-                                            available: formatNumber(availableAt(item, alloc.warehouse_id)),
-                                            required: formatNumber(askedFor(items, item.product_id, alloc.warehouse_id)),
-                                        }) }}
-                                    </p>
-                                    <p v-else-if="!alloc.warehouse_id" class="allocation-warning subtle">
-                                        {{ t('sales.choose_source_for_this_line') }}
-                                    </p>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    class="add-source-btn"
-                                    :disabled="!canAddAllocation(item)"
-                                    @click="addAllocation(index)"
-                                >
-                                    <el-icon><Plus /></el-icon> {{ t('sales.add_source_warehouse') }}
-                                </button>
-                            </div>
-
-                            <div class="line-fields">
-                                <label class="field field-unit">
-                                    <span class="field-label">{{ t('unit') }}</span>
-                                    <el-select
-                                        v-model="item.selectedUnit"
-                                        value-key="id"
-                                        size="default"
-                                        @change="onUnitChange(index)"
-                                    >
-                                        <el-option
-                                            v-for="unit in item.units"
-                                            :key="unit.id ?? unit.name"
-                                            :value="unit"
-                                            :label="unit.name_ar || unit.name"
-                                        />
-                                    </el-select>
-                                </label>
-
-                                <label class="field field-price">
-                                    <span class="field-label">{{ t('unit_price') }}</span>
-                                    <el-input v-model.number="item.price" type="number" min="0" step="any" />
-                                </label>
-                            </div>
-                        </article>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ── Summary rail: who, how it settles, what is owed ─────────── -->
-            <aside class="summary-rail">
-                <div class="rail-card">
-                    <div class="rail-head">
-                        <h3 class="rail-title"><el-icon><User /></el-icon> {{ t('client') }}</h3>
-                        <button type="button" class="rail-action" @click="openClientDialog()">
-                            <el-icon><Plus /></el-icon>
-                            {{ t('new_client') }}
-                        </button>
-                    </div>
-
-                    <label class="field">
-                        <span class="field-label">{{ t('client') }}</span>
-                        <!-- Searched on the server. The list used to be the
-                             twenty most recent clients and nothing else, so a
-                             client outside that window could not be picked at
-                             all — the field looked like it was filtering the
-                             whole book when it was filtering a page of it. -->
-                        <el-select
-                            ref="customerSelectRef"
-                            v-model="form.customer_id"
-                            filterable
-                            clearable
-                            remote
-                            reserve-keyword
-                            :remote-method="searchCustomers"
-                            :loading="customersLoading"
-                            :placeholder="t('search_or_choose_client')"
-                            popper-class="client-popper"
-                            @change="onCustomerPicked"
-                        >
-                            <el-option
-                                v-for="customer in customerOptions"
-                                :key="customer.id"
-                                :label="customer.name"
-                                :value="customer.id"
+            <el-form label-position="top" class="quote-form order-form" @submit.prevent>
+                <!-- ── Head Grid: Client & Due Date ── -->
+                <div class="head-grid">
+                    <!-- Client Selection -->
+                    <el-form-item
+                        :label="t('client')"
+                        :class="{ 'is-flagged': isFlagged('customer_id') }"
+                    >
+                        <div class="customer-pick-row">
+                            <el-select
+                                ref="customerSelectRef"
+                                v-model="form.customer_id"
+                                filterable
+                                clearable
+                                remote
+                                reserve-keyword
+                                :remote-method="searchCustomers"
+                                :loading="customersLoading"
+                                :placeholder="t('search_or_choose_client')"
+                                class="customer-select"
+                                popper-class="client-popper"
+                                @change="onCustomerPicked"
+                                @focus="customerOptions.length <= 1 && searchCustomers('')"
                             >
-                                <div class="client-option">
-                                    <span class="client-option-name">{{ customer.name }}</span>
-                                    <span v-if="clientContactLine(customer)" class="client-option-meta">
-                                        {{ clientContactLine(customer) }}
-                                    </span>
-                                </div>
-                            </el-option>
+                                <el-option
+                                    v-for="customer in customerOptions"
+                                    :key="customer.id"
+                                    :label="customer.name"
+                                    :value="customer.id"
+                                >
+                                    <div class="client-option">
+                                        <span class="client-option-name">{{ customer.name }}</span>
+                                        <span v-if="clientContactLine(customer)" class="client-option-meta">
+                                            {{ clientContactLine(customer) }}
+                                        </span>
+                                    </div>
+                                </el-option>
 
-                            <!-- Element Plus falls back to the empty slot
-                                 while a remote search is in flight, so an
-                                 answer still on its way would otherwise read
-                                 as "nobody by that name". -->
-                            <template #loading>
-                                <div class="select-state">
-                                    <el-icon class="is-loading"><Loading /></el-icon>
-                                    {{ t('searching') }}…
-                                </div>
-                            </template>
+                                <template #loading>
+                                    <div class="select-state">
+                                        <i class="fas fa-spinner fa-spin text-primary"></i>&nbsp;{{ t('searching') }}…
+                                    </div>
+                                </template>
 
-                            <!-- A search that found nobody is the moment the
-                                 client is most likely to be new: the offer to
-                                 add them carries the words already typed. -->
-                            <template #empty>
-                                <div class="select-empty">
-                                    <p>{{ t('no_clients_found') }}</p>
-                                    <el-button type="primary" text @click="openClientDialog(customerQuery)">
-                                        <el-icon><Plus /></el-icon>
-                                        {{ customerQuery ? t('add_client_named', { name: customerQuery }) : t('new_client') }}
-                                    </el-button>
-                                </div>
-                            </template>
+                                <template #empty>
+                                    <div class="select-empty">
+                                        <p>{{ t('no_clients_found') }}</p>
+                                        <el-button type="primary" text @click="openQuickCustomer(customerQuery)">
+                                            <i class="fas fa-plus"></i>&nbsp;{{ customerQuery ? t('add_client_named', { name: customerQuery }) : t('new_client') }}
+                                        </el-button>
+                                    </div>
+                                </template>
+                            </el-select>
 
-                            <template #footer>
-                                <button type="button" class="select-add" @click="openClientDialog(customerQuery)">
-                                    <el-icon><Plus /></el-icon>
-                                    {{ t('new_client') }}
-                                </button>
-                            </template>
-                        </el-select>
-                    </label>
+                            <el-tooltip :content="t('new_client')" placement="top">
+                                <el-button
+                                    type="primary"
+                                    class="btn-quick-customer"
+                                    @click="toggleQuickCustomer"
+                                >
+                                    <i class="fas fa-user-plus"></i>
+                                </el-button>
+                            </el-tooltip>
+                        </div>
 
-                    <!-- Who was actually picked, and what their account says
-                         before this invoice touches it — the paid-now figure
-                         further down is decided on exactly that. -->
-                    <div v-if="selectedCustomer" class="client-card">
-                        <span class="client-avatar">{{ clientInitial }}</span>
-                        <div class="client-body">
-                            <span class="client-name">{{ selectedCustomer.name }}</span>
-                            <span v-if="clientContactLine(selectedCustomer)" class="client-meta">
-                                {{ clientContactLine(selectedCustomer) }}
+                        <!-- Selected Customer Info & Balance Pill -->
+                        <div v-if="selectedCustomer" class="customer-info-strip">
+                            <span class="cust-info-item">
+                                <i class="fas fa-user"></i>&nbsp;{{ selectedCustomer.name }}
+                            </span>
+                            <span v-if="selectedCustomer.phone" class="cust-info-item" dir="ltr">
+                                <i class="fas fa-phone"></i>&nbsp;{{ selectedCustomer.phone }}
+                            </span>
+                            <span v-if="clientBalance" class="cust-info-item" :class="clientBalance.tone">
+                                <i class="fas fa-wallet"></i>&nbsp;{{ clientBalance.label }}: {{ money(clientBalance.amount) }}
                             </span>
                         </div>
-                        <span v-if="clientBalance" class="client-balance" :class="clientBalance.tone">
-                            <span class="client-balance-label">{{ clientBalance.label }}</span>
-                            <span class="client-balance-value">{{ money(clientBalance.amount) }}</span>
-                        </span>
-                    </div>
 
-                    <label class="field">
-                        <span class="field-label">{{ t('sales_representative') }}</span>
+                        <!-- Inline Customer Quick Add Panel -->
+                        <transition name="qc-slide">
+                            <CustomerQuickAdd
+                                v-if="quickCustomerOpen"
+                                :seed="quickCustomerSeed"
+                                @select="onQuickCustomerSelect"
+                                @close="quickCustomerOpen = false"
+                            />
+                        </transition>
+                    </el-form-item>
+
+                    <!-- Due Date with Quick Day Chips -->
+                    <el-form-item
+                        :label="t('due_date')"
+                        :class="{ 'is-flagged': isFlagged('due_date') }"
+                    >
+                        <el-date-picker
+                            ref="deliveryPicker"
+                            v-model="form.due_date"
+                            type="date"
+                            value-format="YYYY-MM-DD"
+                            format="YYYY-MM-DD"
+                            :placeholder="t('due_date')"
+                            style="width: 100%"
+                        />
+                        <div class="quick-days" role="group" :aria-label="t('due_date')">
+                            <button
+                                v-for="days in [0, 7, 14, 30, 60]"
+                                :key="days"
+                                type="button"
+                                class="chip"
+                                :aria-pressed="form.due_date === inDays(days)"
+                                :class="{ 'is-on': form.due_date === inDays(days) }"
+                                @click="form.due_date = inDays(days)"
+                            >
+                                {{ days === 0 ? (t('today') || 'اليوم') : (t('qt_days_n', { count: days }) || `${days} يوم`) }}
+                            </button>
+                        </div>
+                    </el-form-item>
+                </div>
+
+                <!-- ── Secondary Head Grid: Warehouse, Representative, Payment Method, Status ── -->
+                <div class="head-subgrid">
+                    <el-form-item :label="t('choose_warehouse') || 'مستودع الصرف الافتراضي'">
+                        <el-select
+                            v-model="form.default_warehouse_id"
+                            filterable
+                            clearable
+                            :placeholder="t('choose_warehouse_placeholder') || 'اختر مستودع الصرف'"
+                            style="width: 100%"
+                            @change="onDefaultWarehouseChange"
+                        >
+                            <el-option
+                                v-for="wh in warehouses"
+                                :key="wh.id"
+                                :label="wh.name"
+                                :value="wh.id"
+                            >
+                                <div class="option-row">
+                                    <span>{{ wh.name }}</span>
+                                    <span v-if="wh.code" class="option-meta" dir="ltr">{{ wh.code }}</span>
+                                </div>
+                            </el-option>
+                        </el-select>
+                    </el-form-item>
+
+                    <el-form-item :label="t('sales_representative')">
                         <el-select
                             v-model="form.assigned_employee_id"
                             filterable
                             :clearable="!isSalesRep"
                             :disabled="isSalesRep"
                             :placeholder="t('unassigned')"
+                            style="width: 100%"
                         >
                             <el-option
                                 v-for="employee in salesEmployees"
@@ -499,343 +241,1397 @@
                                 :value="employee.id"
                             />
                         </el-select>
-                    </label>
+                    </el-form-item>
+
+                    <el-form-item :label="t('payment_method')">
+                        <el-select v-model="form.payment_method" style="width: 100%">
+                            <el-option value="cash" :label="t('cash') || 'نقداً'" />
+                            <el-option value="transfer" :label="t('bank_transfer') || 'تحويل بنكي'" />
+                            <el-option value="card" :label="t('card') || 'بطاقة بنكية / شبكة'" />
+                            <el-option value="check" :label="t('check') || 'شيك'" />
+                        </el-select>
+                    </el-form-item>
+
+                    <el-form-item v-if="isEdit" :label="t('status')">
+                        <el-select v-model="form.status" style="width: 100%">
+                            <el-option
+                                v-for="st in availableStatuses"
+                                :key="st"
+                                :value="st"
+                                :label="statusLabels[st] || st"
+                            />
+                        </el-select>
+                    </el-form-item>
                 </div>
 
-                <div class="rail-card">
-                    <h3 class="rail-title"><el-icon><Wallet /></el-icon> {{ t('settlement_and_totals') }}</h3>
-
-                    <div class="fields-row">
-                        <label class="field">
-                            <span class="field-label">{{ t('discount_percent') }}</span>
-                            <el-input v-model.number="form.discount_percent" type="number" min="0" max="100" step="0.01">
-                                <template #append>%</template>
-                            </el-input>
-                            <span v-if="discountAmount > 0" class="field-figure deduct">− {{ money(discountAmount) }}</span>
-                        </label>
-                        <label class="field">
-                            <span class="field-label">{{ t('tax_percent') }}</span>
-                            <el-input v-model.number="form.tax_percent" type="number" min="0" max="100" step="0.01">
-                                <template #append>%</template>
-                            </el-input>
-                            <span v-if="taxAmount > 0" class="field-figure">+ {{ money(taxAmount) }}</span>
-                        </label>
-                    </div>
-
-                    <!-- Which figure each rate is struck on. Said once, and only
-                         when both are in play — that is the only case where the
-                         order they apply in changes the answer. -->
-                    <p v-if="discountAmount > 0 && form.tax_percent > 0" class="field-note">
-                        {{ t('sales.tax_applies_after_discount') }}
-                    </p>
-
-                    <!-- The total is clamped at zero rather than going
-                         negative, so a discount larger than what it is being
-                         taken off does not fail — it silently stops
-                         mattering past that point. Said here rather than left
-                         for the seller to notice from the total alone. -->
-                    <p v-if="discountExceedsChargeable" class="field-warning">
-                        <el-icon><WarningFilled /></el-icon>
-                        {{ t('sales.discount_exceeds_total') }}
-                    </p>
-
-                    <div class="fields-row">
-                        <label class="field">
-                            <span class="field-label">{{ t('payment_method') }}</span>
-                            <el-select v-model="form.payment_method">
-                                <el-option :label="t('cash')" value="cash" />
-                                <el-option :label="t('card')" value="card" />
-                                <el-option :label="t('bank_transfer')" value="bank_transfer" />
-                                <el-option :label="t('cheque')" value="check" />
-                            </el-select>
-                        </label>
-                        <label class="field">
-                            <span class="field-label">{{ t('status') }}</span>
-                            <el-select v-model="form.status">
-                                <el-option
-                                    v-for="status in availableStatuses"
-                                    :key="status"
-                                    :label="statusLabels[status]"
-                                    :value="status"
-                                />
-                            </el-select>
-                        </label>
-                    </div>
-
-                    <!-- Additional charges and shipping recorded as expenses -->
-                    <OrderExpensesEditor
-                        v-model="form.expenses"
-                        class="invoice-expenses-section"
-                    />
-
-                    <dl class="totals">
-                        <div class="total-line">
-                            <dt>{{ t('subtotal') }}</dt>
-                            <dd>{{ money(subtotal) }}</dd>
-                        </div>
-                        <div v-if="discountAmount > 0" class="total-line deduct">
-                            <dt>{{ t('discount') }} <span class="rate-chip">{{ percent(form.discount_percent) }}</span></dt>
-                            <dd>− {{ money(discountAmount) }}</dd>
-                        </div>
-                        <div v-if="taxAmount > 0" class="total-line">
-                            <dt>{{ t('tax') }} <span class="rate-chip">{{ percent(form.tax_percent) }}</span></dt>
-                            <dd>+ {{ money(taxAmount) }}</dd>
-                        </div>
-                        <div v-if="totalExpenses > 0" class="total-line">
-                            <dt>{{ t('additional_charges') }}</dt>
-                            <dd>+ {{ money(totalExpenses) }}</dd>
-                        </div>
-                        <div class="total-line grand">
-                            <dt>{{ t('grand_total_label') }}</dt>
-                            <dd>{{ money(total) }}</dd>
-                        </div>
-                        <div v-if="invoiceTotalInWords" class="invoice-tafqeet-line">
-                            <span class="tafqeet-lbl"><i class="fas fa-pen-fancy"></i> {{ t('amount_in_words') || 'المبلغ كتابةً' }}:</span>
-                            <span class="tafqeet-txt">{{ invoiceTotalInWords }}</span>
-                        </div>
-                    </dl>
-
-                    <label class="field">
-                        <span class="field-label">{{ t('paid_now') }}</span>
-                        <el-input v-model.number="form.paid_amount" type="number" min="0" step="0.01" size="large">
-                            <template #append>
-                                <el-button @click="form.paid_amount = total">{{ t('full_amount') }}</el-button>
-                            </template>
-                        </el-input>
-                    </label>
-
-                    <!-- What the customer's account will say after this is
-                         saved, before it is saved. -->
-                    <div class="settlement" :class="remainingTone">
-                        <span class="settlement-label">
-                            {{ remainingTone === 'settled' ? t('fully_settled')
-                                : remainingTone === 'owing' ? t('remaining_on_customer')
-                                : t('customer_credit') }}
+                <!-- ── Lines Section ── -->
+                <div class="lines-head-top">
+                    <div class="lines-title">
+                        <h4>{{ t('invoice_items') }}</h4>
+                        <span v-if="items.length" class="lines-badge">
+                            {{ items.length }} {{ t('product') }} &bull; {{ totalPieces }} {{ t('piece') }}
                         </span>
-                        <span class="settlement-value">{{ money(Math.abs(remaining)) }}</span>
+                        <span v-if="shortLines.length" class="lines-badge is-warn">
+                            <i class="fas fa-triangle-exclamation"></i>
+                            {{ t('so_over_stock_n', { count: shortLines.length }) || `${shortLines.length} غير متوفرة بالكامل` }}
+                        </span>
+                    </div>
+
+                    <div v-if="items.length" class="lines-summary-quick">
+                        <span class="subtotal-pill">
+                            <span class="lbl">{{ t('subtotal') }}:</span>
+                            <strong>{{ money(subtotal) }}</strong>
+                        </span>
                     </div>
                 </div>
 
-                <div class="rail-card">
-                    <h3 class="rail-title"><el-icon><Notebook /></el-icon> {{ t('notes') }}</h3>
-                    <el-input v-model="form.notes" type="textarea" :rows="3" :placeholder="t('invoice_notes_placeholder')" />
+                <!-- ── Modern Interactive Search & Category Filter Panel ── -->
+                <div ref="quickSearchContainerRef" class="quote-search-panel order-search-panel" @mousedown.stop>
+                    <div class="quote-search-header-row">
+                        <!-- Category Filter Dropdown -->
+                        <div class="search-category-select-wrap">
+                            <el-select
+                                v-model="selectedCategoryId"
+                                clearable
+                                filterable
+                                :placeholder="t('qt_filter_category') || t('category')"
+                                class="category-filter-select"
+                                :loading="categoriesLoading"
+                                @change="onCategoryFilterChange"
+                            >
+                                <template #prefix>
+                                    <i class="fas fa-folder-tree text-muted"></i>
+                                </template>
+                                <el-option
+                                    :value="null"
+                                    :label="t('qt_all_categories') || t('all_categories')"
+                                >
+                                    <span class="category-all-label">
+                                        <i class="fas fa-layer-group"></i> {{ t('qt_all_categories') || t('all_categories') }}
+                                    </span>
+                                </el-option>
+                                <el-option
+                                    v-for="cat in categoryOptions"
+                                    :key="cat.id"
+                                    :value="cat.id"
+                                    :label="cat.label"
+                                >
+                                    <div class="category-option-row" :class="{ 'is-sub': cat.parent_id }">
+                                        <i :class="cat.parent_id ? 'fas fa-arrow-turn-down-right cat-sub-icon' : 'fas fa-folder cat-root-icon'"></i>
+                                        <span>{{ cat.label }}</span>
+                                    </div>
+                                </el-option>
+                            </el-select>
+                        </div>
+
+                        <!-- Fast Search Input -->
+                        <div class="search-input-box">
+                            <el-input
+                                ref="quickSearchInputRef"
+                                v-model="quickSearchQuery"
+                                :placeholder="t('search_product_placeholder')"
+                                clearable
+                                class="quote-search-input"
+                                @focus="onQuickSearchFocus"
+                                @input="onQuickSearchInput"
+                                @clear="onQuickSearchClear"
+                                @keydown.enter.prevent="onQuickSearchEnter"
+                                @keydown.esc="quickSearchOpen = false"
+                            >
+                                <template #prefix>
+                                    <i v-if="!quickSearchLoading" class="fas fa-magnifying-glass search-icon"></i>
+                                    <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
+                                </template>
+                                <template #suffix>
+                                    <kbd class="key-hint" title="F2">F2</kbd>
+                                </template>
+                            </el-input>
+                        </div>
+
+                        <!-- Catalog / Suggestions Toggle Button -->
+                        <button
+                            type="button"
+                            class="btn-toggle-catalog"
+                            :class="{ 'is-active': quickSearchOpen }"
+                            :title="quickSearchOpen ? t('qt_close_search') : (t('so_suggested_products') || t('qt_suggested_products'))"
+                            @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
+                        >
+                            <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-boxes-stacked'"></i>
+                            <span class="btn-text">{{ quickSearchOpen ? t('qt_close_search') : (t('so_suggested_products') || t('qt_suggested_products')) }}</span>
+                            <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
+                        </button>
+
+                        <!-- Quick Add New Product (F4) -->
+                        <button
+                            type="button"
+                            class="btn-new-product"
+                            :title="`${t('pqa_title')} (F4)`"
+                            @click.stop.prevent="openQuickProduct()"
+                        >
+                            <i class="fas fa-plus"></i>
+                            <span class="btn-text">{{ t('pqa_button') }}</span>
+                            <kbd class="key-hint">F4</kbd>
+                        </button>
+                    </div>
+
+                    <!-- Quick Category Chips Bar -->
+                    <div v-if="topCategories.length" class="category-quick-chips">
+                        <button
+                            type="button"
+                            class="cat-chip-btn"
+                            :class="{ 'is-active': !selectedCategoryId }"
+                            @click="setCategoryFilter(null)"
+                        >
+                            <i class="fas fa-layer-group"></i>
+                            <span>{{ t('qt_all_categories') || t('all_categories') }}</span>
+                        </button>
+                        <button
+                            v-for="cat in topCategories"
+                            :key="cat.id"
+                            type="button"
+                            class="cat-chip-btn"
+                            :class="{ 'is-active': selectedCategoryId === cat.id }"
+                            @click="setCategoryFilter(cat.id)"
+                        >
+                            <i class="fas fa-tag"></i>
+                            <span>{{ cat.label }}</span>
+                        </button>
+                    </div>
+
+                    <!-- Suggested Search & Catalog Dropdown Panel (Stays Open While Adding!) -->
+                    <transition name="el-zoom-in-top">
+                        <div
+                            v-if="quickSearchOpen"
+                            class="quote-suggested-panel order-suggested-panel"
+                            @click.stop
+                        >
+                            <!-- Top Strip -->
+                            <div class="dropdown-top-strip">
+                                <div class="strip-left">
+                                    <i class="fas fa-boxes-stacked text-primary"></i>
+                                    <strong>{{ selectedCategoryName || t('so_suggested_products') || t('qt_suggested_products') }}</strong>
+                                    <span class="results-badge">{{ quickSearchResults.length }}</span>
+                                    <span v-if="quickSearchQuery" class="search-term-badge">
+                                        "{{ quickSearchQuery }}"
+                                    </span>
+                                </div>
+                                <div class="strip-right">
+                                    <span class="keep-open-pill">
+                                        <i class="fas fa-thumbtack text-success"></i>
+                                        {{ t('po_search_hint') || 'القائمة تبقى مفتوحة لتتمكن من إضافة عدة أصناف متتالية بسهولة' }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="close-dropdown-btn"
+                                        :title="t('close')"
+                                        @click.stop="quickSearchOpen = false"
+                                    >
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Products List Scroll -->
+                            <div class="suggested-list-scroll">
+                                <div v-if="quickSearchLoading" class="suggested-loading-state">
+                                    <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                    <span>{{ t('qt_searching_catalog') }}</span>
+                                </div>
+
+                                <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
+                                    <i class="fas fa-box-open empty-icon"></i>
+                                    <p class="empty-title">{{ t('no_products_found') }}</p>
+                                    <button type="button" class="empty-new-product" @click.stop="openQuickProduct(quickSearchQuery)">
+                                        <i class="fas fa-plus"></i>
+                                        <span v-if="quickSearchQuery.trim()">{{ t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
+                                        <span v-else>{{ t('pqa_title') }}</span>
+                                    </button>
+                                    <small class="empty-new-hint">{{ t('pqa_empty_hint') }}</small>
+                                </div>
+
+                                <div v-else class="suggested-products-grid">
+                                    <template v-for="g in quickSearchGroups" :key="g.key">
+                                        <!-- Multi-variant card -->
+                                        <div
+                                            v-if="g.hasVariants"
+                                            class="suggested-item-card is-group"
+                                            :class="{ 'item-in-order': getGroupQuantity(g) > 0 }"
+                                        >
+                                            <div class="group-head">
+                                                <div class="item-card-image">
+                                                    <EntityImage
+                                                        :src="productImageSrc(g.product)"
+                                                        type="product"
+                                                        :size="54"
+                                                        shape="square"
+                                                        class="card-img"
+                                                    />
+                                                    <span v-if="getGroupQuantity(g) > 0" class="in-order-tag" :title="t('quantity')">
+                                                        {{ getGroupQuantity(g) }}
+                                                    </span>
+                                                </div>
+                                                <div class="item-card-body">
+                                                    <div class="item-card-header">
+                                                        <span class="item-name" :title="groupName(g.product)">{{ groupName(g.product) }}</span>
+                                                        <span class="variants-count-chip">
+                                                            <i class="fas fa-layer-group"></i> {{ t('po_variants_count', g.rows.length) }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="item-card-tags">
+                                                        <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                            <i class="fas fa-folder"></i> {{ g.product.category?.name_ar || g.product.category_name }}
+                                                        </span>
+                                                        <span class="pick-size-hint">
+                                                            <i class="fas fa-hand-pointer"></i> {{ t('po_pick_size') }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="variants-tiles">
+                                                <div
+                                                    v-for="v in g.rows"
+                                                    :key="v.listing_key"
+                                                    class="variant-tile"
+                                                    :class="{
+                                                        'tile-in-order': getItemQuantity(v) > 0,
+                                                        'tile-out-stock': v.stock_quantity != null && Number(v.stock_quantity) <= 0,
+                                                    }"
+                                                >
+                                                    <div class="tile-header">
+                                                        <span class="tile-size" dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                                        <span v-if="v.sku && v.variant_label" class="tile-sku" dir="ltr">{{ v.sku }}</span>
+                                                    </div>
+                                                    <div class="tile-meta">
+                                                        <span class="tile-price">{{ money(v.price) }}</span>
+                                                        <span
+                                                            v-if="v.stock_quantity != null"
+                                                            class="tile-stock"
+                                                            :class="{ 'is-low': Number(v.stock_quantity) > 0 && Number(v.stock_quantity) <= 5, 'is-out': Number(v.stock_quantity) <= 0 }"
+                                                        >
+                                                            {{ t('available') }}: {{ v.stock_quantity }}
+                                                        </span>
+                                                    </div>
+                                                    <OrderCardActions
+                                                        :count="getItemQuantity(v)"
+                                                        :pending="pendingQtyOf(v)"
+                                                        :stock="v.stock_quantity"
+                                                        compact
+                                                        @add="(qty) => addProductDirect(v, qty)"
+                                                        @bump-pending="(d) => bumpPendingQty(v, d)"
+                                                        @set-pending="(val) => setPendingQty(v, val)"
+                                                        @blur-pending="(el) => normalizePendingQty(v, el)"
+                                                        @decrement="decrementProduct(v)"
+                                                        @increment="incrementProduct(v)"
+                                                        @set-count="(val) => setProductQuantity(v, val)"
+                                                        @blur-count="(el) => commitProductQuantity(v, el)"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Single product card -->
+                                        <div
+                                            v-else
+                                            class="suggested-item-card is-single"
+                                            :class="{ 'item-in-order': getItemQuantity(g.product) > 0 }"
+                                        >
+                                            <div class="item-card-image">
+                                                <EntityImage
+                                                    :src="productImageSrc(g.product)"
+                                                    type="product"
+                                                    :size="54"
+                                                    shape="square"
+                                                    class="card-img"
+                                                />
+                                                <span v-if="getItemQuantity(g.product) > 0" class="in-order-tag" :title="t('quantity')">
+                                                    {{ getItemQuantity(g.product) }}
+                                                </span>
+                                            </div>
+                                            <div class="item-card-body">
+                                                <div class="item-card-header">
+                                                    <span class="item-name" :title="productName(g.product)">{{ productName(g.product) }}</span>
+                                                    <span v-if="g.product.sku" class="sku-chip" dir="ltr">{{ g.product.sku }}</span>
+                                                </div>
+                                                <div class="item-card-tags">
+                                                    <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                        <i class="fas fa-folder"></i> {{ g.product.category?.name_ar || g.product.category_name }}
+                                                    </span>
+                                                    <span
+                                                        v-if="g.product.stock_quantity != null"
+                                                        class="stock-chip"
+                                                        :class="{ 'is-low': Number(g.product.stock_quantity) > 0 && Number(g.product.stock_quantity) <= 5, 'is-out': Number(g.product.stock_quantity) <= 0 }"
+                                                    >
+                                                        <i class="fas fa-boxes-stacked"></i>
+                                                        {{ Number(g.product.stock_quantity) <= 0 ? t('out_of_stock') : `${t('available')}: ${g.product.stock_quantity}` }}
+                                                    </span>
+                                                </div>
+                                                <div class="item-card-bottom">
+                                                    <div class="price-wrap">
+                                                        <strong class="item-price">{{ money(g.product.price) }}</strong>
+                                                        <span v-if="g.product.unit" class="unit-text">/ {{ g.product.unit }}</span>
+                                                    </div>
+                                                    <OrderCardActions
+                                                        :count="getItemQuantity(g.product)"
+                                                        :pending="pendingQtyOf(g.product)"
+                                                        :stock="g.product.stock_quantity"
+                                                        @add="(qty) => addProductDirect(g.product, qty)"
+                                                        @bump-pending="(d) => bumpPendingQty(g.product, d)"
+                                                        @set-pending="(val) => setPendingQty(g.product, val)"
+                                                        @blur-pending="(el) => normalizePendingQty(g.product, el)"
+                                                        @decrement="decrementProduct(g.product)"
+                                                        @increment="incrementProduct(g.product)"
+                                                        @set-count="(val) => setProductQuantity(g.product, val)"
+                                                        @blur-count="(el) => commitProductQuantity(g.product, el)"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </transition>
                 </div>
 
-                <p class="shortcuts">
-                    <kbd>Ctrl+B</kbd> {{ t('search_product') }}
-                    <span class="dot">·</span>
-                    <kbd>F4</kbd> {{ t('pqa_title') }}
-                    <span class="dot">·</span>
-                    <kbd>Ctrl+Enter</kbd> {{ t('save') }}
-                </p>
-            </aside>
-        </div>
-
-        <!-- On a phone the summary rail is far below the lines, so the figure
-             that decides whether to save follows the screen. -->
-        <div class="mobile-bar">
-            <div class="mobile-total">
-                <span>{{ t('grand_total_label') }}</span>
-                <strong>{{ money(total) }}</strong>
-            </div>
-            <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="submitInvoice">
-                {{ isEdit ? t('save_changes') : t('create_invoice') }}
-            </el-button>
-        </div>
-
-        <!-- ── Quick client ───────────────────────────────────────────────
-             A client who walks in unknown used to cost the seller the whole
-             invoice: leave for the clients page, add them there, come back to
-             an empty form. This asks for the little that a sale needs and
-             hands the invoice back with them already selected. -->
-        <el-dialog
-            v-model="clientDialogVisible"
-            :title="t('new_client')"
-            width="min(480px, 92vw)"
-            align-center
-            append-to-body
-            :close-on-click-modal="false"
-            class="client-dialog"
-            @opened="focusClientField"
-            @closed="resetClientDraft"
-        >
-            <p class="dialog-lede">{{ t('quick_client_hint') }}</p>
-
-            <form class="client-form" @submit.prevent="saveClient">
-                <label class="field">
-                    <span class="field-label">{{ t('name') }} <em class="req">*</em></span>
-                    <el-input
-                        ref="clientNameRef"
-                        v-model="clientDraft.name"
-                        size="large"
-                        :placeholder="t('client_name_placeholder')"
-                    />
-                    <span v-if="clientErrors.name" class="field-error">{{ clientErrors.name }}</span>
-                </label>
-
-                <div class="fields-row">
-                    <label class="field">
-                        <span class="field-label">{{ t('phone') }}</span>
-                        <el-input ref="clientPhoneRef" v-model="clientDraft.phone" dir="ltr" inputmode="tel" />
-                        <span v-if="clientErrors.phone" class="field-error">{{ clientErrors.phone }}</span>
-                    </label>
-                    <label class="field">
-                        <span class="field-label">{{ t('company') }}</span>
-                        <el-input v-model="clientDraft.company" />
-                    </label>
+                <!-- ── Lines Table ── -->
+                <div v-if="!items.length" class="lines-empty">
+                    <i class="fas fa-box-open"></i>
+                    <span>{{ t('use_search_to_add_products') }}</span>
                 </div>
 
-                <!-- The API folds a new client into an existing one when the
-                     phone or email is already somebody's, overwriting their
-                     record. Said here, while it can still be avoided. -->
-                <div v-if="duplicateClient" class="dup-hint">
-                    <el-icon><WarningFilled /></el-icon>
-                    <span>{{ t('client_contact_already_used', { name: duplicateClient.name }) }}</span>
-                    <el-button text type="primary" size="small" @click="useDuplicateClient">
-                        {{ t('use_this_client') }}
-                    </el-button>
-                </div>
+                <div v-else class="lines">
+                    <div class="line line--head" aria-hidden="true">
+                        <span>{{ t('product') }}</span>
+                        <span>{{ t('warehouse') || 'المستودع' }}</span>
+                        <span>{{ t('so_unit') || t('unit') }}</span>
+                        <span>{{ t('quantity') }}</span>
+                        <span>{{ t('unit_price') }}</span>
+                        <span class="num">{{ t('total') }}</span>
+                        <span />
+                    </div>
 
-                <label class="field">
-                    <span class="field-label">{{ t('address') }}</span>
-                    <el-input v-model="clientDraft.address" type="textarea" :rows="2" />
-                </label>
+                    <div
+                        v-for="(item, i) in items"
+                        :key="item.pick"
+                        class="line"
+                        :class="{ 'is-flagged': isLineShort(item) }"
+                    >
+                        <!-- Product info column -->
+                        <div class="line-product">
+                            <div class="line-product-content">
+                                <EntityImage
+                                    :src="item.image || getImageUrl(item.image)"
+                                    type="product"
+                                    :size="42"
+                                    shape="square"
+                                    class="line-thumb"
+                                />
+                                <div class="line-info">
+                                    <strong :title="item.name">{{ item.name }}</strong>
+                                    <div class="line-meta">
+                                        <template v-if="!variantInfo(item)">
+                                            <span v-if="item.sku" class="option-meta" dir="ltr">{{ item.sku }}</span>
+                                            <span v-if="item.variant_label" class="variant-tag">{{ item.variant_label }}</span>
+                                        </template>
+                                        <span v-if="item.stock !== undefined" :class="['stock-pill', isLineShort(item) ? 'is-over' : '']">
+                                            {{ isLineShort(item) ? (t('so_stock_shortage') || 'نقص مخزون') : `${t('available')}: ${item.stock}` }}
+                                        </span>
+                                    </div>
 
-                <div class="extras">
-                    <button type="button" class="extras-toggle" @click="showClientExtras = !showClientExtras">
-                        <el-icon><component :is="showClientExtras ? Minus : Plus" /></el-icon>
-                        {{ t('more_client_details') }}
-                    </button>
+                                    <VariantDetails
+                                        v-if="variantInfo(item)"
+                                        :variant="variantInfo(item)"
+                                        show-codes
+                                        class="line-variant-details"
+                                    />
 
-                    <div v-if="showClientExtras" class="client-extras">
-                        <label class="field">
-                            <span class="field-label">{{ t('email') }}</span>
-                            <el-input v-model="clientDraft.email" dir="ltr" inputmode="email" />
-                            <span v-if="clientErrors.email" class="field-error">{{ clientErrors.email }}</span>
-                        </label>
-                        <label class="field">
-                            <span class="field-label">{{ t('city') }}</span>
-                            <el-input v-model="clientDraft.city" />
-                        </label>
-                        <label class="field">
-                            <span class="field-label">{{ t('tax_number') }}</span>
-                            <el-input v-model="clientDraft.tax_number" dir="ltr" />
-                        </label>
-                        <label class="field">
-                            <span class="field-label">{{ t('credit_limit') }}</span>
-                            <el-input v-model.number="clientDraft.credit_limit" type="number" min="0" step="0.01" />
-                        </label>
+                                    <!-- Switch size chips -->
+                                    <div v-if="lineSiblings(item).length > 1" class="line-variant-switch">
+                                        <span class="switch-label"><i class="fas fa-tag"></i> {{ t('po_switch_size') }}</span>
+                                        <div class="switch-chips">
+                                            <button
+                                                v-for="v in lineSiblings(item)"
+                                                :key="optionKey(v)"
+                                                type="button"
+                                                class="switch-chip"
+                                                :class="{
+                                                    'is-active': (v.variant_id || null) === (item.product_variant_id || null),
+                                                    'is-out': v.stock_quantity != null && Number(v.stock_quantity) <= 0,
+                                                }"
+                                                :title="[v.sku, money(v.price)].filter(Boolean).join(' · ')"
+                                                @click.stop="switchLineVariant(item, v)"
+                                            >
+                                                <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                                <small v-if="v.stock_quantity != null" class="chip-stock">{{ v.stock_quantity }}</small>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields Grid (Warehouse, Unit, Qty, Price) -->
+                        <div class="line-fields">
+                            <!-- Warehouse Column -->
+                            <div class="line-field">
+                                <span class="mobile-label">{{ t('warehouse') }}</span>
+                                <el-select
+                                    v-if="item.allocations && item.allocations[0]"
+                                    v-model="item.allocations[0].warehouse_id"
+                                    size="small"
+                                    class="warehouse-select"
+                                    :placeholder="t('sales.choose_source')"
+                                    @change="() => onSourceChange(i)"
+                                >
+                                    <el-option
+                                        v-for="wh in warehouses"
+                                        :key="wh.id"
+                                        :label="wh.name"
+                                        :value="wh.id"
+                                    />
+                                </el-select>
+                            </div>
+
+                            <!-- Unit Column -->
+                            <div class="line-field">
+                                <span class="mobile-label">{{ t('so_unit') }}</span>
+                                <el-select
+                                    v-if="item.units && item.units.length > 1"
+                                    v-model="item.selectedUnit"
+                                    value-key="id"
+                                    size="small"
+                                    class="unit-select"
+                                    @change="(u) => onUnitChange(item, u)"
+                                >
+                                    <el-option
+                                        v-for="u in item.units"
+                                        :key="u.id ?? u.name"
+                                        :label="u.name_ar || u.name"
+                                        :value="u"
+                                    />
+                                </el-select>
+                                <span v-else class="unit-badge">{{ item.selectedUnit?.name_ar || item.selectedUnit?.name || t('piece') }}</span>
+                            </div>
+
+                            <!-- Quantity Column -->
+                            <div class="line-field">
+                                <span class="mobile-label">{{ t('quantity') }}</span>
+                                <el-input-number
+                                    v-if="item.allocations && item.allocations[0]"
+                                    v-model="item.allocations[0].quantity"
+                                    :min="1"
+                                    :step="1"
+                                    step-strictly
+                                    size="small"
+                                    controls-position="right"
+                                />
+                            </div>
+
+                            <!-- Price Column -->
+                            <div class="line-field">
+                                <span class="mobile-label">{{ t('unit_price') }}</span>
+                                <el-input-number
+                                    v-model="item.price"
+                                    :min="0"
+                                    :precision="2"
+                                    :controls="false"
+                                    size="small"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Line Total -->
+                        <div class="line-field line-total-cell">
+                            <span class="mobile-label">{{ t('total') }}</span>
+                            <span class="num line-total">{{ money(lineTotal(item)) }}</span>
+                        </div>
+
+                        <!-- Actions (Duplicate, Delete) -->
+                        <div class="line-actions">
+                            <el-tooltip :content="t('duplicate_line')" placement="top">
+                                <el-button
+                                    text
+                                    circle
+                                    class="action-btn"
+                                    @click="duplicateLine(i)"
+                                >
+                                    <i class="fas fa-copy"></i>
+                                </el-button>
+                            </el-tooltip>
+                            <el-tooltip :content="t('delete')" placement="top">
+                                <el-button
+                                    text
+                                    circle
+                                    class="action-btn text-danger"
+                                    @click="removeItem(i)"
+                                >
+                                    <i class="fas fa-trash-can"></i>
+                                </el-button>
+                            </el-tooltip>
+                        </div>
                     </div>
                 </div>
 
-                <el-alert v-if="clientError" :title="clientError" type="error" show-icon :closable="false" />
+                <!-- ── Bottom Grid: Settlement & Notes on left, Totals on right ── -->
+                <div class="bottom-grid">
+                    <div class="notes-and-terms">
+                        <!-- Settlement & Payment info -->
+                        <div class="settlement-box">
+                            <h5 class="settlement-title">
+                                <i class="fas fa-wallet text-primary"></i>&nbsp;{{ t('settlement') || 'التحصيل والدفع' }}
+                            </h5>
+                            <div class="settlement-row">
+                                <label class="field">
+                                    <span class="field-label">{{ t('paid_now') || 'المبلغ المقبوض الآن' }}</span>
+                                    <el-input-number
+                                        v-model="form.paid_amount"
+                                        :min="0"
+                                        :precision="2"
+                                        :controls="false"
+                                        size="small"
+                                        style="width: 150px;"
+                                    />
+                                </label>
 
-                <!-- Enter anywhere in the form saves it. -->
-                <button type="submit" class="sr-submit" tabindex="-1" aria-hidden="true"></button>
-            </form>
+                                <div class="remaining-badge" :class="remainingTone">
+                                    <span class="remaining-lbl">
+                                        {{ remaining > 0 ? (t('remaining_on_customer') || 'المتبقي ذمة:') : (remaining < 0 ? (t('customer_credit') || 'رصيد دائن:') : (t('fully_settled') || 'مدفوعة بالكامل')) }}
+                                    </span>
+                                    <strong class="remaining-val">{{ money(Math.abs(remaining)) }}</strong>
+                                </div>
+                            </div>
 
-            <template #footer>
-                <el-button @click="clientDialogVisible = false">{{ t('cancel') }}</el-button>
-                <el-button
-                    type="primary"
-                    :loading="savingClient"
-                    :disabled="!clientDraft.name.trim()"
-                    @click="saveClient"
-                >
-                    <el-icon><Check /></el-icon>
-                    {{ t('save_and_select') }}
-                </el-button>
-            </template>
-        </el-dialog>
+                            <!-- Tafqeet (amount in words) -->
+                            <p v-if="total > 0" class="tafqeet-line">
+                                <i class="fas fa-receipt text-muted"></i>&nbsp;
+                                <span>{{ tafqeet(total) }}</span>
+                            </p>
+                        </div>
+
+                        <!-- Additional Expenses Editor -->
+                        <OrderExpensesEditor
+                            v-model="form.expenses"
+                            class="mb-3"
+                        />
+
+                        <!-- Notes Textarea -->
+                        <el-form-item :label="t('notes')">
+                            <el-input
+                                v-model="form.notes"
+                                type="textarea"
+                                :rows="2"
+                                maxlength="1000"
+                                show-word-limit
+                                :placeholder="t('invoice_notes_placeholder') || t('notes')"
+                            />
+                        </el-form-item>
+                    </div>
+
+                    <!-- Totals Box -->
+                    <div class="totals" :class="{ 'is-flagged': isFlagged('discount') }">
+                        <div class="totals-row">
+                            <span>{{ t('subtotal') }}</span>
+                            <span class="num">{{ money(subtotal) }}</span>
+                        </div>
+
+                        <!-- Discount Row with % vs Amount Mode Switch -->
+                        <div class="totals-row discount-row" :class="{ 'has-error': discountError }">
+                            <div class="totals-row-label">
+                                <span>{{ t('sales.discount_label') || t('discount') }}</span>
+                                <el-radio-group
+                                    :model-value="form.discount_type"
+                                    size="small"
+                                    class="discount-mode-switch"
+                                    @update:model-value="switchDiscountType"
+                                >
+                                    <el-radio-button value="percent">%</el-radio-button>
+                                    <el-radio-button value="amount">{{ t('sales.discount_as_amount') || 'مبلغ ثابت' }}</el-radio-button>
+                                </el-radio-group>
+                            </div>
+                            <div class="totals-row-input">
+                                <el-input-number
+                                    v-if="form.discount_type === 'percent'"
+                                    ref="discountInput"
+                                    v-model="form.discount_percent"
+                                    :min="0"
+                                    :max="100"
+                                    :precision="2"
+                                    :controls="false"
+                                    size="small"
+                                    :class="{ 'is-invalid': !!discountError }"
+                                />
+                                <el-input-number
+                                    v-else
+                                    ref="discountInput"
+                                    v-model="form.discount_amount"
+                                    :min="0"
+                                    :max="subtotal"
+                                    :precision="2"
+                                    :controls="false"
+                                    size="small"
+                                    :class="{ 'is-invalid': !!discountError }"
+                                />
+                            </div>
+                        </div>
+
+                        <div v-if="discountError" class="totals-hint is-error">
+                            {{ discountError }}
+                        </div>
+                        <div v-else-if="discountAmount > 0" class="totals-hint is-figure">
+                            {{ form.discount_type === 'percent'
+                                ? t('sales.discount_equivalent_amount', { amount: money(discountAmount) })
+                                : t('sales.discount_equivalent_percent', { amount: money(discountAmount), percent: `${effectiveDiscountRate}%` }) }}
+                        </div>
+
+                        <!-- Tax Row -->
+                        <div class="totals-row">
+                            <span>{{ t('tax_percent') }} (%)</span>
+                            <el-input-number
+                                v-model="form.tax_percent"
+                                :min="0"
+                                :max="100"
+                                :precision="2"
+                                :controls="false"
+                                size="small"
+                            />
+                        </div>
+                        <div v-if="taxAmount > 0" class="totals-hint is-figure">
+                            + {{ money(taxAmount) }}
+                        </div>
+
+                        <!-- Additional Expenses / Shipping -->
+                        <div v-if="totalExpenses > 0" class="totals-row">
+                            <span>{{ t('additional_charges') || 'مصاريف إضافية' }}</span>
+                            <span class="num">+ {{ money(totalExpenses) }}</span>
+                        </div>
+
+                        <!-- Grand Total -->
+                        <div class="totals-row grand">
+                            <span>{{ t('total') }}</span>
+                            <span class="num">{{ money(total) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Action Bar Dock (Bottom Sticky) ── -->
+                <div class="action-bar-dock">
+                    <div class="action-bar-inner">
+                        <div class="dock-left">
+                            <el-button @click="goBack">
+                                <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_invoices') }}
+                            </el-button>
+                            <el-button v-if="!isEdit" text type="danger" @click="confirmClearInvoice">
+                                <i class="fas fa-trash-can"></i>&nbsp;{{ t('clear_the_form') }}
+                            </el-button>
+                        </div>
+
+                        <div class="dock-right">
+                            <span v-if="issues.length" class="blocker-hint">
+                                <i class="fas fa-circle-exclamation text-warning"></i>&nbsp;{{ blockerText }}
+                            </span>
+                            <el-button
+                                type="primary"
+                                size="large"
+                                :loading="submitting"
+                                :disabled="!canSubmit"
+                                class="btn-save-primary"
+                                @click="submitInvoice"
+                            >
+                                <i class="fas fa-check"></i>&nbsp;{{ isEdit ? t('save_changes') : t('create_invoice') }}
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+            </el-form>
+        </div>
+
+        <!-- ── Quick Add Product Modal (F4) ── -->
         <ProductQuickAdd
             v-model="quickProductVisible"
-            :seed="quickProductSeed"
-            :categories="categoryOptions"
-            :stock-note="t('pqa_stock_note_invoice')"
-            @created="addQuickProduct"
-            @use-existing="addQuickProduct"
+            :initial-name="quickProductSeed"
+            @created="onQuickProductCreated"
         />
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { computed, nextTick, onMounted, onBeforeUnmount, onUnmounted, reactive, ref, watch } from 'vue';
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useInvoicesStore } from '@/stores/invoices';
-import { useCustomersStore } from '@/stores/customers';
 import { useAuthStore } from '@/stores/auth';
-import { customersApi } from '@/api/customers';
 import { posApi } from '@/api/pos';
+import { categoriesApi } from '@/api/categories';
 import api from '@/api';
-import { formatMoney, formatNumber, roundUnitPrice } from '@/utils/currency';
+import { formatMoney, formatNumber, roundUnitPrice, unitPriceDigits } from '@/utils/currency';
 import { formatPercent } from '@/utils/numberFormat';
 import { tafqeet } from '@/utils/tafqeet';
-import {
-    summariseSources,
-    availableAt,
-    askedFor,
-    isLineShort as lineIsShort,
-    isAllocationShort as allocationIsShort,
-    lineQuantity,
-    preferredSource,
-} from '@/utils/stockSources';
 import { getImageUrl } from '@/utils/imageUrl';
-import VariantChip from '@/components/admin/products/VariantChip.vue';
-import VariantDetails from '@/components/admin/products/VariantDetails.vue';
-import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
-import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
-import { categoriesApi } from '@/api/categories';
+import { resolveImageUrl } from '@/utils/productImages';
 import { pickKey, optionKey, baseName, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import EntityImage from '@/components/admin/EntityImage.vue';
+import VariantChip from '@/components/admin/products/VariantChip.vue';
+import VariantDetails from '@/components/admin/products/VariantDetails.vue';
+import OrderCardActions from '@/components/admin/sales/OrderCardActions.vue';
+import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
+import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
+import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import {
-    Search, ShoppingCart, User, Wallet, Notebook,
-    ArrowRight, Plus, Minus, Delete, Check, Loading,
-    Box, WarningFilled,
-} from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const invoicesStore = useInvoicesStore();
-const customersStore = useCustomersStore();
 const authStore = useAuthStore();
 
-// A sales rep's invoices are credited to them, and they cannot hand one to
-// someone else — the server enforces the same (User::isSalesScoped).
+const invoiceId = route.params.id || null;
+const isEdit = computed(() => !!invoiceId);
 const isSalesRep = computed(() => !!authStore.user?.is_sales_scoped && !!authStore.user?.employee_id);
+const backArrow = computed(() => (locale.value === 'ar' ? 'fa-arrow-right' : 'fa-arrow-left'));
+const DRAFT_KEY = 'invoice-draft';
 
-const isEdit = computed(() => !!route.params.id);
-const searchInputRef = ref(null);
+const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const money = (val) => formatMoney(val);
+const rate = (val) => Math.min(100, Math.max(0, Number(val) || 0));
 
-// Keyed by the line's pick (product, or product + size), pointing at that line's first allocation quantity
-// input — where addProduct() sends focus so the quantity can be typed right
-// away instead of clicking back into the row.
-const qtyInputRefs = reactive({});
-const setQtyRef = (pick, el) => {
-    if (el) qtyInputRefs[pick] = el;
-    else delete qtyInputRefs[pick];
-};
+function inDays(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(days));
+    return d.toISOString().slice(0, 10);
+}
 
-const form = reactive({
+const formRoot = ref(null);
+const customerSelectRef = ref(null);
+const deliveryPicker = ref(null);
+const discountInput = ref(null);
+const loading = ref(false);
+const loadedInvoice = ref(null);
+const submitting = ref(false);
+const formErrors = ref([]);
+const dirty = ref(false);
+let draftTimer = null;
+let draftTracking = false;
+const draftSavedAt = ref('');
+
+/* ------------------------------------------------------------------ *
+ * Form State
+ * ------------------------------------------------------------------ */
+
+const blankForm = () => ({
     customer_id: null,
-    // The rep credited with the sale. Null is a valid answer.
     assigned_employee_id: null,
+    default_warehouse_id: null,
     payment_method: 'cash',
-    // Rates, not figures: a discount is agreed as a percentage and a tax is set
-    // as one, and both then track the lines instead of going stale the moment a
-    // quantity changes. The money they come to is computed below and is what
-    // the invoice is saved and posted with.
+    due_date: inDays(0),
+    discount_type: 'percent',
     discount_percent: 0,
+    discount_amount: 0,
     tax_percent: 0,
-    // Collected at the moment the invoice is raised; the rest becomes the
-    // customer's outstanding balance.
     paid_amount: 0,
     notes: '',
     status: 'pending',
     expenses: [],
 });
+
+const form = reactive(blankForm());
+const items = ref([]);
+
+const warehouses = ref([]);
+const salesEmployees = ref([]);
+
+/* ------------------------------------------------------------------ *
+ * Customers
+ * ------------------------------------------------------------------ */
+
+const customers = ref([]);
+const selectedCustomer = ref(null);
+const customersLoading = ref(false);
+const customerQuery = ref('');
+let customerSearchToken = 0;
+
+const customerOptions = computed(() => {
+    const chosen = selectedCustomer.value;
+    if (!chosen || customerQuery.value) return customers.value;
+    return customers.value.some((c) => c.id === chosen.id)
+        ? customers.value
+        : [chosen, ...customers.value];
+});
+
+const clientContactLine = (customer) =>
+    [customer?.phone, customer?.company].filter(Boolean).join(' · ');
+
+const clientBalance = computed(() => {
+    if (!selectedCustomer.value) return null;
+    const balance = parseFloat(selectedCustomer.value.balance) || 0;
+    if (Math.abs(balance) < 0.005) return null;
+    return {
+        amount: Math.abs(balance),
+        tone: balance > 0 ? 'is-credit' : 'is-owing',
+        label: balance > 0 ? (t('customer_credit') || 'رصيد دائن') : (t('customer_balance') || 'رصيد سابق'),
+    };
+});
+
+const searchCustomers = async (query = '') => {
+    customerQuery.value = query;
+    const token = ++customerSearchToken;
+    customersLoading.value = true;
+    try {
+        const { data } = await posApi.customers({ q: query, per_page: 30 });
+        if (token === customerSearchToken) {
+            customers.value = data?.data || (Array.isArray(data) ? data : []);
+        }
+    } catch {
+        if (token === customerSearchToken) customers.value = [];
+    } finally {
+        if (token === customerSearchToken) customersLoading.value = false;
+    }
+};
+
+const onCustomerPicked = (id) => {
+    selectedCustomer.value = customers.value.find((c) => c.id === id) || null;
+    dirty.value = true;
+};
+
+// Inline Quick Customer Add
+const quickCustomerOpen = ref(false);
+const quickCustomerSeed = ref('');
+
+const toggleQuickCustomer = () => {
+    quickCustomerOpen.value = !quickCustomerOpen.value;
+    quickCustomerSeed.value = customerQuery.value || '';
+};
+
+const openQuickCustomer = (seed = '') => {
+    quickCustomerSeed.value = seed;
+    quickCustomerOpen.value = true;
+};
+
+const onQuickCustomerSelect = (customer) => {
+    selectedCustomer.value = customer;
+    customers.value = [customer, ...customers.value.filter((c) => c.id !== customer.id)];
+    form.customer_id = customer.id;
+    quickCustomerOpen.value = false;
+    dirty.value = true;
+    ElMessage.success(t('client_added_and_selected', { name: customer.name }) || 'تمت إضافة العميل واختياره');
+};
+
+/* ------------------------------------------------------------------ *
+ * Categories & Search
+ * ------------------------------------------------------------------ */
+
+const categories = ref([]);
+const categoriesLoading = ref(false);
+const selectedCategoryId = ref(null);
+const quickSearchContainerRef = ref(null);
+const quickSearchInputRef = ref(null);
+const quickSearchQuery = ref('');
+const quickSearchResults = ref([]);
+const quickSearchLoading = ref(false);
+const quickSearchOpen = ref(false);
+let quickSearchTimer = null;
+
+const categoryOptions = computed(() => {
+    return categories.value.map((c) => ({
+        id: c.id,
+        label: c.name_ar || c.name || c.name_en,
+        parent_id: c.parent_id,
+    }));
+});
+
+const topCategories = computed(() => categoryOptions.value.slice(0, 8));
+
+const selectedCategoryName = computed(() => {
+    if (!selectedCategoryId.value) return '';
+    return categoryOptions.value.find((c) => c.id === selectedCategoryId.value)?.label || '';
+});
+
+const fetchCategories = async () => {
+    categoriesLoading.value = true;
+    try {
+        const res = await categoriesApi.getAll({ per_page: 500 });
+        categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+    } catch {
+        categories.value = [];
+    } finally {
+        categoriesLoading.value = false;
+    }
+};
+
+const setCategoryFilter = (id) => {
+    selectedCategoryId.value = id;
+    executeQuickSearch();
+};
+
+const onCategoryFilterChange = () => {
+    executeQuickSearch();
+};
+
+const onQuickSearchFocus = () => {
+    quickSearchOpen.value = true;
+    if (!quickSearchResults.value.length) executeQuickSearch();
+};
+
+const onQuickSearchInput = () => {
+    quickSearchOpen.value = true;
+    clearTimeout(quickSearchTimer);
+    quickSearchTimer = setTimeout(executeQuickSearch, 250);
+};
+
+const onQuickSearchClear = () => {
+    quickSearchQuery.value = '';
+    executeQuickSearch();
+};
+
+const onQuickSearchEnter = () => {
+    if (quickSearchResults.value.length === 1) {
+        addProductDirect(quickSearchResults.value[0], pendingQtyOf(quickSearchResults.value[0]));
+        quickSearchQuery.value = '';
+    }
+};
+
+const executeQuickSearch = async () => {
+    quickSearchLoading.value = true;
+    try {
+        const params = { expand_variants: 1 };
+        if (quickSearchQuery.value && quickSearchQuery.value.trim().length >= 1) {
+            params.q = quickSearchQuery.value.trim();
+        }
+        if (selectedCategoryId.value) {
+            params.category_id = selectedCategoryId.value;
+        }
+        const res = await posApi.productLookup(params);
+        const data = res.data?.data || [];
+        quickSearchResults.value = (Array.isArray(data) ? data : []).map((p) => ({
+            ...p,
+            listing_key: optionKey(p),
+        }));
+        rememberVariantRows(quickSearchResults.value);
+    } catch {
+        quickSearchResults.value = [];
+    } finally {
+        quickSearchLoading.value = false;
+    }
+};
+
+const quickSearchGroups = computed(() => {
+    const groups = new Map();
+    quickSearchResults.value.forEach((product) => {
+        const id = product.id ?? product.product_id;
+        if (!groups.has(id)) {
+            groups.set(id, { key: String(id), product, rows: [] });
+        }
+        groups.get(id).rows.push(product);
+    });
+    return [...groups.values()].map((g) => ({
+        ...g,
+        hasVariants: g.rows.some((r) => r.variant_id || r.product_variant_id),
+    }));
+});
+
+/* ------------------------------------------------------------------ *
+ * Variants & Sibling Sizes
+ * ------------------------------------------------------------------ */
+
+const { lineSiblings, rememberVariantRows, ensureVariantsLoaded } = useVariantSiblings({
+    async fetchProduct(productId) {
+        const { data } = await posApi.productLookup({ product_id: productId, expand_variants: 1 });
+        return data?.data || [];
+    },
+});
+
+const variantInfo = (line) => lineVariantInfo(line);
+
+const switchLineVariant = (line, row) => {
+    const pick = optionKey(row);
+    if (pick === line.pick) return;
+
+    const other = items.value.find((l) => l !== line && l.pick === pick);
+    if (other) {
+        if (other.allocations && line.allocations) {
+            other.allocations[0].quantity += line.allocations[0].quantity;
+        }
+        const index = items.value.indexOf(line);
+        if (index !== -1) items.value.splice(index, 1);
+        ElMessage.success(t('so_qty_now', { name: other.name, count: other.allocations?.[0]?.quantity }));
+        return;
+    }
+
+    const multiplier = toNum(line.selectedUnit?.price_multiplier) || 1;
+    const priceUntouched = !toNum(line.base_price) || roundUnitPrice(line.price) === roundUnitPrice(toNum(line.base_price) * multiplier);
+    line.pick = pick;
+    line.product_variant_id = row.variant_id || null;
+    line.name = productName(row);
+    line.sku = row.sku || '';
+    line.variant_label = row.variant_label || '';
+    line.variant = variantFieldsOf(row);
+    line.image = productImageSrc(row) || line.image;
+    line.stock = row.stock_quantity != null ? Number(row.stock_quantity) : undefined;
+    line.base_price = parseFloat(row.price) || 0;
+    if (priceUntouched) line.price = roundUnitPrice(line.base_price * multiplier);
+    dirty.value = true;
+};
+
+/* ------------------------------------------------------------------ *
+ * Line Item helpers & Quantities
+ * ------------------------------------------------------------------ */
+
+const pendingQty = reactive({});
+const productKey = (product) => product.listing_key || optionKey(product);
+const pendingQtyOf = (product) => toNum(pendingQty[productKey(product)]) || 1;
+
+const setPendingQty = (product, raw) => {
+    const key = productKey(product);
+    const n = Math.floor(toNum(raw));
+    if (n >= 1) pendingQty[key] = n;
+};
+
+const bumpPendingQty = (product, delta) => {
+    const key = productKey(product);
+    pendingQty[key] = Math.max(1, pendingQtyOf(product) + delta);
+};
+
+const normalizePendingQty = (product, input) => {
+    const shown = pendingQtyOf(product);
+    if (input && String(input.value) !== String(shown)) input.value = shown;
+};
+
+const lineFor = (product) => {
+    if (!product) return undefined;
+    const pick = optionKey(product);
+    return items.value.find((l) => l.pick === pick);
+};
+
+const getItemQuantity = (product) => {
+    const line = lineFor(product);
+    return line ? (line.allocations?.[0]?.quantity || 0) : 0;
+};
+
+const getGroupQuantity = (group) => {
+    return group.rows.reduce((sum, r) => sum + getItemQuantity(r), 0);
+};
+
+const setProductQuantity = (product, raw) => {
+    const line = lineFor(product);
+    if (!line || !line.allocations?.length) return;
+    const n = Math.floor(toNum(raw));
+    if (n >= 1) line.allocations[0].quantity = n;
+    dirty.value = true;
+};
+
+const commitProductQuantity = (product, input) => {
+    const line = lineFor(product);
+    if (!line) return;
+    const index = items.value.indexOf(line);
+    if (index === -1) return;
+    const n = Math.floor(toNum(input?.value));
+    if (n < 1) {
+        items.value.splice(index, 1);
+        ElMessage.info(t('item_removed') || 'تم حذف البند');
+    } else {
+        line.allocations[0].quantity = n;
+    }
+    dirty.value = true;
+};
+
+const decrementProduct = (product) => {
+    const line = lineFor(product);
+    if (!line || !line.allocations?.length) return;
+    const index = items.value.indexOf(line);
+    if (index === -1) return;
+
+    if (line.allocations[0].quantity > 1) {
+        line.allocations[0].quantity -= 1;
+    } else {
+        items.value.splice(index, 1);
+        ElMessage.info(t('item_removed') || 'تم حذف البند');
+    }
+    dirty.value = true;
+};
+
+const incrementProduct = (product) => {
+    const line = lineFor(product);
+    if (!line || !line.allocations?.length) return;
+    line.allocations[0].quantity += 1;
+    dirty.value = true;
+};
+
+const addProductDirect = (product, quantity = 1) => {
+    const pick = optionKey(product);
+    const existing = items.value.find((l) => l.pick === pick);
+    if (product.variant_id) ensureVariantsLoaded(product.id);
+
+    const targetWarehouseId = form.default_warehouse_id || (warehouses.value[0]?.id || null);
+
+    if (existing) {
+        existing.allocations[0].quantity += Math.max(1, quantity);
+        ElMessage.success(t('so_qty_now', { name: existing.name, count: existing.allocations[0].quantity }));
+    } else {
+        const defaultUnit = {
+            id: null,
+            name: product.unit || t('piece'),
+            name_ar: product.unit || t('piece'),
+            base_unit_multiplier: 1,
+            price_multiplier: 1,
+        };
+
+        const line = reactive({
+            pick,
+            product_id: product.id ?? product.product_id,
+            product_variant_id: product.variant_id ?? product.product_variant_id ?? null,
+            variant_label: product.variant_label || variantLabelOf(product),
+            variant: variantFieldsOf(product),
+            name: productName(product),
+            sku: product.sku || '',
+            image: productImageSrc(product),
+            price: parseFloat(product.price) || 0,
+            base_price: parseFloat(product.price) || 0,
+            stock: product.stock_quantity != null ? Number(product.stock_quantity) : undefined,
+            selectedUnit: defaultUnit,
+            units: [defaultUnit],
+            allocations: [
+                {
+                    warehouse_id: targetWarehouseId,
+                    quantity: Math.max(1, quantity),
+                },
+            ],
+            sources: [],
+            loadingStock: false,
+        });
+
+        items.value.unshift(line);
+        loadUnits(line);
+        ElMessage.success(t('so_added', { name: line.name }));
+    }
+
+    pendingQty[productKey(product)] = 1;
+    dirty.value = true;
+};
+
+const duplicateLine = (index) => {
+    const original = items.value[index];
+    if (!original) return;
+    const copy = reactive({
+        ...original,
+        pick: `${original.pick}-copy-${Date.now()}`,
+        allocations: original.allocations.map((a) => ({ ...a })),
+    });
+    items.value.splice(index + 1, 0, copy);
+    dirty.value = true;
+    ElMessage.success(t('line_duplicated') || 'تم تكرار البند بنجاح');
+};
+
+const removeItem = (index) => {
+    items.value.splice(index, 1);
+    dirty.value = true;
+};
+
+const loadUnits = async (line) => {
+    try {
+        const { data } = await api.get(`/admin/products/${line.product_id}/units`);
+        const rows = data?.data || [];
+        if (!rows.length) return;
+        const units = rows.map((u) => ({
+            id: u.id,
+            name: u.name,
+            name_ar: u.name_ar || u.name,
+            base_unit_multiplier: parseFloat(u.base_unit_multiplier) || 1,
+            price_multiplier: parseFloat(u.price_multiplier) || 1,
+            is_default: !!u.is_default,
+        }));
+        line.units = [line.selectedUnit, ...units.filter((u) => u.id !== line.selectedUnit?.id)];
+        const defaultU = units.find((u) => u.is_default);
+        if (defaultU) {
+            line.selectedUnit = defaultU;
+            if (line.base_price) line.price = roundUnitPrice(line.base_price * defaultU.price_multiplier);
+        }
+    } catch {
+        /* ignore */
+    }
+};
+
+const onUnitChange = (line, unit) => {
+    line.selectedUnit = unit;
+    if (line.base_price && unit?.price_multiplier) {
+        line.price = roundUnitPrice(line.base_price * unit.price_multiplier);
+    }
+    dirty.value = true;
+};
+
+const onDefaultWarehouseChange = (whId) => {
+    if (!whId) return;
+    items.value.forEach((item) => {
+        if (item.allocations && item.allocations.length) {
+            item.allocations[0].warehouse_id = whId;
+        }
+    });
+    dirty.value = true;
+};
+
+const onSourceChange = (index) => {
+    dirty.value = true;
+};
+
+/* ------------------------------------------------------------------ *
+ * Naming & Images
+ * ------------------------------------------------------------------ */
+
+const productName = (p) => {
+    if (!p) return '';
+    return p.name_ar || p.name || p.name_en || t('unknown_product');
+};
+
+const groupName = (p) => baseName(p) || productName(p);
+
+const productImageSrc = (p) => {
+    if (!p) return '';
+    const img = p.image || p.image_main || p.images?.[0]?.url || p.images?.[0]?.path;
+    return img ? resolveImageUrl(img) : '';
+};
+
+/* ------------------------------------------------------------------ *
+ * Quick Add Product Modal (F4)
+ * ------------------------------------------------------------------ */
+
+const quickProductVisible = ref(false);
+const quickProductSeed = ref('');
+
+const openQuickProduct = (seed = '') => {
+    quickProductSeed.value = String(seed || '').trim();
+    quickProductVisible.value = true;
+};
+
+const onQuickProductCreated = (product) => {
+    addProductDirect(product, 1);
+    quickProductVisible.value = false;
+};
+
+/* ------------------------------------------------------------------ *
+ * Totals & Calculations
+ * ------------------------------------------------------------------ */
+
+const lineTotal = (item) => {
+    const qty = item.allocations?.[0]?.quantity || 0;
+    return round2(toNum(item.price) * toNum(qty));
+};
+
+const totalPieces = computed(() => {
+    return items.value.reduce((sum, item) => {
+        const qty = item.allocations?.[0]?.quantity || 0;
+        const mult = item.selectedUnit?.base_unit_multiplier || 1;
+        return sum + (toNum(qty) * toNum(mult));
+    }, 0);
+});
+
+const subtotal = computed(() => {
+    return round2(items.value.reduce((sum, item) => sum + lineTotal(item), 0));
+});
+
+const totalExpenses = computed(() => {
+    return round2(form.expenses.reduce((sum, exp) => sum + toNum(exp.amount), 0));
+});
+
+const discountAmount = computed(() => {
+    if (form.discount_type === 'amount') {
+        return round2(Math.min(Math.max(0, toNum(form.discount_amount)), Math.max(0, subtotal.value)));
+    }
+    return round2(Math.max(0, subtotal.value) * Math.min(100, Math.max(0, toNum(form.discount_percent))) / 100);
+});
+
+const effectiveDiscountRate = computed(() =>
+    subtotal.value > 0 ? Math.round((discountAmount.value / subtotal.value) * 10000) / 100 : 0
+);
+
+const discountError = computed(() => {
+    if (form.discount_type === 'amount') {
+        const amount = toNum(form.discount_amount);
+        if (amount < 0) return t('sales.discount_negative');
+        if (amount > 0 && amount - subtotal.value > 0.005) {
+            return t('sales.discount_amount_exceeds_subtotal', {
+                discount: money(amount),
+                subtotal: money(subtotal.value),
+            });
+        }
+        return '';
+    }
+    const val = toNum(form.discount_percent);
+    if (val < 0 || val > 100) return t('sales.discount_percent_out_of_range');
+    return '';
+});
+
+const switchDiscountType = (type) => {
+    if (type === form.discount_type) return;
+    if (type === 'amount') {
+        form.discount_amount = discountAmount.value;
+    } else {
+        form.discount_percent = effectiveDiscountRate.value;
+    }
+    form.discount_type = type;
+};
+
+const taxAmount = computed(() =>
+    round2(Math.max(0, subtotal.value - discountAmount.value) * rate(form.tax_percent) / 100)
+);
+
+const total = computed(() =>
+    Math.max(0, subtotal.value - discountAmount.value + taxAmount.value + totalExpenses.value)
+);
+
+const remaining = computed(() => round2(total.value - toNum(form.paid_amount)));
+
+const remainingTone = computed(() => {
+    if (Math.abs(remaining.value) < 0.005) return 'is-settled';
+    return remaining.value > 0 ? 'is-owing' : 'is-credit';
+});
+
+/* ------------------------------------------------------------------ *
+ * Validation & Issues Checklist
+ * ------------------------------------------------------------------ */
+
+const isLineShort = (item) => {
+    if (item.stock == null) return false;
+    const qty = item.allocations?.[0]?.quantity || 0;
+    const mult = item.selectedUnit?.base_unit_multiplier || 1;
+    return (toNum(qty) * toNum(mult)) > Number(item.stock);
+};
+
+const shortLines = computed(() => items.value.filter(isLineShort));
+
+const issues = computed(() => {
+    const list = [];
+    if (!items.value.length) {
+        list.push({ key: 'items', target: 'items', text: t('qt_need_lines') || 'يرجى إضافة بند واحد على الأقل' });
+    }
+    if (discountError.value) {
+        list.push({ key: 'discount', target: 'discount', text: discountError.value });
+    }
+    return list;
+});
+
+const blockerText = computed(() => issues.value[0]?.text || '');
+
+const canSubmit = computed(() => issues.value.length === 0 && !submitting.value);
+
+const isFlagged = (target) => issues.value.some((issue) => issue.target === target);
+
+const goToIssue = (issue) => {
+    let el = null;
+    if (issue.target === 'items') {
+        el = quickSearchInputRef.value?.$el || formRoot.value?.querySelector('.quote-search-panel');
+    } else if (issue.target === 'discount') {
+        el = discountInput.value?.$el;
+    }
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const focusable = el?.querySelector('input, select, textarea') || el;
+    focusable?.focus?.();
+};
+
+/* ------------------------------------------------------------------ *
+ * Status Transitions & Labels
+ * ------------------------------------------------------------------ */
 
 const statusTransitions = {
     pending: ['confirmed', 'cancelled'],
@@ -847,787 +1643,235 @@ const statusTransitions = {
 };
 
 const statusLabels = {
-    pending: t('sales_status_pending'),
-    confirmed: t('sales_status_confirmed'),
-    processing: t('sales_status_processing'),
-    shipped: t('sales_status_shipped'),
-    delivered: t('sales_status_delivered'),
-    cancelled: t('sales_status_cancelled'),
+    pending: t('sales_status_pending') || 'مسودة',
+    confirmed: t('sales_status_confirmed') || 'مؤكدة',
+    processing: t('sales_status_processing') || 'قيد التجهيز',
+    shipped: t('sales_status_shipped') || 'مشحونة',
+    delivered: t('sales_status_delivered') || 'تم التسليم',
+    cancelled: t('sales_status_cancelled') || 'ملغاة',
 };
-
-const items = ref([]);
-const formErrors = ref([]);
-const submitting = ref(false);
-const showExpenses = ref(false);
-
-const searchQuery = ref('');
-const searchResults = ref([]);
-const searchLoading = ref(false);
-const showResults = ref(false);
-const highlightedIndex = ref(-1);
-let searchTimeout = null;
-
-const salesEmployees = ref([]);
-
-/* ------------------------------------------------------------------ *
- * The client
- *
- * Three separate lists, because they answer different questions:
- * `recentCustomers` is what the field offers before anything is typed,
- * `customers` is whatever the last server search returned, and
- * `selectedCustomer` is the one actually on the invoice — kept apart from
- * both so the chosen name survives a search that no longer lists them.
- * ------------------------------------------------------------------ */
-
-const customers = ref([]);
-const recentCustomers = ref([]);
-const selectedCustomer = ref(null);
-const customersLoading = ref(false);
-const customerQuery = ref('');
-const customerSelectRef = ref(null);
-// Only the newest answer may write the list; a slow early request must not
-// land on top of the letters typed after it.
-let customerSearchToken = 0;
-
-// The chosen client is kept at the head of the unsearched list so the field
-// can always show who is on the invoice. It is deliberately absent from a
-// search that did not ask for them — otherwise a query matching nobody would
-// still leave one row standing, and the offer to add a new client, which the
-// dropdown only makes when it is empty, would never appear.
-const customerOptions = computed(() => {
-    const chosen = selectedCustomer.value;
-    if (!chosen || customerQuery.value) return customers.value;
-    return customers.value.some((customer) => customer.id === chosen.id)
-        ? customers.value
-        : [chosen, ...customers.value];
-});
-
-const clientContactLine = (customer) =>
-    [customer?.phone, customer?.company].filter(Boolean).join(' · ');
-
-const clientInitial = computed(() =>
-    (selectedCustomer.value?.name || '?').trim().charAt(0).toUpperCase()
-);
-
-// What the client's account says before this invoice is added to it.
-// Positive is owed to us; negative is money already sitting with us.
-const clientBalance = computed(() => {
-    const balance = Number(selectedCustomer.value?.balance) || 0;
-    if (Math.abs(balance) < 0.005) return null;
-    return balance > 0
-        ? { tone: 'owing', label: t('remaining_on_customer'), amount: balance }
-        : { tone: 'credit', label: t('customer_credit'), amount: Math.abs(balance) };
-});
-
-const readCustomers = (payload) => payload?.data?.customers ?? payload?.customers ?? [];
-
-// Element Plus debounces a remote field's keystrokes itself, so this asks the
-// server as soon as it is called.
-const searchCustomers = async (query) => {
-    customerQuery.value = (query || '').trim();
-
-    if (!customerQuery.value) {
-        customerSearchToken += 1;
-        customers.value = recentCustomers.value;
-        customersLoading.value = false;
-        return;
-    }
-
-    customersLoading.value = true;
-    const token = ++customerSearchToken;
-
-    try {
-        const { data } = await posApi.customers({ search: customerQuery.value, per_page: 20 });
-        if (token !== customerSearchToken) return;
-        customers.value = readCustomers(data);
-    } catch (error) {
-        if (token === customerSearchToken) customers.value = [];
-    } finally {
-        if (token === customerSearchToken) customersLoading.value = false;
-    }
-};
-
-const selectCustomer = (customer) => {
-    if (!customer) return;
-    selectedCustomer.value = customer;
-    form.customer_id = customer.id;
-    recentCustomers.value = [customer, ...recentCustomers.value.filter((row) => row.id !== customer.id)];
-    // The field reads its own label off the listed options, so the list is put
-    // back to the one that holds this client — a leftover search would leave
-    // the field showing a bare id.
-    customerQuery.value = '';
-    customers.value = recentCustomers.value;
-};
-
-const onCustomerPicked = (id) => {
-    if (!id) {
-        selectedCustomer.value = null;
-        return;
-    }
-    const picked = customerOptions.value.find((customer) => customer.id === id);
-    if (picked) selectedCustomer.value = picked;
-};
-
-// Reopening an invoice restores a client_id whose record may be nowhere in
-// the recent list — without this the field would sit blank over a client the
-// invoice does actually name.
-const ensureSelectedCustomer = async (id, fallback = null) => {
-    if (!id) return;
-
-    const known = [...recentCustomers.value, ...customers.value].find((customer) => customer.id === id);
-    if (known) {
-        selectedCustomer.value = known;
-        return;
-    }
-
-    try {
-        const { data } = await customersApi.getById(id);
-        selectedCustomer.value = data?.data ?? data ?? fallback;
-    } catch (error) {
-        selectedCustomer.value = fallback;
-    }
-};
-
-/* ── Quick add ──────────────────────────────────────────────────────── */
-
-const clientDialogVisible = ref(false);
-const savingClient = ref(false);
-const showClientExtras = ref(false);
-const clientError = ref('');
-const clientErrors = reactive({});
-const clientNameRef = ref(null);
-const clientPhoneRef = ref(null);
-const duplicateClient = ref(null);
-let duplicateTimeout = null;
-let duplicateToken = 0;
-
-const emptyClientDraft = () => ({
-    name: '',
-    phone: '',
-    company: '',
-    address: '',
-    email: '',
-    city: '',
-    tax_number: '',
-    credit_limit: null,
-});
-
-const clientDraft = reactive(emptyClientDraft());
-
-const resetClientDraft = () => {
-    Object.assign(clientDraft, emptyClientDraft());
-    Object.keys(clientErrors).forEach((key) => delete clientErrors[key]);
-    clientError.value = '';
-    showClientExtras.value = false;
-    duplicateClient.value = null;
-    clearTimeout(duplicateTimeout);
-    duplicateToken += 1;
-};
-
-// Whatever was typed into the search is a name already — it opens the form
-// filled in, so the words are not typed twice.
-const openClientDialog = (prefillName = '') => {
-    customerSelectRef.value?.blur();
-    resetClientDraft();
-    clientDraft.name = (prefillName || '').trim();
-    clientDialogVisible.value = true;
-};
-
-// Waits for the dialog's own focus trap to settle, then hands the caret to
-// the first field still worth typing into.
-const focusClientField = () => {
-    const target = clientDraft.name ? clientPhoneRef.value : clientNameRef.value;
-    target?.focus();
-};
-
-const normalisePhone = (value) => (value || '').replace(/[\s\-()]/g, '');
-
-// The one client already holding this phone or email, if there is one.
-const findExistingClient = async (term, match) => {
-    const needle = (term || '').trim();
-    if (needle.length < 3) return null;
-
-    try {
-        const { data } = await posApi.customers({ search: needle, per_page: 10 });
-        return readCustomers(data).find(match) || null;
-    } catch (error) {
-        return null;
-    }
-};
-
-const findDuplicateClient = async () => {
-    const phone = normalisePhone(clientDraft.phone);
-    if (phone.length >= 5) {
-        const byPhone = await findExistingClient(
-            clientDraft.phone,
-            (customer) => normalisePhone(customer.phone) === phone
-        );
-        if (byPhone) return byPhone;
-    }
-
-    const email = (clientDraft.email || '').trim().toLowerCase();
-    if (email.includes('@')) {
-        const byEmail = await findExistingClient(
-            email,
-            (customer) => (customer.email || '').toLowerCase() === email
-        );
-        if (byEmail) return byEmail;
-    }
-
-    return null;
-};
-
-watch(
-    () => [clientDraft.phone, clientDraft.email],
-    () => {
-        clearTimeout(duplicateTimeout);
-        const token = ++duplicateToken;
-        duplicateTimeout = setTimeout(async () => {
-            const match = await findDuplicateClient();
-            if (token === duplicateToken) duplicateClient.value = match;
-        }, 400);
-    }
-);
-
-const useDuplicateClient = () => {
-    if (!duplicateClient.value) return;
-    selectCustomer(duplicateClient.value);
-    clientDialogVisible.value = false;
-    ElMessage.success(t('client_selected', { name: duplicateClient.value.name }));
-};
-
-const saveClient = async () => {
-    if (savingClient.value) return;
-
-    Object.keys(clientErrors).forEach((key) => delete clientErrors[key]);
-    clientError.value = '';
-
-    const name = clientDraft.name.trim();
-    if (!name) {
-        clientErrors.name = t('client_name_required');
-        clientNameRef.value?.focus();
-        return;
-    }
-
-    savingClient.value = true;
-
-    try {
-        // Saving over somebody else's record is not something to discover
-        // afterwards, so the match is confirmed before anything is written.
-        const existing = duplicateClient.value || await findDuplicateClient();
-        if (existing) {
-            duplicateClient.value = existing;
-
-            try {
-                await ElMessageBox.confirm(
-                    t('client_exists_body', { name: existing.name }),
-                    t('client_already_exists'),
-                    {
-                        confirmButtonText: t('use_this_client'),
-                        cancelButtonText: t('cancel'),
-                        type: 'warning',
-                    }
-                );
-                selectCustomer(existing);
-                clientDialogVisible.value = false;
-                ElMessage.success(t('client_selected', { name: existing.name }));
-            } catch (error) {
-                /* Cancelled: the form stays open with what was typed. */
-            }
-
-            return;
-        }
-
-        const payload = {
-            name,
-            phone: clientDraft.phone.trim() || null,
-            company: clientDraft.company.trim() || null,
-            address: clientDraft.address.trim() || null,
-            email: clientDraft.email.trim() || null,
-            city: clientDraft.city.trim() || null,
-            tax_number: clientDraft.tax_number.trim() || null,
-            credit_limit: Number(clientDraft.credit_limit) || 0,
-            status: 'active',
-            source: 'invoice',
-        };
-
-        const { data } = await customersApi.store(payload);
-        const customer = data?.data ?? data;
-
-        selectCustomer(customer);
-        customersStore.customers = [customer, ...customersStore.customers.filter((row) => row.id !== customer.id)];
-        clientDialogVisible.value = false;
-        ElMessage.success(t('client_added_and_selected', { name: customer.name }));
-    } catch (error) {
-        if (error.response?.status === 422) {
-            const errors = error.response?.data?.errors ?? {};
-            Object.entries(errors).forEach(([field, messages]) => {
-                clientErrors[field] = Array.isArray(messages) ? messages[0] : messages;
-            });
-            // A refusal about a field that is folded away is invisible until
-            // the fold is opened for it.
-            if (clientErrors.email || clientErrors.tax_number || clientErrors.credit_limit) {
-                showClientExtras.value = true;
-            }
-            if (!Object.keys(clientErrors).length) clientError.value = t('failed_to_save_client');
-        } else {
-            clientError.value = error.response?.data?.message || t('failed_to_save_client');
-        }
-    } finally {
-        savingClient.value = false;
-    }
-};
-
-/* ------------------------------------------------------------------ *
- * Where each line comes from
- *
- * A sale has to say which shelf it empties. The server refuses a line it
- * cannot cover, but discovering that on submit is the least useful moment to
- * be told — so the choice is made here against live figures, and a line that
- * does not fit is marked before anyone presses save.
- * ------------------------------------------------------------------ */
-
-const isLineShort = (item) => lineIsShort(items.value, item);
-const isAllocationShort = (item, allocation) => allocationIsShort(items.value, item, allocation);
-const warehouseName = (item, warehouseId) =>
-    item.sources?.find((row) => row.warehouse_id === warehouseId)?.warehouse_name || '';
-// Another allocation on the same line already draws from this warehouse — the
-// dropdown hides it rather than letting the seller pick one shelf twice.
-const isSourceTaken = (item, allocation, warehouseId) =>
-    (item.allocations || []).some((row) => row !== allocation && row.warehouse_id === warehouseId);
-const canAddAllocation = (item) => (item.sources?.length || 0) > (item.allocations?.length || 0);
-
-const shortLines = computed(() => items.value.filter(isLineShort));
-const missingSource = computed(() =>
-    items.value.filter((item) => (item.allocations || []).some((allocation) => !allocation.warehouse_id))
-);
-
-/**
- * Reads what each warehouse holds of a product, newest figures first.
- *
- * Called when a product joins the sale rather than up front: loading every
- * warehouse's stock for the whole catalogue to fill one dropdown would be a
- * large query for information mostly nobody looks at.
- */
-const loadSourcesFor = async (item) => {
-    item.loadingStock = true;
-
-    try {
-        const { data } = await api.get('/admin/inventory/stock', {
-            params: { product_id: item.product_id, per_page: 100 },
-        });
-
-        // Rows are summed per warehouse (a product can occupy several bins in
-        // one) and ordered by what is free.
-        item.sources = summariseSources(data?.data?.stock ?? []);
-
-        // Fills in any allocation still missing a warehouse — preferring one no
-        // other allocation on this line already draws from, so two blank
-        // allocations do not both default to the same shelf.
-        const used = new Set(item.allocations.filter((a) => a.warehouse_id).map((a) => a.warehouse_id));
-        for (const allocation of item.allocations) {
-            if (allocation.warehouse_id) continue;
-
-            const candidates = item.sources.filter((row) => !used.has(row.warehouse_id));
-            const picked = preferredSource(candidates.length ? candidates : item.sources, allocation.quantity);
-            allocation.warehouse_id = picked;
-            if (picked) used.add(picked);
-        }
-    } catch (error) {
-        item.sources = [];
-    } finally {
-        item.loadingStock = false;
-    }
-};
-
-const onSourceChange = (index) => {
-    // Nothing to fetch — the figures are already loaded. The handler exists so
-    // a line whose sources never loaded gets another chance.
-    const item = items.value[index];
-    if (item && !item.sources?.length) {
-        loadSourcesFor(item);
-    }
-};
-
-/* ------------------------------------------------------------------ *
- * Money
- * ------------------------------------------------------------------ */
-
-const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
-
-const subtotal = computed(() =>
-    items.value.reduce((sum, item) => sum + (Number(item.price) || 0) * lineQuantity(item), 0)
-);
-
-const totalExpenses = computed(() =>
-    form.expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
-);
-
-// A rate is only ever a rate on screen; what the invoice carries, and what the
-// ledger is told, is the figure it comes to. The server derives these again
-// from its own subtotal — see InvoiceController::resolveCharges() — so the two
-// agree without the client's arithmetic being trusted.
-const rate = (value) => Math.min(100, Math.max(0, Number(value) || 0));
-
-const discountAmount = computed(() => round2(subtotal.value * rate(form.discount_percent) / 100));
-
-// Tax is charged on what is actually being asked for the goods, so it comes off
-// the discounted figure. Charges billed on top (delivery, packaging) are not
-// part of the goods and are added after both.
-const taxAmount = computed(() =>
-    round2(Math.max(0, subtotal.value - discountAmount.value) * rate(form.tax_percent) / 100)
-);
-
-const total = computed(() =>
-    Math.max(0, subtotal.value - discountAmount.value + taxAmount.value + totalExpenses.value)
-);
-
-const invoiceTotalInWords = computed(() => {
-    if (!total.value && total.value !== 0) return '';
-    return tafqeet(total.value, {
-        currency: form.currency,
-        locale: locale?.value === 'en' ? 'en' : 'ar',
-    });
-});
-
-// True once the discount alone would take the total past zero — the point
-// where it stops being the discount that determines the total. A rate is capped
-// at 100%, so this now only fires on an invoice that is all charges and no
-// goods; it stays because the figure, not the rate, is what decides.
-const discountExceedsChargeable = computed(() => {
-    if (discountAmount.value <= 0) return false;
-    return subtotal.value + taxAmount.value + totalExpenses.value - discountAmount.value < 0;
-});
-
-// Positive: the customer still owes this. Negative: they overpaid and the
-// difference becomes credit on their account.
-const remaining = computed(() => round2(total.value - (Number(form.paid_amount) || 0)));
-
-const remainingTone = computed(() => {
-    if (Math.abs(remaining.value) < 0.005) return 'settled';
-    return remaining.value > 0 ? 'owing' : 'credit';
-});
 
 const availableStatuses = computed(() => [form.status, ...(statusTransitions[form.status] || [])]);
 
-// The save button says what the form knows: no lines, or a line that cannot be
-// covered, and it is not ready. The server still decides.
-const canSubmit = computed(() =>
-    items.value.length > 0 && missingSource.value.length === 0 && shortLines.value.length === 0
-);
-
-// The rate an amount implies, for an invoice that only ever stored the amount.
-// No base to speak of means no rate to infer — a discount on nothing is not
-// 100% off, it is a figure that was never a percentage.
-const impliedRate = (amount, base) => {
-    if (!(base > 0) || !(Number(amount) > 0)) return 0;
-    return rate(Math.round((Number(amount) / base) * 10000) / 100);
-};
-
-// 10, not 10.00; 12.5, not 12.50 — a rate reads as it was typed.
-const percent = (value) => formatPercent(rate(value), 2);
-
-const money = (value) => formatMoney(value);
-
-const stockTone = (quantity) => {
-    const value = Number(quantity) || 0;
-    if (value <= 0) return 'out';
-    return value <= 5 ? 'low' : 'ok';
-};
-
 /* ------------------------------------------------------------------ *
- * Search
+ * Draft Auto-saving & Restoring
  * ------------------------------------------------------------------ */
 
-const onSearchInput = (query) => {
-    clearTimeout(searchTimeout);
-    highlightedIndex.value = -1;
+const saveDraft = () => {
+    if (isEdit.value) return;
+    if (!items.value.length && !form.customer_id) {
+        clearDraft();
+        return;
+    }
+    try {
+        const draftData = {
+            saved_at: new Date().toISOString(),
+            form: {
+                ...form,
+            },
+            items: items.value.map((line) => ({
+                ...line,
+                units: [line.selectedUnit].filter(Boolean),
+            })),
+            selectedCustomer: selectedCustomer.value,
+        };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+        draftSavedAt.value = new Date().toLocaleTimeString(
+            locale.value === 'ar' ? 'ar' : 'en-GB',
+            { hour: '2-digit', minute: '2-digit' }
+        );
+    } catch {
+        /* storage unavailable */
+    }
+};
 
-    if (!query || query.length < 2) {
-        searchResults.value = [];
+const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    draftSavedAt.value = '';
+};
+
+const offerDraft = async () => {
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { draft = null; }
+    if (!draft?.items?.length) return;
+
+    try {
+        await ElMessageBox.confirm(
+            t('so_restore_draft_message', { count: draft.items.length }) || `لديك مسودة غير مكتملة تحتوي على ${draft.items.length} صنف. هل تريد استرجاعها؟`,
+            t('so_restore_draft_title') || 'استرجاع المسودة',
+            {
+                type: 'info',
+                confirmButtonText: t('so_restore_draft') || 'استرجاع المسودة',
+                cancelButtonText: t('so_discard_draft') || 'بدء فاتورة جديدة',
+                distinguishCancelAndClose: true,
+            }
+        );
+    } catch (action) {
+        if (action === 'cancel') clearDraft();
         return;
     }
 
-    searchLoading.value = true;
-    showResults.value = true;
-
-    searchTimeout = setTimeout(async () => {
-        try {
-            // One result per size, and a size's own code or barcode finds it.
-            const res = await posApi.productLookup({ q: query, expand_variants: 1 });
-            const data = res.data?.data || res.data || [];
-            searchResults.value = Array.isArray(data) ? data : [];
-            rememberVariantRows(searchResults.value);
-        } catch (error) {
-            searchResults.value = [];
-        } finally {
-            searchLoading.value = false;
+    const saved = draft.form || {};
+    if (draft.saved_at) {
+        const when = new Date(draft.saved_at);
+        if (!Number.isNaN(when.getTime())) {
+            draftSavedAt.value = when.toLocaleTimeString(
+                locale.value === 'ar' ? 'ar' : 'en-GB',
+                { hour: '2-digit', minute: '2-digit' }
+            );
         }
-    }, 300);
-};
-
-const navigateResult = (direction) => {
-    if (!searchResults.value.length) return;
-
-    const max = searchResults.value.length - 1;
-    highlightedIndex.value = direction === 1
-        ? (highlightedIndex.value >= max ? 0 : highlightedIndex.value + 1)
-        : (highlightedIndex.value <= 0 ? max : highlightedIndex.value - 1);
-};
-
-// Enter adds the highlighted result, or the only one when nothing is
-// highlighted and the search left no choice to make.
-const selectHighlighted = () => {
-    if (highlightedIndex.value >= 0 && highlightedIndex.value < searchResults.value.length) {
-        addProduct(searchResults.value[highlightedIndex.value]);
-    } else if (searchResults.value.length === 1) {
-        addProduct(searchResults.value[0]);
-    } else if (!searchResults.value.length && !searchLoading.value && searchQuery.value.trim().length >= 2) {
-        // Nothing matched what was typed: offer to create it.
-        openQuickProduct(searchQuery.value);
     }
-};
 
-// Results regrouped by product, each row keeping its place in the flat list
-// so the arrow keys and the highlight still go by one index.
-const searchGroups = computed(() => {
-    const groups = new Map();
-    searchResults.value.forEach((product, index) => {
-        if (!groups.has(product.id)) groups.set(product.id, { key: String(product.id), product, rows: [] });
-        groups.get(product.id).rows.push({ product, index });
+    Object.assign(form, {
+        customer_id: saved.customer_id || null,
+        assigned_employee_id: saved.assigned_employee_id || null,
+        default_warehouse_id: saved.default_warehouse_id || null,
+        payment_method: saved.payment_method || 'cash',
+        due_date: saved.due_date || inDays(0),
+        discount_type: saved.discount_type || 'percent',
+        discount_percent: toNum(saved.discount_percent),
+        discount_amount: toNum(saved.discount_amount),
+        tax_percent: toNum(saved.tax_percent),
+        paid_amount: toNum(saved.paid_amount),
+        notes: saved.notes || '',
+        status: saved.status || 'pending',
+        expenses: saved.expenses || [],
     });
-    return [...groups.values()].map((g) => ({ ...g, hasVariants: g.rows.some((r) => r.product.variant_id) }));
-});
 
-// How many of a result are on the invoice already, across its sources.
-const inInvoiceQty = (product) => {
-    const line = items.value.find((l) => l.pick === optionKey(product));
-    return line ? lineQuantity(line) : 0;
-};
-
-// The sibling sizes of each picked product, for the switcher under a line.
-const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
-const lineSiblings = (item) => (item.product_id && item.product_variant_id ? siblingsOf(item.product_id) : []);
-const variantInfo = (item) => lineVariantInfo(item, lineSiblings(item));
-const preloadLineSiblings = () => items.value.forEach((item) => item.product_variant_id && ensureVariantsLoaded(item.product_id));
-
-// Switching a line to another size keeps its sources and quantities — the
-// warehouses hold the product, not the size — and a price that was typed;
-// a price still at the old size's list price follows the new one. If that
-// size is already a line, this line's allocations join it.
-const switchLineVariant = (index, row) => {
-    const line = items.value[index];
-    const pick = optionKey(row);
-    if (!line || line.pick === pick) return;
-
-    const other = items.value.find((l) => l.pick === pick);
-    if (other) {
-        line.allocations.forEach((alloc) => {
-            const same = alloc.warehouse_id != null && other.allocations.find((a) => a.warehouse_id === alloc.warehouse_id);
-            if (same) same.quantity += alloc.quantity;
-            else other.allocations.push({ ...alloc });
-        });
-        items.value.splice(index, 1);
-        return;
-    }
-
-    const multiplier = Number(line.selectedUnit?.price_multiplier) || 1;
-    const priceUntouched = roundUnitPrice(line.price) === roundUnitPrice(line.base_price * multiplier);
-    line.pick = pick;
-    line.product_variant_id = row.variant_id || null;
-    line.variant_label = row.variant_label || '';
-    line.variant = variantFieldsOf(row);
-    line.sku = row.sku || '';
-    line.stock = row.stock_quantity || 0;
-    line.base_price = parseFloat(row.price) || 0;
-    if (priceUntouched) line.price = roundUnitPrice(line.base_price * multiplier);
-};
-
-/* ------------------------------------------------------------------ *
- * Lines
- * ------------------------------------------------------------------ */
-
-const addProduct = (product) => {
-    // Another pick of the same size adds to its line; another size of the
-    // same product is a line of its own.
-    const pick = optionKey(product);
-    const existing = items.value.findIndex((line) => line.pick === pick);
-    if (product.variant_id) ensureVariantsLoaded(product.id);
-
-    if (existing !== -1) {
-        // Bumps the first source rather than opening a new allocation — most
-        // repeat adds mean "one more of the same"; a split across warehouses is
-        // the deliberate choice made with "add another source" below.
-        items.value[existing].allocations[0].quantity += 1;
-    } else {
-        const defaultUnit = {
+    items.value = (draft.items || []).map((line) => {
+        const unit = line.selectedUnit || {
             id: null,
-            name: product.unit || t('piece'),
-            name_ar: product.unit || t('piece'),
+            name: t('piece'),
+            name_ar: t('piece'),
             base_unit_multiplier: 1,
             price_multiplier: 1,
-            barcode: product.barcode || '',
         };
-
-        const line = reactive({
-            pick,
-            product_id: product.id,
-            product_variant_id: product.variant_id || null,
-            variant_label: product.variant_label || '',
-            variant: product.variant_id ? variantFieldsOf(product) : null,
-            name: baseName(product) || product.name_en,
-            sku: product.sku || '',
-            image: product.image_main || null,
-            price: parseFloat(product.price) || 0,
-            stock: product.stock_quantity || 0,
-            unit: product.unit || '',
-            selectedUnit: defaultUnit,
-            units: [defaultUnit],
-            base_price: parseFloat(product.price) || 0,
-            // Where this line is taken from, and how much of it each source
-            // covers. Starts as one allocation; "add another source" below
-            // splits it across more than one warehouse.
-            allocations: [{ warehouse_id: null, quantity: 1 }],
-            sources: [],
-            loadingStock: false,
+        const l = reactive({
+            ...line,
+            selectedUnit: unit,
+            units: [unit],
         });
-
-        items.value.push(line);
-        loadSourcesFor(line);
-        loadProductUnits(product.id, items.value.length - 1);
-    }
-
-    searchQuery.value = '';
-    searchResults.value = [];
-    showResults.value = false;
-
-    // Land on the quantity field of the line just touched so it can be
-    // typed straight away; fall back to the search box if the row isn't
-    // rendered yet for some reason.
-    nextTick(() => {
-        const qtyInput = qtyInputRefs[pick];
-        if (qtyInput) {
-            qtyInput.focus();
-            qtyInput.select();
-        } else {
-            searchInputRef.value?.focus();
-        }
+        loadUnits(l);
+        return l;
     });
-};
 
-const loadProductUnits = async (productId, itemIndex) => {
-    try {
-        const { data } = await api.get(`/admin/products/${productId}/units`);
-        const rows = data?.data ?? [];
-
-        if (!rows.length || !items.value[itemIndex]) {
-            return;
-        }
-
-        const units = rows.map((unit) => ({
-            id: unit.id,
-            name: unit.name,
-            name_ar: unit.name_ar || unit.name,
-            base_unit_multiplier: parseFloat(unit.base_unit_multiplier),
-            price_multiplier: parseFloat(unit.price_multiplier),
-            barcode: unit.barcode || '',
-        }));
-
-        const defaultUnit = rows.find((unit) => unit.is_default)
-            ? units[rows.findIndex((unit) => unit.is_default)]
-            : units[0];
-
-        items.value[itemIndex].units = units;
-        items.value[itemIndex].selectedUnit = defaultUnit;
-        items.value[itemIndex].price = items.value[itemIndex].base_price * defaultUnit.price_multiplier;
-    } catch (error) {
-        // A product with no unit list keeps the default piece it was added
-        // with; the sale does not depend on this call.
+    if (draft.selectedCustomer) {
+        selectedCustomer.value = draft.selectedCustomer;
+        customers.value = [draft.selectedCustomer];
     }
 };
 
-const onUnitChange = (index) => {
-    const item = items.value[index];
-    if (item?.selectedUnit) {
-        item.price = roundUnitPrice(item.base_price * item.selectedUnit.price_multiplier);
-    }
-};
-
-const removeItem = (index) => items.value.splice(index, 1);
-
-const incrementAllocQty = (index, allocIndex) => {
-    items.value[index].allocations[allocIndex].quantity += 1;
-};
-const decrementAllocQty = (index, allocIndex) => {
-    const allocation = items.value[index].allocations[allocIndex];
-    if (allocation.quantity > 1) allocation.quantity -= 1;
-};
-
-// The server counts stock in whole units and rejects a fractional quantity
-// outright; rounding it here, on blur, catches what typing (rather than the
-// steppers) can produce before the mismatch turns into a submit error.
-const sanitizeAllocQty = (index, allocIndex) => {
-    const allocation = items.value[index]?.allocations?.[allocIndex];
-    if (!allocation) return;
-    const rounded = Math.round(Number(allocation.quantity));
-    allocation.quantity = Number.isFinite(rounded) && rounded > 0 ? rounded : 1;
-};
-
-// Opens a second (or third...) source on the line, defaulting to a warehouse
-// no allocation on it already uses.
-const addAllocation = (index) => {
-    const item = items.value[index];
-    if (!item) return;
-
-    const used = new Set(item.allocations.map((a) => a.warehouse_id).filter(Boolean));
-    const candidate = (item.sources || []).find((row) => !used.has(row.warehouse_id));
-    item.allocations.push({ warehouse_id: candidate?.warehouse_id ?? null, quantity: 1 });
-};
-
-const removeAllocation = (index, allocIndex) => {
-    const item = items.value[index];
-    if (!item || item.allocations.length <= 1) return;
-    item.allocations.splice(allocIndex, 1);
-};
-
-const addExpense = () => form.expenses.push({ description: '', category: 'other', amount: 0 });
-const removeExpense = (index) => form.expenses.splice(index, 1);
+watch(
+    () => [
+        form.customer_id,
+        items.value,
+        form.discount_type,
+        form.discount_percent,
+        form.discount_amount,
+        form.tax_percent,
+        form.paid_amount,
+        form.default_warehouse_id,
+        form.notes,
+        form.due_date,
+        form.payment_method,
+    ],
+    () => {
+        dirty.value = true;
+        clearTimeout(draftTimer);
+        draftTimer = setTimeout(saveDraft, 600);
+    },
+    { deep: true }
+);
 
 /* ------------------------------------------------------------------ *
- * Keyboard
+ * Load Existing Invoice
  * ------------------------------------------------------------------ */
 
-const handleKeyboardShortcuts = (e) => {
-    // The new-product dialog owns the keyboard while it is open.
-    if (quickProductVisible.value) return;
+const loadInvoice = async () => {
+    loading.value = true;
+    try {
+        const res = await api.get(`/admin/invoices/${invoiceId}`);
+        const invoice = res.data?.data || res.data;
+        loadedInvoice.value = invoice;
+        if (!invoice) return;
 
-    // While the client form is open it owns the keyboard: Ctrl+Enter there
-    // means save the client, not issue the invoice behind it.
-    if (clientDialogVisible.value) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            saveClient();
+        form.customer_id = invoice.customer_id;
+        if (invoice.customer) {
+            selectedCustomer.value = invoice.customer;
+            customers.value = [invoice.customer];
         }
-        return;
-    }
+        form.assigned_employee_id = invoice.assigned_employee_id ?? null;
+        form.default_warehouse_id = invoice.warehouse_id || null;
+        form.payment_method = invoice.payment_method || 'cash';
+        form.due_date = invoice.due_date ? String(invoice.due_date).slice(0, 10) : inDays(0);
+        form.paid_amount = parseFloat(invoice.paid_amount) || 0;
+        form.status = invoice.status || 'pending';
+        form.notes = invoice.notes || '';
 
-    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault();
-        searchInputRef.value?.focus();
-    }
+        const savedSubtotal = parseFloat(invoice.subtotal) || 0;
+        const savedDiscount = parseFloat(invoice.discount) || 0;
+        const savedTax = parseFloat(invoice.tax) || 0;
 
-    if (e.key === 'F4' && !e.altKey) {
-        e.preventDefault();
-        openQuickProduct(searchQuery.value);
-    }
+        if (invoice.discount_percent !== null && invoice.discount_percent !== undefined) {
+            form.discount_type = 'percent';
+            form.discount_percent = invoice.discount_percent;
+            form.discount_amount = savedDiscount;
+        } else {
+            form.discount_type = savedDiscount > 0 ? 'amount' : 'percent';
+            form.discount_amount = savedDiscount;
+            form.discount_percent = savedSubtotal > 0 ? Math.round((savedDiscount / savedSubtotal) * 10000) / 100 : 0;
+        }
 
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (canSubmit.value) submitInvoice();
-    }
+        form.tax_percent = invoice.tax_percent ?? (savedSubtotal > 0 ? Math.round((savedTax / Math.max(1, savedSubtotal - savedDiscount)) * 10000) / 100 : 0);
 
-    if (e.key === 'Escape') {
-        showResults.value = false;
+        form.expenses = (invoice.expenses || []).map((exp) => ({
+            id: exp.id || null,
+            category: exp.category || 'shipping',
+            description: exp.description || '',
+            amount: parseFloat(exp.amount) || 0,
+            status: exp.status || 'paid',
+            notes: exp.notes || '',
+        }));
+
+        items.value = (invoice.items || []).map((item) => {
+            const unit = {
+                id: item.product_unit_id ?? null,
+                name: item.unit_name || item.product?.unit || t('piece'),
+                name_ar: item.unit_name || item.product?.unit || t('piece'),
+                base_unit_multiplier: 1,
+                price_multiplier: 1,
+            };
+            const line = reactive({
+                pick: pickKey(item.product_id, item.product_variant_id),
+                product_id: item.product_id,
+                product_variant_id: item.product_variant_id || null,
+                variant_label: item.variant?.label || variantLabelOf(item.variant),
+                variant: item.variant ? variantFieldsOf(item.variant) : null,
+                name: (item.product_variant_id && item.product?.name_ar) || item.product_name || item.product?.name_ar || t('unknown_product'),
+                sku: item.variant?.sku || item.product?.sku || '',
+                image: item.product?.image_main || null,
+                price: parseFloat(item.unit_price) || 0,
+                base_price: parseFloat(item.unit_price) || 0,
+                stock: item.product?.stock_quantity || 0,
+                selectedUnit: unit,
+                units: [unit],
+                allocations: [
+                    {
+                        warehouse_id: item.warehouse_id || invoice.warehouse_id || null,
+                        quantity: item.quantity || 1,
+                    },
+                ],
+            });
+            loadUnits(line);
+            return line;
+        });
+
+        await nextTick();
+        dirty.value = false;
+    } catch {
+        ElMessage.error(t('failed_to_load_invoice') || 'فشل تحميل بيانات الفاتورة');
+    } finally {
+        loading.value = false;
     }
 };
 
@@ -1636,1437 +1880,1147 @@ const handleKeyboardShortcuts = (e) => {
  * ------------------------------------------------------------------ */
 
 const submitInvoice = async () => {
+    if (!canSubmit.value) return;
     formErrors.value = [];
-
-    if (!items.value.length) {
-        formErrors.value.push(t('add_at_least_one_item'));
-        return;
-    }
-
-    // Caught here as well as on the server. The server is the authority — it
-    // holds the lock and refuses the write — but letting the request go and
-    // reporting the refusal afterwards wastes the seller's time in front of a
-    // waiting customer.
-    if (missingSource.value.length) {
-        formErrors.value.push(t('sales.choose_source_for_every_line'));
-        return;
-    }
-
-    if (shortLines.value.length) {
-        formErrors.value = shortLines.value.flatMap((item) =>
-            item.allocations
-                .filter((allocation) => isAllocationShort(item, allocation))
-                .map((allocation) => t('sales.line_short_at_warehouse', {
-                    product: item.name,
-                    warehouse: warehouseName(item, allocation.warehouse_id),
-                    available: formatNumber(availableAt(item, allocation.warehouse_id)),
-                    required: formatNumber(askedFor(items.value, item.product_id, allocation.warehouse_id)),
-                }))
-        );
-        return;
-    }
-
     submitting.value = true;
 
     try {
         const payload = {
             customer_id: form.customer_id,
-            assigned_employee_id: form.assigned_employee_id,
-            payment_method: form.payment_method,
-            // Both: the rates decide the invoice, and the figures they come
-            // to are sent alongside so a client reading the request sees what
-            // was charged without recomputing it. The server takes the rates.
-            discount_percent: rate(form.discount_percent),
+            warehouse_id: form.default_warehouse_id || null,
+            assigned_employee_id: form.assigned_employee_id || null,
+            payment_method: form.payment_method || 'cash',
+            due_date: form.due_date || null,
+            discount_percent: form.discount_type === 'percent' ? rate(form.discount_percent) : null,
             tax_percent: rate(form.tax_percent),
             discount: discountAmount.value,
             tax: taxAmount.value,
             paid_amount: form.paid_amount || 0,
-            notes: form.notes,
+            notes: form.notes || null,
             status: form.status,
-            // Each allocation becomes its own invoice line — the API already
-            // accepts several lines for one product, one per warehouse, which
-            // is how a split line is represented on the server.
-            items: items.value.flatMap((item) => item.allocations
-                .filter((allocation) => allocation.warehouse_id && Number(allocation.quantity) > 0)
-                .map((allocation) => ({
-                    product_id: item.product_id,
-                    product_variant_id: item.product_variant_id || null,
-                    quantity: allocation.quantity,
-                    unit_price: item.price,
-                    warehouse_id: allocation.warehouse_id,
-                    product_unit_id: item.selectedUnit?.id || null,
-                }))),
-            expenses: form.expenses
-                .filter((expense) => expense.description && Number(expense.amount) > 0)
-                .map((expense) => ({
-                    category: expense.category || 'other',
-                    description: expense.description,
-                    amount: Number(expense.amount),
-                    status: expense.status || 'paid',
-                    notes: expense.notes || null,
+            items: items.value.map((item) => ({
+                product_id: item.product_id,
+                product_variant_id: item.product_variant_id || null,
+                quantity: item.allocations?.[0]?.quantity || 1,
+                unit_price: roundUnitPrice(item.price),
+                warehouse_id: item.allocations?.[0]?.warehouse_id || form.default_warehouse_id || null,
+                product_unit_id: item.selectedUnit?.id || null,
+            })),
+            expenses: (form.expenses || [])
+                .filter((exp) => exp.description && Number(exp.amount) > 0)
+                .map((exp) => ({
+                    category: exp.category || 'other',
+                    description: exp.description,
+                    amount: Number(exp.amount),
+                    status: exp.status || 'paid',
+                    notes: exp.notes || null,
                 })),
         };
 
         if (isEdit.value) {
-            await invoicesStore.updateInvoice(route.params.id, payload);
-            ElMessage.success(t('invoice_updated_successfully'));
+            await invoicesStore.updateInvoice(invoiceId, payload);
+            ElMessage.success(t('invoice_updated_successfully') || 'تم تحديث الفاتورة بنجاح');
         } else {
             const created = await invoicesStore.createInvoice(payload);
-
-            // Report what actually happened to the customer's account, rather
-            // than a generic "saved".
             const settlement = created?.settlement;
-            const parts = [t('invoice_created_successfully')];
-
+            const parts = [t('invoice_created_successfully') || 'تم إصدار الفاتورة بنجاح'];
             if (settlement?.payment_number) {
                 parts.push(`${t('payment')} ${settlement.payment_number}`);
             }
-
-            if (settlement && Math.abs(settlement.remaining) >= 0.005) {
-                parts.push(settlement.remaining > 0
-                    ? `${t('remaining_on_customer')} ${money(settlement.remaining)}`
-                    : `${t('customer_credit')} ${money(Math.abs(settlement.remaining))}`);
-            }
-
-            ElMessage.success({ message: parts.join(' • '), duration: 5000 });
+            ElMessage.success({ message: parts.join(' • '), duration: 4000 });
+            clearDraft();
         }
 
         router.push('/admin/sales/invoices');
-    } catch (error) {
-        // The server refused because a shelf could not cover a line — most
-        // often because someone else sold the same stock while this sale was
-        // being rung up. Named per product and warehouse, and the fresh figures
-        // are pulled back in so the screen stops showing the numbers that were
-        // true a minute ago.
-        const shortages = error.response?.data?.data?.shortages;
-
-        if (Array.isArray(shortages) && shortages.length) {
-            formErrors.value = shortages.map((row) => t('sales.line_short_at_warehouse', {
-                product: row.product_name,
-                warehouse: row.warehouse_name,
-                available: formatNumber(row.available),
-                required: formatNumber(row.required),
-            }));
-
-            await Promise.all(items.value.map(loadSourcesFor));
-        } else if (error.response?.data?.errors) {
-            formErrors.value = Object.values(error.response.data.errors).flat();
+    } catch (err) {
+        if (err.response?.status === 422) {
+            const errors = err.response?.data?.errors ?? {};
+            formErrors.value = Object.values(errors).flat();
         } else {
-            formErrors.value = [
-                error.response?.data?.message || error.message || t('failed_to_save_invoice'),
-            ];
+            formErrors.value = [err.response?.data?.message || t('error_saving_invoice') || 'فشل حفظ الفاتورة'];
         }
     } finally {
         submitting.value = false;
     }
 };
 
+/* ------------------------------------------------------------------ *
+ * Lifecycle & Keyboard Shortcuts
+ * ------------------------------------------------------------------ */
+
+const confirmClearInvoice = async () => {
+    try {
+        await ElMessageBox.confirm(
+            t('confirm_clear_order') || 'هل أنت متأكد من تفريغ كافة بنود الفاتورة؟',
+            t('confirm') || 'تأكيد',
+            { type: 'warning' }
+        );
+        items.value = [];
+        clearDraft();
+        dirty.value = false;
+        ElMessage.info(t('form_cleared') || 'تم تفريغ الفاتورة');
+    } catch {
+        /* cancel */
+    }
+};
+
 const goBack = async () => {
-    if (items.value.length && !isEdit.value) {
+    if (dirty.value && items.value.length) {
         try {
-            await ElMessageBox.confirm(t('confirm_leave_unsaved_invoice'), t('confirm'), {
-                type: 'warning',
-                confirmButtonText: t('confirm'),
-                cancelButtonText: t('cancel'),
-            });
+            await ElMessageBox.confirm(
+                t('confirm_leave_unsaved_order') || 'لديك تعديلات غير محفوظة. هل تريد المغادرة؟',
+                t('confirm') || 'تأكيد',
+                { type: 'warning' }
+            );
         } catch {
             return;
         }
     }
-
     router.push('/admin/sales/invoices');
 };
 
-/* ------------------------------------------------------------------ *
- * Quick "new product"
- *
- * What the seller searched for seeds the dialog, so a failed search turns
- * straight into the product it was looking for. The product starts with no
- * stock, so its line shows short until stock is received for it.
- * ------------------------------------------------------------------ */
-
-const quickProductVisible = ref(false);
-const quickProductSeed = ref('');
-const categories = ref([]);
-
-const categoryOptions = computed(() => {
-    const name = (c) => (locale.value === 'en' && c.name_en ? c.name_en : (c.name_ar || c.name || ''));
-    const roots = categories.value.filter((c) => !c.parent_id);
-    return roots.flatMap((root) => [
-        { id: root.id, parent_id: null, label: name(root) },
-        ...categories.value.filter((c) => c.parent_id === root.id).map((c) => ({ id: c.id, parent_id: c.parent_id, label: name(c) })),
-    ]);
-});
-
-const fetchCategories = async () => {
-    try {
-        const res = await categoriesApi.getAll({ per_page: 500 });
-        categories.value = res.data?.data || (Array.isArray(res.data) ? res.data : []);
-    } catch {
-        categories.value = [];
+const handleGlobalKeydown = (e) => {
+    if (e.key === 'F2') {
+        e.preventDefault();
+        quickSearchInputRef.value?.focus();
+        quickSearchOpen.value = true;
+    } else if (e.key === 'F4') {
+        e.preventDefault();
+        openQuickProduct();
     }
-};
-
-const openQuickProduct = (seed = '') => {
-    quickProductSeed.value = String(seed || '').trim();
-    quickProductVisible.value = true;
-    showResults.value = false;
-    if (!categories.value.length) fetchCategories();
-};
-
-// addProduct adds one; the dialog says how many this invoice wants.
-const addQuickProduct = (product, quantity = 1) => {
-    const pick = optionKey(product);
-    const before = items.value.find((line) => line.pick === pick);
-    const had = before ? before.allocations[0].quantity : 0;
-    addProduct(product);
-    const line = items.value.find((l) => l.pick === pick);
-    if (line) line.allocations[0].quantity = had + Math.max(1, quantity);
-};
-
-const handleClickOutside = (e) => {
-    if (!e.target.closest('.search-wrapper')) {
-        showResults.value = false;
-    }
-};
-
-/* ------------------------------------------------------------------ *
- * Load
- * ------------------------------------------------------------------ */
-
-const loadInvoice = async () => {
-    const invoice = await invoicesStore.fetchInvoice(route.params.id);
-
-    if (!invoice) return;
-
-    form.customer_id = invoice.customer_id;
-    ensureSelectedCustomer(invoice.customer_id, invoice.customer_id
-        ? { id: invoice.customer_id, name: invoice.customer_name, phone: invoice.customer_phone }
-        : null);
-    form.assigned_employee_id = invoice.assigned_employee_id ?? null;
-    form.payment_method = invoice.payment_method || 'cash';
-    // An invoice raised at a rate gives it back. One raised before rates
-    // existed — or by a client that posts figures — carries amounts only, so the
-    // rate behind them is read back off the subtotal it was struck on. That
-    // keeps a 50-off-1,000 invoice reopening as 5% and saving back as 50,
-    // rather than losing the discount to a field that can no longer hold it.
-    const savedSubtotal = parseFloat(invoice.subtotal) || 0;
-    const savedDiscount = parseFloat(invoice.discount) || 0;
-    const savedTax = parseFloat(invoice.tax) || 0;
-
-    form.discount_percent = invoice.discount_percent ?? impliedRate(savedDiscount, savedSubtotal);
-    form.tax_percent = invoice.tax_percent ?? impliedRate(savedTax, savedSubtotal - savedDiscount);
-    form.paid_amount = parseFloat(invoice.paid_amount) || 0;
-    form.status = invoice.status || 'pending';
-    form.notes = invoice.notes || '';
-    form.expenses = (invoice.expenses || []).map((exp) => ({
-        id: exp.id || null,
-        category: exp.category || 'shipping',
-        description: exp.description || '',
-        amount: parseFloat(exp.amount) || 0,
-        status: exp.status || 'paid',
-        notes: exp.notes || '',
-    }));
-
-    // Every field the form can change is restored. This used to reload the
-    // product, price and quantity only — so reopening an invoice lost the
-    // warehouse each line came from and the unit it was priced in, and saving
-    // it again wrote those back as empty.
-    //
-    // Several invoice items can share a product (and size) — that is how a
-    // line split across warehouses was saved — so they are regrouped into one
-    // line with several allocations, the same shape the builder edits them in.
-    // Two sizes of one product stay two lines.
-    const grouped = new Map();
-
-    for (const item of invoice.items ?? []) {
-        const pick = pickKey(item.product_id, item.product_variant_id);
-        let line = grouped.get(pick);
-
-        if (!line) {
-            line = reactive({
-                pick,
-                product_id: item.product_id,
-                product_variant_id: item.product_variant_id || null,
-                variant_label: item.variant?.label || variantLabelOf(item.variant),
-                variant: item.variant ? variantFieldsOf(item.variant) : null,
-                // The product's own name beside its size badge; the stored
-                // line name already carries the size.
-                name: (item.product_variant_id && item.product?.name_ar) || item.product_name || item.product?.name_ar,
-                sku: item.variant?.sku || item.product?.sku || '',
-                image: item.product?.image_main || null,
-                price: parseFloat(item.unit_price) || 0,
-                stock: item.product?.stock_quantity || 0,
-                unit: item.product?.unit || '',
-                base_price: parseFloat(item.unit_price) || 0,
-                selectedUnit: {
-                    id: item.product_unit_id ?? null,
-                    name: item.unit_name || item.product?.unit || t('piece'),
-                    name_ar: item.unit_name || item.product?.unit || t('piece'),
-                    base_unit_multiplier: 1,
-                    price_multiplier: 1,
-                },
-                units: [],
-                allocations: [],
-                sources: [],
-                loadingStock: false,
-            });
-            grouped.set(pick, line);
-        }
-
-        line.allocations.push({
-            warehouse_id: item.warehouse_id ?? null,
-            quantity: item.quantity || 1,
-        });
-    }
-
-    items.value = [...grouped.values()];
-    preloadLineSiblings();
-
-    // The live figures for each line, so a shortage introduced since the
-    // invoice was raised is visible immediately rather than on submit.
-    await Promise.all(items.value.map(loadSourcesFor));
 };
 
 onMounted(async () => {
-    document.addEventListener('click', handleClickOutside);
-    document.addEventListener('keydown', handleKeyboardShortcuts);
+    window.addEventListener('keydown', handleGlobalKeydown);
 
-    // What the field offers before a search: the most recent clients, which
-    // is a starting point rather than the whole book — anyone past it is
-    // reached by typing, which asks the server.
     try {
-        await customersStore.fetchCustomers({ per_page: 50 });
-        recentCustomers.value = customersStore.customers;
-        customers.value = recentCustomers.value;
-    } catch (error) {
-        recentCustomers.value = [];
-        customers.value = [];
+        const [whRes, empRes] = await Promise.all([
+            api.get('/admin/warehouses'),
+            api.get('/admin/employees', { params: { per_page: 200 } }),
+        ]);
+        const whData = whRes.data?.data || whRes.data || [];
+        warehouses.value = Array.isArray(whData) ? whData : [];
+        if (!form.default_warehouse_id && warehouses.value.length) {
+            form.default_warehouse_id = warehouses.value[0].id;
+        }
+
+        const empData = empRes.data?.data || empRes.data || [];
+        salesEmployees.value = Array.isArray(empData) ? empData : [];
+    } catch {
+        /* ignore */
     }
 
-    // The reps a sale can be credited to. A failure here leaves the field
-    // empty rather than blocking the sale — attribution is optional, and a
-    // counter sale must still be possible when the list will not load.
-    try {
-        const { data } = await api.get('/sales-employees');
-        salesEmployees.value = data?.data ?? data ?? [];
-    } catch (error) {
-        salesEmployees.value = [];
-    }
-
-    // A new invoice is credited to the rep raising it; one being reopened
-    // keeps whoever it was saved with.
-    if (!isEdit.value && isSalesRep.value) {
-        form.assigned_employee_id = authStore.user.employee_id;
-    }
+    fetchCategories();
 
     if (isEdit.value) {
-        try {
-            await loadInvoice();
-        } catch (error) {
-            ElMessage.error(t('failed_to_load_invoice'));
-        }
+        await loadInvoice();
     } else {
-        nextTick(() => searchInputRef.value?.focus());
+        await offerDraft();
+        draftTracking = true;
+        nextTick(() => quickSearchInputRef.value?.focus());
     }
-
-    if (form.expenses.length) showExpenses.value = true;
 });
 
 onUnmounted(() => {
-    document.removeEventListener('click', handleClickOutside);
-    document.removeEventListener('keydown', handleKeyboardShortcuts);
-    clearTimeout(searchTimeout);
-    clearTimeout(duplicateTimeout);
+    window.removeEventListener('keydown', handleGlobalKeydown);
+    clearTimeout(quickSearchTimer);
+    clearTimeout(draftTimer);
+});
+
+onBeforeRouteLeave((to, from, next) => {
+    if (!isEdit.value && dirty.value && items.value.length) {
+        saveDraft();
+    }
+    next();
 });
 </script>
 
 <style scoped>
-/* The house palette: navy and gold from vue-custom.css, with semantic colours
-   kept separate from the accent so "owing" never reads as "brand". */
-.invoice-builder {
-    --ink: #121c2c;
-    --ink-soft: #475569;
-    --ink-mute: #7c8798;
-    --line: #e2e8f0;
-    --surface: #ffffff;
-    --ground: #f8fafc;
-    --gold: #d4a84b;
-    --ok: #1b6b4c;
-    --ok-soft: #e8f3ee;
-    --warn: #8a6212;
-    --warn-soft: #fbf3e0;
-    --bad: #9b2c2c;
-    --bad-soft: #fbeceb;
-
-    font-family: 'Cairo', sans-serif;
-    color: var(--ink);
-    padding-bottom: 5rem;
+/* ── Page Layout ─────────────────────────────────────────────────── */
+.order-form-page {
+    padding: 1.25rem 1.5rem 5rem;
+    max-width: 1440px;
+    margin: 0 auto;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
-.builder-header {
+/* ── Sticky Top Status Bar ───────────────────────────────────────── */
+.status-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
     justify-content: space-between;
-    gap: 1.25rem;
-    padding-bottom: 1.25rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid var(--line);
+    align-items: center;
+    gap: 1rem;
+    padding: 0.65rem 1.25rem;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+    margin-bottom: 1.25rem;
+    transition: all 0.2s ease;
 }
 
-.eyebrow {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    color: var(--gold);
-    text-transform: uppercase;
+.status-bar.is-ready {
+    border-left: 4px solid #10b981;
 }
 
-.header-identity h1 {
-    margin: 0.35rem 0 0;
-    font-size: clamp(1.5rem, 3vw, 2rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
+[dir="rtl"] .status-bar.is-ready {
+    border-left: 1px solid #e2e8f0;
+    border-right: 4px solid #10b981;
 }
 
-.header-identity p {
-    margin: 0.3rem 0 0;
-    color: var(--ink-mute);
-    font-size: 0.9rem;
+.status-bar.is-blocked {
+    border-left: 4px solid #f59e0b;
 }
 
-.header-actions {
+[dir="rtl"] .status-bar.is-blocked {
+    border-left: 1px solid #e2e8f0;
+    border-right: 4px solid #f59e0b;
+}
+
+.sb-lead {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: 0.92rem;
 }
 
-.error-list {
-    margin: 0.5rem 0 0;
-    padding-inline-start: 1.1rem;
+.is-ready .sb-lead { color: #059669; }
+.is-blocked .sb-lead { color: #d97706; }
+
+.sb-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.sb-issues {
     display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
+    align-items: center;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
 }
 
-/* ── Grid ───────────────────────────────────────────────────────────── */
-.builder-grid {
+.sb-issue {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.sb-issue:hover {
+    background: #fef3c7;
+}
+
+.sb-tail {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-inline-start: auto;
+}
+
+.sb-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.88rem;
+    color: #64748b;
+}
+
+.sb-total strong {
+    font-size: 1.15rem;
+    color: #1e293b;
+    margin-inline-start: 0.35rem;
+}
+
+.sb-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+}
+
+.sb-flag.is-warn {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.sb-flag.is-muted {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+/* ── Form Card ───────────────────────────────────────────────────── */
+.order-form-container {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Head Grids ──────────────────────────────────────────────────── */
+.head-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
-    gap: 1.5rem;
-    align-items: start;
-}
-
-.work-area {
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr);
     gap: 1.25rem;
-    min-width: 0;
+    margin-bottom: 0.5rem;
 }
 
-/* ── Search ─────────────────────────────────────────────────────────── */
-.search-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 1.1rem 1.25rem;
-    box-shadow: 0 1px 2px rgba(18, 28, 44, 0.04);
+.head-subgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
 }
 
-/* Anchors the dropdown; it used to be positioned by hand against the viewport
-   and re-measured on scroll. */
-.search-row {
+.customer-pick-row {
     display: flex;
-    align-items: stretch;
-    gap: 0.6rem;
+    gap: 0.5rem;
+    width: 100%;
 }
 
-.search-wrapper {
-    position: relative;
+.customer-select {
     flex: 1;
-    min-width: 0;
 }
 
+.btn-quick-customer {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.customer-info-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.cust-info-item {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: #f8fafc;
+    color: #475569;
+}
+
+.cust-info-item.is-credit {
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+.cust-info-item.is-owing {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.quick-days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.4rem;
+}
+
+.quick-days .chip {
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.quick-days .chip.is-on {
+    background: #1d4ed8;
+    color: #ffffff;
+    border-color: #1d4ed8;
+}
+
+/* ── Lines Section Head ──────────────────────────────────────────── */
+.lines-head-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.lines-title {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.lines-title h4 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.lines-badge {
+    font-size: 0.78rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.lines-badge.is-warn {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.subtotal-pill {
+    font-size: 0.95rem;
+    background: #eff6ff;
+    color: #1e40af;
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid #dbeafe;
+}
+
+/* ── Search & Product Catalog Panel ──────────────────────────────── */
+.quote-search-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.85rem;
+    margin-bottom: 1.25rem;
+    position: relative;
+}
+
+.quote-search-header-row {
+    display: grid;
+    grid-template-columns: 220px 1fr auto auto;
+    gap: 0.65rem;
+    align-items: center;
+}
+
+.quote-search-input :deep(.el-input__wrapper) {
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.key-hint {
+    background: #e2e8f0;
+    color: #475569;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.btn-toggle-catalog,
 .btn-new-product {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    background: #ecfdf5;
-    border: 1px solid #6ee7b7;
+    padding: 0.45rem 0.85rem;
     border-radius: 8px;
-    padding: 0 0.95rem;
-    font: inherit;
-    font-size: 0.86rem;
-    font-weight: 700;
-    color: #047857;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-weight: 600;
+    font-size: 0.85rem;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
+    height: 36px;
+}
+
+.btn-toggle-catalog:hover,
+.btn-new-product:hover {
+    border-color: #94a3b8;
+    background: #f1f5f9;
+}
+
+.btn-toggle-catalog.is-active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+}
+
+.count-badge {
+    background: #3b82f6;
+    color: #ffffff;
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+}
+
+.category-quick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.cat-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.cat-chip-btn.is-active {
+    background: #1d4ed8;
+    color: #ffffff;
+    border-color: #1d4ed8;
+}
+
+/* ── Suggested Catalog Dropdown ──────────────────────────────────── */
+.quote-suggested-panel {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+    margin-top: 0.75rem;
+    overflow: hidden;
+}
+
+.dropdown-top-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.strip-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.88rem;
+}
+
+.results-badge {
+    background: #e2e8f0;
+    color: #334155;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.keep-open-pill {
+    font-size: 0.75rem;
+    color: #475569;
+    margin-inline-end: 0.75rem;
+}
+
+.close-dropdown-btn {
+    border: none;
+    background: none;
+    color: #64748b;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.suggested-list-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 0.85rem;
+}
+
+.suggested-products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+}
+
+.suggested-item-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.75rem;
+    transition: border-color 0.15s ease;
+}
+
+.suggested-item-card:hover {
+    border-color: #94a3b8;
+}
+
+.suggested-item-card.item-in-order {
+    border-color: #93c5fd;
+    background: #f8fafc;
+}
+
+.suggested-item-card.is-single {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.item-card-image {
+    position: relative;
+    width: 54px;
+    height: 54px;
     flex-shrink: 0;
 }
 
-.btn-new-product:hover {
-    background: #059669;
-    border-color: #059669;
-    color: #ffffff;
-}
-
-.results-state.is-empty {
-    flex-direction: column;
-}
-
-.empty-new-product {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 1.1rem;
-    border: none;
-    border-radius: 8px;
-    background: #059669;
-    color: #ffffff;
-    font: inherit;
-    font-weight: 700;
-    font-size: 0.88rem;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
-    max-width: 100%;
-}
-
-.empty-new-product span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.empty-new-product:hover {
-    background: #047857;
-}
-
-.empty-new-hint {
-    font-size: 0.75rem;
-}
-
-@media (max-width: 640px) {
-    .btn-new-product .btn-text,
-    .btn-new-product .kbd-hint { display: none; }
-}
-
-.kbd-hint,
-.shortcuts kbd {
-    font-family: inherit;
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--ink-mute);
-    background: var(--ground);
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    padding: 0.1rem 0.4rem;
-}
-
-.search-hint {
-    margin: 0.65rem 0 0;
-    font-size: 0.8rem;
-    color: var(--ink-mute);
-}
-
-.results {
+.in-order-tag {
     position: absolute;
-    inset-inline: 0;
-    top: calc(100% + 8px);
-    z-index: 30;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    box-shadow: 0 18px 40px -18px rgba(18, 28, 44, 0.45);
-    overflow: hidden;
-    max-height: 22rem;
-    overflow-y: auto;
-}
-
-.results-state {
+    top: -6px;
+    right: -6px;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 1.25rem;
-    color: var(--ink-soft);
-    font-size: 0.9rem;
+    padding: 0 4px;
 }
 
-.results-state.muted { color: var(--ink-mute); }
-
-.results-list {
-    list-style: none;
-    margin: 0;
-    padding: 0.35rem;
-}
-
-.result {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    padding: 0.6rem 0.7rem;
-    border-radius: 9px;
-    cursor: pointer;
-    transition: background 0.12s ease;
-}
-
-.result.active { background: var(--ground); }
-
-.result-thumb {
-    width: 40px;
-    height: 40px;
-    flex: none;
-    display: grid;
-    place-items: center;
-    background: var(--ground);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    overflow: hidden;
-    color: var(--ink-mute);
-}
-
-.result-thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-.result-body {
+.item-card-body {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: 0.35rem;
 }
 
-.result-name {
-    font-weight: 600;
-    white-space: nowrap;
+.item-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.item-name {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #0f172a;
+    line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
-.result-sku {
-    font-size: 0.74rem;
-    color: var(--ink-mute);
-    font-family: 'Cascadia Mono', Consolas, monospace;
-}
-
-.result-side {
-    text-align: end;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    flex: none;
-}
-
-.result-price { font-weight: 700; font-size: 0.9rem; }
-
-.result-stock { font-size: 0.72rem; }
-.result-stock-total { font-size: 0.68rem; color: var(--ink-mute); }
-.result-stock.ok { color: var(--ok); }
-.result-stock.low { color: var(--warn); }
-.result-stock.out { color: var(--bad); }
-
-/* Already on the invoice: the row says so, and by how much. */
-.result.in-invoice { box-shadow: inset 3px 0 0 var(--ok); }
-.in-invoice-tag {
-    flex: none;
-    padding: 0.05rem 0.45rem;
-    border-radius: 999px;
-    background: var(--ok-soft);
-    color: var(--ok);
+.sku-chip {
     font-size: 0.72rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
 }
 
-/* One product, several sizes */
-.result-group {
-    padding: 0.45rem 0.7rem 0.55rem;
-    border-radius: 9px;
-}
-
-.result-group-head {
+.item-card-tags {
     display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    padding-bottom: 0.45rem;
-}
-
-.result-group-meta { font-size: 0.74rem; color: var(--ink-mute); }
-
-.result-sizes {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 0.3rem;
-}
-
-.result-size {
-    padding: 0.4rem 0.6rem;
-    gap: 0.5rem;
-    border: 1px solid var(--line);
-    background: var(--ground);
-}
-
-.result-size.active { background: var(--surface); border-color: var(--gold); }
-
-.result-size-label {
-    font-weight: 700;
-    color: var(--ink);
-    unicode-bidi: isolate;
-}
-
-.drop-enter-active, .drop-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
-.drop-enter-from, .drop-leave-to { opacity: 0; transform: translateY(-6px); }
-
-/* ── Lines ──────────────────────────────────────────────────────────── */
-.lines-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-.lines-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--line);
-}
-
-.lines-head h2 { margin: 0; font-size: 1.05rem; font-weight: 700; }
-
-.count {
-    font-size: 0.8rem;
-    color: var(--ink-mute);
-    background: var(--ground);
-    border-radius: 999px;
-    padding: 0.15rem 0.65rem;
-}
-
-.empty {
-    padding: 3.5rem 1.5rem;
-    text-align: center;
-    color: var(--ink-mute);
-}
-
-.empty-icon { font-size: 2.5rem; opacity: 0.35; }
-.empty-title { margin: 1rem 0 0.25rem; font-weight: 700; color: var(--ink-soft); }
-.empty-hint { margin: 0; font-size: 0.88rem; }
-
-.lines { display: flex; flex-direction: column; }
-
-.line {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.line:last-child { border-bottom: none; }
-
-/* The rail carries the state; the row itself stays quiet. */
-.line.short {
-    background: var(--bad-soft);
-    box-shadow: inset 3px 0 0 var(--bad);
-}
-
-.line-main {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.line-identity { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
-
-.line-thumb {
-    width: 36px;
-    height: 36px;
-    flex: none;
-    display: grid;
-    place-items: center;
-    background: var(--ground);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    overflow: hidden;
-    color: var(--ink-mute);
-}
-
-.line-thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-.line-identity-text { display: flex; flex-direction: column; min-width: 0; }
-.line-name { font-weight: 700; }
-/* The size under the product's name, sized to its text in the column. */
-.line-variant { align-self: flex-start; margin: 0.15rem 0; }
-.line-variant-details { margin: 0.2rem 0 0.1rem; }
-.line-sku {
-    font-size: 0.74rem;
-    color: var(--ink-mute);
-    font-family: 'Cascadia Mono', Consolas, monospace;
-}
-
-/* Sibling sizes under a line */
-.line-sizes {
-    display: flex;
-    align-items: center;
     flex-wrap: wrap;
-    gap: 0.3rem;
+    gap: 0.35rem;
+}
+
+.cat-chip, .stock-chip {
+    font-size: 0.7rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+.cat-chip { background: #f1f5f9; color: #475569; }
+.stock-chip { background: #ecfdf5; color: #047857; }
+.stock-chip.is-low { background: #fff7ed; color: #c2410c; }
+.stock-chip.is-out { background: #fef2f2; color: #b91c1c; }
+
+.item-card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 0.35rem;
 }
 
-.line-sizes-label { font-size: 0.72rem; color: var(--ink-mute); margin-inline-end: 0.15rem; }
-
-.size-chip {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.08rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--ink-soft);
-    font-size: 0.74rem;
-    font-weight: 600;
-    line-height: 1.5;
-    transition: border-color 0.12s ease, color 0.12s ease;
-}
-
-.size-chip:hover { border-color: var(--gold); color: var(--ink); }
-
-.size-chip.active {
-    border-color: var(--gold);
-    background: #fdf6e3;
-    color: var(--ink);
-    cursor: default;
-}
-
-.size-chip.out { color: var(--bad); border-style: dashed; }
-
-.size-chip small {
-    font-size: 0.66rem;
-    color: var(--ok);
-    padding-inline-start: 0.3rem;
-    border-inline-start: 1px solid var(--line);
-    font-variant-numeric: tabular-nums;
-}
-
-.size-chip.out small { color: var(--bad); }
-
-.line-total { display: flex; align-items: center; gap: 0.5rem; flex: none; }
-.line-total-value { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-
-.line-fields {
-    display: grid;
-    grid-template-columns: minmax(150px, 1fr) minmax(110px, 1fr);
-    gap: 0.75rem;
-}
-
-/* ── Allocations: which shelves a line draws from ─────────────────────── */
-.allocations {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    background: var(--ground);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0.75rem;
-}
-
-.allocations-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.allocations-total {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-    font-variant-numeric: tabular-nums;
-}
-
-.allocation-row {
-    display: grid;
-    grid-template-columns: minmax(150px, 1.6fr) 140px auto;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.allocation-row .allocation-warning {
-    grid-column: 1 / -1;
-}
-
-.allocation-remove {
-    justify-self: start;
-}
-
-.add-source-btn {
-    align-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: none;
-    border: 1px dashed var(--line);
-    border-radius: 8px;
-    padding: 0.4rem 0.75rem;
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-    cursor: pointer;
-}
-
-.add-source-btn:hover:not(:disabled) {
-    border-color: var(--gold);
-    color: var(--ink);
-}
-
-.add-source-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
-
-.field-label {
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: var(--ink-mute);
-}
-
-.option-row { display: flex; justify-content: space-between; gap: 1rem; width: 100%; }
-.option-stock { color: var(--ok); font-variant-numeric: tabular-nums; }
-.option-stock.empty { color: var(--bad); }
-
-.stepper {
-    display: flex;
-    align-items: center;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    overflow: hidden;
-    height: 32px;
-    background: var(--surface);
-}
-
-.stepper button {
-    width: 34px;
-    height: 100%;
-    border: none;
-    background: var(--ground);
-    color: var(--ink-soft);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-}
-
-.stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
-.stepper button:hover:not(:disabled) { background: var(--line); }
-
-.stepper input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    text-align: center;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    background: transparent;
-    color: var(--ink);
-    -moz-appearance: textfield;
-}
-
-.stepper input::-webkit-outer-spin-button,
-.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-
-.line-warning,
-.line-note,
-.allocation-warning {
-    margin: 0;
-    font-size: 0.8rem;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-
-.line-warning,
-.allocation-warning { color: var(--bad); font-weight: 600; }
-.line-warning.subtle,
-.allocation-warning.subtle { color: var(--warn); font-weight: 500; }
-.line-note { color: var(--ink-mute); }
-
-/* ── Summary rail ───────────────────────────────────────────────────── */
-.summary-rail {
-    position: sticky;
-    top: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.rail-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 1.1rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-}
-
-.rail-title {
-    margin: 0;
+.item-price {
+    color: #1d4ed8;
     font-size: 0.95rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--ink);
 }
 
-.rail-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.rail-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.6rem;
-    border: 1px dashed var(--line);
-    border-radius: 999px;
-    background: var(--ground);
-    color: var(--ink-soft);
-    font-family: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-}
-
-.rail-action:hover {
-    border-color: var(--gold);
-    border-style: solid;
-    color: var(--ink);
-}
-
-/* ── Client ─────────────────────────────────────────────────────────── */
-.client-option {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    width: 100%;
-}
-
-.client-option-name { font-weight: 600; }
-
-.client-option-meta {
+.unit-text {
     font-size: 0.75rem;
-    color: var(--ink-mute);
-    font-variant-numeric: tabular-nums;
+    color: #64748b;
 }
 
-.select-state {
+/* Multi-variant tiles */
+.group-head {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    padding: 0.9rem 1rem;
-    font-size: 0.85rem;
-    color: var(--ink-mute);
+    gap: 0.65rem;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px dashed #e2e8f0;
 }
 
-/* The dead end of a search, and the way out of it. */
-.select-empty {
-    padding: 0.9rem 1rem;
-    text-align: center;
-}
-
-.select-empty p {
-    margin: 0 0 0.4rem;
-    font-size: 0.85rem;
-    color: var(--ink-mute);
-}
-
-.select-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    width: 100%;
-    padding: 0.4rem;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--gold);
-    font-family: inherit;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-}
-
-.select-add:hover { background: var(--ground); }
-
-.client-card {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.65rem 0.75rem;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--ground);
-}
-
-.client-avatar {
-    flex: none;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
+.variants-tiles {
     display: grid;
-    place-items: center;
-    background: var(--gold);
-    color: #fff;
-    font-weight: 800;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
 }
 
-.client-body {
+.variant-tile {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.45rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.variant-tile.tile-in-order {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.tile-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.tile-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: #64748b;
+}
+
+.tile-price {
+    font-weight: 600;
+    color: #2563eb;
+}
+
+/* ── Lines Table ─────────────────────────────────────────────────── */
+.lines-empty {
+    padding: 3rem 1rem;
+    text-align: center;
+    color: #94a3b8;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+}
+
+.lines-empty i {
+    font-size: 2.25rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.lines {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #ffffff;
+    margin-bottom: 1.5rem;
+}
+
+.line {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) 130px 100px 105px 110px minmax(90px, 1fr) 68px;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.line:last-child {
+    border-bottom: none;
+}
+
+.line--head {
+    background: #f8fafc;
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.line-product-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.line-thumb {
+    width: 42px;
+    height: 42px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.line-info {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    flex: 1;
-}
-
-.client-name {
-    font-weight: 700;
-    font-size: 0.9rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.client-meta {
-    font-size: 0.76rem;
-    color: var(--ink-mute);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.client-balance {
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.1rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 8px;
-    font-weight: 700;
-}
-
-.client-balance-label { font-size: 0.66rem; font-weight: 600; }
-.client-balance-value { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-.client-balance.owing { background: var(--warn-soft); color: var(--warn); }
-.client-balance.credit { background: #eef2fb; color: #22406e; }
-
-/* ── Quick client dialog ────────────────────────────────────────────── */
-.dialog-lede {
-    margin: 0 0 1rem;
-    font-size: 0.84rem;
-    color: var(--ink-mute);
-    line-height: 1.6;
-}
-
-.client-form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-}
-
-.client-form .req { color: var(--bad); font-style: normal; }
-
-.field-error {
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: var(--bad);
-}
-
-.client-extras {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
-}
-
-.dup-hint {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    padding: 0.55rem 0.7rem;
-    border-radius: 8px;
-    background: var(--warn-soft);
-    color: var(--warn);
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-.sr-submit {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    border: 0;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-
-.field-warning {
-    margin: -0.35rem 0 0;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--warn);
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-
-/* What the rate above comes to in money, under the field that sets it — so the
-   seller reads the percentage and the figure in one place instead of waiting
-   for the totals below to tell them. */
-.field-figure {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-    font-variant-numeric: tabular-nums;
-}
-
-.field-figure.deduct { color: var(--bad); }
-
-.field-note {
-    margin: -0.35rem 0 0;
-    font-size: 0.75rem;
-    color: var(--ink-soft);
-}
-
-/* The rate beside its figure in the totals — quiet, because the money is the
-   thing being read there and the rate is only saying where it came from. */
-.rate-chip {
-    display: inline-block;
-    margin-inline-start: 0.3rem;
-    padding: 0.05rem 0.35rem;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, .18);
-    font-size: 0.72rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-
-.extras { border-top: 1px dashed var(--line); padding-top: 0.85rem; }
-
-.extras-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    width: 100%;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-    cursor: pointer;
-}
-
-.extras-badge {
-    margin-inline-start: auto;
-    font-weight: 700;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
-}
-
-.extras-body { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
-.extra-row { display: flex; align-items: center; gap: 0.4rem; }
-/* Without min-width:0 a flex item can't shrink past its content, so on a
-   narrow rail the fixed-width amount field pushed the row wider than its
-   card instead of letting the description give up space first. */
-.extra-row .expense-desc { flex: 1; min-width: 0; }
-.extra-row .expense-amount { width: 110px; flex: none; }
-
-.totals {
-    margin: 0;
-    padding-top: 0.85rem;
-    border-top: 1px solid var(--line);
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-}
-
-.total-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    font-size: 0.9rem;
-}
-
-.total-line dt { color: var(--ink-soft); margin: 0; }
-.total-line dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
-.total-line.deduct dd { color: var(--bad); }
-
-.total-line.grand {
-    padding-top: 0.6rem;
-    margin-top: 0.2rem;
-    border-top: 1px solid var(--line);
-    font-size: 1.05rem;
-}
-
-.total-line.grand dt { color: var(--ink); font-weight: 700; }
-.total-line.grand dd { font-weight: 800; font-size: 1.2rem; }
-
-.invoice-tafqeet-line {
-    margin-top: 0.5rem;
-    padding: 0.55rem 0.75rem;
-    background: var(--surface-soft, #f8fafc);
-    border: 1px dashed var(--line, #cbd5e1);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
     gap: 0.2rem;
 }
-.invoice-tafqeet-line .tafqeet-lbl {
-    font-size: 0.72rem;
-    color: var(--ink-soft, #64748b);
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-.invoice-tafqeet-line .tafqeet-lbl i {
-    color: var(--brand, #2563eb);
-}
-.invoice-tafqeet-line .tafqeet-txt {
-    font-size: 0.8rem;
-    color: var(--ink, #0f172a);
-    font-weight: 700;
-    line-height: 1.4;
+
+.line-info strong {
+    font-size: 0.88rem;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.settlement {
+.line-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+}
+
+.variant-tag {
+    background: #eff6ff;
+    color: #1d4ed8;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.stock-pill {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+.stock-pill.is-over {
+    background: #fef2f2;
+    color: #b91c1c;
+    font-weight: 700;
+}
+
+.line-variant-switch {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.7rem 0.9rem;
-    border-radius: 10px;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+    font-size: 0.72rem;
+}
+
+.switch-label {
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.switch-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.switch-chip {
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.switch-chip.is-active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.line-fields {
+    display: contents;
+}
+
+.line-field {
+    min-width: 0;
+}
+
+.line-field :deep(.el-input-number) {
+    width: 100%;
+}
+
+.unit-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background: #f1f5f9;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: #334155;
+}
+
+.line-total-cell {
+    text-align: end;
+}
+
+.line-total {
+    font-weight: 800;
+    color: #0f172a;
+    font-size: 0.95rem;
+}
+
+.line-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.15rem;
+}
+
+.action-btn {
+    width: 32px;
+    height: 32px;
+    color: #64748b;
+}
+
+.action-btn:hover {
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
+.action-btn.text-danger:hover {
+    color: #dc2626;
+    background: #fef2f2;
+}
+
+/* ── Bottom Grid: Notes & Settlement / Totals ────────────────────── */
+.bottom-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 350px;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.settlement-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.settlement-title {
+    margin: 0 0 0.65rem;
+    font-size: 0.9rem;
     font-weight: 700;
+    color: #1e293b;
 }
 
-.settlement-value { font-variant-numeric: tabular-nums; font-size: 1.05rem; }
-.settlement.settled { background: var(--ok-soft); color: var(--ok); }
-.settlement.owing { background: var(--warn-soft); color: var(--warn); }
-.settlement.credit { background: #eef2fb; color: #22406e; }
-
-.shortcuts {
-    margin: 0;
-    text-align: center;
-    font-size: 0.76rem;
-    color: var(--ink-mute);
+.settlement-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
-.shortcuts .dot { margin: 0 0.4rem; }
-
-/* ── Mobile action bar ──────────────────────────────────────────────── */
-.mobile-bar { display: none; }
-
-@media (max-width: 1100px) {
-    .builder-grid { grid-template-columns: minmax(0, 1fr); }
-    .summary-rail { position: static; }
+.remaining-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    font-weight: 600;
 }
 
-@media (max-width: 520px) {
-    /* Two columns of inputs stop being readable before the dialog does. */
-    .client-form .fields-row,
-    .client-extras { grid-template-columns: 1fr; }
+.remaining-badge.is-settled {
+    background: #ecfdf5;
+    color: #047857;
 }
 
-@media (max-width: 720px) {
-    .line-fields { grid-template-columns: 1fr 1fr; }
-    .result-sizes { grid-template-columns: 1fr; }
+.remaining-badge.is-owing {
+    background: #fef2f2;
+    color: #b91c1c;
+}
 
-    .header-actions .el-button--large { display: none; }
+.remaining-badge.is-credit {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
 
-    /* Ctrl+B / Ctrl+Enter only mean anything with a physical keyboard. */
-    .kbd-hint,
-    .shortcuts { display: none; }
+.tafqeet-line {
+    margin: 0.65rem 0 0;
+    font-size: 0.82rem;
+    color: #475569;
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 0.5rem;
+}
 
-    .mobile-bar {
-        position: fixed;
-        inset-inline: 0;
-        bottom: 0;
-        z-index: 20;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        padding: 0.7rem 1rem;
-        background: var(--surface);
-        border-top: 1px solid var(--line);
-        box-shadow: 0 -6px 20px -12px rgba(18, 28, 44, 0.4);
+/* ── Totals Card ─────────────────────────────────────────────────── */
+.totals {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    align-self: start;
+}
+
+.totals-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    font-size: 0.88rem;
+    color: #475569;
+}
+
+.totals-row :deep(.el-input-number) {
+    width: 130px;
+}
+
+.totals-row.discount-row {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+}
+
+.totals-row-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.discount-mode-switch :deep(.el-radio-button__inner) {
+    padding: 2px 7px;
+    font-size: 0.72rem;
+    height: 24px;
+    line-height: 20px;
+}
+
+.totals-row-input {
+    display: inline-flex;
+    justify-content: flex-end;
+}
+
+.totals-hint {
+    font-size: 0.75rem;
+    margin-top: -0.15rem;
+    margin-bottom: 0.35rem;
+    padding-inline-start: 0.25rem;
+}
+
+.totals-hint.is-error {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.totals-hint.is-figure {
+    color: #059669;
+    font-weight: 500;
+}
+
+.totals-row.grand {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.totals-row.grand .num {
+    color: #1d4ed8;
+}
+
+/* ── Bottom Action Dock ──────────────────────────────────────────── */
+.action-bar-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 25;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid #e2e8f0;
+    padding: 0.75rem 1.5rem;
+    margin: 1.5rem -1.5rem -1.5rem;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.action-bar-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+.dock-left, .dock-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.blocker-hint {
+    font-size: 0.82rem;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.btn-save-primary {
+    font-weight: 700;
+    padding: 0 1.5rem;
+}
+
+/* ── Responsive adjustments ─────────────────────────────────────── */
+@media (max-width: 992px) {
+    .head-grid {
+        grid-template-columns: 1fr;
     }
-
-    .mobile-total { display: flex; flex-direction: column; }
-    .mobile-total span { font-size: 0.72rem; color: var(--ink-mute); }
-    .mobile-total strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+    .quote-search-header-row {
+        grid-template-columns: 1fr 1fr;
+    }
+    .bottom-grid {
+        grid-template-columns: 1fr;
+    }
+    .line {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
 }
-
-@media (max-width: 480px) {
-    .line-fields { grid-template-columns: 1fr; }
-    .allocation-row { grid-template-columns: 1fr; }
-    .allocation-remove { justify-self: end; }
-    /* Paired selects (discount/tax, payment method/status) get too narrow
-       for their own labels and options once the rail is this tight. */
-    .fields-row { grid-template-columns: 1fr; }
-    .extra-row { flex-wrap: wrap; }
-    .extra-row .expense-desc { flex-basis: 100%; }
-    .extra-row .expense-amount { flex: 1; width: auto; }
-}
-</style>
-
-<!-- The dialog and the client dropdown are appended to the body, so they sit
-     outside .invoice-builder and inherit none of its palette. Scoped rules
-     still reach their contents — the custom properties those rules read do
-     not, and are restated here. -->
-<style>
-.client-dialog,
-.client-popper {
-    --ink: #121c2c;
-    --ink-soft: #475569;
-    --ink-mute: #7c8798;
-    --line: #e2e8f0;
-    --ground: #f8fafc;
-    --gold: #d4a84b;
-    --warn: #8a6212;
-    --warn-soft: #fbf3e0;
-    --bad: #9b2c2c;
-
-    font-family: 'Cairo', sans-serif;
-    color: var(--ink);
-}
-
-.client-dialog .el-dialog__body { padding-top: 0.5rem; }
-.client-dialog .el-dialog__footer { padding-top: 0.75rem; }
-
-/* The footer sits under the list rather than floating over its last row. */
-.client-popper .el-select-dropdown__footer { padding: 0; border-top: 1px solid var(--line); }
 </style>

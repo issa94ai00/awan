@@ -446,8 +446,14 @@ class SalesOrderController extends Controller
             ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
             : (float) ($validated['tax'] ?? 0);
 
-        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
-            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
+            throw ValidationException::withMessages([
+                'discount' => [sprintf(
+                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
+                    number_format($discountAmount, 2),
+                    number_format(max(0, $subtotal), 2)
+                )],
+            ]);
         }
 
         $validated['discount'] = $discountAmount;
@@ -718,11 +724,11 @@ class SalesOrderController extends Controller
 
         $validated['subtotal'] = $subtotal;
 
-        $discountPercent = array_key_exists('discount_percent', $validated) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
-            ? (float) $validated['discount_percent']
+        $discountPercent = array_key_exists('discount_percent', $validated)
+            ? ($validated['discount_percent'] !== '' && $validated['discount_percent'] !== null ? (float) $validated['discount_percent'] : null)
             : ($salesOrder->discount_percent ?? null);
-        $taxPercent = array_key_exists('tax_percent', $validated) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
-            ? (float) $validated['tax_percent']
+        $taxPercent = array_key_exists('tax_percent', $validated)
+            ? ($validated['tax_percent'] !== '' && $validated['tax_percent'] !== null ? (float) $validated['tax_percent'] : null)
             : ($salesOrder->tax_percent ?? null);
 
         $discountAmount = $discountPercent !== null
@@ -732,8 +738,14 @@ class SalesOrderController extends Controller
             ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
             : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
 
-        if ($discountPercent === null && $subtotal > 0 && $discountAmount > 0) {
-            $discountPercent = round(($discountAmount / $subtotal) * 100, 2);
+        if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
+            throw ValidationException::withMessages([
+                'discount' => [sprintf(
+                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
+                    number_format($discountAmount, 2),
+                    number_format(max(0, $subtotal), 2)
+                )],
+            ]);
         }
 
         $validated['discount'] = $discountAmount;

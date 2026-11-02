@@ -376,7 +376,21 @@ class InvoiceController extends Controller
 
         $discount = $discountPercent !== null
             ? round(max(0, $subtotal) * $discountPercent / 100, 5)
-            : (float) ($validated['discount'] ?? 0);
+            : round((float) ($validated['discount'] ?? 0), 5);
+
+        // A fixed discount cannot take off more than the goods are worth. Left
+        // alone it would only be hidden by the total's floor at zero, while
+        // the stored discount — and the revenue the ledger is told about —
+        // stayed wrong. A rate is already capped at 100% by validation.
+        if ($discountPercent === null && $discount - max(0, $subtotal) > 0.005) {
+            throw ValidationException::withMessages([
+                'discount' => [sprintf(
+                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
+                    number_format($discount, 2),
+                    number_format(max(0, $subtotal), 2)
+                )],
+            ]);
+        }
 
         $tax = $taxPercent !== null
             ? round(max(0, $subtotal - $discount) * $taxPercent / 100, 5)

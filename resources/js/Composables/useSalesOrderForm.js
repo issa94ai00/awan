@@ -56,7 +56,7 @@ function createSalesOrderForm({ orderId }) {
         shipping_cost: 0,
         // A discount and a tax are typed as an amount or a rate; the order
         // keeps the amount.
-        discount_mode: 'amount',
+        discount_mode: 'percent',
         discount: 0,
         tax_mode: 'amount',
         tax: 0,
@@ -515,8 +515,12 @@ function createSalesOrderForm({ orderId }) {
                 fulfillment_type: order.fulfillment_type || 'ship',
                 shipping_address: order.shipping_address || '',
                 shipping_cost: parseFloat(order.shipping_cost) || 0,
-                discount_mode: 'amount',
-                discount: parseFloat(order.discount) || 0,
+                discount_mode: (order.discount_percent !== null && order.discount_percent !== undefined && Number(order.discount_percent) > 0)
+                    ? 'percent'
+                    : (Number(order.discount) > 0 ? 'amount' : 'percent'),
+                discount: (order.discount_percent !== null && order.discount_percent !== undefined && Number(order.discount_percent) > 0)
+                    ? (parseFloat(order.discount_percent) || 0)
+                    : (parseFloat(order.discount) || 0),
                 tax_mode: 'amount',
                 tax: parseFloat(order.tax) || 0,
                 notes: order.notes || '',
@@ -578,6 +582,7 @@ function createSalesOrderForm({ orderId }) {
         shipping_address: form.shipping_address || null,
         shipping_cost: shipping.value,
         discount: discountAmount.value,
+        discount_percent: form.discount_mode === 'percent' ? Number(form.discount) : null,
         tax: taxAmount.value,
         notes: form.notes || null,
         items: lines.value.map((line) => ({
@@ -656,7 +661,7 @@ function createSalesOrderForm({ orderId }) {
         Object.assign(form, {
             customer_id: null, customer: null, order_date: today(), expected_delivery: '',
             fulfillment_type: 'ship', shipping_address: '', shipping_cost: 0,
-            discount_mode: 'amount', discount: 0, tax_mode: 'amount', tax: 0, notes: '',
+            discount_mode: 'percent', discount: 0, tax_mode: 'amount', tax: 0, notes: '',
         });
         Object.assign(attempted, { 0: false, 1: false, 2: false });
         step.value = 0;

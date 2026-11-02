@@ -647,211 +647,350 @@
         <el-drawer
             v-model="formDrawerVisible"
             :title="isEditMode ? $t('edit_purchase_order') : $t('create_purchase_order')"
-            :size="drawerSize"
+            :size="formDrawerSize"
             direction="rtl"
             destroy-on-close
-            class="form-drawer"
+            class="form-drawer modern-po-drawer"
             :before-close="confirmCloseForm"
             @opened="focusFirstField"
         >
-            <!-- Ctrl+Enter saves from anywhere in the form, with the drawer's
-                 main action (save and approve, for a new request). -->
             <div
                 v-loading="loadingForm"
+                class="po-form-container"
                 @keydown.ctrl.enter.prevent="savePrimary"
                 @keydown.meta.enter.prevent="savePrimary"
                 @keydown.f4.exact.prevent="!formLocked && openQuickAddProduct(null, quickSearchQuery)"
             >
-            <el-form :model="form" label-position="top">
-                <!-- A received or cancelled order keeps its lines as they were
-                     booked; the API only takes its dates and notes now, so the
-                     form stops offering the rest. -->
-                <el-alert
-                    v-if="formLocked"
-                    type="info"
-                    :closable="false"
-                    show-icon
-                    class="mb-3"
-                    :title="$t('po_edit_locked_hint', { status: getArabicStatus(editingStatus) })"
-                />
-                <p v-else-if="!isEditMode" class="quick-add-hint">{{ $t('po_new_order_hint') }}</p>
-
-                <el-row :gutter="20">
-                    <el-col :span="24">
-                        <el-form-item :label="$t('supplier')" required>
-                            <div style="display: flex; gap: 0.5rem; width: 100%;">
-                                <el-select ref="supplierSelectRef" v-model="form.supplier_id" :placeholder="$t('select_supplier')" style="flex: 1;" filterable :disabled="formLocked">
-                                    <el-option
-                                        v-for="s in suppliersStore.suppliers"
-                                        :key="s.id"
-                                        :label="s.company ? `${s.name} — ${s.company}` : s.name"
-                                        :value="s.id"
-                                    />
-                                </el-select>
-                                <el-button
-                                    v-if="!formLocked"
-                                    type="success"
-                                    circle
-                                    plain
-                                    @click="openQuickAddSupplier"
-                                    :title="$t('add_new_supplier')"
-                                >
-                                    <i class="fas fa-plus"></i>
-                                </el-button>
-                            </div>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <!-- The sale this buys in for. Picking one links it and fills
-                     the lines from it; a received order can still be relinked. -->
-                <el-form-item :label="$t('po_for_sale')" class="sale-link-item">
-                    <PurchaseSaleLink v-model="form.sale_link" @pick="fillFromSale" />
-                    <small v-if="!form.sale_link && !formLocked" class="field-hint">{{ $t('po_for_sale_hint') }}</small>
-                </el-form-item>
-
-                <el-row :gutter="20">
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item :label="$t('purchase_order_date')">
-                            <el-date-picker v-model="form.order_date" type="date" :placeholder="$t('po_order_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item :label="$t('due_date')">
-                            <!-- Goods cannot be due before they were ordered; the
-                                 API refuses it, so the picker does not offer it. -->
-                            <el-date-picker v-model="form.due_date" type="date" :placeholder="$t('due_date')" format="YYYY-MM-DD" value-format="YYYY-MM-DD" style="width: 100%" :disabled-date="isBeforeOrderDate" />
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <!-- Dynamic items grid -->
-                <div v-if="!formLocked" class="form-section">
-                    <div class="form-section-head">
-                        <h3><i class="fas fa-boxes text-primary"></i> {{ $t('items_and_quantities') }}</h3>
-                        <el-button type="primary" size="small" plain @click="addItemRow">
-                            <i class="fas fa-plus"></i> {{ $t('add_item') }}
-                        </el-button>
-                    </div>
-
-                    <!-- Lines a sale filled in without saying which size: the
-                         order cannot be saved until each has one. -->
+                <el-form :model="form" label-position="top">
+                    <!-- Locked banner -->
                     <el-alert
-                        v-if="linesNeedingSize.length"
-                        type="warning"
-                        show-icon
+                        v-if="formLocked"
+                        type="info"
                         :closable="false"
-                        class="needs-size-alert"
-                        :title="$t('po_lines_need_size', linesNeedingSize.length)"
+                        show-icon
+                        class="mb-3"
+                        :title="$t('po_edit_locked_hint', { status: getArabicStatus(editingStatus) })"
                     />
 
-                    <!-- Fast Suggested Product Search & Multi-Add Bar (Stays Open!) -->
-                    <div ref="quickSearchContainerRef" class="po-suggested-search-panel" @mousedown.stop>
-                        <div class="search-bar-header">
-                            <div class="search-input-box">
-                                <el-input
-                                    ref="quickSearchInputRef"
-                                    v-model="quickSearchQuery"
-                                    :placeholder="$t('po_quick_search_placeholder')"
-                                    clearable
-                                    class="po-search-input"
-                                    @focus="onQuickSearchFocus"
-                                    @input="onQuickSearchInput"
-                                    @clear="onQuickSearchClear"
-                                    @keydown.esc="quickSearchOpen = false"
-                                    @keydown.enter.prevent="onQuickSearchEnter"
+                    <!-- Status & Validation Summary Bar -->
+                    <div v-if="!formLocked" class="po-status-bar" :class="{ 'is-blocked': blockers.length > 0 }">
+                        <div class="status-left">
+                            <span class="status-pill" :class="blockers.length ? 'pill-blocked' : 'pill-ready'">
+                                <i class="fas" :class="blockers.length ? 'fa-triangle-exclamation' : 'fa-circle-check'"></i>
+                                <span>{{ blockers.length ? ($t('fix_required_fields') || 'نواقص مطلوبة') : ($t('ready_to_save') || 'جاهز للاعتماد') }}</span>
+                            </span>
+                            <div v-if="blockers.length" class="blockers-chips">
+                                <button
+                                    v-for="b in blockers"
+                                    :key="b.id"
+                                    type="button"
+                                    class="blocker-btn"
+                                    @click="focusBlocker(b.id)"
                                 >
-                                    <template #prefix>
-                                        <i v-if="!quickSearchLoading" class="fas fa-search search-icon"></i>
-                                        <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
-                                    </template>
-                                </el-input>
+                                    <i class="fas" :class="b.icon"></i>
+                                    <span>{{ b.label }}</span>
+                                </button>
                             </div>
-
-                            <button
-                                type="button"
-                                class="btn-toggle-suggestions"
-                                :class="{ 'is-active': quickSearchOpen }"
-                                @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
-                                :title="quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products')"
-                            >
-                                <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-list-check'"></i>
-                                <span>{{ quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products') }}</span>
-                                <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
-                            </button>
-
-                            <!-- Not in the catalogue yet: create it without leaving the order -->
-                            <button
-                                type="button"
-                                class="btn-new-product"
-                                :title="`${$t('pqa_title')} (F4)`"
-                                @click.stop.prevent="openQuickAddProduct(null, quickSearchQuery)"
-                            >
-                                <i class="fas fa-plus"></i>
-                                <span class="btn-text">{{ $t('pqa_button') }}</span>
-                                <kbd class="key-hint">F4</kbd>
-                            </button>
                         </div>
+                        <div class="status-metrics">
+                            <div class="metric-item">
+                                <span class="metric-lbl">{{ $t('items') }}:</span>
+                                <strong class="metric-val">{{ filledItemCount }}</strong>
+                            </div>
+                            <div class="metric-divider"></div>
+                            <div class="metric-item">
+                                <span class="metric-lbl">{{ $t('total_quantity') || 'إجمالي القطع' }}:</span>
+                                <strong class="metric-val">{{ totalPieces }}</strong>
+                            </div>
+                            <div class="metric-divider"></div>
+                            <div class="metric-item highlight">
+                                <span class="metric-lbl">{{ $t('total') }}:</span>
+                                <strong class="metric-val">{{ money(formTotal) }}</strong>
+                            </div>
+                        </div>
+                    </div>
 
-                        <!-- Suggested Search Results Dropdown Panel (Stays open while adding!) -->
-                        <transition name="el-zoom-in-top">
-                            <div
-                                v-if="quickSearchOpen"
-                                class="suggested-search-dropdown"
-                                @click.stop
-                            >
-                                <!-- Dropdown Banner & Tips -->
-                                <div class="dropdown-top-strip">
-                                    <div class="strip-left">
-                                        <i class="fas fa-boxes-stacked text-primary"></i>
-                                        <strong>{{ $t('po_suggested_products') }}</strong>
-                                        <span class="results-badge">{{ quickSearchResults.length }}</span>
-                                    </div>
-                                    <div class="strip-right">
-                                        <span class="keep-open-pill">
-                                            <i class="fas fa-thumbtack text-success"></i>
-                                            {{ $t('po_search_hint') }}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            class="close-dropdown-btn"
-                                            @click.stop="quickSearchOpen = false"
-                                            :title="$t('close')"
+                    <!-- Header Information Card (Supplier, Link to Sale, Order Date, Due Date) -->
+                    <div class="po-head-card">
+                        <el-row :gutter="16">
+                            <el-col :xs="24" :md="14">
+                                <el-form-item :label="$t('supplier')" required>
+                                    <div class="supplier-picker-wrap">
+                                        <el-select
+                                            ref="supplierSelectRef"
+                                            v-model="form.supplier_id"
+                                            :placeholder="$t('select_supplier')"
+                                            style="flex: 1;"
+                                            filterable
+                                            :disabled="formLocked"
                                         >
-                                            <i class="fas fa-times"></i>
-                                        </button>
+                                            <el-option
+                                                v-for="s in suppliersStore.suppliers"
+                                                :key="s.id"
+                                                :label="s.company ? `${s.name} — ${s.company}` : s.name"
+                                                :value="s.id"
+                                            />
+                                        </el-select>
+                                        <el-button
+                                            v-if="!formLocked"
+                                            type="primary"
+                                            plain
+                                            @click="openQuickAddSupplier"
+                                            :title="$t('add_new_supplier')"
+                                        >
+                                            <i class="fas fa-plus"></i>
+                                            <span class="btn-text-hide-sm">{{ $t('add_new_supplier') || 'مورد جديد' }}</span>
+                                        </el-button>
                                     </div>
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :md="10">
+                                <el-form-item :label="$t('po_for_sale')" class="sale-link-item">
+                                    <PurchaseSaleLink v-model="form.sale_link" @pick="fillFromSale" />
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+
+                        <el-row :gutter="16" class="mt-2">
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('purchase_order_date')">
+                                    <el-date-picker
+                                        v-model="form.order_date"
+                                        type="date"
+                                        :placeholder="$t('po_order_date')"
+                                        format="YYYY-MM-DD"
+                                        value-format="YYYY-MM-DD"
+                                        style="width: 100%"
+                                    />
+                                </el-form-item>
+                            </el-col>
+                            <el-col :xs="24" :sm="12">
+                                <el-form-item :label="$t('due_date')">
+                                    <div class="due-picker-block">
+                                        <el-date-picker
+                                            v-model="form.due_date"
+                                            type="date"
+                                            :placeholder="$t('due_date')"
+                                            format="YYYY-MM-DD"
+                                            value-format="YYYY-MM-DD"
+                                            style="width: 100%"
+                                            :disabled-date="isBeforeOrderDate"
+                                        />
+                                        <div class="due-chips-bar">
+                                            <button type="button" class="due-chip" @click="setDueDays(0)">اليوم</button>
+                                            <button type="button" class="due-chip" @click="setDueDays(3)">+3 أيام</button>
+                                            <button type="button" class="due-chip" @click="setDueDays(7)">+7 أيام</button>
+                                            <button type="button" class="due-chip" @click="setDueDays(14)">+14 يوم</button>
+                                            <button type="button" class="due-chip" @click="setDueDays(30)">+30 يوم</button>
+                                        </div>
+                                    </div>
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+                    </div>
+
+                    <!-- Suggested Product Search & Fast Multi-Add Catalog -->
+                    <div v-if="!formLocked" class="po-catalog-section">
+                        <div ref="quickSearchContainerRef" class="po-suggested-search-panel" @mousedown.stop>
+                            <div class="search-bar-header">
+                                <div class="search-input-box">
+                                    <el-input
+                                        ref="quickSearchInputRef"
+                                        v-model="quickSearchQuery"
+                                        :placeholder="$t('po_quick_search_placeholder')"
+                                        clearable
+                                        class="po-search-input"
+                                        @focus="onQuickSearchFocus"
+                                        @input="onQuickSearchInput"
+                                        @clear="onQuickSearchClear"
+                                        @keydown.esc="quickSearchOpen = false"
+                                        @keydown.enter.prevent="onQuickSearchEnter"
+                                    >
+                                        <template #prefix>
+                                            <i v-if="!quickSearchLoading" class="fas fa-search search-icon"></i>
+                                            <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
+                                        </template>
+                                    </el-input>
                                 </div>
 
-                                <!-- List of Suggested Products with Images & Add Button -->
-                                <div class="suggested-list-scroll">
-                                    <div v-if="quickSearchLoading" class="suggested-loading-state">
-                                        <i class="fas fa-circle-notch fa-spin text-primary"></i>
-                                        <span>{{ $t('loading') }}...</span>
-                                    </div>
+                                <button
+                                    type="button"
+                                    class="btn-toggle-suggestions"
+                                    :class="{ 'is-active': quickSearchOpen }"
+                                    @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
+                                    :title="quickSearchOpen ? $t('po_close_search') : $t('po_suggested_products')"
+                                >
+                                    <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-list-check'"></i>
+                                    <span>{{ quickSearchOpen ? $t('po_close_search') : ($t('catalog') || 'الكتالوج السريع') }}</span>
+                                    <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
+                                </button>
 
-                                    <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
-                                        <i class="fas fa-search-minus empty-icon"></i>
-                                        <p>{{ $t('po_no_products_found') }}</p>
-                                        <button type="button" class="empty-new-product" @click.stop="openQuickAddProduct(null, quickSearchQuery)">
-                                            <i class="fas fa-plus"></i>
-                                            <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
-                                            <span v-else>{{ $t('pqa_title') }}</span>
-                                        </button>
-                                        <small class="empty-new-hint">{{ $t('pqa_empty_hint') }}</small>
-                                    </div>
+                                <button
+                                    type="button"
+                                    class="btn-new-product"
+                                    :title="`${$t('pqa_title')} (F4)`"
+                                    @click.stop.prevent="openQuickAddProduct(null, quickSearchQuery)"
+                                >
+                                    <i class="fas fa-plus"></i>
+                                    <span class="btn-text">{{ $t('pqa_button') }}</span>
+                                    <kbd class="key-hint">F4</kbd>
+                                </button>
+                            </div>
 
-                                    <div v-else class="suggested-products-grid">
-                                        <template v-for="g in quickSearchGroups" :key="g.key">
-                                            <!-- A product with sizes is one card with a row per size,
-                                                 so eight sizes of one drain read as one product with
-                                                 eight sizes, not as eight unrelated products. -->
-                                            <div
-                                                v-if="g.hasVariants"
-                                                class="suggested-item-card is-group"
-                                                :class="{ 'item-in-order': groupOrderCount(g) > 0 }"
+                            <!-- Category quick pills under search bar -->
+                            <div v-if="categoryOptions.length" class="category-pills-bar">
+                                <button
+                                    type="button"
+                                    class="cat-pill"
+                                    :class="{ 'is-active': !selectedCategory }"
+                                    @click="selectedCategory = ''"
+                                >
+                                    {{ $t('all_categories') || 'كل الفئات' }}
+                                </button>
+                                <button
+                                    v-for="cat in categoryOptions.slice(0, 10)"
+                                    :key="cat.id"
+                                    type="button"
+                                    class="cat-pill"
+                                    :class="{ 'is-active': selectedCategory === cat.id }"
+                                    @click="selectedCategory = cat.id; quickSearchOpen = true;"
+                                >
+                                    {{ cat.label }}
+                                </button>
+                            </div>
+
+                            <!-- Suggested Search Results Dropdown Panel -->
+                            <transition name="el-zoom-in-top">
+                                <div
+                                    v-if="quickSearchOpen"
+                                    class="suggested-search-dropdown"
+                                    @click.stop
+                                >
+                                    <!-- Dropdown Banner & Tips -->
+                                    <div class="dropdown-top-strip">
+                                        <div class="strip-left">
+                                            <i class="fas fa-boxes-stacked text-primary"></i>
+                                            <strong>{{ $t('po_suggested_products') }}</strong>
+                                            <span class="results-badge">{{ quickSearchGroups.length }}</span>
+                                        </div>
+                                        <div class="strip-right">
+                                            <span class="keep-open-pill">
+                                                <i class="fas fa-thumbtack text-success"></i>
+                                                {{ $t('po_search_hint') }}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                class="close-dropdown-btn"
+                                                @click.stop="quickSearchOpen = false"
+                                                :title="$t('close')"
                                             >
-                                                <div class="group-head">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- List of Suggested Products with Images & Add Button -->
+                                    <div class="suggested-list-scroll">
+                                        <div v-if="quickSearchLoading" class="suggested-loading-state">
+                                            <i class="fas fa-circle-notch fa-spin text-primary"></i>
+                                            <span>{{ $t('loading') }}...</span>
+                                        </div>
+
+                                        <div v-else-if="!quickSearchGroups.length" class="suggested-empty-state">
+                                            <i class="fas fa-search-minus empty-icon"></i>
+                                            <p>{{ $t('po_no_products_found') }}</p>
+                                            <button type="button" class="empty-new-product" @click.stop="openQuickAddProduct(null, quickSearchQuery)">
+                                                <i class="fas fa-plus"></i>
+                                                <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
+                                                <span v-else>{{ $t('pqa_title') }}</span>
+                                            </button>
+                                            <small class="empty-new-hint">{{ $t('pqa_empty_hint') }}</small>
+                                        </div>
+
+                                        <div v-else class="suggested-products-grid">
+                                            <template v-for="g in quickSearchGroups" :key="g.key">
+                                                <div
+                                                    v-if="g.hasVariants"
+                                                    class="suggested-item-card is-group"
+                                                    :class="{ 'item-in-order': groupOrderCount(g) > 0 }"
+                                                >
+                                                    <div class="group-head">
+                                                        <div class="item-card-image">
+                                                            <EntityImage
+                                                                :src="productImageSrc(g.product)"
+                                                                type="product"
+                                                                :size="52"
+                                                                shape="square"
+                                                                class="card-img"
+                                                            />
+                                                            <span v-if="groupOrderCount(g) > 0" class="in-order-tag" :title="$t('po_in_order')">
+                                                                {{ groupOrderCount(g) }}
+                                                            </span>
+                                                        </div>
+                                                        <div class="item-card-body">
+                                                            <div class="item-card-header">
+                                                                <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
+                                                                <span class="variants-count-chip">
+                                                                    <i class="fas fa-layer-group"></i> {{ $t('po_variants_count', g.rows.length) }}
+                                                                </span>
+                                                            </div>
+                                                            <div class="item-card-tags">
+                                                                <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
+                                                                    {{ g.product.category?.name_ar || g.product.category_name }}
+                                                                </span>
+                                                                <span class="pick-size-hint">
+                                                                    <i class="fas fa-hand-pointer"></i> {{ $t('po_pick_size') }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="variant-grid">
+                                                        <div
+                                                            v-for="p in g.rows"
+                                                            :key="optionKey(p)"
+                                                            class="variant-tile"
+                                                            :class="{ 'is-in-order': getOrderItemCount(p) > 0, 'is-out': stockOf(p) === 0 }"
+                                                        >
+                                                            <div class="variant-tile-info">
+                                                                <div class="variant-tile-title">
+                                                                    <span class="variant-tile-label" dir="ltr">{{ p.variant_label || baseName(p) }}</span>
+                                                                    <span v-if="p.sku" class="sku-chip"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                                </div>
+                                                                <div class="item-card-financials">
+                                                                    <div class="cost-stat">
+                                                                        <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                                        <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
+                                                                    </div>
+                                                                    <div
+                                                                        v-if="stockOf(p) != null"
+                                                                        class="stock-stat"
+                                                                        :class="stockOf(p) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                                    >
+                                                                        <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                                        <span class="stat-val">{{ stockOf(p) }}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="item-card-action">
+                                                                <AddQtyControl
+                                                                    size="sm"
+                                                                    :count="getOrderItemCount(p)"
+                                                                    :label="$t('add')"
+                                                                    @add="(delta) => addProductToOrder(p, delta)"
+                                                                    @set="(n) => setOrderItemCount(p, n)"
+                                                                    @commit="(n) => commitOrderItemCount(p, n)"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    v-else
+                                                    class="suggested-item-card"
+                                                    :class="{ 'item-in-order': getOrderItemCount(g.product) > 0 }"
+                                                >
                                                     <div class="item-card-image">
                                                         <EntityImage
                                                             :src="productImageSrc(g.product)"
@@ -860,494 +999,490 @@
                                                             shape="square"
                                                             class="card-img"
                                                         />
-                                                        <span v-if="groupOrderCount(g) > 0" class="in-order-tag" :title="$t('po_in_order')">
-                                                            {{ groupOrderCount(g) }}
+                                                        <span v-if="getOrderItemCount(g.product) > 0" class="in-order-tag" :title="$t('po_in_order')">
+                                                            {{ getOrderItemCount(g.product) }}
                                                         </span>
                                                     </div>
+
                                                     <div class="item-card-body">
                                                         <div class="item-card-header">
                                                             <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
-                                                            <span class="variants-count-chip">
-                                                                <i class="fas fa-layer-group"></i> {{ $t('po_variants_count', g.rows.length) }}
-                                                            </span>
                                                         </div>
+
                                                         <div class="item-card-tags">
+                                                            <span v-if="g.product.sku" class="sku-chip">
+                                                                <i class="fas fa-barcode"></i> {{ g.product.sku }}
+                                                            </span>
                                                             <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
                                                                 {{ g.product.category?.name_ar || g.product.category_name }}
                                                             </span>
-                                                            <span class="pick-size-hint">
-                                                                <i class="fas fa-hand-pointer"></i> {{ $t('po_pick_size') }}
-                                                            </span>
                                                         </div>
-                                                    </div>
-                                                </div>
 
-                                                <div class="variant-grid">
-                                                    <div
-                                                        v-for="p in g.rows"
-                                                        :key="optionKey(p)"
-                                                        class="variant-tile"
-                                                        :class="{ 'is-in-order': getOrderItemCount(p) > 0, 'is-out': stockOf(p) === 0 }"
-                                                    >
-                                                        <div class="variant-tile-info">
-                                                            <div class="variant-tile-title">
-                                                                <span class="variant-tile-label" dir="ltr">{{ p.variant_label || baseName(p) }}</span>
-                                                                <span v-if="p.sku" class="sku-chip"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                        <div class="item-card-financials">
+                                                            <div class="cost-stat">
+                                                                <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
+                                                                <strong class="stat-val text-primary">{{ money(g.product.cost_price || g.product.price) }}</strong>
                                                             </div>
-                                                            <div class="item-card-financials">
-                                                                <div class="cost-stat">
-                                                                    <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
-                                                                    <strong class="stat-val text-primary">{{ money(p.cost_price || p.price) }}</strong>
-                                                                </div>
-                                                                <div
-                                                                    v-if="stockOf(p) != null"
-                                                                    class="stock-stat"
-                                                                    :class="stockOf(p) > 0 ? 'is-in-stock' : 'is-out-stock'"
-                                                                >
-                                                                    <span class="stat-lbl">{{ $t('available') }}:</span>
-                                                                    <span class="stat-val">{{ stockOf(p) }}</span>
-                                                                </div>
+                                                            <div v-if="g.product.price && g.product.price !== g.product.cost_price" class="sale-stat">
+                                                                <span class="stat-lbl">{{ $t('sale_price') }}:</span>
+                                                                <span class="stat-val text-muted">{{ money(g.product.price) }}</span>
+                                                            </div>
+                                                            <div
+                                                                v-if="stockOf(g.product) != null"
+                                                                class="stock-stat"
+                                                                :class="stockOf(g.product) > 0 ? 'is-in-stock' : 'is-out-stock'"
+                                                            >
+                                                                <span class="stat-lbl">{{ $t('available') }}:</span>
+                                                                <span class="stat-val">{{ stockOf(g.product) }}</span>
                                                             </div>
                                                         </div>
-                                                        <div class="item-card-action">
-                                                            <AddQtyControl
-                                                                size="sm"
-                                                                :count="getOrderItemCount(p)"
-                                                                :label="$t('add')"
-                                                                @add="(delta) => addProductToOrder(p, delta)"
-                                                                @set="(n) => setOrderItemCount(p, n)"
-                                                                @commit="(n) => commitOrderItemCount(p, n)"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- A product without sizes: one card, one action. -->
-                                            <div
-                                                v-else
-                                                class="suggested-item-card"
-                                                :class="{ 'item-in-order': getOrderItemCount(g.product) > 0 }"
-                                            >
-                                                <div class="item-card-image">
-                                                    <EntityImage
-                                                        :src="productImageSrc(g.product)"
-                                                        type="product"
-                                                        :size="52"
-                                                        shape="square"
-                                                        class="card-img"
-                                                    />
-                                                    <span v-if="getOrderItemCount(g.product) > 0" class="in-order-tag" :title="$t('po_in_order')">
-                                                        {{ getOrderItemCount(g.product) }}
-                                                    </span>
-                                                </div>
-
-                                                <div class="item-card-body">
-                                                    <div class="item-card-header">
-                                                        <span class="item-name" :title="baseName(g.product)">{{ baseName(g.product) }}</span>
                                                     </div>
 
-                                                    <div class="item-card-tags">
-                                                        <span v-if="g.product.sku" class="sku-chip">
-                                                            <i class="fas fa-barcode"></i> {{ g.product.sku }}
-                                                        </span>
-                                                        <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
-                                                            {{ g.product.category?.name_ar || g.product.category_name }}
-                                                        </span>
-                                                    </div>
-
-                                                    <div class="item-card-financials">
-                                                        <div class="cost-stat">
-                                                            <span class="stat-lbl">{{ $t('purchase_cost') }}:</span>
-                                                            <strong class="stat-val text-primary">{{ money(g.product.cost_price || g.product.price) }}</strong>
-                                                        </div>
-                                                        <div v-if="g.product.price && g.product.price !== g.product.cost_price" class="sale-stat">
-                                                            <span class="stat-lbl">{{ $t('sale_price') }}:</span>
-                                                            <span class="stat-val text-muted">{{ money(g.product.price) }}</span>
-                                                        </div>
-                                                        <div
-                                                            v-if="stockOf(g.product) != null"
-                                                            class="stock-stat"
-                                                            :class="stockOf(g.product) > 0 ? 'is-in-stock' : 'is-out-stock'"
-                                                        >
-                                                            <span class="stat-lbl">{{ $t('available') }}:</span>
-                                                            <span class="stat-val">{{ stockOf(g.product) }}</span>
-                                                        </div>
+                                                    <div class="item-card-action">
+                                                        <AddQtyControl
+                                                            :count="getOrderItemCount(g.product)"
+                                                            :label="$t('po_add_to_order')"
+                                                            @add="(delta) => addProductToOrder(g.product, delta)"
+                                                            @set="(n) => setOrderItemCount(g.product, n)"
+                                                            @commit="(n) => commitOrderItemCount(g.product, n)"
+                                                        />
                                                     </div>
                                                 </div>
+                                            </template>
+                                        </div>
+                                    </div>
 
-                                                <div class="item-card-action">
-                                                    <AddQtyControl
-                                                        :count="getOrderItemCount(g.product)"
-                                                        :label="$t('po_add_to_order')"
-                                                        @add="(delta) => addProductToOrder(g.product, delta)"
-                                                        @set="(n) => setOrderItemCount(g.product, n)"
-                                                        @commit="(n) => commitOrderItemCount(g.product, n)"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </template>
+                                    <!-- Dropdown Footer -->
+                                    <div class="dropdown-footer-strip">
+                                        <div class="footer-summary">
+                                            <span>
+                                                {{ $t('po_items_in_order_summary', filledItemCount) }} &bull;
+                                                <strong>{{ money(formSubtotal) }}</strong>
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="btn-done-search"
+                                            @click.stop="quickSearchOpen = false"
+                                        >
+                                            <i class="fas fa-check"></i> {{ $t('po_close_search') }}
+                                        </button>
                                     </div>
                                 </div>
-
-                                <!-- Dropdown Footer -->
-                                <div class="dropdown-footer-strip">
-                                    <div class="footer-summary">
-                                        <span>
-                                            {{ $t('po_items_in_order_summary', filledItemCount) }} &bull;
-                                            <strong>{{ money(formSubtotal) }}</strong>
-                                        </span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class="btn-done-search"
-                                        @click.stop="quickSearchOpen = false"
-                                    >
-                                        <i class="fas fa-check"></i> {{ $t('po_close_search') }}
-                                    </button>
-                                </div>
-                            </div>
-                        </transition>
+                            </transition>
+                        </div>
                     </div>
 
-                    <div class="items-grid-wrapper">
-                        <div
-                            v-for="(item, idx) in form.items"
-                            :key="item.key"
-                            class="item-grid-row"
-                            :class="{ 'item-duplicate': duplicatePicks.has(item.pick), 'item-needs-size': needsSize(item) }"
-                        >
-                            <div class="item-row-top">
-                                <span class="item-index">{{ idx + 1 }}</span>
-                                <!-- Searches the whole catalog on the server instead of
-                                     filtering only the first page already in memory, so
-                                     a product outside that page is still found. -->
-                                <el-select
-                                    :ref="(el) => setProductSelectRef(item.key, el)"
-                                    v-model="item.pick"
-                                    :placeholder="$t('po_select_item_or_variant')"
-                                    filterable
-                                    remote
-                                    reserve-keyword
-                                    :remote-method="searchProducts"
-                                    :loading="productSearchLoading"
-                                    style="flex: 2.5; min-width: 0;"
-                                    @change="(val) => updateItemPrice(val, idx)"
-                                >
-                                    <!-- Labelled by name and code, with the cost the
-                                         line will default to: this is a purchase, so
-                                         the retail price it used to show was the
-                                         wrong figure to choose by. -->
-                                    <!-- A product with sizes lists each size as its own
-                                         row, so the request says which one is wanted. -->
-                                    <el-option
-                                        v-for="p in productOptions"
-                                        :key="optionKey(p)"
-                                        :label="productLabel(p)"
-                                        :value="optionKey(p)"
+                    <!-- Items Section: Tabular Lines Card -->
+                    <div class="po-lines-card">
+                        <div class="lines-card-header">
+                            <div class="header-title-box">
+                                <i class="fas fa-list-check text-primary"></i>
+                                <h3>{{ $t('items_and_quantities') }}</h3>
+                                <span class="items-count-badge">{{ form.items.length }}</span>
+                            </div>
+                            <div v-if="!formLocked" class="header-actions-box">
+                                <el-button type="primary" size="small" plain @click="addItemRow">
+                                    <i class="fas fa-plus"></i> {{ $t('add_item') }}
+                                </el-button>
+                            </div>
+                        </div>
+
+                        <!-- Lines needing size alert -->
+                        <el-alert
+                            v-if="linesNeedingSize.length"
+                            type="warning"
+                            show-icon
+                            :closable="false"
+                            class="mb-3"
+                            :title="$t('po_lines_need_size', linesNeedingSize.length)"
+                        />
+
+                        <!-- Empty state if no items -->
+                        <div v-if="form.items.length === 0" class="po-empty-lines">
+                            <i class="fas fa-basket-shopping empty-icon"></i>
+                            <p>{{ $t('po_no_items_yet') || 'لا توجد بنود مضافة في هذا الطلب بعد' }}</p>
+                            <div class="empty-actions">
+                                <el-button type="primary" @click="quickSearchOpen = true">
+                                    <i class="fas fa-boxes-stacked"></i> {{ $t('po_suggested_products') }}
+                                </el-button>
+                                <el-button @click="addItemRow">
+                                    <i class="fas fa-plus"></i> {{ $t('add_item') }}
+                                </el-button>
+                            </div>
+                        </div>
+
+                        <!-- Tabular Table -->
+                        <div v-else class="lines-table-wrap">
+                            <table class="po-lines-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-idx">#</th>
+                                        <th class="col-prod">{{ $t('product') || 'المنتج والمقاس' }}</th>
+                                        <th class="col-qty">{{ $t('quantity') }}</th>
+                                        <th class="col-cost">{{ $t('purchase_cost') }}</th>
+                                        <th class="col-sale">{{ $t('sale_price') }}</th>
+                                        <th class="col-tot">{{ $t('total') }}</th>
+                                        <th v-if="!formLocked" class="col-act"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        v-for="(item, idx) in form.items"
+                                        :key="item.key"
+                                        :class="{
+                                            'is-needs-size': needsSize(item),
+                                            'is-duplicate': duplicatePicks.has(item.pick)
+                                        }"
                                     >
-                                        <div class="product-option-enhanced">
-                                            <EntityImage
-                                                :src="productImageSrc(p)"
-                                                type="product"
-                                                :size="36"
-                                                shape="square"
-                                                class="option-thumb"
-                                            />
-                                            <div class="option-details">
-                                                <div class="option-title-line">
-                                                    <span class="product-option-name">{{ baseName(p) }}</span>
-                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
-                                                </div>
-                                                <div class="option-meta-line">
-                                                    <span v-if="p.sku" class="sku-tag"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
-                                                    <span class="cost-tag">{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}</span>
-                                                    <span v-if="p.stock_quantity != null" class="stock-tag" :class="(p.stock_quantity || 0) > 0 ? 'is-in' : 'is-zero'">
-                                                        {{ $t('available') }}: {{ p.stock_quantity }}
-                                                    </span>
+                                        <td class="col-idx">{{ idx + 1 }}</td>
+                                        <td class="col-prod">
+                                            <!-- Product select if not picked -->
+                                            <div v-if="!item.product_id" class="line-select-box">
+                                                <el-select
+                                                    :ref="(el) => setProductSelectRef(item.key, el)"
+                                                    v-model="item.pick"
+                                                    :placeholder="$t('po_select_item_or_variant')"
+                                                    filterable
+                                                    remote
+                                                    reserve-keyword
+                                                    :remote-method="searchProducts"
+                                                    :loading="productSearchLoading"
+                                                    style="width: 100%;"
+                                                    @change="(val) => updateItemPrice(val, idx)"
+                                                >
+                                                    <el-option
+                                                        v-for="p in productOptions"
+                                                        :key="optionKey(p)"
+                                                        :label="productLabel(p)"
+                                                        :value="optionKey(p)"
+                                                    >
+                                                        <div class="product-option-enhanced">
+                                                            <EntityImage
+                                                                :src="productImageSrc(p)"
+                                                                type="product"
+                                                                :size="36"
+                                                                shape="square"
+                                                                class="option-thumb"
+                                                            />
+                                                            <div class="option-details">
+                                                                <div class="option-title-line">
+                                                                    <span class="product-option-name">{{ baseName(p) }}</span>
+                                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                                                </div>
+                                                                <div class="option-meta-line">
+                                                                    <span v-if="p.sku" class="sku-tag"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
+                                                                    <span class="cost-tag">{{ $t('po_cost_label', { price: money(p.cost_price || p.price) }) }}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </el-option>
+                                                </el-select>
+                                            </div>
+
+                                            <!-- Product display if picked -->
+                                            <div v-else class="line-picked-row">
+                                                <EntityImage
+                                                    :src="productImageSrc(productFromItem(item))"
+                                                    type="product"
+                                                    :size="42"
+                                                    shape="square"
+                                                    class="picked-thumb"
+                                                />
+                                                <div class="picked-info">
+                                                    <div class="picked-title-row">
+                                                        <strong class="picked-name">{{ itemProductTitle(item) }}</strong>
+                                                        <button
+                                                            v-if="!formLocked"
+                                                            type="button"
+                                                            class="btn-inline-change"
+                                                            :title="$t('change_product') || 'تغيير المنتج'"
+                                                            @click="clearLineProduct(item)"
+                                                        >
+                                                            <i class="fas fa-arrows-rotate"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="picked-badges-row">
+                                                        <span v-if="item.sku || productFromItem(item)?.sku" class="badge-sku">
+                                                            <i class="fas fa-barcode"></i> {{ item.sku || productFromItem(item)?.sku }}
+                                                        </span>
+                                                        <span v-if="stockOf(productFromItem(item)) != null" class="badge-stock" :class="stockOf(productFromItem(item)) > 0 ? 'is-in' : 'is-out'">
+                                                            {{ $t('available') }}: {{ stockOf(productFromItem(item)) }}
+                                                        </span>
+                                                    </div>
+
+                                                    <!-- In-place sibling variant pills -->
+                                                    <div v-if="needsSize(item) || siblingVariants(item).length > 1" class="line-variant-switch" :class="{ 'is-required': needsSize(item) }">
+                                                        <span class="switch-label">
+                                                            <i class="fas" :class="needsSize(item) ? 'fa-exclamation-circle' : 'fa-tag'"></i>
+                                                            {{ $t(needsSize(item) ? 'po_size_required' : 'po_switch_size') }}
+                                                        </span>
+                                                        <div class="switch-chips">
+                                                            <button
+                                                                v-for="v in siblingVariants(item)"
+                                                                :key="optionKey(v)"
+                                                                type="button"
+                                                                class="switch-chip"
+                                                                :class="{
+                                                                    'is-active': optionKey(v) === item.pick,
+                                                                    'is-out': stockOf(v) === 0,
+                                                                    'is-taken': optionKey(v) !== item.pick && lineNumberOf(v, idx),
+                                                                }"
+                                                                @click="switchLineVariant(idx, v)"
+                                                            >
+                                                                <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                                                <small v-if="optionKey(v) !== item.pick && lineNumberOf(v, idx)" class="chip-taken">#{{ lineNumberOf(v, idx) }}</small>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Sale link reference if from sale -->
+                                                    <div v-if="item.from_sale" class="line-sale-ref" :class="{ 'is-changed': saleSizeChanged(item) }">
+                                                        <i class="fas" :class="saleSizeChanged(item) ? 'fa-right-left' : 'fa-link'"></i>
+                                                        <span>{{ $t('po_line_from_sale', { number: form.sale_link?.number || '' }) }}</span>
+                                                        <span v-if="item.from_sale.label" class="sale-ref-size" dir="ltr">{{ item.from_sale.label }}</span>
+                                                        <span class="sale-ref-qty" dir="ltr">×{{ item.from_sale.quantity }}</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </el-option>
-                                </el-select>
-                                <!-- Enter on the last line's quantity starts the next line, so a
-                                     long request can be typed without the mouse. -->
-                                <el-input-number
-                                    v-model="item.quantity"
-                                    :min="1"
-                                    :placeholder="$t('quantity')"
-                                    style="flex: 1; min-width: 120px;"
-                                    @keyup.enter.exact="idx === form.items.length - 1 && addItemRow()"
-                                />
-                                <el-button
-                                    type="success"
-                                    circle
-                                    plain
-                                    @click="openQuickAddProduct(idx)"
-                                    :title="$t('add_new_product')"
-                                >
+                                        </td>
+                                        <td class="col-qty">
+                                            <div class="qty-stepper-ctrl">
+                                                <button v-if="!formLocked" type="button" class="btn-step" @click="stepQuantity(item, -1)">-</button>
+                                                <el-input-number
+                                                    v-model="item.quantity"
+                                                    :min="1"
+                                                    :controls="false"
+                                                    :disabled="formLocked"
+                                                    class="input-step-qty"
+                                                    @keyup.enter.exact="idx === form.items.length - 1 && addItemRow()"
+                                                />
+                                                <button v-if="!formLocked" type="button" class="btn-step" @click="stepQuantity(item, 1)">+</button>
+                                            </div>
+                                        </td>
+                                        <td class="col-cost">
+                                            <el-input
+                                                v-model="item.unit_price"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                placeholder="0.00"
+                                                :disabled="formLocked"
+                                            >
+                                                <template #append>{{ currencyCode }}</template>
+                                            </el-input>
+                                        </td>
+                                        <td class="col-sale">
+                                            <el-input
+                                                v-model="item.sale_price"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                placeholder="0.00"
+                                                :disabled="formLocked"
+                                            >
+                                                <template #append>{{ currencyCode }}</template>
+                                            </el-input>
+                                        </td>
+                                        <td class="col-tot">
+                                            <strong class="line-total-val">{{ money(lineTotal(item)) }}</strong>
+                                        </td>
+                                        <td v-if="!formLocked" class="col-act">
+                                            <div class="row-actions-group">
+                                                <el-button
+                                                    type="primary"
+                                                    circle
+                                                    plain
+                                                    size="small"
+                                                    :title="$t('duplicate') || 'تكرار البند'"
+                                                    @click="duplicateItemRow(idx)"
+                                                >
+                                                    <i class="fas fa-copy"></i>
+                                                </el-button>
+                                                <el-button
+                                                    type="danger"
+                                                    circle
+                                                    plain
+                                                    size="small"
+                                                    :disabled="form.items.length <= 1"
+                                                    :title="$t('delete')"
+                                                    @click="removeItemRow(idx)"
+                                                >
+                                                    <i class="fas fa-trash"></i>
+                                                </el-button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-if="!formLocked" class="table-add-row-bar">
+                                <button type="button" class="btn-add-table-row" @click="addItemRow">
                                     <i class="fas fa-plus"></i>
-                                </el-button>
-                                <el-button type="danger" circle plain @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
-                                    <i class="fas fa-trash"></i>
-                                </el-button>
-                            </div>
-                            <!-- Which size the line is for, spelled out. -->
-                            <VariantDetails
-                                v-if="rowVariantInfo(item)"
-                                :variant="rowVariantInfo(item)"
-                                show-codes
-                                class="line-variant-details"
-                            />
-                            <!-- What the sale this request buys in for asked for on
-                                 this line, kept in view after the size is changed. -->
-                            <div
-                                v-if="item.from_sale"
-                                class="line-sale-ref"
-                                :class="{ 'is-changed': saleSizeChanged(item) }"
-                            >
-                                <i class="fas" :class="saleSizeChanged(item) ? 'fa-right-left' : 'fa-link'"></i>
-                                <span>{{ $t('po_line_from_sale', { number: form.sale_link?.number || '' }) }}</span>
-                                <span v-if="item.from_sale.label" class="sale-ref-size" dir="ltr">{{ item.from_sale.label }}</span>
-                                <span class="sale-ref-qty" dir="ltr">×{{ item.from_sale.quantity }}</span>
-                                <strong v-if="saleSizeChanged(item)">· {{ $t('po_size_changed') }}</strong>
-                                <strong v-else-if="num(item.quantity) !== num(item.from_sale.quantity)">· {{ $t('po_qty_changed') }}</strong>
-                            </div>
-                            <!-- The other sizes of the picked product, one click away:
-                                 changing the size does not mean searching for the
-                                 product again. A price the operator typed is kept;
-                                 one still at the old size's default follows the new size.
-                                 A line filled from a sale that never said which size
-                                 went shows the same chips with none chosen, and what
-                                 the sale called it, until the buyer picks one. -->
-                            <div v-if="needsSize(item) || siblingVariants(item).length > 1" class="line-variant-switch" :class="{ 'is-required': needsSize(item) }">
-                                <span class="switch-label">
-                                    <i class="fas" :class="needsSize(item) ? 'fa-exclamation-circle' : 'fa-tag'"></i>
-                                    {{ $t(needsSize(item) ? 'po_size_required' : 'po_switch_size') }}
-                                </span>
-                                <small v-if="needsSize(item) && item.sold_as" class="switch-sold-as">
-                                    {{ $t('po_sold_as') }} <span dir="ltr">{{ item.sold_as }}</span>
-                                </small>
-                                <div class="switch-chips">
-                                    <button
-                                        v-for="v in siblingVariants(item)"
-                                        :key="optionKey(v)"
-                                        type="button"
-                                        class="switch-chip"
-                                        :class="{
-                                            'is-active': optionKey(v) === item.pick,
-                                            'is-out': stockOf(v) === 0,
-                                            'is-taken': optionKey(v) !== item.pick && lineNumberOf(v, idx),
-                                        }"
-                                        :title="[
-                                            lineNumberOf(v, idx) && optionKey(v) !== item.pick ? $t('po_size_on_line', { n: lineNumberOf(v, idx) }) : '',
-                                            v.sku,
-                                            $t('po_cost_label', { price: money(v.cost_price || v.price) }),
-                                        ].filter(Boolean).join(' · ')"
-                                        @click="switchLineVariant(idx, v)"
-                                    >
-                                        <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
-                                        <small v-if="optionKey(v) !== item.pick && lineNumberOf(v, idx)" class="chip-taken">#{{ lineNumberOf(v, idx) }}</small>
-                                        <small v-else-if="stockOf(v) != null" class="chip-stock">{{ stockOf(v) }}</small>
-                                    </button>
-                                </div>
-                            </div>
-                            <!-- Cost is what the supplier is paid; sale price is what
-                                 the order plans to retail the line at. Selecting a
-                                 product fills both from its current figures so
-                                 editing one and leaving the other alone is enough. -->
-                            <div class="item-row-prices">
-                                <div class="price-field">
-                                    <label>{{ $t('purchase_cost') }}</label>
-                                    <el-input v-model="item.unit_price" type="number" min="0" step="0.01" placeholder="0.00" />
-                                </div>
-                                <div class="price-field">
-                                    <label>{{ $t('sale_price') }}</label>
-                                    <el-input v-model="item.sale_price" type="number" min="0" step="0.01" placeholder="0.00" />
-                                </div>
-                                <div class="price-field line-total-field">
-                                    <label>{{ $t('po_line_total') }}</label>
-                                    <strong>{{ money(lineTotal(item)) }}</strong>
-                                </div>
+                                    <span>{{ $t('add_item') }}</span>
+                                </button>
+                                <button type="button" class="btn-add-table-row secondary" @click="quickSearchOpen = true">
+                                    <i class="fas fa-boxes-stacked"></i>
+                                    <span>{{ $t('po_suggested_products') }}</span>
+                                </button>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <el-row v-if="!formLocked" :gutter="20" class="mt-3 financial-inputs-row">
-                    <!-- Discount Field with Mode Switcher (% vs Currency), Quick Presets, and Live Preview -->
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item :error="discountTooLarge ? $t('po_discount_exceeds_total') : ''" class="financial-form-item discount-form-item">
-                            <template #label>
-                                <div class="form-label-with-mode">
-                                    <span class="label-text">
-                                        <i class="fas fa-tag label-icon text-primary"></i>
-                                        {{ $t('discount') }}
-                                    </span>
-                                    <div class="discount-mode-toggle" role="radiogroup" :title="$t('discount')">
-                                        <button
-                                            type="button"
-                                            class="mode-btn"
-                                            :class="{ 'is-active': form.discount_mode === 'percent' }"
-                                            @click.prevent="setDiscountMode('percent')"
+                    <!-- Bottom Grid: Notes and Financial Totals -->
+                    <el-row :gutter="20" class="po-bottom-grid mt-4">
+                        <el-col :xs="24" :md="13">
+                            <div class="bottom-card notes-card">
+                                <h4><i class="fas fa-comment-dots text-primary"></i> {{ $t('notes') }}</h4>
+                                <el-form-item class="mt-2">
+                                    <el-input
+                                        v-model="form.notes"
+                                        type="textarea"
+                                        :rows="5"
+                                        maxlength="1000"
+                                        show-word-limit
+                                        :placeholder="$t('purchase_order_notes_placeholder')"
+                                        :disabled="formLocked"
+                                    />
+                                </el-form-item>
+                            </div>
+                        </el-col>
+                        <el-col :xs="24" :md="11">
+                            <div v-if="!formLocked" class="bottom-card totals-card">
+                                <h4><i class="fas fa-calculator text-primary"></i> {{ $t('order_summary') || 'ملخص الحسابات' }}</h4>
+
+                                <div class="totals-breakdown">
+                                    <div class="summary-line">
+                                        <span class="line-label">{{ $t('subtotal') }}</span>
+                                        <strong class="line-amount">{{ money(formSubtotal) }}</strong>
+                                    </div>
+
+                                    <!-- Discount Row -->
+                                    <div class="summary-discount-block">
+                                        <div class="discount-header-line">
+                                            <span class="line-label"><i class="fas fa-tag text-primary"></i> {{ $t('discount') }}</span>
+                                            <div class="discount-mode-toggle" role="radiogroup">
+                                                <button
+                                                    type="button"
+                                                    class="mode-btn"
+                                                    :class="{ 'is-active': form.discount_mode === 'percent' }"
+                                                    @click.prevent="setDiscountMode('percent')"
+                                                >
+                                                    %
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="mode-btn"
+                                                    :class="{ 'is-active': form.discount_mode === 'amount' }"
+                                                    @click.prevent="setDiscountMode('amount')"
+                                                >
+                                                    {{ currencyCode }}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="discount-controls-wrap">
+                                            <el-input
+                                                v-if="form.discount_mode === 'percent'"
+                                                v-model="form.discount_percent"
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="any"
+                                                :placeholder="$t('discount_percent')"
+                                                @input="updateDiscountFromPercent"
+                                            >
+                                                <template #append>%</template>
+                                            </el-input>
+                                            <el-input
+                                                v-else
+                                                v-model="form.discount"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                :placeholder="$t('discount_amount_placeholder')"
+                                                @input="updateDiscountPercentFromAmount"
+                                            >
+                                                <template #append>{{ currencyCode }}</template>
+                                            </el-input>
+
+                                            <!-- Preset chips & Live Preview -->
+                                            <div class="discount-helper-row">
+                                                <div v-if="form.discount_mode === 'percent'" class="discount-preset-chips">
+                                                    <button
+                                                        v-for="p in DISCOUNT_PRESETS"
+                                                        :key="p"
+                                                        type="button"
+                                                        class="preset-chip"
+                                                        :class="{ 'is-active': num(form.discount_percent) === p }"
+                                                        @click.prevent="applyDiscountPreset(p)"
+                                                    >
+                                                        {{ p }}%
+                                                    </button>
+                                                </div>
+                                                <span v-if="form.discount_mode === 'percent' && num(form.discount) > 0" class="discount-live-val">
+                                                    = − {{ money(form.discount) }}
+                                                </span>
+                                                <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && formSubtotal > 0" class="discount-live-val">
+                                                    ≈ {{ formatPercent((num(form.discount) / formSubtotal) * 100, 2) }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Tax Row -->
+                                    <div class="summary-tax-block">
+                                        <div class="tax-header-line">
+                                            <span class="line-label"><i class="fas fa-receipt text-muted"></i> {{ $t('tax') }}</span>
+                                            <button
+                                                type="button"
+                                                class="vat-quick-chip"
+                                                :class="{ 'is-active': isVat15Active }"
+                                                @click.prevent="toggleVat15"
+                                            >
+                                                {{ $t('apply_vat_15') }}
+                                            </button>
+                                        </div>
+                                        <el-input
+                                            v-model="form.tax"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            :placeholder="$t('tax_amount_placeholder')"
                                         >
-                                            %
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="mode-btn"
-                                            :class="{ 'is-active': form.discount_mode === 'amount' }"
-                                            @click.prevent="setDiscountMode('amount')"
-                                        >
-                                            {{ currencyCode }}
-                                        </button>
+                                            <template #append>{{ currencyCode }}</template>
+                                        </el-input>
+                                    </div>
+
+                                    <!-- Grand Total Card -->
+                                    <div class="grand-total-banner" :class="{ 'is-invalid': discountTooLarge }">
+                                        <div class="gt-content">
+                                            <span class="gt-label">{{ $t('grand_total_label') }}</span>
+                                            <strong class="gt-amount">{{ money(formTotal) }}</strong>
+                                        </div>
                                     </div>
                                 </div>
-                            </template>
-
-                            <div class="discount-field-container">
-                                <!-- Percentage input mode (default & primary) -->
-                                <el-input
-                                    v-if="form.discount_mode === 'percent'"
-                                    v-model="form.discount_percent"
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="any"
-                                    :placeholder="$t('discount_percent')"
-                                    class="financial-input"
-                                    @input="updateDiscountFromPercent"
-                                >
-                                    <template #append>%</template>
-                                </el-input>
-
-                                <!-- Direct amount input mode -->
-                                <el-input
-                                    v-else
-                                    v-model="form.discount"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    :placeholder="$t('discount_amount_placeholder')"
-                                    class="financial-input"
-                                    @input="updateDiscountPercentFromAmount"
-                                >
-                                    <template #append>{{ currencyCode }}</template>
-                                </el-input>
-
-                                <!-- Quick Presets & Live Calculated Preview -->
-                                <div class="discount-helper-row">
-                                    <div v-if="form.discount_mode === 'percent'" class="discount-preset-chips">
-                                        <button
-                                            v-for="p in DISCOUNT_PRESETS"
-                                            :key="p"
-                                            type="button"
-                                            class="preset-chip"
-                                            :class="{ 'is-active': num(form.discount_percent) === p }"
-                                            @click.prevent="applyDiscountPreset(p)"
-                                        >
-                                            {{ p }}%
-                                        </button>
-                                    </div>
-                                    <span v-if="form.discount_mode === 'percent' && num(form.discount) > 0" class="discount-live-val">
-                                        = − {{ money(form.discount) }}
-                                    </span>
-                                    <span v-else-if="form.discount_mode === 'amount' && num(form.discount) > 0 && formSubtotal > 0" class="discount-live-val">
-                                        ≈ {{ formatPercent((num(form.discount) / formSubtotal) * 100, 2) }}
-                                    </span>
-                                </div>
                             </div>
-                        </el-form-item>
-                    </el-col>
-
-                    <!-- Tax Field with Quick 15% VAT Action -->
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item class="financial-form-item tax-form-item">
-                            <template #label>
-                                <div class="form-label-with-mode">
-                                    <span class="label-text">
-                                        <i class="fas fa-receipt label-icon text-muted"></i>
-                                        {{ $t('tax') }}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        class="vat-quick-chip"
-                                        :class="{ 'is-active': isVat15Active }"
-                                        @click.prevent="toggleVat15"
-                                    >
-                                        {{ $t('apply_vat_15') }}
-                                    </button>
-                                </div>
-                            </template>
-                            <el-input
-                                v-model="form.tax"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                :placeholder="$t('tax_amount_placeholder')"
-                                class="financial-input"
-                            >
-                                <template #append>{{ currencyCode }}</template>
-                            </el-input>
-                            <div class="tax-helper-row">
-                                <span v-if="num(form.tax) > 0 && formSubtotal > 0" class="tax-live-val">
-                                    ≈ {{ formatPercent((num(form.tax) / Math.max(1, formSubtotal - num(form.discount))) * 100, 2) }}
-                                </span>
-                            </div>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
-
-                <el-form-item :label="$t('notes')" class="mt-2">
-                    <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="1000" show-word-limit :placeholder="$t('purchase_order_notes_placeholder')" />
-                </el-form-item>
-
-                <!-- The running total, so what the supplier will be owed is on
-                     screen while the lines are entered rather than only after
-                     saving. -->
-                <div v-if="!formLocked" class="financial-summary-block form-totals">
-                    <div class="financial-row">
-                        <span>{{ $t('subtotal') }}</span>
-                        <span>{{ money(formSubtotal) }}</span>
-                    </div>
-                    <div class="financial-row">
-                        <span>{{ $t('discount_label') }}</span>
-                        <span class="discount-figure" :class="{ 'has-discount': num(form.discount) > 0 }">
-                            <template v-if="num(form.discount) > 0">
-                                − {{ money(form.discount) }}
-                                <span v-if="form.discount_percent !== '' && form.discount_percent != null && num(form.discount_percent) > 0" class="discount-badge-pill">
-                                    {{ form.discount_percent }}%
-                                </span>
-                            </template>
-                            <template v-else>
-                                {{ money(0) }}
-                            </template>
-                        </span>
-                    </div>
-                    <div class="financial-row">
-                        <span>{{ $t('tax_label') }}</span>
-                        <span>+ {{ money(form.tax) }}</span>
-                    </div>
-                    <div class="financial-row grand-total" :class="{ 'total-invalid': discountTooLarge }">
-                        <span>{{ $t('grand_total_label') }}</span>
-                        <span>{{ money(formTotal) }}</span>
-                    </div>
-                </div>
-
-            </el-form>
+                        </el-col>
+                    </el-row>
+                </el-form>
             </div>
 
-            <!-- Pinned under the form: on a request of twenty lines the save
-                 buttons sat below all of them, and the total with them. -->
+            <!-- Sticky Footer Dock -->
             <template #footer>
-                <div class="form-footer">
-                    <div v-if="!formLocked" class="footer-total">
-                        <span>{{ $t('grand_total_label') }}</span>
-                        <strong :class="{ 'total-invalid': discountTooLarge }">{{ money(formTotal) }}</strong>
-                        <small>{{ $t('po_items_count', filledItemCount) }}</small>
+                <div class="modern-form-footer">
+                    <div v-if="!formLocked" class="footer-totals-pill">
+                        <div class="pill-metric">
+                            <span class="lbl">{{ $t('grand_total_label') }}</span>
+                            <strong :class="{ 'text-danger': discountTooLarge }">{{ money(formTotal) }}</strong>
+                        </div>
+                        <div class="pill-divider"></div>
+                        <div class="pill-meta">
+                            <span>{{ $t('po_items_count', filledItemCount) }}</span> &bull;
+                            <span>{{ totalPieces }} {{ $t('pieces') || 'قطعة' }}</span>
+                        </div>
                     </div>
-                    <div class="footer-actions">
-                        <small class="shortcut-hint">{{ $t('po_shortcut_hint') }}</small>
+                    <div class="footer-buttons-group">
+                        <small class="shortcut-tip"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> للحفظ السريع</small>
                         <el-button @click="confirmCloseForm()">{{ $t('cancel') }}</el-button>
                         <template v-if="!isEditMode">
                             <el-button
@@ -1357,8 +1492,6 @@
                             >
                                 <i class="fas fa-file-signature"></i> {{ $t('po_save_as_pending') }}
                             </el-button>
-                            <!-- Only admins can approve orders. For admins, saving and approving
-                                 in one go spares them finding the row again to click Approve. -->
                             <el-button
                                 v-if="canApprove"
                                 type="primary"
@@ -1754,6 +1887,7 @@ const searchQuery = ref('');
 const viewportWidth = ref(window.innerWidth);
 const onResize = () => { viewportWidth.value = window.innerWidth; };
 const drawerSize = computed(() => (viewportWidth.value < 900 ? '100%' : '55%'));
+const formDrawerSize = computed(() => (viewportWidth.value < 1100 ? '100%' : '80%'));
 
 // Drawers and actions state
 const detailDrawerVisible = ref(false);
@@ -1850,11 +1984,16 @@ const getOrderItemCount = (prod) => {
 // when nothing is counted for it.
 const stockOf = (prod) => prod?.stock_quantity ?? prod?.stock ?? null;
 
+const selectedCategory = ref('');
+
 // Search rows regrouped by product: a product with sizes comes back as one
 // row per size, and the panel shows those as one card with a row per size.
 const quickSearchGroups = computed(() => {
     const groups = new Map();
     quickSearchResults.value.forEach((row) => {
+        if (selectedCategory.value && row.category_id !== selectedCategory.value && row.category?.id !== selectedCategory.value) {
+            return;
+        }
         if (!groups.has(row.id)) groups.set(row.id, { key: String(row.id), product: row, rows: [] });
         groups.get(row.id).rows.push(row);
     });
@@ -2238,6 +2377,84 @@ const isBeforeOrderDate = (date) => {
     if (!form.order_date) return false;
     const [y, m, d] = form.order_date.split('-').map(Number);
     return date < new Date(y, m - 1, d);
+};
+
+const totalPieces = computed(() => form.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0));
+
+const blockers = computed(() => {
+    const b = [];
+    if (!form.supplier_id) {
+        b.push({ id: 'supplier', label: t('select_supplier'), icon: 'fa-user' });
+    }
+    if (form.items.length === 0 || !form.items.some(it => it.product_id)) {
+        b.push({ id: 'items', label: t('items_and_quantities'), icon: 'fa-boxes' });
+    }
+    if (linesNeedingSize.value.length > 0) {
+        b.push({ id: 'sizes', label: t('po_lines_need_size', linesNeedingSize.value.length), icon: 'fa-tag' });
+    }
+    if (duplicatePicks.value.size > 0) {
+        b.push({ id: 'duplicates', label: t('duplicate_items') || 'بنود مكررة', icon: 'fa-copy' });
+    }
+    if (discountTooLarge.value) {
+        b.push({ id: 'discount', label: t('po_discount_exceeds_total'), icon: 'fa-percent' });
+    }
+    return b;
+});
+
+const focusBlocker = (blockerId) => {
+    if (blockerId === 'supplier') {
+        supplierSelectRef.value?.focus?.();
+    } else if (blockerId === 'items' || blockerId === 'sizes' || blockerId === 'duplicates') {
+        document.querySelector('.po-lines-card')?.scrollIntoView({ behavior: 'smooth' });
+    } else if (blockerId === 'discount') {
+        document.querySelector('.totals-card')?.scrollIntoView({ behavior: 'smooth' });
+    }
+};
+
+const setDueDays = (days) => {
+    const base = form.order_date ? new Date(form.order_date) : new Date();
+    base.setDate(base.getDate() + days);
+    form.due_date = base.toISOString().slice(0, 10);
+};
+
+const stepQuantity = (item, delta) => {
+    const cur = Number(item.quantity) || 1;
+    item.quantity = Math.max(1, cur + delta);
+};
+
+const duplicateItemRow = (idx) => {
+    const item = form.items[idx];
+    if (!item) return;
+    form.items.splice(idx + 1, 0, blankRow({
+        pick: item.pick,
+        product_id: item.product_id,
+        product_variant_id: item.product_variant_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        sale_price: item.sale_price,
+    }));
+};
+
+const productFromItem = (item) => {
+    if (!item) return null;
+    return productOptions.value.find(p => optionKey(p) === item.pick)
+        || defaultOptions.value.find(p => optionKey(p) === item.pick)
+        || item.product
+        || null;
+};
+
+const itemProductTitle = (item) => {
+    const prod = productFromItem(item);
+    if (!prod) return item.product_name || item.name || t('unspecified_product');
+    return baseName(prod);
+};
+
+const clearLineProduct = (item) => {
+    item.pick = '';
+    item.product_id = '';
+    item.product_variant_id = null;
+    item.unit_price = '';
+    item.sale_price = '';
 };
 
 const productLabel = (p) => [p.name_ar || p.name, p.sku].filter(Boolean).join(' — ');
@@ -6101,5 +6318,684 @@ onMounted(async () => {
     color: var(--el-color-danger, #dc2626);
     font-weight: 600;
     font-size: 0.7rem;
+}
+
+/* Modern Purchase Order Form Drawer Styles */
+.modern-po-drawer :deep(.el-drawer__header) {
+    margin-bottom: 0;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    background: #ffffff;
+}
+
+.modern-po-drawer :deep(.el-drawer__body) {
+    padding: 1.25rem 1.5rem;
+    background: #f8fafc;
+}
+
+.po-form-container {
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+.po-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    flex-wrap: wrap;
+}
+
+.po-status-bar.is-blocked {
+    border-color: #fde68a;
+    background: #fffdf5;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.status-pill.pill-ready {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status-pill.pill-blocked {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.blockers-chips {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.blocker-btn {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 0.78rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.blocker-btn:hover {
+    background: #fca5a5;
+    color: #7f1d1d;
+}
+
+.status-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.metric-item.highlight .metric-val {
+    color: #2563eb;
+    font-size: 1.05rem;
+}
+
+.metric-val {
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.metric-divider {
+    width: 1px;
+    height: 14px;
+    background: #cbd5e1;
+}
+
+.po-head-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem 1.25rem 0.5rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.supplier-picker-wrap {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.btn-text-hide-sm {
+    display: inline;
+}
+@media (max-width: 640px) {
+    .btn-text-hide-sm {
+        display: none;
+    }
+}
+
+.due-picker-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.due-chips-bar {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.due-chip {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #475569;
+    transition: all 0.15s ease;
+}
+
+.due-chip:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.po-catalog-section {
+    margin-bottom: 1.25rem;
+}
+
+.category-pills-bar {
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.5rem 0.2rem 0;
+    scrollbar-width: thin;
+}
+
+.cat-pill {
+    all: unset;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    transition: all 0.15s ease;
+}
+
+.cat-pill:hover {
+    color: #1e293b;
+    border-color: #cbd5e1;
+}
+
+.cat-pill.is-active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.po-lines-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.lines-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.header-title-box {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.header-title-box h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.items-count-badge {
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+}
+
+.po-empty-lines {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 2px dashed #cbd5e1;
+}
+
+.po-empty-lines .empty-icon {
+    font-size: 2.5rem;
+    color: #94a3b8;
+    margin-bottom: 0.75rem;
+}
+
+.po-empty-lines p {
+    color: #64748b;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+}
+
+.empty-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.lines-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.po-lines-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.po-lines-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.po-lines-table td {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.po-lines-table tbody tr:hover {
+    background: #fbfcfe;
+}
+
+.po-lines-table tr.is-needs-size {
+    background: #fffbeb !important;
+}
+
+.po-lines-table tr.is-duplicate {
+    background: #fef2f2 !important;
+}
+
+.col-idx {
+    width: 36px;
+    text-align: center;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.col-prod {
+    min-width: 280px;
+}
+
+.col-qty {
+    width: 140px;
+}
+
+.col-cost,
+.col-sale {
+    width: 145px;
+}
+
+.col-tot {
+    width: 130px;
+    text-align: left;
+}
+
+.col-act {
+    width: 80px;
+    text-align: center;
+}
+
+.line-picked-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.picked-thumb {
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.picked-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.picked-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.picked-name {
+    color: #0f172a;
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+.btn-inline-change {
+    all: unset;
+    cursor: pointer;
+    color: #64748b;
+    font-size: 0.78rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.btn-inline-change:hover {
+    color: #2563eb;
+    background: #eff6ff;
+}
+
+.picked-badges-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.2rem;
+    flex-wrap: wrap;
+}
+
+.badge-sku {
+    font-size: 0.75rem;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+}
+
+.badge-stock {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.badge-stock.is-in {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-stock.is-out {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.qty-stepper-ctrl {
+    display: flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+    width: 120px;
+}
+
+.btn-step {
+    all: unset;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.btn-step:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.input-step-qty {
+    flex: 1;
+    border: none !important;
+}
+
+.input-step-qty :deep(.el-input__wrapper) {
+    box-shadow: none !important;
+    text-align: center;
+    padding: 0;
+}
+
+.input-step-qty :deep(.el-input__inner) {
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.line-total-val {
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.row-actions-group {
+    display: flex;
+    gap: 0.3rem;
+    justify-content: center;
+}
+
+.table-add-row-bar {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.6rem 0.85rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+.btn-add-table-row {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px dashed #bfdbfe;
+    transition: all 0.15s ease;
+}
+
+.btn-add-table-row:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+
+.btn-add-table-row.secondary {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.btn-add-table-row.secondary:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.po-bottom-grid {
+    margin-top: 1.25rem;
+}
+
+.bottom-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    height: 100%;
+}
+
+.bottom-card h4 {
+    margin: 0 0 1rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.totals-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.summary-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+.summary-line .line-amount {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.summary-discount-block,
+.summary-tax-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.discount-header-line,
+.tax-header-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.grand-total-banner {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.grand-total-banner.is-invalid {
+    background: #dc2626;
+}
+
+.gt-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.gt-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.gt-amount {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.modern-form-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.footer-totals-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.4rem 0.85rem;
+}
+
+.pill-metric {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+}
+
+.pill-metric strong {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.pill-divider {
+    width: 1px;
+    height: 16px;
+    background: #cbd5e1;
+}
+
+.pill-meta {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.footer-buttons-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.shortcut-tip {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-inline-end: 0.5rem;
+}
+
+.shortcut-tip kbd {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    color: #475569;
 }
 </style>

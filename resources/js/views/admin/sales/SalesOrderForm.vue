@@ -907,18 +907,53 @@
                             <span>{{ $t('subtotal') }}</span>
                             <span class="num">{{ formatCurrency(subtotal) }}</span>
                         </div>
-                        <div class="totals-row">
-                            <span>{{ $t('qt_extra_discount') }}</span>
-                            <el-input-number
-                                ref="discountInput"
-                                v-model="form.discount"
-                                :min="0"
-                                :precision="2"
-                                :controls="false"
-                                size="small"
-                                :aria-label="$t('qt_extra_discount')"
-                                :class="{ 'is-invalid': discountTooBig || errors.discount }"
-                            />
+                        <div class="totals-row discount-row" :class="{ 'has-error': discountError }">
+                            <div class="totals-row-label">
+                                <span>{{ $t('sales.discount_label') || $t('discount') }}</span>
+                                <el-radio-group
+                                    :model-value="form.discount_type"
+                                    size="small"
+                                    class="discount-mode-switch"
+                                    @update:model-value="switchDiscountType"
+                                >
+                                    <el-radio-button value="percent">%</el-radio-button>
+                                    <el-radio-button value="amount">{{ $t('sales.discount_as_amount') || 'مبلغ ثابت' }}</el-radio-button>
+                                </el-radio-group>
+                            </div>
+                            <div class="totals-row-input">
+                                <el-input-number
+                                    v-if="form.discount_type === 'percent'"
+                                    ref="discountInput"
+                                    v-model="form.discount_percent"
+                                    :min="0"
+                                    :max="100"
+                                    :precision="2"
+                                    :controls="false"
+                                    size="small"
+                                    :aria-label="$t('sales.discount_as_percent')"
+                                    :class="{ 'is-invalid': discountTooBig || errors.discount || errors.discount_percent }"
+                                />
+                                <el-input-number
+                                    v-else
+                                    ref="discountInput"
+                                    v-model="form.discount_amount"
+                                    :min="0"
+                                    :max="subtotal"
+                                    :precision="2"
+                                    :controls="false"
+                                    size="small"
+                                    :aria-label="$t('sales.discount_as_amount')"
+                                    :class="{ 'is-invalid': discountTooBig || errors.discount }"
+                                />
+                            </div>
+                        </div>
+                        <div v-if="discountError" class="totals-hint is-error">
+                            {{ discountError }}
+                        </div>
+                        <div v-else-if="discountAmount > 0" class="totals-hint is-figure">
+                            {{ form.discount_type === 'percent'
+                                ? $t('sales.discount_equivalent_amount', { amount: formatCurrency(discountAmount) })
+                                : $t('sales.discount_equivalent_percent', { amount: formatCurrency(discountAmount), percent: `${effectiveDiscountRate}%` }) }}
                         </div>
                         <div class="totals-row">
                             <span>{{ $t('qt_extra_tax') }}</span>
@@ -1254,6 +1289,9 @@ const blank = () => ({
     fulfillment_warehouse_id: null,
     shipping_cost: 0,
     shipping_address: '',
+    discount_type: 'percent',
+    discount_percent: 0,
+    discount_amount: 0,
     discount: 0,
     tax: 0,
     notes: '',
@@ -1944,8 +1982,48 @@ const overStock = (line) => line.stock !== undefined && line.stock !== null && l
 
 const subtotal = computed(() => round2(form.items.reduce((sum, line) => sum + lineTotal(line), 0)));
 const pieces = computed(() => form.items.reduce((sum, line) => sum + toNum(line.quantity), 0));
-const discountTooBig = computed(() => toNum(form.discount) > subtotal.value + 0.00001);
-const total = computed(() => round2(Math.max(0, subtotal.value - toNum(form.discount)) + toNum(form.tax) + toNum(form.shipping_cost)));
+const discountAmount = computed(() => {
+    if (form.discount_type === 'amount') {
+        return round2(Math.min(Math.max(0, toNum(form.discount_amount)), Math.max(0, subtotal.value)));
+    }
+    return round2(Math.max(0, subtotal.value) * Math.min(100, Math.max(0, toNum(form.discount_percent))) / 100);
+});
+
+const effectiveDiscountRate = computed(() =>
+    subtotal.value > 0 ? Math.round((discountAmount.value / subtotal.value) * 10000) / 100 : 0
+);
+
+const discountError = computed(() => {
+    if (form.discount_type === 'amount') {
+        const amount = toNum(form.discount_amount);
+        if (amount < 0) return t('sales.discount_negative');
+        if (amount > 0 && amount - subtotal.value > 0.005) {
+            return t('sales.discount_amount_exceeds_subtotal', {
+                discount: formatCurrency(amount),
+                subtotal: formatCurrency(subtotal.value),
+            });
+        }
+        return '';
+    }
+    const val = toNum(form.discount_percent);
+    if (val < 0 || val > 100) {
+        return t('sales.discount_percent_out_of_range');
+    }
+    return '';
+});
+
+const discountTooBig = computed(() => !!discountError.value);
+const total = computed(() => round2(Math.max(0, subtotal.value - discountAmount.value) + toNum(form.tax) + toNum(form.shipping_cost)));
+
+const switchDiscountType = (type) => {
+    if (type === form.discount_type) return;
+    if (type === 'amount') {
+        form.discount_amount = discountAmount.value;
+    } else {
+        form.discount_percent = effectiveDiscountRate.value;
+    }
+    form.discount_type = type;
+};
 
 const overStockLines = computed(() => form.items.filter(overStock));
 
@@ -1985,7 +2063,7 @@ const issues = computed(() => {
         }
     });
     if (discountTooBig.value) {
-        list.push({ key: 'discount', target: 'discount', text: t('qt_discount_too_big') });
+        list.push({ key: 'discount', target: 'discount', text: discountError.value || t('qt_discount_too_big') });
     }
     if (form.expected_delivery && form.order_date && form.expected_delivery < form.order_date) {
         list.push({
@@ -2172,6 +2250,9 @@ const offerDraft = async () => {
             : (saved.fulfillment_warehouse_id || null),
         shipping_cost: toNum(saved.shipping_cost),
         shipping_address: saved.shipping_address || '',
+        discount_type: saved.discount_type || 'percent',
+        discount_percent: saved.discount_percent !== undefined ? toNum(saved.discount_percent) : 0,
+        discount_amount: saved.discount_amount !== undefined ? toNum(saved.discount_amount) : toNum(saved.discount),
         discount: toNum(saved.discount),
         tax: toNum(saved.tax),
         notes: saved.notes || '',
@@ -2205,7 +2286,18 @@ const offerDraft = async () => {
 };
 
 watch(
-    () => [form.customer_id, form.items, form.discount, form.tax, form.shipping_cost, form.notes, form.fulfillment_type, form.fulfillment_warehouse_id],
+    () => [
+        form.customer_id,
+        form.items,
+        form.discount_type,
+        form.discount_percent,
+        form.discount_amount,
+        form.tax,
+        form.shipping_cost,
+        form.notes,
+        form.fulfillment_type,
+        form.fulfillment_warehouse_id
+    ],
     () => {
         dirty.value = true;
         clearTimeout(draftTimer);
@@ -2238,7 +2330,22 @@ const loadOrder = async () => {
         form.fulfillment_warehouse_id = order.fulfillment_warehouse_id || null;
         form.shipping_address = order.shipping_address || '';
         form.shipping_cost = toNum(order.shipping_cost);
-        form.discount = toNum(order.discount);
+        const savedSubtotal = toNum(order.subtotal);
+        const savedDiscount = toNum(order.discount);
+        if (order.discount_percent !== null && order.discount_percent !== undefined && Number(order.discount_percent) > 0) {
+            form.discount_type = 'percent';
+            form.discount_percent = toNum(order.discount_percent);
+            form.discount_amount = savedDiscount;
+        } else if (savedDiscount > 0) {
+            form.discount_type = 'amount';
+            form.discount_amount = savedDiscount;
+            form.discount_percent = savedSubtotal > 0 ? Math.round((savedDiscount / savedSubtotal) * 10000) / 100 : 0;
+        } else {
+            form.discount_type = 'percent';
+            form.discount_percent = 0;
+            form.discount_amount = 0;
+        }
+        form.discount = savedDiscount;
         form.tax = toNum(order.tax);
         form.notes = order.notes || '';
         form.expenses = (order.expenses || []).map((exp) => ({
@@ -2318,7 +2425,8 @@ const submit = async (andConfirm) => {
         fulfillment_warehouse_id: form.fulfillment_warehouse_id || null,
         shipping_cost: toNum(form.shipping_cost),
         shipping_address: form.shipping_address || null,
-        discount: toNum(form.discount),
+        discount: form.discount_type === 'amount' ? toNum(form.discount_amount) : discountAmount.value,
+        discount_percent: form.discount_type === 'percent' ? toNum(form.discount_percent) : null,
         tax: toNum(form.tax),
         notes: form.notes || null,
         items: form.items.map((line) => ({
@@ -4104,6 +4212,46 @@ onUnmounted(() => {
 
 .totals-row :deep(.el-input-number) {
     width: 130px;
+}
+
+.totals-row.discount-row {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+}
+
+.totals-row-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.discount-mode-switch :deep(.el-radio-button__inner) {
+    padding: 2px 7px;
+    font-size: 0.72rem;
+    height: 24px;
+    line-height: 20px;
+}
+
+.totals-row-input {
+    display: inline-flex;
+    justify-content: flex-end;
+}
+
+.totals-hint {
+    font-size: 0.75rem;
+    margin-top: -0.15rem;
+    margin-bottom: 0.35rem;
+    padding-inline-start: 0.25rem;
+}
+
+.totals-hint.is-error {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.totals-hint.is-figure {
+    color: #059669;
+    font-weight: 500;
 }
 
 .totals-row.grand {
