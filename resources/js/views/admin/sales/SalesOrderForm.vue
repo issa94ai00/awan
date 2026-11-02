@@ -2607,6 +2607,20 @@ onMounted(async () => {
         await loadOrder();
     } else {
         await offerDraft();
+        const cid = route.query.customer_id ? Number(route.query.customer_id) : null;
+        if (cid) {
+            try {
+                const res = await posApi.customerShow(cid);
+                const cust = res.data?.data || res.data;
+                if (cust) {
+                    customerOptions.value = [cust];
+                    form.customer_id = cust.id;
+                    selectedCustomer.value = cust;
+                }
+            } catch {
+                /* ignore */
+            }
+        }
         searchCustomers('');
         setTimeout(() => {
             quickSearchInputRef.value?.focus();

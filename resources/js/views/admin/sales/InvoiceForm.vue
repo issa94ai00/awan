@@ -2016,6 +2016,20 @@ onMounted(async () => {
         await loadInvoice();
     } else {
         await offerDraft();
+        const cid = route.query.customer_id ? Number(route.query.customer_id) : null;
+        if (cid) {
+            try {
+                const { data } = await posApi.customerShow(cid);
+                const cust = data?.data || data;
+                if (cust) {
+                    customers.value = [cust];
+                    form.customer_id = cust.id;
+                    selectedCustomer.value = cust;
+                }
+            } catch {
+                /* ignore */
+            }
+        }
         draftTracking = true;
         nextTick(() => quickSearchInputRef.value?.focus());
     }

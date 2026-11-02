@@ -80,7 +80,7 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column :label="$t('actions')" width="150" align="center" fixed="right">
+                    <el-table-column :label="$t('actions')" width="180" align="center" fixed="right">
                         <template #default="{ row }">
                             <el-button-group>
                                 <el-tooltip :content="$t('view_details')" placement="top">
@@ -91,6 +91,16 @@
                                 <el-tooltip :content="$t('record_payment')" placement="top">
                                     <el-button size="small" type="success" plain @click="openPaymentFor(row)">
                                         <i class="fas fa-money-bill-wave"></i>
+                                    </el-button>
+                                </el-tooltip>
+                                <el-tooltip :content="$t('create_invoice')" placement="top">
+                                    <el-button size="small" type="primary" plain @click="createInvoiceFor(row)">
+                                        <i class="fas fa-file-invoice"></i>
+                                    </el-button>
+                                </el-tooltip>
+                                <el-tooltip :content="$t('new_sales_order')" placement="top">
+                                    <el-button size="small" type="warning" plain @click="createOrderFor(row)">
+                                        <i class="fas fa-cart-plus"></i>
                                     </el-button>
                                 </el-tooltip>
                             </el-button-group>
@@ -209,6 +219,14 @@ const paymentCustomerId = ref(null);
 const openPaymentFor = (customer) => {
     paymentCustomerId.value = customer?.id ?? null;
     paymentDialogVisible.value = true;
+};
+
+const createInvoiceFor = (customer) => {
+    router.push({ path: '/admin/sales/invoices/create', query: { customer_id: customer.id } });
+};
+
+const createOrderFor = (customer) => {
+    router.push({ path: '/admin/sales/sales-orders/create', query: { customer_id: customer.id } });
 };
 
 // A sales rep sees only the clients they serve; admins and managers see all

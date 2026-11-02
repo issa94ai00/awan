@@ -3762,8 +3762,13 @@ onMounted(async () => {
     const shortageFor = route.query.shortage_for_order;
     const fromSalesOrder = route.query.from_sales_order;
     const addProductId = route.query.add_product_id;
+    const presetSupplierId = route.query.supplier_id ? Number(route.query.supplier_id) : null;
     if (readOnly.value) {
-        if (shortageFor || fromSalesOrder || addProductId) router.replace({ query: {} });
+        if (shortageFor || fromSalesOrder || addProductId || presetSupplierId) router.replace({ query: {} });
+    } else if (presetSupplierId) {
+        openCreateDrawer();
+        orderForm.supplier_id = presetSupplierId;
+        router.replace({ query: {} });
     } else if (shortageFor) {
         await prefillFromShortage(shortageFor);
         // Cleared so a refresh does not reopen the drawer over work in progress.

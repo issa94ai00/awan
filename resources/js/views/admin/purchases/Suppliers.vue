@@ -103,11 +103,14 @@
                     </el-table-column>
 
                     <!-- Actions Column -->
-                    <el-table-column :label="$t('actions')" width="230" align="center">
+                    <el-table-column :label="$t('actions')" width="260" align="center">
                         <template #default="{ row }">
                             <el-button-group class="action-btn-group">
                                 <el-button size="small" type="info" plain @click="openDetailDrawer(row.id)" :title="$t('view_details')">
                                     <i class="fas fa-eye"></i>
+                                </el-button>
+                                <el-button size="small" type="primary" plain @click="createOrderFor(row.id)" :title="$t('create_purchase_order')">
+                                    <i class="fas fa-cart-plus"></i>
                                 </el-button>
                                 <el-button size="small" type="success" plain @click="openSupplierStatement(row.id)" :title="$t('party_statement')">
                                     <i class="fas fa-file-invoice"></i>
@@ -581,6 +584,16 @@ const openSupplierStatement = (id) => {
         query: {
             type: 'supplier',
             party_id: String(id),
+        },
+    });
+};
+
+const createOrderFor = (id) => {
+    if (!id) return;
+    router.push({
+        path: '/admin/purchases/orders',
+        query: {
+            supplier_id: String(id),
         },
     });
 };
