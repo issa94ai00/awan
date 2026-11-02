@@ -373,7 +373,7 @@
         <el-drawer
             v-model="formDrawerVisible"
             :title="isEditMode ? $t('edit_goods_receipt') : $t('create_goods_receipt')"
-            :size="drawerSize"
+            :size="formDrawerSize"
             direction="rtl"
             destroy-on-close
             class="form-drawer"
@@ -562,27 +562,52 @@
                                         :label="[p.name_ar || p.name, p.sku].filter(Boolean).join(' — ')"
                                         :value="optionKey(p)"
                                     >
-                                        <div class="product-option">
-                                            <span class="product-option-name">
-                                                {{ baseName(p) }}
-                                                <VariantChip v-if="p.variant_id" :label="p.variant_label" />
-                                            </span>
-                                            <small v-if="p.sku">{{ p.sku }}</small>
+                                        <div class="product-option-enhanced">
+                                            <EntityImage
+                                                :src="productImageSrc(p)"
+                                                type="product"
+                                                :size="32"
+                                                shape="square"
+                                                class="option-thumb"
+                                            />
+                                            <div class="option-details">
+                                                <span class="product-option-name">
+                                                    {{ baseName(p) }}
+                                                    <VariantChip v-if="p.variant_id" :label="p.variant_label" />
+                                                </span>
+                                                <small v-if="p.sku" class="sku-tag"><i class="fas fa-barcode"></i> {{ p.sku }}</small>
+                                            </div>
                                         </div>
                                     </el-option>
                                 </el-select>
-                                <el-input-number v-model="item.quantity" :min="1" :placeholder="$t('quantity')" style="flex: 1; min-width: 120px;" :disabled="isEditMode" />
+                                <div class="qty-stepper-ctrl">
+                                    <button v-if="!isEditMode" type="button" class="btn-step" @click="stepQuantity(item, -1)">-</button>
+                                    <el-input-number v-model="item.quantity" :min="1" :controls="false" :placeholder="$t('quantity')" class="input-step-qty" :disabled="isEditMode" />
+                                    <button v-if="!isEditMode" type="button" class="btn-step" @click="stepQuantity(item, 1)">+</button>
+                                </div>
+                                <el-button
+                                    v-if="!isEditMode"
+                                    type="primary"
+                                    circle
+                                    plain
+                                    size="small"
+                                    @click="duplicateItemRow(idx)"
+                                    :title="$t('duplicate') || 'تكرار البند'"
+                                >
+                                    <i class="fas fa-copy"></i>
+                                </el-button>
                                 <el-button
                                     v-if="!isEditMode"
                                     type="success"
                                     circle
                                     plain
+                                    size="small"
                                     @click="openQuickAddProduct(idx)"
                                     :title="$t('add_new_product')"
                                 >
                                     <i class="fas fa-plus"></i>
                                 </el-button>
-                                <el-button v-if="!isEditMode" type="danger" circle plain @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
+                                <el-button v-if="!isEditMode" type="danger" circle plain size="small" @click="removeItemRow(idx)" :disabled="form.items.length <= 1">
                                     <i class="fas fa-trash"></i>
                                 </el-button>
                             </div>
@@ -1001,6 +1026,8 @@ import VariantChip from '@/components/admin/products/VariantChip.vue';
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
 import DocumentLinesPanel from '@/components/admin/sales/DocumentLinesPanel.vue';
 import PurchaseReceiptPrintDialog from '@/components/admin/purchases/PurchaseReceiptPrintDialog.vue';
+import EntityImage from '@/components/admin/EntityImage.vue';
+import { resolveImageUrl } from '@/utils/productImages';
 import { pickKey, optionKey, baseName, variantLabelOf, optionFromLine, withOptions, variantFieldsOf, lineVariantInfo } from '@/utils/productPick';
 import { paymentMethodLabel } from '@/utils/sales';
 import { matchesSearch } from '@/utils/search';
@@ -1009,6 +1036,12 @@ import { useStockShortage } from '@/Composables/useStockShortage';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 
 const { t } = useI18n();
+
+const productImageSrc = (p) => {
+    if (!p) return '';
+    const raw = p.image_main || p.image || p.primary_image_url || p.image_url || '';
+    return resolveImageUrl(raw);
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -1035,6 +1068,7 @@ const editingReceiptId = ref(null);
 const viewportWidth = ref(window.innerWidth);
 const onResize = () => { viewportWidth.value = window.innerWidth; };
 const drawerSize = computed(() => (viewportWidth.value < 900 ? '100%' : '55%'));
+const formDrawerSize = computed(() => (viewportWidth.value < 1100 ? '100%' : '80%'));
 
 // Quick-add-product state: lets a missing item be created without leaving
 // the receipt form, then drops straight into the row that needed it.
@@ -1771,6 +1805,24 @@ const handleSupplierChange = async (supplierId) => {
 // Form Dynamic items grid actions
 const addItemRow = () => {
     form.items.push(blankRow());
+};
+
+const duplicateItemRow = (idx) => {
+    const item = form.items[idx];
+    if (!item) return;
+    form.items.splice(idx + 1, 0, blankRow({
+        pick: item.pick,
+        product_id: item.product_id,
+        product_variant_id: item.product_variant_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        sale_price: item.sale_price,
+    }));
+};
+
+const stepQuantity = (item, delta) => {
+    const cur = Number(item.quantity) || 1;
+    item.quantity = Math.max(1, cur + delta);
 };
 
 const removeItemRow = (idx) => {
@@ -2990,5 +3042,84 @@ onMounted(async () => {
 .financial-row.grand-total.total-invalid {
     background-color: #fef2f2 !important;
     color: #dc2626 !important;
+}
+
+/* Product option enhanced & qty stepper */
+.product-option-enhanced {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+}
+
+.product-option-enhanced .option-thumb {
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.product-option-enhanced .option-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.product-option-enhanced .product-option-name {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 0.85rem;
+    line-height: 1.2;
+}
+
+.product-option-enhanced .sku-tag {
+    font-size: 0.72rem;
+    color: #64748b;
+}
+
+.qty-stepper-ctrl {
+    display: flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+    width: 120px;
+}
+
+.btn-step {
+    all: unset;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.btn-step:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.input-step-qty {
+    flex: 1;
+    border: none !important;
+}
+
+.input-step-qty :deep(.el-input__wrapper) {
+    box-shadow: none !important;
+    text-align: center;
+    padding: 0;
+}
+
+.input-step-qty :deep(.el-input__inner) {
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.88rem;
 }
 </style>
