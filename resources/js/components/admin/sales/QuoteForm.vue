@@ -1313,7 +1313,9 @@ const lineSiblings = (line) => (line.product_id && line.product_variant_id ? sib
 const preloadLineSiblings = () => form.items.forEach((line) => line.product_variant_id && ensureVariantsLoaded(line.product_id));
 
 // The description a line starts with; one still equal to it follows a size switch.
-const autoDescription = (product) => productName(product) + (product.variant_label ? ` - ${product.variant_label}` : '');
+// A size row's name already ends in its label, so the label is only added when missing.
+const withVariantLabel = (name, label) => (label && !name.endsWith(` - ${label}`) ? `${name} - ${label}` : name);
+const autoDescription = (product) => withVariantLabel(productName(product), product.variant_label);
 
 // Switching a line to another size keeps its quantity, unit and a price that
 // was typed; a price still at the old size's list price follows the new one.
@@ -1333,7 +1335,9 @@ const switchLineVariant = (line, row) => {
 
     const multiplier = toNum(line.unit?.price_multiplier) || 1;
     const priceUntouched = !isPriceEdited(line);
-    const descriptionUntouched = !line.description || line.description === productName(line) + (line.variant_label ? ` - ${line.variant_label}` : '');
+    const descriptionUntouched = !line.description
+        || line.description === withVariantLabel(line.name || '', line.variant_label)
+        || line.description === `${line.name} - ${line.variant_label}`;
     line.product_variant_id = row.variant_id || null;
     line.name = productName(row);
     if (descriptionUntouched) line.description = autoDescription(row);

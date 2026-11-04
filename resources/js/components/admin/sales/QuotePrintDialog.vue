@@ -232,7 +232,7 @@
                                     <td class="qp-item-cell">
                                         <div class="qp-item-name">{{ itemName(item) }}</div>
                                         <div v-if="item.product?.name_en && lang === 'ar'" class="qp-item-name-en">{{ item.product.name_en }}</div>
-                                        <div v-if="item.description && item.product && item.description !== itemName(item)" class="qp-item-desc">{{ item.description }}</div>
+                                        <div v-if="item.product && itemDetail(item)" class="qp-item-desc">{{ itemDetail(item) }}</div>
                                     </td>
                                     <td v-if="printSettings.showSku" class="qp-sku-cell"><code>{{ item.product?.sku || '—' }}</code></td>
                                     <td class="c-center qp-qty-cell">
@@ -494,6 +494,17 @@ const quoteDiscountPercent = computed(() => {
 });
 
 const itemName = (item) => (lang.value === 'en' && item.product?.name_en) || item.product?.name_ar || item.description || '—';
+// What a line's description says beyond the name printed above it — the size
+// "40 سم" rather than "name - 40 سم" — with any part said twice kept once.
+const itemDetail = (item) => {
+    const names = [itemName(item), item.product?.name_ar, item.product?.name_en].filter(Boolean).map((n) => n.trim());
+    let rest = String(item.description || '').trim();
+    const name = names.find((n) => rest === n || rest.startsWith(`${n} - `));
+    if (name) rest = rest.slice(name.length).replace(/^ - /, '');
+    const parts = rest.split(' - ').map((p) => p.trim()).filter(Boolean);
+    const seen = new Set(names);
+    return parts.filter((p) => !seen.has(p) && seen.add(p)).join(' - ');
+};
 
 const estimatedPages = computed(() => {
     const limit = printSettings.density === 'compact' ? 14 : 9;
