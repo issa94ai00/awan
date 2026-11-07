@@ -66,6 +66,33 @@ class InvoiceItem extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
+    /**
+     * What the customer actually paid for one unit of this line.
+     *
+     * The line's own discount and tax (a line raised from a sales order
+     * carries both), then the invoice's header discount and tax spread over
+     * its goods by value — the subtotal is the sum of the lines' values, and
+     * the header discount and tax were charged on it. Delivery and other
+     * additional charges are not goods and are not part of it.
+     *
+     * A return is refunded at this, not at the list unit price: refunding the
+     * list price handed back the discount the customer never paid, and the
+     * credit note then reversed more revenue than the sale had booked.
+     */
+    public function refundableUnitPrice(): float
+    {
+        $quantity = (int) $this->quantity;
+        if ($quantity <= 0) {
+            return 0.0;
+        }
+
+        $lineValue = $quantity * (float) $this->unit_price
+            - (float) ($this->discount ?? 0)
+            + (float) ($this->tax_amount ?? 0);
+
+        return round(max(0, $lineValue) / $quantity * ($this->invoice?->paidShareOfSubtotal() ?? 1.0), 5);
+    }
+
     protected static function booted(): void
     {
         static::saving(function ($item) {

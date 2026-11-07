@@ -76,7 +76,11 @@ class InvoiceResource extends JsonResource
             'customer_company' => $this->customer?->company,
 
             // Relationships
-            'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
+            'items' => InvoiceItemResource::collection($this->whenLoaded('items', function () {
+                // Each line prices its refund from the invoice's discount and
+                // tax; handing it the invoice already loaded saves a query each.
+                return $this->items->each->setRelation('invoice', $this->resource);
+            })),
             'payments' => $this->whenLoaded('payments'),
             'expenses' => $this->whenLoaded('expenses', function () {
                 return $this->expenses->map(fn ($exp) => [

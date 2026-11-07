@@ -350,8 +350,10 @@ class RmaController extends Controller
                     'notes' => $item['notes'] ?? null,
                 ]);
 
-                // Calculate refund amount based on condition
-                $originalPrice = $invoiceItem->unit_price;
+                // Calculate refund amount based on condition, from what the
+                // customer actually paid per unit (after the invoice's
+                // discounts and with its tax), not the list price.
+                $originalPrice = $invoiceItem->refundableUnitPrice();
                 $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
                 $rmaItem->refund_amount = $refundAmount;
                 $rmaItem->save();
@@ -1030,7 +1032,7 @@ class RmaController extends Controller
                         'notes' => $item['notes'] ?? null,
                     ]);
 
-                    $originalPrice = $invoiceItem->unit_price;
+                    $originalPrice = $invoiceItem->refundableUnitPrice();
                     $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
                     $rmaItem->refund_amount = $refundAmount;
                     $rmaItem->save();

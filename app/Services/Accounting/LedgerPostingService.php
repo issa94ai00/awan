@@ -1212,14 +1212,22 @@ class LedgerPostingService
             return null;
         }
 
+        // The tax handed back reverses the tax the sale owed; only the goods
+        // are a sales return.
+        $tax = min($total, $this->money($creditNote->tax ?? 0));
+        $lines = [
+            ['role' => 'sales_returns', 'debit' => round($total - $tax, 5), 'description' => 'مردودات مبيعات - ' . $creditNote->credit_note_number],
+        ];
+        if ($tax > 0) {
+            $lines[] = ['role' => 'tax_payable', 'debit' => $tax, 'description' => 'عكس ضريبة مستحقة - ' . $creditNote->credit_note_number];
+        }
+        $lines[] = ['role' => 'accounts_receivable', 'credit' => $total, 'description' => 'تخفيض ذمم - ' . $creditNote->credit_note_number];
+
         return $this->post(
             key: 'credit_note:' . $creditNote->id,
             date: $creditNote->issue_date ? $creditNote->issue_date->toDateString() : now()->toDateString(),
             description: 'إشعار دائن ' . $creditNote->credit_note_number,
-            lines: [
-                ['role' => 'sales_returns', 'debit' => $total, 'description' => 'مردودات مبيعات - ' . $creditNote->credit_note_number],
-                ['role' => 'accounts_receivable', 'credit' => $total, 'description' => 'تخفيض ذمم - ' . $creditNote->credit_note_number],
-            ],
+            lines: $lines,
             reference: $creditNote,
             module: 'rma',
         );

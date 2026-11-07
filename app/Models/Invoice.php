@@ -45,6 +45,32 @@ class Invoice extends Model
         'reference',
     ];
 
+    /**
+     * The invoice's goods after its header discount and tax, as a share of
+     * its subtotal: what one unit of subtotal was actually charged at.
+     */
+    public function paidShareOfSubtotal(): float
+    {
+        $subtotal = (float) $this->subtotal;
+        if ($subtotal <= 0) {
+            return 1.0;
+        }
+
+        return max(0, $subtotal - (float) ($this->discount ?? 0) + (float) ($this->tax ?? 0)) / $subtotal;
+    }
+
+    /**
+     * Of an amount paid for this invoice's goods, the part that is header
+     * tax — so a credit note can hand the tax back to the tax account, not
+     * charge it all to sales returns.
+     */
+    public function taxShareOfPaidGoods(): float
+    {
+        $paid = (float) $this->subtotal - (float) ($this->discount ?? 0) + (float) ($this->tax ?? 0);
+
+        return $paid > 0 && (float) ($this->tax ?? 0) > 0 ? (float) $this->tax / $paid : 0.0;
+    }
+
     protected $casts = [
         'subtotal' => 'decimal:5',
         'tax' => 'decimal:5',

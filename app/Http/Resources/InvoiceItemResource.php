@@ -34,6 +34,12 @@ class InvoiceItemResource extends JsonResource
             'tax_rate' => $this->tax_rate !== null ? (float) $this->tax_rate : null,
             'tax_amount' => (float) ($this->tax_amount ?? 0),
             'total_price' => (float) $this->total_price,
+            // What one unit was actually paid at, after the invoice's
+            // discounts and with its tax: what a return refunds.
+            'refundable_unit_price' => $this->when(
+                $this->resource->relationLoaded('invoice'),
+                fn () => $this->resource->refundableUnitPrice()
+            ),
             'notes' => $this->notes,
 
             // Product details (if loaded)

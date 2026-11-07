@@ -183,14 +183,18 @@ class RmaSettlementService
      */
     private function issueCreditNote(RmaRequest $rmaRequest, ?Invoice $invoice, float $amount, ?int $userId): CreditNote
     {
+        // The refund is what was paid, tax included; the tax part goes back
+        // against the tax that sale owes, not against sales.
+        $tax = $invoice ? round($amount * $invoice->taxShareOfPaidGoods(), 5) : 0.0;
+
         $creditNote = CreditNote::create([
             'credit_note_number' => CreditNote::nextNumber(),
             'customer_id' => $rmaRequest->customer_id,
             'invoice_id' => $invoice?->id,
             'rma_request_id' => $rmaRequest->id,
             'issue_date' => now()->toDateString(),
-            'subtotal' => $amount,
-            'tax' => 0,
+            'subtotal' => round($amount - $tax, 5),
+            'tax' => $tax,
             'total' => $amount,
             'status' => CreditNote::STATUS_ISSUED,
             'reason' => 'مرتجع '.$rmaRequest->rma_number,

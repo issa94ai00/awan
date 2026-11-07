@@ -167,6 +167,11 @@
                                         <span class="line-name">{{ item.product_name }}</span>
                                         <span class="line-meta">
                                             {{ formatCurrency(item.unit_price) }}
+                                            <span
+                                                v-if="item.list_price && Math.abs(item.list_price - item.unit_price) >= 0.005"
+                                                class="paid-note"
+                                                :title="t('rma_paid_price_hint')"
+                                            >({{ t('rma_list_price_was', { price: formatCurrency(item.list_price) }) }})</span>
                                             <span class="dot">·</span>
                                             {{ t('invoice_quantity_label', { count: item.original_quantity }) }}
                                         </span>
@@ -635,13 +640,21 @@ const loadCustomerStats = async (customerId) => {
     customerStats.value = { totalOrders, totalReturns, availableOrders }
 }
 
+const paidUnitPrice = (item) => {
+    const paid = parseFloat(item?.refundable_unit_price)
+    return Number.isFinite(paid) ? paid : (parseFloat(item?.unit_price) || 0)
+}
+
 const mapInvoiceItem = (item, overrides = {}) => ({
     invoice_item_id: item.id,
     product_id: item.product_id,
     product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
     original_quantity: item.quantity,
     quantity: 1,
-    unit_price: parseFloat(item.unit_price) || 0,
+    // What one unit was actually paid at, after the invoice's discounts and
+    // with its tax — what the server refunds (InvoiceItem::refundableUnitPrice).
+    unit_price: paidUnitPrice(item),
+    list_price: parseFloat(item.unit_price) || 0,
     condition: 'new',
     resolution: form.return_type,
     selected: false,
@@ -767,7 +780,8 @@ const loadRma = async () => {
                 product_name: item.product?.name_ar || item.product?.name || item.product_name || 'N/A',
                 original_quantity: originalItem ? originalItem.quantity : item.quantity_requested,
                 quantity: item.quantity_requested,
-                unit_price: parseFloat(originalItem?.unit_price ?? (item.refund_amount / item.quantity_requested)) || 0,
+                unit_price: originalItem ? paidUnitPrice(originalItem) : (parseFloat(item.refund_amount / item.quantity_requested) || 0),
+                list_price: parseFloat(originalItem?.unit_price) || 0,
                 condition: item.condition || 'new',
                 resolution: item.resolution || 'refund',
                 selected: true,
@@ -886,7 +900,7 @@ onMounted(async () => {
 
         if (queryCid) {
             try {
-                const res = await api.get(`/customers/${queryCid}`)
+                const res = await api.get(`/pos/customers/${queryCid}`)
                 const cust = res.data?.data || res.data
                 if (cust) {
                     customers.value = [cust]
@@ -907,7 +921,7 @@ onMounted(async () => {
                 const res = await api.get(`/invoices/${queryInvId}`)
                 const inv = res.data?.data || res.data
                 if (inv && inv.customer_id) {
-                    const custRes = await api.get(`/customers/${inv.customer_id}`)
+                    const custRes = await api.get(`/pos/customers/${inv.customer_id}`)
                     const cust = custRes.data?.data || custRes.data
                     if (cust) {
                         customers.value = [cust]
@@ -1207,6 +1221,7 @@ onMounted(async () => {
 .line-identity { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 1; }
 .line-name { font-weight: 700; }
 .line-meta { font-size: 0.78rem; color: var(--ink-mute); }
+.line-meta .paid-note { color: #047857; margin-inline-start: 0.25rem; }
 .line-meta .dot { margin: 0 0.3rem; }
 
 .line-refund {
