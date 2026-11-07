@@ -1,0 +1,782 @@
+/*
+ * The purchase order and goods receipt forms (PurchaseOrderForm.vue,
+ * PurchaseReceiptForm.vue): one workspace layout for both — the document on
+ * one side, the product catalogue beside it. Unscoped because the drawer's
+ * own parts are styled, so every rule hangs off a `pf-` class.
+ */
+
+.pf-drawer.el-drawer {
+    --pf-gap: 1rem;
+    --pf-radius: 14px;
+    --pf-border: var(--el-border-color-lighter, #e5e7eb);
+    --pf-muted: var(--el-text-color-secondary, #6b7280);
+    --pf-surface: #ffffff;
+    --pf-canvas: #f5f7fb;
+    font-family: 'Cairo', sans-serif;
+}
+
+.pf-drawer .el-drawer__header {
+    margin: 0;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--pf-border);
+    background: var(--pf-surface);
+}
+
+.pf-drawer .el-drawer__body {
+    padding: 0;
+    background: var(--pf-canvas);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.pf-drawer .el-drawer__footer {
+    padding: 0;
+    border-top: 1px solid var(--pf-border);
+    background: var(--pf-surface);
+}
+
+/* Header */
+.pf-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.pf-title-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    font-size: 1.05rem;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    flex-shrink: 0;
+}
+
+.pf-title-icon.is-receipt {
+    background: linear-gradient(135deg, #0ea5e9, #10b981);
+}
+
+.pf-title h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--el-text-color-primary);
+    line-height: 1.3;
+}
+
+.pf-title p {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--pf-muted);
+}
+
+.pf-title-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    background: var(--el-fill-color, #f0f2f5);
+    color: var(--el-text-color-regular);
+    margin-inline-start: 0.4rem;
+    vertical-align: middle;
+}
+
+/* Workspace */
+.pf-shell {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 34%);
+    gap: var(--pf-gap);
+    padding: var(--pf-gap);
+}
+
+.pf-shell.is-single {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 1180px;
+    width: 100%;
+    margin-inline: auto;
+}
+
+.pf-doc {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-gap);
+    padding-inline-end: 2px;
+    scroll-behavior: smooth;
+}
+
+.pf-side {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Cards */
+.pf-card {
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: var(--pf-radius);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.pf-card-pad {
+    padding: 1rem 1.1rem;
+}
+
+.pf-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 1.1rem;
+    border-bottom: 1px solid var(--pf-border);
+    flex-wrap: wrap;
+}
+
+.pf-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--el-text-color-primary);
+}
+
+.pf-card-title i {
+    color: var(--el-color-primary);
+}
+
+.pf-count {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--el-color-primary) 12%, white);
+    color: var(--el-color-primary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    display: inline-grid;
+    place-items: center;
+}
+
+.pf-card-tools {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+/* The fields grid of the header card */
+.pf-fields {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 0.9rem 1rem;
+}
+
+.pf-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+    grid-column: span 6;
+}
+
+.pf-field.span-4 { grid-column: span 4; }
+.pf-field.span-3 { grid-column: span 3; }
+.pf-field.span-8 { grid-column: span 8; }
+.pf-field.span-12 { grid-column: span 12; }
+
+.pf-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--el-text-color-regular);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.pf-label .pf-req {
+    color: #ef4444;
+}
+
+.pf-hint {
+    font-size: 0.72rem;
+    color: var(--pf-muted);
+}
+
+.pf-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.pf-row > .el-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.pf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.pf-chip-btn {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--el-border-color, #dcdfe6);
+    color: var(--el-text-color-regular);
+    background: #fff;
+}
+
+.pf-chip-btn:hover {
+    border-color: var(--el-color-primary);
+    color: var(--el-color-primary);
+}
+
+.pf-chip-btn.is-active {
+    background: var(--el-color-primary);
+    border-color: var(--el-color-primary);
+    color: #fff;
+}
+
+.pf-field.is-invalid .el-select__wrapper,
+.pf-field.is-invalid .el-input__wrapper {
+    box-shadow: 0 0 0 1px #f87171 inset;
+}
+
+/* Checklist strip: what still blocks saving, each a jump to its field. */
+.pf-checklist {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.55rem 0.8rem;
+    border-radius: 12px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    font-size: 0.8rem;
+}
+
+.pf-checklist.is-ready {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #047857;
+}
+
+.pf-checklist-title {
+    font-weight: 800;
+    color: #9a3412;
+    display: inline-flex;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.pf-checklist.is-ready .pf-checklist-title {
+    color: #047857;
+}
+
+.pf-checklist button {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: center;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.pf-checklist button:hover {
+    background: #ffedd5;
+}
+
+/* Lines */
+.pf-lines-head {
+    display: grid;
+    grid-template-columns: 28px minmax(220px, 1fr) 128px 132px 132px 110px 36px;
+    gap: 0.75rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--pf-muted);
+    background: var(--el-fill-color-lighter, #fafafa);
+    border-bottom: 1px solid var(--pf-border);
+}
+
+.pf-lines-head.is-locked {
+    grid-template-columns: 28px minmax(220px, 1fr) 110px 120px 120px 110px;
+}
+
+/* The lines card is a size container: a line lays itself out by the room
+   the card has, not by the window (PurchaseLineRow's @container rules). */
+.pf-lines-card {
+    container-type: inline-size;
+}
+
+@container (max-width: 900px) {
+    .pf-lines-head {
+        display: none;
+    }
+}
+
+.pf-lines {
+    display: flex;
+    flex-direction: column;
+}
+
+.pf-lines > :last-child {
+    border-bottom: 0;
+}
+
+.pf-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--pf-muted);
+}
+
+.pf-empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    font-size: 1.6rem;
+    background: color-mix(in srgb, var(--el-color-primary) 9%, white);
+    color: var(--el-color-primary);
+}
+
+.pf-empty strong {
+    color: var(--el-text-color-primary);
+    font-size: 0.95rem;
+}
+
+.pf-empty p {
+    margin: 0;
+    font-size: 0.82rem;
+    max-width: 420px;
+}
+
+.pf-lines-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.7rem 1.1rem;
+    border-top: 1px solid var(--pf-border);
+    background: var(--el-fill-color-lighter, #fafafa);
+    border-radius: 0 0 var(--pf-radius) var(--pf-radius);
+    font-size: 0.8rem;
+    color: var(--pf-muted);
+}
+
+.pf-lines-foot strong {
+    color: var(--el-text-color-primary);
+}
+
+.pf-picker {
+    flex: 1;
+    min-width: 240px;
+    max-width: 460px;
+}
+
+/* A note under a line (the sale it came from, how it compares with the request) */
+.pf-line-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.73rem;
+    color: var(--pf-muted);
+}
+
+.pf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.08rem 0.5rem;
+    border-radius: 999px;
+    background: var(--el-fill-color, #f0f2f5);
+    color: var(--el-text-color-regular);
+}
+
+.pf-badge.is-ok { background: #d1fae5; color: #065f46; }
+.pf-badge.is-warn { background: #fef3c7; color: #92400e; }
+.pf-badge.is-danger { background: #fee2e2; color: #991b1b; }
+.pf-badge.is-info { background: #e0e7ff; color: #3730a3; }
+
+/* Bottom: notes and the money */
+.pf-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+    gap: var(--pf-gap);
+    align-items: start;
+}
+
+.pf-totals {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.pf-sum-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.86rem;
+    color: var(--el-text-color-regular);
+}
+
+.pf-sum-row strong,
+.pf-sum-row .pf-num {
+    font-variant-numeric: tabular-nums;
+    color: var(--el-text-color-primary);
+}
+
+.pf-sum-row.is-minus .pf-num {
+    color: #b91c1c;
+}
+
+.pf-sum-row.is-muted {
+    color: var(--pf-muted);
+    font-size: 0.8rem;
+}
+
+.pf-divider {
+    height: 1px;
+    background: var(--pf-border);
+}
+
+.pf-grand {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1e293b, #334155);
+    color: #fff;
+}
+
+.pf-grand span {
+    font-size: 0.85rem;
+    opacity: 0.85;
+}
+
+.pf-grand strong {
+    font-size: 1.35rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-grand.is-invalid {
+    background: linear-gradient(135deg, #991b1b, #b91c1c);
+}
+
+.pf-money-input {
+    display: flex;
+    align-items: center;
+    height: 38px;
+    padding-inline: 0.7rem;
+    border: 1.5px solid var(--el-border-color, #dcdfe6);
+    border-radius: 9px;
+    background: #fff;
+    gap: 0.35rem;
+}
+
+.pf-money-input:focus-within {
+    border-color: var(--el-color-primary);
+}
+
+.pf-money-input input {
+    all: unset;
+    flex: 1;
+    min-width: 0;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+}
+
+.pf-money-input input::-webkit-outer-spin-button,
+.pf-money-input input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.pf-money-input .pf-unit {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--pf-muted);
+}
+
+.pf-money-input.is-disabled {
+    background: var(--el-fill-color-lighter, #fafafa);
+}
+
+/* Footer */
+.pf-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    flex-wrap: wrap;
+}
+
+.pf-footer-sum {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+}
+
+.pf-footer-metric {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.pf-footer-metric span {
+    font-size: 0.7rem;
+    color: var(--pf-muted);
+}
+
+.pf-footer-metric strong {
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--el-text-color-primary);
+}
+
+.pf-footer-metric.is-main strong {
+    font-size: 1.3rem;
+    color: var(--el-color-primary);
+}
+
+.pf-footer-metric.is-invalid strong {
+    color: #b91c1c;
+}
+
+.pf-footer-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--pf-border);
+}
+
+.pf-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.pf-kbd-hint {
+    font-size: 0.72rem;
+    color: var(--pf-muted);
+}
+
+.pf-kbd-hint kbd {
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--el-border-color);
+    border-radius: 4px;
+    background: var(--el-fill-color-light);
+}
+
+/* The linked request (receipt) */
+.pf-linked {
+    border-radius: 12px;
+    border: 1px solid #c7d2fe;
+    background: #f5f7ff;
+    padding: 0.75rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.pf-linked-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.pf-linked-head strong {
+    font-size: 0.92rem;
+}
+
+.pf-linked-facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.pf-linked-facts div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.pf-linked-facts span {
+    font-size: 0.7rem;
+    color: var(--pf-muted);
+}
+
+.pf-linked-facts strong {
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: #e0e7ff;
+    overflow: hidden;
+}
+
+.pf-progress > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1, #10b981);
+    border-radius: inherit;
+    transition: width 0.25s;
+}
+
+.pf-missing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 1.1rem;
+    border-top: 1px dashed var(--pf-border);
+    font-size: 0.78rem;
+    color: var(--pf-muted);
+}
+
+.pf-missing button {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px dashed #a5b4fc;
+    background: #eef2ff;
+    color: #3730a3;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.pf-missing button:hover {
+    border-style: solid;
+}
+
+/* Catalogue toggle on narrow screens */
+.pf-catalog-toggle {
+    display: none;
+}
+
+/* Narrower than a wide desktop: one column, the catalogue folded above the
+   lines, the whole drawer scrolls. */
+@media (max-width: 1199px) {
+    .pf-drawer .el-drawer__body {
+        overflow-y: auto;
+    }
+
+    .pf-shell {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 0.75rem;
+        gap: 0.75rem;
+    }
+
+    .pf-doc {
+        overflow: visible;
+        padding: 0;
+    }
+
+    .pf-side {
+        order: -1;
+    }
+
+    .pf-side .pcat {
+        max-height: 460px;
+    }
+
+    .pf-side.is-folded .pcat {
+        display: none;
+    }
+
+    .pf-catalog-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.65rem 0.9rem;
+        border-radius: 12px;
+        border: 1px solid var(--pf-border);
+        background: #fff;
+        font-weight: 700;
+        font-size: 0.88rem;
+        cursor: pointer;
+        margin-bottom: 0.5rem;
+        width: 100%;
+        font-family: inherit;
+    }
+
+    .pf-bottom {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 720px) {
+    .pf-field,
+    .pf-field.span-4,
+    .pf-field.span-3,
+    .pf-field.span-8 {
+        grid-column: span 12;
+    }
+
+    .pf-linked-facts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pf-footer {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .pf-footer-actions {
+        width: 100%;
+    }
+
+    .pf-footer-actions .el-button {
+        flex: 1;
+    }
+
+    .pf-kbd-hint {
+        display: none;
+    }
+}
