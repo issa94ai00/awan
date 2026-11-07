@@ -722,6 +722,23 @@ class RmaController extends Controller
             ], 422);
         }
 
+        // Money back (or a replacement) for goods the customer still holds:
+        // a refund or exchange line is settled only once its goods are
+        // received. Settling it unreceived paid out — and booked the stock as
+        // never back — for goods that may never return. Lines recorded as
+        // missing, and discards (written off where they are), are settled
+        // without a receipt by design.
+        $unreceived = $rmaRequest->items->filter(fn (RmaItem $item) => in_array($item->resolution, [RmaItem::RESOLUTION_REFUND, RmaItem::RESOLUTION_EXCHANGE], true)
+            && $item->condition !== RmaItem::CONDITION_MISSING
+            && (int) $item->quantity_received <= 0);
+        if ($unreceived->isNotEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'استلم البضاعة المرتجعة أولاً: '.$unreceived->count().' بند (استرداد/تبديل) لم يُستلم بعد. البنود المفقودة أو المُتلفة لا تحتاج استلاماً.',
+                'data' => null,
+            ], 422);
+        }
+
         $request->validate([
             'refund_amount' => 'nullable|numeric|min:0',
             'refund_method' => 'nullable|string',
