@@ -16,6 +16,7 @@ use App\Models\LedgerAccount;
 use App\Models\Payment;
 use App\Models\Payroll;
 use App\Models\PurchaseReturn;
+use App\Models\StockMovement;
 use App\Models\SupplierPayment;
 use App\Models\Warehouse;
 use App\Services\CurrencyService;
@@ -1205,6 +1206,43 @@ class LedgerPostingService
      *   Dr  Sales returns        total
      *       Cr  Accounts receivable    total
      */
+    /**
+     * Goods a customer returned, back on the shelf.
+     *
+     *   Dr  Inventory — receiving warehouse   what they cost when sold
+     *       Cr  Cost of goods sold
+     *
+     * The sale moved their cost from inventory to cost of sales; taking them
+     * back moves it back. A movement out (a received count corrected down)
+     * posts the reverse. The credit note settles the money; this settles the
+     * goods.
+     */
+    public function postSalesReturnRestock(StockMovement $movement, string $label): ?JournalEntryHeader
+    {
+        $cost = $this->money(abs((float) $movement->total_cost));
+        if ($cost <= 0) {
+            return null;
+        }
+
+        $warehouseId = (int) $movement->warehouse_id;
+        $back = $movement->movement_type === StockMovement::TYPE_IN;
+
+        $inventory = ($warehouseId ? ['account_id' => $this->inventoryAccountIdFor($warehouseId)] : ['role' => 'inventory'])
+            + [($back ? 'debit' : 'credit') => $cost, 'warehouse_id' => $warehouseId ?: null,
+               'description' => ($back ? 'إعادة مخزون مرتجع - ' : 'تصحيح استلام مرتجع - ').$label];
+        $cogs = ['role' => 'cogs', ($back ? 'credit' : 'debit') => $cost, 'warehouse_id' => $warehouseId ?: null,
+                 'description' => ($back ? 'عكس تكلفة مبيعات مرتجعة - ' : 'تكلفة مرتجع مصحح - ').$label];
+
+        return $this->post(
+            key: 'rma_restock:' . $movement->id,
+            date: $movement->created_at?->toDateString() ?? now()->toDateString(),
+            description: 'مخزون مرتجع مبيعات ' . $label,
+            lines: [$inventory, $cogs],
+            reference: $movement,
+            module: 'rma',
+        );
+    }
+
     public function postCreditNote(CreditNote $creditNote): ?JournalEntryHeader
     {
         $total = $this->money($creditNote->total);

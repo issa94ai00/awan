@@ -48,6 +48,8 @@ class PurchaseReturnService
         }
 
         return DB::transaction(function () use ($items, $attributes) {
+            $this->guardReceiptQuantities($items, (int) ($attributes['purchase_receipt_id'] ?? 0));
+
             $warehouseId = (int) ($attributes['warehouse_id'] ?? 0) ?: $this->inventory->defaultWarehouseId();
 
             if (! $warehouseId) {
@@ -143,6 +145,48 @@ class PurchaseReturnService
 
             return $return->load(['items', 'supplier']);
         });
+    }
+
+    /**
+     * A return against a receipt cannot send back more of a line than the
+     * receipt brought in, less what earlier returns already took: the credit
+     * is priced from that receipt, so the excess would be credited at its
+     * price for goods it never delivered. Lines not on the receipt are free
+     * returns and are not capped here.
+     *
+     * @param  array<int,array{product_id:int,product_variant_id?:int|null,quantity:int}>  $items
+     */
+    private function guardReceiptQuantities(array $items, int $receiptId): void
+    {
+        $receipt = $receiptId ? PurchaseReceipt::with('items')->lockForUpdate()->find($receiptId) : null;
+        if (! $receipt) {
+            return;
+        }
+
+        $received = [];
+        foreach ($receipt->items as $item) {
+            $key = (int) $item->product_id.'-'.(int) ($item->product_variant_id ?? 0);
+            $received[$key] = ($received[$key] ?? 0) + (int) $item->quantity;
+        }
+
+        $returned = [];
+        foreach (PurchaseReturn::where('purchase_receipt_id', $receiptId)->with('items')->get() as $ret) {
+            foreach ($ret->items as $item) {
+                $key = (int) $item->product_id.'-'.(int) ($item->product_variant_id ?? 0);
+                $returned[$key] = ($returned[$key] ?? 0) + (int) $item->quantity;
+            }
+        }
+
+        foreach ($items as $line) {
+            $key = (int) $line['product_id'].'-'.(int) ($line['product_variant_id'] ?? 0);
+            if (! isset($received[$key])) {
+                continue;
+            }
+            $left = $received[$key] - ($returned[$key] ?? 0);
+            if ((int) $line['quantity'] > $left) {
+                throw new RuntimeException('الكمية المرتجعة ('.(int) $line['quantity'].') أكبر من المتبقي للإرجاع من الإيصال ('.max(0, $left).').');
+            }
+        }
     }
 
     /**

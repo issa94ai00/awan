@@ -7,11 +7,13 @@ use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\ProductVariant;
 use App\Models\RmaItem;
 use App\Models\RmaRequest;
 use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Models\WarehouseBin;
+use App\Services\Accounting\LedgerPostingService;
 use App\Services\AuditService;
 use App\Services\Inventory\InventoryService;
 use App\Services\RmaSettlementService;
@@ -341,6 +343,7 @@ class RmaController extends Controller
                 $rmaItem = $rmaRequest->items()->create([
                     'invoice_item_id' => $item['invoice_item_id'],
                     'product_id' => $invoiceItem->product_id,
+                    'product_variant_id' => $invoiceItem->product_variant_id,
                     'quantity_requested' => $item['quantity_requested'],
                     'quantity_received' => 0,
                     'condition' => $item['condition'],
@@ -600,9 +603,26 @@ class RmaController extends Controller
                     // and inflates the margin of whatever finally ships. The
                     // units are valued at what they cost to acquire (the variant
                     // cost when there is one, else the product's).
-                    $returnCost = (float) (
-                        $rmaItem->product_variant_id && $rmaItem->variant?->cost_price
-                            ? $rmaItem->variant->cost_price
+                    //
+                    // What they cost is what the sale took them out at: the
+                    // invoice line's cost, per stock unit. That is the figure
+                    // its cost-of-sales entry booked, so it is the one to put
+                    // back; today's average cost only stands in for a line
+                    // sold before costs were recorded.
+                    $invoiceItem = $rmaItem->invoiceItem;
+                    $factor = $invoiceItem?->stockFactor() ?? 1;
+                    $variantId = $rmaItem->product_variant_id ?: $invoiceItem?->product_variant_id;
+                    $soldUnits = $invoiceItem ? (int) $invoiceItem->quantity * $factor : 0;
+                    // A recorded cost of 0 is a fact (the units came off zero-cost
+                    // layers) and is put back as such; only a line with no cost
+                    // recorded at all falls back to today's.
+                    $saleCost = $invoiceItem && $invoiceItem->total_cost !== null && $soldUnits > 0
+                        ? (float) $invoiceItem->total_cost / $soldUnits
+                        : null;
+                    $variant = $variantId ? ProductVariant::find($variantId) : null;
+                    $returnCost = $saleCost ?? (float) (
+                        $variant?->cost_price
+                            ? $variant->cost_price
                             : ($rmaItem->product?->cost_price ?? 0)
                     );
 
@@ -614,9 +634,9 @@ class RmaController extends Controller
                     // re-submitting the same dialog can never double-book stock.
                     // Counted in the unit the invoice sold — two boxes back
                     // are 24 pieces on the shelf.
-                    app(InventoryService::class)->move(
+                    $movement = app(InventoryService::class)->move(
                         $rmaItem->product_id,
-                        $delta * ($rmaItem->invoiceItem?->stockFactor() ?? 1),
+                        $delta * $factor,
                         $warehouseId,
                         $delta > 0
                             ? StockMovement::TYPE_IN
@@ -632,6 +652,21 @@ class RmaController extends Controller
                             'created_by' => auth()->id(),
                         ]
                     );
+
+                    // The size sold keeps its own count, as the sale took it
+                    // down (InvoiceController) and a purchase brings it up.
+                    ProductVariant::adjustStockCount($variantId, $delta * $factor);
+
+                    // And the books: the goods are inventory again and no
+                    // longer a cost of sale. Without this the stock came back
+                    // while the inventory account stayed down and the cost
+                    // of sales stayed up by what they cost. Only for a sale
+                    // that booked a cost: an invoice from before costs were
+                    // recorded never took the goods out of the inventory
+                    // account, so there is nothing to put back.
+                    if ($movement && $saleCost !== null) {
+                        app(LedgerPostingService::class)->postSalesReturnRestock($movement, $rmaRequest->rma_number);
+                    }
                 }
             }
 
@@ -1023,6 +1058,7 @@ class RmaController extends Controller
                     $rmaItem = $rmaRequest->items()->create([
                         'invoice_item_id' => $item['invoice_item_id'],
                         'product_id' => $invoiceItem->product_id,
+                        'product_variant_id' => $invoiceItem->product_variant_id,
                         'quantity_requested' => $item['quantity_requested'],
                         'quantity_received' => 0,
                         'condition' => $item['condition'],
