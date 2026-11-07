@@ -469,8 +469,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
             // Employee Customers API
             Route::get('/employees/{employee}/customers', [EmployeeController::class, 'customers'])->name('api.admin.employees.customers');
-            Route::post('/employees/{employee}/customers/attach', [EmployeeController::class, 'attachCustomers'])->name('api.admin.employees.customers.attach');
-            Route::post('/employees/{employee}/customers/detach', [EmployeeController::class, 'detachCustomers'])->name('api.admin.employees.customers.detach');
+            // Deciding who serves a customer is an admin's call, as setting a
+            // customer's reps is (customers/{id}/sales-reps).
+            Route::post('/employees/{employee}/customers/attach', [EmployeeController::class, 'attachCustomers'])->middleware('role:admin')->name('api.admin.employees.customers.attach');
+            Route::post('/employees/{employee}/customers/detach', [EmployeeController::class, 'detachCustomers'])->middleware('role:admin')->name('api.admin.employees.customers.detach');
 
             // Employee Commission Statement API (عمولة + مسحوبات + رصيد)
             Route::get('/employee-commissions', [EmployeeCommissionController::class, 'index'])->name('api.admin.employee-commissions.index');
