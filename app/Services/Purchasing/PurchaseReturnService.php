@@ -2,6 +2,7 @@
 
 namespace App\Services\Purchasing;
 
+use App\Models\PurchaseReceipt;
 use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use App\Services\Accounting\LedgerPostingService;
@@ -73,6 +74,7 @@ class PurchaseReturnService
 
             $cost = 0.0;
             $credit = 0.0;
+            $receiptPrices = $this->receiptNetPrices((int) ($attributes['purchase_receipt_id'] ?? 0));
 
             foreach ($items as $line) {
                 $quantity = (int) $line['quantity'];
@@ -98,9 +100,13 @@ class PurchaseReturnService
                 $lineCost = $movement ? (float) $movement->total_cost : 0.0;
                 $unitCost = $quantity > 0 ? round($lineCost / $quantity, 5) : 0.0;
 
-                // What the supplier credits: their price when given, otherwise
-                // what we paid, which is the honest default.
-                $unitPrice = round((float) ($line['unit_price'] ?? $unitCost), 5);
+                // What the supplier credits: their price when given; otherwise
+                // what the receipt it reverses charged for it after its
+                // discount; otherwise what the units cost us.
+                $unitPrice = round((float) ($line['unit_price']
+                    ?? $receiptPrices[(int) $line['product_id'].'-'.($variantId ?? 0)]
+                    ?? $receiptPrices[(int) $line['product_id'].'-0']
+                    ?? $unitCost), 5);
 
                 $return->items()->create([
                     'product_id' => $line['product_id'],
@@ -137,6 +143,32 @@ class PurchaseReturnService
 
             return $return->load(['items', 'supplier']);
         });
+    }
+
+    /**
+     * What a receipt charged per unit for each of its lines, after its
+     * discount: the discount is on the receipt, not on its lines, so it is
+     * spread over the goods in proportion to their value — as the supplier's
+     * balance and the books took it when the goods came in.
+     *
+     * @return array<string,float>  keyed "productId-variantId" (0 for none)
+     */
+    private function receiptNetPrices(int $receiptId): array
+    {
+        $receipt = $receiptId ? PurchaseReceipt::with('items')->find($receiptId) : null;
+        if (! $receipt) {
+            return [];
+        }
+
+        $goods = (float) $receipt->items->sum(fn ($i) => (float) $i->quantity * (float) $i->unit_price);
+        $factor = $goods > 0 ? max(0, $goods - (float) ($receipt->discount ?? 0)) / $goods : 1.0;
+
+        $prices = [];
+        foreach ($receipt->items as $item) {
+            $prices[(int) $item->product_id.'-'.(int) ($item->product_variant_id ?? 0)] ??= round((float) $item->unit_price * $factor, 5);
+        }
+
+        return $prices;
     }
 
     /**

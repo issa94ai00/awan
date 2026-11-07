@@ -131,6 +131,14 @@ class PurchaseReceiptController extends Controller
         $validated['discount_percent'] = $discountPercent;
         unset($validated['discount_mode']);
 
+        // What a unit really cost once the receipt's discount is spread over
+        // its goods. The supplier is owed the discounted total and the books
+        // carry the goods at it (postGoodsReceipt), so stock must be valued at
+        // it too: valued at the list price, the FIFO layers and the average
+        // cost overstated the goods by the discount, and a later return was
+        // costed — and credited — at more than had ever been owed.
+        $netFactor = $goodsTotal > 0 ? max(0, $goodsTotal - $discount) / $goodsTotal : 1.0;
+
         $receiptTotal = round(
             max(0, $goodsTotal - $discount)
             + (float) ($validated['tax_amount'] ?? 0),
@@ -197,7 +205,7 @@ class PurchaseReceiptController extends Controller
         $inventory = app(\App\Services\Inventory\InventoryService::class);
 
         try {
-            $receipt = DB::transaction(function () use ($validated, $inventory, $variants, $paid, $payment) {
+            $receipt = DB::transaction(function () use ($validated, $inventory, $variants, $paid, $payment, $netFactor) {
                 $receipt = PurchaseReceipt::create($validated);
 
                 $products = Product::whereIn('id', collect($validated['items'])->pluck('product_id'))->get()->keyBy('id');
@@ -232,8 +240,10 @@ class PurchaseReceiptController extends Controller
                     // Warehouse stock and the product's average cost stay per
                     // product. What belongs to one size — its own count, what it
                     // cost and what it sells for — goes on the variant below.
+                    $netUnitCost = round((float) $item['unit_price'] * $netFactor, 5);
+
                     if ($variant) {
-                        $this->receiveIntoVariant($variant, $item);
+                        $this->receiveIntoVariant($variant, ['unit_price' => $netUnitCost] + $item);
                     }
 
                     $inventory->receive(
@@ -246,7 +256,7 @@ class PurchaseReceiptController extends Controller
                             'reference' => $receipt->receipt_number,
                             'source' => 'purchase_receipt',
                             'reason' => 'استلام من أمر شراء',
-                            'unit_cost' => $item['unit_price'],
+                            'unit_cost' => $netUnitCost,
                             'created_by' => auth()->id(),
                             // A purchase is real money paid, so it should move the
                             // product's reference cost — a weighted average with

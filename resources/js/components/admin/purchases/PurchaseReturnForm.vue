@@ -191,6 +191,9 @@
                             </div>
                             <div v-if="line.product_id" class="line-meta">
                                 <VariantChip v-if="line.product_variant_id" :label="line.variant_label" />
+                                <span v-if="line.listPrice != null && receiptDiscountPct > 0" class="net-price-note">
+                                    {{ $t('pret_net_of_discount', { price: formatAmount(line.listPrice), pct: receiptDiscountPct }) }}
+                                </span>
                                 <span v-if="line.received !== null">
                                     {{ $t('pret_received_n', { count: line.received }) }}
                                     <template v-if="line.alreadyReturned">
@@ -223,7 +226,7 @@
                         <el-input-number
                             v-model="line.unit_price"
                             :min="0"
-                            :precision="2"
+                            :step="0.01"
                             :controls="false"
                             :placeholder="line.cost !== null ? $t('pret_at_cost', { amount: formatAmount(line.cost) }) : $t('pret_at_cost_short')"
                             class="line-price"
@@ -365,6 +368,7 @@ const newLine = (patch = {}) => ({
     product: null,
     quantity: 1,
     unit_price: null,
+    listPrice: null,
     cost: null,
     available: null,
     received: null,
@@ -490,6 +494,7 @@ const onReceiptChange = async (receiptId) => {
     returnedByPick.value = returned;
 
     // One line per product, or per size of it, as the server books it.
+    const factor = receiptNetFactor(selectedReceipt.value);
     const groups = new Map();
     (selectedReceipt.value.items || []).forEach((item) => {
         const key = pickKey(item.product_id, item.product_variant_id);
@@ -502,7 +507,9 @@ const onReceiptChange = async (receiptId) => {
                 product: item.product,
                 variant: item.variant || null,
                 received: Number(item.quantity),
-                price: Number(item.unit_price),
+                // What the supplier charged per unit after the receipt's discount.
+                price: round5(Number(item.unit_price) * factor),
+                listPrice: Number(item.unit_price),
             });
         }
     });
@@ -531,11 +538,30 @@ const onReceiptChange = async (receiptId) => {
 // The chosen delivery's lines by product-and-size, and what earlier returns
 // already took back against each, so a line knows what it can still return.
 const receiptGroups = ref(new Map());
+
+/**
+ * The share of a delivery's list prices the supplier actually charged: its
+ * discount is on the whole receipt, spread over the goods by value — as the
+ * supplier's balance and the books took it. A return is credited at the same
+ * net figure, or it takes back more than was ever owed (PurchaseReturnService
+ * defaults to it too).
+ */
+const receiptNetFactor = (receipt) => {
+    const goods = (receipt?.items || []).reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0);
+    const discount = Number(receipt?.discount) || 0;
+    return goods > 0 && discount > 0 ? Math.max(0, goods - discount) / goods : 1;
+};
+const round5 = (n) => Math.round(n * 100000) / 100000;
+const receiptDiscountPct = computed(() => {
+    const factor = receiptNetFactor(selectedReceipt.value);
+    return factor < 1 ? Math.round((1 - factor) * 10000) / 100 : 0;
+});
 const returnedByPick = ref({});
 
 const applyReceiptInfo = (line) => {
     const info = line.pick ? receiptGroups.value.get(line.pick) : null;
     if (!info) {
+        line.listPrice = null;
         line.received = null;
         line.alreadyReturned = 0;
         line.returnable = null;
@@ -543,6 +569,7 @@ const applyReceiptInfo = (line) => {
     }
     const alreadyReturned = returnedByPick.value[line.pick] || 0;
     line.unit_price = info.price;
+    line.listPrice = info.listPrice;
     line.received = info.received;
     line.alreadyReturned = alreadyReturned;
     line.returnable = Math.max(0, info.received - alreadyReturned);
@@ -553,7 +580,10 @@ const receiptTaxShare = computed(() => {
     const receipt = selectedReceipt.value;
     const tax = Number(receipt?.tax_amount) || 0;
     if (!receipt || !tax) return null;
-    const goods = (receipt.items || []).reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0);
+    // The credit is at discounted prices, so it is set against the discounted
+    // goods: returning everything gives back exactly the receipt's tax.
+    const goods = (receipt.items || []).reduce((sum, i) => sum + Number(i.quantity) * Number(i.unit_price), 0)
+        * receiptNetFactor(receipt);
     if (!goods) return null;
     return Math.round((tax * creditTotal.value / goods) * 100) / 100;
 });
@@ -668,6 +698,7 @@ const duplicateLine = (index) => {
         product: src.product,
         quantity: src.quantity,
         unit_price: src.unit_price,
+        listPrice: src.listPrice,
         cost: src.cost,
         available: src.available,
         received: src.received,
@@ -887,6 +918,7 @@ const submit = async () => {
 .size-chip span { unicode-bidi: isolate; }
 .size-chip small { font-size: 0.66rem; color: #b45309; padding-inline-start: 0.3rem; border-inline-start: 1px solid #fde68a; }
 .line-meta .is-warn { color: #d97706; font-weight: 600; }
+.line-meta .net-price-note { color: #047857; font-weight: 600; }
 .line-warning { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #d97706; margin-top: 0.2rem; }
 
 .line-total { padding-top: 0.45rem; font-weight: 600; }
