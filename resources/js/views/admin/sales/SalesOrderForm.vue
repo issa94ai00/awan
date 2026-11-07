@@ -1,121 +1,85 @@
 <template>
-    <div class="order-form-page">
-        <AdminPageHeader
-            icon="fas fa-file-invoice text-primary"
-            :title="isEdit ? t('edit_sales_order') : t('create_sales_order')"
-            :subtitle="isEdit && loadedOrder ? `${t('order_number')}: ${loadedOrder.order_number}` : t('create_order_subtitle')"
-        >
-            <template #actions>
-                <el-button @click="goBack">
-                    <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_sales_orders') }}
-                </el-button>
+    <div class="pf-page order-form-page">
+        <!-- Header: what this is, and the way out -->
+        <header class="pf-page-head">
+            <div class="pf-title">
+                <span class="pf-title-icon is-order"><i class="fas fa-file-invoice"></i></span>
+                <div>
+                    <h2>
+                        {{ isEdit ? t('edit_sales_order') : t('create_sales_order') }}
+                        <span v-if="isEdit && loadedOrder" class="pf-title-tag" dir="ltr">{{ loadedOrder.order_number }}</span>
+                        <span v-if="isEdit && loadedOrder" class="pf-title-tag">{{ statusLabel(loadedOrder.status) }}</span>
+                    </h2>
+                    <p>{{ t('create_order_subtitle') }}</p>
+                </div>
+            </div>
+            <div class="pf-page-actions">
+                <span v-if="draftSavedAt" class="pf-hint">
+                    <i class="fas fa-floppy-disk"></i> {{ t('so_kept_on_this_device', { time: draftSavedAt }) }}
+                </span>
                 <el-button v-if="!isEdit && form.items.length" text type="danger" @click="clearOrder">
                     <i class="fas fa-trash-can"></i>&nbsp;{{ t('clear_the_form') }}
                 </el-button>
-            </template>
-        </AdminPageHeader>
-
-        <!--
-            Status bar. The form is one long page, so the running total, the
-            shortage count and the list of what is still missing were all either
-            below the fold or buried under a single alert at the very bottom.
-            Sticking them to the top keeps the answer to "what will this cost and
-            can I save yet" one glance away no matter how many lines are added.
-
-            Its own `v-if`, deliberately outside the skeleton/locked/form chain
-            below: a chained `v-else-if` here would satisfy itself on every
-            editable screen and stop the form from rendering at all.
-        -->
-        <div
-            v-if="!loading && !isLocked"
-            class="status-bar"
-            :class="issues.length ? 'is-blocked' : 'is-ready'"
-        >
-            <div class="sb-lead">
-                <i :class="issues.length ? 'fas fa-circle-exclamation' : 'fas fa-circle-check'"></i>
-                <span class="sb-lead-text">
-                    {{ issues.length ? t('so_to_finish') : t('so_ready_to_save') }}
-                </span>
-                <span v-if="issues.length" class="sb-count">{{ issues.length }}</span>
+                <el-button @click="goBack">
+                    <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_sales_orders') }}
+                </el-button>
             </div>
+        </header>
 
-            <ul v-if="issues.length" class="sb-issues">
-                <li v-for="issue in issues" :key="issue.key">
-                    <button type="button" class="sb-issue" @click="goToIssue(issue)">
-                        <i class="fas fa-angle-left" aria-hidden="true"></i>
-                        {{ issue.text }}
-                    </button>
-                </li>
-            </ul>
+        <section v-if="loading" class="pf-card pf-skeleton">
+            <el-skeleton :rows="8" animated />
+        </section>
 
-            <div class="sb-tail">
-                <div class="sb-metrics" aria-live="polite">
-                    <span class="sb-metric">{{ t('so_items_n', { count: form.items.length }) }}</span>
-                    <span class="sb-dot" aria-hidden="true">·</span>
-                    <span class="sb-metric">{{ t('pieces_count', { count: pieces }) }}</span>
-                    <span class="sb-total">
-                        <span class="sb-total-label">{{ t('total') }}</span>
-                        <strong>{{ formatCurrency(total) }}</strong>
-                    </span>
-                </div>
-
-                <span v-if="overStockLines.length" class="sb-flag is-warn">
-                    <i class="fas fa-triangle-exclamation"></i>
-                    {{ t('so_lines_over_stock_n', { count: overStockLines.length }) }}
-                </span>
-
-                <span v-if="draftSavedAt" class="sb-flag is-muted">
-                    <i class="fas fa-floppy-disk"></i>
-                    {{ t('so_kept_on_this_device', { time: draftSavedAt }) }}
-                </span>
-            </div>
-        </div>
-
-        <!-- Loading skeleton -->
-        <el-skeleton v-if="loading" :rows="8" animated class="order-skeleton" />
-
-        <!-- Locked order: confirmed orders cannot have lines rewritten -->
-        <section v-else-if="isLocked" class="locked">
-            <i class="fas fa-lock locked-icon"></i>
+        <!-- Locked order: its lines cannot be rewritten from here -->
+        <section v-else-if="isLocked" class="pf-card sf-locked">
+            <i class="fas fa-lock sf-locked-icon"></i>
             <h2>{{ t('so_locked_title') }}</h2>
             <p>{{ lockedReason }}</p>
-            <dl class="locked-facts">
+            <dl>
                 <div><dt>{{ t('status') }}</dt><dd>{{ statusLabel(loadedOrder?.status) }}</dd></div>
                 <div><dt>{{ t('customer') }}</dt><dd>{{ loadedOrder?.customer?.name || '—' }}</dd></div>
                 <div><dt>{{ t('grand_total') }}</dt><dd>{{ formatCurrency(loadedOrder?.total) }}</dd></div>
             </dl>
-            <div class="locked-actions">
-                <el-button type="primary" @click="openOrder(orderId)">
-                    <i class="fas fa-eye"></i>&nbsp;{{ t('open_order_to_follow_stages') }}
-                </el-button>
-            </div>
-            <p class="locked-note">{{ t('so_rep_locked_note') }}</p>
+            <el-button type="primary" @click="openOrder(orderId)">
+                <i class="fas fa-eye"></i>&nbsp;{{ t('open_order_to_follow_stages') }}
+            </el-button>
+            <p class="pf-hint" style="margin-top: 1rem">{{ t('so_rep_locked_note') }}</p>
         </section>
 
-        <!-- New / Edit Form View Matching Quotes New Form UI/UX -->
-        <div v-else ref="formRoot" class="order-form-container panel-card">
-            <el-form label-position="top" class="quote-form order-form" @submit.prevent>
+        <div v-else class="pf-shell">
+            <div ref="formRoot" class="pf-doc">
+                <!-- What the server refused -->
+                <el-alert
+                    v-if="serverErrors.length"
+                    type="error"
+                    show-icon
+                    :title="t('please_fix_these_errors')"
+                    @close="serverErrors = []"
+                >
+                    <ul class="pf-alerts">
+                        <li v-for="(err, idx) in serverErrors" :key="idx">{{ err }}</li>
+                    </ul>
+                </el-alert>
+
                 <!-- Past confirmation only the lines and their pricing change. -->
                 <el-alert
                     v-if="amending"
                     type="warning"
                     :closable="false"
                     show-icon
-                    class="amend-notice"
                     :title="t('so_amend_title', { status: statusLabel(loadedOrder?.status) })"
                     :description="t(['shipped', 'delivered'].includes(loadedOrder?.status) ? 'so_amend_notice_shipped' : 'so_amend_notice')"
                 />
                 <!-- Past the pending stage an edit is saved as a new version; the current one is kept. -->
-                <el-alert
-                    v-if="versioning"
-                    type="info"
-                    :closable="false"
-                    show-icon
-                    class="amend-notice"
-                    :title="t('so_new_revision_title', { next: currentRevision + 1 })"
-                    :description="t('so_new_revision_notice', { current: currentRevision })"
-                />
-                <el-form-item v-if="versioning" :label="t('so_revision_note')" class="revision-note">
+                <section v-if="versioning" class="pf-card pf-card-pad">
+                    <el-alert
+                        type="info"
+                        :closable="false"
+                        show-icon
+                        :title="t('so_new_revision_title', { next: currentRevision + 1 })"
+                        :description="t('so_new_revision_notice', { current: currentRevision })"
+                    />
+                    <span class="pf-label" style="margin: 0.75rem 0 0.4rem">{{ t('so_revision_note') }}</span>
                     <el-input
                         v-model="revisionNote"
                         type="textarea"
@@ -124,647 +88,271 @@
                         show-word-limit
                         :placeholder="t('so_revision_note_ph')"
                     />
-                </el-form-item>
-                <!-- ── Head Grid: Customer & Delivery Date ── -->
-                <div class="head-grid">
-                    <!-- Customer Selection -->
-                    <el-form-item
-                        :label="$t('customer')"
-                        required
-                        :error="fieldError('customer_id')"
-                        :class="{ 'is-flagged': isFlagged('customer_id') }"
-                    >
-                        <div class="customer-pick-row">
-                            <el-select
-                                ref="customerSelect"
-                                v-model="form.customer_id"
-                                filterable
-                                remote
-                                :clearable="!amending"
-                                :disabled="amending"
-                                :remote-method="searchCustomers"
-                                :loading="customersLoading"
-                                :placeholder="$t('qt_find_customer')"
-                                class="customer-select"
-                                @focus="customerOptions.length <= 1 && searchCustomers('')"
-                                @visible-change="(vis) => vis && customerOptions.length <= 1 && searchCustomers('')"
-                                @change="onCustomerChange"
-                            >
-                                <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
-                                    <div class="option-row">
-                                        <span class="option-name">{{ c.name }}</span>
-                                        <span class="option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
-                                    </div>
-                                </el-option>
+                </section>
 
-                                <!-- Nothing matched: offer to create the typed client in place -->
-                                <template #empty>
-                                    <div class="customer-empty">
-                                        <template v-if="customersLoading">
-                                            <i class="fas fa-spinner fa-spin"></i>&nbsp;{{ $t('loading') }}
-                                        </template>
-                                        <template v-else>
-                                            <p class="customer-empty-text">
-                                                {{ customerQuery ? $t('qt_no_customer_match', { query: customerQuery }) : $t('qt_no_customers_yet') }}
-                                            </p>
-                                            <button v-if="canAddCustomer" type="button" class="customer-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
-                                                <i class="fas fa-user-plus"></i>
-                                                <span>{{ customerQuery ? $t('qt_add_as_customer', { query: customerQuery }) : $t('qt_new_customer') }}</span>
-                                            </button>
-                                        </template>
-                                    </div>
-                                </template>
-                            </el-select>
+                <!-- Who, from where and when -->
+                <section ref="headRef" class="pf-card pf-card-pad">
+                    <div class="pf-fields">
+                        <div class="pf-field span-8" :class="{ 'is-flagged': isFlagged('customer_id') || !!errors.customer_id }">
+                            <span class="pf-label">{{ t('customer') }} <span class="pf-req">*</span></span>
+                            <div class="sf-customer-row">
+                                <el-select
+                                    ref="customerSelect"
+                                    v-model="form.customer_id"
+                                    filterable
+                                    remote
+                                    :clearable="!amending"
+                                    :disabled="amending"
+                                    :remote-method="searchCustomers"
+                                    :loading="customersLoading"
+                                    :placeholder="t('qt_find_customer')"
+                                    @focus="customerOptions.length <= 1 && searchCustomers('')"
+                                    @visible-change="(vis) => vis && customerOptions.length <= 1 && searchCustomers('')"
+                                    @change="onCustomerChange"
+                                >
+                                    <el-option v-for="c in customerOptions" :key="c.id" :label="c.name" :value="c.id">
+                                        <div class="sf-option-main">
+                                            <span class="sf-option-name">{{ c.name }}</span>
+                                            <span class="sf-option-meta" dir="ltr">{{ c.phone || c.company || '' }}</span>
+                                        </div>
+                                    </el-option>
 
-                            <el-tooltip v-if="canAddCustomer" :content="$t('qt_new_customer')" placement="top" :show-after="400">
-                                <button
-                                    type="button"
-                                    class="customer-add-btn"
-                                    :class="{ 'is-on': quickCustomer.open }"
+                                    <!-- Nothing matched: offer to create the typed client in place -->
+                                    <template #empty>
+                                        <div class="sf-select-empty">
+                                            <template v-if="customersLoading">
+                                                <i class="fas fa-spinner fa-spin"></i>&nbsp;{{ t('loading') }}
+                                            </template>
+                                            <template v-else>
+                                                <p>{{ customerQuery ? t('qt_no_customer_match', { query: customerQuery }) : t('qt_no_customers_yet') }}</p>
+                                                <button v-if="canAddCustomer" type="button" class="sf-select-empty-add" @mousedown.prevent @click="openQuickCustomer(customerQuery)">
+                                                    <i class="fas fa-user-plus"></i>
+                                                    {{ customerQuery ? t('qt_add_as_customer', { query: customerQuery }) : t('qt_new_customer') }}
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </el-select>
+                                <el-button
+                                    v-if="canAddCustomer && !amending"
+                                    plain
+                                    :title="t('qt_new_customer')"
                                     :aria-expanded="quickCustomer.open"
                                     @click="toggleQuickCustomer"
                                 >
-                                    <i class="fas" :class="quickCustomer.open ? 'fa-times' : 'fa-user-plus'"></i>
-                                    <span class="customer-add-label">{{ quickCustomer.open ? $t('cancel') : $t('qt_new_customer') }}</span>
-                                </button>
-                            </el-tooltip>
+                                    <i class="fas" :class="quickCustomer.open ? 'fa-xmark' : 'fa-user-plus'"></i>
+                                </el-button>
+                            </div>
+                            <small v-if="fieldError('customer_id')" class="pf-field-error">{{ fieldError('customer_id') }}</small>
+
+                            <small v-if="selectedCustomer && !quickCustomer.open" class="sf-customer-facts">
+                                <span v-if="selectedCustomer.phone"><i class="fas fa-phone"></i> <span dir="ltr">{{ selectedCustomer.phone }}</span></span>
+                                <span v-if="selectedCustomer.company"><i class="fas fa-building"></i> {{ selectedCustomer.company }}</span>
+                                <span v-if="Number(selectedCustomer.balance) > 0" class="is-warn">
+                                    <i class="fas fa-wallet"></i> {{ t('customer_credit') }}: {{ formatCurrency(selectedCustomer.balance) }}
+                                </span>
+                                <span v-if="creditCheck && creditCheck.over" class="is-danger">
+                                    <i class="fas fa-triangle-exclamation"></i> {{ t('credit_limit_exceeded') }} ({{ formatCurrency(creditCheck.limit) }})
+                                </span>
+                                <span v-if="selectedCustomer.id === justAddedCustomerId" class="is-fresh">
+                                    <i class="fas fa-check-circle"></i> {{ t('qt_customer_just_added') }}
+                                </span>
+                            </small>
+
+                            <transition name="el-zoom-in-top">
+                                <CustomerQuickAdd
+                                    v-if="quickCustomer.open"
+                                    :seed="quickCustomer.seed"
+                                    @select="onQuickCustomerSelect"
+                                    @close="closeQuickCustomer"
+                                />
+                            </transition>
                         </div>
 
-                        <!-- Customer Info Strip -->
-                        <div v-if="selectedCustomer && !quickCustomer.open" class="customer-info-strip">
-                            <span v-if="selectedCustomer.phone" class="cust-info-item">
-                                <i class="fas fa-phone"></i>&nbsp;<span dir="ltr">{{ selectedCustomer.phone }}</span>
-                            </span>
-                            <span v-if="selectedCustomer.company" class="cust-info-item">
-                                <i class="fas fa-building"></i>&nbsp;{{ selectedCustomer.company }}
-                            </span>
-                            <span v-if="Number(selectedCustomer.balance) > 0" class="cust-info-item warn">
-                                <i class="fas fa-wallet"></i>&nbsp;{{ $t('customer_credit') }}: {{ formatCurrency(selectedCustomer.balance) }}
-                            </span>
-                            <span v-if="creditCheck && creditCheck.over" class="cust-info-item danger">
-                                <i class="fas fa-triangle-exclamation"></i>&nbsp;{{ $t('credit_limit_exceeded') }} ({{ formatCurrency(creditCheck.limit) }})
-                            </span>
-                            <span v-if="selectedCustomer.id === justAddedCustomerId" class="cust-info-item fresh">
-                                <i class="fas fa-check-circle"></i>&nbsp;{{ $t('qt_customer_just_added') }}
-                            </span>
-                        </div>
-
-                        <transition name="qc-slide">
-                            <CustomerQuickAdd
-                                v-if="quickCustomer.open"
-                                :seed="quickCustomer.seed"
-                                @select="onQuickCustomerSelect"
-                                @close="closeQuickCustomer"
+                        <div class="pf-field span-4" :class="{ 'is-flagged': isFlagged('expected_delivery') || !!errors.expected_delivery }">
+                            <span class="pf-label">{{ t('expected_delivery_date') }}</span>
+                            <el-date-picker
+                                ref="deliveryPicker"
+                                v-model="form.expected_delivery"
+                                type="date"
+                                value-format="YYYY-MM-DD"
+                                format="YYYY-MM-DD"
+                                :placeholder="t('choose_delivery_date')"
+                                style="width: 100%"
                             />
-                        </transition>
-                    </el-form-item>
-
-                    <!-- Expected Delivery Date with Quick Day Chips -->
-                    <el-form-item
-                        :label="$t('expected_delivery_date')"
-                        :error="fieldError('expected_delivery')"
-                        :class="{ 'is-flagged': isFlagged('expected_delivery') }"
-                    >
-                        <el-date-picker
-                            ref="deliveryPicker"
-                            v-model="form.expected_delivery"
-                            type="date"
-                            value-format="YYYY-MM-DD"
-                            format="YYYY-MM-DD"
-                            :placeholder="$t('choose_delivery_date')"
-                            style="width: 100%"
-                        />
-                        <div class="quick-days" role="group" :aria-label="$t('expected_delivery_date')">
-                            <button
-                                v-for="days in [0, 3, 7, 14, 30]"
-                                :key="days"
-                                type="button"
-                                class="chip"
-                                :aria-pressed="form.expected_delivery === inDays(days)"
-                                :class="{ 'is-on': form.expected_delivery === inDays(days) }"
-                                @click="form.expected_delivery = inDays(days)"
-                            >
-                                {{ days === 0 ? $t('today') : $t('qt_days_n', { count: days }) }}
-                            </button>
+                            <div class="pf-chips" role="group" :aria-label="t('expected_delivery_date')">
+                                <button
+                                    v-for="days in [0, 3, 7, 14, 30]"
+                                    :key="days"
+                                    type="button"
+                                    class="pf-chip-btn"
+                                    :class="{ 'is-active': form.expected_delivery === inDays(days) }"
+                                    :aria-pressed="form.expected_delivery === inDays(days)"
+                                    @click="form.expected_delivery = inDays(days)"
+                                >
+                                    {{ days === 0 ? t('today') : t('qt_days_n', { count: days }) }}
+                                </button>
+                            </div>
+                            <small v-if="fieldError('expected_delivery')" class="pf-field-error">{{ fieldError('expected_delivery') }}</small>
                         </div>
-                    </el-form-item>
-                </div>
 
-                <!-- ── Secondary Head Grid: Fulfilment, Warehouse, Order Date ── -->
-                <div class="head-subgrid">
-                    <el-form-item :label="$t('so_fulfillment_type')">
-                        <el-select v-model="form.fulfillment_type" :disabled="amending" style="width: 100%">
-                            <el-option value="ship" :label="$t('so_shipping_transfer')" />
-                            <el-option value="pickup" :label="$t('so_pickup_branch')" />
-                            <el-option value="delivery" :label="$t('so_direct_delivery')" />
-                        </el-select>
-                    </el-form-item>
+                        <div class="pf-field span-3">
+                            <span class="pf-label"><i class="fas fa-truck"></i> {{ t('so_fulfillment_type') }}</span>
+                            <el-select v-model="form.fulfillment_type" :disabled="amending">
+                                <el-option value="ship" :label="t('so_shipping_transfer')" />
+                                <el-option value="pickup" :label="t('so_pickup_branch')" />
+                                <el-option value="delivery" :label="t('so_direct_delivery')" />
+                            </el-select>
+                        </div>
 
-                    <el-form-item :label="$t('choose_warehouse')">
-                        <el-select
-                            v-model="form.fulfillment_warehouse_id"
-                            filterable
-                            :clearable="!authStore.isSalesRep && !amending"
-                            :disabled="authStore.isSalesRep || amending"
-                            :placeholder="$t('choose_warehouse_placeholder')"
-                            style="width: 100%"
-                        >
-                            <el-option
-                                v-for="wh in warehouses"
-                                :key="wh.id"
-                                :label="wh.name"
-                                :value="wh.id"
-                            >
-                                <div class="option-row">
-                                    <span>{{ wh.name }}</span>
-                                    <span v-if="wh.code" class="option-meta" dir="ltr">{{ wh.code }}</span>
-                                </div>
-                            </el-option>
-                        </el-select>
-                    </el-form-item>
-
-                    <el-form-item :label="$t('order_date')">
-                        <el-date-picker
-                            v-model="form.order_date"
-                            type="date"
-                            value-format="YYYY-MM-DD"
-                            format="YYYY-MM-DD"
-                            style="width: 100%"
-                        />
-                    </el-form-item>
-
-                    <!-- Who the order is credited to: the customer's own rep by
-                         default; a rep's orders are always their own. -->
-                    <el-form-item :label="$t('sales_representative')">
-                        <el-select
-                            v-model="form.assigned_employee_id"
-                            filterable
-                            :clearable="!isSellsRole"
-                            :disabled="isSellsRole"
-                            :loading="employeesLoading"
-                            :placeholder="$t('so_rep_placeholder')"
-                            style="width: 100%"
-                        >
-                            <el-option v-for="e in salesEmployees" :key="e.id" :label="e.name" :value="e.id" />
-                        </el-select>
-                        <small v-if="repFromCustomer && form.assigned_employee_id === repFromCustomer" class="rep-hint">
-                            <i class="fas fa-link"></i> {{ $t('so_rep_from_customer') }}
-                        </small>
-                    </el-form-item>
-                </div>
-
-                <!-- ── Lines Section ── -->
-                <div class="lines-head-top">
-                    <div class="lines-title">
-                        <h4>{{ $t('items') }}</h4>
-                        <span v-if="form.items.length" class="lines-badge">
-                            {{ form.items.length }} {{ $t('product') }} &bull; {{ pieces }} {{ $t('piece') }}
-                        </span>
-                        <span v-if="overStockLines.length" class="lines-badge is-warn">
-                            <i class="fas fa-triangle-exclamation"></i>
-                            {{ $t('so_over_stock_n', { count: overStockLines.length }) }}
-                        </span>
-                    </div>
-
-                    <div v-if="form.items.length" class="lines-summary-quick">
-                        <span class="subtotal-pill">
-                            <span class="lbl">{{ $t('subtotal') }}:</span>
-                            <strong>{{ formatCurrency(subtotal) }}</strong>
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Modern Interactive Search & Category Filter Panel (Stays Open While Adding!) -->
-                <div ref="quickSearchContainerRef" class="quote-search-panel order-search-panel" @mousedown.stop>
-                    <div class="quote-search-header-row">
-                        <!-- Category Filter Dropdown -->
-                        <div class="search-category-select-wrap">
+                        <div class="pf-field span-3">
+                            <span class="pf-label"><i class="fas fa-warehouse"></i> {{ t('choose_warehouse') }}</span>
                             <el-select
-                                v-model="selectedCategoryId"
-                                clearable
+                                v-model="form.fulfillment_warehouse_id"
                                 filterable
-                                :placeholder="$t('qt_filter_category') || $t('category')"
-                                class="category-filter-select"
-                                :loading="categoriesLoading"
-                                @change="onCategoryFilterChange"
+                                :clearable="!authStore.isSalesRep && !amending"
+                                :disabled="authStore.isSalesRep || amending"
+                                :placeholder="t('choose_warehouse_placeholder')"
                             >
-                                <template #prefix>
-                                    <i class="fas fa-folder-tree text-muted"></i>
-                                </template>
-                                <el-option
-                                    :value="null"
-                                    :label="$t('qt_all_categories') || $t('all_categories')"
-                                >
-                                    <span class="category-all-label">
-                                        <i class="fas fa-layer-group"></i> {{ $t('qt_all_categories') || $t('all_categories') }}
-                                    </span>
-                                </el-option>
-                                <el-option
-                                    v-for="cat in categoryOptions"
-                                    :key="cat.id"
-                                    :value="cat.id"
-                                    :label="cat.label"
-                                >
-                                    <div class="category-option-row" :class="{ 'is-sub': cat.parent_id }">
-                                        <i :class="cat.parent_id ? 'fas fa-arrow-turn-down-right cat-sub-icon' : 'fas fa-folder cat-root-icon'"></i>
-                                        <span>{{ cat.label }}</span>
+                                <el-option v-for="wh in warehouses" :key="wh.id" :label="wh.name" :value="wh.id">
+                                    <div class="sf-option-main">
+                                        <span>{{ wh.name }}</span>
+                                        <span v-if="wh.code" class="sf-option-meta" dir="ltr">{{ wh.code }}</span>
                                     </div>
                                 </el-option>
                             </el-select>
                         </div>
 
-                        <!-- Fast Search Input -->
-                        <div class="search-input-box">
-                            <el-input
-                                ref="quickSearchInputRef"
-                                v-model="quickSearchQuery"
-                                :placeholder="$t('qt_product_search_placeholder')"
-                                clearable
-                                class="quote-search-input"
-                                @focus="onQuickSearchFocus"
-                                @input="onQuickSearchInput"
-                                @clear="onQuickSearchClear"
-                                @keydown.enter.prevent="onQuickSearchEnter"
-                                @keydown.esc="quickSearchOpen = false"
+                        <div class="pf-field span-3">
+                            <span class="pf-label"><i class="fas fa-calendar"></i> {{ t('order_date') }}</span>
+                            <el-date-picker
+                                v-model="form.order_date"
+                                type="date"
+                                value-format="YYYY-MM-DD"
+                                format="YYYY-MM-DD"
+                                style="width: 100%"
+                            />
+                        </div>
+
+                        <!-- Who the order is credited to: the customer's own rep by
+                             default; a rep's orders are always their own. -->
+                        <div class="pf-field span-3">
+                            <span class="pf-label"><i class="fas fa-user-tie"></i> {{ t('sales_representative') }}</span>
+                            <el-select
+                                v-model="form.assigned_employee_id"
+                                filterable
+                                :clearable="!isSellsRole"
+                                :disabled="isSellsRole"
+                                :loading="employeesLoading"
+                                :placeholder="t('so_rep_placeholder')"
                             >
-                                <template #prefix>
-                                    <i v-if="!quickSearchLoading" class="fas fa-magnifying-glass search-icon"></i>
-                                    <i v-else class="fas fa-spinner fa-spin search-icon text-primary"></i>
-                                </template>
-                                <template #suffix>
-                                    <kbd class="key-hint" title="F2">F2</kbd>
-                                </template>
-                            </el-input>
+                                <el-option v-for="e in salesEmployees" :key="e.id" :label="e.name" :value="e.id" />
+                            </el-select>
+                            <small v-if="repFromCustomer && form.assigned_employee_id === repFromCustomer" class="pf-hint">
+                                <i class="fas fa-link"></i> {{ t('so_rep_from_customer') }}
+                            </small>
                         </div>
-
-                        <!-- Catalog / Suggestions Toggle Button -->
-                        <button
-                            type="button"
-                            class="btn-toggle-catalog"
-                            :class="{ 'is-active': quickSearchOpen }"
-                            :title="quickSearchOpen ? $t('qt_close_search') : ($t('so_suggested_products') || $t('qt_suggested_products'))"
-                            @click.stop.prevent="quickSearchOpen = !quickSearchOpen"
-                        >
-                            <i class="fas" :class="quickSearchOpen ? 'fa-chevron-up' : 'fa-boxes-stacked'"></i>
-                            <span class="btn-text">{{ quickSearchOpen ? $t('qt_close_search') : ($t('so_suggested_products') || $t('qt_suggested_products')) }}</span>
-                            <span v-if="quickSearchResults.length" class="count-badge">{{ quickSearchResults.length }}</span>
-                        </button>
-
-                        <!-- Not in the catalogue yet: create it without leaving the order -->
-                        <button
-                            type="button"
-                            class="btn-new-product"
-                            :title="`${$t('pqa_title')} (F4)`"
-                            @click.stop.prevent="openQuickProduct()"
-                        >
-                            <i class="fas fa-plus"></i>
-                            <span class="btn-text">{{ $t('pqa_button') }}</span>
-                            <kbd class="key-hint">F4</kbd>
-                        </button>
                     </div>
+                </section>
 
-                    <!-- Quick Category Chips Bar -->
-                    <div v-if="topCategories.length" class="category-quick-chips">
-                        <button
-                            type="button"
-                            class="cat-chip-btn"
-                            :class="{ 'is-active': !selectedCategoryId }"
-                            @click="setCategoryFilter(null)"
-                        >
-                            <i class="fas fa-layer-group"></i>
-                            <span>{{ $t('qt_all_categories') || $t('all_categories') }}</span>
-                        </button>
-                        <button
-                            v-for="cat in topCategories"
-                            :key="cat.id"
-                            type="button"
-                            class="cat-chip-btn"
-                            :class="{ 'is-active': selectedCategoryId === cat.id }"
-                            @click="setCategoryFilter(cat.id)"
-                        >
-                            <i class="fas fa-tag"></i>
-                            <span>{{ cat.label }}</span>
-                        </button>
-                    </div>
-
-                    <!-- Suggested Search & Catalog Dropdown Panel (Stays Open While Adding!) -->
-                    <transition name="el-zoom-in-top">
-                        <div
-                            v-if="quickSearchOpen"
-                            class="quote-suggested-panel order-suggested-panel"
-                            @click.stop
-                        >
-                            <!-- Top Strip -->
-                            <div class="dropdown-top-strip">
-                                <div class="strip-left">
-                                    <i class="fas fa-boxes-stacked text-primary"></i>
-                                    <strong>{{ selectedCategoryName || $t('so_suggested_products') || $t('qt_suggested_products') }}</strong>
-                                    <span class="results-badge">{{ quickSearchResults.length }}</span>
-                                    <span v-if="quickSearchQuery" class="search-term-badge">
-                                        "{{ quickSearchQuery }}"
-                                    </span>
-                                </div>
-                                <div class="strip-right">
-                                    <span class="keep-open-pill">
-                                        <i class="fas fa-thumbtack text-success"></i>
-                                        {{ $t('po_search_hint') || 'القائمة تبقى مفتوحة لتتمكن من إضافة عدة أصناف متتالية بسهولة' }}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        class="close-dropdown-btn"
-                                        :title="$t('close')"
-                                        @click.stop="quickSearchOpen = false"
-                                    >
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Products List Scroll -->
-                            <div class="suggested-list-scroll">
-                                <div v-if="quickSearchLoading" class="suggested-loading-state">
-                                    <i class="fas fa-circle-notch fa-spin text-primary"></i>
-                                    <span>{{ $t('qt_searching_catalog') }}</span>
-                                </div>
-
-                                <div v-else-if="!quickSearchResults.length" class="suggested-empty-state">
-                                    <i class="fas fa-box-open empty-icon"></i>
-                                    <p class="empty-title">{{ $t('qt_no_products_found') }}</p>
-                                    <button type="button" class="empty-new-product" @click.stop="openQuickProduct(quickSearchQuery)">
-                                        <i class="fas fa-plus"></i>
-                                        <span v-if="quickSearchQuery.trim()">{{ $t('pqa_add_named', { name: quickSearchQuery.trim() }) }}</span>
-                                        <span v-else>{{ $t('pqa_title') }}</span>
-                                    </button>
-                                    <small class="empty-new-hint">{{ $t('pqa_empty_hint') }}</small>
-                                </div>
-
-                                <div v-else class="suggested-products-grid">
-                                    <template v-for="g in quickSearchGroups" :key="g.key">
-                                        <!-- A product with sizes is one card with a row per size,
-                                             so eight sizes of one drain read as one product with
-                                             eight sizes, not as eight unrelated products. -->
-                                        <div
-                                            v-if="g.hasVariants"
-                                            class="suggested-item-card is-group"
-                                            :class="{ 'item-in-order': groupOrderQuantity(g) > 0 }"
-                                        >
-                                            <div class="group-head">
-                                                <div class="item-card-image">
-                                                    <EntityImage
-                                                        :src="productImageSrc(g.product)"
-                                                        type="product"
-                                                        :size="54"
-                                                        shape="square"
-                                                        class="card-img"
-                                                    />
-                                                    <span v-if="groupOrderQuantity(g) > 0" class="in-order-tag" :title="$t('so_in_sales_order')">
-                                                        {{ groupOrderQuantity(g) }}
-                                                    </span>
-                                                </div>
-                                                <div class="item-card-body">
-                                                    <div class="item-card-header">
-                                                        <span class="item-name" :title="groupName(g.product)">{{ groupName(g.product) }}</span>
-                                                        <span class="variants-count-chip">
-                                                            <i class="fas fa-layer-group"></i> {{ $t('po_variants_count', g.rows.length) }}
-                                                        </span>
-                                                    </div>
-                                                    <div class="item-card-tags">
-                                                        <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
-                                                            <i class="fas fa-folder"></i> {{ g.product.category?.name_ar || g.product.category_name }}
-                                                        </span>
-                                                        <span class="pick-size-hint">
-                                                            <i class="fas fa-hand-pointer"></i> {{ $t('po_pick_size') }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="variant-grid">
-                                                <div
-                                                    v-for="p in g.rows"
-                                                    :key="p.listing_key || optionKey(p)"
-                                                    class="variant-tile"
-                                                    :class="{ 'is-in-order': getOrderItemQuantity(p) > 0, 'is-out': p.stock_quantity != null && Number(p.stock_quantity) <= 0 }"
-                                                >
-                                                    <div class="variant-tile-info">
-                                                        <div class="variant-tile-title">
-                                                            <span class="variant-tile-label" dir="ltr">{{ p.variant_label || productName(p) }}</span>
-                                                            <span v-if="p.sku" class="sku-chip"><i class="fas fa-barcode"></i> {{ p.sku }}</span>
-                                                        </div>
-                                                        <div class="item-card-tags">
-                                                            <strong class="tile-price">{{ formatCurrency(listPrice(p)) }}</strong>
-                                                            <span v-if="p.has_sale && p.price && p.price !== p.sale_price" class="old-price">
-                                                                {{ formatCurrency(p.price) }}
-                                                            </span>
-                                                            <span
-                                                                v-if="p.stock_quantity != null"
-                                                                class="stock-badge"
-                                                                :class="stockBadgeClass(p.stock_quantity)"
-                                                            >
-                                                                {{ p.stock_quantity > 0 ? `${$t('available')}: ${p.stock_quantity}` : $t('out_of_stock') }}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    <OrderCardActions
-                                                        class="item-card-actions"
-                                                        compact
-                                                        :count="getOrderItemQuantity(p)"
-                                                        :pending="pendingQtyOf(p)"
-                                                        :over-pending="isOverStock(p, pendingQtyOf(p))"
-                                                        :over-count="isOverStock(p, getOrderItemQuantity(p))"
-                                                        :add-label="$t('add')"
-                                                        :purchase-label="$t('so_add_to_purchase_list')"
-                                                        :purchase-highlight="Number(p.stock_quantity) <= 0"
-                                                        :show-purchase="canShowPurchase"
-                                                        @add="(qty) => addProduct(p, qty)"
-                                                        @bump-pending="(delta) => bumpPendingQty(p, delta)"
-                                                        @set-pending="(raw) => setPendingQty(p, raw)"
-                                                        @blur-pending="(el) => normalizePendingQty(p, el)"
-                                                        @decrement="decrementOrderProduct(p)"
-                                                        @set="(raw) => setOrderProductQuantity(p, raw)"
-                                                        @commit="(el) => commitOrderProductQuantity(p, el)"
-                                                        @purchase="openPurchaseDialog(p)"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- A product without sizes: one card, one set of controls. -->
-                                        <div
-                                            v-else
-                                            class="suggested-item-card"
-                                            :class="{ 'item-in-order': getOrderItemQuantity(g.product) > 0 }"
-                                        >
-                                            <div class="item-card-image">
-                                                <EntityImage
-                                                    :src="productImageSrc(g.product)"
-                                                    type="product"
-                                                    :size="54"
-                                                    shape="square"
-                                                    class="card-img"
-                                                />
-                                                <span v-if="getOrderItemQuantity(g.product) > 0" class="in-order-tag" :title="$t('so_in_sales_order')">
-                                                    {{ getOrderItemQuantity(g.product) }}
-                                                </span>
-                                            </div>
-
-                                            <div class="item-card-body">
-                                                <div class="item-card-header">
-                                                    <span class="item-name" :title="productName(g.product)">
-                                                        {{ productName(g.product) }}
-                                                    </span>
-                                                </div>
-
-                                                <div class="item-card-tags">
-                                                    <span v-if="g.product.sku" class="sku-chip">
-                                                        <i class="fas fa-barcode"></i> {{ g.product.sku }}
-                                                    </span>
-                                                    <span v-if="g.product.category?.name_ar || g.product.category_name" class="cat-chip">
-                                                        <i class="fas fa-folder"></i> {{ g.product.category?.name_ar || g.product.category_name }}
-                                                    </span>
-                                                    <span
-                                                        v-if="g.product.stock_quantity != null"
-                                                        class="stock-badge"
-                                                        :class="stockBadgeClass(g.product.stock_quantity)"
-                                                    >
-                                                        {{ g.product.stock_quantity > 0 ? `${$t('available')}: ${g.product.stock_quantity}` : $t('out_of_stock') }}
-                                                    </span>
-                                                </div>
-
-                                                <div class="item-card-financials">
-                                                    <div class="price-stat">
-                                                        <span class="stat-lbl">{{ $t('price') }}:</span>
-                                                        <strong class="stat-val text-primary">{{ formatCurrency(listPrice(g.product)) }}</strong>
-                                                        <span v-if="g.product.has_sale && g.product.price && g.product.price !== g.product.sale_price" class="old-price">
-                                                            {{ formatCurrency(g.product.price) }}
-                                                        </span>
-                                                    </div>
-                                                    <div v-if="canShowPurchase && g.product.cost_price" class="cost-stat">
-                                                        <span class="stat-lbl">{{ $t('cost_price') }}:</span>
-                                                        <span class="stat-val text-muted">{{ formatCurrency(g.product.cost_price) }}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <OrderCardActions
-                                                class="item-card-actions"
-                                                :count="getOrderItemQuantity(g.product)"
-                                                :pending="pendingQtyOf(g.product)"
-                                                :over-pending="isOverStock(g.product, pendingQtyOf(g.product))"
-                                                :over-count="isOverStock(g.product, getOrderItemQuantity(g.product))"
-                                                :add-label="$t('so_add_to_order')"
-                                                :purchase-label="$t('so_add_to_purchase_list')"
-                                                :purchase-highlight="Number(g.product.stock_quantity) <= 0"
-                                                :show-purchase="canShowPurchase"
-                                                @add="(qty) => addProduct(g.product, qty)"
-                                                @bump-pending="(delta) => bumpPendingQty(g.product, delta)"
-                                                @set-pending="(raw) => setPendingQty(g.product, raw)"
-                                                @blur-pending="(el) => normalizePendingQty(g.product, el)"
-                                                @decrement="decrementOrderProduct(g.product)"
-                                                @set="(raw) => setOrderProductQuantity(g.product, raw)"
-                                                @commit="(el) => commitOrderProductQuantity(g.product, el)"
-                                                @purchase="openPurchaseDialog(g.product)"
-                                            />
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-
-                            <!-- Dropdown Footer -->
-                            <div class="dropdown-footer-strip">
-                                <div class="footer-summary">
-                                    <span>
-                                        <i class="fas fa-shopping-cart text-muted"></i>&nbsp;
-                                        <strong>{{ form.items.length }}</strong> {{ $t('product') }} &bull; <strong>{{ pieces }}</strong> {{ $t('piece') }}
-                                    </span>
-                                </div>
-                                <div class="footer-hints">
-                                    <span><kbd>Enter</kbd> {{ $t('add_first_result') || 'إضافة أول نتيجة' }}</span>
-                                    <button type="button" class="footer-new-product" @click.stop="openQuickProduct(quickSearchQuery)">
-                                        <kbd>F4</kbd> {{ $t('pqa_not_listed') }}
-                                    </button>
-                                    <span><kbd>Esc</kbd> {{ $t('close') }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </transition>
+                <!-- What still stands between the form and a save -->
+                <div v-if="showChecklist" class="pf-checklist" :class="{ 'is-ready': !issues.length }">
+                    <span class="pf-checklist-title">
+                        <i class="fas" :class="issues.length ? 'fa-list-check' : 'fa-circle-check'"></i>
+                        {{ issues.length ? t('pf_before_saving') : (t('so_ready_to_save') || t('pf_ready_to_save')) }}
+                    </span>
+                    <button v-for="issue in issues" :key="issue.key" type="button" @click="goToIssue(issue)">
+                        <i class="fas fa-angle-left"></i> {{ issue.text }}
+                    </button>
                 </div>
 
-                <!-- Empty Lines State -->
-                <div
-                    v-if="!form.items.length"
-                    class="lines-empty"
-                    :class="{ 'has-error': fieldError('items') || isFlagged('items') }"
-                >
-                    <i class="fas fa-box-open"></i>
-                    <span>{{ fieldError('items') || $t('qt_no_lines') }}</span>
-                </div>
+                <!-- Lines -->
+                <section ref="linesRef" class="pf-card pf-lines-card">
+                    <header class="pf-card-head">
+                        <h3 class="pf-card-title">
+                            <i class="fas fa-boxes-stacked"></i>
+                            {{ t('items') }}
+                            <span class="pf-count">{{ form.items.length }}</span>
+                        </h3>
+                        <div class="pf-card-tools">
+                            <span v-if="overStockLines.length" class="pf-badge is-warn">
+                                <i class="fas fa-triangle-exclamation"></i>
+                                {{ t('so_over_stock_n', { count: overStockLines.length }) }}
+                            </span>
+                            <el-button v-if="form.items.length" size="small" text type="danger" @click="clearLines">
+                                <i class="fas fa-eraser"></i>&nbsp;{{ t('pf_clear_lines') }}
+                            </el-button>
+                        </div>
+                    </header>
 
-                <!-- Lines Table -->
-                <div v-else class="lines">
-                    <div class="line line--head" aria-hidden="true">
-                        <span>{{ $t('product') }}</span>
-                        <span>{{ $t('so_unit') }}</span>
-                        <span>{{ $t('quantity') }}</span>
-                        <span>{{ $t('unit_price') }}</span>
-                        <span>{{ $t('discount') }}</span>
-                        <span>{{ $t('tax') }}</span>
-                        <span class="num">{{ $t('total') }}</span>
-                        <span />
-                    </div>
+                    <template v-if="form.items.length">
+                        <div class="pf-lines-head sline-grid-so">
+                            <span>#</span>
+                            <span>{{ t('product') }}</span>
+                            <span>{{ t('so_unit') }}</span>
+                            <span>{{ t('quantity') }}</span>
+                            <span>{{ t('unit_price') }}</span>
+                            <span>{{ t('discount') }}</span>
+                            <span>{{ t('tax') }}</span>
+                            <span>{{ t('total') }}</span>
+                            <span></span>
+                        </div>
+                        <div class="pf-lines">
+                            <div
+                                v-for="(line, i) in form.items"
+                                :key="line.key"
+                                class="sline sline-grid-so"
+                                :class="`tone-${lineTone(line, i)}`"
+                            >
+                                <span class="sline-idx">{{ i + 1 }}</span>
 
-                    <div
-                        v-for="(line, i) in form.items"
-                        :key="line.key"
-                        class="line"
-                        :class="{ 'is-flagged': isFlagged(`items.${i}`) }"
-                    >
-                        <div class="line-product">
-                            <div class="line-product-content">
-                                <EntityImage
-                                    :src="line.image || productImageSrc(line)"
-                                    type="product"
-                                    :size="42"
-                                    shape="square"
-                                    class="line-thumb"
-                                />
-                                <div class="line-info">
-                                    <strong :title="line.name">{{ line.name }}</strong>
-                                    <div class="line-meta">
-                                        <!-- A variant line's codes sit in its details below. -->
-                                        <template v-if="!variantInfo(line)">
-                                            <span v-if="line.sku" class="option-meta" dir="ltr">{{ line.sku }}</span>
-                                            <span v-if="line.variant_label" class="variant-tag">{{ line.variant_label }}</span>
-                                        </template>
-                                        <span v-if="line.stock !== undefined" :class="['stock-pill', overStock(line) ? 'is-over' : '']">
-                                            {{ overStock(line) ? $t('so_stock_shortage') : `${$t('available')}: ${line.stock}` }}
-                                        </span>
-                                        <button
-                                            v-if="overStock(line) && canShowPurchase"
-                                            type="button"
-                                            class="line-shortage-btn"
-                                            :title="$t('so_add_to_purchase_list') || 'طلب شراء لهذا البند'"
-                                            @click.stop="openPurchaseDialogFromLine(line)"
-                                        >
-                                            <i class="fas fa-cart-flatbed"></i> {{ $t('so_add_to_purchase_list') || 'طلب شراء' }}
-                                        </button>
-                                    </div>
-                                    <VariantDetails
-                                        v-if="variantInfo(line)"
-                                        :variant="variantInfo(line)"
-                                        show-codes
-                                        class="line-variant-details"
+                                <div class="sline-product">
+                                    <EntityImage
+                                        :src="line.image || productImageSrc(line)"
+                                        type="product"
+                                        :size="44"
+                                        shape="square"
+                                        class="sline-thumb"
                                     />
-                                    <!-- The other sizes of this product, one click away: changing
-                                         the size keeps the quantity and a price the seller typed. -->
-                                    <div v-if="lineSiblings(line).length > 1" class="line-variant-switch">
-                                        <span class="switch-label"><i class="fas fa-tag"></i> {{ $t('po_switch_size') }}</span>
-                                        <div class="switch-chips">
+                                    <div class="sline-info">
+                                        <div class="sline-title">
+                                            <strong class="sline-name" :title="line.name">{{ line.name }}</strong>
+                                        </div>
+                                        <div class="sline-meta">
+                                            <!-- A variant line's codes sit in its details below. -->
+                                            <template v-if="!variantInfo(line)">
+                                                <span v-if="line.sku" class="sline-sku" dir="ltr"><i class="fas fa-barcode"></i> {{ line.sku }}</span>
+                                                <span v-if="line.variant_label">{{ line.variant_label }}</span>
+                                            </template>
+                                            <span v-if="line.stock !== undefined && line.stock !== null" class="sline-stock" :class="overStock(line) ? 'is-out' : 'is-ok'">
+                                                <i class="fas" :class="overStock(line) ? 'fa-triangle-exclamation' : 'fa-warehouse'"></i>
+                                                {{ overStock(line) ? t('so_stock_shortage') : `${t('available')}: ${line.stock}` }}
+                                            </span>
+                                            <button
+                                                v-if="overStock(line) && canShowPurchase"
+                                                type="button"
+                                                class="sline-act"
+                                                :title="t('so_add_to_purchase_list') || 'طلب شراء لهذا البند'"
+                                                @click.stop="openPurchaseDialogFromLine(line)"
+                                            >
+                                                <i class="fas fa-cart-flatbed"></i> {{ t('so_add_to_purchase_list') || 'طلب شراء' }}
+                                            </button>
+                                        </div>
+                                        <VariantDetails
+                                            v-if="variantInfo(line)"
+                                            :variant="variantInfo(line)"
+                                            show-codes
+                                            class="sline-variant-details"
+                                        />
+                                        <!-- The other sizes of this product, one click away: changing
+                                             the size keeps the quantity and a price the seller typed. -->
+                                        <div v-if="lineSiblings(line).length > 1" class="sline-sizes">
+                                            <span class="sline-sizes-label"><i class="fas fa-tag"></i> {{ t('po_switch_size') }}</span>
                                             <button
                                                 v-for="v in lineSiblings(line)"
                                                 :key="v.listing_key || optionKey(v)"
                                                 type="button"
-                                                class="switch-chip"
+                                                class="sline-size"
                                                 :class="{
                                                     'is-active': (v.variant_id || null) === (line.product_variant_id || null),
                                                     'is-out': v.stock_quantity != null && Number(v.stock_quantity) <= 0,
@@ -772,174 +360,180 @@
                                                 :title="[v.sku, formatCurrency(listPrice(v))].filter(Boolean).join(' · ')"
                                                 @click.stop="switchLineVariant(line, v)"
                                             >
-                                                <span class="chip-label" dir="ltr">{{ v.variant_label || v.sku }}</span>
-                                                <small v-if="v.stock_quantity != null" class="chip-stock">{{ v.stock_quantity }}</small>
+                                                <span dir="ltr">{{ v.variant_label || v.sku }}</span>
+                                                <small v-if="v.stock_quantity != null">{{ v.stock_quantity }}</small>
                                             </button>
                                         </div>
                                     </div>
                                 </div>
+
+                                <div class="sline-fields">
+                                    <div class="sline-field">
+                                        <label>{{ t('so_unit') }}</label>
+                                        <el-select
+                                            v-if="line.units && line.units.length > 1"
+                                            v-model="line.unit"
+                                            value-key="id"
+                                            :aria-label="fieldLabel(line, t('so_unit'))"
+                                            @change="(u) => onUnitChange(line, u)"
+                                        >
+                                            <el-option v-for="u in line.units" :key="u.id" :label="unitName(u) || u.name_ar || u.name" :value="u" />
+                                        </el-select>
+                                        <span v-else class="sline-unit">
+                                            <i class="fas fa-box text-muted"></i> {{ unitName(line.unit) || t('piece') }}
+                                        </span>
+                                    </div>
+
+                                    <div class="sline-field">
+                                        <label>{{ t('quantity') }}</label>
+                                        <div class="sline-stepper" :class="{ 'is-over': overStock(line) }">
+                                            <button type="button" :disabled="toNum(line.quantity) <= 1" :aria-label="t('decrease')" @click="stepLineQty(line, -1)">
+                                                <i class="fas fa-minus"></i>
+                                            </button>
+                                            <input
+                                                :value="line.quantity"
+                                                type="number"
+                                                inputmode="numeric"
+                                                min="1"
+                                                step="1"
+                                                dir="ltr"
+                                                :aria-label="fieldLabel(line, t('quantity'))"
+                                                @focus="$event.target.select()"
+                                                @input="onLineQtyInput(line, $event)"
+                                                @blur="onLineQtyBlur(line, $event)"
+                                            />
+                                            <button type="button" :aria-label="t('increase')" @click="stepLineQty(line, 1)">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        </div>
+                                        <small v-if="(toNum(line.unit?.base_unit_multiplier) || 1) > 1" class="sline-hint">
+                                            = {{ linePieces(line) }} {{ t('piece') }}
+                                        </small>
+                                    </div>
+
+                                    <div class="sline-field">
+                                        <label>{{ t('unit_price') }}</label>
+                                        <el-input-number
+                                            v-model="line.price"
+                                            :min="0"
+                                            :precision="unitPriceDigits(toNum(line.base_price) * (toNum(line.unit?.price_multiplier) || 1))"
+                                            :controls="false"
+                                            :aria-label="fieldLabel(line, t('unit_price'))"
+                                        />
+                                    </div>
+
+                                    <div class="sline-field">
+                                        <label>{{ t('discount') }}</label>
+                                        <el-input-number
+                                            v-model="line.discount"
+                                            :min="0"
+                                            :precision="2"
+                                            :controls="false"
+                                            :aria-label="fieldLabel(line, t('discount'))"
+                                            :class="{ 'is-invalid': lineDiscountTooBig(line) || errors[`items.${i}.discount`] }"
+                                        />
+                                    </div>
+
+                                    <div class="sline-field">
+                                        <label>{{ t('tax') }}</label>
+                                        <el-input-number
+                                            v-model="line.tax"
+                                            :min="0"
+                                            :precision="2"
+                                            :controls="false"
+                                            :aria-label="fieldLabel(line, t('tax'))"
+                                        />
+                                    </div>
+
+                                    <div class="sline-field sline-total">
+                                        <label>{{ t('so_line_total_of') }}</label>
+                                        <strong>{{ formatCurrency(lineTotal(line)) }}</strong>
+                                    </div>
+                                </div>
+
+                                <!-- Row actions: duplicate then remove, most destructive last -->
+                                <div class="sline-actions">
+                                    <button
+                                        type="button"
+                                        class="sline-btn"
+                                        :title="t('duplicate_line')"
+                                        :aria-label="`${t('duplicate_line')}: ${line.name}`"
+                                        @click="duplicateLine(i)"
+                                    >
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="sline-btn is-remove"
+                                        :title="t('delete')"
+                                        :aria-label="`${t('delete')}: ${line.name}`"
+                                        @click="form.items.splice(i, 1)"
+                                    >
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
+                    </template>
 
-                        <!-- Unit column -->
-                        <div class="line-fields">
-                            <div class="line-field">
-                                <span class="mobile-label">{{ $t('so_unit') }}</span>
-                                <el-select
-                                    v-if="line.units && line.units.length > 1"
-                                    v-model="line.unit"
-                                    value-key="id"
-                                    size="small"
-                                    class="unit-select"
-                                    :aria-label="fieldLabel(line, $t('so_unit'))"
-                                    @change="(u) => onUnitChange(line, u)"
-                                >
-                                    <el-option v-for="u in line.units" :key="u.id" :label="unitName(u) || u.name_ar || u.name" :value="u" />
-                                </el-select>
-                                <span v-else class="unit-badge">{{ unitName(line.unit) || $t('piece') }}</span>
-                            </div>
-
-                            <!-- Quantity -->
-                            <div class="line-field">
-                                <span class="mobile-label">{{ $t('quantity') }}</span>
-                                <el-input-number
-                                    v-model="line.quantity"
-                                    :min="1"
-                                    :step="1"
-                                    step-strictly
-                                    size="small"
-                                    controls-position="right"
-                                    :aria-label="fieldLabel(line, $t('quantity'))"
-                                />
-                            </div>
-
-                            <!-- Unit Price -->
-                            <div class="line-field">
-                                <span class="mobile-label">{{ $t('unit_price') }}</span>
-                                <el-input-number
-                                    v-model="line.price"
-                                    :min="0"
-                                    :precision="unitPriceDigits(toNum(line.base_price) * (toNum(line.unit?.price_multiplier) || 1))"
-                                    :controls="false"
-                                    size="small"
-                                    :aria-label="fieldLabel(line, $t('unit_price'))"
-                                />
-                            </div>
-
-                            <!-- Line Discount -->
-                            <div class="line-field">
-                                <span class="mobile-label">{{ $t('discount') }}</span>
-                                <el-input-number
-                                    v-model="line.discount"
-                                    :min="0"
-                                    :precision="2"
-                                    :controls="false"
-                                    size="small"
-                                    :aria-label="fieldLabel(line, $t('discount'))"
-                                    :class="{ 'is-invalid': lineDiscountTooBig(line) || errors[`items.${i}.discount`] }"
-                                />
-                            </div>
-
-                            <!-- Line Tax -->
-                            <div class="line-field">
-                                <span class="mobile-label">{{ $t('tax') }}</span>
-                                <el-input-number
-                                    v-model="line.tax"
-                                    :min="0"
-                                    :precision="2"
-                                    :controls="false"
-                                    size="small"
-                                    :aria-label="fieldLabel(line, $t('tax'))"
-                                />
-                            </div>
-                        </div>
-
-                        <!-- Line Total -->
-                        <div class="line-field line-total-cell">
-                            <span class="mobile-label">{{ $t('so_line_total_of') }}</span>
-                            <span class="num line-total">{{ formatCurrency(lineTotal(line)) }}</span>
-                        </div>
-
-                        <!-- Row Actions: duplicate then remove, most destructive last -->
-                        <div class="line-actions">
-                            <el-tooltip :content="$t('duplicate_line')" placement="top">
-                                <el-button
-                                    text
-                                    circle
-                                    class="action-btn"
-                                    :aria-label="`${$t('duplicate_line')}: ${line.name}`"
-                                    @click="duplicateLine(i)"
-                                >
-                                    <i class="fas fa-copy"></i>
-                                </el-button>
-                            </el-tooltip>
-                            <el-tooltip :content="$t('delete')" placement="top">
-                                <el-button
-                                    text
-                                    circle
-                                    type="danger"
-                                    class="action-btn"
-                                    :aria-label="`${$t('delete')}: ${line.name}`"
-                                    @click="form.items.splice(i, 1)"
-                                >
-                                    <i class="fas fa-xmark"></i>
-                                </el-button>
-                            </el-tooltip>
+                    <div v-else class="pf-empty">
+                        <span class="pf-empty-icon"><i class="fas fa-cart-shopping"></i></span>
+                        <strong>{{ fieldError('items') || t('pf_no_lines_title') }}</strong>
+                        <p>{{ t('qt_no_lines') }}</p>
+                        <div class="pf-row">
+                            <el-button type="primary" @click="focusCatalog"><i class="fas fa-magnifying-glass"></i>&nbsp;{{ t('pf_search_catalog') }}</el-button>
+                            <el-button @click="openQuickProduct('')"><i class="fas fa-plus"></i>&nbsp;{{ t('pqa_button') }}</el-button>
                         </div>
                     </div>
-                </div>
 
-                <!-- ── Additional Expenses & Shipping ── -->
-                <OrderExpensesEditor
-                    v-if="!amending"
-                    v-model="form.expenses"
-                    class="order-expenses-section"
-                    @total-change="onExpensesTotalChange"
-                />
+                    <footer v-if="form.items.length" class="pf-lines-foot">
+                        <span>{{ t('so_items_n', { count: form.items.length }) }} · {{ t('pieces_count', { count: pieces }) }}</span>
+                        <span>{{ t('subtotal') }}: <strong>{{ formatCurrency(subtotal) }}</strong></span>
+                    </footer>
+                </section>
 
-                <!-- ── Bottom Grid: Notes & Totals ── -->
-                <div class="bottom-grid">
-                    <div>
-                        <el-form-item :label="$t('notes')">
+                <!-- Charges, notes and the money -->
+                <div class="pf-bottom">
+                    <div class="sf-side-stack">
+                        <section v-if="!amending" class="pf-card pf-card-pad">
+                            <OrderExpensesEditor v-model="form.expenses" @total-change="onExpensesTotalChange" />
+                        </section>
+                        <section class="pf-card pf-card-pad">
+                            <span class="pf-label" style="margin-bottom: 0.4rem"><i class="fas fa-note-sticky"></i> {{ t('notes') }}</span>
                             <el-input
                                 v-model="form.notes"
                                 type="textarea"
-                                :rows="2"
+                                :rows="3"
                                 maxlength="1000"
                                 show-word-limit
-                                :placeholder="$t('notes')"
+                                :placeholder="t('notes')"
                             />
-                        </el-form-item>
-                        <el-form-item :label="$t('delivery_and_shipping_address')">
+                            <span class="pf-label" style="margin: 0.85rem 0 0.4rem"><i class="fas fa-location-dot"></i> {{ t('delivery_and_shipping_address') }}</span>
                             <el-input
                                 v-model="form.shipping_address"
                                 type="textarea"
                                 :rows="2"
                                 maxlength="500"
-                                :placeholder="$t('shipping_address_label')"
+                                :placeholder="t('shipping_address_label')"
                             />
-                        </el-form-item>
+                        </section>
                     </div>
 
-                    <div class="totals" :class="{ 'is-flagged': isFlagged('discount') }">
-                        <div class="totals-row">
-                            <span>{{ $t('subtotal') }}</span>
-                            <span class="num">{{ formatCurrency(subtotal) }}</span>
+                    <section ref="totalsRef" class="pf-card pf-card-pad pf-totals">
+                        <div class="pf-sum-row">
+                            <span>{{ t('subtotal') }}</span>
+                            <strong>{{ formatCurrency(subtotal) }}</strong>
                         </div>
-                        <div class="totals-row discount-row" :class="{ 'has-error': discountError }">
-                            <div class="totals-row-label">
-                                <span>{{ $t('sales.discount_label') || $t('discount') }}</span>
-                                <el-radio-group
-                                    :model-value="form.discount_type"
-                                    size="small"
-                                    class="discount-mode-switch"
-                                    @update:model-value="switchDiscountType"
-                                >
-                                    <el-radio-button value="percent">%</el-radio-button>
-                                    <el-radio-button value="amount">{{ $t('sales.discount_as_amount') || 'مبلغ ثابت' }}</el-radio-button>
-                                </el-radio-group>
+
+                        <div class="sf-disc">
+                            <div class="sf-disc-head">
+                                <span class="sf-disc-label"><i class="fas fa-tag"></i> {{ t('sales.discount_label') || t('discount') }}</span>
+                                <div class="sf-seg" role="radiogroup" :aria-label="t('discount')">
+                                    <button type="button" :class="{ 'is-active': form.discount_type === 'percent' }" @click="switchDiscountType('percent')">%</button>
+                                    <button type="button" :class="{ 'is-active': form.discount_type === 'amount' }" @click="switchDiscountType('amount')">{{ t('sales.discount_as_amount') || 'مبلغ ثابت' }}</button>
+                                </div>
                             </div>
-                            <div class="totals-row-input">
+                            <div class="sf-money" :class="{ 'is-invalid': discountTooBig || errors.discount || errors.discount_percent }">
                                 <el-input-number
                                     v-if="form.discount_type === 'percent'"
                                     ref="discountInput"
@@ -948,9 +542,7 @@
                                     :max="100"
                                     :precision="2"
                                     :controls="false"
-                                    size="small"
-                                    :aria-label="$t('sales.discount_as_percent')"
-                                    :class="{ 'is-invalid': discountTooBig || errors.discount || errors.discount_percent }"
+                                    :aria-label="t('sales.discount_as_percent')"
                                 />
                                 <el-input-number
                                     v-else
@@ -960,114 +552,153 @@
                                     :max="subtotal"
                                     :precision="2"
                                     :controls="false"
-                                    size="small"
-                                    :aria-label="$t('sales.discount_as_amount')"
-                                    :class="{ 'is-invalid': discountTooBig || errors.discount }"
+                                    :aria-label="t('sales.discount_as_amount')"
+                                />
+                            </div>
+                            <div class="sf-disc-foot">
+                                <div class="pf-chips">
+                                    <button
+                                        v-for="d in [5, 10, 15, 20]"
+                                        :key="d"
+                                        type="button"
+                                        class="pf-chip-btn"
+                                        :class="{ 'is-active': form.discount_type === 'percent' && Number(form.discount_percent) === d }"
+                                        @click="setDiscountPreset(d)"
+                                    >{{ d }}%</button>
+                                </div>
+                                <span v-if="!discountError && discountAmount > 0" class="sf-disc-live">
+                                    <template v-if="form.discount_type === 'percent'">− {{ formatCurrency(discountAmount) }}</template>
+                                    <template v-else>≈ {{ effectiveDiscountRate }}%</template>
+                                </span>
+                            </div>
+                            <small v-if="discountError" class="sf-disc-error">{{ discountError }}</small>
+                        </div>
+
+                        <div class="pf-field span-12">
+                            <span class="pf-label"><i class="fas fa-receipt"></i> {{ t('qt_extra_tax') }}</span>
+                            <div class="sf-money">
+                                <el-input-number
+                                    v-model="form.tax"
+                                    :min="0"
+                                    :precision="2"
+                                    :controls="false"
+                                    :aria-label="t('qt_extra_tax')"
                                 />
                             </div>
                         </div>
-                        <div v-if="discountError" class="totals-hint is-error">
-                            {{ discountError }}
+
+                        <div v-if="form.expenses && form.expenses.length" class="pf-sum-row">
+                            <span>{{ t('so_shipping_cost') }}</span>
+                            <span class="pf-num">+ {{ formatCurrency(form.shipping_cost) }}</span>
                         </div>
-                        <div v-else-if="discountAmount > 0" class="totals-hint is-figure">
-                            {{ form.discount_type === 'percent'
-                                ? $t('sales.discount_equivalent_amount', { amount: formatCurrency(discountAmount) })
-                                : $t('sales.discount_equivalent_percent', { amount: formatCurrency(discountAmount), percent: `${effectiveDiscountRate}%` }) }}
+                        <div v-else class="pf-field span-12">
+                            <span class="pf-label"><i class="fas fa-truck-fast"></i> {{ t('so_shipping_cost') }}</span>
+                            <div class="sf-money">
+                                <el-input-number
+                                    v-model="form.shipping_cost"
+                                    :disabled="amending"
+                                    :min="0"
+                                    :precision="2"
+                                    :controls="false"
+                                    :aria-label="t('so_shipping_cost')"
+                                />
+                            </div>
                         </div>
-                        <div class="totals-row">
-                            <span>{{ $t('qt_extra_tax') }}</span>
-                            <el-input-number
-                                v-model="form.tax"
-                                :min="0"
-                                :precision="2"
-                                :controls="false"
-                                size="small"
-                                :aria-label="$t('qt_extra_tax')"
-                            />
+
+                        <div class="pf-grand" :class="{ 'is-invalid': discountTooBig }">
+                            <span>{{ t('total') }}</span>
+                            <strong>{{ formatCurrency(total) }}</strong>
                         </div>
-                        <div class="totals-row">
-                            <span>{{ $t('so_shipping_cost') }}</span>
-                            <span v-if="form.expenses && form.expenses.length" class="num">{{ formatCurrency(form.shipping_cost) }}</span>
-                            <el-input-number
-                                v-else
-                                v-model="form.shipping_cost"
-                                :disabled="amending"
-                                :min="0"
-                                :precision="2"
-                                :controls="false"
-                                size="small"
-                                :aria-label="$t('so_shipping_cost')"
-                            />
-                        </div>
-                        <div class="totals-row grand">
-                            <span>{{ $t('total') }}</span>
-                            <span class="num">{{ formatCurrency(total) }}</span>
-                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <aside class="pf-side" :class="{ 'is-folded': catalogFolded }">
+                <button type="button" class="pf-catalog-toggle" @click="catalogFolded = !catalogFolded">
+                    <span><i class="fas fa-store"></i> {{ t('pf_catalog') }}</span>
+                    <i class="fas" :class="catalogFolded ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
+                </button>
+                <SalesCatalogPanel
+                    ref="quickSearchInputRef"
+                    v-model:query="quickSearchQuery"
+                    v-model:category-id="selectedCategoryId"
+                    :groups="quickSearchGroups"
+                    :loading="quickSearchLoading"
+                    :categories="categoryOptions"
+                    :count-of="getOrderItemQuantity"
+                    :pending-of="pendingQtyOf"
+                    :is-over="isOverStock"
+                    :price-of="listPrice"
+                    :name-of="productName"
+                    :show-purchase="canShowPurchase"
+                    :purchase-label="t('so_add_to_purchase_list')"
+                    :add-label="t('so_add_to_order')"
+                    :placeholder="t('qt_product_search_placeholder')"
+                    @input="onQuickSearchInput"
+                    @enter="onQuickSearchEnter"
+                    @clear="onQuickSearchClear"
+                    @category-change="onCategoryFilterChange"
+                    @create="openQuickProduct"
+                    @add="addProduct"
+                    @bump-pending="bumpPendingQty"
+                    @set-pending="setPendingQty"
+                    @blur-pending="normalizePendingQty"
+                    @decrement="decrementOrderProduct"
+                    @set="setOrderProductQuantity"
+                    @commit="commitOrderProductQuantity"
+                    @purchase="openPurchaseDialog"
+                />
+            </aside>
+        </div>
+
+        <!-- Footer: the money at a glance and the ways to save -->
+        <footer v-if="!loading && !isLocked" class="pf-page-footer">
+            <div class="pf-footer">
+                <div class="pf-footer-sum">
+                    <div class="pf-footer-metric is-main" :class="{ 'is-invalid': discountTooBig }">
+                        <span>{{ t('total') }}</span>
+                        <strong>{{ formatCurrency(total) }}</strong>
+                    </div>
+                    <span class="pf-footer-sep"></span>
+                    <div class="pf-footer-metric">
+                        <span>{{ t('items') }}</span>
+                        <strong>{{ form.items.length }}</strong>
+                    </div>
+                    <div class="pf-footer-metric">
+                        <span>{{ t('pf_units') }}</span>
+                        <strong>{{ pieces }}</strong>
+                    </div>
+                    <div v-if="overStockLines.length" class="pf-footer-metric is-warn">
+                        <span>{{ t('so_stock_shortage') }}</span>
+                        <strong>{{ overStockLines.length }}</strong>
                     </div>
                 </div>
-
-                <!-- ── Server Errors ── -->
-                <el-alert
-                    v-if="serverErrors.length"
-                    type="error"
-                    show-icon
-                    class="server-errors"
-                    :title="$t('please_fix_these_errors')"
-                    @close="serverErrors = []"
-                >
-                    <ul>
-                        <li v-for="(err, idx) in serverErrors" :key="idx">{{ err }}</li>
-                    </ul>
-                </el-alert>
-
-                <!-- ── Form Footer Actions ── -->
-                <footer class="form-footer">
-                    <div class="footer-start">
-                        <el-button @click="goBack">
-                            <i class="fas" :class="backArrow"></i>&nbsp;{{ $t('cancel') }}
-                        </el-button>
-                    </div>
-
-                    <div class="footer-end">
-                        <span v-if="issues.length" class="footer-hint">
-                            <i class="fas fa-circle-info"></i>&nbsp;{{ $t('so_fix_to_continue') }}
-                        </span>
-                        <el-tooltip
-                            :disabled="!issues.length"
-                            :content="$t('so_fix_to_continue')"
-                            placement="top"
-                        >
-                            <span>
-                                <el-button
-                                    :loading="saving === 'draft'"
-                                    :disabled="!!saving"
-                                    @click="trySubmit(false)"
-                                >
-                                    <i class="fas fa-floppy-disk"></i>&nbsp;{{ isEdit ? $t('save_order_changes') : $t('save_sales_order_draft') }}
-                                </el-button>
-                            </span>
-                        </el-tooltip>
-                        <el-tooltip
-                            v-if="!authStore.isSalesRep && !versioning"
-                            :disabled="!issues.length"
-                            :content="$t('so_fix_to_continue')"
-                            placement="top"
-                        >
-                            <span>
-                                <el-button
-                                    type="primary"
-                                    :loading="saving === 'confirm'"
-                                    :disabled="!!saving"
-                                    @click="trySubmit(true)"
-                                >
-                                    <i class="fas fa-circle-check"></i>&nbsp;{{ $t('so_save_and_confirm') }}
-                                </el-button>
-                            </span>
-                        </el-tooltip>
-                    </div>
-                </footer>
-            </el-form>
-        </div>
+                <div class="pf-footer-actions">
+                    <span v-if="issues.length" class="pf-footer-hint">
+                        <i class="fas fa-circle-exclamation"></i> {{ blocker }}
+                    </span>
+                    <span v-else class="pf-kbd-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> · <kbd>F2</kbd> {{ t('search') }} · <kbd>F4</kbd> {{ t('pqa_button') }}</span>
+                    <el-button @click="goBack">{{ t('cancel') }}</el-button>
+                    <el-button
+                        :type="!authStore.isSalesRep && !versioning ? 'default' : 'primary'"
+                        :loading="saving === 'draft'"
+                        :disabled="!!saving"
+                        @click="trySubmit(false)"
+                    >
+                        <i class="fas fa-floppy-disk"></i>&nbsp;{{ isEdit ? t('save_order_changes') : t('save_sales_order_draft') }}
+                    </el-button>
+                    <el-button
+                        v-if="!authStore.isSalesRep && !versioning"
+                        type="primary"
+                        :loading="saving === 'confirm'"
+                        :disabled="!!saving"
+                        @click="trySubmit(true)"
+                    >
+                        <i class="fas fa-circle-check"></i>&nbsp;{{ t('so_save_and_confirm') }}
+                    </el-button>
+                </div>
+            </div>
+        </footer>
         <!-- Quick Purchase Dialog -->
         <el-dialog
             v-if="canShowPurchase"
@@ -1218,11 +849,10 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import EntityImage from '@/components/admin/EntityImage.vue';
 import VariantChip from '@/components/admin/products/VariantChip.vue';
 import VariantDetails from '@/components/admin/products/VariantDetails.vue';
-import OrderCardActions from '@/components/admin/sales/OrderCardActions.vue';
+import SalesCatalogPanel from '@/components/admin/sales/SalesCatalogPanel.vue';
 import { useVariantSiblings } from '@/composables/useVariantSiblings';
 import { categoriesApi } from '@/api/categories';
 import { posApi } from '@/api/pos';
@@ -1240,6 +870,7 @@ import { optionKey, variantLabelOf, variantFieldsOf, lineVariantInfo } from '@/u
 import OrderExpensesEditor from '@/components/admin/sales/OrderExpensesEditor.vue';
 import CustomerQuickAdd from '@/components/admin/sales/CustomerQuickAdd.vue';
 import ProductQuickAdd from '@/components/admin/sales/ProductQuickAdd.vue';
+import '@/components/admin/sales/sales-form.css';
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -1338,6 +969,19 @@ const formRoot = ref(null);
 const customerSelect = ref(null);
 const deliveryPicker = ref(null);
 const discountInput = ref(null);
+
+/* Workspace: the order beside the product catalogue (the purchase order's
+   layout). Below a wide screen the catalogue folds above it. */
+const headRef = ref(null);
+const linesRef = ref(null);
+const totalsRef = ref(null);
+const catalogFolded = ref(false);
+
+const focusCatalog = () => {
+    if (isLocked.value) return;
+    catalogFolded.value = false;
+    nextTick(() => quickSearchInputRef.value?.focus());
+};
 
 // Warehouses
 const warehouses = ref([]);
@@ -1523,13 +1167,6 @@ const productImageSrc = (p) => {
     return resolveImageUrl(raw);
 };
 
-const stockBadgeClass = (stock) => {
-    const qty = Number(stock) || 0;
-    if (qty <= 0) return 'is-out';
-    if (qty <= 5) return 'is-low';
-    return 'is-ok';
-};
-
 // Categories State
 const categories = ref([]);
 const categoriesLoading = ref(false);
@@ -1558,52 +1195,22 @@ const categoryOptions = computed(() => {
     ]);
 });
 
-const topCategories = computed(() => {
-    const name = (c) => (locale.value === 'en' && c.name_en ? c.name_en : (c.name_ar || c.name || ''));
-    return categories.value
-        .filter((c) => !c.parent_id)
-        .slice(0, 8)
-        .map((c) => ({ id: c.id, label: name(c) }));
-});
-
-const selectedCategoryName = computed(() => {
-    if (!selectedCategoryId.value) return '';
-    const cat = categories.value.find((c) => c.id === selectedCategoryId.value);
-    if (!cat) return '';
-    return locale.value === 'en' && cat.name_en ? cat.name_en : (cat.name_ar || cat.name || '');
-});
-
 const onCategoryFilterChange = () => {
     executeQuickSearch();
-    quickSearchOpen.value = true;
-};
-
-const setCategoryFilter = (catId) => {
-    selectedCategoryId.value = catId;
-    executeQuickSearch();
-    quickSearchOpen.value = true;
 };
 
 // Quick Search & Suggested Catalog State
 const quickSearchQuery = ref('');
 const quickSearchLoading = ref(false);
 const quickSearchResults = ref([]);
-const quickSearchOpen = ref(false);
+// The catalogue panel (focus() puts the cursor in its search box).
 const quickSearchInputRef = ref(null);
-const quickSearchContainerRef = ref(null);
 let quickSearchDebounceTimer = null;
-
-const onQuickSearchFocus = () => {
-    quickSearchOpen.value = true;
-    if (!quickSearchResults.value.length) {
-        executeQuickSearch();
-    }
-};
 
 const onQuickSearchInput = () => {
     clearTimeout(quickSearchDebounceTimer);
-    quickSearchOpen.value = true;
     quickSearchDebounceTimer = setTimeout(() => {
+        quickSearchDebounceTimer = null;
         executeQuickSearch();
     }, 250);
 };
@@ -1615,7 +1222,14 @@ const onQuickSearchClear = () => {
 
 // Enter adds what the search unambiguously points at: a lone product, or a
 // lone size. With several sizes showing it is the seller's call which one.
-const onQuickSearchEnter = () => {
+const onQuickSearchEnter = async () => {
+    // A scanner types the code and presses Enter before the typed search has
+    // run: the results showing are for the previous text, so search now.
+    if (quickSearchDebounceTimer !== null) {
+        clearTimeout(quickSearchDebounceTimer);
+        quickSearchDebounceTimer = null;
+        await executeQuickSearch();
+    }
     if (quickSearchLoading.value) return;
     const first = quickSearchGroups.value[0];
     // Nothing matched what was typed: offer to create it.
@@ -1640,12 +1254,6 @@ const quickSearchGroups = computed(() => {
     return [...groups.values()].map((g) => ({ ...g, hasVariants: g.rows.some((r) => r.variant_id) }));
 });
 
-const groupOrderQuantity = (group) => group.rows.reduce((sum, row) => sum + getOrderItemQuantity(row), 0);
-
-// The product's own name on a size row, without the size appended.
-const groupName = (row) => (locale.value === 'en' && (row.product_name_en || row.name_en)
-    ? row.product_name_en || row.name_en
-    : row.product_name_ar || row.name_ar || row.name || '');
 
 // The sibling sizes of each picked product, for the switcher under a line.
 const { rememberVariantRows, ensureVariantsLoaded, siblingsOf } = useVariantSiblings();
@@ -1682,7 +1290,12 @@ const switchLineVariant = (line, row) => {
     if (priceUntouched) line.price = roundUnitPrice(line.base_price * multiplier);
 };
 
+// Each search is numbered so a slow earlier response cannot overwrite the
+// results of the text typed after it.
+let quickSearchSeq = 0;
+
 const executeQuickSearch = async () => {
+    const mine = ++quickSearchSeq;
     quickSearchLoading.value = true;
     try {
         const params = {
@@ -1695,6 +1308,7 @@ const executeQuickSearch = async () => {
             params.category_id = selectedCategoryId.value;
         }
         const res = await posApi.productLookup(params);
+        if (mine !== quickSearchSeq) return;
         const data = res.data?.data || [];
         quickSearchResults.value = (Array.isArray(data) ? data : []).map((p) => ({
             ...p,
@@ -1702,16 +1316,9 @@ const executeQuickSearch = async () => {
         }));
         rememberVariantRows(quickSearchResults.value);
     } catch {
-        quickSearchResults.value = [];
+        if (mine === quickSearchSeq) quickSearchResults.value = [];
     } finally {
-        quickSearchLoading.value = false;
-    }
-};
-
-const handleClickOutsideQuickSearch = (event) => {
-    if (!quickSearchOpen.value) return;
-    if (quickSearchContainerRef.value && !quickSearchContainerRef.value.contains(event.target)) {
-        quickSearchOpen.value = false;
+        if (mine === quickSearchSeq) quickSearchLoading.value = false;
     }
 };
 
@@ -1885,7 +1492,7 @@ const openQuickProduct = (seed = '') => {
 const onQuickProductCreated = (product, quantity = 1) => {
     addProduct({ ...product, listing_key: optionKey(product) }, quantity);
     quickSearchQuery.value = '';
-    quickSearchOpen.value = false;
+    executeQuickSearch();
 };
 
 // ── Quick Purchase Dialog State & Methods ──
@@ -2033,7 +1640,7 @@ const duplicateLine = (index) => {
     };
     form.items.splice(index + 1, 0, copy);
     nextTick(() => {
-        const rows = formRoot.value?.querySelectorAll('.line:not(.line--head)') || [];
+        const rows = formRoot.value?.querySelectorAll('.sline') || [];
         rows[index + 1]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
 };
@@ -2094,6 +1701,50 @@ const switchDiscountType = (type) => {
 
 const overStockLines = computed(() => form.items.filter(overStock));
 
+// The line's state against the document: a problem a save pointed at, more
+// than the shelf holds, or fine.
+const lineTone = (line, i) => {
+    if (isFlagged(`items.${i}`) || isFlagged(`items.${i}.discount`) || lineDiscountTooBig(line)) return 'danger';
+    if (overStock(line)) return 'warn';
+    return 'ok';
+};
+
+// The quantity typed into a line's stepper: only a whole number of at least
+// one lands while typing; leaving the box puts back the last good one.
+const onLineQtyInput = (line, e) => {
+    const n = Math.floor(Number(e.target.value));
+    if (Number.isFinite(n) && n >= 1) line.quantity = n;
+};
+
+const onLineQtyBlur = (line, e) => {
+    const n = Math.floor(toNum(line.quantity));
+    line.quantity = n >= 1 ? n : 1;
+    e.target.value = line.quantity;
+};
+
+const stepLineQty = (line, delta) => {
+    line.quantity = Math.max(1, Math.floor(toNum(line.quantity)) + delta);
+};
+
+const setDiscountPreset = (percent) => {
+    const off = form.discount_type === 'percent' && Number(form.discount_percent) === percent;
+    form.discount_type = 'percent';
+    form.discount_percent = off ? 0 : percent;
+};
+
+const clearLines = async () => {
+    try {
+        await ElMessageBox.confirm(t('pf_clear_lines_confirm'), t('pf_clear_lines'), {
+            type: 'warning',
+            confirmButtonText: t('pf_clear_lines'),
+            cancelButtonText: t('cancel'),
+        });
+        form.items.splice(0, form.items.length);
+    } catch {
+        // Kept them.
+    }
+};
+
 const onExpensesTotalChange = (newTotal) => {
     form.shipping_cost = toNum(newTotal);
     dirty.value = true;
@@ -2153,6 +1804,10 @@ const fieldError = (key) => errors[key] || (isFlagged(key) ? issues.value.find((
 const flagged = ref({});
 const isFlagged = (key) => flagged.value[key] === true;
 
+// The checklist shows once there is something on the order to check, or a
+// save has been tried.
+const showChecklist = computed(() => Boolean(form.customer_id) || form.items.length > 0 || Object.keys(flagged.value).length > 0);
+
 const flagIssues = () => {
     flagged.value = Object.fromEntries(issues.value.map((i) => [i.key, true]));
 };
@@ -2183,15 +1838,17 @@ const goToIssue = async (issue) => {
     const lineMatch = /^line-(\d+)$/.exec(issue.target || '');
     let el = null;
     if (lineMatch) {
-        el = formRoot.value?.querySelectorAll('.line:not(.line--head)')[Number(lineMatch[1])];
+        el = formRoot.value?.querySelectorAll('.sline')[Number(lineMatch[1])];
     } else if (issue.target === 'customer') {
-        el = customerSelect.value?.$el || formRoot.value?.querySelector('.head-grid .el-select');
+        el = customerSelect.value?.$el || headRef.value;
     } else if (issue.target === 'delivery') {
         el = deliveryPicker.value?.$el;
     } else if (issue.target === 'items') {
-        el = formRoot.value?.querySelector('.lines-empty') || quickSearchInputRef.value?.$el || formRoot.value?.querySelector('.quote-search-input');
+        linesRef.value?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        focusCatalog();
+        return;
     } else if (issue.target === 'discount') {
-        el = discountInput.value?.$el;
+        el = discountInput.value?.$el || totalsRef.value;
     }
 
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -2653,11 +2310,7 @@ const onKeydown = (event) => {
     if (isLocked.value || loading.value || quickProductVisible.value) return;
     if (event.key === 'F2') {
         event.preventDefault();
-        quickSearchOpen.value = true;
-        quickSearchInputRef.value?.focus();
-        if (!quickSearchResults.value.length) {
-            executeQuickSearch();
-        }
+        focusCatalog();
     }
     if (event.key === 'F4' && !event.altKey) {
         event.preventDefault();
@@ -2672,7 +2325,6 @@ const onKeydown = (event) => {
 onMounted(async () => {
     window.addEventListener('keydown', onKeydown);
     window.addEventListener('beforeunload', onBeforeUnload);
-    document.addEventListener('mousedown', handleClickOutsideQuickSearch);
     await Promise.all([
         fetchWarehouses(),
         fetchCategories(),
@@ -2699,16 +2351,15 @@ onMounted(async () => {
             }
         }
         searchCustomers('');
-        setTimeout(() => {
-            quickSearchInputRef.value?.focus();
-        }, 200);
+        setTimeout(() => focusCatalog(), 200);
     }
+    // The catalogue beside the order starts with products in it.
+    if (!isLocked.value) executeQuickSearch();
 });
 
 onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    document.removeEventListener('mousedown', handleClickOutsideQuickSearch);
     clearTimeout(draftTimer);
     clearTimeout(customerTimer);
     clearTimeout(quickSearchDebounceTimer);
@@ -2716,1251 +2367,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.order-form-page {
-    font-family: 'Cairo', sans-serif;
-    padding-bottom: 2rem;
-}
-
-.order-form-container {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.quote-form {
-    font-family: 'Cairo', sans-serif;
-}
-
-/* ── Status Bar ──────────────────────────────────────────────────────
-   The form scrolls as one long column. Everything the reader needs to keep
-   re-checking — what is missing, how many items, what it comes to — used to
-   live at the very bottom, below the line table. Sticking one row to the top
-   of the viewport keeps all three visible at once. */
-.status-bar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem 1rem;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-    padding: 0.6rem 0.9rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #ffffff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-}
-
-.status-bar.is-blocked {
-    border-color: #fcd34d;
-    background: #fffdf5;
-}
-
-.status-bar.is-ready {
-    border-color: #a7f3d0;
-    background: #f6fef9;
-}
-
-.sb-lead {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.86rem;
-    font-weight: 700;
-    color: #92400e;
-    flex: 0 0 auto;
-}
-
-.status-bar.is-ready .sb-lead {
-    color: #047857;
-}
-
-.sb-lead i {
-    font-size: 1rem;
-}
-
-.sb-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.35rem;
-    height: 1.35rem;
-    padding: 0 0.3rem;
-    border-radius: 999px;
-    background: #d97706;
-    color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 700;
-}
-
-.sb-issues {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem 0.5rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    flex: 1 1 260px;
-    min-width: 0;
-}
-
-.sb-issue {
-    all: unset;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    max-width: 100%;
-    box-sizing: border-box;
-    cursor: pointer;
-    padding: 0.2rem 0.55rem;
-    border-radius: 6px;
-    background: #fef3c7;
-    border: 1px solid #fcd34d;
-    color: #78350f;
-    font-size: 0.78rem;
-    font-weight: 600;
-    line-height: 1.5;
-}
-
-.sb-issue:hover {
-    background: #fde68a;
-}
-
-.sb-issue:focus-visible {
-    outline: 2px solid #b45309;
-    outline-offset: 2px;
-}
-
-.sb-issue i {
-    font-size: 0.7rem;
-    flex: 0 0 auto;
-}
-
-.sb-tail {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem 0.9rem;
-    flex-wrap: wrap;
-    flex: 1 1 300px;
-    min-width: 0;
-    justify-content: flex-end;
-}
-
-.sb-metrics {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.45rem;
-    font-size: 0.82rem;
-    color: #475569;
-    font-weight: 600;
-}
-
-.sb-dot {
-    color: #94a3b8;
-}
-
-.sb-total {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.35rem;
-    padding: 0.15rem 0.6rem;
-    border-radius: 8px;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-}
-
-.sb-total-label {
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: #1d4ed8;
-}
-
-.sb-total strong {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #1d4ed8;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
-.sb-flag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    max-width: 100%;
-}
-
-.sb-flag.is-warn {
-    color: #9a3412;
-    background: #ffedd5;
-    border: 1px solid #fdba74;
-}
-
-.sb-flag.is-muted {
-    color: #475569;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
-}
-
-.status-bar :deep(.el-select__placeholder.is-transparent),
-.picker-hint.is-info {
-    color: #64748b;
-}
-
-/* Element Plus ships a placeholder grey well under the 4.5:1 contrast floor,
-   and the select's own #el-color text inherits it on every screen of this form. */
-.product-picker :deep(.el-select__placeholder),
-.head-grid :deep(.el-select__placeholder),
-.head-subgrid :deep(.el-select__placeholder) {
-    color: #64748b;
-}
-
-/* ── Field-level "this needs fixing" ─────────────────────────────── */
-.is-flagged :deep(.el-input__wrapper),
-.is-flagged :deep(.el-textarea__inner),
-.is-flagged :deep(.el-select__wrapper) {
-    box-shadow: 0 0 0 2px #f59e0b inset;
-}
-
-.lines-empty.has-error {
-    border-color: #f87171;
-    color: #b91c1c;
-    background: #fef2f2;
-}
-
-.line.is-flagged {
-    background: #fffbeb;
-    box-shadow: inset 0 0 0 2px #fcd34d;
-}
-
-/* Head Grid Layout */
-.head-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 0 1.25rem;
-    margin-bottom: 0.5rem;
-}
-
-.rep-hint {
-    display: block;
-    margin-top: 0.2rem;
-    font-size: 0.72rem;
-    color: #047857;
-}
-
-.head-subgrid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0 1.25rem;
-    margin-bottom: 0.5rem;
-}
-
-/* Quick day chips */
-.quick-days {
-    display: flex;
-    gap: 0.35rem;
-    margin-top: 0.4rem;
-    flex-wrap: wrap;
-}
-
-.chip {
-    all: unset;
-    cursor: pointer;
-    font-size: 0.78rem;
-    padding: 0.3rem 0.7rem;
-    border-radius: 999px;
-    border: 1px solid #cbd5e1;
-    color: #334155;
-    line-height: 1.5;
-    background: #ffffff;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.chip:hover {
-    border-color: #60a5fa;
-    color: #1d4ed8;
-    background: #f8fafc;
-}
-
-.chip.is-on {
-    background: #dbeafe;
-    border-color: #2563eb;
-    color: #1d4ed8;
-    font-weight: 700;
-}
-
-.chip:focus-visible {
-    outline: 2px solid #2563eb;
-    outline-offset: 2px;
-}
-
-/* Customer option & strip */
-.option-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: center;
-    width: 100%;
-}
-
-.option-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.option-meta {
-    display: inline-flex;
-    gap: 0.6rem;
-    font-size: 0.78rem;
-    color: #64748b;
-    align-items: center;
-}
-
-.customer-info-strip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-top: 0.4rem;
-    padding: 0.35rem 0.65rem;
-    background: #f8fafc;
-    border-radius: 6px;
-    border: 1px solid #f1f5f9;
-    font-size: 0.8rem;
-    color: #475569;
-}
-
-.cust-info-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.cust-info-item.warn {
-    color: #d97706;
-    font-weight: 600;
-}
-
-.cust-info-item.danger {
-    color: #dc2626;
-    font-weight: 700;
-}
-
-.cust-info-item.fresh {
-    color: #15803d;
-    font-weight: 600;
-}
-
-/* Customer picker row: select + "new client" button */
-.customer-pick-row {
-    display: flex;
-    align-items: stretch;
-    gap: 0.5rem;
-    width: 100%;
-}
-
-.customer-select {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.customer-add-btn {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0 0.85rem;
-    border-radius: 6px;
-    border: 1px dashed #93c5fd;
-    background: #eff6ff;
-    color: #1d4ed8;
-    font-size: 0.82rem;
-    font-weight: 600;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-}
-.customer-add-btn:hover {
-    border-style: solid;
-    background: #dbeafe;
-}
-.customer-add-btn:focus-visible {
-    outline: 2px solid #93c5fd;
-    outline-offset: 1px;
-}
-.customer-add-btn.is-on {
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    color: #64748b;
-}
-
-/* Empty dropdown: offer to create what was typed */
-.customer-empty {
-    padding: 0.85rem 1rem;
-    text-align: center;
-    color: #64748b;
-    font-size: 0.82rem;
-}
-.customer-empty-text {
-    margin: 0 0 0.6rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.customer-empty-add {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    max-width: 100%;
-    padding: 0.4rem 0.9rem;
-    border-radius: 999px;
-    background: #2563eb;
-    color: #fff;
-    font-weight: 600;
-    font-size: 0.8rem;
-    transition: background 0.15s ease;
-}
-.customer-empty-add span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.customer-empty-add:hover {
-    background: #1d4ed8;
-}
-
-.qc-slide-enter-active,
-.qc-slide-leave-active {
-    transition: opacity 0.18s ease, transform 0.18s ease;
-}
-.qc-slide-enter-from,
-.qc-slide-leave-to {
-    opacity: 0;
-    transform: translateY(-4px);
-}
-
-/* Lines Section Header */
-.lines-head-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin: 1.25rem 0 0.75rem;
-    flex-wrap: wrap;
-}
-
-.lines-title {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.lines-title h4 {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #1e293b;
-}
-
-.lines-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.78rem;
-    background: #f1f5f9;
-    color: #334155;
-    padding: 0.15rem 0.55rem;
-    border-radius: 999px;
-    font-weight: 600;
-}
-
-.lines-badge.is-warn {
-    background: #ffedd5;
-    color: #9a3412;
-}
-
-.lines-summary-quick {
-    display: flex;
-    align-items: center;
-}
-
-.subtotal-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    padding: 0.25rem 0.75rem;
-    border-radius: 999px;
-    font-size: 0.84rem;
-    color: #166534;
-}
-
-.subtotal-pill .lbl {
-    color: #15803d;
-    font-weight: 600;
-}
-
-.subtotal-pill strong {
-    font-weight: 700;
-    font-size: 0.95rem;
-}
-
-/* ==========================================================================
-   Suggested Product Search & Category Filter Panel (Stays Open)
-   ========================================================================== */
-.quote-search-panel {
-    position: relative;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 0.65rem 0.75rem;
-    margin-bottom: 0.85rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.quote-search-header-row {
-    display: flex;
-    gap: 0.65rem;
-    align-items: center;
-}
-
-.search-category-select-wrap {
-    width: 230px;
-    flex-shrink: 0;
-}
-
-.category-filter-select :deep(.el-input__wrapper) {
-    background: #ffffff;
-    box-shadow: 0 0 0 1px #cbd5e1 inset;
-    border-radius: 8px;
-    padding: 2px 10px;
-    transition: all 0.2s ease;
-}
-
-.category-filter-select :deep(.el-input__wrapper.is-focus) {
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 0 0 1px #2563eb inset;
-}
-
-.category-all-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-weight: 600;
-    color: #2563eb;
-}
-
-.category-option-row {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.84rem;
-}
-
-.category-option-row.is-sub {
-    padding-inline-start: 1rem;
-    color: #475569;
-}
-
-.cat-root-icon {
-    color: #2563eb;
-    font-size: 0.8rem;
-}
-
-.cat-sub-icon {
-    color: #94a3b8;
-    font-size: 0.72rem;
-}
-
-.search-input-box {
-    flex: 1;
-    min-width: 0;
-}
-
-.quote-search-input :deep(.el-input__wrapper) {
-    background: #ffffff;
-    box-shadow: 0 0 0 1px #cbd5e1 inset;
-    border-radius: 8px;
-    padding: 3px 12px;
-    transition: all 0.2s ease;
-}
-
-.quote-search-input :deep(.el-input__wrapper.is-focus) {
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2), 0 0 0 1px #2563eb inset;
-}
-
-.search-icon {
-    font-size: 0.92rem;
-    color: #64748b;
-    margin-inline-end: 4px;
-}
-
-.key-hint {
-    font-size: 0.7rem;
-    font-family: monospace;
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
-    border-radius: 3px;
-    padding: 0 4px;
-    color: #94a3b8;
-}
-
-.btn-toggle-catalog {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 0.45rem 0.85rem;
-    font-size: 0.84rem;
-    font-weight: 600;
-    color: #334155;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-}
-
-.btn-toggle-catalog:hover {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-}
-
-.btn-toggle-catalog.is-active {
-    background: #1e3a8a;
-    border-color: #1e3a8a;
-    color: #ffffff;
-}
-
-.count-badge {
-    background: rgba(30, 58, 138, 0.1);
-    color: #1e3a8a;
-    font-size: 0.72rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 9999px;
-    font-weight: 700;
-}
-
-.btn-new-product {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: #ecfdf5;
-    border: 1px solid #6ee7b7;
-    border-radius: 8px;
-    padding: 0.45rem 0.85rem;
-    font-size: 0.84rem;
-    font-weight: 700;
-    color: #047857;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-}
-
-.btn-new-product:hover {
-    background: #059669;
-    border-color: #059669;
-    color: #ffffff;
-}
-
-.btn-new-product .key-hint {
-    background: rgba(255, 255, 255, 0.6);
-}
-
-.empty-new-product {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-    padding: 0.55rem 1.1rem;
-    border: none;
-    border-radius: 8px;
-    background: #059669;
-    color: #ffffff;
-    font: inherit;
-    font-weight: 700;
-    font-size: 0.88rem;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
-    max-width: 100%;
-}
-
-.empty-new-product span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.empty-new-product:hover {
-    background: #047857;
-}
-
-.empty-new-hint {
-    font-size: 0.75rem;
-    color: #94a3b8;
-}
-
-.footer-new-product {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    color: #047857;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.footer-new-product:hover {
-    text-decoration: underline;
-}
-
-@media (max-width: 860px) {
-    .quote-search-header-row { flex-wrap: wrap; }
-    .btn-new-product .key-hint { display: none; }
-}
-
-.btn-toggle-catalog.is-active .count-badge {
-    background: rgba(255, 255, 255, 0.25);
-    color: #ffffff;
-}
-
-/* Category Quick Chips */
-.category-quick-chips {
-    display: flex;
-    gap: 0.35rem;
-    align-items: center;
-    margin-top: 0.5rem;
-    overflow-x: auto;
-    padding-bottom: 2px;
-}
-
-.cat-chip-btn {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.75rem;
-    padding: 0.18rem 0.65rem;
-    border-radius: 9999px;
-    border: 1px solid #e2e8f0;
-    background: #ffffff;
-    color: #475569;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-}
-
-.cat-chip-btn:hover {
-    border-color: #93c5fd;
-    color: #2563eb;
-    background: #f8fafc;
-}
-
-.cat-chip-btn.is-active {
-    background: #2563eb;
-    border-color: #2563eb;
-    color: #ffffff;
-    font-weight: 600;
-}
-
-/* Floating / Expandable Dropdown */
-.quote-suggested-panel {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    z-index: 999;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 12px;
-    box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.16), 0 4px 10px -2px rgba(0, 0, 0, 0.08);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.dropdown-top-strip {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.65rem 1rem;
-    background: #f1f5f9;
-    border-bottom: 1px solid #e2e8f0;
-    font-size: 0.84rem;
-}
-
-.strip-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: #1e293b;
-    flex-wrap: wrap;
-}
-
-.results-badge {
-    background: #e2e8f0;
-    color: #475569;
-    font-size: 0.72rem;
-    font-weight: 700;
-    padding: 0.1rem 0.45rem;
-    border-radius: 9999px;
-}
-
-.search-term-badge {
-    font-size: 0.75rem;
-    color: #2563eb;
-    font-weight: 600;
-}
-
-.strip-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.keep-open-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.74rem;
-    color: #047857;
-    background: #ecfdf5;
-    padding: 0.15rem 0.6rem;
-    border-radius: 9999px;
-    border: 1px solid #a7f3d0;
-}
-
-.close-dropdown-btn {
-    all: unset;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: #64748b;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-}
-
-.close-dropdown-btn:hover {
-    background: #e2e8f0;
-    color: #0f172a;
-}
-
-/* Products List Scroll Container */
-.suggested-list-scroll {
-    max-height: 420px;
-    overflow-y: auto;
-    padding: 0.65rem;
-}
-
-.suggested-loading-state,
-.suggested-empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2.5rem 1rem;
-    color: #64748b;
-    gap: 0.6rem;
-    text-align: center;
-}
-
-/* Products Grid / Cards */
-.suggested-products-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.suggested-item-card {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #ffffff;
-    transition: all 0.15s ease;
-}
-
-.suggested-item-card:hover {
-    border-color: #93c5fd;
-    background: #f8fafc;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-.suggested-item-card.item-in-order {
-    border-color: #86efac;
-    background: #f0fdf4;
-}
-
-.item-card-image {
-    position: relative;
-    flex-shrink: 0;
-    width: 54px;
-    height: 54px;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.item-card-image :deep(.entity-image),
-.item-card-image :deep(img) {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover;
-}
-
-.in-order-tag {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    background: #16a34a;
-    color: #ffffff;
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 0.05rem 0.35rem;
-    border-radius: 9999px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.item-card-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.item-card-header {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-
-.item-name {
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: #1e293b;
-    line-height: 1.3;
-}
-
-.item-card-tags {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-    font-size: 0.72rem;
-}
-
-.sku-chip {
-    color: #475569;
-    background: #f1f5f9;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-family: monospace;
-    font-weight: 600;
-}
-
-.cat-chip {
-    color: #0369a1;
-    background: #e0f2fe;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.stock-badge {
-    font-size: 0.72rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 4px;
-    font-weight: 600;
-}
-.stock-badge.is-ok {
-    color: #16a34a;
-    background: #f0fdf4;
-}
-.stock-badge.is-low {
-    color: #d97706;
-    background: #fffbeb;
-}
-.stock-badge.is-out {
-    color: #dc2626;
-    background: #fef2f2;
-}
-
-.item-card-financials {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    flex-wrap: wrap;
-    font-size: 0.78rem;
-    margin-top: 0.1rem;
-}
-
-.price-stat, .cost-stat {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-}
-
-.price-stat .stat-lbl, .cost-stat .stat-lbl {
-    color: #64748b;
-}
-
-.price-stat .stat-val {
-    color: #2563eb;
-    font-size: 0.88rem;
-    font-weight: 700;
-}
-
-.cost-stat .stat-val {
-    font-weight: 600;
-}
-
-.old-price {
-    font-size: 0.75rem;
-    color: #94a3b8;
-    text-decoration: line-through;
-}
-
-/* Action Area */
-.item-card-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-shrink: 0;
-    margin-inline-start: auto;
-}
-
-/* One product, several sizes */
-.suggested-item-card.is-group {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.6rem;
-}
-
-.group-head {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.variants-count-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.05rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #6d28d9;
-    background: #f5f3ff;
-    border: 1px solid #ddd6fe;
-}
-
-.pick-size-hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: #64748b;
-    font-size: 0.72rem;
-}
-
-.variant-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 0.45rem;
-}
-
-.variant-tile {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.45rem 0.6rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-    background: #f8fafc;
-    transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.variant-tile:hover {
-    border-color: #93c5fd;
-    background: #ffffff;
-}
-
-.variant-tile.is-in-order {
-    border-color: #86efac;
-    background: #f0fdf4;
-}
-
-.variant-tile.is-out {
-    background: #fff7ed;
-}
-
-.variant-tile-info {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-
-.variant-tile-title {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-
-.variant-tile-label {
-    font-size: 0.86rem;
-    font-weight: 700;
-    color: #1e3a8a;
-    unicode-bidi: isolate;
-}
-
-.tile-price {
-    font-size: 0.8rem;
-    color: #1e3a8a;
-}
-
-.variant-tile .item-card-actions {
-    margin-inline-start: 0;
-}
-
-/* Sibling sizes under a line */
-.line-variant-switch {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-    margin-top: 0.35rem;
-}
-
-.switch-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #64748b;
-    white-space: nowrap;
-}
-
-.switch-chips {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    flex-wrap: wrap;
-}
-
-.switch-chip {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
-    color: #334155;
-    font-size: 0.74rem;
-    font-weight: 600;
-    line-height: 1.5;
-    transition: all 0.15s ease;
-}
-
-.switch-chip:hover {
-    border-color: #93c5fd;
-    color: #1d4ed8;
-}
-
-.switch-chip.is-active {
-    border-color: #2563eb;
-    background: #eff6ff;
-    color: #1d4ed8;
-    cursor: default;
-}
-
-.switch-chip.is-out {
-    color: #9a3412;
-    border-style: dashed;
-}
-
-.switch-chip .chip-label {
-    unicode-bidi: isolate;
-}
-
-.switch-chip .chip-stock {
-    font-size: 0.66rem;
-    font-weight: 600;
-    color: #16a34a;
-    padding-inline-start: 0.3rem;
-    border-inline-start: 1px solid #e2e8f0;
-}
-
-.switch-chip.is-out .chip-stock {
-    color: #dc2626;
-}
-
-/* Dropdown Footer Strip */
-.dropdown-footer-strip {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.65rem 1rem;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-    font-size: 0.84rem;
-}
-
-.footer-summary {
-    color: #475569;
-    font-size: 0.8rem;
-}
-
-.footer-hints {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.74rem;
-    color: #64748b;
-}
-
-.footer-hints kbd {
-    font-size: 0.7rem;
-    font-family: monospace;
-    background: #e2e8f0;
-    border: 1px solid #cbd5e1;
-    border-radius: 3px;
-    padding: 0 4px;
-    color: #475569;
-}
-
 /* Quick Purchase Dialog Styling */
 .purchase-dialog-content {
     display: flex;
@@ -4047,596 +2453,5 @@ onUnmounted(() => {
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
-}
-
-/* Lines Empty State */
-.lines-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    padding: 2.2rem 1.4rem;
-    border: 1px dashed #cbd5e1;
-    border-radius: 10px;
-    color: #64748b;
-    font-size: 0.9rem;
-    background: #fafafa;
-}
-
-.lines-empty.has-error {
-    border-color: #f87171;
-    color: #b91c1c;
-    background: #fef2f2;
-}
-
-/* Lines Table */
-.lines {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    overflow: hidden;
-    background: #ffffff;
-}
-
-/* Eight cells: product, unit, qty, price, discount, tax, total, actions. The
-   actions column grew from 36px to 68px when the row gained a duplicate button,
-   and the total column now shares its cell with the mobile-only label. */
-.line {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) 112px 104px 112px 92px 92px minmax(88px, 1fr) 68px;
-    gap: 0.5rem;
-    align-items: center;
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.line:last-child {
-    border-bottom: none;
-}
-
-.line--head {
-    background: #f8fafc;
-    font-size: 0.78rem;
-    color: #64748b;
-    font-weight: 600;
-}
-
-.line-product {
-    min-width: 0;
-}
-
-.line-product-content {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-}
-
-.line-thumb {
-    width: 42px;
-    height: 42px;
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-    flex-shrink: 0;
-    overflow: hidden;
-    background: #f8fafc;
-}
-
-.line-thumb :deep(img) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.line-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    gap: 0.2rem;
-}
-
-.line-product strong {
-    font-size: 0.88rem;
-    color: #1e293b;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.line-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex-wrap: wrap;
-}
-
-.line-shortage-btn {
-    all: unset;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    background: #fef2f2;
-    color: #dc2626;
-    border: 1px solid #fca5a5;
-    transition: all 0.15s ease;
-}
-
-.line-shortage-btn:hover {
-    background: #fee2e2;
-    border-color: #ef4444;
-}
-
-.line-variant-details {
-    margin-top: 0.3rem;
-}
-
-.variant-tag {
-    font-size: 0.72rem;
-    background: #e0f2fe;
-    color: #075985;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-weight: 600;
-}
-
-.stock-pill {
-    font-size: 0.72rem;
-    color: #15803d;
-    background: #f0fdf4;
-    padding: 0.1rem 0.45rem;
-    border-radius: 4px;
-    font-weight: 500;
-}
-
-/* #dc2626 on #fef2f2 lands at 4.41:1, just under the 4.5:1 floor. */
-.stock-pill.is-over {
-    color: #b91c1c;
-    background: #fef2f2;
-    font-weight: 700;
-}
-
-.unit-badge {
-    display: inline-block;
-    font-size: 0.8rem;
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-    padding: 0.2rem 0.5rem;
-    text-align: center;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.unit-select :deep(.el-input__wrapper) {
-    padding: 0 6px;
-}
-
-.line-field :deep(.el-input-number) {
-    width: 100%;
-}
-
-/* The five editable fields are wrapped only so the narrow layout can wrap them
-   as one sub-grid. `display: contents` dissolves the wrapper so at full width
-   the fields are still direct children of the row's own eight-column grid. */
-.line-fields {
-    display: contents;
-}
-
-.mobile-label {
-    display: none;
-}
-
-.num {
-    text-align: end;
-    font-variant-numeric: tabular-nums;
-}
-
-.line-total-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: center;
-    min-width: 0;
-}
-
-.line-total {
-    font-weight: 700;
-    color: #0f172a;
-    white-space: nowrap;
-}
-
-.line-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.1rem;
-}
-
-.action-btn {
-    width: 32px;
-    height: 32px;
-    color: #64748b;
-}
-
-.action-btn:hover {
-    color: #1d4ed8;
-    background: #eff6ff;
-}
-
-.is-invalid :deep(.el-input__wrapper) {
-    box-shadow: 0 0 0 1px #ef4444 inset !important;
-}
-
-/* 12px grey on white is 3.08:1; the character counter is load-bearing when a
-   note hits the 1000-character cap, so it needs to be readable. */
-.quote-form :deep(.el-input__count) {
-    color: #64748b;
-}
-
-.order-expenses-section {
-    margin-top: 1.5rem;
-}
-
-/* Bottom Grid: Notes & Totals */
-.bottom-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 1.5rem;
-    margin-top: 1.25rem;
-}
-
-.totals {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    align-self: start;
-}
-
-.totals-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.35rem 0;
-    font-size: 0.88rem;
-    color: #475569;
-}
-
-.totals-row :deep(.el-input-number) {
-    width: 130px;
-}
-
-.totals-row.discount-row {
-    flex-wrap: wrap;
-    row-gap: 0.35rem;
-}
-
-.totals-row-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.discount-mode-switch :deep(.el-radio-button__inner) {
-    padding: 2px 7px;
-    font-size: 0.72rem;
-    height: 24px;
-    line-height: 20px;
-}
-
-.totals-row-input {
-    display: inline-flex;
-    justify-content: flex-end;
-}
-
-.totals-hint {
-    font-size: 0.75rem;
-    margin-top: -0.15rem;
-    margin-bottom: 0.35rem;
-    padding-inline-start: 0.25rem;
-}
-
-.totals-hint.is-error {
-    color: #ef4444;
-    font-weight: 600;
-}
-
-.totals-hint.is-figure {
-    color: #059669;
-    font-weight: 500;
-}
-
-.totals-row.grand {
-    border-top: 1px solid #e2e8f0;
-    margin-top: 0.5rem;
-    padding-top: 0.75rem;
-    font-size: 1.15rem;
-    font-weight: 800;
-    color: #0f172a;
-}
-
-.totals-row.grand .num {
-    color: #1d4ed8;
-}
-
-.totals.is-flagged {
-    border-color: #fcd34d;
-}
-
-.server-errors {
-    margin-top: 1rem;
-}
-
-.server-errors ul {
-    margin: 0.25rem 0 0;
-    padding-inline-start: 1.1rem;
-}
-
-/* Form Footer */
-.form-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 1.75rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid #e2e8f0;
-}
-
-.footer-start {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.footer-end {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-.footer-hint {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.8rem;
-    color: #92400e;
-    font-weight: 600;
-}
-
-/* Locked Section */
-.amend-notice { margin-bottom: 1rem; }
-.revision-note { margin-bottom: 1rem; }
-
-.locked {
-    max-width: 640px;
-    margin: 2rem auto;
-    padding: 2.2rem;
-    text-align: center;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.locked-icon {
-    font-size: 2.2rem;
-    color: #94a3b8;
-}
-
-.locked h2 {
-    margin: 0.75rem 0 0.5rem;
-    font-size: 1.25rem;
-    color: #1e293b;
-}
-
-.locked p {
-    color: #475569;
-    font-size: 0.92rem;
-    line-height: 1.7;
-}
-
-.locked-facts {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    margin: 1.5rem 0;
-}
-
-.locked-facts dt {
-    font-size: 0.75rem;
-    color: #64748b;
-}
-
-.locked-facts dd {
-    margin: 0;
-    font-weight: 700;
-    color: #1e293b;
-    font-size: 1.05rem;
-}
-
-.locked-actions {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.locked-note {
-    margin-top: 1.25rem;
-    font-size: 0.82rem !important;
-    color: #94a3b8 !important;
-}
-
-/* Responsive adjustments */
-@media (max-width: 1300px) {
-    /* The eight-column row needs roughly 725px of track plus the card's own
-       padding. Above that it silently collapses the product name to zero width,
-       so below 1300 each line becomes a card before the numbers get squeezed. */
-    .line--head {
-        display: none;
-    }
-
-    /* Rows become independent cards, so the table's own frame has to go or the
-       card margins and rounded corners get clipped by its overflow. */
-    .lines {
-        border: none;
-        border-radius: 0;
-        background: transparent;
-        display: grid;
-        gap: 0.6rem;
-    }
-
-    .line {
-        /* `auto` lets the action column shrink to its two buttons. The total gets
-           a row of its own instead of the leftover sliver beside them, which is
-           where it was overflowing off the side of the card. */
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas:
-            'product actions'
-            'fields  fields'
-            'total   total';
-        row-gap: 0.6rem;
-        padding: 0.75rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        margin-bottom: 0;
-        background: #ffffff;
-    }
-
-    .line-product { grid-area: product; }
-    .line-actions { grid-area: actions; align-self: start; }
-
-    /* One sub-grid holding the five editable fields, so they wrap on their own
-       instead of stranding the total underneath whichever label landed last. */
-    .line-fields {
-        grid-area: fields;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 0.5rem;
-    }
-
-    .line-total-cell {
-        grid-area: total;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        padding: 0.45rem 0.7rem;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-    }
-
-    .line-total-cell .mobile-label {
-        display: block;
-        font-size: 0.78rem;
-        font-weight: 700;
-        color: #475569;
-    }
-
-    .line-total {
-        font-size: 1rem;
-    }
-
-    .mobile-label {
-        display: block;
-        font-size: 0.72rem;
-        color: #475569;
-        margin-bottom: 0.2rem;
-    }
-}
-
-/* Two columns of fields is the most a phone-width card can carry without the
-   labels wrapping; auto-fit's min-content floor was dropping to one very wide
-   column and making each line card three times taller than it needed to be. */
-@media (max-width: 620px) {
-    .line-fields {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 860px) {
-    .order-form-container {
-        padding: 1rem;
-    }
-
-    /* The quantity stepper plus two buttons no longer fit beside the thumbnail and
-       name on a phone, so the action group drops to its own full-width row. */
-    .suggested-item-card {
-        flex-wrap: wrap;
-    }
-
-    .item-card-actions {
-        flex: 1 1 100%;
-        justify-content: flex-end;
-        margin-inline-start: 0;
-    }
-
-    .variant-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .variant-tile {
-        flex-wrap: wrap;
-    }
-
-    .customer-add-label {
-        display: none;
-    }
-
-    .customer-add-btn {
-        padding: 0 0.75rem;
-        font-size: 0.95rem;
-    }
-
-    .head-grid, .head-subgrid, .bottom-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .status-bar {
-        gap: 0.5rem 0.75rem;
-        padding: 0.55rem 0.7rem;
-    }
-
-    .sb-issues {
-        flex: 1 1 100%;
-        order: 3;
-    }
-
-    .sb-tail {
-        margin-inline-start: 0;
-        flex: 1 1 100%;
-        justify-content: space-between;
-    }
-
-    .product-picker {
-        max-width: none;
-    }
-
-    .form-footer {
-        flex-direction: column-reverse;
-        gap: 0.75rem;
-    }
-
-    .footer-start, .footer-end {
-        width: 100%;
-        justify-content: stretch;
-    }
-
-    .footer-start button, .footer-end button {
-        flex: 1;
-    }
-
-    .footer-hint {
-        flex: 1 1 100%;
-        justify-content: center;
-    }
 }
 </style>
