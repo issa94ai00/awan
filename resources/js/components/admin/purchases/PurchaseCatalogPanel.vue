@@ -95,7 +95,11 @@
                     class="pcat-card"
                     :class="{ 'is-in': groupCount(g) > 0, 'is-flagged': groupFlagged(g) }"
                 >
-                    <div class="pcat-card-main">
+                    <div
+                        class="pcat-card-main"
+                        :class="{ 'is-pickable': !g.hasVariants }"
+                        @click="!g.hasVariants && pick(g.product)"
+                    >
                         <div class="pcat-thumb">
                             <EntityImage :src="imageOf(g.product)" type="product" :size="compact ? 40 : 48" shape="square" />
                             <span v-if="groupCount(g) > 0" class="pcat-thumb-badge">{{ groupCount(g) }}</span>
@@ -137,8 +141,9 @@
                         <div
                             v-for="p in g.rows"
                             :key="optionKey(p)"
-                            class="pcat-variant"
+                            class="pcat-variant is-pickable"
                             :class="{ 'is-in': countOf(p) > 0, 'is-flagged': isFlagged(p) }"
+                            @click="pick(p)"
                         >
                             <div class="pcat-variant-info">
                                 <span class="pcat-variant-label" dir="ltr">{{ p.variant_label || p.sku || baseName(p) }}</span>
@@ -277,6 +282,7 @@ const fetchPage = async (pageNo = 1) => {
 
 const refresh = () => {
     clearTimeout(timer);
+    timer = null;
     listRef.value?.scrollTo?.({ top: 0 });
     return fetchPage(1);
 };
@@ -287,7 +293,10 @@ const hasMore = computed(() => !onlyHighlighted.value && page.value < lastPage.v
 const onInput = () => {
     clearTimeout(timer);
     onlyHighlighted.value = false;
-    timer = setTimeout(refresh, 250);
+    timer = setTimeout(() => {
+        timer = null;
+        refresh();
+    }, 250);
 };
 
 const clearQuery = () => {
@@ -327,7 +336,11 @@ const onEnter = async () => {
     if (timer || loading.value) {
         clearTimeout(timer);
         timer = null;
-        list = (await fetchPage(1)) || [];
+        const fresh = await fetchPage(1);
+        // Failed, or overtaken by a newer search: that is not "nothing
+        // found", so it must not offer to create the product.
+        if (!fresh || query.value.trim() !== q) return;
+        list = fresh;
     }
     const lower = q.toLowerCase();
     const exact = list.find((r) => [r.sku, r.barcode, r.variant_sku, r.variant_barcode]
@@ -340,6 +353,12 @@ const onEnter = async () => {
         return;
     }
     if (!list.length) emit('create', q);
+};
+
+// A click on a product (not on its stepper) adds one of it the first time;
+// once it is on the document the stepper beside it sets the count.
+const pick = (row) => {
+    if (!(Number(props.countOf(row)) > 0)) emit('add', row, 1);
 };
 
 const focus = () => {
@@ -712,6 +731,10 @@ defineExpose({ focus, refresh });
 
 .pcat-action {
     flex-shrink: 0;
+}
+
+.is-pickable {
+    cursor: pointer;
 }
 
 .pcat-variants {
